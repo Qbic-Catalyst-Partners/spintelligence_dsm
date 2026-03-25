@@ -1,0 +1,561 @@
+.container {
+  background: #f4f6f8;
+  min-height: 100vh;
+  font-family: Inter, sans-serif;
+}
+
+/* ================= NAVBAR ================= */
+.topNavbar {
+  height: 70px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30px;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.navLinks a {
+  text-decoration: none;
+  font-size: 14px;
+  color: #475569;
+  margin-right: 20px;
+}
+
+.navLinks a:hover {
+  color: #2563eb;
+}
+/* LEFT LOGO (spintel) */
+.spintelLogo {
+  width: 120px;
+  height: auto;
+  object-fit: contain;
+  margin-right: 20px;
+}
+
+/* RIGHT LOGO */
+.mainLogo {
+  width: 120px;
+  height: auto;
+  object-fit: contain;
+}
+
+/* NAVBAR ALIGNMENT FIX */
+.topNavbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+/* ================= MAIN ================= */
+.wrapper {
+  padding: 20px 30px;
+}
+
+/* ================= HEADER ================= */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.header h1 {
+  font-size: 30px;   /* increased */
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.header p {
+  color: #64748B;
+  font-family: Inter, sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0px;
+}
+
+/* ================= BUTTONS ================= */
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btnOutline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+background: #F6F7F8;
+
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+
+}
+
+.btnOutline:hover {
+  background: #f1f5f9;
+}
+
+.btnPrimary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #3D539F;
+
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+
+/* ================= FILTER ================= */
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #e2e8f0;
+}
+
+/* COMMON HEIGHT FOR ALL */
+.searchBox,
+.inputWithIcon,
+.clearBtn {
+  height: 38px; /* SAME HEIGHT */
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 14px;
+}
+
+/* SEARCH */
+.searchBox {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+}
+
+.searchBox svg {
+  font-size: 16px;
+}
+
+.searchBox input {
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+}
+
+/* SELECT WRAPPER */
+.inputWrapper {
+  position: relative;
+}
+
+/* SELECT */
+.inputWithIcon {
+  padding: 0 12px 0 36px; /* LEFT SPACE FOR ICON */
+  min-width: 160px;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* ICON INSIDE SELECT */
+.selectIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+/* CLEAR BUTTON */
+.clearBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+/* CLEAR ICON */
+.clearIcon {
+  width: 18px;
+  height: 12px;
+}
+/* ================= TABLE ================= */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #ffffff;
+  border-radius: 10px;
+  overflow: visible;  /* ✅ FIX */
+}
+
+.table thead {
+  background: #f8fafc;
+}
+
+.table th {
+  font-size: 12px;
+  color: #64748b;
+  text-align: left;
+  padding: 12px;
+  height: 65px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.table td {
+  padding: 14px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid #e2e8f0;
+  cursor: pointer;
+}
+
+.employeeIdCell {
+
+  font-weight: 600;
+ 
+  font-size: 14px;
+
+  vertical-align: middle;
+  color: #334155;
+  
+}
+
+/* ================= BADGES ================= */
+.badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.roleBadge {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+
+/* STATUS */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.active {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.inactive {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.locked {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ================= ACTION MENU ================= */
+.menu {
+  position: absolute;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 130px;
+  padding: 6px;
+  margin-top: 5px;
+  z-index: 10;
+}
+
+.menu p {
+  padding: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.menu p:hover {
+  background: #f1f5f9;
+}
+
+/* ================= PAGINATION ================= */
+/* PAGINATION WRAPPER */
+.umPagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18px;
+  padding: 10px 4px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+/* LEFT TEXT */
+.pageInfo {
+  font-size: 13px;
+}
+
+/* RIGHT SIDE */
+.pageControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* NUMBER BUTTON */
+.pageBtn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ACTIVE PAGE */
+.activePage {
+  background: #197FE6;
+
+  color: #ffffff;
+  border-color: #197FE6;
+  font-weight: 600;
+}
+
+/* PREV / NEXT */
+.navBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+/* DISABLED */
+.navBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* HOVER */
+.pageBtn:hover,
+.navBtn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.contact {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+
+.phone {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.bold {
+  font-weight: 600;
+}
+
+.actionCell {
+  position: relative;
+}
+
+.dots {
+  cursor: pointer;
+  font-size: 18px;
+  padding: 5px;
+}
+
+.menu {
+  position: absolute;
+  right: 10px;
+  top: 25px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 140px;
+  z-index: 100;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+}
+
+.menu p {
+  padding: 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.menu p:hover {
+  background: #f1f5f9;
+}
+.actionCell {
+  position: relative;
+}
+
+/* three dots */
+.dots {
+  cursor: pointer;
+  font-size: 18px;
+  padding: 6px;
+}
+
+/* dropdown menu */
+.userMenu {
+  position: absolute;
+     
+  right: 0;
+
+  width: 130px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  z-index: 9999;
+}
+
+/* menu items */
+.userMenu p {
+  margin: 0;
+  padding: 6px 10px;        
+  font-size: 13px;          
+  cursor: pointer;
+  color: #0f172a;
+  line-height: 1.2;         
+}
+
+.userMenu p:hover {
+  background: #f1f5f9;
+}
+
+/* ================= MODAL ================= */
+/* Modal Overlay */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+/* Modal Box */
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  width: 400px;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Header */
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.trashIcon {
+  color: #CA0000;
+
+  font-size: 18px;
+}
+
+.modalHeader h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Modal Text */
+.modalText {
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+/* Buttons */
+.modalActions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.cancelBtn {
+  width: 140px;
+
+
+border-radius: 15px;
+border-width: 1px;
+
+  background: white;
+  color: #555555;
+border: 1px solid #555555;
+
+  padding: 10px 20px;
+
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.cancelBtn:hover {
+  background: #e0e0e0;
+}
+
+.deleteBtn {
+ background: #CA0000;
+  color:white;
+ 
+
+border: 1px solid #555555;
+border-radius: 15px;
+  padding: 10px 20px;
+
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.deleteBtn:hover {
+  background: #ff3339;
+}

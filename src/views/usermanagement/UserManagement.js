@@ -1,0 +1,392 @@
+import { useState, useEffect, useRef } from "react";
+import styles from "../../styles/UserManagement.module.css";
+import { exportUsers } from "../../store/slices/userSlice";
+import {
+  MdOutlineFileDownload,
+  MdOutlineFileUpload,
+  MdOutlinePersonAddAlt,
+} from "react-icons/md";
+import { IoMdSearch } from "react-icons/io";
+import { FaTrash } from "react-icons/fa";
+
+import { useRouter } from "next/router";
+import Link from "next/link";
+
+// REDUX
+import { useDispatch, useSelector } from "react-redux";
+import {
+  fetchUsers,
+  fetchRoles,
+  fetchDepartments,
+} from "../../store/slices/userSlice";
+
+import {
+  deleteUserAPI,
+  updateStatusAPI,
+} from "../../apis/userApi";
+
+export default function UserManagement() {
+  const dispatch = useDispatch();
+  const router = useRouter();
+  const menuRef = useRef(null);
+
+  const {
+    users = [],
+    roles = [],
+    departments = [],
+  } = useSelector((state) => state.users || {});
+  const handleExport = () => {
+    dispatch(exportUsers());
+  };
+
+  const [activeRow, setActiveRow] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [uploading, setUploading] = useState(false);
+
+  const [selectedRole, setSelectedRole] = useState("");
+  const [selectedDept, setSelectedDept] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [page, setPage] = useState(1);
+  const rowsPerPage = 10;
+
+  // FETCH DATA
+  useEffect(() => {
+    dispatch(fetchUsers());
+    dispatch(fetchRoles());
+    dispatch(fetchDepartments());
+  }, [dispatch]);
+
+  // CLOSE MENU OUTSIDE CLICK
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setActiveRow(null);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () =>
+      document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  // DELETE USER
+  const confirmDelete = async () => {
+    await deleteUserAPI(selectedUserId);
+    dispatch(fetchUsers());
+    setShowDeleteModal(false);
+    setSelectedUserId(null);
+  };
+
+  // STATUS TOGGLE
+  const updateUserStatus = async (id, status) => {
+    const newStatus = status === "Active" ? "Inactive" : "Active";
+    await updateStatusAPI(id, newStatus);
+    dispatch(fetchUsers());
+  };
+
+  // SEARCH + FILTER
+  const filteredUsers = users.filter((u) => {
+    const searchValue = search.toLowerCase();
+
+    return (
+      (!selectedRole || u.role === selectedRole) &&
+      (!selectedDept || u.dept === selectedDept) &&
+      (!search ||
+        u.name?.toLowerCase().includes(searchValue) ||
+        u.email?.toLowerCase().includes(searchValue) ||
+        u.employeeId?.toLowerCase().includes(searchValue))
+    );
+  });
+
+  // PAGINATION
+  const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
+  const start = (page - 1) * rowsPerPage;
+  const pageData = filteredUsers.slice(start, start + rowsPerPage);
+
+  return (
+    <div className={styles.container}>
+      {/* NAVBAR */}
+      <header className={styles.topNavbar}>
+        <div className={styles.navLeft}>
+          <img src="/spintel.svg" alt="logo" className={styles.spintelLogo} />
+
+          <nav className={styles.navLinks}>
+            <Link href="/">Home</Link>
+            <Link href="/usermanagement">User Management</Link>
+            <Link href="/rolespermissions">Roles & Permissions</Link>
+          </nav>
+        </div>
+
+        <img src="/logo.png" alt="logo" className={styles.mainLogo} />
+      </header>
+
+      <div className={styles.wrapper}>
+        {/* HEADER */}
+        <div className={styles.header}>
+          <div>
+            <h1>User Management</h1>
+            <p>Manage system access, roles and department permissions</p>
+          </div>
+
+          <div className={styles.actions}>
+            <button
+              className={styles.btnOutline}
+              onClick={handleExport}
+            >
+              <MdOutlineFileDownload /> Export
+            </button>
+
+            <label className={styles.btnOutline}>
+              <MdOutlineFileUpload />
+              {uploading ? "Uploading..." : "Bulk Upload"}
+              <input type="file" hidden />
+            </label>
+
+            <button
+              className={styles.btnPrimary}
+              onClick={() => router.push("/umadduser")}
+            >
+              <MdOutlinePersonAddAlt /> Add User
+            </button>
+          </div>
+        </div>
+
+        {/* FILTER */}
+        <div className={styles.filters}>
+          <div className={styles.searchBox}>
+            <IoMdSearch />
+            <input
+              placeholder="Search by Name / Emp ID "
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+
+          {/* ROLE SELECT */}
+          <div className={styles.inputWrapper}>
+            <select
+              className={styles.inputWithIcon}
+              value={selectedRole}
+              onChange={(e) => setSelectedRole(e.target.value)}
+            >
+              <option value="">Role: All</option>
+              {roles.map((r) => (
+                <option key={r.id}>{r.role_name}</option>
+              ))}
+            </select>
+            <img src="/role.png" className={styles.selectIcon} alt="role icon" />
+          </div>
+
+          {/* DEPARTMENT SELECT */}
+          <div className={styles.inputWrapper}>
+            <select
+              className={styles.inputWithIcon}
+              value={selectedDept}
+              onChange={(e) => setSelectedDept(e.target.value)}
+            >
+              <option value="">Department: All</option>
+              {departments.map((d) => (
+                <option key={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <img src="/dept.png" className={styles.selectIcon} alt="department icon" />
+          </div>
+
+          {/* CLEAR BUTTON */}
+          <button
+            className={styles.clearBtn}
+            onClick={() => {
+              setSelectedRole("");
+              setSelectedDept("");
+              setSearch("");
+            }}
+          >
+            <img src="/clear.png" className={styles.clearIcon} alt="clear icon" />
+            Clear
+          </button>
+        </div>
+        {/* TABLE */}
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>SR NO</th>
+              <th>EMP ID</th>
+              <th>FULL NAME</th>
+              <th>CONTACT DETAILS</th>
+              <th>ROLE</th>
+              <th>DEPARTMENT</th>
+              <th>STATUS</th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {pageData.map((u, i) => (
+              <tr key={u.id}>
+                <td>{start + i + 1}</td>
+
+                <td className={styles.employeeIdCell}>{u.employeeId}</td>
+
+                <td className={styles.bold}>{u.name}</td>
+
+                <td>
+                  <div className={styles.contact}>
+                    <span>{u.email}</span>
+                    <span className={styles.phone}>
+                      {u.phone || "+91 98765 43210"}
+                    </span>
+                  </div>
+                </td>
+
+                <td>
+                  <span className={`${styles.badge} ${styles.roleBadge}`}>
+                    {u.role}
+                  </span>
+                </td>
+
+                <td>{u.dept}</td>
+
+                <td>
+                  <span
+                    className={`${styles.status} ${u.status === "Active"
+                        ? styles.active
+                        : u.status === "Inactive"
+                          ? styles.inactive
+                          : styles.locked
+                      }`}
+                  >
+                    {u.status}
+                  </span>
+                </td>
+
+                <td className={styles.actionCell}>
+                  <span
+                    className={styles.dots}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveRow(activeRow === u.id ? null : u.id);
+                    }}
+                  >
+                    ⋮
+                  </span>
+
+                  {activeRow === u.id && (
+                    <div
+                      ref={menuRef}
+                      className={`${styles.userMenu} ${i >= pageData.length - 2 ? styles.menuUp : ""
+                        }`}
+                    >
+                      <p onClick={() => router.push(`/umedit/${u.id}`)}>
+                        Edit
+                      </p>
+
+                      <p
+                        onClick={() => {
+                          setActiveRow(null);
+                          setSelectedUserId(u.id);
+                          setSelectedUser(u);
+                          setShowDeleteModal(true);
+                        }}
+                      >
+                        Delete
+                      </p>
+
+                      <p
+                        onClick={() => updateUserStatus(u.id, u.status)}
+                      >
+                        {u.status === "Active" ? "Inactive" : "Active"}
+                      </p>
+
+                      <p
+                        onClick={() => {
+                          setActiveRow(null);
+                          router.push(`/umchangepassword/${u.id}`);
+                        }}
+                      >
+                        Change Password
+                      </p>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className={styles.umPagination}>
+          {/* LEFT TEXT */}
+          <div className={styles.pageInfo}>
+            Showing {start + 1}–
+            {Math.min(start + rowsPerPage, filteredUsers.length)} of{" "}
+            {filteredUsers.length}
+          </div>
+
+          {/* RIGHT CONTROLS */}
+          <div className={styles.pageControls}>
+            {/* PREV */}
+            <button
+              className={styles.navBtn}
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+            >
+              ‹
+            </button>
+
+            {/* PAGE NUMBERS */}
+            {Array.from({ length: totalPages }, (_, i) => (
+              <button
+                key={i}
+                className={`${styles.pageBtn} ${page === i + 1 ? styles.activePage : ""
+                  }`}
+                onClick={() => setPage(i + 1)}
+              >
+                {i + 1}
+              </button>
+            ))}
+
+            {/* NEXT */}
+            <button
+              className={styles.navBtn}
+              disabled={page === totalPages}
+              onClick={() => setPage(page + 1)}
+            >
+              ›
+            </button>
+          </div>
+        </div>
+
+        {/* DELETE MODAL */}
+        {showDeleteModal && (
+          <div className={styles.modalOverlay}>
+            <div className={styles.modal}>
+              <div className={styles.modalHeader}>
+                <FaTrash className={styles.trashIcon} />
+                <h2>Delete Account?</h2>
+              </div>
+              <p className={styles.modalText}>
+                Are you sure you want to delete this account? <br />
+                <strong>{selectedUser?.employeeId}</strong>
+              </p>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.cancelBtn}
+                  onClick={() => setShowDeleteModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={styles.deleteBtn}
+                  onClick={confirmDelete}
+                >
+                  Delete Account
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
