@@ -19,6 +19,7 @@ const rolesSlice = createSlice({
   initialState: {
     loading: false,
     error: null,
+    role: null,
   },
   reducers: {},
   extraReducers: (builder) => {
@@ -26,8 +27,9 @@ const rolesSlice = createSlice({
       .addCase(updateRole.pending, (state) => {
         state.loading = true;
       })
-      .addCase(updateRole.fulfilled, (state) => {
-        state.loading = false;
+      .addCase(updateRole.fulfilled, (state,action) => {
+        state.role = action.payload;
+        state.status = "succeeded";
       })
       .addCase(updateRole.rejected, (state, action) => {
         state.loading = false;
