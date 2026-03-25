@@ -1,0 +1,478 @@
+.mixx-page {
+    min-height: 100vh;
+    background: #f6f7f8;
+    display: flex;
+    justify-content: center;
+}
+
+.mixx-container {
+    width: 100%;
+    max-width: 1100px;
+    padding-top: 30px;
+}
+
+/* breadcrumb */
+.mixx-breadcrumbs {
+    font-size: 14px;
+    color: #64748b;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.mixx-breadcrumbs .active {
+    color: #0f172a;
+    font-weight: 600;
+}
+
+/* header */
+.mixx-header h1 {
+    font-size: 26px;
+    font-weight: 800;
+    margin: 0;
+    color: #0f172a;
+}
+
+.mixx-header p {
+    font-size: 13px;
+    color: #64748b;
+    margin: 6px 0 18px;
+}
+
+
+/* card */
+.mixx-card {
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.mixx-card-body {
+    padding: 20px;
+}
+
+/* title */
+.mixx-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.mixx-title-icon {
+    font-size: 22px;
+    color: #3d539f;
+}
+
+.mixx-section-title {
+    font-size: 15px;
+    font-weight: 700;
+}
+
+/* form */
+.mixx-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.mixx-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.mixx-empty {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.five-columns {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+}
+
+.mixx-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mixx-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.mixx-input {
+    height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    font-size: 13px;
+}
+
+.mixxinput {
+    height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    font-size: 13px;
+}
+
+
+/* footer */
+.mixx-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 30px;
+    border-top: 1px solid #e2e8f0;
+    background: rgba(61, 83, 159, 0.05);
+}
+
+.mixx-right {
+    display: flex;
+    gap: 10px;
+}
+
+.mixx-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mixx-btn-primary {
+    padding: 8px;
+    width: 200px;
+    border-radius: 8px;
+    background: #3d539f;
+    color: white;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.mixx-save-primary {
+    padding: 8px 24px;
+    border-radius: 8px;
+    background: #3d539f;
+    color: white;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.mixx-copy {
+    text-align: center;
+    font-size: 12px;
+    color: #94a3b8;
+    margin: 18px 0;
+}
+
+.mobile-navbar {
+    display: none;
+}
+
+.type3-table {
+    margin-top: 20px;
+}
+
+.type3-header,
+.type3-row {
+    display: grid;
+    grid-template-columns:
+        40px repeat(9, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.type3-header span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+}
+
+
+.small {
+    height: 40px;
+    width: 80px;
+}
+
+.tuft-card {
+    background: #f7f9fc;
+    border: 1px solid #d8dee9;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 15px;
+}
+
+.tuft-card h4 {
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.mixxx-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 12px;
+}
+
+.mixx-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.mixx-input {
+    height: 35px;
+    border: 1px solid #d0d7e2;
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+.type3-mobile {
+    display: none;
+}
+
+.type3-entry {
+    margin-top: 20px;
+}
+
+.type3-number {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.type3-card {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.type3-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.type3-grid .full {
+    grid-column: span 2;
+}
+
+
+/* ================= MOBILE ================= */
+@media (max-width: 768px) {
+    .tuft-card {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .tuft-card h4 {
+        grid-column: 1 / -1;
+    }
+
+    .tuft-card .mixxx-row {
+        display: contents;
+    }
+
+    .tuft-card .mixx-group {
+        width: 100%;
+    }
+
+    .mixx-inut {
+        height: 38px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        font-size: 13px;
+    }
+
+    .desktop-view {
+        display: none;
+    }
+
+    .type3-mobile {
+        display: block;
+    }
+
+    .type3-mobile .mixx-group label {
+        color: #3D539F;
+    }
+
+    .waste-apply-row {
+        grid-template-columns: 2fr 1fr !important;
+        align-items: end;
+        gap: 10px;
+    }
+
+    .waste-apply-row .mixx-group:last-child {
+        display: flex;
+        align-items: flex-end;
+    }
+
+    .waste-apply-row .mixx-btn-primary {
+        margin-top: 0 !important;
+        height: 35px;
+        width: 140px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .mixx-iput {
+        height: 35px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: #f1f5f9;
+        font-size: 13px;
+        width: 150px;
+    }
+
+    .mixx-card-body {
+        padding: 20px;
+        
+    }
+
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        background: #f6f7f8;
+        overflow-x: hidden;
+    }
+
+    .mobile-navbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 50px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-bottom: 1px solid #D0E2F4;
+        z-index: 1000;
+    }
+
+    .hamburger {
+        position: absolute;
+        left: 16px;
+        font-size: 22px;
+        cursor: pointer;
+        color: #333;
+    }
+
+    .mobile-navbar img {
+        height: 120px;
+        width: auto;
+        object-fit: contain;
+    }
+
+    /* Push page content below fixed navbar */
+    .mixx-container {
+        padding-top: 50px;
+    }
+
+    /* Hide breadcrumb */
+    .mixx-breadcrumbs {
+        display: none;
+    }
+
+    /* Header */
+    .mixx-header h1 {
+        font-size: 17px;
+    }
+
+    .mixx-header p {
+        font-size: 10px;
+    }
+
+    /* Form layout */
+    .mixx-row {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .five-columns {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+    }
+
+    .mixx-input {
+        height: 36px;
+        font-size: 12px;
+    }
+
+    .mixx-section-title {
+        font-size: 13px;
+    }
+
+    /* ===== Labels ===== */
+    .mixx-group label {
+        font-size: 10px;
+        font-weight: 500;
+        margin-bottom: 4px;
+        display: block;
+        color: #3D539F;
+    }
+
+    /* ===== Average Full Width ===== */
+    .mixx-row:last-child .mixx-group {
+        grid-column: span 2;
+    }
+
+    /* ===== Hide Back Button ===== */
+    .mixx-btn.back {
+        display: none;
+    }
+
+    .mixx-save-primary {
+        padding: 8px 24px;
+        border-radius: 8px;
+        background: #3d539f;
+        color: white;
+        border: none;
+        font-weight: 700;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .mixx-btn {
+        padding: 6px 20px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        background: white;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 12.6px;
+    }
+
+
+    /* Footer buttons side by side */
+    .mixx-footer {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .mixx-right {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        width: 100%;
+    }
+}
