@@ -150,7 +150,7 @@ export default function EditUser() {
           <nav className={styles.navLinks}>
             <Link href="/">Home</Link>
             <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermissions">Roles & Permissions</Link>
+            <Link href="/rolespermission">Roles & Permissions</Link>
           </nav>
         </div>
         <img src="/logo.png" className={styles.mainLogo} />

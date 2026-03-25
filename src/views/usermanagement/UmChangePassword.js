@@ -90,7 +90,7 @@ export default function UmChangePassword() {
           <nav className={styles.navLinks}>
             <Link href="/">Home</Link>
             <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermissions">Roles & Permissions</Link>
+            <Link href="/rolespermission">Roles & Permissions</Link>
           </nav>
         </div>
 
