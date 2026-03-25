@@ -1,9 +1,5 @@
 @import "tailwindcss";
 
-<<<<<<< HEAD
-
-=======
->>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -18,10 +14,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-<<<<<<< HEAD
-=======
     --background: #0a0a0a;
->>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
     --foreground: #ededed;
   }
 }
@@ -31,7 +24,3 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
