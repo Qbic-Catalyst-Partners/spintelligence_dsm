@@ -1,0 +1,488 @@
+.topNavbar {
+
+  background: #ffffff;
+  width: auto;
+  height: 86px;
+  border: 1px solid #D0E2F4;
+  opacity: 1;
+  border-width: 1px;
+
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 48px;
+}
+
+.topNavbar {
+  height: 70px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30px;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.navLinks a {
+  text-decoration: none;
+  font-size: 14px;
+  color: #475569;
+  margin-right: 20px;
+}
+
+.navLinks a:hover {
+  color: #2563eb;
+}
+
+/* Logo container */
+.logo {
+  display: flex;
+  align-items: center;
+
+  justify-content: center;
+
+  height: 200%;
+  min-width: 60px;
+
+}
+
+/* Logo image */
+.logo img {
+  width: 110px;
+  height: 110px;
+
+  width: auto;
+
+  object-fit: contain;
+  margin-top: 15px;
+}
+
+
+/* NAV LINKS */
+.nav-links {
+  display: flex;
+  gap: 28px;
+}
+
+.nav-link {
+  width: 40;
+  height: 24;
+
+  opacity: 1;
+  top: 31px;
+  left: 229px;
+
+
+
+  font-weight: 400;
+
+  font-size: 14px;
+
+  line-height: 24px;
+  letter-spacing: 0px;
+  vertical-align: middle;
+
+  color: #000000;
+  text-decoration: none;
+  padding-bottom: 6px;
+}
+
+.nav-link:hover {
+  color: #3D539F;
+  ;
+}
+
+.nav-link.active {
+  color: #3D539F;
+  font-weight: 600;
+}
+
+/* PAGE */
+.rolepage-wrapper {
+  background: #f8fafc;
+  min-height: 100vh;
+  padding: 20px 40px;
+  font-family: Inter, sans-serif;
+}
+
+/* HEADER */
+.rolepage-header {
+  margin-bottom: 16px;
+  margin-top: -15px;
+  height: 70px;
+  background: #fff;
+  margin-left: -40px;
+  margin-right: -40px;
+  border-bottom: 1px solid #e5e7eb;
+  position: relative;
+}
+
+.rolepage-breadcrumb {
+  font-size: 12px;
+  color: #64748b;
+  margin-left: 90px;
+}
+
+.rolepage-header h1 {
+  margin-left: 90px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.rolepage-backbtn {
+  position: absolute;
+  left: 12px;
+  top: 16px;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* CARD WRAPPER */
+.rolepage-cardswrap {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+}
+
+/* CARD 1 */
+.rolepage-cardinfo {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  width: 976px;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.rolepage-cardtitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  background: #F8FAFC;
+  height: 61px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: -20px -20px 16px -20px;
+  padding-left: 20px;
+}
+
+.rolepage-infoicon {
+  color: #197FE6;
+}
+
+/* FORM GRID */
+.rolepage-formgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+
+.checkbox {
+  accent-color: #197FE6;
+}
+
+.rolepage-field label {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  display: block;
+  color: #334155;
+}
+
+.rolepage-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #000000;
+}
+
+/* CARD 2 */
+.rolepage-cardscreen {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  width: 976px;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.rolepage-screenheader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #F8FAFC;
+  height: 61px;
+  margin: -20px -20px 16px -20px;
+  padding:  20px;
+}
+
+.rolepage-screentitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.rolepage-selectallrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rolepage-selectalltext {
+  font-size: 12px;
+  color: #475569;
+}
+
+/* CHECKBOX GRID */
+.rolepage-checkboxgrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.rolepage-checkboxcard {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #000000;
+  font-weight: 510;
+  padding: 10px;
+  font-size: 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+}
+
+/* CARD 3 */
+.rolepage-carddept {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  width: 976px;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.rolepage-depttitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  background: #F8FAFC;
+  color: #0f172a;
+  height: 61px;
+  margin: -20px -20px 16px -20px;
+  padding-left: 20px;
+}
+
+.rolepage-sublabel {
+  font-size: 14px;
+  color: #334155;
+  font-weight: 510;
+  margin-bottom: 8px;
+  display: block;
+}
+
+/* DROPDOWN */
+.rolepage-dropdownwrap {
+  position: relative;
+}
+
+.rolepage-inputwrap {
+  position: relative;
+}
+
+.rolepage-searchinput {
+  width: 100%;
+  padding: 8px 35px 8px 10px;
+  border: 1px solid #e5e7eb;
+  color: #000000;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.rolepage-dropdownicon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.rolepage-dropdownlist {
+  position: absolute;
+  width: 100%;
+  max-height: 180px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #ddd;
+  z-index: 20;
+}
+
+.rolepage-dropdownitem {
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  color: #000000;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.rolepage-dropdownitem:hover {
+  background: #f5f5f5;
+}
+
+/* FOOTER */
+.rolepage-footer {
+  margin-top: 30px;
+  margin-left: -40px;
+  margin-right: -40px;
+  width: calc(100% + 80px);
+  background: #fff;
+  border-top: 1px solid #e5e7eb;
+  padding: 16px 40px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.rolepage-btncancel {
+  padding: 8px 16px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #000000;
+  font-size: 15px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rolepage-btnsave {
+  padding: 8px 18px;
+  background: #1e40af;
+  color: #fff;
+  border-radius: 6px;
+  border: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* CHIPS */
+.rolepage-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.rolepage-chip {
+  background: #1e3a8a;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rolepage-selectallrow span {
+  color: #000000;
+  font-size: 14px;
+}
+
+.rolepage-chip span {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* BETTER INPUT LOOK */
+.rolepage-searchinput::placeholder {
+  color: #94a3b8;
+}
+
+/* CHECKBOX SIZE LIKE IMAGE */
+.checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: #2563eb;
+}
+
+/* CARD SPACING FIX */
+.rolepage-checkboxcard {
+  height: 40px;
+}
+
+/* ===================== */
+/* TABLET RESPONSIVE */
+/* ===================== */
+
+@media (max-width:1024px) {
+
+  .rolepage-wrapper {
+    padding: 16px 20px;
+  }
+
+  .rolepage-cardinfo,
+  .rolepage-cardscreen,
+  .rolepage-carddept {
+    width: 100%;
+    max-width: 976px;
+  }
+
+  .rolepage-checkboxgrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .rolepage-footer {
+    margin-left: -20px;
+    margin-right: -20px;
+    width: calc(100% + 40px);
+  }
+
+}
+
+/* ===================== */
+/* MOBILE */
+/* ===================== */
+
+@media (max-width:767px) {
+
+  .rolepage-formgrid {
+    grid-template-columns: 1fr;
+  }
+
+  .rolepage-checkboxgrid {
+    grid-template-columns: 1fr;
+  }
+
+  .rolepage-footer {
+    justify-content: center;
+  }
+
+  .rolepage-btncancel,
+  .rolepage-btnsave {
+    width: 160px;
+  }
+
+}

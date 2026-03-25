@@ -49,15 +49,26 @@ export const uploadProfilePicture = async (userId, file) => {
 };
 
 /**
+<<<<<<< HEAD
+ * SAMPLE: PUT request to Create existing resource
+ * Usage: CreateUserSettings(123, { theme: 'dark' })
+ */
+export const CreateUserSettings = async (userId, settingsData) => {
+=======
  * SAMPLE: PUT request to update existing resource
  * Usage: updateUserSettings(123, { theme: 'dark' })
  */
 export const updateUserSettings = async (userId, settingsData) => {
+>>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
     try {
         const response = await apiConfig.put(`/users/${userId}/settings`, settingsData);
         return response.data;
     } catch (error) {
+<<<<<<< HEAD
+        throw new Error(error.response?.data?.message || 'Failed to Create settings');
+=======
         throw new Error(error.response?.data?.message || 'Failed to update settings');
+>>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
     }
 };
 

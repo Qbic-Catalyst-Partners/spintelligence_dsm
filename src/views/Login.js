@@ -1,4 +1,8 @@
+<<<<<<< HEAD
+import React, { useState, useEffect } from "react";
+=======
 import React, { useState, useEffect, us } from "react";
+>>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { loginUser, clearError } from "../store/slices/authSlice";
