@@ -2,7 +2,11 @@ import axios from 'axios';
 
 // Create the base Axios instance with default settings
 const axiosInstance = axios.create({
+<<<<<<< HEAD
     baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+=======
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000',
+>>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
     headers: {
         'Content-Type': 'application/json',
     },

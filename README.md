@@ -16,7 +16,11 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+<<<<<<< HEAD
 You can start editing the page by modifying `pages/index.js`. The page auto-Creates as you edit the file.
+=======
+You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
+>>>>>>> 9520038087bdf8bd59e0db750d4d32857fe2449e
 
 [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.js`.
 
