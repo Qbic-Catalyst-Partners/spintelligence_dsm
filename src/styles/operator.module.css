@@ -34,8 +34,10 @@ body {
   gap: 48px;
 }
 
-.spintel-logo img {
+
+.logo {
   height: 88px;
+  width: auto;
 }
 
 .nav-links {
@@ -55,7 +57,8 @@ body {
 }
 
 .nav-right img {
-  height: 140px;
+  height: auto;
+  width: auto;
 }
 
 /* ===== TITLE ===== */
@@ -116,7 +119,6 @@ body {
 .sup-filter {
   gap: 20px;
   flex-direction: column;
- 
 }
 
 .sup-filter label {
@@ -244,9 +246,53 @@ tbody tr:hover .ticket-link {
   color: #fd7e14;
 }
 
+.status-pending-approval {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
 .status-unresolved {
   background: #f7d5d5;
   color: #dc3545;
+}
+
+@media (min-width: 677px) and (max-width: 1024px) {
+  .page {
+    min-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    background-color: #F8F8F8 !important;
+  }
+
+  .top-navbar {
+    padding: 0 16px;
+    height: 70px;
+  }
+
+  .title {
+    width: calc(100% - 32px);
+    font-size: 22px;
+    margin: 12px auto;
+  }
+
+  .filtrs {
+    width: calc(100% - 32px);
+    margin: 12px auto;
+    gap: 8px;
+  }
+
+  .table-wrapper {
+    max-width: 100%;
+    margin: 0 auto 24px;
+    border: 1px solid #cfe0ff;
+    border-radius: 10px;
+  }
+
+  .tableWrapperTable th,
+  .tableWrapperTable td {
+    padding: 12px 10px;
+    font-size: 13px;
+  }
 }
 
 /* ===== FOOTER ===== */
@@ -274,6 +320,93 @@ tbody tr:hover .ticket-link {
   color: #fff;
 }
 
+/* ===== TABLET RESPONSIVE (677px and above) ===== */
+@media (min-width: 677px) {
+  /* Adjust navbar for tablet */
+  .top-navbar {
+    padding: 0 20px;
+  }
+
+  .nav-left {
+    gap: 24px;
+  }
+
+  .nav-links {
+    gap: 16px;
+  }
+
+  .nav-link {
+    font-size: 13px;
+  }
+
+  /* Adjust title for tablet */
+  .title {
+    font-size: 24px;
+    margin: 12px auto 8px;
+  }
+
+  /* Adjust filters for tablet */
+  .filtrs {
+    margin: 12px auto 20px;
+    gap: 8px;
+  }
+
+  .filter {
+    flex: 1 1 180px;
+  }
+
+  .filter label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .select {
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .sup-date-group {
+    gap: 30px;
+  }
+
+  .sup-filter {
+    gap: 16px;
+  }
+
+  .sup-select {
+    width: 110%;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  /* Adjust table for tablet */
+  .table-wrapper {
+    margin: 0 auto 32px;
+  }
+
+  .tableWrapperTable th {
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+
+  .tableWrapperTable td {
+    padding: 14px 16px;
+    font-size: 13px;
+  }
+
+  /* Adjust footer for tablet */
+  .table-footer {
+    padding: 12px 20px;
+    font-size: 13px;
+  }
+
+  .pagination button {
+    width: 32px;
+    height: 32px;
+    margin-left: 4px;
+  }
+}
+
 /* ===== MOBILE ===== */
 .mobile-navbar {
   display: none;
@@ -290,7 +423,8 @@ tbody tr:hover .ticket-link {
   .table-footer,
   .filters,
   .select,
-  .top-navbar {
+  .top-navbar,
+  .sup-date-group {
     display: none !important;
   }
 
@@ -310,8 +444,9 @@ tbody tr:hover .ticket-link {
     font-size: 24px;
   }
 
-  .mobile-logo img {
-    height: 40px;
+  .logo-mobile {
+    height: 288px;
+    width: 200px;
   }
 
   .mobile-cards {
@@ -376,7 +511,8 @@ tbody tr:hover .ticket-link {
 
     /* DSM Logo */
     .mobile-logo img {
-      height: 40px;
+      height: 100px;
+      width: auto;
       object-fit: contain;
     }
   }
@@ -474,7 +610,7 @@ tbody tr:hover .ticket-link {
   .title {
     font-size: 16px;
     width: 100%;
-    margin: 16px 12px 12px 12px;
+    margin: 16px ;
   }
 
   .mobile-cards {
@@ -482,6 +618,7 @@ tbody tr:hover .ticket-link {
     flex-direction: column;
     gap: 16px;
     padding: 0 12px 20px;
+    padding-top: 20px;
   }
 
   .mobile-card {
@@ -554,8 +691,6 @@ tbody tr:hover .ticket-link {
     justify-content: space-between;
     align-items: center;
 
-
-    padding-top: 30px;
   }
 
   .mobile-filter-btn {

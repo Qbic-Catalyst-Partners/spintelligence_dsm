@@ -1,0 +1,287 @@
+import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import styles from "../../styles/operator.module.css";
+import { useRouter } from "next/router";
+import { fetchOperatorTickets } from "../../store/slices/operatorSlice";
+import { MdFilterList } from "react-icons/md";
+import Header from "../../components/Header";
+
+export default function operatorboard() {
+    const dispatch = useDispatch();
+    const { tickets: ticketData, loading } = useSelector(state => state.operator);
+    const [showMobileFilter, setShowMobileFilter] = useState(false);
+
+    const [status, setStatus] = useState("All");
+    const [severity, setSeverity] = useState("All");
+    const [machine, setMachine] = useState("All");
+    const [startDate, setStartDate] = useState("");
+    const [endDate, setEndDate] = useState("");
+
+    const router = useRouter();
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 6;
+
+    useEffect(() => {
+        dispatch(fetchOperatorTickets());
+    }, [dispatch]);
+useEffect(() => {
+  setCurrentPage(1);
+}, [status, severity, machine, startDate, endDate]);
+
+    if (loading) return <p>Loading tickets...</p>;
+
+    const filteredTickets = ticketData.filter((t) => {
+        const created = new Date(t.rawCreatedAt);
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+
+        if (end) end.setHours(23, 59, 59, 999);
+
+        return (
+            (status === "All" || t.status === status) &&
+            (severity === "All" || t.severity === severity) &&
+            (machine === "All" || t.machine === machine) &&
+            (!start || created >= start) &&
+            (!end || created <= end)
+        );
+    });
+
+    const totalPages = Math.ceil(filteredTickets.length / ITEMS_PER_PAGE);
+    const indexOfLast = currentPage * ITEMS_PER_PAGE;
+    const indexOfFirst = indexOfLast - ITEMS_PER_PAGE;
+    const currentTickets = filteredTickets.slice(indexOfFirst, indexOfLast);
+
+    return (
+        <div className={styles.page}>
+            {/* NAVBAR */}
+            <Header />
+
+            {/* MOBILE NAVBAR */}
+            <header className={styles["mobile-navbar"]}>
+                <div className={styles["mobile-hamburger"]}>☰</div>
+                <div className={styles["mobile-logo"]}>
+                    <img src="./logo.png" alt="logo" className={styles["logo-mobile"]} />                
+                </div>
+            </header>
+
+            {/* TITLE & FILTER BUTTON */}
+            <div className={styles["mobile-title-row"]}>
+                <h1 className={styles.title}>Operator Ticketing Dashboard</h1>
+                <button
+                    className={styles["mobile-filter-btn"]}
+                    onClick={() => setShowMobileFilter(true)}
+                >
+                    <MdFilterList className={styles["filter-icon-img"]} /> Filter
+                </button>
+            </div>
+
+            {/* DESKTOP FILTERS */}
+            <div className={styles.filtrs}>
+                <Filter
+                    label="Status"
+                    value={status}
+                    onChange={setStatus}
+                    options={["All", "Open", "Pending Approval", "Closed", "Reopened", "Unresolved"]}
+                />
+
+                <Filter
+                    label="Severity"
+                    value={severity}
+                    onChange={setSeverity}
+                    options={["All", "High", "Medium", "Low"]}
+                />
+
+                <Filter
+                    label="Machine"
+                    value={machine}
+                    onChange={setMachine}
+                    options={[
+                        "All", "Dyeing Vat 2", "Spinner C-14", "Winder W-12", "Drawframe D-02",
+                        "Dyeing Vat 1", "Spinner C-15", "Draw Frame D-05", "Central Compressor",
+                        "Sizing Range S-2", "Wash Range W-1", "Carding Unit 3", "Knitting Machine K-04",
+                        "Auto-Coner A-1", "Winder W-11", "Auto-Coner AC-05"
+                    ]}
+                />
+
+                {/* Start & End Dates */}
+                <div className={styles["sup-date-group"]}>
+                    <div className={styles["sup-filter"]}>
+                        <label>Start Date</label>
+                        <input
+                            type="date"
+                            className={styles["sup-select"]}
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                        />
+                    </div>
+
+                    <div className={styles["sup-filter"]}>
+                        <label>End Date</label>
+                        <input
+                            type="date"
+                            className={styles["sup-select"]}
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* TABLE WRAPPER */}
+            <div className={styles["table-wrapper"]}>
+                <table className={styles.tableWrapperTable}>
+                    <thead>
+                        <tr>
+                            <th>TICKET ID</th>
+                            <th>MACHINE</th>
+                            <th>PARAMETER</th>
+                            <th>ACTUAL</th>
+                            <th>THRESHOLD</th>
+                            <th>SEVERITY</th>
+                            <th>STATUS</th>
+                            <th>CREATED AT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        {currentTickets.map((t) => (
+                            <tr
+                                key={t.id} // Use 't.id', not 'ticket.id'
+                                style={{ cursor: "pointer" }}
+                                onClick={() => router.push(`/operator/${encodeURIComponent(t.id)}`)} // match your detail page route
+                            >
+                                <td className={styles["ticket-link"]}>{t.id}</td>
+                                <td>{t.machine}</td>
+                                <td>{t.parameter}</td>
+                                <td>{t.actual}</td>
+                                <td>{t.threshold}</td>
+                                <td>
+                                    <span className={`${styles.badge} ${styles[t.severity?.toLowerCase()]}`}>
+                                        {t.severity}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span className={`${styles.badge} ${styles["status-" + t.status.toLowerCase().replace(/\s+/g, "-")]}`}>
+                                        {t.status}
+                                    </span>
+                                </td>
+                                <td>{t.createdAt}</td>
+                            </tr>
+                        ))}
+
+                    </tbody>
+                </table>
+
+                {/* TABLE FOOTER */}
+                <div className={styles["table-footer"]}>
+                    <span>
+                        Showing {indexOfFirst + 1}–{Math.min(indexOfLast, filteredTickets.length)} of {filteredTickets.length}
+                    </span>
+
+                    <div className={styles.pagination}>
+                        <button disabled={currentPage === 1} onClick={() => setCurrentPage(1)}>«</button>
+                        <button disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)}>‹</button>
+                        {Array.from({ length: totalPages }, (_, i) => (
+                            <button key={i} className={currentPage === i + 1 ? styles.active : ""}
+                                onClick={() => setCurrentPage(i + 1)}>{i + 1}</button>
+                        ))}
+                        <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(currentPage + 1)}>›</button>
+                        <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>»</button>
+                    </div>
+                </div>
+            </div>
+
+            {/* MOBILE CARD VIEW */}
+            <div className={styles["mobile-cards"]}>
+                {showMobileFilter && (
+                    <>
+                        <div className={styles["filter-overlay"]} onClick={() => setShowMobileFilter(false)} />
+                        <div className={styles["mobile-filter-modal"]}>
+                            <div className={styles["filter-header"]}>
+                                <h3>Filter</h3>
+                                <span onClick={() => setShowMobileFilter(false)}>✕</span>
+                            </div>
+                            <div className={styles["filter-body"]}>
+                                <label>Status</label>
+                                <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                                    <option>All</option><option>Open</option><option>Pending Approval</option>
+                                    <option>Closed</option><option>Reopened</option><option>Unresolved</option>
+                                </select>
+
+                                <label>Severity</label>
+                                <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                                    <option>All</option><option>High</option><option>Medium</option><option>Low</option>
+                                </select>
+
+                                <label>Machine</label>
+                                <select value={machine} onChange={(e) => setMachine(e.target.value)}>
+                                    <option>All</option>
+                                    {[...new Set(ticketData.map(t => t.machine))].map(m => <option key={m}>{m}</option>)}
+                                </select>
+
+                                <label>Date Range</label>
+                                <div className={styles["date-row"]}>
+                                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                                </div>
+                            </div>
+
+                            <div className={styles["filter-footer"]}>
+                                <button className={styles["reset-btn"]} onClick={() => {
+                                    setStatus("All"); setSeverity("All"); setMachine("All"); setStartDate(""); setEndDate("");
+                                }}>Reset</button>
+                                <button className={styles["apply-btn"]} onClick={() => setShowMobileFilter(false)}>Apply Filter</button>
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {filteredTickets.map((t) => (
+                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operator/${encodeURIComponent(t.id)}`)}>
+                        <div className={styles["card-top"]}>
+                            <div className={styles["left-section"]}>
+                                <div className={styles["card-id-machine"]}>{t.id} | {t.machine}</div>
+                                <div className={styles["card-date"]}>{t.createdAt}</div>
+                            </div>
+                            <span className={`${styles["severity-badge"]} ${t.severity?.toLowerCase() === "high" ? styles["severity-high"] : t.severity?.toLowerCase() === "medium" ? styles["severity-medium"] : styles["severity-low"]}`}>
+                                {t.severity}
+                            </span>
+                        </div>
+
+                        <div className={styles["param-box"]}>
+                            <div className={styles["param-item"]}>
+                                <div className={styles["small-label"]}>Parameter</div>
+                                <div className={styles["param-name"]}>{t.parameter}</div>
+                            </div>
+                            <div className={styles["param-item"]}>
+                                <div className={styles["small-label"]}>Actual</div>
+                                <div className={styles["actual-value"]}>{t.actual}</div>
+                            </div>
+                        </div>
+
+                        <div className={styles["card-bottom"]}>
+                            <div className={styles["status-left"]}>
+                                <span className={`${styles["status-dot"]} ${styles[t.status.toLowerCase().replace(/\s+/g, "_")]}`}></span>
+                                {t.status}
+                            </div>
+                            <div className={styles["details-link"]}>Details &gt;</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div >
+    );
+}
+
+/* FILTER COMPONENT */
+function Filter({ label, value, onChange, options }) {
+    return (
+        <div className={styles.filter}>
+            <label>{label}</label>
+            <select className={styles.select} value={value} onChange={(e) => onChange(e.target.value)}>
+                {options.map(opt => <option key={opt}>{opt}</option>)}
+            </select>
+        </div>
+    );
+}

@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
+import { useDispatch, useSelector } from "react-redux";
 import { FaInfoCircle } from "react-icons/fa";
 import styles from "../../styles/createrole.module.css";
-import api from "../../apis/apiConfig";
+import { fetchScreens, fetchDepartments, createRole } from "../../store/slices/rolesSlice";
+import Header from "../../components/Header";
 
 export default function CreateRole() {
   const router = useRouter();
-  const { role } = router.query; // role data passed via query or state
+  const dispatch = useDispatch();
+  const { role } = router.query; 
+
+  const { screens, departments, loading, error } = useSelector(state => state.roles);
 
   const [deptSearch, setDeptSearch] = useState("");
   const [showDeptDropdown, setShowDeptDropdown] = useState(false);
-  const [departments, setDepartments] = useState([]);
   const [selectedDepartments, setSelectedDepartments] = useState([]);
-  const [screens, setScreens] = useState([]);
   const [selectedScreens, setSelectedScreens] = useState([]);
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
@@ -22,40 +25,9 @@ export default function CreateRole() {
 
   /* ================= FETCH ================= */
   useEffect(() => {
-    fetchScreens();
-    fetchDepartments();
-  }, []);
-
-  /* ================= PREFILL ================= */
-  useEffect(() => {
-    if (role) {
-      const parsedRole = typeof role === "string" ? JSON.parse(role) : role;
-      setRoleName(parsedRole.name || "");
-      setDescription(parsedRole.description || "");
-      setSelectedScreens(parsedRole.screens?.map((s) => s.id) || []);
-      setSelectedDepartments(parsedRole.departments || []);
-    }
-  }, [role]);
-
-  const fetchScreens = async () => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/roles/screens`);
-      const data = await res.json();
-      setScreens(data);
-    } catch (error) {
-      console.error("Error fetching screens", error);
-    }
-  };
-
-  const fetchDepartments = async () => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/roles/departments`);
-      const data = await res.json();
-      setDepartments(data);
-    } catch (error) {
-      console.error("Error fetching departments", error);
-    }
-  };
+    dispatch(fetchScreens());
+    dispatch(fetchDepartments());
+  }, [dispatch]);
 
   /* ================= LOGIC ================= */
   const filteredDepartments = departments.filter((dept) =>
@@ -102,26 +74,8 @@ export default function CreateRole() {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/roles`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newRole),
-      });
-
-      const data = await res.json();
-
-      console.log("STATUS:", res.status);
-      console.log("RESPONSE:", data);
-      console.log("PAYLOAD:", newRole);
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create role");
-      }
-
-      console.log(" Role created");
-
+      await dispatch(createRole(newRole)).unwrap();
       router.push("/rolespermission");
-
     } catch (error) {
       console.error("CREATE ROLE ERROR:", error.message);
       alert(error.message);
@@ -145,20 +99,11 @@ export default function CreateRole() {
   return (
     <div className={styles["role"]}>
       {/* HEADER */}
-      <header className={styles.topNavbar}>
-        <div className={styles.navLeft}>
-          <img src="/spintel.svg" alt="spintel" />
-
-          <nav className={styles.navLinks}>
-            <Link href="/">Home</Link>
-            <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermission">Roles & Permissions</Link>
-          </nav>
-        </div>
-
-        <img src="/logo.png" alt="logo" className={styles["logo"]} />
-
-      </header>
+      <Header navLinks={[
+        { href: "/", label: "Home" },
+        { href: "/usermanagement", label: "User Management" },
+        { href: "/rolespermissions", label: "Roles & Permissions" }
+    ]}/>
 
       <div className={styles["rolepage-wrapper"]}>
 

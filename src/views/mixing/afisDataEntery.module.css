@@ -1,0 +1,57 @@
+/* ================= AFIS DATA ENTRY STYLES ================= */
+
+.mixx-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.mixx-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mixx-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.mixx-input {
+    height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    font-size: 13px;
+}
+
+.mixx-empty {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 1024px) {
+    .mixx-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .mixx-row {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .mixx-group {
+        width: 100%;
+    }
+
+    .mixx-input {
+        height: 36px;
+        font-size: 12px;
+    }
+}

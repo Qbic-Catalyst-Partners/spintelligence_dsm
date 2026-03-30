@@ -1,0 +1,58 @@
+/* Header styles */
+.top-navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background-color: #fff;
+    border-bottom: 1px solid #d9e5f5;
+    padding: 0 22px;
+    height: 72px;
+    box-sizing: border-box;
+}
+
+.nav-left {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+}
+
+.nav-left img {
+    height: 40px;
+    width: auto;
+}
+
+.spintel-logo {
+    margin-right: 0;
+}
+
+.spintel-logo img {
+    height: 44px;
+    width: auto;
+}
+
+.nav-links {
+    display: flex;
+    gap: 26px;
+}
+
+.nav-link {
+    text-decoration: none;
+    color: #1f2a44;
+    font-weight: 500;
+    font-size: 13px;
+}
+
+.nav-link:hover {
+    color: #0070f3;
+}
+
+.nav-right {
+     display: flex;
+    align-items: center;
+}
+
+.nav-right img {
+    height: 120px;
+    width: auto;
+}

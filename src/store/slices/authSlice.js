@@ -9,7 +9,6 @@ export const loginUser = createAsyncThunk(
             const data = await loginAPI(employee_id, password);
             return data;
         } catch (error) {
-            // By rejecting with value, this payload is sent to the 'rejected' reducer block
             return rejectWithValue(error.message);
         }
     }
@@ -47,17 +46,15 @@ const authSlice = createSlice({
             .addCase(loginUser.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.token = action.payload.token;
-                // Save user metadata if it is returned from your API payloads
                 state.user = action.payload.user || action.payload; 
                 
-                // localStorage is also updated locally in the views but handling here enforces robustness
                 if (typeof window !== 'undefined' && action.payload.token) {
                     localStorage.setItem('token', action.payload.token);
                 }
             })
             .addCase(loginUser.rejected, (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload; // Pulled directly from `rejectWithValue` in the thunk
+                state.error = action.payload; 
             });
     },
 });

@@ -5,54 +5,51 @@ import { IoArrowBack } from "react-icons/io5";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
 import { RiIdCardFill } from "react-icons/ri";
 
 import {
-    getRoleByIdAPI,
-    getScreensAPI,
-    getDepartmentsAPI,
-    updateRoleAPI,
-} from "@/apis/rolesPermission";
+    fetchRoleById,
+    fetchScreens,
+    fetchDepartments,
+    updateRole
+} from "../../store/slices/rolesSlice";
+import Header from "../../components/Header";
 
 export default function EditRole() {
     const router = useRouter();
     const params = useParams();
+    const dispatch = useDispatch();
     const id = params?.id;
+
+    const { currentRole, screens, departments, loading, error } = useSelector(state => state.roles);
 
     const [usersCount, setUsersCount] = useState(0);
     const [roleName, setRoleName] = useState("");
     const [description, setDescription] = useState("");
-    const [screens, setScreens] = useState([]);
     const [selectedScreens, setSelectedScreens] = useState([]);
-    const [departments, setDepartments] = useState([]);
     const [selectedDepartments, setSelectedDepartments] = useState([]);
     const [roleUpdatedAt, setRoleUpdatedAt] = useState("");
 
     /* ================= FETCH ROLE ================= */
-    const fetchRole = async () => {
-        try {
-            const data = await getRoleByIdAPI(id);
+    useEffect(() => {
+        if (!id) return;
+        dispatch(fetchRoleById(id));
+        dispatch(fetchScreens());
+        dispatch(fetchDepartments());
+    }, [id, dispatch]);
 
-            setRoleName(data.name || "");
-            setDescription(data.description || "");
-            setSelectedScreens(data.screen_ids || []);
-            setSelectedDepartments(data.department_ids || []);
-            setRoleUpdatedAt(data.updated_at || "");
-            setUsersCount(data.users_count || 0);
-        } catch (err) {
-            console.error(err);
+    /* ================= PREFILL ================= */
+    useEffect(() => {
+        if (currentRole) {
+            setRoleName(currentRole.name || "");
+            setDescription(currentRole.description || "");
+            setSelectedScreens(currentRole.screen_ids || []);
+            setSelectedDepartments(currentRole.department_ids || []);
+            setRoleUpdatedAt(currentRole.updated_at || "");
+            setUsersCount(currentRole.users_count || 0);
         }
-    };
-
-    const fetchScreens = async () => {
-        const data = await getScreensAPI();
-        setScreens(Array.isArray(data) ? data : []);
-    };
-
-    const fetchDepartments = async () => {
-        const data = await getDepartmentsAPI();
-        setDepartments(Array.isArray(data) ? data : []);
-    };
+    }, [currentRole]);
 
     /* ================= UPDATE ================= */
     const handleUpdateRole = async () => {
@@ -65,7 +62,7 @@ export default function EditRole() {
                 screen_ids: [...new Set(selectedScreens)],
             };
 
-            await updateRoleAPI(id, payload);
+            await dispatch(updateRole({ id, payload })).unwrap();
 
             alert("Role updated successfully");
             router.push("/rolespermission");
@@ -74,31 +71,11 @@ export default function EditRole() {
         }
     };
 
-    useEffect(() => {
-        if (!id) return;
-        fetchRole();
-        fetchScreens();
-        fetchDepartments();
-    }, [id]);
-
     return (
         <div className={styles["edit-page-container"]}>
 
             {/* HEADER */}
-            <header className={styles.topNavbar}>
-                <div className={styles.navLeft}>
-                    <img src="/spintel.svg" alt="spintel" />
-
-                    <nav className={styles.navLinks}>
-                        <Link href="/">Home</Link>
-                        <Link href="/usermanagement">User Management</Link>
-                        <Link href="/rolespermission">Roles & Permissions</Link>
-                    </nav>
-                </div>
-
-                <img src="/logo.png" alt="logo" className={styles["logo"]} />
-
-            </header>
+            <Header />
 
             {/* CONTENT */}
             <div className={styles["edit-content-wrapper"]}>
@@ -112,10 +89,8 @@ export default function EditRole() {
                 {/* GENERAL */}
                 <div className={styles["edit-card-box"]}>
                     <div className={styles["edit-card-header"]}>
-                        <div className={styles["edit-screentitle"]}>
-                            <RiIdCardFill className={styles["edit-header-icon"]} />
-                            General Information
-                        </div>
+                        <RiIdCardFill className={styles["edit-header-icon"]} />
+                        General Information
                     </div>
 
                     <div className={styles["edit-form-layout"]}>
@@ -142,10 +117,8 @@ export default function EditRole() {
                 {/* SCREEN ACCESS */}
                 <div className={styles["edit-card-box"]}>
                     <div className={styles["edit-card-header"]}>
-                        <div className={styles["edit-screentitle"]}>
-                            <img src="/Screen.png" alt="screen" />
-                            Screen Access
-                        </div>
+                        <img src="/Screen.png" alt="screen" />
+                        Screen Access
                     </div>
 
                     <div className={styles["edit-module-grid"]}>
@@ -179,11 +152,10 @@ export default function EditRole() {
                 {/* DEPARTMENTS */}
                 <div className={styles["edit-card-box"]}>
                     <div className={styles["edit-card-header"]}>
-                        <div className={styles["edit-screentitle"]}>
-                            <img src="/Dept.png" alt="dept" />
-                            Department Access
-                        </div>
+                        <img src="/Dept.png" alt="dept" />
+                        Department Access
                     </div>
+
                     <div className={styles["edit-dept-selector"]}>
                         {departments.map((dept) => (
                             <label key={dept.id} className={styles["edit-tag"]}>

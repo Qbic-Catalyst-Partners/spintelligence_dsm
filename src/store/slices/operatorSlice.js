@@ -1,69 +1,69 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { getOperatorTickets, getOperatorTicketById } from "../../apis/operatorApi";
+import { transformTicket, transformTicketWithDescription } from "../../utils/ticketTransformer";
+import { submitOperatorTicket } from "../../apis/operatorApi";
 
+const normalizeSubmittedTicket = (ticket, fallbackTicketId) => {
+  const transformedTicket = transformTicketWithDescription({
+    ...ticket,
+    ticket_id: ticket?.ticket_id || fallbackTicketId,
+  });
+
+  return {
+    ...transformedTicket,
+    status: "Pending Approval",
+  };
+};
 // Fetch all tickets
 export const fetchOperatorTickets = createAsyncThunk(
   "operator/fetchTickets",
   async (_, { rejectWithValue }) => {
     try {
       const response = await getOperatorTickets();
-      const ticketsArray = Array.isArray(response.data)
-        ? response.data
-        : response.data.data || response.data.tickets || [];
-      return ticketsArray.map((ticket) => ({
-        id: ticket.ticket_id,
-        machine: ticket.machine_name,
-        parameter: ticket.parameter_name?.[0] || "-",
-        actual:
-          ticket.actual_value?.[ticket.parameter_name?.[0]] || "-",
-        threshold:
-          ticket.threshold_value?.[ticket.parameter_name?.[0]] || "-",
-        severity: ticket.severity,
-        status: ticket.status,
-        rawCreatedAt: ticket.created_at,
-        createdAt: new Date(ticket.created_at).toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        }),
-      }));
+
+      const ticketsArray = Array.isArray(response)
+        ? response
+        : response.data || response.tickets || [];
+
+      return ticketsArray.map(transformTicket);
+
     } catch (error) {
-      return rejectWithValue(error.response?.data || "Error fetching tickets");
+      return rejectWithValue(error.message);
     }
   }
 );
-
-// Fetch single ticket by ID
+//move to components and use in operator dashboard
+// Fetch single ticket
 export const fetchOperatorTicketById = createAsyncThunk(
   "operator/fetchTicketById",
   async (ticketId, { rejectWithValue }) => {
     try {
-      const response = await getOperatorTicketById(ticketId);
-      const ticket = response.data;
-      return {
-        id: ticket.ticket_id,
-        machine: ticket.machine_name,
-        parameter: ticket.parameter_name?.[0] || "-",
-        actual:
-          ticket.actual_value?.[ticket.parameter_name?.[0]] || "-",
-        threshold:
-          ticket.threshold_value?.[ticket.parameter_name?.[0]] || "-",
-        severity: ticket.severity,
-        status: ticket.status,
-        rawCreatedAt: ticket.created_at,
-        createdAt: new Date(ticket.created_at).toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        }),
-        description: ticket.description || "",
-      };
+      const formattedId = ticketId.startsWith("#")
+        ? ticketId
+        : `#${ticketId}`;
+
+      const response = await getOperatorTicketById(formattedId);
+      const ticket = response.data || response;
+
+      return transformTicketWithDescription(ticket);
+
     } catch (error) {
-      return rejectWithValue(error.response?.data || "Ticket not found");
+      return rejectWithValue(error.message);
+    }
+  }
+);
+export const submitTicketFix = createAsyncThunk(
+  "operator/submitFix",
+  async ({ ticketId, comment }, { rejectWithValue }) => {
+    try {
+      const response = await submitOperatorTicket(ticketId, {
+        resolution_comment: comment,
+      });
+
+      return normalizeSubmittedTicket(response.ticket || response.data || response, ticketId);
+
+    } catch (error) {
+      return rejectWithValue(error.message);
     }
   }
 );
@@ -80,8 +80,8 @@ const operatorSlice = createSlice({
   },
   reducers: {},
   extraReducers: (builder) => {
-    // All tickets
     builder
+      // 🔹 All tickets
       .addCase(fetchOperatorTickets.pending, (state) => {
         state.loading = true;
       })
@@ -92,10 +92,9 @@ const operatorSlice = createSlice({
       .addCase(fetchOperatorTickets.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-      });
+      })
 
-    // Single ticket
-    builder
+      // 🔹 Single ticket
       .addCase(fetchOperatorTicketById.pending, (state) => {
         state.ticketDetailLoading = true;
         state.ticketDetailError = null;
@@ -107,7 +106,24 @@ const operatorSlice = createSlice({
       .addCase(fetchOperatorTicketById.rejected, (state, action) => {
         state.ticketDetailLoading = false;
         state.ticketDetailError = action.payload;
-      });
+      })
+      // 🔹 Submit fix
+.addCase(submitTicketFix.pending, (state) => {
+  state.ticketDetailLoading = true;
+})
+.addCase(submitTicketFix.fulfilled, (state, action) => {
+  state.ticketDetailLoading = false;
+  state.ticketDetail = action.payload;
+  state.tickets = state.tickets.map((ticket) =>
+    ticket.ticket_id === action.payload.ticket_id
+      ? { ...ticket, ...action.payload, status: "Pending Approval" }
+      : ticket
+  );
+})
+.addCase(submitTicketFix.rejected, (state, action) => {
+  state.ticketDetailLoading = false;
+  state.ticketDetailError = action.payload;
+});
   },
 });
 

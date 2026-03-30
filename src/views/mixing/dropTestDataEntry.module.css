@@ -1,0 +1,116 @@
+/* ================= DROP TEST DATA ENTRY STYLES ================= */
+
+/* form rows */
+.mixx-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.mixx-empty {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* form group and inputs */
+.mixx-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mixx-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.mixx-input {
+    height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    font-size: 13px;
+}
+
+.mixx-input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* tuft card */
+.tuft-card {
+    background: #f7f9fc;
+    border: 1px solid #d8dee9;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 15px;
+}
+
+.tuft-card h4 {
+    margin-bottom: 10px;
+    font-weight: 600;
+    font-size: 13px;
+    color: #334155;
+}
+
+/* row inside tuft card (flex, 6 fields side by side) */
+.mixxx-row {
+    display: flex;
+    gap: 15px;
+}
+
+.mixxx-row .mixx-group {
+    flex: 1;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 1024px) {
+    .mixx-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .mixx-row {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .mixx-group {
+        width: 100%;
+    }
+
+    .mixx-group label {
+        font-size: 10px;
+        font-weight: 500;
+        color: #3D539F;
+    }
+
+    .mixx-input {
+        height: 36px;
+        font-size: 12px;
+    }
+
+    /* tuft card becomes 2-col grid on mobile */
+    .tuft-card {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .tuft-card h4 {
+        grid-column: 1 / -1;
+        margin-bottom: 0;
+    }
+
+    .mixxx-row {
+        display: contents;
+    }
+
+    .mixxx-row .mixx-group {
+        width: 100%;
+    }
+}

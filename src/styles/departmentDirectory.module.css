@@ -1,0 +1,307 @@
+.page {
+    min-height: 100vh;
+    background: #F8F6F6;
+}
+
+.shell {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 34px 24px 64px;
+}
+
+.hero {
+    margin-bottom: 24px;
+}
+
+.hero h1 {
+    margin: 0 0 4px;
+    color: #1f2a44;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.hero p {
+    margin: 0;
+    color: #8b97ad;
+    font-size: 0.76rem;
+}
+
+.sectionTitle {
+    margin: 0 0 10px;
+    color: #1f2a44;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.breadcrumbs {
+    margin-bottom: 10px !important;
+    color: #8d9ab2 !important;
+    font-size: 0.72rem !important;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.breadcrumbs span {
+    margin: 0 8px;
+}
+
+.breadcrumbLink {
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: #8d9ab2;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.breadcrumbLink:hover {
+    color: #4965b7;
+}
+
+.breadcrumbLink:active {
+    color: #4965b7;
+}
+
+.breadcrumbCurrent {
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: #4965b7;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.breadcrumbCurrent:hover,
+.breadcrumbCurrent:active {
+    color: #4965b7;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.card,
+.subCard {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 74px;
+    padding: 14px 12px 11px;
+    border: 1px solid #e6edf7;
+    border-bottom: 2px solid #69b4ff;
+    border-radius: 4px;
+    background: #ffffff;
+    text-align: left;
+    box-shadow: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover,
+.subCard:hover {
+    transform: none;
+    box-shadow: 0 6px 18px rgba(28, 54, 96, 0.06);
+    border-color: #cfe2fb;
+}
+
+.activeCard:hover {
+    background: #4a5fb0;
+    border-color: #4a5fb0;
+    border-bottom-color: #7ab6ff;
+}
+
+.subCardEnabled {
+    background: #ffffff;
+}
+
+.subCardEnabled:hover {
+    background: #ffffff;
+    border-color: #cfe2fb;
+}
+
+.subCardEnabled:active {
+    background: #4a5fb0;
+    border-color: #4a5fb0;
+    border-bottom-color: #7ab6ff;
+}
+
+.subCardEnabled .subCardLabel {
+    color: #22314d;
+}
+
+.subCardEnabled .cardMeta {
+    color: #99a5ba;
+}
+
+.subCardEnabled:active .subCardLabel,
+.subCardEnabled:active .cardMeta,
+.subCardEnabled:active .subCardArrow {
+    color: #ffffff;
+}
+
+.subCardEnabled:active .subCardArrow {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.activeCard:hover .cardLabel,
+.activeCard:hover .subCardLabel {
+    color: #ffffff;
+}
+
+.activeCard:hover .iconWrap {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+}
+
+.disabledCard {
+    cursor: not-allowed;
+    opacity: 1;
+    color: #b0b8c8;
+    border-bottom-color: #dbe5f2;
+    box-shadow: none;
+    background: #ffffff;
+}
+
+.disabledCard:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: #e4ebf5;
+    background: #ffffff;
+}
+
+.disabledCard .cardLabel,
+.disabledCard .subCardLabel {
+    color: #99a3b4;
+}
+
+.disabledCard .cardMeta {
+    color: #c5cad3;
+}
+
+.disabledCard .iconWrap {
+    opacity: 0.65;
+}
+
+.iconWrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.quality-control {
+    background: #edf2ff;
+    color: #4965b7;
+}
+
+.electrical {
+    background: #edf2ff;
+    color: #9eb2db;
+}
+
+.mechanical {
+    background: #edf2ff;
+    color: #9eb2db;
+}
+
+.icon {
+    font-size: 0.78rem;
+}
+
+.cardContent {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cardLabel,
+.subCardLabel {
+    color: #22314d;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.cardMeta {
+    color: #99a5ba;
+    font-size: 0.66rem;
+    font-weight: 500;
+}
+
+.subCard {
+    justify-content: flex-start;
+}
+
+.subCardArrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: #edf2ff;
+    color: #4965b7;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+}
+
+.detailCard {
+    max-width: 640px;
+    padding: 28px;
+    border: 1px solid #e4ebf5;
+    border-bottom: 3px solid #69b4ff;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(28, 54, 96, 0.06);
+}
+
+.detailCard h2 {
+    margin: 0 0 10px;
+    color: #1f2a44;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.detailCard p {
+    margin: 0 0 20px;
+    color: #66758f;
+    line-height: 1.6;
+}
+
+.primaryButton {
+    border: none;
+    border-radius: 10px;
+    background: #4965b7;
+    color: #ffffff;
+    padding: 12px 18px;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .shell {
+        padding: 24px 16px 48px;
+    }
+
+    .hero h1 {
+        font-size: 1.7rem;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .cardLabel,
+    .subCardLabel {
+        font-size: 1rem;
+    }
+}
