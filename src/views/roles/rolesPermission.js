@@ -245,7 +245,7 @@ export default function RolesPermissions() {
 
                                                     <div
                                                         className={styles["menu-item"]}
-                                                        onClick={() => toggleRoleStatus(startIndex + i)}
+                                                        onClick={() => RoleStatus(role)}
                                                     >
                                                         {role.status.toLowerCase() === "active"
                                                             ? "Inactive"

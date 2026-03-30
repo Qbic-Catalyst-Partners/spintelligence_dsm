@@ -56,6 +56,7 @@ const rolesSlice = createSlice({
     departments: [],
     loading: false,
     error: null,
+    role: null,
   },
   reducers: {
     clearError: (state) => { state.error = null; },
