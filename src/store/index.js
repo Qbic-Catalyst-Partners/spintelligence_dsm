@@ -6,6 +6,8 @@ import mixingReducer from './slices/mixing';
 import comberReducer from './slices/comber';
 import cardingReducer from './slices/carding';
 import spinningReducer from "./slices/spinSlice";
+import userReducer from "./slices/userSlice"; 
+import supervisorReducer from "./slices/supervisorSlice";
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +18,9 @@ export const store = configureStore({
      carding: cardingReducer,
     operator: operatorReducer,
     spinning: spinningReducer,
+    users: userReducer,
+    supervisor: supervisorReducer,
+
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

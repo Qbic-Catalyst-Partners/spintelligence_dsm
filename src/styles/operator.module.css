@@ -697,10 +697,11 @@ tbody tr:hover .ticket-link {
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-right: 20px;
     background: #3D539F;
     color: #fff;
     border: none;
-    padding: 8px 12px;
+    padding: 10px 20px 10px 14px;
     font-size: 12px;
     border-radius: 6px;
   }

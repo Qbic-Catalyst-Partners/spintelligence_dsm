@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
-import Link from "next/link";
 import { useDispatch, useSelector } from "react-redux";
 import { FaInfoCircle } from "react-icons/fa";
 import styles from "../../styles/createrole.module.css";
 import { fetchScreens, fetchDepartments, createRole } from "../../store/slices/rolesSlice";
-import Header from "../../components/Header";
 
 export default function CreateRole() {
   const router = useRouter();
@@ -98,13 +96,6 @@ export default function CreateRole() {
   /* ================= UI ================= */
   return (
     <div className={styles["role"]}>
-      {/* HEADER */}
-      <Header navLinks={[
-        { href: "/", label: "Home" },
-        { href: "/usermanagement", label: "User Management" },
-        { href: "/rolespermissions", label: "Roles & Permissions" }
-    ]}/>
-
       <div className={styles["rolepage-wrapper"]}>
 
         <div className={styles["rolepage-cardswrap"]}>

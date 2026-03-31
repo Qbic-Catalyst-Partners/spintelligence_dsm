@@ -6,9 +6,9 @@ export const departmentDirectory = [
         description: "Select the Department you need to access",
         subDepartments: [
             { slug: "mixing", name: "Mixing", href: "/mixing", enabled: true },
-            { slug: "blow-room", name: "Blow Room", href: "/departments/quality-control/blow-room", enabled: false },
-            { slug: "carding", name: "Carding", href: "/departments/quality-control/carding", enabled: false },
-            { slug: "comber", name: "Comber", href: "/departments/quality-control/comber", enabled: false },
+            { slug: "blow-room", name: "Blow Room", href: "/blowroom", enabled: true },
+            { slug: "carding", name: "Carding", href: "/carding", enabled: true },
+            { slug: "comber", name: "Comber", href: "/comber", enabled: true },
             { slug: "draw-frame", name: "Draw Frame", href: "/departments/quality-control/draw-frame", enabled: false },
             { slug: "simplex", name: "Simplex", href: "/departments/quality-control/simplex", enabled: false },
             { slug: "spinning", name: "Spinning", href: "/spinning", enabled: true },

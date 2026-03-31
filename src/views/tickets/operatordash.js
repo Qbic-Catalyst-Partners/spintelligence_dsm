@@ -94,22 +94,7 @@ export default function operatorboard() {
     return (
         <div className={styles.page}>
             {/* NAVBAR */}
-            <header className={styles["top-navbar"]}>
-                <div className={styles["nav-left"]}>
-                    <div className={styles["spintel-logo"]}>
-                        <Image src="/spintel.svg" alt="spintel" width={88} height={88} />
-                    </div>
-                    <nav className={styles["nav-links"]}>
-                        <a href="/" className={styles["nav-link"]}>Home</a>
-                        <a href="/usermanagement" className={styles["nav-link"]}>User Management</a>
-                        <a href="/rolespermissions" className={styles["nav-link"]}>Roles & Permissions</a>
-                    </nav>
-                </div>
-
-                <div className={styles["nav-right"]}>
-                    <Image src="/logo.png" alt="logo" width={140} height={40} />
-                </div>
-            </header>
+           
 
             {/* MOBILE NAVBAR */}
             <header className={styles["mobile-navbar"]}>
@@ -126,7 +111,7 @@ export default function operatorboard() {
                     className={styles["mobile-filter-btn"]}
                     onClick={() => setShowMobileFilter(true)}
                 >
-                    <img src="/filter.png" alt="filter" className={styles["filter-icon-img"]} /> Filter
+                    <img src="/filter.png" alt="filter" className={styles["filter-icon-img"]} />Filter  
                 </button>
             </div>
 
