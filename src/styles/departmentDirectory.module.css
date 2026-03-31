@@ -1,35 +1,40 @@
 .page {
     min-height: 100vh;
-    background: #F8F6F6;
+    background: #f8f6f6;
 }
 
 .shell {
-    max-width: 980px;
+    width: 1024px;
     margin: 0 auto;
-    padding: 34px 24px 64px;
+    padding: 32px 32px 64px;
+    box-sizing: border-box;
 }
 
 .hero {
-    margin-bottom: 24px;
+    margin-bottom: 34px;
 }
 
 .hero h1 {
-    margin: 0 0 4px;
-    color: #1f2a44;
-    font-size: 1.05rem;
+    margin: 0 0 6px;
+    color: #0f172a;
+    font-size: 24px;
+    line-height: 24px;
     font-weight: 700;
 }
 
 .hero p {
     margin: 0;
-    color: #8b97ad;
-    font-size: 0.76rem;
+    color: #64748b;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 400;
 }
 
 .sectionTitle {
-    margin: 0 0 10px;
-    color: #1f2a44;
-    font-size: 1rem;
+    margin: 0 0 14px;
+    color: #0f172a;
+    font-size: 20px;
+    line-height: 24px;
     font-weight: 700;
 }
 
@@ -51,7 +56,7 @@
     background: transparent;
     padding: 0;
     color: #8d9ab2;
-    font-size: 0.72rem;
+    font-size: 14px;
     cursor: pointer;
     transition: color 0.2s ease;
 }
@@ -69,7 +74,7 @@
     background: transparent;
     padding: 0;
     color: #4965b7;
-    font-size: 0.72rem;
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
 }
@@ -81,8 +86,8 @@
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(3, 310px);
+    gap: 15px;
 }
 
 .card,
@@ -91,90 +96,76 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    width: 100%;
-    min-height: 74px;
-    padding: 14px 12px 11px;
-    border: 1px solid #e6edf7;
-    border-bottom: 2px solid #69b4ff;
-    border-radius: 4px;
+    gap: 16px;
+    width: 310px;
+    height: 92px;
+    padding: 0 16px;
+    border: 0.612245px solid #e2e8f0;
+    border-radius: 7.34694px;
     background: #ffffff;
     text-align: left;
     box-shadow: none;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
+    transition: none;
 }
 
-.card:hover,
-.subCard:hover {
-    transform: none;
-    box-shadow: 0 6px 18px rgba(28, 54, 96, 0.06);
-    border-color: #cfe2fb;
-}
-
-.activeCard:hover {
-    background: #4a5fb0;
-    border-color: #4a5fb0;
-    border-bottom-color: #7ab6ff;
+.card::after,
+.subCard::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(25, 127, 230, 0.2) 0%, #197fe6 50%, rgba(25, 127, 230, 0.2) 100%);
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
 }
 
 .subCardEnabled {
     background: #ffffff;
+    border-color: #e2e8f0;
 }
 
-.subCardEnabled:hover {
-    background: #ffffff;
-    border-color: #cfe2fb;
-}
-
-.subCardEnabled:active {
-    background: #4a5fb0;
-    border-color: #4a5fb0;
-    border-bottom-color: #7ab6ff;
-}
-
-.subCardEnabled .subCardLabel {
-    color: #22314d;
-}
-
-.subCardEnabled .cardMeta {
-    color: #99a5ba;
-}
-
-.subCardEnabled:active .subCardLabel,
-.subCardEnabled:active .cardMeta,
-.subCardEnabled:active .subCardArrow {
-    color: #ffffff;
-}
-
-.subCardEnabled:active .subCardArrow {
-    background: rgba(255, 255, 255, 0.18);
+.activeCard:hover {
+    background: #3d539f;
+    border-color: #3d539f;
 }
 
 .activeCard:hover .cardLabel,
-.activeCard:hover .subCardLabel {
+.activeCard:hover .cardMeta {
     color: #ffffff;
 }
 
 .activeCard:hover .iconWrap {
-    background: rgba(255, 255, 255, 0.18);
+    background: #eff6ff;
+    color: #3d539f;
+}
+
+.activeCard:hover::after {
+    background: linear-gradient(90deg, #3d539f 0%, #ffffff 50%, #3d539f 100%);
+}
+
+.subCardEnabled:hover {
+    background: #3d539f;
+    border-color: #3d539f;
+}
+
+.subCardEnabled:hover .subCardLabel,
+.subCardEnabled:hover .cardMeta {
     color: #ffffff;
 }
 
+.subCardEnabled:hover .subCardArrow {
+    color: #3d539f;
+}
 .disabledCard {
     cursor: not-allowed;
-    opacity: 1;
-    color: #b0b8c8;
-    border-bottom-color: #dbe5f2;
-    box-shadow: none;
+    opacity: 0.5;
+    color: #9ea8ba;
     background: #ffffff;
 }
 
-.disabledCard:hover {
-    transform: none;
-    box-shadow: none;
-    border-color: #e4ebf5;
-    background: #ffffff;
-}
 
 .disabledCard .cardLabel,
 .disabledCard .subCardLabel {
@@ -193,14 +184,14 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 999px;
+    width: 26.92px;
+    height: 26.92px;
+    border-radius: 4.89796px;
     flex-shrink: 0;
 }
 
 .quality-control {
-    background: #edf2ff;
+    background: #eef2ff;
     color: #4965b7;
 }
 
@@ -215,44 +206,62 @@
 }
 
 .icon {
-    font-size: 0.78rem;
+    font-size: 12px;
 }
 
 .cardContent {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 13px;
     min-width: 0;
 }
 
 .cardLabel,
 .subCardLabel {
-    color: #22314d;
-    font-size: 0.78rem;
+    color: #1e293b;
+    font-size: 18px;
+    line-height: 20px;
     font-weight: 600;
 }
 
 .cardMeta {
-    color: #99a5ba;
-    font-size: 0.66rem;
+    color: rgba(84, 84, 84, 0.75);
+    font-size: 12px;
     font-weight: 500;
+    line-height: 20px;
 }
 
 .subCard {
-    justify-content: flex-start;
+    justify-content: space-between;
 }
 
 .subCardArrow {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 6px;
-    background: #edf2ff;
-    color: #4965b7;
+    width: 26.92px;
+    height: 26.92px;
+    border-radius: 4.89796px;
+    background: #eff6ff;
+    color: #3d539f;
     flex-shrink: 0;
-    font-size: 0.78rem;
+    font-size: 12px;
+    position: absolute;
+    right: 23px;
+    top: 32px;
+}
+
+.subCardEnabled::after {
+    background: linear-gradient(90deg, rgba(25, 127, 230, 0.2) 0%, #197fe6 50%, rgba(25, 127, 230, 0.2) 100%);
+}
+
+.subCardEnabled .subCardLabel {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.subCardEnabled .cardMeta {
+    color: rgba(84, 84, 84, 0.75);
 }
 
 .detailCard {
@@ -289,19 +298,21 @@
 
 @media (max-width: 768px) {
     .shell {
+        width: 100%;
         padding: 24px 16px 48px;
     }
 
     .hero h1 {
-        font-size: 1.7rem;
+        font-size: 28px;
     }
 
     .grid {
         grid-template-columns: 1fr;
+        gap: 14px;
     }
 
-    .cardLabel,
-    .subCardLabel {
-        font-size: 1rem;
+    .card,
+    .subCard {
+        width: 100%;
     }
 }

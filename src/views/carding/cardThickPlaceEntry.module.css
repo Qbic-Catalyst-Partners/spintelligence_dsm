@@ -5,7 +5,7 @@
 .card-page {
   display: flex;
   justify-content: center;
-  background: #f6f7f8;
+  background: #f8f6f6;
   font-family: "Inter", sans-serif;
 }
 
@@ -19,15 +19,31 @@
 
 .card-breadcrumbs {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   font-size: 13px;
   color: #64748b;
   margin-bottom: 10px;
 }
 
-.card-breadcrumbs strong {
+.card-breadcrumb-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.card-breadcrumb-link:hover {
+  color: #3d539f;
+}
+
+.card-breadcrumb-active {
   font-weight: 600;
-  color: #0f172a;
+  color: #4965b7;
 }
 
 .card-header h1 {

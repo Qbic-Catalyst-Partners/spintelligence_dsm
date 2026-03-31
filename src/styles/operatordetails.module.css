@@ -438,8 +438,10 @@
   color: #ffffff;
 }
 
+
 @media (max-width: 900px) {
-  .top-links {
+  .top-links,
+  .top-navbar {
     display: none;
   }
 

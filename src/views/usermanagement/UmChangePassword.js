@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import styles from "../../styles/UmChangePassword.module.css";
 import { useRouter } from "next/router";
-import Link from "next/link";
 import {
   FaLock,
   FaEye,
@@ -82,21 +81,6 @@ export default function UmChangePassword() {
 
   return (
     <div className={styles.container}>
-      {/* NAVBAR */}
-      <header className={styles.topNavbar}>
-        <div className={styles.navLeft}>
-          <img src="/spintel.svg" className={styles.spintelLogo} />
-
-          <nav className={styles.navLinks}>
-            <Link href="/">Home</Link>
-            <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermission">Roles & Permissions</Link>
-          </nav>
-        </div>
-
-        <img src="/logo.png" className={styles.mainLogo} />
-      </header>
-
       <div className={styles.wrapper}>
         <div className={styles.header}>
           <h1>Change User Password</h1>

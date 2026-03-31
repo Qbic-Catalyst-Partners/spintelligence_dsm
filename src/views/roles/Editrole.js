@@ -14,7 +14,6 @@ import {
     fetchDepartments,
     updateRole
 } from "../../store/slices/rolesSlice";
-import Header from "../../components/Header";
 
 export default function EditRole() {
     const router = useRouter();
@@ -73,10 +72,6 @@ export default function EditRole() {
 
     return (
         <div className={styles["edit-page-container"]}>
-
-            {/* HEADER */}
-            <Header />
-
             {/* CONTENT */}
             <div className={styles["edit-content-wrapper"]}>
                 <div className={styles["edit-last-modified"]}>

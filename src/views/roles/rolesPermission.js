@@ -11,8 +11,8 @@ import { MdAdd } from "react-icons/md";
 import { FaIdCard, FaExclamationTriangle } from "react-icons/fa";
 import { FaIdCardClip } from "react-icons/fa6";
 import { BsExclamationCircle } from "react-icons/bs";
-import { fetchRoles, deleteRole, updateRole, clearError } from "../../store/slices/rolesSlice";
-import Header from "../../components/Header";
+import { updateRoleAPI } from "../../apis/rolesPermission";
+import { fetchRoles, deleteRole } from "../../store/slices/rolesSlice";
 
 export default function RolesPermissions() {
     const router = useRouter();
@@ -78,10 +78,13 @@ export default function RolesPermissions() {
 
             const newStatus = !currentStatus;
 
-            await dispatch(updateRole({ id: role.id, payload: { status: newStatus } })).unwrap();
+            setActiveRow(null);
+            await updateRoleAPI(role.id, { status: newStatus });
+            dispatch(fetchRoles({ page: 1, limit: 100 }));
 
         } catch (err) {
             console.error("Error updating status", err);
+            alert(err?.message || "Unable to update role status");
         }
     };
 
@@ -118,9 +121,6 @@ export default function RolesPermissions() {
 
     return (
         <>
-            {/* NAVBAR */}
-            <Header />
-
             {/* PAGE */}
             <div className={styles["roles-page"]}>
                 {/* HEADER */}
@@ -245,7 +245,7 @@ export default function RolesPermissions() {
 
                                                     <div
                                                         className={styles["menu-item"]}
-                                                        onClick={() => RoleStatus(role)}
+                                                        onClick={() => toggleRoleStatus (role)}
                                                     >
                                                         {role.status.toLowerCase() === "active"
                                                             ? "Inactive"

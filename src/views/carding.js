@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 import BetweenWithinCardEntry from "./carding/betweenWithinCardEntry";
 import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
@@ -14,6 +15,7 @@ const cardingDepartmentTypes = [
 ];
 
 function Carding() {
+    const router = useRouter();
     const [checkingType, setCheckingType] = useState(null);
 
     const handleTypeChange = (value) => {
@@ -32,7 +34,31 @@ function Carding() {
                 </div>
 
                 <div className={styles["card-breadcrumbs"]}>
-                    Home › Dashboard › <span>Carding Notebook QC</span>
+                    <button
+                        type="button"
+                        className={styles["card-breadcrumb-link"]}
+                        onClick={() => router.push("/")}
+                    >
+                        Home
+                    </button>
+                    <span>&rsaquo;</span>
+                    <button
+                        type="button"
+                        className={styles["card-breadcrumb-link"]}
+                        onClick={() => router.push("/dashboard")}
+                    >
+                        Dashboard
+                    </button>
+                    <span>&rsaquo;</span>
+                    <button
+                        type="button"
+                        className={styles["card-breadcrumb-link"]}
+                        onClick={() => router.push("/departments/quality-control")}
+                    >
+                        Quality Control
+                    </button>
+                    <span>&rsaquo;</span>
+                    <span className={styles["card-breadcrumb-active"]}>Carding Notebook QC</span>
                 </div>
 
                 <div className={styles["card-header"]}>

@@ -27,7 +27,7 @@
 }
 
 .spintel-logo img {
-    height: 44px;
+    height: 40px;
     width: auto;
 }
 
@@ -44,6 +44,10 @@
 }
 
 .nav-link:hover {
+    color: #0070f3;
+}
+
+.nav-link-active {
     color: #0070f3;
 }
 

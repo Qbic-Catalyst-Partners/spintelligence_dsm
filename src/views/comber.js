@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 import RibbonLapCVDataEntry from "./comber/ribbonLapCVDataEntry";
 import NatiDataEntry from "./comber/natiDataEntry";
@@ -16,6 +17,7 @@ const comberDepartmentTypes = [
 ];
 
 function Comber() {
+    const router = useRouter();
     const [checkingType, setCheckingType] = useState(null);
 
     const handleTypeChange = (value) => {
@@ -34,7 +36,31 @@ function Comber() {
                 </div>
 
                 <div className={styles["cb-breadcrumbs"]}>
-                    Home › Dashboard › <span>Spinning Notebook QC</span>
+                    <button
+                        type="button"
+                        className={styles["cb-breadcrumb-link"]}
+                        onClick={() => router.push("/")}
+                    >
+                        Home
+                    </button>
+                    <span>&rsaquo;</span>
+                    <button
+                        type="button"
+                        className={styles["cb-breadcrumb-link"]}
+                        onClick={() => router.push("/dashboard")}
+                    >
+                        Dashboard
+                    </button>
+                    <span>&rsaquo;</span>
+                    <button
+                        type="button"
+                        className={styles["cb-breadcrumb-link"]}
+                        onClick={() => router.push("/departments/quality-control")}
+                    >
+                        Quality Control
+                    </button>
+                    <span>&rsaquo;</span>
+                    <span className={styles["cb-breadcrumb-active"]}>Comber Notebook QC</span>
                 </div>
 
                 <div className={styles["cb-header"]}>

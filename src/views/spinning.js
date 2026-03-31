@@ -6,7 +6,6 @@ import { MdEditNote } from "react-icons/md";
 import Image from 'next/image';
 
 import Footer from "../components/Footer";
-import Header from "@/components/Header";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import styles from "../styles/spinning.module.css";
 
@@ -187,9 +186,6 @@ function SpinningDepartment() {
                 <div className={styles.hamburger}>☰</div>
                 <img src="/logo.png" alt="logo" className={styles["mobile-logo"]} />
             </div>
-
-            {/* Desktop Header */}
-            {!isMobile && <Header />}
 
             <div className={styles.container}>
 

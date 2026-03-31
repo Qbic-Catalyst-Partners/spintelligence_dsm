@@ -11,6 +11,10 @@
   background: #F8F8F8;
 }
 
+.sup-content {
+  padding: 28px 100px;
+}
+
 /* ===== TOP NAVBAR ===== */
 .top-navbar {
   background: #ffffff;

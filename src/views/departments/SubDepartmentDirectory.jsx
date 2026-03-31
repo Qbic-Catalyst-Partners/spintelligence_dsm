@@ -1,7 +1,6 @@
 import { useRouter } from "next/router";
 import { PiChartPieSliceFill } from "react-icons/pi";
 
-import Header from "@/components/Header";
 import styles from "@/styles/departmentDirectory.module.css";
 import { getDepartmentBySlug } from "./data";
 
@@ -18,17 +17,18 @@ const subDepartmentScreenCounts = {
 
 function SubDepartmentDirectory() {
     const router = useRouter();
-    const { department } = router.query;
+    const department =
+        typeof router.query.department === "string"
+            ? router.query.department
+            : router.pathname === "/departments/quality-control"
+                ? "quality-control"
+                : undefined;
 
     const departmentData = router.isReady ? getDepartmentBySlug(department) : null;
 
     if (router.isReady && !departmentData) {
         return (
             <div className={styles.page}>
-                <Header navLinks={[
-                    { href: "/dashboard", label: "Home" },
-                    { href: "/operatordash", label: "Ticketing System" },
-                ]} />
                 <main className={styles.shell}>
                     <section className={styles.hero}>
                         <p className={styles.breadcrumbs}>Departments</p>
@@ -41,11 +41,6 @@ function SubDepartmentDirectory() {
 
     return (
         <div className={styles.page}>
-            <Header navLinks={[
-                { href: "/dashboard", label: "Home" },
-                { href: "/operatordash", label: "Ticketing System" },
-            ]} />
-
             <main className={styles.shell}>
                 <section className={styles.hero}>
                     <div className={styles.breadcrumbs}>

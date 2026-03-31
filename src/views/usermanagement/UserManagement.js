@@ -10,7 +10,6 @@ import { IoMdSearch } from "react-icons/io";
 import { FaTrash } from "react-icons/fa";
 
 import { useRouter } from "next/router";
-import Link from "next/link";
 
 // REDUX
 import { useDispatch, useSelector } from "react-redux";
@@ -106,21 +105,6 @@ export default function UserManagement() {
 
   return (
     <div className={styles.container}>
-      {/* NAVBAR */}
-      <header className={styles.topNavbar}>
-        <div className={styles.navLeft}>
-          <img src="/spintel.svg" alt="logo" className={styles.spintelLogo} />
-
-          <nav className={styles.navLinks}>
-            <Link href="/">Home</Link>
-            <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermission">Roles & Permissions</Link>
-          </nav>
-        </div>
-
-        <img src="/logo.png" alt="logo" className={styles.mainLogo} />
-      </header>
-
       <div className={styles.wrapper}>
         {/* HEADER */}
         <div className={styles.header}>

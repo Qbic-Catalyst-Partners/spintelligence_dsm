@@ -5,7 +5,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #F6F7F8;
+  background: #f8f6f6;
   color: var(--foreground);
   font-family: var(--font-sans);
 }
@@ -28,12 +28,30 @@
 /* ================= HEADER ================= */
 
 .cb-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   font-size: 14px;
   color: #64748B;
   margin-bottom: 12px;
 }
 
-.cb-breadcrumbs span {
+.cb-breadcrumb-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #64748B;
+  cursor: pointer;
+  font-size: 14px;
+  transition: color 0.2s ease;
+}
+
+.cb-breadcrumb-link:hover {
+  color: #3D539F;
+}
+
+.cb-breadcrumb-active {
   font-weight: 600;
   color: var(--foreground);
 }

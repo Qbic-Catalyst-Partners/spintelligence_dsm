@@ -1,6 +1,5 @@
 import { useRouter } from "next/router";
 
-import Header from "@/components/Header";
 import styles from "@/styles/departmentDirectory.module.css";
 import { getDepartmentBySlug, getSubDepartmentBySlug } from "./data";
 
@@ -16,10 +15,6 @@ function IndividualDepartmentPage() {
     if (router.isReady && (!departmentData || !subDepartmentData)) {
         return (
             <div className={styles.page}>
-                <Header navLinks={[
-                    { href: "/dashboard", label: "Home" },
-                    { href: "/operatordash", label: "Ticketing System" },
-                ]} />
                 <main className={styles.shell}>
                     <section className={styles.hero}>
                         <p className={styles.breadcrumbs}>Departments</p>
@@ -32,11 +27,6 @@ function IndividualDepartmentPage() {
 
     return (
         <div className={styles.page}>
-            <Header navLinks={[
-                { href: "/dashboard", label: "Home" },
-                { href: "/operatordash", label: "Ticketing System" },
-            ]} />
-
             <main className={styles.shell}>
                 <section className={styles.hero}>
                     <div className={styles.breadcrumbs}>

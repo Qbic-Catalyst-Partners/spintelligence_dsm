@@ -42,6 +42,11 @@
   background: #ffffff;
 }
 
+.button-base:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .back-btn,
 .secondary-btn {
   background: #ffffff;
@@ -67,6 +72,10 @@
 }
 
 @media (max-width: 767px) {
+  .left-actions {
+    display: none;
+  }
+
   .footer-container {
     display: flex;
     justify-content: center;  

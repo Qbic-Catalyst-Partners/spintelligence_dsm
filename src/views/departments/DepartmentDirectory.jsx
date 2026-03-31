@@ -3,7 +3,6 @@ import { FaTools } from "react-icons/fa";
 import { MdElectricalServices } from "react-icons/md";
 import { PiChartPieSliceFill } from "react-icons/pi";
 
-import Header from "@/components/Header";
 import styles from "@/styles/departmentDirectory.module.css";
 import { departmentDirectory } from "./data";
 
@@ -24,11 +23,6 @@ function DepartmentDirectory() {
 
     return (
         <div className={styles.page}>
-            <Header navLinks={[
-                { href: "/dashboard", label: "Home" },
-                { href: "/operatordash", label: "Ticketing System" },
-            ]} />
-
             <main className={styles.shell}>
                 <section className={styles.hero}>
                     <h1>Welcome Back, Hency belix</h1>
