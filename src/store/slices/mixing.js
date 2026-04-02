@@ -6,6 +6,7 @@ import {
     mixingMoistureDataEntry   as moistureApi,
     mixingBrWasteStudyEntry   as brWasteApi,
     mixingDropTestDataEntry   as dropTestApi,
+    mixingOpennessDataEntry   as opennessApi, 
 } from '../../apis/mixing';
 
 /* ================= THUNKS ================= */
@@ -79,6 +80,17 @@ export const submitDropTest = createAsyncThunk(
     }
 );
 
+export const submitOpenness = createAsyncThunk(
+    'mixing/submitOpenness',
+    async (payload, { rejectWithValue }) => {
+        try {
+            return await opennessApi(payload);
+        } catch (e) {
+            return rejectWithValue(e.message);
+        }
+    }
+);
+
 /* ================= SLICE ================= */
 
 const initialState = {
@@ -102,7 +114,7 @@ const mixingSlice = createSlice({
         },
     },
     extraReducers: (builder) => {
-        [submitCottonHVI, submitFibre, submitAfis, submitMoisture, submitBrWaste, submitDropTest]
+        [submitCottonHVI, submitFibre, submitAfis, submitMoisture, submitBrWaste, submitDropTest, submitOpenness]
             .forEach(thunk => {
                 builder
                     .addCase(thunk.pending,   pending)

@@ -1,4 +1,5 @@
-import BlowRoomSync from "../views/blowroom/BlowRoomSync"; 
+import BlowRoom from "../views/blowroom.js";
+
 export default function Page() {
-  return <BlowRoomSync/>;
+  return <BlowRoom />;
 }

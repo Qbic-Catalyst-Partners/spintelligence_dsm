@@ -2,7 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitCottonHVI, clearMixingState } from '@/store/slices/mixing';
-import styles from './cottonHVIDataEntry.module.css';
+import styles from '../../styles/cottonHVIDataEntry.module.css';
 
 const initialForm = {
     variety: '', invoiceNo: '', invoiceDate: '',

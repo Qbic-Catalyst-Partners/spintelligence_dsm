@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { MdEditNote } from 'react-icons/md';
 import CustomInput from '@/components/CustomInput';
 import { submitMoisture, clearMixingState } from '@/store/slices/mixing';
-import styles from './moistureDataEntry.module.css';
+import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
 

@@ -65,3 +65,14 @@ export const mixingDropTestDataEntry = async (payload) => {
         throw new Error(error.message || 'Server error occurred');
     }
 };
+
+/* ===== Openness ===== */
+export const mixingOpennessDataEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post('/mixing/openness', payload);
+        return response.data;
+    } catch (error) {
+        if (error.response?.data) throw new Error(error.response.data.message || 'Invalid payload.');
+        throw new Error(error.message || 'Server error occurred');
+    }
+};

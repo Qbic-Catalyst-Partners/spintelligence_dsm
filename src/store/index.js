@@ -8,6 +8,7 @@ import cardingReducer from './slices/carding';
 import spinningReducer from "./slices/spinSlice";
 import userReducer from "./slices/userSlice"; 
 import supervisorReducer from "./slices/supervisorSlice";
+import drawFrameReducer from "./slices/draw-frame";
 
 export const store = configureStore({
   reducer: {
@@ -20,6 +21,7 @@ export const store = configureStore({
     spinning: spinningReducer,
     users: userReducer,
     supervisor: supervisorReducer,
+    drawFrame: drawFrameReducer,
 
   },
   middleware: (getDefaultMiddleware) =>

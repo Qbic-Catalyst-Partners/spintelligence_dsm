@@ -34,7 +34,7 @@
 }
 
 .mixx-header p {
-    font-size: 13px;
+    font-size: 14px;
     color: #64748b;
     margin: 6px 0 18px;
 }
@@ -101,7 +101,7 @@
 }
 
 .mixx-group label {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
@@ -112,7 +112,7 @@
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #f1f5f9;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .mixxinput {
@@ -121,7 +121,7 @@
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #ffffff;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 
@@ -172,7 +172,7 @@
 
 .mixx-copy {
     text-align: center;
-    font-size: 12px;
+    font-size: 14px;
     color: #94a3b8;
     margin: 18px 0;
 }
@@ -197,7 +197,7 @@
 }
 
 .type3-header span {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
@@ -297,7 +297,7 @@
         border-radius: 8px;
         border: 1px solid #e2e8f0;
         background: #ffffff;
-        font-size: 13px;
+        font-size: 14px;
     }
 
     .desktop-view {
@@ -327,7 +327,7 @@
         margin-top: 0 !important;
         height: 35px;
         width: 140px;
-        font-size: 12px;
+        font-size: 14px;
         white-space: nowrap;
     }
 
@@ -337,7 +337,7 @@
         border-radius: 8px;
         border: 1px solid #e2e8f0;
         background: #f1f5f9;
-        font-size: 13px;
+        font-size: 14px;
         width: 150px;
     }
 
@@ -414,11 +414,11 @@
 
     .mixx-input {
         height: 36px;
-        font-size: 12px;
+        font-size: 14px;
     }
 
     .mixx-section-title {
-        font-size: 13px;
+        font-size: 14px;
     }
 
     /* ===== Labels ===== */
@@ -448,7 +448,7 @@
         border: none;
         font-weight: 700;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 14px;
     }
 
     .mixx-btn {

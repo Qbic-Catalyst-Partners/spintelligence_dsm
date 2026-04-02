@@ -59,14 +59,14 @@
 
 /* Header */
 .sp-page-title {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 800;
   margin: 0px ! important;
   color: #0f172a;
 }
 
 .sp-page-description {
-  font-size: 13px;
+  font-size: 14px;
   color: #64748b;
   margin: 7px 0 18px;
 }
@@ -107,7 +107,7 @@
 }
 
 .sectiontitle {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
   margin-bottom: 16px;
 }
@@ -136,7 +136,7 @@
 }
 
 :global(label) {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #334155;
 }
@@ -150,7 +150,7 @@
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 :global(textarea) {
@@ -243,7 +243,7 @@
   justify-content: space-between;
   align-items: center;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #334155;
 }
@@ -372,7 +372,7 @@
 .row .form-group input[type="date"],
 .form-group .employee-input {
   height: 35px;
-  font-size: 12px;
+  font-size: 14px;
   padding: 6px 10px;
 }
 
@@ -391,7 +391,7 @@
 
 .char-count {
   text-align: right;
-  font-size: 11px;
+  font-size: 14px;
   color: #777;
   margin-top: 4px;
 }
@@ -459,7 +459,7 @@
   }
 
   .sp-page-description {
-    font-size: 12px;
+    font-size: 14px;
     padding-left: 20px;
     color: #64748b;
     margin: 7px 0 18px;
@@ -576,7 +576,7 @@
   }
 
   .sectiontitle {
-    font-size: 13px;
+    font-size: 14px;
   }
 
   /* Stack rows vertically */

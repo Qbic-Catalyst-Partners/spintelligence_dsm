@@ -21,7 +21,7 @@
 }
 
 .mixx-group label {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
@@ -32,7 +32,7 @@
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #f1f5f9;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 /* apply button */
@@ -45,7 +45,7 @@
     border: none;
     font-weight: 700;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 14px;
     align-self: flex-end;
 }
 
@@ -75,14 +75,14 @@
 }
 
 .type3-header span {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
 
 .type3-number {
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
     color: #334155;
 }
 
@@ -144,13 +144,13 @@
 
     .mixx-input {
         height: 36px;
-        font-size: 12px;
+        font-size: 14px;
     }
 
     .mixx-btn-primary {
         height: 35px;
         width: 140px;
-        font-size: 12px;
+        font-size: 14px;
         white-space: nowrap;
     }
 

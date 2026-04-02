@@ -1,10 +1,33 @@
-/* ================= DROP TEST DATA ENTRY STYLES ================= */
+/* ================= MOISTURE DATA ENTRY STYLES ================= */
+
+/* section title */
+.mixx-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.mixx-title-icon {
+    font-size: 22px;
+    color: #3d539f;
+}
+
+.mixx-section-title {
+    font-size: 15px;
+    font-weight: 700;
+}
 
 /* form rows */
 .mixx-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 18px;
+}
+
+.five-columns {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
 }
 
 .mixx-empty {
@@ -21,18 +44,18 @@
 }
 
 .mixx-group label {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
 
 .mixx-input {
     height: 38px;
-    padding: 8px 12px;
+    padding: 8px 14px;
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #f1f5f9;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .mixx-input:disabled {
@@ -40,42 +63,21 @@
     cursor: not-allowed;
 }
 
-/* tuft card */
-.tuft-card {
-    background: #f7f9fc;
-    border: 1px solid #d8dee9;
-    border-radius: 8px;
-    padding: 10px;
-    margin-top: 15px;
-}
-
-.tuft-card h4 {
-    margin-bottom: 10px;
-    font-weight: 600;
-    font-size: 13px;
-    color: #334155;
-}
-
-/* row inside tuft card (flex, 6 fields side by side) */
-.mixxx-row {
-    display: flex;
-    gap: 15px;
-}
-
-.mixxx-row .mixx-group {
-    flex: 1;
-}
-
 /* ================= RESPONSIVE ================= */
 @media (max-width: 1024px) {
-    .mixx-row {
-        grid-template-columns: repeat(2, 1fr);
+    .five-columns {
+        grid-template-columns: repeat(3, 1fr);
     }
 }
 
 @media (max-width: 768px) {
     .mixx-row {
         grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .five-columns {
+        grid-template-columns: repeat(2, 1fr);
         gap: 14px;
     }
 
@@ -94,23 +96,7 @@
         font-size: 12px;
     }
 
-    /* tuft card becomes 2-col grid on mobile */
-    .tuft-card {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-    }
-
-    .tuft-card h4 {
-        grid-column: 1 / -1;
-        margin-bottom: 0;
-    }
-
-    .mixxx-row {
-        display: contents;
-    }
-
-    .mixxx-row .mixx-group {
-        width: 100%;
+    .mixx-section-title {
+        font-size: 14px;
     }
 }
