@@ -2,7 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitFibre, clearMixingState } from '@/store/slices/mixing';
-import styles from './fibreDataEntry.module.css';
+import styles from '../../styles/fibreDataEntry.module.css';
 
 const initialForm = {
     variety: '', invoiceNo: '', invoiceDate: '',

@@ -1,0 +1,105 @@
+
+
+
+
+/* FORM GRID */
+.formGrid {
+  background: #ffffff;
+  padding: 20px;
+
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+/* LABEL */
+.formGrid label {
+  font-size: 14px;
+  color: #334155;
+ font-weight: 600;
+  margin-bottom: 5px;
+  display: block;
+}
+
+/* INPUTS */
+.formGrid input,
+.formGrid select,
+.formGrid textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #F8FAFC;
+
+  outline: none;
+  transition: border 0.2s;
+}
+
+.formGrid input:focus,
+.formGrid select:focus,
+.formGrid textarea:focus {
+  border-color: #4a6cf7;
+}
+
+/* FULL WIDTH FIELD */
+.fullWidth {
+  grid-column: span 3;
+}
+
+
+
+
+/* TABLE SECTION */
+.tableSection {
+  margin-top: 20px;
+  background: #ffffff;
+  padding: 16px;
+
+}
+
+/* TABLE TITLE */
+.tableSection h3 {
+  margin-bottom: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #16233b;
+}
+
+/* TABLE */
+.tableSection table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* TABLE HEADER */
+.tableSection thead {
+  background: #f3f4f6;
+}
+
+.tableSection th {
+  text-align: left;
+  padding: 10px;
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+  background: #F6F7F8;
+
+}
+
+/* TABLE BODY */
+.tableSection td {
+  padding: 10px;
+  font-size: 12px;
+  border-top: 1px solid #eef1f6;
+  color: #374151;
+  background: #F6F7F8;
+
+}
+
+
+
+/* FOOTER SPACE FIX */
+.footer-space {
+  margin-top: 16px;
+}

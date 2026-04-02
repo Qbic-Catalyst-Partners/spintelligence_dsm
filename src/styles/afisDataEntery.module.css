@@ -14,7 +14,7 @@
 }
 
 .mixx-group label {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
@@ -25,7 +25,7 @@
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #f1f5f9;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .mixx-empty {
@@ -52,6 +52,6 @@
 
     .mixx-input {
         height: 36px;
-        font-size: 12px;
+        font-size: 14px;
     }
 }

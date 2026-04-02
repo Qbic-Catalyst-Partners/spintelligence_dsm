@@ -2,7 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitBrWaste, clearMixingState } from '@/store/slices/mixing';
-import styles from './brWasteStudyEntry.module.css';
+import styles from '@/styles/brWasteStudyEntry.module.css';
 
 const TYPE_3_COLUMNS = [
     { key: 'flatStrip',  label: 'Flat Strip %'  },

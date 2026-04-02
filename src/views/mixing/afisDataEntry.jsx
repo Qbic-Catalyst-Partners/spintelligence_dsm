@@ -2,7 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitAfis, clearMixingState } from '@/store/slices/mixing';
-import styles from './afisDataEntery.module.css';
+import styles from '../../styles/afisDataEntery.module.css';
 
 const initialForm = {
     variety: '', invoiceNo: '', invoiceDate: '',

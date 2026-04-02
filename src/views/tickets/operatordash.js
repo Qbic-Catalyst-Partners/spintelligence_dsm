@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import axios from "axios";
+import { getOperatorTickets } from "../../apis/operatorApi";
 
 export default function operatorboard() {
     const [ticketData, setTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
 
     const [status, setStatus] = useState("All");
@@ -26,13 +27,12 @@ export default function operatorboard() {
 
     const fetchTickets = async () => {
         try {
-            const response = await axios.get(
-                `${process.env.NEXT_PUBLIC_API_URL}/operator-tickets`
-            );
+            setError("");
+            const response = await getOperatorTickets();
 
-            const ticketsArray = Array.isArray(response.data)
-                ? response.data
-                : response.data.data || response.data.tickets || [];
+            const ticketsArray = Array.isArray(response)
+                ? response
+                : response?.data || response?.tickets || [];
 
             const formattedData = ticketsArray.map((ticket) => {
                 const createdDate = new Date(ticket.created_at);
@@ -63,12 +63,14 @@ export default function operatorboard() {
             setTicketData(formattedData);
         } catch (error) {
             console.error("Error fetching tickets:", error);
+            setError(error.message || "Failed to fetch tickets.");
         } finally {
             setLoading(false);
         }
     };
 
     if (loading) return <p>Loading tickets...</p>;
+    if (error) return <p>{error}</p>;
 
     const filteredTickets = ticketData.filter((t) => {
         const created = new Date(t.rawCreatedAt);

@@ -1,0 +1,501 @@
+import React, { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+
+const today = new Date().toISOString().split("T")[0];
+const typeOptions = ["SMXCots Change Data Entry", "SMX Breaks Study Report"];
+const simplexOptions = ["SX-01", "SX-02", "SX-03", "SX-04", "SX-05", "SX-06"];
+const reportTypeOptions = ["", "Regular", "Trial", "Special"];
+
+const qualityParameterRows = [
+  ["CP", "CM", "CCP", "CCM", "JP"],
+  ["A1", "A2", "A3", "A4"],
+  ["B1", "B2", "B3", "B4"],
+  ["C1", "C2", "C3", "C4"],
+  ["D1", "D2", "D3", "D4"],
+  ["E", "F", "G", "H1", "H2"],
+  ["I1", "I2", "CVP"],
+];
+
+const topFieldClass =
+  "w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors";
+const whiteFieldClass =
+  "w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors";
+
+const createInitialForm = () => ({
+  type: "SMX Breaks Study Report",
+  simplexNo: "",
+  tpi: "",
+  becomode: "75/25",
+  date: today,
+  countName: "",
+  time: "",
+  trialName: "",
+  reportType: "",
+  nature: "",
+  unitNo: "",
+  rawMaterial: "",
+  mixing: "",
+  yarnResults: "",
+  totalCuts: "",
+  nepsCuts: "",
+  shortCuts: "",
+  longCuts: "",
+  thinCuts: "",
+  usterId: "",
+  uPercent: "",
+  cvm: "",
+  cvmCvPercent: "",
+  cvmTenMtr: "",
+  drOnePointFive: "",
+  thinMinus50: "",
+  thickPlus50: "",
+  nepsPlus200: "",
+  thinMinus40: "",
+  thickPlus35: "",
+  nepsPlus140: "",
+  thinMinus30: "",
+  count: "",
+  csp: "",
+});
+
+const createInitialQualityParameters = () =>
+  qualityParameterRows.flat().reduce((accumulator, key) => {
+    accumulator[key] = "";
+    return accumulator;
+  }, {});
+
+const parseNumber = (value) => {
+  if (value === "") return 0;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const formatTotal = (value) => parseNumber(value).toFixed(2);
+
+const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
+  { selectedTypeName, onTypeChange },
+  ref
+) {
+  const [form, setForm] = useState(createInitialForm);
+  const [qualityParameters, setQualityParameters] = useState(createInitialQualityParameters);
+
+  const regularTotal = useMemo(
+    () =>
+      formatTotal(
+        parseNumber(form.thinMinus50) +
+          parseNumber(form.thickPlus50) +
+          parseNumber(form.nepsPlus200)
+      ),
+    [form.nepsPlus200, form.thickPlus50, form.thinMinus50]
+  );
+
+  const higherSensitiveTotal = useMemo(
+    () =>
+      formatTotal(
+        parseNumber(form.thinMinus40) +
+          parseNumber(form.thickPlus35) +
+          parseNumber(form.nepsPlus140)
+      ),
+    [form.nepsPlus140, form.thickPlus35, form.thinMinus40]
+  );
+
+  const canSubmit = useMemo(() => {
+    const requiredValues = [
+      form.type,
+      form.simplexNo,
+      form.tpi,
+      form.becomode,
+      form.date,
+      form.countName,
+      form.time,
+      form.trialName,
+      form.reportType,
+      form.nature,
+      form.unitNo,
+      form.rawMaterial,
+      form.mixing,
+      form.yarnResults,
+      form.totalCuts,
+      form.nepsCuts,
+      form.shortCuts,
+      form.longCuts,
+      form.thinCuts,
+      form.usterId,
+      form.uPercent,
+      form.cvm,
+      form.cvmCvPercent,
+      form.cvmTenMtr,
+      form.drOnePointFive,
+      form.thinMinus50,
+      form.thickPlus50,
+      form.nepsPlus200,
+      form.thinMinus40,
+      form.thickPlus35,
+      form.nepsPlus140,
+      form.thinMinus30,
+      form.count,
+      form.csp,
+    ];
+
+    if (requiredValues.some((value) => String(value).trim() === "")) {
+      return false;
+    }
+
+    return Object.values(qualityParameters).every((value) => String(value).trim() !== "");
+  }, [form, qualityParameters]);
+
+  const handleFormChange = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleQualityParameterChange = (field, value) => {
+    setQualityParameters((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const clear = () => {
+    setForm(createInitialForm());
+    setQualityParameters(createInitialQualityParameters());
+  };
+
+  const submit = () => {
+    if (!canSubmit) {
+      alert("Please fill all fields.");
+      return;
+    }
+
+    alert("SMX Breaks Study Report is ready to save.");
+  };
+
+  useImperativeHandle(ref, () => ({
+    clear,
+    submit,
+  }));
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="grid grid-cols-3 gap-[18px]">
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Type</label>
+          <select
+            className={topFieldClass}
+            value={selectedTypeName}
+            onChange={(e) => {
+              handleFormChange("type", e.target.value);
+              onTypeChange?.(e.target.value);
+            }}
+          >
+            {typeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Simplex No.</label>
+          <select
+            className={topFieldClass}
+            value={form.simplexNo}
+            onChange={(e) => handleFormChange("simplexNo", e.target.value)}
+          >
+            <option value="">Select</option>
+            {simplexOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">TPI</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.tpi}
+            onChange={(e) => handleFormChange("tpi", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">B.ECOMODE THERMOLITE / PSF</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.becomode}
+            onChange={(e) => handleFormChange("becomode", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Date</label>
+          <input
+            type="date"
+            className={topFieldClass}
+            value={form.date}
+            onChange={(e) => handleFormChange("date", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Count Name</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.countName}
+            onChange={(e) => handleFormChange("countName", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Time</label>
+          <input
+            type="time"
+            step="1"
+            className={topFieldClass}
+            value={form.time}
+            onChange={(e) => handleFormChange("time", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Trial Name / ID</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.trialName}
+            onChange={(e) => handleFormChange("trialName", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Type</label>
+          <select
+            className={topFieldClass}
+            value={form.reportType}
+            onChange={(e) => handleFormChange("reportType", e.target.value)}
+          >
+            <option value="">Select</option>
+            {reportTypeOptions
+              .filter((option) => option)
+              .map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Nature</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.nature}
+            onChange={(e) => handleFormChange("nature", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Unit No.</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.unitNo}
+            onChange={(e) => handleFormChange("unitNo", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Raw Material</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.rawMaterial}
+            onChange={(e) => handleFormChange("rawMaterial", e.target.value)}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Mixing</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.mixing}
+            onChange={(e) => handleFormChange("mixing", e.target.value)}
+          />
+        </div>
+
+        <div className="col-span-2 flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Yarn Results</label>
+          <textarea
+            className="w-full min-h-[58px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors resize-none"
+            value={form.yarnResults}
+            onChange={(e) => handleFormChange("yarnResults", e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <h3 className="m-0 text-[14px] font-bold text-slate-900">Cuts and Imperfection Parameters</h3>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+          <div className="grid grid-cols-3 gap-[18px]">
+            {[
+              ["Total Cuts", "totalCuts"],
+              ["Neps Cuts", "nepsCuts"],
+              ["Short Cuts", "shortCuts"],
+              ["Long Cuts", "longCuts"],
+              ["Thin Cuts", "thinCuts"],
+            ].map(([label, field]) => (
+              <div key={field} className="flex flex-col gap-1.5">
+                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <input
+                  type="text"
+                  className={whiteFieldClass}
+                  value={form[field]}
+                  onChange={(e) => handleFormChange(field, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        {qualityParameterRows.map((row, rowIndex) => (
+          <div
+            key={row.join("-")}
+            className={`grid gap-[18px] ${row.length === 5 ? "grid-cols-5" : row.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}
+          >
+            {row.map((label) => (
+              <div key={label} className="flex flex-col gap-1.5 min-w-0">
+                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <input
+                  type="text"
+                  className={topFieldClass}
+                  value={qualityParameters[label]}
+                  onChange={(e) => handleQualityParameterChange(label, e.target.value)}
+                />
+              </div>
+            ))}
+            {rowIndex === qualityParameterRows.length - 1 && row.length === 3 ? null : null}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <h3 className="m-0 text-[14px] font-bold text-slate-900">Uster Tester Parameters</h3>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+          <div className="grid grid-cols-3 gap-[18px]">
+            {[
+              ["uster ID", "usterId"],
+              ["U%", "uPercent"],
+              ["CVM", "cvm"],
+              ["CVM cv%", "cvmCvPercent"],
+              ["CVM 10 mtr", "cvmTenMtr"],
+              ["DR 1.5m", "drOnePointFive"],
+            ].map(([label, field]) => (
+              <div key={field} className="flex flex-col gap-1.5">
+                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <input
+                  type="text"
+                  className={whiteFieldClass}
+                  value={form[field]}
+                  onChange={(e) => handleFormChange(field, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        <h3 className="m-0 text-[14px] font-bold text-slate-900">IPI Parameters</h3>
+
+        <div className="flex flex-col gap-3">
+          <div className="text-[14px] font-bold text-slate-600">REGULAR IPI</div>
+          <div className="grid grid-cols-4 gap-[18px]">
+            {[
+              ["Thin -50%", "thinMinus50"],
+              ["Thick +50%", "thickPlus50"],
+              ["Neps +200%", "nepsPlus200"],
+            ].map(([label, field]) => (
+              <div key={field} className="flex flex-col gap-1.5">
+                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <input
+                  type="text"
+                  className={topFieldClass}
+                  value={form[field]}
+                  onChange={(e) => handleFormChange(field, e.target.value)}
+                />
+              </div>
+            ))}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[14px] font-semibold text-slate-700">Total (Regular)</label>
+              <input type="text" className={topFieldClass} value={regularTotal} readOnly />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="text-[14px] font-bold text-slate-600">HIGHER SENSITIVE IPI</div>
+          <div className="grid grid-cols-4 gap-[18px]">
+            {[
+              ["Thin -40%", "thinMinus40"],
+              ["Thick +35%", "thickPlus35"],
+              ["Neps +140%", "nepsPlus140"],
+            ].map(([label, field]) => (
+              <div key={field} className="flex flex-col gap-1.5">
+                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <input
+                  type="text"
+                  className={topFieldClass}
+                  value={form[field]}
+                  onChange={(e) => handleFormChange(field, e.target.value)}
+                />
+              </div>
+            ))}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[14px] font-semibold text-slate-700">Total (HS)</label>
+              <input type="text" className={topFieldClass} value={higherSensitiveTotal} readOnly />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <h3 className="m-0 text-[14px] font-bold text-slate-900">Other IPI / Final values</h3>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+          <div className="grid grid-cols-3 gap-[18px]">
+            {[
+              ["Thin -30%", "thinMinus30"],
+              ["Count", "count"],
+              ["CSP", "csp"],
+            ].map(([label, field]) => (
+              <div key={field} className="flex flex-col gap-1.5">
+                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <input
+                  type="text"
+                  className={whiteFieldClass}
+                  value={form[field]}
+                  onChange={(e) => handleFormChange(field, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default SMXBreaksStudyReport;
