@@ -14,7 +14,7 @@ export default function App({ Component, pageProps }) {
   const headerNavLinks = isDepartmentFlow
     ? [
         { href: "/dashboard", label: "Home" },
-        { href: "/operatordash", label: "Ticketing System" },
+        { href: "/operator", label: "Ticketing System" },
       ]
     : undefined;
 
