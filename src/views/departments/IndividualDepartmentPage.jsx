@@ -25,6 +25,11 @@ function IndividualDepartmentPage() {
         );
     }
 
+    const breadcrumbCurrent = subDepartmentData?.breadcrumbName || subDepartmentData?.name;
+    const pageTitle = subDepartmentData?.pageTitle || `${departmentData?.name} - ${subDepartmentData?.name}`;
+    const pageDescription =
+        subDepartmentData?.pageDescription || "This individual page is ready for the next screen or form content.";
+
     return (
         <div className={styles.page}>
             <main className={styles.shell}>
@@ -42,10 +47,10 @@ function IndividualDepartmentPage() {
                             {departmentData?.name}
                         </button>
                         <span>&rsaquo;</span>
-                        <span className={styles.breadcrumbCurrent}>{subDepartmentData?.name}</span>
+                        <span className={styles.breadcrumbCurrent}>{breadcrumbCurrent}</span>
                     </div>
-                    <h1>{subDepartmentData?.name}</h1>
-                    <p>This individual page is ready for the next screen or form content.</p>
+                    <h1>{pageTitle}</h1>
+                    <p>{pageDescription}</p>
                 </section>
 
                 <section className={styles.detailCard}>

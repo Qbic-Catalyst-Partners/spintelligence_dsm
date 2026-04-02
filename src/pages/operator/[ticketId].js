@@ -1,4 +1,4 @@
-import TicketDetails from "../../views/tickets/operatordetails";
+import TicketDetails from "../../views/tickets/operatordetail";
 
 export default function Page() {
   return <TicketDetails />;

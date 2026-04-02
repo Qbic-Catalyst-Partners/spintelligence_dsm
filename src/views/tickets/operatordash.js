@@ -188,7 +188,7 @@ export default function operatorboard() {
                             <tr
                                 key={t.id} // Use 't.id', not 'ticket.id'
                                 style={{ cursor: "pointer" }}
-                                onClick={() => router.push(`/operatordetail/${t.id.replace("#", "")}`)} // match your detail page route
+                                onClick={() => router.push(`/operator/${t.id.replace("#", "")}`)}
                             >
                                 <td className={styles["ticket-link"]}>{t.id}</td>
                                 <td>{t.machine}</td>
@@ -277,7 +277,7 @@ export default function operatorboard() {
                 )}
 
                 {filteredTickets.map((t) => (
-                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operatordetail/${t.id.replace("#", "")}`)}>
+                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operator/${t.id.replace("#", "")}`)}>
                         <div className={styles["card-top"]}>
                             <div className={styles["left-section"]}>
                                 <div className={styles["card-id-machine"]}>{t.id} | {t.machine}</div>

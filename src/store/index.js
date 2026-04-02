@@ -5,6 +5,7 @@ import operatorReducer from './slices/operatorSlice';
 import mixingReducer from './slices/mixing';
 import comberReducer from './slices/comber';
 import cardingReducer from './slices/carding';
+import drawFrameReducer from './slices/draw-frame';
 import spinningReducer from "./slices/spinSlice";
 import userReducer from "./slices/userSlice"; 
 import supervisorReducer from "./slices/supervisorSlice";
@@ -16,6 +17,7 @@ export const store = configureStore({
     mixing: mixingReducer,
     comber: comberReducer,
      carding: cardingReducer,
+    drawFrame: drawFrameReducer,
     operator: operatorReducer,
     spinning: spinningReducer,
     users: userReducer,
@@ -27,4 +29,3 @@ export const store = configureStore({
       serializableCheck: false,
     }),
 });
-
