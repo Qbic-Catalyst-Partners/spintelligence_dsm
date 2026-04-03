@@ -322,6 +322,31 @@
   font-weight: 700;
 }
 
+.errorField {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
+.messageBox {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.messageSuccess {
+  background: #ecfdf5;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.messageError {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
 /* Mobile */
 
 @media (max-width: 768px) {

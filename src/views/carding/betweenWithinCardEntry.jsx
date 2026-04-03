@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { FiCalendar, FiCheckSquare } from "react-icons/fi";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState, submitCardingBetweenWithin } from "@/store/slices/carding";
+import PreviewModal from "@/components/PreviewModal";
 
 const machineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 
@@ -69,6 +70,8 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     const [hankStats, setHankStats] = useState(emptyStats);
     const [formMessage, setFormMessage] = useState("");
     const [isError, setIsError] = useState(false);
+    const [errors, setErrors] = useState({});
+    const [showPreview, setShowPreview] = useState(false);
 
     useEffect(() => {
         const today = new Date();
@@ -123,6 +126,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         });
         setFormMessage("");
         setIsError(false);
+        setErrors((current) => {
+            const next = { ...current };
+            delete next.entryCount;
+            return next;
+        });
     };
 
     const handleRowChange = (index, field, value) => {
@@ -133,6 +141,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         });
         setFormMessage("");
         setIsError(false);
+        setErrors((current) => {
+            const next = { ...current };
+            delete next[`row-${index}-${field}`];
+            return next;
+        });
     };
 
     const handleCalculateAll = () => {
@@ -147,15 +160,36 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         setIsError(false);
     };
 
+    const validateForm = () => {
+        const activeRows = rows.slice(0, Number(entryCount) || rows.length);
+        const nextErrors = {};
+
+        if (!selectedType) nextErrors.selectedType = true;
+        if (!inspectionDate) nextErrors.inspectionDate = true;
+        if (!mcName) nextErrors.mcName = true;
+        if (!inspectionType) nextErrors.inspectionType = true;
+        if (!String(entryCount || "").trim()) nextErrors.entryCount = true;
+
+        activeRows.forEach((row, index) => {
+            if (String(row.sampleWeight || "").trim() === "") nextErrors[`row-${index}-sampleWeight`] = true;
+            if (String(row.hank || "").trim() === "") nextErrors[`row-${index}-hank`] = true;
+        });
+
+        setErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length) {
+            setFormMessage("Please fill all required fields before preview.");
+            setIsError(true);
+            return false;
+        }
+
+        setFormMessage("");
+        setIsError(false);
+        return true;
+    };
+
     const handleSubmit = async () => {
         const activeRows = rows.slice(0, Number(entryCount) || rows.length);
-        const hasBlankRow = activeRows.some((row) => row.sampleWeight === "" || row.hank === "");
-
-        if (hasBlankRow) {
-            setFormMessage("Please fill all generated sample weight and hank entries.");
-            setIsError(true);
-            return;
-        }
 
         const payload = {
             type_category: selectedType,
@@ -172,11 +206,25 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
 
         try {
             await dispatch(submitCardingBetweenWithin(payload)).unwrap();
+            setShowPreview(false);
         } catch (submitError) {
             setFormMessage(submitError || "Save failed");
             setIsError(true);
         }
     };
+
+    const previewItems = [
+        { label: "Type", value: selectedType },
+        { label: "ID", value: entryId },
+        { label: "Inspection Date", value: inspectionDate },
+        { label: "MC Name", value: mcName },
+        { label: "Inspection Type", value: inspectionType },
+        { label: "Number of Entries", value: entryCount },
+        ...rows.slice(0, Number(entryCount) || rows.length).flatMap((row, index) => ([
+            { label: `Row ${index + 1} Sample Weight`, value: row.sampleWeight },
+            { label: `Row ${index + 1} Hank`, value: row.hank },
+        ])),
+    ];
 
     if (!showForm) return null;
 
@@ -187,7 +235,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                     {!hideTypeField && (
                         <div className="bwc-form-group">
                             <label>Type</label>
-                            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
+                            <select
+                                value={selectedType}
+                                onChange={(e) => onTypeChange(e.target.value)}
+                                className={errors.selectedType ? "bwc-error-field" : ""}
+                            >
                                 <option value="">Select Type</option>
                                 {types.map((item) => (
                                     <option key={item.id} value={item.name}>
@@ -206,7 +258,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                     <div className="bwc-form-group">
                         <label>Date</label>
                         <div className="bwc-input-icon-wrap">
-                            <input type="date" value={inspectionDate} readOnly />
+                            <input type="date" value={inspectionDate} readOnly className={errors.inspectionDate ? "bwc-error-field" : ""} />
                         </div>
                     </div>
                 </div>
@@ -214,7 +266,18 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                 <div className="bwc-row">
                     <div className="bwc-form-group">
                         <label>MC Name</label>
-                        <select value={mcName} onChange={(e) => setMcName(e.target.value)}>
+                        <select
+                            value={mcName}
+                            onChange={(e) => {
+                                setMcName(e.target.value);
+                                setErrors((current) => {
+                                    const next = { ...current };
+                                    delete next.mcName;
+                                    return next;
+                                });
+                            }}
+                            className={errors.mcName ? "bwc-error-field" : ""}
+                        >
                             {machineOptions.map((machine) => (
                                 <option key={machine} value={machine}>
                                     {machine}
@@ -225,7 +288,18 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
 
                     <div className="bwc-form-group">
                         <label>Type</label>
-                        <select value={inspectionType} onChange={(e) => setInspectionType(e.target.value)}>
+                        <select
+                            value={inspectionType}
+                            onChange={(e) => {
+                                setInspectionType(e.target.value);
+                                setErrors((current) => {
+                                    const next = { ...current };
+                                    delete next.inspectionType;
+                                    return next;
+                                });
+                            }}
+                            className={errors.inspectionType ? "bwc-error-field" : ""}
+                        >
                             <option value="Within">Within</option>
                             <option value="Between">Between</option>
                         </select>
@@ -241,6 +315,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                                 value={entryCount}
                                 onChange={(e) => setEntryCount(e.target.value)}
                                 onWheel={(e) => e.currentTarget.blur()}
+                                className={errors.entryCount ? "bwc-error-field" : ""}
                             />
                             <button type="button" className="bwc-generate" onClick={handleGenerate}>
                                 Generate
@@ -261,6 +336,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                                     value={row.sampleWeight}
                                     onChange={(e) => handleRowChange(index, "sampleWeight", e.target.value)}
                                     onWheel={(e) => e.currentTarget.blur()}
+                                    className={errors[`row-${index}-sampleWeight`] ? "bwc-error-field" : ""}
                                 />
                             </div>
                             <div className="bwc-entry-field-white">
@@ -271,6 +347,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                                     value={row.hank}
                                     onChange={(e) => handleRowChange(index, "hank", e.target.value)}
                                     onWheel={(e) => e.currentTarget.blur()}
+                                    className={errors[`row-${index}-hank`] ? "bwc-error-field" : ""}
                                 />
                             </div>
                         </div>
@@ -312,9 +389,18 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                         Calculate All
                     </button>
 
-                    <button type="button" className="bwc-primary" onClick={handleSubmit} disabled={isLoading}>
+                    <button
+                        type="button"
+                        className="bwc-primary"
+                        onClick={() => {
+                            if (validateForm()) {
+                                setShowPreview(true);
+                            }
+                        }}
+                        disabled={isLoading}
+                    >
                         <FiCheckSquare />
-                        <span>{isLoading ? "Saving..." : "Submit"}</span>
+                        <span>{isLoading ? "Saving..." : "Preview"}</span>
                     </button>
                 </div>
             </div>
@@ -324,6 +410,17 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                     {formMessage}
                 </div>
             )}
+
+            <PreviewModal
+                open={showPreview}
+                title="Carding Preview"
+                subtitle="Carding Notebook / Between & Within Card Data Entry"
+                items={previewItems}
+                typeValue={selectedType}
+                onCancel={() => setShowPreview(false)}
+                onConfirm={handleSubmit}
+                confirmLabel={isLoading ? "Saving..." : "Submit"}
+            />
         </>
     );
 }

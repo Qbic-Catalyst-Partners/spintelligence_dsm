@@ -1,7 +1,9 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import {
   fetchDrawFrameCotsEntries as fetchDrawFrameCotsEntriesApi,
+  fetchDrawFrameUqcEntries as fetchDrawFrameUqcEntriesApi,
   submitDrawFrameCotsInspection as submitDrawFrameCotsInspectionApi,
+  submitDrawFrameUqcInspection as submitDrawFrameUqcInspectionApi,
   submitDrawFrameYarnCvInspection as submitDrawFrameYarnCvInspectionApi,
 } from "@/apis/draw-frame";
 
@@ -38,9 +40,32 @@ export const fetchDrawFrameCotsEntries = createAsyncThunk(
   }
 );
 
+export const submitDrawFrameUqcInspection = createAsyncThunk(
+  "drawFrame/submitUqcInspection",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await submitDrawFrameUqcInspectionApi(payload);
+    } catch (error) {
+      return rejectWithValue(error?.message || "Something went wrong");
+    }
+  }
+);
+
+export const fetchDrawFrameUqcEntries = createAsyncThunk(
+  "drawFrame/fetchUqcEntries",
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchDrawFrameUqcEntriesApi();
+    } catch (error) {
+      return rejectWithValue(error?.message || "Something went wrong");
+    }
+  }
+);
+
 const initialState = {
   data: null,
   cotsEntries: [],
+  uqcEntries: [],
   actionLoading: false,
   actionSuccess: false,
   listLoading: false,
@@ -99,6 +124,33 @@ const drawFrameSlice = createSlice({
         state.cotsEntries = action.payload;
       })
       .addCase(fetchDrawFrameCotsEntries.rejected, (state, action) => {
+        state.listLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(submitDrawFrameUqcInspection.pending, (state) => {
+        state.actionLoading = true;
+        state.actionSuccess = false;
+        state.error = null;
+      })
+      .addCase(submitDrawFrameUqcInspection.fulfilled, (state, action) => {
+        state.actionLoading = false;
+        state.actionSuccess = true;
+        state.data = action.payload;
+      })
+      .addCase(submitDrawFrameUqcInspection.rejected, (state, action) => {
+        state.actionLoading = false;
+        state.actionSuccess = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchDrawFrameUqcEntries.pending, (state) => {
+        state.listLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchDrawFrameUqcEntries.fulfilled, (state, action) => {
+        state.listLoading = false;
+        state.uqcEntries = action.payload;
+      })
+      .addCase(fetchDrawFrameUqcEntries.rejected, (state, action) => {
         state.listLoading = false;
         state.error = action.payload;
       });

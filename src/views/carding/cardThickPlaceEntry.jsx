@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
+
+import Footer from "@/components/Footer";
+import PreviewModal from "@/components/PreviewModal";
 import { clearCardingState, submitCardingCardThickPlace } from "@/store/slices/carding";
 import styles from "./cardThickPlaceEntry.module.css";
 
@@ -33,15 +36,31 @@ function CardThickPlaceEntry({
     const [machineValues, setMachineValues] = useState(createMachineValues);
     const [formMessage, setFormMessage] = useState("");
     const [isError, setIsError] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+    const [errors, setErrors] = useState({});
+    const [showPreview, setShowPreview] = useState(false);
 
     const stampNow = () => {
         const now = new Date();
         setDate(now.toISOString().split("T")[0]);
-        setTime([String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0"), String(now.getSeconds()).padStart(2, "0")].join(":"));
+        setTime(
+            [
+                String(now.getHours()).padStart(2, "0"),
+                String(now.getMinutes()).padStart(2, "0"),
+                String(now.getSeconds()).padStart(2, "0"),
+            ].join(":")
+        );
     };
 
     useEffect(() => {
         stampNow();
+    }, []);
+
+    useEffect(() => {
+        const checkScreen = () => setIsMobile(window.innerWidth <= 767);
+        checkScreen();
+        window.addEventListener("resize", checkScreen);
+        return () => window.removeEventListener("resize", checkScreen);
     }, []);
 
     useEffect(() => {
@@ -79,13 +98,18 @@ function CardThickPlaceEntry({
         }));
         setFormMessage("");
         setIsError(false);
+        setErrors((current) => {
+            const next = { ...current };
+            delete next[machine];
+            return next;
+        });
     };
 
     const handleClear = () => {
         resetFormFields();
     };
 
-    const handleTypeChange = (value) => {
+    const handleTypeSelect = (value) => {
         onTypeChange(value);
         if (value === "Card Thick Place Entry") {
             stampNow();
@@ -96,38 +120,67 @@ function CardThickPlaceEntry({
         }
     };
 
-    const handleSubmit = async () => {
-        const entries = machines.filter((machine) => machineValues[machine] !== "");
+    const validateForm = () => {
+        const nextErrors = {};
 
-        if (!entries.length) {
-            setFormMessage("Please enter at least one machine value.");
+        if (!selectedType) nextErrors.selectedType = true;
+        if (!String(idNo || "").trim()) nextErrors.idNo = true;
+        machines.forEach((machine) => {
+            if (String(machineValues[machine] || "").trim() === "") {
+                nextErrors[machine] = true;
+            }
+        });
+
+        setErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length) {
+            setFormMessage("Please fill all required fields before preview.");
             setIsError(true);
-            return;
+            return false;
         }
 
         setFormMessage("");
         setIsError(false);
+        return true;
+    };
+
+    const handleSubmit = async () => {
+        const entries = machines.filter((machine) => machineValues[machine] !== "");
 
         try {
             for (const machine of entries) {
-                await dispatch(submitCardingCardThickPlace({
-                    id_no: idNo,
-                    entry_date: date,
-                    entry_time: time,
-                    machine,
-                    cv_value: parseFloat(machineValues[machine]),
-                    unit: "5m CV",
-                })).unwrap();
+                await dispatch(
+                    submitCardingCardThickPlace({
+                        id_no: idNo,
+                        entry_date: date,
+                        entry_time: time,
+                        machine,
+                        cv_value: parseFloat(machineValues[machine]),
+                        unit: "5m CV",
+                    })
+                ).unwrap();
             }
 
             setFormMessage("Record submitted successfully.");
             setIsError(false);
+            setShowPreview(false);
             resetFormFields();
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");
             setIsError(true);
         }
     };
+
+    const previewItems = [
+        { label: "Type", value: selectedType },
+        { label: "ID No.", value: idNo },
+        { label: "Date", value: date },
+        { label: "Time", value: time },
+        ...machines.map((machine) => ({
+            label: machine,
+            value: machineValues[machine],
+        })),
+    ];
 
     return (
         <>
@@ -138,8 +191,9 @@ function CardThickPlaceEntry({
                             <label>Type</label>
                             <select
                                 value={selectedType}
-                                onChange={(e) => handleTypeChange(e.target.value)}
+                                onChange={(e) => handleTypeSelect(e.target.value)}
                                 onWheel={(e) => e.currentTarget.blur()}
+                                className={errors.selectedType ? styles["field-error"] : ""}
                             >
                                 <option value="">Select Type</option>
                                 {types.map((item) => (
@@ -155,8 +209,16 @@ function CardThickPlaceEntry({
                                 <label>ID No.</label>
                                 <input
                                     value={idNo}
-                                    onChange={(e) => setIdNo(e.target.value)}
+                                    onChange={(e) => {
+                                        setIdNo(e.target.value);
+                                        setErrors((current) => {
+                                            const next = { ...current };
+                                            delete next.idNo;
+                                            return next;
+                                        });
+                                    }}
                                     onWheel={(e) => e.currentTarget.blur()}
+                                    className={errors.idNo ? styles["field-error"] : ""}
                                 />
                             </div>
                         )}
@@ -202,6 +264,7 @@ function CardThickPlaceEntry({
                                             value={machineValues[machine]}
                                             onChange={(e) => handleChange(machine, e.target.value)}
                                             onWheel={(e) => e.currentTarget.blur()}
+                                            className={errors[machine] ? styles["field-error"] : ""}
                                         />
                                     </div>
                                 ))}
@@ -214,32 +277,18 @@ function CardThickPlaceEntry({
             {showForm ? (
                 <>
                     <div className={styles["card-footer"]}>
-                        <button
-                            type="button"
-                            className={styles["card-back"]}
-                            onClick={() => router.push("/dashboard")}
-                        >
-                            ← Back to Dashboard
-                        </button>
-
-                        <div className={styles["card-right-actions"]}>
-                            <button
-                                type="button"
-                                className={styles["card-secondary"]}
-                                onClick={handleClear}
-                            >
-                                Clear Form
-                            </button>
-
-                            <button
-                                type="button"
-                                className={styles["card-primary"]}
-                                onClick={handleSubmit}
-                                disabled={isLoading}
-                            >
-                                {isLoading ? "Submitting..." : "Submit"}
-                            </button>
-                        </div>
+                        <Footer
+                            isMobile={isMobile}
+                            onBack={() => router.push("/dashboard")}
+                            onClear={handleClear}
+                            onSave={() => {
+                                if (validateForm()) {
+                                    setShowPreview(true);
+                                }
+                            }}
+                            saveLabel={isLoading ? "Submitting..." : "Preview"}
+                            disabled={isLoading}
+                        />
                     </div>
 
                     {formMessage ? (
@@ -251,6 +300,17 @@ function CardThickPlaceEntry({
                             {formMessage}
                         </div>
                     ) : null}
+
+                    <PreviewModal
+                        open={showPreview}
+                        title="Carding Preview"
+                        subtitle="Carding Notebook / Card Thick Place Entry"
+                        items={previewItems}
+                        typeValue={selectedType}
+                        onCancel={() => setShowPreview(false)}
+                        onConfirm={handleSubmit}
+                        confirmLabel={isLoading ? "Submitting..." : "Submit"}
+                    />
                 </>
             ) : null}
         </>

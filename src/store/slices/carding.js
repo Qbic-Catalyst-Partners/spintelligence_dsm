@@ -1,7 +1,9 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import {
+    fetchCardingDfkPressureEntries,
     submitBetweenWithinCardEntry,
     submitCardThickPlaceEntry,
+    submitCardingDfkPressureEntry,
     submitNatiDataEntry,
 } from "@/apis/carding";
 
@@ -45,6 +47,28 @@ export const submitCardingNati = createAsyncThunk(
     }
 );
 
+export const submitCardingDfkPressure = createAsyncThunk(
+    "carding/submitDfkPressure",
+    async (payload, { rejectWithValue }) => {
+        try {
+            return await submitCardingDfkPressureEntry(payload);
+        } catch (error) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+export const fetchCardingDfkPressure = createAsyncThunk(
+    "carding/fetchDfkPressure",
+    async (params, { rejectWithValue }) => {
+        try {
+            return await fetchCardingDfkPressureEntries(params);
+        } catch (error) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
 /* =======================
    INITIAL STATE
 ======================= */
@@ -53,7 +77,10 @@ const initialState = {
     betweenWithin: null,
     cardThickPlace: null,
     nati: null,
+    dfkPressure: null,
+    dfkPressureEntries: [],
     isLoading: false,
+    listLoading: false,
     error: null,
 };
 
@@ -69,6 +96,7 @@ const cardingSlice = createSlice({
             state.betweenWithin = null;
             state.cardThickPlace = null;
             state.nati = null;
+            state.dfkPressure = null;
             state.isLoading = false;
             state.error = null;
         },
@@ -121,6 +149,34 @@ const cardingSlice = createSlice({
             })
             .addCase(submitCardingNati.rejected, (state, action) => {
                 state.isLoading = false;
+                state.error = action.payload;
+            })
+
+            /* =======================
+               DFK PRESSURE
+            ======================= */
+            .addCase(submitCardingDfkPressure.pending, (state) => {
+                state.isLoading = true;
+                state.error = null;
+            })
+            .addCase(submitCardingDfkPressure.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.dfkPressure = action.payload;
+            })
+            .addCase(submitCardingDfkPressure.rejected, (state, action) => {
+                state.isLoading = false;
+                state.error = action.payload;
+            })
+            .addCase(fetchCardingDfkPressure.pending, (state) => {
+                state.listLoading = true;
+                state.error = null;
+            })
+            .addCase(fetchCardingDfkPressure.fulfilled, (state, action) => {
+                state.listLoading = false;
+                state.dfkPressureEntries = action.payload;
+            })
+            .addCase(fetchCardingDfkPressure.rejected, (state, action) => {
+                state.listLoading = false;
                 state.error = action.payload;
             });
     },

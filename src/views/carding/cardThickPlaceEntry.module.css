@@ -4,15 +4,18 @@
 
 .card-page {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   background: #f8f6f6;
   font-family: "Inter", sans-serif;
+  min-height: 100vh;
 }
 
 .card-container {
-  width: 90%;
-  max-width: 1100px;
-  padding-top: 30px;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 30px 24px 40px;
 }
 
 /* ================= HEADER ================= */
@@ -64,6 +67,8 @@
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 24px 28px 20px;
+  max-width: 1120px;
+  margin: 0 auto;
 }
 
 /* ================= FORM ================= */
@@ -351,6 +356,11 @@
   border: 1px solid #fecaca;
 }
 
+.field-error {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
 .mobile-navbar {
   display: none;
 }
@@ -388,7 +398,7 @@
   .card-container {
     width: 100%;
     max-width: 420px;
-    margin: auto;
+    margin: 0 auto;
     padding: 56px 12px 0;
   }
 

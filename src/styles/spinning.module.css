@@ -160,7 +160,7 @@
 
 .input-error {
   border: 1px solid #ef4444 !important;
-  background: #fef2f2 !important;
+  background: #fff1f2 !important;
 }
 
 .input-error:focus {
@@ -211,6 +211,216 @@
   outline: none;
   border-color: #4965b7;
   box-shadow: 0 0 0 2px rgba(73, 101, 183, 0.12);
+}
+
+.segmentedControl {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 8px;
+  border: 1px solid #d8e2f3;
+  background: #ffffff;
+  padding: 3px;
+  gap: 2px;
+}
+
+.segmentButton {
+  min-width: 88px;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.segmentButtonActive {
+  background: #3d539f;
+  color: #ffffff;
+}
+
+.segmented-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.12);
+}
+
+.countTypeSpacer {
+  visibility: hidden;
+}
+
+.countChangeSegmented {
+  margin-top: auto;
+}
+
+.countChangeActionsRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.countReadingGroup {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.countReadingControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.countReadingControls input {
+  width: 132px;
+}
+
+.generateButton {
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 6px;
+  background: #3d539f;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.countChangeTableWrap {
+  margin-top: 18px;
+  overflow-x: auto;
+}
+
+.countChangeTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.countChangeTable th,
+.countChangeTable td {
+  padding: 14px 8px;
+  border-bottom: 1px solid #d8dee8;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.countChangeTable th {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.countChangeTable td {
+  color: #1e293b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ringFrameTableWrap {
+  margin-top: 18px;
+  overflow-x: hidden;
+}
+
+.ringFrameTable {
+  width: 100%;
+  min-width: 0;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+  table-layout: fixed;
+}
+
+.ringFrameTable th {
+  padding: 0 4px 6px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.ringFrameTable td {
+  padding: 0 3px;
+  vertical-align: middle;
+}
+
+.ringFrameMachineCell {
+  color: #0f172a;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ringFrameInput,
+.ringFrameInputWide {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid #dde6f1;
+  background: #f8fbff;
+  font-size: 10px;
+}
+
+.ringFrameInputWide {
+  min-width: 58px;
+}
+
+.ringFrameCheckbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.ringFrameCheckbox input {
+  display: none;
+}
+
+.ringFrameCheckbox span {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid #d8e2f3;
+  background: #f8fbff;
+  display: inline-block;
+}
+
+.ringFrameCheckbox input:checked + span {
+  background: #4965b7;
+  border-color: #4965b7;
+  box-shadow: inset 0 0 0 3px #f8fbff;
+}
+
+.ringFrameSummaryBox {
+  margin-top: 20px;
+  padding: 22px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.ringFrameSummaryGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.ringFrameComments {
+  grid-row: span 2;
+}
+
+.ringFrameComments textarea {
+  height: 104px;
 }
 
 /* Title row with blue icon */
@@ -633,6 +843,40 @@
     background: #3d539f;
     color: #fff;
     border: none;
+  }
+
+  .segmentedControl {
+    width: 100%;
+  }
+
+  .segmentButton {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .countReadingGroup {
+    max-width: none;
+  }
+
+  .countReadingControls {
+    flex-wrap: wrap;
+  }
+
+  .countReadingControls input,
+  .generateButton {
+    width: 100%;
+  }
+
+  .ringFrameSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ringFrameComments {
+    grid-row: auto;
+  }
+
+  .ringFrameTableWrap {
+    overflow-x: auto;
   }
 
 }

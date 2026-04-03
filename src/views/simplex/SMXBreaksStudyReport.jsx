@@ -99,8 +99,10 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     [form.nepsPlus140, form.thickPlus35, form.thinMinus40]
   );
 
-  const errorClass = (flag) =>
-    flag ? " border-red-500 bg-red-50 focus:ring-red-400 focus:border-red-500" : "";
+const errorClass = (flag) =>
+    flag ? " border-red-500 focus:ring-red-400 focus:border-red-500" : "";
+const errorStyle = (flag) =>
+    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -176,6 +178,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <label className="text-[14px] font-semibold text-slate-700">Type</label>
           <select
             className={`${topFieldClass}${errorClass(errors.form?.type)}`}
+            style={errorStyle(errors.form?.type)}
             value={selectedTypeName}
             onChange={(e) => {
               handleFormChange("type", e.target.value);
@@ -194,6 +197,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <label className="text-[14px] font-semibold text-slate-700">Simplex No.</label>
           <select
             className={`${topFieldClass}${errorClass(errors.form?.simplexNo)}`}
+            style={errorStyle(errors.form?.simplexNo)}
             value={form.simplexNo}
             onChange={(e) => handleFormChange("simplexNo", e.target.value)}
           >
@@ -211,6 +215,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.tpi)}`}
+            style={errorStyle(errors.form?.tpi)}
             value={form.tpi}
             onChange={(e) => handleFormChange("tpi", e.target.value)}
           />
@@ -221,6 +226,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.becomode)}`}
+            style={errorStyle(errors.form?.becomode)}
             value={form.becomode}
             onChange={(e) => handleFormChange("becomode", e.target.value)}
           />
@@ -231,6 +237,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="date"
             className={`${topFieldClass}${errorClass(errors.form?.date)}`}
+            style={errorStyle(errors.form?.date)}
             value={form.date}
             onChange={(e) => handleFormChange("date", e.target.value)}
           />
@@ -241,6 +248,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.countName)}`}
+            style={errorStyle(errors.form?.countName)}
             value={form.countName}
             onChange={(e) => handleFormChange("countName", e.target.value)}
           />
@@ -252,6 +260,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
             type="time"
             step="1"
             className={`${topFieldClass}${errorClass(errors.form?.time)}`}
+            style={errorStyle(errors.form?.time)}
             value={form.time}
             onChange={(e) => handleFormChange("time", e.target.value)}
           />
@@ -262,6 +271,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.trialName)}`}
+            style={errorStyle(errors.form?.trialName)}
             value={form.trialName}
             onChange={(e) => handleFormChange("trialName", e.target.value)}
           />
@@ -271,6 +281,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <label className="text-[14px] font-semibold text-slate-700">Type</label>
           <select
             className={`${topFieldClass}${errorClass(errors.form?.reportType)}`}
+            style={errorStyle(errors.form?.reportType)}
             value={form.reportType}
             onChange={(e) => handleFormChange("reportType", e.target.value)}
           >
@@ -290,6 +301,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.nature)}`}
+            style={errorStyle(errors.form?.nature)}
             value={form.nature}
             onChange={(e) => handleFormChange("nature", e.target.value)}
           />
@@ -300,6 +312,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.unitNo)}`}
+            style={errorStyle(errors.form?.unitNo)}
             value={form.unitNo}
             onChange={(e) => handleFormChange("unitNo", e.target.value)}
           />
@@ -310,6 +323,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.rawMaterial)}`}
+            style={errorStyle(errors.form?.rawMaterial)}
             value={form.rawMaterial}
             onChange={(e) => handleFormChange("rawMaterial", e.target.value)}
           />
@@ -320,6 +334,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <input
             type="text"
             className={`${topFieldClass}${errorClass(errors.form?.mixing)}`}
+            style={errorStyle(errors.form?.mixing)}
             value={form.mixing}
             onChange={(e) => handleFormChange("mixing", e.target.value)}
           />
@@ -329,6 +344,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           <label className="text-[14px] font-semibold text-slate-700">Yarn Results</label>
           <textarea
             className={`w-full min-h-[58px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors resize-none${errorClass(errors.form?.yarnResults)}`}
+            style={errorStyle(errors.form?.yarnResults)}
             value={form.yarnResults}
             onChange={(e) => handleFormChange("yarnResults", e.target.value)}
           />
@@ -352,6 +368,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <input
                   type="text"
                   className={`${whiteFieldClass}${errorClass(errors.form?.[field])}`}
+                  style={errorStyle(errors.form?.[field])}
                   value={form[field]}
                   onChange={(e) => handleFormChange(field, e.target.value)}
                 />
@@ -373,6 +390,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <input
                   type="text"
                   className={`${topFieldClass}${errorClass(errors.qp?.[label])}`}
+                  style={errorStyle(errors.qp?.[label])}
                   value={qualityParameters[label]}
                   onChange={(e) => handleQualityParameterChange(label, e.target.value)}
                 />
@@ -400,7 +418,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <label className="text-[14px] font-semibold text-slate-700">{label}</label>
                 <input
                   type="text"
-                  className={whiteFieldClass}
+                  className={`${whiteFieldClass}${errorClass(errors.form?.[field])}`}
+                  style={errorStyle(errors.form?.[field])}
                   value={form[field]}
                   onChange={(e) => handleFormChange(field, e.target.value)}
                 />
@@ -425,7 +444,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <label className="text-[14px] font-semibold text-slate-700">{label}</label>
                 <input
                   type="text"
-                  className={topFieldClass}
+                  className={`${topFieldClass}${errorClass(errors.form?.[field])}`}
+                  style={errorStyle(errors.form?.[field])}
                   value={form[field]}
                   onChange={(e) => handleFormChange(field, e.target.value)}
                 />
@@ -450,7 +470,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <label className="text-[14px] font-semibold text-slate-700">{label}</label>
                 <input
                   type="text"
-                  className={topFieldClass}
+                  className={`${topFieldClass}${errorClass(errors.form?.[field])}`}
+                  style={errorStyle(errors.form?.[field])}
                   value={form[field]}
                   onChange={(e) => handleFormChange(field, e.target.value)}
                 />
@@ -478,7 +499,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <label className="text-[14px] font-semibold text-slate-700">{label}</label>
                 <input
                   type="text"
-                  className={whiteFieldClass}
+                  className={`${whiteFieldClass}${errorClass(errors.form?.[field])}`}
+                  style={errorStyle(errors.form?.[field])}
                   value={form[field]}
                   onChange={(e) => handleFormChange(field, e.target.value)}
                 />

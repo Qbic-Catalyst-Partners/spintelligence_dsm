@@ -302,7 +302,15 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 <input
                                     className={errors.machine ? styles["input-error"] : ""}
                                     value={machine}
-                                    onChange={(e) => setMachine(e.target.value)}
+                                    onChange={(e) => {
+                                        setMachine(e.target.value);
+                                        setErrors((prev) => {
+                                            if (!prev.machine) return prev;
+                                            const next = { ...prev };
+                                            delete next.machine;
+                                            return next;
+                                        });
+                                    }}
                                 />
                             </div>
 
@@ -311,7 +319,15 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 <select
                                     className={errors.variety ? styles["input-error"] : ""}
                                     value={variety}
-                                    onChange={(e) => setVariety(e.target.value)}
+                                    onChange={(e) => {
+                                        setVariety(e.target.value);
+                                        setErrors((prev) => {
+                                            if (!prev.variety) return prev;
+                                            const next = { ...prev };
+                                            delete next.variety;
+                                            return next;
+                                        });
+                                    }}
                                 >
                                     <option value="">Select Variety</option>
                                     <option value="Cotton">Cotton</option>
@@ -325,7 +341,15 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 <select
                                     className={errors.lapType ? styles["input-error"] : ""}
                                     value={lapType}
-                                    onChange={(e) => setLapType(e.target.value)}
+                                    onChange={(e) => {
+                                        setLapType(e.target.value);
+                                        setErrors((prev) => {
+                                            if (!prev.lapType) return prev;
+                                            const next = { ...prev };
+                                            delete next.lapType;
+                                            return next;
+                                        });
+                                    }}
                                 >
                                     <option value="">Select Type</option>
                                     <option value="Ribbon Lap">Ribbon Lap</option>
@@ -340,7 +364,15 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 <input
                                     className={errors.lapWeight ? styles["input-error"] : ""}
                                     value={lapWeight}
-                                    onChange={(e) => setLapWeight(e.target.value)}
+                                    onChange={(e) => {
+                                        setLapWeight(e.target.value);
+                                        setErrors((prev) => {
+                                            if (!prev.lapWeight) return prev;
+                                            const next = { ...prev };
+                                            delete next.lapWeight;
+                                            return next;
+                                        });
+                                    }}
                                 />
                             </div>
                         </div>

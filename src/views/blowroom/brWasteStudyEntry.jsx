@@ -40,9 +40,22 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+        setErrors((prev) => {
+            if (!prev[field]) return prev;
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
     };
 
     const handleWasteRowChange = (index, field, value) => {
+        setErrors((prev) => {
+            const key = `waste-${index}-${field}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
         setWasteRows(prev => {
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: value };
@@ -51,6 +64,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     const handleType3RowChange = (index, field, value) => {
+        setErrors((prev) => {
+            const key = `t3-${index}-${field}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
         setType3Rows(prev => {
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: value };

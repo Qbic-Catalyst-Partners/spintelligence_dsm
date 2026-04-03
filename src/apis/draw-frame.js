@@ -9,6 +9,10 @@ const COTS_BASE_URL =
     process.env.NEXT_PUBLIC_DRAWFRAME_COTS_URL ||
     `${API_BASE_URL}/drawframe/cots`;
 
+const UQC_BASE_URL =
+    process.env.NEXT_PUBLIC_DRAWFRAME_UQC_URL ||
+    `${API_BASE_URL}/drawframe/uqc`;
+
 const parseJson = async (response) => response.json().catch(() => null);
 
 export const submitDrawFrameYarnCvInspection = async (payload) => {
@@ -71,6 +75,51 @@ export const fetchDrawFrameCotsEntries = async ({ page = 1, limit = 10 } = {}) =
         }
 
         return Array.isArray(data) ? data : [];
+    } catch (error) {
+        throw new Error(error.message || "Server error occurred");
+    }
+};
+
+export const submitDrawFrameUqcInspection = async (payload) => {
+    try {
+        const response = await fetch(UQC_BASE_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await parseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data?.message || "Failed to save draw frame UQC data");
+        }
+
+        return data;
+    } catch (error) {
+        throw new Error(error.message || "Server error occurred");
+    }
+};
+
+export const fetchDrawFrameUqcEntries = async () => {
+    try {
+        const response = await fetch(UQC_BASE_URL, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+            },
+        });
+
+        const data = await parseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data?.message || "Failed to fetch draw frame UQC entries");
+        }
+
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data?.data)) return data.data;
+        return [];
     } catch (error) {
         throw new Error(error.message || "Server error occurred");
     }
