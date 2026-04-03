@@ -107,7 +107,7 @@ function Carding() {
                     )}
                 </div>
 
-                {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
+                
                 {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
                 {selectedType === "U% Data Entry" && (
                     <div
