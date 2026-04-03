@@ -6,6 +6,7 @@ import { MdEditNote } from "react-icons/md";
 import Image from 'next/image';
 
 import Footer from "../components/Footer";
+import PreviewModal from "@/components/PreviewModal";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import styles from "../styles/spinning.module.css";
 
@@ -31,6 +32,9 @@ function SpinningDepartment() {
     const [rhsValue, setRhsValue] = useState("");
     const [rhsRemarks, setRhsRemarks] = useState("");
     const [isMobile, setIsMobile] = useState(false);
+    const [errors, setErrors] = useState({});
+    const [showPreview, setShowPreview] = useState(false);
+    const [previewItems, setPreviewItems] = useState([]);
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -80,12 +84,10 @@ function SpinningDepartment() {
 
     useEffect(() => {
         if (success) {
-            alert("Record saved successfully");
             handleClearForm();
             dispatch(resetSpinningState());
         }
         if (error) {
-            alert(error);
             dispatch(resetSpinningState());
         }
     }, [success, error]);
@@ -137,19 +139,29 @@ function SpinningDepartment() {
         setLhsRemarks("");
         setRhsValue("");
         setRhsRemarks("");
+        setErrors({});
         router.push("/spinning", undefined, { shallow: true });
     };
 
-    const handleSaveRecord = () => {
-        if (!checkingType) return alert("Please select checking type");
-        if (!selectedMachine || !employeeSearch) return alert("Please fill all required fields");
-        if (
-            checkingType === "Speed Checking" &&
-            (displaySpeedValue === null || spindleSpeedValue === null || calculatedDifferenceValue === null)
-        ) {
-            return alert("Please enter both display speed and spindle speed");
+    const validate = () => {
+        const nextErrors = {};
+        if (!checkingType) nextErrors.checkingType = true;
+        if (!date) nextErrors.date = true;
+        if (!selectedMachine) nextErrors.selectedMachine = true;
+        if (!employeeSearch.trim()) nextErrors.employeeSearch = true;
+        if (checkingType === "Speed Checking") {
+            if (displaySpeedValue === null) nextErrors.displaySpeed = true;
+            if (spindleSpeedValue === null) nextErrors.spindleSpeed = true;
         }
+        if (!lhsValue.trim()) nextErrors.lhsValue = true;
+        if (!rhsValue.trim()) nextErrors.rhsValue = true;
+        if (!lhsRemarks.trim()) nextErrors.lhsRemarks = true;
+        if (!rhsRemarks.trim()) nextErrors.rhsRemarks = true;
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
 
+    const buildPayload = () => {
         const payload = {
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: parseInt(selectedMachine.replace("MC-", ""), 10) || 0,
@@ -160,19 +172,49 @@ function SpinningDepartment() {
             rhs_textremarks: rhsRemarks.trim(),
             lhs_audio: "",
             rhs_audio: "",
+            checking_type: checkingType,
         };
 
         if (checkingType === "Speed Checking") {
             payload.display_speed = displaySpeedValue;
             payload.spindle_speed = spindleSpeedValue;
             payload.difference = calculatedDifferenceValue;
-
-            // Keep aliases during backend transition so the record still stores
-            // if the API expects camelCase names instead of snake_case.
             payload.displaySpeed = displaySpeedValue;
             payload.spindleSpeed = spindleSpeedValue;
         }
+        return payload;
+    };
 
+    const handleSaveRecord = () => {
+        if (!validate()) return;
+
+        const headerItems = [
+            { label: "Checking Type", value: checkingType || "-" },
+            { label: "Date", value: date || getTodayDate() },
+            { label: "Machine", value: selectedMachine || "-" },
+            { label: "Employee", value: employeeSearch || "-" },
+        ];
+        const bodyItems = [
+            { label: "LHS Value", value: lhsValue || "-" },
+            { label: "RHS Value", value: rhsValue || "-" },
+            { label: "LHS Remarks", value: lhsRemarks || "-" },
+            { label: "RHS Remarks", value: rhsRemarks || "-" },
+        ];
+        if (checkingType === "Speed Checking") {
+            bodyItems.push(
+                { label: "Display Speed", value: displaySpeed || "-" },
+                { label: "Spindle Speed", value: spindleSpeed || "-" },
+                { label: "Difference", value: calculatedDifference || "-" },
+            );
+        }
+
+        setPreviewItems([...headerItems, ...bodyItems]);
+        setShowPreview(true);
+    };
+
+    const confirmSubmit = () => {
+        const payload = buildPayload();
+        setShowPreview(false);
         dispatch(submitSpinningRecord({ type: checkingType, payload }));
     };
 
@@ -219,7 +261,7 @@ function SpinningDepartment() {
                     Record and manage industrial machine quality inspections.
                 </p>
 
-                <div className={styles["sp-card"]}>
+        <div className={styles["sp-card"]}>
 
                     <div className={styles["title-row"]}>
                         <MdEditNote className={styles["title-icon"]} />
@@ -234,7 +276,7 @@ function SpinningDepartment() {
                             <div className={styles["sp-form-group"]}>
                                 <label>Type</label>
                                 <select
-                                    className={styles["highlight-input"]}
+                                    className={`${styles["highlight-input"]} ${errors.checkingType ? styles["input-error"] : ""}`}
                                     value={checkingType}
                                     onChange={handleTypeChange}
                                 >
@@ -249,7 +291,7 @@ function SpinningDepartment() {
                                 <label>Date</label>
                                 <input
                                     type="date"
-                                    className={styles["highlight-input"]}
+                                    className={`${styles["highlight-input"]} ${errors.date ? styles["input-error"] : ""}`}
                                     value={date}
                                     onChange={(e) => setDate(e.target.value)}
                                     disabled={checkingType !== ""}
@@ -259,7 +301,7 @@ function SpinningDepartment() {
                             <div className={styles["sp-form-group"]}>
                                 <label>Machine</label>
                                 <select
-                                    className={styles["highlight-input"]}
+                                    className={`${styles["highlight-input"]} ${errors.selectedMachine ? styles["input-error"] : ""}`}
                                     value={selectedMachine}
                                     onChange={(e) => setSelectedMachine(e.target.value)}
                                 >
@@ -282,7 +324,7 @@ function SpinningDepartment() {
                                         value={employeeSearch}
                                         onChange={(e) => { setEmployeeSearch(e.target.value); setShowEmployeeList(true); }}
                                         onFocus={() => setShowEmployeeList(true)}
-                                        className={`${styles["highlight-input"]} ${styles["employee-input"]}`}
+                                        className={`${styles["highlight-input"]} ${styles["employee-input"]} ${errors.employeeSearch ? styles["input-error"] : ""}`}
                                     />
                                 </div>
                                 {showEmployeeList && (
@@ -308,10 +350,11 @@ function SpinningDepartment() {
                                         <input
                                             type="number"
                                             placeholder="0.00"
-                                            value={displaySpeed}
-                                            onChange={(e) => setDisplaySpeed(e.target.value)}
-                                            onWheel={(e) => e.target.blur()}
-                                        />
+                                        value={displaySpeed}
+                                        onChange={(e) => setDisplaySpeed(e.target.value)}
+                                        onWheel={(e) => e.target.blur()}
+                                        className={errors.displaySpeed ? styles["input-error"] : ""}
+                                    />
                                     </div>
 
                                     <div className={styles["sp-form-group"]}>
@@ -319,10 +362,11 @@ function SpinningDepartment() {
                                         <input
                                             type="number"
                                             placeholder="0.00"
-                                            value={spindleSpeed}
-                                            onChange={(e) => setSpindleSpeed(e.target.value)}
-                                            onWheel={(e) => e.target.blur()}
-                                        />
+                                        value={spindleSpeed}
+                                        onChange={(e) => setSpindleSpeed(e.target.value)}
+                                        onWheel={(e) => e.target.blur()}
+                                        className={errors.spindleSpeed ? styles["input-error"] : ""}
+                                    />
                                     </div>
 
                                     <div className={styles["sp-form-group"]}>
@@ -357,6 +401,7 @@ function SpinningDepartment() {
                                         placeholder="Enter value..."
                                         value={lhsValue}
                                         onChange={(e) => setLhsValue(e.target.value)}
+                                        className={errors.lhsValue ? styles["input-error"] : ""}
                                     />
 
                                     <div className={styles["remarks-header"]}>
@@ -371,6 +416,7 @@ function SpinningDepartment() {
                                         value={lhsRemarks}
                                         maxLength={MAX_CHARS}
                                         onChange={(e) => setLhsRemarks(e.target.value)}
+                                        className={errors.lhsRemarks ? styles["input-error"] : ""}
                                     />
 
                                     <div className={styles["char-count"]}>
@@ -389,6 +435,7 @@ function SpinningDepartment() {
                                         placeholder="Enter value..."
                                         value={rhsValue}
                                         onChange={(e) => setRhsValue(e.target.value)}
+                                        className={errors.rhsValue ? styles["input-error"] : ""}
                                     />
 
                                     <div className={styles["remarks-header"]}>
@@ -403,6 +450,7 @@ function SpinningDepartment() {
                                         value={rhsRemarks}
                                         maxLength={MAX_CHARS}
                                         onChange={(e) => setRhsRemarks(e.target.value)}
+                                        className={errors.rhsRemarks ? styles["input-error"] : ""}
                                     />
 
                                     <div className={styles["char-count"]}>
@@ -428,6 +476,17 @@ function SpinningDepartment() {
 
                 </div>
             </div>
+
+            <PreviewModal
+                open={showPreview}
+                title="Quality Control - Spinning Notebook"
+                subtitle="Preview"
+                items={previewItems}
+                typeValue={checkingType || "Select Type"}
+                onCancel={() => setShowPreview(false)}
+                onConfirm={confirmSubmit}
+                confirmLabel="Submit"
+            />
         </div >
     );
 }

@@ -67,6 +67,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const [form, setForm] = useState(initialForm);
   const [stages, setStages] = useState([]);
   const [overallOpen, setOverallOpen] = useState("");
+  const [errors, setErrors] = useState({});
 
   const handleFormChange = (field, value) => {
     if (field === "entries" && value !== "" && !/^\d+$/.test(value)) return;
@@ -82,6 +83,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     
     setStages(createStages(totalEntries));
     setOverallOpen("");
+    setErrors((prev) => ({ ...prev, target: !form.target, entries: !form.entries }));
   };
 
   const handleRowChange = (stageIndex, rowIndex, field, value) => {
@@ -163,28 +165,26 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     setOverallOpen("");
   };
 
+  const buildPayload = () => ({
+    inspection_date: date,
+    mixing: mixing,
+    actual_specific_volume_target: Number(form.target),
+    no_of_entries: Number(form.entries),
+    entries: stages.flatMap((stage) =>
+      stage.rows.map((row) => ({
+        machine_name: stage.stageName,
+        weight: Number(row.weight),
+        volume_1: Number(row.vol1),
+        volume_2: Number(row.vol2),
+        apparent_specific_volume: Number(row.asv),
+        actual_op_value: Number(row.aov),
+      }))
+    ),
+  });
+
   const handleSubmit = async () => {
-    
-
-    const payload = {
-      inspection_date: date,
-      mixing: mixing,
-      actual_specific_volume_target: Number(form.target),
-      no_of_entries: Number(form.entries),
-      entries: stages.flatMap((stage) =>
-        stage.rows.map((row) => ({
-          machine_name: stage.stageName,
-          weight: Number(row.weight),
-          volume_1: Number(row.vol1),
-          volume_2: Number(row.vol2),
-          apparent_specific_volume: Number(row.asv),
-          actual_op_value: Number(row.aov),
-        }))
-      ),
-    };
-
     try {
-      const res = await mixingOpennessDataEntry(payload);
+      const res = await mixingOpennessDataEntry(buildPayload());
       alert(res.message || "Saved successfully");
       handleClear();
     } catch (error) {
@@ -192,7 +192,49 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     }
   };
 
-  useImperativeHandle(ref, () => ({ submit: handleSubmit, clear: handleClear }));
+  const getPreviewData = () => {
+    const header = [
+      { label: "Date", value: date },
+      { label: "Mixing", value: mixing },
+      { label: "Target (ASV)", value: form.target },
+      { label: "Entries (N)", value: form.entries },
+    ];
+
+    const stageRows = stages.flatMap((stage, stageIndex) =>
+      stage.rows.map((row, rowIndex) => ({
+        label: `${stage.stageName} - Row ${rowIndex + 1}`,
+        value: `W:${row.weight} | V1:${row.vol1} | V2:${row.vol2} | ASV:${row.asv} | AOV:${row.aov}`,
+      }))
+    );
+
+    const stageSummaries = stages.map((stage, idx) => ({
+      label: `${stage.stageName} Openness %`,
+      value: stage.openness,
+    }));
+
+    return [...header, ...stageRows, ...stageSummaries, { label: "Overall Openness %", value: overallOpen }];
+  };
+
+  useImperativeHandle(ref, () => ({
+    submit: handleSubmit,
+    clear: handleClear,
+    getPreviewData,
+    getPayload: buildPayload,
+    validate: () => {
+      const nextErrors = {};
+      if (!form.target) nextErrors.target = true;
+      if (!form.entries) nextErrors.entries = true;
+      stages.forEach((stage, sIdx) => {
+        stage.rows.forEach((row, rIdx) => {
+          ["weight","vol1","vol2"].forEach((k)=>{
+            if (String(row[k]||"").trim()==="") nextErrors[`stage-${sIdx}-row-${rIdx}-${k}`]=true;
+          });
+        });
+      });
+      setErrors(nextErrors);
+      return Object.keys(nextErrors).length === 0;
+    },
+  }));
 
   let runningIndex = 0;
 
@@ -204,6 +246,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           placeholder="1.0"
           value={form.target}
           onChange={(value) => handleFormChange("target", value)}
+          error={errors.target}
         />
 
         <div className={styles.generateField}>
@@ -212,6 +255,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
             placeholder="Enter N"
             value={form.entries}
             onChange={(value) => handleFormChange("entries", value)}
+            error={errors.entries}
           />
           <button type="button" className={styles.generateButton} onClick={handleGenerate}>
             Generate
@@ -230,23 +274,26 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
               <div key={`${stage.stageName}-${rowIndex}`} className={styles.rowBox}>
                 <div className={styles.rowNumber}>{runningIndex}</div>
                 <div className={styles.rowGrid}>
-                  <CustomInput
+                 <CustomInput
                     label="Weight (W)"
                     placeholder="0.00"
                     value={row.weight}
                     onChange={(value) => handleRowChange(stageIndex, rowIndex, "weight", value)}
+                    error={errors[`stage-${stageIndex}-row-${rowIndex}-weight`]}
                   />
                   <CustomInput
                     label="Volume 1"
                     placeholder="0.00"
                     value={row.vol1}
                     onChange={(value) => handleRowChange(stageIndex, rowIndex, "vol1", value)}
+                    error={errors[`stage-${stageIndex}-row-${rowIndex}-vol1`]}
                   />
                   <CustomInput
                     label="Volume 2"
                     placeholder="0.00"
                     value={row.vol2}
                     onChange={(value) => handleRowChange(stageIndex, rowIndex, "vol2", value)}
+                    error={errors[`stage-${stageIndex}-row-${rowIndex}-vol2`]}
                   />
                 </div>
 

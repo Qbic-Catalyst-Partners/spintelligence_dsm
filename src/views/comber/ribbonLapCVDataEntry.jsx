@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberRibbonLapCV } from "@/store/slices/comber";
+import Footer from "@/components/Footer";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -22,10 +23,13 @@ const emptyComberState = {
     error: null,
 };
 
-function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
+const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
+    { types, selectedType, onTypeChange, showForm, onPreview },
+    ref
+) {
     const router = useRouter();
     const dispatch = useDispatch();
-    const { isLoading, data, error } = useSelector((state) => state.comber ?? emptyComberState);
+    const { data, error, isLoading } = useSelector((state) => state.comber ?? emptyComberState);
 
     const [sampleCount, setSampleCount] = useState(defaultSampleCount);
     const [samples, setSamples] = useState(createEmptySamples(defaultSampleCount));
@@ -36,6 +40,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
     const [date, setDate] = useState("");
     const [stats, setStats] = useState(defaultStats);
     const [formMessage, setFormMessage] = useState("");
+    const [errors, setErrors] = useState({});
 
     const isCVEntry = selectedType === "Ribbon Lap CV Data Entry";
 
@@ -66,6 +71,19 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
         [samples]
     );
 
+    const resetForm = () => {
+        setSampleCount(defaultSampleCount);
+        setSamples(createEmptySamples(defaultSampleCount));
+        setLapWeight("");
+        setMachine("");
+        setVariety("");
+        setLapType("");
+        setDate(new Date().toISOString().split("T")[0]);
+        setStats(defaultStats);
+        setFormMessage("");
+        setErrors({});
+    };
+
     const handleGenerate = () => {
         const nextCount = Math.max(1, Number(sampleCount) || defaultSampleCount);
         setSampleCount(nextCount);
@@ -78,22 +96,33 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
         });
         setStats(defaultStats);
         setFormMessage("");
+        setErrors((prev) => {
+            const next = { ...prev };
+            delete next.samplesEmpty;
+            return next;
+        });
     };
 
     const handleSampleChange = (index, value) => {
-        setSamples((currentSamples) => {
-            const nextSamples = [...currentSamples];
-            nextSamples[index] = value;
-            return nextSamples;
-        });
+        const nextSamples = [...samples];
+        nextSamples[index] = value;
+        setSamples(nextSamples);
         setFormMessage("");
+        setErrors((prev) => {
+            if (!prev.samplesEmpty) return prev;
+            if (nextSamples.some((v) => v !== "")) {
+                const { samplesEmpty, ...rest } = prev;
+                return rest;
+            }
+            return prev;
+        });
     };
 
     const calculateStats = () => {
         if (!numericSamples.length) {
-            setFormMessage("Enter at least one valid sample value to calculate statistics.");
             setStats(defaultStats);
-            return;
+            setErrors((prev) => ({ ...prev, samplesEmpty: true }));
+            return false;
         }
 
         const avg = numericSamples.reduce((sum, value) => sum + value, 0) / numericSamples.length;
@@ -111,6 +140,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
             cv: cv.toFixed(2),
         });
         setFormMessage("");
+        return true;
     };
 
     const buildPayload = () => {
@@ -131,42 +161,79 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
         };
     };
 
-    const handleSubmit = async () => {
-        if (!machine) {
-            setFormMessage("Please fill machine name before submitting.");
-            return;
-        }
-
-        if (!variety) {
-            setFormMessage("Please select variety before submitting.");
-            return;
-        }
-
+    const validate = () => {
+        const nextErrors = {};
+        if (!machine) nextErrors.machine = true;
+        if (!variety) nextErrors.variety = true;
         if (isCVEntry) {
             if (!lapType || !lapWeight) {
-                setFormMessage("Please fill lap type and lap weight before submitting.");
-                return;
+                if (!lapType) nextErrors.lapType = true;
+                if (!lapWeight) nextErrors.lapWeight = true;
             }
 
             if (!stats.avg) {
-                setFormMessage("Calculate statistics before submitting.");
-                return;
+                nextErrors.stats = true;
             }
         }
 
         if (!samples.some((value) => value !== "")) {
-            setFormMessage("Please enter at least one sample value.");
-            return;
+            nextErrors.samplesEmpty = true;
         }
 
+        setErrors(nextErrors);
         setFormMessage("");
+        return Object.keys(nextErrors).length === 0;
+    };
+
+    const handleSubmit = async () => {
+        const valid = validate();
+        if (!valid) return false;
 
         try {
             await dispatch(submitComberRibbonLapCV(buildPayload())).unwrap();
+            setErrors({});
+            return true;
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save comber data.");
+            return false;
         }
     };
+
+    const getPreviewData = () => {
+        const base = [
+            { label: "Type", value: selectedType || "Ribbon Lap CV Data Entry" },
+            { label: "Record Date", value: date },
+            { label: "Machine Name", value: machine },
+            { label: "Variety", value: variety },
+        ];
+
+        if (lapType) base.push({ label: "Lap Type", value: lapType });
+        if (lapWeight) base.push({ label: "Lap Weight", value: lapWeight });
+
+        const sampleItems = samples
+            .map((value, index) => ({ label: `Sample ${index + 1}`, value: value || "-" }))
+            .filter((item) => item.value !== "-");
+
+        const statsItems = stats.avg
+            ? [
+                  { label: "Average", value: stats.avg },
+                  { label: "Minimum", value: stats.min },
+                  { label: "Maximum", value: stats.max },
+                  { label: "Standard Deviation", value: stats.sd },
+                  { label: "CV %", value: stats.cv },
+              ]
+            : [];
+
+        return [...base, ...sampleItems, ...statsItems];
+    };
+
+    useImperativeHandle(ref, () => ({
+        clear: resetForm,
+        validate,
+        getPreviewData,
+        submit: handleSubmit,
+        calculateStats,
+    }));
 
     return (
         <>
@@ -195,7 +262,17 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
                                     <input
                                         type="number"
                                         value={sampleCount}
-                                        onChange={(e) => setSampleCount(e.target.value)}
+                                        className={errors.samplesEmpty ? styles["input-error"] : ""}
+                                        onChange={(e) => {
+                                            setSampleCount(e.target.value);
+                                            if (errors.samplesEmpty) {
+                                                setErrors((prev) => {
+                                                    const next = { ...prev };
+                                                    delete next.samplesEmpty;
+                                                    return next;
+                                                });
+                                            }
+                                        }}
                                         onWheel={(e) => e.currentTarget.blur()}
                                     />
                                     <button type="button" onClick={handleGenerate}>
@@ -223,6 +300,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
                             <div className={styles["cb-form-group"]}>
                                 <label>Machine Name</label>
                                 <input
+                                    className={errors.machine ? styles["input-error"] : ""}
                                     value={machine}
                                     onChange={(e) => setMachine(e.target.value)}
                                 />
@@ -231,6 +309,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
                             <div className={styles["cb-form-group"]}>
                                 <label>Variety</label>
                                 <select
+                                    className={errors.variety ? styles["input-error"] : ""}
                                     value={variety}
                                     onChange={(e) => setVariety(e.target.value)}
                                 >
@@ -244,6 +323,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
                             <div className={styles["cb-form-group"]}>
                                 <label>Type</label>
                                 <select
+                                    className={errors.lapType ? styles["input-error"] : ""}
                                     value={lapType}
                                     onChange={(e) => setLapType(e.target.value)}
                                 >
@@ -258,6 +338,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
                             <div className={styles["cb-form-group"]}>
                                 <label>Lap Weight</label>
                                 <input
+                                    className={errors.lapWeight ? styles["input-error"] : ""}
                                     value={lapWeight}
                                     onChange={(e) => setLapWeight(e.target.value)}
                                 />
@@ -274,6 +355,7 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
                                             type="number"
                                             placeholder="0.00"
                                             value={value}
+                                            className={errors.samplesEmpty && value === "" ? styles["input-error"] : ""}
                                             onChange={(e) => handleSampleChange(index, e.target.value)}
                                         />
                                     </div>
@@ -286,33 +368,15 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
 
             {showForm ? (
                 <>
-                    <div className={styles["cb-footer"]}>
-                        <button
-                            type="button"
-                            className={styles["cb-back"]}
-                            onClick={() => router.push("/dashboard")}
-                        >
-                            ← Back to Dashboard
-                        </button>
-
-                        <div className={styles["cb-right-actions"]}>
-                            <button
-                                type="button"
-                                className={styles["cb-secondary"]}
-                                onClick={calculateStats}
-                            >
-                                Calculate Statistics
-                            </button>
-
-                            <button
-                                type="button"
-                                className={styles["cb-primary"]}
-                                onClick={handleSubmit}
-                                disabled={isLoading}
-                            >
-                                {isLoading ? "Submitting..." : "Submit"}
-                            </button>
-                        </div>
+                    <div style={{ margin: "16px -24px 0" }}>
+                        <Footer
+                            onBack={() => router.push("/dashboard")}
+                            onSecondary={calculateStats}
+                            secondaryLabel="Calculate Statistics"
+                            onSave={onPreview ?? handleSubmit}
+                            saveLabel={isLoading ? "Submitting..." : onPreview ? "Save Record" : "Submit"}
+                            disabled={isLoading}
+                        />
                     </div>
 
                     {formMessage ? (
@@ -350,6 +414,6 @@ function RibbonLapCVDataEntry({ types, selectedType, onTypeChange, showForm }) {
             ) : null}
         </>
     );
-}
+});
 
 export default RibbonLapCVDataEntry;

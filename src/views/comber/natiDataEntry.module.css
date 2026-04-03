@@ -33,6 +33,16 @@
   height: 36px;
 }
 
+.input-error {
+  border: 1px solid #ef4444 !important;
+  background: #fef2f2 !important;
+}
+
+.input-error:focus {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.35);
+}
+
 .cb-form-group-field label {
   font-size: 12px;
   font-weight: 600;

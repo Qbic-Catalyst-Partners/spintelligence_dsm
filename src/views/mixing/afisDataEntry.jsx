@@ -15,6 +15,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
+    const [errors, setErrors] = useState({});
 
     const handleChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -23,35 +24,72 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
     useEffect(() => {
         if (actionSuccess) {
             setFormData(initialForm);
-            dispatch(clearMixingState());
         }
     }, [actionSuccess, dispatch]);
 
+    const buildPayload = () => ({
+        inspection_date:  date,
+        lot_no:           lotNo,
+        variety:          formData.variety,
+        invoice_no:       formData.invoiceNo,
+        invoice_date:     formData.invoiceDate,
+        uql:              Number(formData.uql)          || 0,
+        l5:               Number(formData.l5)           || 0,
+        sfc_n:            Number(formData.sfcN)         || 0,
+        ifc:              Number(formData.ifc)          || 0,
+        fibre_neps_gms:   Number(formData.fibreNepsGms) || 0,
+        sfc_w:            Number(formData.sfcW)         || 0,
+        maturity:         Number(formData.maturity)     || 0,
+        fineness:         Number(formData.fineness)     || 0,
+        scn_gms:          Number(formData.scnGms)       || 0,
+    });
+
     const handleSubmit = () => {
-        dispatch(submitAfis({
-            inspection_date:  date,
-            lot_no:           lotNo,
-            variety:          formData.variety,
-            invoice_no:       formData.invoiceNo,
-            invoice_date:     formData.invoiceDate,
-            uql:              Number(formData.uql)          || 0,
-            l5:               Number(formData.l5)           || 0,
-            sfc_n:            Number(formData.sfcN)         || 0,
-            ifc:              Number(formData.ifc)          || 0,
-            fibre_neps_gms:   Number(formData.fibreNepsGms) || 0,
-            sfc_w:            Number(formData.sfcW)         || 0,
-            maturity:         Number(formData.maturity)     || 0,
-            fineness:         Number(formData.fineness)     || 0,
-            scn_gms:          Number(formData.scnGms)       || 0,
-        }));
+        dispatch(submitAfis(buildPayload()));
     };
 
     const handleClear = () => {
         setFormData(initialForm);
         dispatch(clearMixingState());
+        setErrors({});
     };
 
-    useImperativeHandle(ref, () => ({ submit: handleSubmit, clear: handleClear }));
+    const getPreviewData = () => ([
+        { label: "Date", value: date },
+        { label: "Lot No", value: lotNo },
+        { label: "Variety", value: formData.variety },
+        { label: "Invoice No", value: formData.invoiceNo },
+        { label: "Invoice Date", value: formData.invoiceDate },
+        { label: "UQL", value: formData.uql },
+        { label: "L5%", value: formData.l5 },
+        { label: "SFC(N)", value: formData.sfcN },
+        { label: "IFC %", value: formData.ifc },
+        { label: "Fibre Neps Gms", value: formData.fibreNepsGms },
+        { label: "SFC(W)", value: formData.sfcW },
+        { label: "Maturity", value: formData.maturity },
+        { label: "Fineness", value: formData.fineness },
+        { label: "SCN (gms)", value: formData.scnGms },
+    ]);
+
+    const validate = () => {
+        const required = [
+            "variety","invoiceNo","invoiceDate","uql","l5","sfcN","ifc","fibreNepsGms","sfcW","maturity","fineness","scnGms"
+        ];
+        const nextErrors = required.reduce((acc, key) => {
+            if (String(formData[key] || "").trim() === "") acc[key] = true;
+            return acc;
+        }, {});
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
+
+    useImperativeHandle(ref, () => ({
+        submit: handleSubmit,
+        clear: handleClear,
+        getPreviewData,
+        getPayload: buildPayload,
+        validate,
+    }));
 
     return (
         <>
@@ -60,7 +98,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                 <div className={styles['mixx-group']}>
                     <label className="text-xs font-semibold text-slate-700">Variety</label>
                     <select
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
                         onChange={(e) => handleChange('variety', e.target.value)}
                     >
@@ -76,6 +114,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder=""
                     value={formData.invoiceNo}
                     onChange={(value) => handleChange('invoiceNo', value)}
+                    error={errors.invoiceNo}
                 />
 
                 <CustomInput
@@ -83,6 +122,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     type="date"
                     value={formData.invoiceDate}
                     onChange={(value) => handleChange('invoiceDate', value)}
+                    error={errors.invoiceDate}
                 />
             </div>
 
@@ -93,6 +133,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter UQL"
                     value={formData.uql}
                     onChange={(value) => handleChange('uql', value)}
+                    error={errors.uql}
                 />
 
                 <CustomInput
@@ -100,6 +141,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter L5%"
                     value={formData.l5}
                     onChange={(value) => handleChange('l5', value)}
+                    error={errors.l5}
                 />
 
                 <CustomInput
@@ -107,6 +149,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter SFC(N)"
                     value={formData.sfcN}
                     onChange={(value) => handleChange('sfcN', value)}
+                    error={errors.sfcN}
                 />
             </div>
 
@@ -117,6 +160,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter IFC %"
                     value={formData.ifc}
                     onChange={(value) => handleChange('ifc', value)}
+                    error={errors.ifc}
                 />
 
                 <CustomInput
@@ -124,6 +168,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter Fibre Neps Gms"
                     value={formData.fibreNepsGms}
                     onChange={(value) => handleChange('fibreNepsGms', value)}
+                    error={errors.fibreNepsGms}
                 />
 
                 <CustomInput
@@ -131,6 +176,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter SFC(W)"
                     value={formData.sfcW}
                     onChange={(value) => handleChange('sfcW', value)}
+                    error={errors.sfcW}
                 />
             </div>
 
@@ -141,6 +187,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter Maturity"
                     value={formData.maturity}
                     onChange={(value) => handleChange('maturity', value)}
+                    error={errors.maturity}
                 />
 
                 <CustomInput
@@ -148,6 +195,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter Fineness"
                     value={formData.fineness}
                     onChange={(value) => handleChange('fineness', value)}
+                    error={errors.fineness}
                 />
 
                 <CustomInput
@@ -155,6 +203,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
                     placeholder="Enter SCN (gms)"
                     value={formData.scnGms}
                     onChange={(value) => handleChange('scnGms', value)}
+                    error={errors.scnGms}
                 />
             </div>
 

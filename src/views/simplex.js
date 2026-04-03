@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import PreviewModal from "@/components/PreviewModal";
 import SMXCotsChangeDataEntry from "@/views/simplex/SMXCotsChangeDataEntry";
 import SMXBreaksStudyReport from "@/views/simplex/SMXBreaksStudyReport";
 
@@ -15,12 +16,27 @@ function Simplex() {
   const router = useRouter();
   const childRef = useRef(null);
   const [selectedTypeName, setSelectedTypeName] = useState("SMXCots Change Data Entry");
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
 
   const selectedType = useMemo(
     () => simplexTypes.find((item) => item.name === selectedTypeName),
     [selectedTypeName]
   );
   const SelectedComponent = selectedType?.component ?? SMXCotsChangeDataEntry;
+
+  const openPreview = () => {
+    const valid = childRef.current?.validate ? childRef.current.validate() : true;
+    if (valid === false) return;
+    const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+    setPreviewItems(items);
+    setShowPreview(true);
+  };
+
+  const confirmSubmit = async () => {
+    setShowPreview(false);
+    await childRef.current?.submit?.();
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">
@@ -77,11 +93,22 @@ function Simplex() {
           <Footer
             onBack={() => router.push("/dashboard")}
             onClear={() => childRef.current?.clear()}
-            onSave={() => childRef.current?.submit()}
+            onSave={openPreview}
             saveLabel="Save Record"
           />
         </div>
       </div>
+
+      <PreviewModal
+        open={showPreview}
+        title="Quality Control - Simplex Notebook"
+        subtitle="Preview"
+        items={previewItems}
+        typeValue={selectedTypeName}
+        onCancel={() => setShowPreview(false)}
+        onConfirm={confirmSubmit}
+        confirmLabel="Submit"
+      />
     </div>
   );
 }

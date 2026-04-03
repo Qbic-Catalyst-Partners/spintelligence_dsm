@@ -1,5 +1,5 @@
-import React, { useState, useRef } from "react";
-import { useSelector } from "react-redux";
+import React, { useState, useRef, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
 import FibreDataEntry from "./mixing/fibreDataEntry";
@@ -8,6 +8,9 @@ import AfisDataEntry from "./mixing/afisDataEntry";
 import MoistureDataEntry from "./mixing/moistureDataEntry";
 import OpennessDataEntry from "./mixing/opennessDataEntry";
 import Footer from "@/components/Footer";
+import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
+import { clearMixingState } from "@/store/slices/mixing";
 
 const mixingDepartmentTypes = [
     { id: 1, name: "Cotton HVI Data Entry", component: CottonHVIDataEntry, needsLotNo: true },
@@ -22,15 +25,71 @@ const today = new Date().toISOString().split("T")[0];
 function Mixing() {
     const router = useRouter();
     const childRef = useRef(null);
-    const { actionLoading } = useSelector((state) => state.mixing);
+    const dispatch = useDispatch();
+    const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
 
     const [selectedTypeName, setSelectedTypeName] = useState("Cotton HVI Data Entry");
     const [date, setDate] = useState(today);
     const [lotNo, setLotNo] = useState("");
     const [mixingValue, setMixingValue] = useState("");
+    const [headerErrors, setHeaderErrors] = useState({});
+    const [showPreview, setShowPreview] = useState(false);
+    const [previewItems, setPreviewItems] = useState([]);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     const selectedType = mixingDepartmentTypes.find((item) => item.name === selectedTypeName);
     const SelectedComponent = selectedType?.component ?? null;
+
+    useEffect(() => {
+        if (actionSuccess) {
+            setShowSuccess(true);
+        }
+    }, [actionSuccess]);
+
+    const buildHeaderPreview = () => {
+        const list = [
+            { label: "Type", value: selectedTypeName },
+            { label: "Date", value: date },
+        ];
+        if (selectedType?.needsLotNo !== false) {
+            list.push({ label: "Lot No", value: lotNo });
+        }
+        if (selectedTypeName === "Openness Data Entry") {
+            list.push({ label: "Mixing", value: mixingValue });
+        }
+        return list;
+    };
+
+    const openPreview = () => {
+        const errors = {};
+        if (!date) errors.date = true;
+        if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
+        if (selectedTypeName === "Openness Data Entry" && !mixingValue) errors.mixing = true;
+
+        setHeaderErrors(errors);
+
+        const childValid = childRef.current?.validate ? childRef.current.validate() : true;
+        const hasErrors = Object.keys(errors).length > 0 || childValid === false;
+        if (hasErrors) return;
+
+        if (!SelectedComponent || !childRef.current?.getPreviewData) {
+            childRef.current?.submit?.();
+            return;
+        }
+        const childItems = childRef.current.getPreviewData() || [];
+        setPreviewItems([...buildHeaderPreview(), ...childItems]);
+        setShowPreview(true);
+    };
+
+    const confirmSubmit = () => {
+        setShowPreview(false);
+        childRef.current?.submit?.();
+    };
+
+    const handleSuccessClose = () => {
+        setShowSuccess(false);
+        dispatch(clearMixingState());
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 flex justify-center">
@@ -89,35 +148,43 @@ function Mixing() {
                                     </select>
                                 </div>
 
-                                {selectedTypeName === "Openness Data Entry" && (
-                                    <CustomInput
-                                        label="Mixing"
-                                        placeholder="Enter Mixing"
-                                        value={mixingValue}
-                                        onChange={(value) => setMixingValue(value)}
-                                    />
-                                )}
+                {selectedTypeName === "Openness Data Entry" && (
+                    <CustomInput
+                        label="Mixing"
+                        placeholder="Enter Mixing"
+                        value={mixingValue}
+                        onChange={(value) => setMixingValue(value)}
+                        error={headerErrors.mixing}
+                    />
+                )}
 
-                                <CustomInput
-                                    label="Date"
-                                    type="date"
-                                    value={date}
-                                    onChange={(value) => setDate(value)}
-                                />
+                <CustomInput
+                    label="Date"
+                    type="date"
+                    value={date}
+                    onChange={(value) => setDate(value)}
+                    error={headerErrors.date}
+                />
                                 
 
-                                {selectedType?.needsLotNo !== false && (
-                                    <CustomInput
-                                        label="Lot No"
-                                        placeholder="Enter Lot Number"
-                                        value={lotNo}
-                                        onChange={(value) => setLotNo(value)}
-                                    />
-                                )}
+                {selectedType?.needsLotNo !== false && (
+                    <CustomInput
+                        label="Lot No"
+                        placeholder="Enter Lot Number"
+                        value={lotNo}
+                        onChange={(value) => setLotNo(value)}
+                        error={headerErrors.lotNo}
+                    />
+                )}
                             </div>
 
                             {SelectedComponent && (
-                                <SelectedComponent ref={childRef} date={date} lotNo={lotNo} />
+                                <SelectedComponent
+                                    ref={childRef}
+                                    date={date}
+                                    lotNo={lotNo}
+                                    mixing={mixingValue}
+                                />
                             )}
                         </div>
                     </div>
@@ -125,12 +192,30 @@ function Mixing() {
                     <Footer
                         onBack={() => router.push("/dashboard")}
                         onClear={() => childRef.current?.clear()}
-                        onSave={() => childRef.current?.submit()}
+                        onSave={openPreview}
                         saveLabel={actionLoading ? "Saving..." : "Save Record"}
                         disabled={actionLoading}
                     />
                 </div>
             </div>
+
+            <PreviewModal
+                open={showPreview}
+                title="Quality Control - Mixing Notebook"
+                subtitle="Preview"
+                items={previewItems}
+                typeValue={selectedTypeName}
+                onCancel={() => setShowPreview(false)}
+                onConfirm={confirmSubmit}
+                confirmLabel="Submit"
+            />
+
+            <SuccessModal
+                open={showSuccess}
+                message="Data Submitted"
+                typeValue={selectedTypeName}
+                onClose={handleSuccessClose}
+            />
         </div>
     );
 }

@@ -158,6 +158,16 @@
   resize: none;
 }
 
+.input-error {
+  border: 1px solid #ef4444 !important;
+  background: #fef2f2 !important;
+}
+
+.input-error:focus {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.35);
+}
+
 /* Comparison Section */
 .comparison-box {
   background: #f8fafc;

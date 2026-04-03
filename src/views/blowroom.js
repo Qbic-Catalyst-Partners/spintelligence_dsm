@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
-import { useSelector } from "react-redux";
+import React, { useMemo, useRef, useState, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import { MdOutlineEditNote } from "react-icons/md";
 import CustomInput from "@/components/CustomInput";
@@ -7,6 +7,10 @@ import Footer from "@/components/Footer";
 import BlowRoomSync from "./blowroom/BlowRoomSync";
 import BrWasteStudyEntry from "./blowroom/brWasteStudyEntry";
 import DropTestDataEntry from "./blowroom/dropTestDataEntry";
+import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
+import { clearMixingState } from "@/store/slices/mixing";
+import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
 
 const blowroomTypes = [
   { id: 1, name: "Blow Room Sync", component: BlowRoomSync, needsLotNo: false },
@@ -18,10 +22,15 @@ const today = new Date().toISOString().split("T")[0];
 
 function BlowRoom() {
   const router = useRouter();
+  const dispatch = useDispatch();
   const childRef = useRef(null);
   const [selectedTypeName, setSelectedTypeName] = useState("Blow Room Sync");
   const [date, setDate] = useState(today);
   const [lotNo, setLotNo] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [headerErrors, setHeaderErrors] = useState({});
 
   const mixingState = useSelector((state) => state.mixing);
   const blowroomState = useSelector((state) => state.blowroom);
@@ -36,6 +45,55 @@ function BlowRoom() {
     selectedTypeName === "Blow Room Sync"
       ? blowroomState?.loading
       : mixingState?.actionLoading;
+
+  useEffect(() => {
+    if (blowroomState?.success || mixingState?.actionSuccess) {
+      setShowSuccess(true);
+    }
+  }, [blowroomState?.success, mixingState?.actionSuccess]);
+
+  const validateHeader = () => {
+    const errs = {};
+    if (selectedType?.needsLotNo && !lotNo) errs.lotNo = true;
+    if (!date) errs.date = true;
+    setHeaderErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const openPreview = () => {
+    const headerValid = validateHeader();
+    const childValid = childRef.current?.validate ? childRef.current.validate() : true;
+    if (!headerValid || childValid === false) return;
+
+    if (!childRef.current?.getPreviewData) {
+      childRef.current?.submit?.();
+      return;
+    }
+    const headerItems = [
+      { label: "Type", value: selectedTypeName },
+      { label: "Date", value: date },
+    ];
+    if (selectedType?.needsLotNo) headerItems.push({ label: "Lot No", value: lotNo });
+    const childItems = childRef.current.getPreviewData() || [];
+    setPreviewItems([...headerItems, ...childItems]);
+    setShowPreview(true);
+  };
+
+  const confirmSubmit = async () => {
+    setShowPreview(false);
+    try {
+      await childRef.current?.submit?.();
+      setShowSuccess(true);
+    } catch (e) {
+      // submission error handled by slices/toasts; keep modal closed
+    }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    dispatch(clearMixingState());
+    dispatch(resetBlowroom());
+  };
   const isSyncType = selectedTypeName === "Blow Room Sync";
   const isDropTestType = selectedTypeName === "Drop Test Data Entry";
 
@@ -98,21 +156,23 @@ function BlowRoom() {
                     </select>
                   </div>
 
-                  <CustomInput
-                    label="Date"
-                    type="date"
-                    value={date}
-                    onChange={(value) => setDate(value)}
-                  />
+              <CustomInput
+                label="Date"
+                type="date"
+                value={date}
+                onChange={(value) => setDate(value)}
+                error={headerErrors.date}
+              />
 
-                  {selectedType?.needsLotNo && (
-                    <CustomInput
-                      label="Lot No"
-                      placeholder="Enter Lot Number"
-                      value={lotNo}
-                      onChange={(value) => setLotNo(value)}
-                    />
-                  )}
+              {selectedType?.needsLotNo && (
+                <CustomInput
+                  label="Lot No"
+                  placeholder="Enter Lot Number"
+                  value={lotNo}
+                  onChange={(value) => setLotNo(value)}
+                  error={headerErrors.lotNo}
+                />
+              )}
                 </div>
               )}
 
@@ -133,12 +193,30 @@ function BlowRoom() {
           <Footer
             onBack={() => router.push("/dashboard")}
             onClear={() => childRef.current?.clear()}
-            onSave={() => childRef.current?.submit()}
+            onSave={openPreview}
             saveLabel={actionLoading ? "Saving..." : "Save Record"}
             disabled={actionLoading}
           />
         </div>
       </div>
+
+      <PreviewModal
+        open={showPreview}
+        title="Quality Control - Blow Room Notebook"
+        subtitle="Preview"
+        items={previewItems}
+        typeValue={selectedTypeName}
+        onCancel={() => setShowPreview(false)}
+        onConfirm={confirmSubmit}
+        confirmLabel="Submit"
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        message="Data Submitted"
+        typeValue={selectedTypeName}
+        onClose={handleSuccessClose}
+      />
     </div>
   );
 }

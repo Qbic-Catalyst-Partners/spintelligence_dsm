@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
@@ -18,10 +18,13 @@ const createEmptyEntries = (count) =>
         ratio_size_05: "",
     }));
 
-function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
+const NatiDataEntry = forwardRef(function NatiDataEntry(
+    { types, selectedType, onTypeChange, showForm },
+    ref
+) {
     const router = useRouter();
     const dispatch = useDispatch();
-    const { isLoading, data, error } = useSelector((state) => state.comber ?? emptyComberState);
+    const { data, error, isLoading } = useSelector((state) => state.comber ?? emptyComberState);
 
     const [natiId, setNatiId] = useState("");
     const [entryDate, setEntryDate] = useState("");
@@ -29,6 +32,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
     const [entryCount, setEntryCount] = useState(1);
     const [entries, setEntries] = useState(createEmptyEntries(1));
     const [formMessage, setFormMessage] = useState("");
+    const [errors, setErrors] = useState({});
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
@@ -52,6 +56,16 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
         };
     }, [dispatch]);
 
+    const resetForm = () => {
+        setNatiId("");
+        setEntryDate(new Date().toISOString().split("T")[0]);
+        setVariety("");
+        setEntryCount(1);
+        setEntries(createEmptyEntries(1));
+        setFormMessage("");
+        setErrors({});
+    };
+
     const handleGenerate = () => {
         const nextCount = Math.min(Math.max(1, Number(entryCount) || 1), 10);
         setEntryCount(nextCount);
@@ -63,6 +77,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
             return nextEntries;
         });
         setFormMessage("");
+        setErrors((prev) => ({ ...prev, entries: false }));
     };
 
     const handleEntryChange = (index, field, value) => {
@@ -92,30 +107,57 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
             })),
     });
 
-    const handleSubmit = async () => {
-        if (!natiId) {
-            setFormMessage("Please enter Nati ID before submitting.");
-            return;
-        }
+    const validate = () => {
+        const nextErrors = {};
+        if (!natiId) nextErrors.natiId = true;
+        if (!variety) nextErrors.variety = true;
+        if (!entries.some((entry) => entry.mc_no !== "")) nextErrors.entries = true;
 
-        if (!variety) {
-            setFormMessage("Please select variety before submitting.");
-            return;
-        }
-
-        if (!entries.some((entry) => entry.mc_no !== "")) {
-            setFormMessage("Please enter at least one Neps detail row.");
-            return;
-        }
-
+        setErrors(nextErrors);
         setFormMessage("");
+        return Object.keys(nextErrors).length === 0;
+    };
+
+    const handleSubmit = async () => {
+        const valid = validate();
+        if (!valid) return false;
 
         try {
             await dispatch(submitComberNatiDataEntry(buildPayload())).unwrap();
+            setErrors({});
+            return true;
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save nati data.");
+            return false;
         }
     };
+
+    const getPreviewData = () => {
+        const base = [
+            { label: "Type", value: selectedType || "Nati Data Entry" },
+            { label: "Nati ID", value: natiId },
+            { label: "Entry Date", value: entryDate },
+            { label: "Variety", value: variety },
+        ];
+
+        const entryItems = entries
+            .filter((entry) => entry.mc_no !== "")
+            .flatMap((entry, index) => [
+                { label: `Row ${index + 1} - MC No`, value: entry.mc_no },
+                { label: `Row ${index + 1} - Ratio size-1.0`, value: entry.ratio_size_1 || "-" },
+                { label: `Row ${index + 1} - Ratio size-0.7`, value: entry.ratio_size_07 || "-" },
+                { label: `Row ${index + 1} - Ratio size-0.5`, value: entry.ratio_size_05 || "-" },
+            ]);
+
+        return [...base, ...entryItems];
+    };
+
+    useImperativeHandle(ref, () => ({
+        clear: resetForm,
+        validate,
+        getPreviewData,
+        submit: handleSubmit,
+    }));
 
     return (
         <>
@@ -141,6 +183,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
                             <div className={styles["cb-form-group"]}>
                                 <label>Nati ID</label>
                                 <input
+                                    className={errors.natiId ? styles["input-error"] : ""}
                                     value={natiId}
                                     onChange={(e) => setNatiId(e.target.value)}
                                 />
@@ -165,6 +208,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
                             <div className={styles["cb-form-group"]}>
                                 <label>Variety</label>
                                 <select
+                                    className={errors.variety ? styles["input-error"] : ""}
                                     value={variety}
                                     onChange={(e) => setVariety(e.target.value)}
                                 >
@@ -202,31 +246,35 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
                                         <div className={styles["cb-neps-grid"]}>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>MC No</label>
-                                                <input
-                                                    value={entry.mc_no}
-                                                    onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
-                                                />
+                                                    <input
+                                                        className={errors.entries ? styles["input-error"] : ""}
+                                                        value={entry.mc_no}
+                                                        onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
+                                                    />
                                             </div>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>Ratio into size-1.0</label>
-                                                <input
-                                                    value={entry.ratio_size_1}
-                                                    onChange={(e) => handleEntryChange(index, "ratio_size_1", e.target.value)}
-                                                />
+                                                    <input
+                                                        className={errors.entries ? styles["input-error"] : ""}
+                                                        value={entry.ratio_size_1}
+                                                        onChange={(e) => handleEntryChange(index, "ratio_size_1", e.target.value)}
+                                                    />
                                             </div>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>Ratio into size-0.7</label>
-                                                <input
-                                                    value={entry.ratio_size_07}
-                                                    onChange={(e) => handleEntryChange(index, "ratio_size_07", e.target.value)}
-                                                />
+                                                    <input
+                                                        className={errors.entries ? styles["input-error"] : ""}
+                                                        value={entry.ratio_size_07}
+                                                        onChange={(e) => handleEntryChange(index, "ratio_size_07", e.target.value)}
+                                                    />
                                             </div>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>Ratio into size-0.5</label>
-                                                <input
-                                                    value={entry.ratio_size_05}
-                                                    onChange={(e) => handleEntryChange(index, "ratio_size_05", e.target.value)}
-                                                />
+                                                    <input
+                                                        className={errors.entries ? styles["input-error"] : ""}
+                                                        value={entry.ratio_size_05}
+                                                        onChange={(e) => handleEntryChange(index, "ratio_size_05", e.target.value)}
+                                                    />
                                             </div>
                                         </div>
                                     </div>
@@ -239,27 +287,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
 
             {showForm ? (
                 <>
-                    <div className={styles["cb-footer"]}>
-                        <button
-                            type="button"
-                            className={styles["cb-back"]}
-                            onClick={() => router.push("/dashboard")}
-                        >
-                            ← Back to Dashboard
-                        </button>
-
-                        <div className={styles["cb-right-actions"]}>
-                            <button
-                                type="button"
-                                className={styles["cb-primary"]}
-                                onClick={handleSubmit}
-                                disabled={isLoading}
-                            >
-                                {isLoading ? "Submitting..." : "Submit"}
-                            </button>
-                        </div>
-                    </div>
-
                     {formMessage ? (
                         <div className={`${styles["message-box"]} ${error ? styles["message-error"] : styles["message-success"]}`}>
                             {formMessage}
@@ -269,6 +296,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
             ) : null}
         </>
     );
-}
+});
 
 export default NatiDataEntry;
