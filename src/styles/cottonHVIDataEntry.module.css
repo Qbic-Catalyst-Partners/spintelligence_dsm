@@ -60,6 +60,12 @@
     font-size: 14px;
 }
 
+.mixx-error {
+    border-color: #ef4444 !important;
+    background: #fff1f2 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
 .mixxinput {
     height: 38px;
     padding: 8px 12px;

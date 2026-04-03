@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import styles from "../../styles/supervisordashboard.module.css";
+import styles from "../../styles/SupervisorDashboard.module.css";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { useDispatch, useSelector } from "react-redux";

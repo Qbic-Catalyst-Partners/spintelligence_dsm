@@ -58,6 +58,12 @@
     font-size: 14px;
 }
 
+.mixx-error {
+    border-color: #ef4444 !important;
+    background: #fff1f2 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
 .mixx-input:disabled {
     opacity: 0.7;
     cursor: not-allowed;

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import PreviewModal from "@/components/PreviewModal";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -80,12 +81,21 @@ function DrawFrame() {
   const [oneYardMetrics, setOneYardMetrics] = useState([]);
   const [halfYardMetrics, setHalfYardMetrics] = useState([]);
   const [hasCalculated, setHasCalculated] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
       ...current,
       [field]: field === "readingCount" ? Number(value) || 0 : value,
     }));
+    setErrors((prev) => {
+      if (!prev.header?.[field]) return prev;
+      const nextHeader = { ...(prev.header || {}) };
+      delete nextHeader[field];
+      return { ...prev, header: nextHeader };
+    });
   };
 
   const handleMachineChange = (index, field, value) => {
@@ -99,6 +109,16 @@ function DrawFrame() {
           : item
       )
     );
+    setErrors((prev) => {
+      const machineErrs = prev.machines ? [...prev.machines] : [];
+      if (machineErrs[index]?.[field]) {
+        const nextMachineErr = { ...(machineErrs[index] || {}) };
+        delete nextMachineErr[field];
+        machineErrs[index] = nextMachineErr;
+        return { ...prev, machines: machineErrs };
+      }
+      return prev;
+    });
   };
 
   const handleMetricChange = (setter, index, field, value) => {
@@ -114,6 +134,17 @@ function DrawFrame() {
       )
     );
     setHasCalculated(false);
+    setErrors((prev) => {
+      const key = setter === setOneYardMetrics ? "oneYard" : "halfYard";
+      const arr = prev[key] ? [...prev[key]] : [];
+      if (arr[index]?.[field]) {
+        const nextMetricErr = { ...(arr[index] || {}) };
+        delete nextMetricErr[field];
+        arr[index] = nextMetricErr;
+        return { ...prev, [key]: arr };
+      }
+      return prev;
+    });
   };
 
   const handleGenerate = () => {
@@ -121,6 +152,7 @@ function DrawFrame() {
     setOneYardMetrics(Array.from({ length: count }, () => emptyMetric()));
     setHalfYardMetrics(Array.from({ length: count }, () => emptyMetric()));
     setHasCalculated(false);
+    setErrors((prev) => ({ ...prev, header: { ...prev.header, readingCount: false }, oneYard: [], halfYard: [] }));
   };
 
   const handleCalculate = () => {
@@ -156,6 +188,7 @@ function DrawFrame() {
     setOneYardMetrics([]);
     setHalfYardMetrics([]);
     setHasCalculated(false);
+    setErrors({});
     dispatch(clearDrawFrameState());
   };
 
@@ -178,59 +211,123 @@ function DrawFrame() {
     }
   }, [dispatch, form.type]);
 
+  const validate = () => {
+    const isCots = form.type === "Draw Frame Cots Data Entry";
+    const headerErrors = {};
+    const machineErrors = [];
+    const oneErrors = [];
+    const halfErrors = [];
+
+    if (isCots) {
+      if (!form.date) headerErrors.date = true;
+      if (!form.shift) headerErrors.shift = true;
+      if (!form.processType) headerErrors.processType = true;
+
+      machineEntries.forEach((item) => {
+        const errs = {};
+        if (!item.machineName.trim()) errs.machineName = true;
+        if (item.fanWaste === "") errs.fanWaste = true;
+        if (item.cotChange === "") errs.cotChange = true;
+        if (item.stripperWaste === "") errs.stripperWaste = true;
+        if (item.thickPlace === "") errs.thickPlace = true;
+        if (form.processType === "Finisher") {
+          if (item.autoLevel === "") errs.autoLevel = true;
+          if (item.silverMon === "") errs.silverMon = true;
+          if (item.massThick === "") errs.massThick = true;
+          if (item.scanningR === "") errs.scanningR = true;
+        }
+        machineErrors.push(errs);
+      });
+    } else {
+      if (!form.serialNumber.trim()) headerErrors.serialNumber = true;
+      if (!form.date.trim()) headerErrors.date = true;
+      if (!form.machineNumber.trim()) headerErrors.machineNumber = true;
+      if (!form.remarks.trim()) headerErrors.remarks = true;
+      if (!form.readingCount || form.readingCount <= 0) headerErrors.readingCount = true;
+
+      const ensureMetricCount = Math.max(form.readingCount || 0, 1);
+      const paddedOne = oneYardMetrics.length ? oneYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
+      const paddedHalf = halfYardMetrics.length ? halfYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
+
+      paddedOne.forEach((item) => {
+        const errs = {};
+        if (item.avg === "") errs.avg = true;
+        if (item.hank === "") errs.hank = true;
+        if (item.sd === "") errs.sd = true;
+        oneErrors.push(errs);
+      });
+      paddedHalf.forEach((item) => {
+        const errs = {};
+        if (item.avg === "") errs.avg = true;
+        if (item.hank === "") errs.hank = true;
+        if (item.sd === "") errs.sd = true;
+        halfErrors.push(errs);
+      });
+    }
+
+    const hasErrors =
+      Object.keys(headerErrors).length > 0 ||
+      machineErrors.some((m) => Object.keys(m).length) ||
+      oneErrors.some((m) => Object.keys(m).length) ||
+      halfErrors.some((m) => Object.keys(m).length);
+
+    setErrors({
+      header: headerErrors,
+      machines: machineErrors,
+      oneYard: oneErrors,
+      halfYard: halfErrors,
+    });
+
+    return !hasErrors;
+  };
+
+  const buildPreviewItems = useMemo(() => {
+    const items = [];
+    if (form.type === "Draw Frame Cots Data Entry") {
+      items.push({ label: "Type", value: form.type });
+      items.push({ label: "Date", value: form.date });
+      items.push({ label: "Shift", value: form.shift });
+      items.push({ label: "Process Type", value: form.processType });
+      machineEntries.forEach((m, idx) => {
+        items.push({ label: `Machine ${idx + 1}`, value: m.machineName });
+        items.push({ label: "Fan Waste", value: m.fanWaste || "-" });
+        items.push({ label: "Cot Change", value: m.cotChange || "-" });
+        items.push({ label: "Stripper W", value: m.stripperWaste || "-" });
+        items.push({ label: "Thick Place", value: m.thickPlace || "-" });
+        if (form.processType === "Finisher") {
+          items.push({ label: "Auto Level", value: m.autoLevel || "-" });
+          items.push({ label: "Silver Mon", value: m.silverMon || "-" });
+          items.push({ label: "Mass Thick", value: m.massThick || "-" });
+          items.push({ label: "Scanning R", value: m.scanningR || "-" });
+        }
+      });
+    } else {
+      items.push({ label: "Type", value: form.type });
+      items.push({ label: "S. No.", value: form.serialNumber });
+      items.push({ label: "Date", value: form.date });
+      items.push({ label: "Machine Number", value: form.machineNumber });
+      items.push({ label: "Remarks", value: form.remarks });
+      items.push({ label: "Number of Readings (N)", value: form.readingCount });
+      const ensureMetricCount = Math.max(form.readingCount || 0, oneYardMetrics.length, halfYardMetrics.length, 1);
+      const paddedOne = oneYardMetrics.length ? oneYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
+      const paddedHalf = halfYardMetrics.length ? halfYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
+
+      Array.from({ length: ensureMetricCount }).forEach((_, idx) => {
+        items.push({ label: `Reading ${idx + 1} - AVG (1Y)`, value: paddedOne[idx]?.avg || "-" });
+        items.push({ label: `Reading ${idx + 1} - HANK (1Y)`, value: paddedOne[idx]?.hank || "-" });
+        items.push({ label: `Reading ${idx + 1} - SD (1Y)`, value: paddedOne[idx]?.sd || "-" });
+        items.push({ label: `Reading ${idx + 1} - AVG (1/2Y)`, value: paddedHalf[idx]?.avg || "-" });
+        items.push({ label: `Reading ${idx + 1} - HANK (1/2Y)`, value: paddedHalf[idx]?.hank || "-" });
+        items.push({ label: `Reading ${idx + 1} - SD (1/2Y)`, value: paddedHalf[idx]?.sd || "-" });
+      });
+    }
+    return items;
+  }, [form, machineEntries, oneYardMetrics, halfYardMetrics]);
+
   const handleSubmit = () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
 
-    if (isCots) {
-      const hasEmptyHeaderField =
-        !form.date.trim() ||
-        !form.shift.trim() ||
-        !form.processType.trim();
-
-      const hasEmptyMachineField = machineEntries.some((item) => {
-        const commonMissing =
-          !item.machineName.trim() ||
-          item.fanWaste === "" ||
-          item.cotChange === "" ||
-          item.stripperWaste === "" ||
-          item.thickPlace === "";
-
-        if (form.processType === "Finisher") {
-          return (
-            commonMissing ||
-            item.autoLevel === "" ||
-            item.silverMon === "" ||
-            item.massThick === "" ||
-            item.scanningR === ""
-          );
-        }
-
-        return commonMissing;
-      });
-
-      if (hasEmptyHeaderField || hasEmptyMachineField) {
-        alert("Please fill all fields.");
-        return;
-      }
-    } else {
-      const hasEmptyHeaderField =
-        !form.serialNumber.trim() ||
-        !form.date.trim() ||
-        !form.machineNumber.trim() ||
-        !form.remarks.trim() ||
-        !String(form.readingCount).trim();
-
-      const hasEmptyMetrics =
-        !oneYardMetrics.length ||
-        !halfYardMetrics.length ||
-        oneYardMetrics.some((item) => item.avg === "" || item.hank === "" || item.sd === "") ||
-        halfYardMetrics.some((item) => item.avg === "" || item.hank === "" || item.sd === "");
-
-      if (hasEmptyHeaderField || hasEmptyMetrics) {
-        alert("Please fill all fields.");
-        return;
-      }
-    }
+    if (!validate()) return;
 
     const payload = isCots
       ? {
@@ -271,12 +368,17 @@ function DrawFrame() {
     dispatch(isCots ? submitDrawFrameCotsInspection(payload) : submitDrawFrameYarnCvInspection(payload));
   };
 
+  const openPreview = () => {
+    if (!validate()) return;
+    setPreviewItems(buildPreviewItems);
+    setShowPreview(true);
+  };
+
   useEffect(() => {
     if (actionSuccess) {
       if (form.type === "Draw Frame Cots Data Entry") {
         dispatch(fetchDrawFrameCotsEntries({ page: 1, limit: 10 }));
       }
-      alert("Data submitted successfully");
       handleClear();
     }
   }, [actionSuccess, dispatch, form.type]);
@@ -346,7 +448,7 @@ function DrawFrame() {
                       type="date"
                       value={form.date}
                       onChange={(e) => handleFormChange("date", e.target.value)}
-                      className={styles.input}
+                      className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
                     />
                   </div>
 
@@ -355,7 +457,7 @@ function DrawFrame() {
                     <select
                       value={form.shift}
                       onChange={(e) => handleFormChange("shift", e.target.value)}
-                      className={styles.select}
+                      className={`${styles.select} ${errors.header?.shift ? styles.inputError : ""}`}
                     >
                       {shiftOptions.map((option) => (
                         <option key={option} value={option}>
@@ -370,7 +472,7 @@ function DrawFrame() {
                     <select
                       value={form.processType}
                       onChange={(e) => handleFormChange("processType", e.target.value)}
-                      className={styles.select}
+                      className={`${styles.select} ${errors.header?.processType ? styles.inputError : ""}`}
                     >
                       {processTypeOptions.map((option) => (
                         <option key={option} value={option}>
@@ -387,7 +489,7 @@ function DrawFrame() {
                     <input
                       value={form.serialNumber}
                       onChange={(e) => handleFormChange("serialNumber", e.target.value)}
-                      className={styles.input}
+                      className={`${styles.input} ${errors.header?.serialNumber ? styles.inputError : ""}`}
                     />
                   </div>
 
@@ -397,7 +499,7 @@ function DrawFrame() {
                       type="date"
                       value={form.date}
                       onChange={(e) => handleFormChange("date", e.target.value)}
-                      className={styles.input}
+                      className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
                     />
                   </div>
 
@@ -406,7 +508,7 @@ function DrawFrame() {
                     <select
                       value={form.machineNumber}
                       onChange={(e) => handleFormChange("machineNumber", e.target.value)}
-                      className={styles.select}
+                      className={`${styles.select} ${errors.header?.machineNumber ? styles.inputError : ""}`}
                     >
                       <option value="">Select Machine Number</option>
                       {cvMachineOptions.map((machine) => (
@@ -423,7 +525,7 @@ function DrawFrame() {
                       rows={4}
                       value={form.remarks}
                       onChange={(e) => handleFormChange("remarks", e.target.value)}
-                      className={styles.textarea}
+                      className={`${styles.textarea} ${errors.header?.remarks ? styles.inputError : ""}`}
                     />
                   </div>
 
@@ -431,12 +533,12 @@ function DrawFrame() {
                     <div className={`${styles.field} ${styles.fieldGrow}`}>
                       <label className={styles.label}>Number of Readings (N)</label>
                       <input
-                        type="number"
-                        min="1"
-                        value={form.readingCount}
-                        onChange={(e) => handleFormChange("readingCount", e.target.value)}
-                        className={styles.input}
-                      />
+                      type="number"
+                      min="1"
+                      value={form.readingCount}
+                      onChange={(e) => handleFormChange("readingCount", e.target.value)}
+                      className={`${styles.input} ${errors.header?.readingCount ? styles.inputError : ""}`}
+                    />
                     </div>
                     <button
                       type="button"
@@ -468,7 +570,9 @@ function DrawFrame() {
                           <input
                             value={machine.fanWaste}
                             onChange={(e) => handleMachineChange(index, "fanWaste", e.target.value)}
-                            className={styles.input}
+                            className={`${styles.input} ${
+                              errors.machines?.[index]?.fanWaste ? styles.inputError : ""
+                            }`}
                           />
                         </div>
 
@@ -477,7 +581,9 @@ function DrawFrame() {
                           <input
                             value={machine.cotChange}
                             onChange={(e) => handleMachineChange(index, "cotChange", e.target.value)}
-                            className={styles.input}
+                            className={`${styles.input} ${
+                              errors.machines?.[index]?.cotChange ? styles.inputError : ""
+                            }`}
                           />
                         </div>
 
@@ -486,7 +592,9 @@ function DrawFrame() {
                           <input
                             value={machine.stripperWaste}
                             onChange={(e) => handleMachineChange(index, "stripperWaste", e.target.value)}
-                            className={styles.input}
+                            className={`${styles.input} ${
+                              errors.machines?.[index]?.stripperWaste ? styles.inputError : ""
+                            }`}
                           />
                         </div>
 
@@ -497,44 +605,54 @@ function DrawFrame() {
                               <input
                                 value={machine.thickPlace}
                                 onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}
-                                className={styles.input}
+                                className={`${styles.input} ${
+                                  errors.machines?.[index]?.thickPlace ? styles.inputError : ""
+                                }`}
                               />
                             </div>
 
                             <div className={styles.field}>
                               <label className={styles.label}>Auto Level</label>
-                              <input
-                                value={machine.autoLevel}
-                                onChange={(e) => handleMachineChange(index, "autoLevel", e.target.value)}
-                                className={styles.input}
-                              />
+                                <input
+                                  value={machine.autoLevel}
+                                  onChange={(e) => handleMachineChange(index, "autoLevel", e.target.value)}
+                                  className={`${styles.input} ${
+                                    errors.machines?.[index]?.autoLevel ? styles.inputError : ""
+                                  }`}
+                                />
                             </div>
 
                             <div className={styles.field}>
                               <label className={styles.label}>Silver Mon</label>
-                              <input
-                                value={machine.silverMon}
-                                onChange={(e) => handleMachineChange(index, "silverMon", e.target.value)}
-                                className={styles.input}
-                              />
+                                <input
+                                  value={machine.silverMon}
+                                  onChange={(e) => handleMachineChange(index, "silverMon", e.target.value)}
+                                  className={`${styles.input} ${
+                                    errors.machines?.[index]?.silverMon ? styles.inputError : ""
+                                  }`}
+                                />
                             </div>
 
                             <div className={styles.field}>
                               <label className={styles.label}>Mass Thick</label>
-                              <input
-                                value={machine.massThick}
-                                onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
-                                className={styles.input}
-                              />
+                                <input
+                                  value={machine.massThick}
+                                  onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
+                                  className={`${styles.input} ${
+                                    errors.machines?.[index]?.massThick ? styles.inputError : ""
+                                  }`}
+                                />
                             </div>
 
                             <div className={styles.field}>
                               <label className={styles.label}>Scanning R</label>
-                              <input
-                                value={machine.scanningR}
-                                onChange={(e) => handleMachineChange(index, "scanningR", e.target.value)}
-                                className={styles.input}
-                              />
+                                <input
+                                  value={machine.scanningR}
+                                  onChange={(e) => handleMachineChange(index, "scanningR", e.target.value)}
+                                  className={`${styles.input} ${
+                                    errors.machines?.[index]?.scanningR ? styles.inputError : ""
+                                  }`}
+                                />
                             </div>
                           </>
                         ) : (
@@ -543,7 +661,9 @@ function DrawFrame() {
                             <input
                               value={machine.thickPlace}
                               onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}
-                              className={styles.input}
+                              className={`${styles.input} ${
+                                errors.machines?.[index]?.thickPlace ? styles.inputError : ""
+                              }`}
                             />
                           </div>
                         )}
@@ -576,18 +696,22 @@ function DrawFrame() {
                           <div className={styles.metricsGrid}>
                             <div className={styles.field}>
                               <label className={styles.label}>AVG (1 Yard)</label>
-                              <input
-                                value={oneYardMetrics[index]?.avg || ""}
-                                onChange={(e) => handleMetricChange(setOneYardMetrics, index, "avg", e.target.value)}
-                                className={styles.metricInput}
-                              />
+                            <input
+                              value={oneYardMetrics[index]?.avg || ""}
+                              onChange={(e) => handleMetricChange(setOneYardMetrics, index, "avg", e.target.value)}
+                              className={`${styles.metricInput} ${
+                                errors.oneYard?.[index]?.avg ? styles.inputError : ""
+                              }`}
+                            />
                             </div>
                             <div className={styles.field}>
                               <label className={styles.label}>HANK (1 Yard)</label>
                               <input
                                 value={oneYardMetrics[index]?.hank || ""}
                                 onChange={(e) => handleMetricChange(setOneYardMetrics, index, "hank", e.target.value)}
-                                className={styles.metricInput}
+                                className={`${styles.metricInput} ${
+                                  errors.oneYard?.[index]?.hank ? styles.inputError : ""
+                                }`}
                               />
                             </div>
                             <div className={styles.field}>
@@ -595,7 +719,9 @@ function DrawFrame() {
                               <input
                                 value={oneYardMetrics[index]?.sd || ""}
                                 onChange={(e) => handleMetricChange(setOneYardMetrics, index, "sd", e.target.value)}
-                                className={styles.metricInput}
+                                className={`${styles.metricInput} ${
+                                  errors.oneYard?.[index]?.sd ? styles.inputError : ""
+                                }`}
                               />
                             </div>
                           </div>
@@ -619,7 +745,9 @@ function DrawFrame() {
                               <input
                                 value={halfYardMetrics[index]?.avg || ""}
                                 onChange={(e) => handleMetricChange(setHalfYardMetrics, index, "avg", e.target.value)}
-                                className={styles.metricInput}
+                                className={`${styles.metricInput} ${
+                                  errors.halfYard?.[index]?.avg ? styles.inputError : ""
+                                }`}
                               />
                             </div>
                             <div className={styles.field}>
@@ -627,7 +755,9 @@ function DrawFrame() {
                               <input
                                 value={halfYardMetrics[index]?.hank || ""}
                                 onChange={(e) => handleMetricChange(setHalfYardMetrics, index, "hank", e.target.value)}
-                                className={styles.metricInput}
+                                className={`${styles.metricInput} ${
+                                  errors.halfYard?.[index]?.hank ? styles.inputError : ""
+                                }`}
                               />
                             </div>
                             <div className={styles.field}>
@@ -635,7 +765,9 @@ function DrawFrame() {
                               <input
                                 value={halfYardMetrics[index]?.sd || ""}
                                 onChange={(e) => handleMetricChange(setHalfYardMetrics, index, "sd", e.target.value)}
-                                className={styles.metricInput}
+                                className={`${styles.metricInput} ${
+                                  errors.halfYard?.[index]?.sd ? styles.inputError : ""
+                                }`}
                               />
                             </div>
                           </div>
@@ -666,12 +798,26 @@ function DrawFrame() {
           <Footer
             onBack={() => router.push("/dashboard")}
             onClear={handleClear}
-            onSave={handleSubmit}
-            saveLabel={actionLoading ? "Submitting..." : "Submit"}
+            onSave={openPreview}
+            saveLabel={actionLoading ? "Submitting..." : "Save Record"}
             disabled={actionLoading}
           />
         </div>
       </div>
+
+      <PreviewModal
+        open={showPreview}
+        title="Quality Control - Draw Frame Notebook"
+        subtitle="Preview"
+        items={previewItems}
+        typeValue={form.type}
+        onCancel={() => setShowPreview(false)}
+        onConfirm={() => {
+          setShowPreview(false);
+          handleSubmit();
+        }}
+        confirmLabel="Submit"
+      />
     </div>
   );
 }

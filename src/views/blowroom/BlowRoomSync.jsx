@@ -32,6 +32,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const [rows, setRows] = useState(5);
   const [tableData, setTableData] = useState([]);
   const [generated, setGenerated] = useState(false);
+  const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
     type: "Blow Room Sync",
     entryDate: date || todayValue,
@@ -57,13 +58,24 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     const updated = [...tableData];
     updated[index][field] = value;
 
-    const a = parseFloat(updated[index].a) || 0;
-    const b = parseFloat(updated[index].b) || 0;
-    const c = parseFloat(updated[index].c) || 0;
+    const a = parseFloat(updated[index].a);
+    const b = parseFloat(updated[index].b);
+    const c = parseFloat(updated[index].c);
 
-    updated[index].sync = ((a + b + c) / 3).toFixed(2);
+    if (![a, b, c].some(Number.isNaN) && updated[index].a !== "" && updated[index].b !== "" && updated[index].c !== "") {
+      updated[index].sync = (((a || 0) + (b || 0) + (c || 0)) / 3).toFixed(2);
+    } else {
+      updated[index].sync = "";
+    }
 
     setTableData(updated);
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[`row-${index}-a`];
+      delete next[`row-${index}-b`];
+      delete next[`row-${index}-c`];
+      return next;
+    });
   };
 
   const calculateStats = (key) => {
@@ -88,29 +100,51 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     if (!rows || rows <= 0) return;
 
     const newData = Array.from({ length: rows }, () => ({
-      a: "0.00",
-      b: "0.00",
-      c: "0.00",
-      sync: "0.00",
+      a: "",
+      b: "",
+      c: "",
+      sync: "",
     }));
 
     setTableData(newData);
     setGenerated(true);
+    setErrors((prev) => ({ ...prev, table: false }));
   };
 
-  const handleSave = () => {
-    dispatch(
-      saveBlowroomData({
-        ...form,
-        entries: tableData,
-      })
-    );
+  const handleSave = async () => {
+    const nextErrors = {};
+    ["lineNo", "variety", "checkedBy", "beater", "totalTime"].forEach((key) => {
+      if (!String(form[key] || "").trim()) nextErrors[key] = true;
+    });
+    if (!form.entryDate) nextErrors.entryDate = true;
+    if (!generated || !tableData.length) nextErrors.table = true;
+    tableData.forEach((row, idx) => {
+      ["a", "b", "c"].forEach((k) => {
+        if (String(row[k] || "").trim() === "") {
+          nextErrors[`row-${idx}-${k}`] = true;
+        }
+      });
+    });
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    try {
+      await dispatch(
+        saveBlowroomData({
+          ...form,
+          entries: tableData,
+        })
+      ).unwrap();
+    } catch (e) {
+      // errors already handled by slice; no-op
+    }
   };
 
   const handleClear = () => {
     setGenerated(false);
     setTableData([]);
     setRows(5);
+    setErrors({});
     setForm({
       type: "Blow Room Sync",
       entryDate: date || todayValue,
@@ -132,6 +166,39 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   useImperativeHandle(ref, () => ({
     submit: handleSave,
     clear: handleClear,
+    validate: () => {
+      const nextErrors = {};
+      ["lineNo", "variety", "checkedBy", "beater", "totalTime"].forEach((key) => {
+        if (!String(form[key] || "").trim()) nextErrors[key] = true;
+      });
+      if (!form.entryDate) nextErrors.entryDate = true;
+      if (!generated || !tableData.length) nextErrors.table = true;
+      tableData.forEach((row, idx) => {
+        ["a", "b", "c"].forEach((k) => {
+          if (String(row[k] || "").trim() === "") {
+            nextErrors[`row-${idx}-${k}`] = true;
+          }
+        });
+      });
+      setErrors(nextErrors);
+      return Object.keys(nextErrors).length === 0;
+    },
+    getPreviewData: () => {
+      const header = [
+        { label: "Type", value: selectedTypeName || form.type },
+        { label: "Entry Date", value: form.entryDate },
+        { label: "Line No.", value: form.lineNo },
+        { label: "Variety", value: form.variety },
+        { label: "Checked By", value: form.checkedBy },
+        { label: "Beater", value: form.beater },
+        { label: "Total Time", value: form.totalTime },
+      ];
+      const rowsData = tableData.map((row, idx) => ({
+        label: `Row ${idx + 1}`,
+        value: `A:${row.a} | B:${row.b} | C:${row.c} | Sync:${row.sync}`,
+      }));
+      return [...header, ...rowsData];
+    },
   }));
 
   return (
@@ -157,6 +224,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
             type="date"
             value={form.entryDate}
             onChange={(e) => onDateChange?.(e.target.value)}
+            className={errors.entryDate ? styles.errorField : undefined}
           />
         </div>
 
@@ -165,6 +233,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           <input
             value={form.lineNo}
             onChange={(e) => handleFormChange("lineNo", e.target.value)}
+            className={errors.lineNo ? styles.errorField : undefined}
           />
         </div>
 
@@ -173,6 +242,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           <select
             value={form.variety}
             onChange={(e) => handleFormChange("variety", e.target.value)}
+            className={errors.variety ? styles.errorField : undefined}
           >
             <option value="">Select Variety</option>
             <option>Cotton Blend</option>
@@ -186,6 +256,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           <input
             value={form.checkedBy}
             onChange={(e) => handleFormChange("checkedBy", e.target.value)}
+            className={errors.checkedBy ? styles.errorField : undefined}
           />
         </div>
 
@@ -194,6 +265,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           <input
             value={form.beater}
             onChange={(e) => handleFormChange("beater", e.target.value)}
+            className={errors.beater ? styles.errorField : undefined}
           />
         </div>
 
@@ -203,6 +275,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
             placeholder="MM : SS"
             value={form.totalTime}
             onChange={(e) => handleFormChange("totalTime", e.target.value)}
+            className={errors.totalTime ? styles.errorField : undefined}
           />
         </div>
       </div>
@@ -244,14 +317,17 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
               <input
                 value={row.a}
                 onChange={(e) => handleChange(i, "a", e.target.value)}
+                className={errors[`row-${i}-a`] ? styles.errorField : undefined}
               />
               <input
                 value={row.b}
                 onChange={(e) => handleChange(i, "b", e.target.value)}
+                className={errors[`row-${i}-b`] ? styles.errorField : undefined}
               />
               <input
                 value={row.c}
                 onChange={(e) => handleChange(i, "c", e.target.value)}
+                className={errors[`row-${i}-c`] ? styles.errorField : undefined}
               />
               <input value={row.sync} readOnly />
             </div>

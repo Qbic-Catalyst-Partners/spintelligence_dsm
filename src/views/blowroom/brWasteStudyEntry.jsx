@@ -27,6 +27,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
+    const [errors, setErrors] = useState({});
 
     const [wasteCountInput, setWasteCountInput] = useState('1');
     const [type3CountInput, setType3CountInput] = useState('3');
@@ -82,11 +83,11 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
             setType3Rows(Array.from({ length: 3 }, emptyType3Row));
             setOverallWaste('');
             setRemarks('');
-            dispatch(clearMixingState());
         }
     }, [actionSuccess, dispatch]);
 
     const handleSubmit = () => {
+        if (!validate()) return;
         const entries = studyType === 'Type 3'
             ? type3Rows
             : wasteRows;
@@ -110,9 +111,58 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         setOverallWaste('');
         setRemarks('');
         dispatch(clearMixingState());
+        setErrors({});
     };
 
-    useImperativeHandle(ref, () => ({ submit: handleSubmit, clear: handleClear }));
+    const validate = () => {
+        const nextErrors = {};
+        ["brWasteId","variety","cardingProduction","studyType"].forEach((key)=>{
+            if (String(formData[key] || "").trim() === "") nextErrors[key]=true;
+        });
+        if (studyType === "Type 1" || studyType === "Type 2") {
+            wasteRows.forEach((row, idx)=>{
+                ["production","totalWaste","wastePercent"].forEach(k=>{
+                    if (String(row[k]||"").trim()==="") nextErrors[`waste-${idx}-${k}`]=true;
+                });
+            });
+        }
+        if (studyType === "Type 3") {
+            type3Rows.forEach((row, idx)=>{
+                TYPE_3_COLUMNS.forEach(col=>{
+                    if (String(row[col.key]||"").trim()==="") nextErrors[`t3-${idx}-${col.key}`]=true;
+                });
+            });
+        }
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length===0;
+    };
+
+    const getPreviewData = () => {
+        const header = [
+            { label: "Date", value: date },
+            { label: "BR Waste ID", value: formData.brWasteId },
+            { label: "Lot No", value: lotNo },
+            { label: "Variety", value: formData.variety },
+            { label: "Carding Production (KGs)", value: formData.cardingProduction },
+            { label: "Study Type", value: formData.studyType },
+            { label: "Overall Waste %", value: overallWaste },
+            { label: "Remarks", value: remarks },
+        ];
+        const entries = (studyType === "Type 3" ? type3Rows : wasteRows).map((row, idx)=>({
+            label: `Entry ${idx+1}`,
+            value: studyType === "Type 3"
+                ? TYPE_3_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
+                : `Flat:${row.production} | Under:${row.totalWaste} | Mote:${row.wastePercent}`
+        }));
+        return [...header, ...entries];
+    };
+
+    useImperativeHandle(ref, () => ({
+        submit: handleSubmit,
+        clear: handleClear,
+        validate,
+        getPreviewData,
+    }));
 
     const { studyType } = formData;
 
@@ -123,7 +173,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                 <div className={styles['mixx-group']}>
                     <label>BR Waste ID</label>
                     <input
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.brWasteId ? styles['mixx-error'] : ''}`}
                         placeholder="Enter BR Waste ID"
                         value={formData.brWasteId}
                         onChange={e => handleChange('brWasteId', e.target.value)}
@@ -143,7 +193,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                 <div className={styles['mixx-group']}>
                     <label>Variety</label>
                     <select
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
                         onChange={e => handleChange('variety', e.target.value)}
                     >
@@ -161,12 +211,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                     placeholder="0.00"
                     value={formData.cardingProduction}
                     onChange={value => handleChange('cardingProduction', value)}
+                    error={errors.cardingProduction}
                 />
 
                 <div className={styles['mixx-group']}>
                     <label>Study Type</label>
                     <select
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.studyType ? styles['mixx-error'] : ''}`}
                         value={formData.studyType}
                         onChange={e => handleChange('studyType', e.target.value)}
                     >
@@ -212,6 +263,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                     placeholder="0.00"
                                     value={row.production}
                                     onChange={e => handleWasteRowChange(i, 'production', e.target.value)}
+                                    style={errors[`waste-${i}-production`] ? { borderColor: '#ef4444', background: '#fff1f2' } : undefined}
                                 />
                             </div>
                             <div className={styles['mixx-group']}>
@@ -221,6 +273,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                     placeholder="0.00"
                                     value={row.totalWaste}
                                     onChange={e => handleWasteRowChange(i, 'totalWaste', e.target.value)}
+                                    style={errors[`waste-${i}-totalWaste`] ? { borderColor: '#ef4444', background: '#fff1f2' } : undefined}
                                 />
                             </div>
                             <div className={styles['mixx-group']}>
@@ -230,6 +283,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                     placeholder="0.00"
                                     value={row.wastePercent}
                                     onChange={e => handleWasteRowChange(i, 'wastePercent', e.target.value)}
+                                    style={errors[`waste-${i}-wastePercent`] ? { borderColor: '#ef4444', background: '#fff1f2' } : undefined}
                                 />
                             </div>
                         </div>
@@ -331,7 +385,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 {TYPE_3_COLUMNS.map(col => (
                                     <input
                                         key={col.key}
-                                        className={styles['mixx-input']}
+                                        className={`${styles['mixx-input']} ${errors[`t3-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
                                         placeholder="0.00"
                                         value={row[col.key]}
                                         onChange={e => handleType3RowChange(i, col.key, e.target.value)}

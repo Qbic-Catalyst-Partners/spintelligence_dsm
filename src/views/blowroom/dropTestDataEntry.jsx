@@ -26,6 +26,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const [numTufts, setNumTufts] = useState('');
     const [tufts, setTufts] = useState([]);
     const [expandedTuftIndex, setExpandedTuftIndex] = useState(0);
+    const [errors, setErrors] = useState({});
 
     useEffect(() => {
         if (actionSuccess) {
@@ -33,12 +34,11 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
             setNumTufts('');
             setTufts([]);
             setExpandedTuftIndex(0);
-            dispatch(clearMixingState());
         }
     }, [actionSuccess, dispatch]);
 
     const handleSubmit = () => {
-        if (!tufts.length) return;
+        if (!validate()) return;
         dispatch(submitDropTest({
             baseData: { date, lotNo, variety: formData.variety, blend: formData.blend },
             tufts,
@@ -51,9 +51,44 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         setTufts([]);
         setExpandedTuftIndex(0);
         dispatch(clearMixingState());
+        setErrors({});
     };
 
-    useImperativeHandle(ref, () => ({ submit: handleSubmit, clear: handleClear }));
+    const validate = () => {
+        const nextErrors = {};
+        if (!date) nextErrors.date = true;
+        if (!lotNo) nextErrors.lotNo = true;
+        ["variety","blend"].forEach((k)=>{ if (!String(formData[k]||"").trim()) nextErrors[k]=true; });
+        if (!numTufts || Number(numTufts) <=0) nextErrors.numTufts = true;
+        tufts.forEach((tuft, idx)=>{
+            ["tuftVariety","actDisplay","displayWt","actWt"].forEach(k=>{
+                if (String(tuft[k]||"").trim()==="") nextErrors[`tuft-${idx}-${k}`]=true;
+            });
+        });
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length===0;
+    };
+
+    useImperativeHandle(ref, () => ({
+        submit: handleSubmit,
+        clear: handleClear,
+        validate,
+        getPreviewData: () => {
+            const header = [
+                { label: "Type", value: selectedTypeName || "Drop Test Data Entry" },
+                { label: "Drop ID", value: lotNo },
+                { label: "Date", value: date },
+                { label: "Variety", value: formData.variety },
+                { label: "Blend", value: formData.blend },
+                { label: "No. of Tufts", value: numTufts },
+            ];
+            const entries = tufts.map((t, idx)=>({
+                label: `Tuft ${idx+1}`,
+                value: `Var:${t.tuftVariety} | ActDisp:${t.actDisplay} | DispWt:${t.displayWt} | ActWt:${t.actWt} | Diff:${t.diff} | Ratio:${t.ratio}`
+            }));
+            return [...header, ...entries];
+        },
+    }));
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -95,7 +130,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 <div className={styles['mixx-group']}>
                     <label>Type</label>
                     <select
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.type ? styles['mixx-error'] : ''}`}
                         value={selectedTypeName || "Drop Test Data Entry"}
                         onChange={e => onTypeChange?.(e.target.value)}
                     >
@@ -108,7 +143,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 <div className={styles['mixx-group']}>
                     <label>Drop ID</label>
                     <input
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.lotNo ? styles['mixx-error'] : ''}`}
                         value={lotNo}
                         placeholder="Auto Generated"
                         onChange={e => onLotNoChange?.(e.target.value)}
@@ -119,7 +154,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                     <label>Date</label>
                     <input
                         type="date"
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.date ? styles['mixx-error'] : ''}`}
                         value={date}
                         onChange={e => onDateChange?.(e.target.value)}
                     />
@@ -130,7 +165,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 <div className={styles['mixx-group']}>
                     <label>Variety</label>
                     <select
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
                         onChange={e => handleChange('variety', e.target.value)}
                     >
@@ -143,7 +178,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 <div className={styles['mixx-group']}>
                     <label>Blend</label>
                     <input
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.blend ? styles['mixx-error'] : ''}`}
                         placeholder="0/40"
                         value={formData.blend}
                         onChange={e => handleChange('blend', e.target.value)}
@@ -154,7 +189,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                     <label>Number of Tufts (N)</label>
                     <input
                         type="number"
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.numTufts ? styles['mixx-error'] : ''}`}
                         inputMode="numeric"
                         pattern="[0-9]*"
                         value={numTufts}
@@ -186,7 +221,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 <div className={styles['mixx-group']}>
                                     <label>Tuft Variety</label>
                                     <select
-                                        className={styles['mixx-input']}
+                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-tuftVariety`] ? styles['mixx-error'] : ''}`}
                                         value={tuft.tuftVariety}
                                         onChange={e => handleTuftFieldChange(i, 'tuftVariety', e.target.value)}
                                     >
@@ -201,7 +236,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 <div className={styles['mixx-group']}>
                                     <label>Act Display</label>
                                     <input
-                                        className={styles['mixx-input']}
+                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-actDisplay`] ? styles['mixx-error'] : ''}`}
                                         placeholder="0.00"
                                         value={tuft.actDisplay}
                                         onChange={e => handleTuftFieldChange(i, 'actDisplay', e.target.value)}
@@ -211,7 +246,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 <div className={styles['mixx-group']}>
                                     <label>Display Wt.</label>
                                     <input
-                                        className={styles['mixx-input']}
+                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-displayWt`] ? styles['mixx-error'] : ''}`}
                                         placeholder="0.00"
                                         value={tuft.displayWt}
                                         onChange={e => handleTuftFieldChange(i, 'displayWt', e.target.value)}
@@ -221,7 +256,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 <div className={styles['mixx-group']}>
                                     <label>Act Wt.</label>
                                     <input
-                                        className={styles['mixx-input']}
+                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-actWt`] ? styles['mixx-error'] : ''}`}
                                         placeholder="0.00"
                                         value={tuft.actWt}
                                         onChange={e => handleTuftFieldChange(i, 'actWt', e.target.value)}

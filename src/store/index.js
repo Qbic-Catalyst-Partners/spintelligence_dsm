@@ -5,7 +5,7 @@ import operatorReducer from './slices/operatorSlice';
 import mixingReducer from './slices/mixing';
 import comberReducer from './slices/comber';
 import cardingReducer from './slices/carding';
-import drawFrameReducer from './slices/draw-frame';
+
 import spinningReducer from "./slices/spinSlice";
 import userReducer from "./slices/userSlice"; 
 import supervisorReducer from "./slices/supervisorSlice";

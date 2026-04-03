@@ -12,6 +12,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
     const [moistureValues, setMoistureValues] = useState(Array(10).fill(''));
+    const [errors, setErrors] = useState({});
 
     const handleChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -32,38 +33,69 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
         if (actionSuccess) {
             setFormData(initialForm);
             setMoistureValues(Array(10).fill(''));
-            dispatch(clearMixingState());
         }
     }, [actionSuccess, dispatch]);
 
+    const buildPayload = () => ({
+        inspection_date: date,
+        party_lot_no:    formData.partyLotNo,
+        variety:         formData.variety,
+        party_name:      formData.partyName,
+        pr_no:           formData.prNo,
+        value1:  parseFloat(moistureValues[0]) || 0,
+        value2:  parseFloat(moistureValues[1]) || 0,
+        value3:  parseFloat(moistureValues[2]) || 0,
+        value4:  parseFloat(moistureValues[3]) || 0,
+        value5:  parseFloat(moistureValues[4]) || 0,
+        value6:  parseFloat(moistureValues[5]) || 0,
+        value7:  parseFloat(moistureValues[6]) || 0,
+        value8:  parseFloat(moistureValues[7]) || 0,
+        value9:  parseFloat(moistureValues[8]) || 0,
+        value10: parseFloat(moistureValues[9]) || 0,
+        average: parseFloat(average) || 0,
+    });
+
     const handleSubmit = () => {
-        dispatch(submitMoisture({
-            inspection_date: date,
-            party_lot_no:    formData.partyLotNo,
-            variety:         formData.variety,
-            party_name:      formData.partyName,
-            pr_no:           formData.prNo,
-            value1:  parseFloat(moistureValues[0]) || 0,
-            value2:  parseFloat(moistureValues[1]) || 0,
-            value3:  parseFloat(moistureValues[2]) || 0,
-            value4:  parseFloat(moistureValues[3]) || 0,
-            value5:  parseFloat(moistureValues[4]) || 0,
-            value6:  parseFloat(moistureValues[5]) || 0,
-            value7:  parseFloat(moistureValues[6]) || 0,
-            value8:  parseFloat(moistureValues[7]) || 0,
-            value9:  parseFloat(moistureValues[8]) || 0,
-            value10: parseFloat(moistureValues[9]) || 0,
-            average: parseFloat(average) || 0,
-        }));
+        dispatch(submitMoisture(buildPayload()));
     };
 
     const handleClear = () => {
         setFormData(initialForm);
         setMoistureValues(Array(10).fill(''));
         dispatch(clearMixingState());
+        setErrors({});
     };
 
-    useImperativeHandle(ref, () => ({ submit: handleSubmit, clear: handleClear }));
+    const getPreviewData = () => ([
+        { label: "Date", value: date },
+        { label: "Party Lot No", value: formData.partyLotNo },
+        { label: "Variety", value: formData.variety },
+        { label: "Party Name", value: formData.partyName },
+        { label: "PR No", value: formData.prNo },
+        ...moistureValues.map((val, idx) => ({ label: `Value ${idx + 1}`, value: val })),
+        { label: "Average", value: average },
+    ]);
+
+    const validate = () => {
+        const required = ["partyLotNo","variety","partyName","prNo"];
+        const nextErrors = required.reduce((acc,key)=>{
+            if (String(formData[key] || "").trim() === "") acc[key]=true;
+            return acc;
+        }, {});
+        moistureValues.forEach((val, idx) => {
+            if (String(val || "").trim() === "") nextErrors[`value${idx}`] = true;
+        });
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
+
+    useImperativeHandle(ref, () => ({
+        submit: handleSubmit,
+        clear: handleClear,
+        getPreviewData,
+        getPayload: buildPayload,
+        validate,
+    }));
 
     return (
         <>
@@ -74,12 +106,13 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
                     placeholder="Enter Party Lot No"
                     value={formData.partyLotNo}
                     onChange={(value) => handleChange('partyLotNo', value)}
+                    error={errors.partyLotNo}
                 />
 
                 <div className={styles['mixx-group']}>
                     <label className="text-xs font-semibold text-slate-700">Variety</label>
                     <select
-                        className={styles['mixx-input']}
+                        className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
                         onChange={(e) => handleChange('variety', e.target.value)}
                     >
@@ -95,6 +128,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
                     placeholder="Enter Party Name"
                     value={formData.partyName}
                     onChange={(value) => handleChange('partyName', value)}
+                    error={errors.partyName}
                 />
             </div>
 
@@ -105,6 +139,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
                     placeholder="Enter PR No"
                     value={formData.prNo}
                     onChange={(value) => handleChange('prNo', value)}
+                    error={errors.prNo}
                 />
                 <div className={styles['mixx-empty']} />
                 <div className={styles['mixx-empty']} />
@@ -128,6 +163,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
                             placeholder="0.00"
                             value={val}
                             onChange={(e) => handleMoistureChange(i, e.target.value)}
+                            style={errors[`value${i}`] ? { borderColor: '#ef4444', background: '#fff1f2' } : {}}
                         />
                     </div>
                 ))}
