@@ -90,6 +90,12 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
             return nextEntries;
         });
         setFormMessage("");
+        setErrors((prev) => {
+            if (!prev.entries) return prev;
+            const next = { ...prev };
+            delete next.entries;
+            return next;
+        });
     };
 
     const buildPayload = () => ({
@@ -185,7 +191,15 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                                 <input
                                     className={errors.natiId ? styles["input-error"] : ""}
                                     value={natiId}
-                                    onChange={(e) => setNatiId(e.target.value)}
+                                    onChange={(e) => {
+                                        setNatiId(e.target.value);
+                                        setErrors((prev) => {
+                                            if (!prev.natiId) return prev;
+                                            const next = { ...prev };
+                                            delete next.natiId;
+                                            return next;
+                                        });
+                                    }}
                                 />
                             </div>
 
@@ -210,7 +224,15 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                                 <select
                                     className={errors.variety ? styles["input-error"] : ""}
                                     value={variety}
-                                    onChange={(e) => setVariety(e.target.value)}
+                                    onChange={(e) => {
+                                        setVariety(e.target.value);
+                                        setErrors((prev) => {
+                                            if (!prev.variety) return prev;
+                                            const next = { ...prev };
+                                            delete next.variety;
+                                            return next;
+                                        });
+                                    }}
                                 >
                                     <option value="">Select</option>
                                     <option value="Cotton">Cotton</option>

@@ -6,10 +6,12 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SMXCotsChangeDataEntry from "@/views/simplex/SMXCotsChangeDataEntry";
 import SMXBreaksStudyReport from "@/views/simplex/SMXBreaksStudyReport";
+import SimplexUqcDataEntry from "@/views/simplex/SimplexUqcDataEntry";
 
 const simplexTypes = [
   { id: 1, name: "SMXCots Change Data Entry", component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", component: SMXBreaksStudyReport },
+  { id: 3, name: "U% Data Entry", component: SimplexUqcDataEntry },
 ];
 
 function Simplex() {

@@ -3,6 +3,8 @@ import api from "./apiConfig";
 // API endpoints map
 const endpoints = {
   "COTS Checking": "/spinning/cots-checking",
+  "Count Change": "/spinning/count-change",
+  "Ring Frame Log Book": "/spinning/ring-frame",
   "Speed Checking": "/spinning/speed-checking",
   "Lycra Missing": "/spinning/lycra-missing",
   "Bottom Apron Checking": "/spinning/bottom-apron-checking",

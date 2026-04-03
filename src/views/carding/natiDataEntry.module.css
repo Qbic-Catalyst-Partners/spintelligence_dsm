@@ -199,6 +199,11 @@
   border: 1px solid #fecaca;
 }
 
+.field-error {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
 @media (max-width: 768px) {
   .cb-row {
     flex-direction: column;

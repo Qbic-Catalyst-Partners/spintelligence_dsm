@@ -3,12 +3,13 @@ import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 import RibbonLapCVDataEntry from "./comber/ribbonLapCVDataEntry";
 import NatiDataEntry from "./comber/natiDataEntry";
+import UqcEntryForm from "@/components/UqcEntryForm";
 import styles from "./comber/ribbonLapCVDataEntry.module.css";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
-import { clearComberState } from "@/store/slices/comber";
+import { clearComberState, submitComberUqcDataEntry } from "@/store/slices/comber";
 
 const comberDepartmentTypes = [
     {
@@ -18,6 +19,10 @@ const comberDepartmentTypes = [
     {
         id: 2,
         name: "Nati Data Entry",
+    },
+    {
+        id: 3,
+        name: "U% Data Entry",
     },
 ];
 
@@ -136,6 +141,27 @@ function Comber() {
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
                                 showForm={Boolean(checkingType)}
+                            />
+
+                            <div style={{ margin: "16px -24px 0 -24px" }}>
+                                <Footer
+                                    onBack={() => router.push("/dashboard")}
+                                    onClear={handleClear}
+                                    onSave={openPreview}
+                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        </>
+                    ) : selectedType === "U% Data Entry" ? (
+                        <>
+                            <UqcEntryForm
+                                ref={childRef}
+                                typeOptions={comberDepartmentTypes}
+                                selectedType={selectedType}
+                                onTypeChange={handleTypeChange}
+                                departmentValue="Comber"
+                                submitHandler={(payload) => dispatch(submitComberUqcDataEntry(payload)).unwrap()}
                             />
 
                             <div style={{ margin: "16px -24px 0 -24px" }}>

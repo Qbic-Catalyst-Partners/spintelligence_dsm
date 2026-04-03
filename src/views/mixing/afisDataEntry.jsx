@@ -19,6 +19,12 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
 
     const handleChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
+        setErrors((prev) => {
+            if (!prev[field]) return prev;
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
     };
 
     useEffect(() => {

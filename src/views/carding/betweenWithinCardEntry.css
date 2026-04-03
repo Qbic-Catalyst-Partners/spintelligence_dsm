@@ -357,6 +357,11 @@
   border: 1px solid #fecaca;
 }
 
+.bwc-error-field {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
 @media (max-width: 900px) {
   .bwc-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -92,12 +92,24 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
+        setErrors((prev) => {
+            if (!prev[field]) return prev;
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
     };
 
     const handleTuftCountChange = (value) => {
         if (!/^\d*$/.test(value)) return;
         let n = Math.min(Number(value), 20);
         setNumTufts(value);
+        setErrors((prev) => {
+            if (!prev.numTufts) return prev;
+            const next = { ...prev };
+            delete next.numTufts;
+            return next;
+        });
         setTufts(prev => {
             const arr = [...prev];
             while (arr.length < n) arr.push(emptyTuft());
@@ -122,6 +134,13 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         updated[index].ratio = displayWt ? (actWt / displayWt).toFixed(2) : '';
 
         setTufts(updated);
+        setErrors((prev) => {
+            const key = `tuft-${index}-${field}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
     };
 
     return (

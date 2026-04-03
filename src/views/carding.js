@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
 import BetweenWithinCardEntry from "./carding/betweenWithinCardEntry";
+import CardingDfk from "./carding/cardingdfk";
 import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
 import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
@@ -16,6 +17,7 @@ const cardingDepartmentTypes = [
     { id: 3, name: "Trials Data Entry Form" },
     { id: 4, name: "Nati Data Entry" },
     { id: 5, name: "U% Data Entry" },
+    { id: 6, name: "Card DFK Pressure Checking" },
 ];
 
 function Carding() {
@@ -35,27 +37,41 @@ function Carding() {
     return (
         <div className={styles["card-page"]}>
             <div className={styles["card-container"]}>
-
-                {/* BREADCRUMB */}
                 <div className={styles["card-breadcrumbs"]}>
-                    <button onClick={() => router.push("/")}>Home</button>
-                    <span>›</span>
-                    <button onClick={() => router.push("/dashboard")}>Dashboard</button>
-                    <span>›</span>
-                    <button onClick={() => router.push("/departments/quality-control")}>
+                    <button
+                        type="button"
+                        className={styles["card-breadcrumb-link"]}
+                        onClick={() => router.push("/")}
+                    >
+                        Home
+                    </button>
+                    <span>&rsaquo;</span>
+                    <button
+                        type="button"
+                        className={styles["card-breadcrumb-link"]}
+                        onClick={() => router.push("/dashboard")}
+                    >
+                        Dashboard
+                    </button>
+                    <span>&rsaquo;</span>
+                    <button
+                        type="button"
+                        className={styles["card-breadcrumb-link"]}
+                        onClick={() => router.push("/departments/quality-control")}
+                    >
                         Quality Control
                     </button>
-                    <span>›</span>
-                    <span>Carding Notebook QC</span>
+                    <span>&rsaquo;</span>
+                    <span className={styles["card-breadcrumb-active"]}>
+                        {selectedType || "Carding Notebook QC"}
+                    </span>
                 </div>
 
-                {/* HEADER */}
                 <div className={styles["card-header"]}>
                     <h1>Quality Control - Carding Notebook</h1>
                     <p>Record and manage industrial machine quality inspections.</p>
                 </div>
 
-                {/* ✅ FORM CARD */}
                 <div className={styles["card-shell"]}>
                     <div className={styles["card-form-title"]}>
                         <MdEditNote />
@@ -105,14 +121,21 @@ function Carding() {
                             onTypeChange={handleTypeChange}
                         />
                     )}
+
+                    {selectedType === "Card DFK Pressure Checking" && (
+                        <CardingDfk
+                            types={cardingDepartmentTypes}
+                            selectedType={selectedType}
+                            onTypeChange={handleTypeChange}
+                        />
+                    )}
                 </div>
 
-                {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
-                {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
                 {selectedType === "U% Data Entry" && (
                     <div
                         style={{
-                            marginTop: "20px",
+                            margin: "20px auto 0",
+                            maxWidth: "1120px",
                             background: "#fff",
                             borderRadius: "10px",
                             padding: "16px",
@@ -195,7 +218,7 @@ function Carding() {
                                                 style={{
                                                     padding: "10px",
                                                     borderBottom: "1px solid #eaeaea",
-                                                    color: idx === 5 ? "#1976d2" : "#555", // highlight U%
+                                                    color: idx === 5 ? "#1976d2" : "#555",
                                                     fontWeight: idx === 5 ? "600" : "400",
                                                 }}
                                             >
@@ -208,7 +231,6 @@ function Carding() {
                         </table>
                     </div>
                 )}
-
             </div>
         </div>
     );

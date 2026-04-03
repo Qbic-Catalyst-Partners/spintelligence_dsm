@@ -16,12 +16,25 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
 
     const handleChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
+        setErrors((prev) => {
+            if (!prev[field]) return prev;
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
     };
 
     const handleMoistureChange = (index, value) => {
         const updated = [...moistureValues];
         updated[index] = value;
         setMoistureValues(updated);
+        setErrors((prev) => {
+            const key = `value${index}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
     };
 
     const numbers = moistureValues.map(Number).filter((n) => !isNaN(n) && n !== 0);
