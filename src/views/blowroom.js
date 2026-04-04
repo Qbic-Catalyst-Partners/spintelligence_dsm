@@ -5,7 +5,7 @@ import { MdOutlineEditNote } from "react-icons/md";
 import CustomInput from "@/components/CustomInput";
 import Footer from "@/components/Footer";
 import BlowRoomSync from "./blowroom/BlowRoomSync";
-import BrWasteStudyEntry from "./blowroom/brWasteStudyEntry";
+import BrWasteStudyEntry from "@/views/mixing/brWasteStudyEntry";
 import DropTestDataEntry from "./blowroom/dropTestDataEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
