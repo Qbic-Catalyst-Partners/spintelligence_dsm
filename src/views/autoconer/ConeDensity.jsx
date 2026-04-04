@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { submitAutocornerConeDensity } from "@/store/slices/autocorner";
+import { saveAutoconerConeDensity } from "@/store/slices/autoconer";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -58,7 +58,7 @@ const ConeDensity = forwardRef(function ConeDensity(
   ref
 ) {
   const dispatch = useDispatch();
-  const { isLoading } = useSelector((state) => state.autocorner ?? {});
+  const { isLoading } = useSelector((state) => state.autoconer ?? {});
   const [form, setForm] = useState(createInitialForm);
   const [readingRows] = useState(createReadingRows);
   const [allDrumEntries] = useState(createAllDrumEntries);
@@ -142,9 +142,9 @@ const ConeDensity = forwardRef(function ConeDensity(
   const submit = async () => {
     if (!validate()) return false;
 
-    const resultAction = await dispatch(submitAutocornerConeDensity(buildPayload()));
+    const resultAction = await dispatch(saveAutoconerConeDensity(buildPayload()));
 
-    if (submitAutocornerConeDensity.fulfilled.match(resultAction)) {
+    if (saveAutoconerConeDensity.fulfilled.match(resultAction)) {
       alert(resultAction.payload?.message || "Cone density record created successfully");
       clear();
       return true;

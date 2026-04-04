@@ -1,8 +1,20 @@
 import apiConfig from "./apiConfig";
 
 const getErrorMessage = (error, fallback) => {
-  if (error.response && error.response.data) {
-    return error.response.data.message || fallback;
+  const responseData = error?.response?.data;
+  if (typeof responseData === "string") {
+    const preMatch = responseData.match(/<pre>([\s\S]*?)<\/pre>/i);
+    if (preMatch?.[1]) {
+      return preMatch[1]
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/&quot;/g, '"')
+        .replace(/&nbsp;/g, " ")
+        .trim();
+    }
+    return responseData.trim() || fallback;
+  }
+  if (responseData) {
+    return responseData.message || fallback;
   }
   return error.message || fallback;
 };
@@ -76,5 +88,32 @@ export const fetchAutoconerDrumWise = async ({ page = 1, limit = 10 } = {}) => {
     return response.data;
   } catch (error) {
     throw new Error(getErrorMessage(error, "Unable to fetch drum wise inspection."));
+  }
+};
+
+export const submitAutoconerRewindingStudy = async (payload) => {
+  try {
+    const response = await apiConfig.post("/autoconer/rewinding-study", payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, "Invalid rewinding study payload."));
+  }
+};
+
+export const submitAutoconerConeDensity = async (payload) => {
+  try {
+    const response = await apiConfig.post("/autoconer/cone-density", payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, "Invalid cone density payload."));
+  }
+};
+
+export const submitAutoconerConePackingAudit = async (payload) => {
+  try {
+    const response = await apiConfig.post("/autoconer/cone-packing-audit", payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, "Invalid cone packing audit payload."));
   }
 };

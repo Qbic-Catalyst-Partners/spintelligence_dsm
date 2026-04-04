@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { submitAutocornerConePackingAudit } from "@/store/slices/autocorner";
+import { saveAutoconerConePackingAudit } from "@/store/slices/autoconer";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -56,7 +56,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   ref
 ) {
   const dispatch = useDispatch();
-  const { isLoading } = useSelector((state) => state.autocorner ?? {});
+  const { isLoading } = useSelector((state) => state.autoconer ?? {});
   const [form, setForm] = useState(createInitialForm);
   const [rows] = useState(createReadingRows);
   const [errors, setErrors] = useState({});
@@ -132,9 +132,9 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const submit = async () => {
     if (!validate()) return false;
 
-    const resultAction = await dispatch(submitAutocornerConePackingAudit(buildPayload()));
+    const resultAction = await dispatch(saveAutoconerConePackingAudit(buildPayload()));
 
-    if (submitAutocornerConePackingAudit.fulfilled.match(resultAction)) {
+    if (saveAutoconerConePackingAudit.fulfilled.match(resultAction)) {
       alert(resultAction.payload?.message || "Cone packing audit created successfully");
       clear();
       return true;
