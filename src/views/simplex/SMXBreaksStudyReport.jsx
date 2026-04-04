@@ -1,7 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 
 const today = new Date().toISOString().split("T")[0];
-const typeOptions = ["SMXCots Change Data Entry", "SMX Breaks Study Report"];
 const simplexOptions = ["SX-01", "SX-02", "SX-03", "SX-04", "SX-05", "SX-06"];
 const reportTypeOptions = ["", "Regular", "Trial", "Special"];
 
@@ -72,7 +71,7 @@ const parseNumber = (value) => {
 const formatTotal = (value) => parseNumber(value).toFixed(2);
 
 const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
-  { selectedTypeName, onTypeChange },
+  { selectedTypeName = "SMX Breaks Study Report", onTypeChange, typeOptions = [] },
   ref
 ) {
   const [form, setForm] = useState(createInitialForm);
@@ -179,7 +178,7 @@ const errorStyle = (flag) =>
           <select
             className={`${topFieldClass}${errorClass(errors.form?.type)}`}
             style={errorStyle(errors.form?.type)}
-            value={selectedTypeName}
+            value={selectedTypeName || form.type}
             onChange={(e) => {
               handleFormChange("type", e.target.value);
               onTypeChange?.(e.target.value);

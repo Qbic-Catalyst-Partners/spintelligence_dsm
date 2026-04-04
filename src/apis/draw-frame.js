@@ -102,9 +102,9 @@ export const submitDrawFrameUqcInspection = async (payload) => {
     }
 };
 
-export const fetchDrawFrameUqcEntries = async () => {
+export const fetchDrawFrameUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
     try {
-        const response = await fetch(UQC_BASE_URL, {
+        const response = await fetch(`${UQC_BASE_URL}?page=${page}&limit=${limit}`, {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
@@ -117,9 +117,7 @@ export const fetchDrawFrameUqcEntries = async () => {
             throw new Error(data?.message || "Failed to fetch draw frame UQC entries");
         }
 
-        if (Array.isArray(data)) return data;
-        if (Array.isArray(data?.data)) return data.data;
-        return [];
+        return data;
     } catch (error) {
         throw new Error(error.message || "Server error occurred");
     }

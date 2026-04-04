@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import React, { forwardRef, useImperativeHandle, useState } from "react";
 
 const detailItems = [
   "Cots Damage",
@@ -9,7 +9,6 @@ const detailItems = [
 ];
 
 const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04", "MC-05", "MC-06"];
-const typeOptions = ["SMXCots Change Data Entry", "SMX Breaks Study Report"];
 const today = new Date().toISOString().split("T")[0];
 const errorStyle = (flag) =>
   flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
@@ -22,7 +21,7 @@ const createDetailRows = () =>
   }));
 
 const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
-  { selectedTypeName, onTypeChange },
+  _,
   ref
 ) {
   const [form, setForm] = useState({
@@ -33,16 +32,6 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   });
   const [details, setDetails] = useState(createDetailRows);
   const [errors, setErrors] = useState({});
-
-  const canSubmit = useMemo(() => {
-    if (!form.type.trim() || !form.serialNo.trim() || !form.date.trim() || !form.mcName.trim()) {
-      return false;
-    }
-
-    return details.every(
-      (detail) => detail.statusValue.trim() !== "" && detail.remarks.trim() !== ""
-    );
-  }, [details, form]);
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -146,27 +135,6 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-3 gap-[18px]">
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Type</label>
-          <select
-            className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-              errors.form?.type ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
-            }`}
-            style={errorStyle(errors.form?.type)}
-            value={selectedTypeName}
-            onChange={(e) => {
-              handleFormChange("type", e.target.value);
-              onTypeChange?.(e.target.value);
-            }}
-          >
-            {typeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">S. No.</label>
           <input
             type="text"
@@ -210,6 +178,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
             ))}
           </select>
         </div>
+
+        <div />
+        <div />
       </div>
 
       <div className="flex flex-col gap-4">

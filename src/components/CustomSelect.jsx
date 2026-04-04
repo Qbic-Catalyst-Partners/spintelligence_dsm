@@ -1,4 +1,4 @@
-function CustomSelect({ options, value, onChange, error = false }) {
+function CustomSelect({ options = [], value = "", onChange = () => {}, error = false }) {
     return (
         <select
             className={`mixx-input ${error ? "border border-red-500" : ""}`.trim()}
@@ -8,7 +8,9 @@ function CustomSelect({ options, value, onChange, error = false }) {
         >
             <option value="">Select Type</option>
             {options.map((option) => (
-                <option key={option.id}>{option.name}</option>
+                <option key={option.id ?? option.name} value={option.name}>
+                    {option.name}
+                </option>
             ))}
         </select>
     )

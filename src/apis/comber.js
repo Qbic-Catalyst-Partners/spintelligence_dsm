@@ -34,23 +34,18 @@ export const submitComberUqcEntry = async (payload) => {
         if (error.response && error.response.data) {
             throw new Error(error.response.data.message || "Invalid payload data.");
         }
-
         throw new Error(error.message || "Server error occurred");
     }
 };
 
-export const fetchComberUqcEntries = async () => {
+export const fetchComberUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
     try {
-        const response = await apiConfig.get("/comber/uqc");
-        const data = response.data;
-        if (Array.isArray(data)) return data;
-        if (Array.isArray(data?.data)) return data.data;
-        return [];
+        const response = await apiConfig.get("/comber/uqc", { page, limit });
+        return response.data;
     } catch (error) {
         if (error.response && error.response.data) {
-            throw new Error(error.response.data.message || "Failed to fetch entries.");
+            throw new Error(error.response.data.message || "Unable to fetch entries.");
         }
-
         throw new Error(error.message || "Server error occurred");
     }
 };

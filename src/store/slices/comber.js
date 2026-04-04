@@ -1,5 +1,10 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { fetchComberUqcEntries, submitComberUqcEntry, submitNatiDataEntry, submitRibbonLapCVDataEntry } from "@/apis/comber";
+import {
+    fetchComberUqcEntries,
+    submitComberUqcEntry,
+    submitNatiDataEntry,
+    submitRibbonLapCVDataEntry
+} from "@/apis/comber";
 
 export const submitComberRibbonLapCV = createAsyncThunk(
     "comber/submitRibbonLapCV",
@@ -25,23 +30,22 @@ export const submitComberNatiDataEntry = createAsyncThunk(
     }
 );
 
-export const submitComberUqcDataEntry = createAsyncThunk(
-    "comber/submitUqcDataEntry",
+export const submitComberUqc = createAsyncThunk(
+    "comber/submitUqc",
     async (payload, { rejectWithValue }) => {
         try {
-            const data = await submitComberUqcEntry(payload);
-            return data;
+            return await submitComberUqcEntry(payload);
         } catch (error) {
             return rejectWithValue(error.message);
         }
     }
 );
 
-export const fetchComberUqcDataEntries = createAsyncThunk(
-    "comber/fetchUqcDataEntries",
-    async (_, { rejectWithValue }) => {
+export const getComberUqcEntries = createAsyncThunk(
+    "comber/getUqcEntries",
+    async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
         try {
-            return await fetchComberUqcEntries();
+            return await fetchComberUqcEntries({ page, limit });
         } catch (error) {
             return rejectWithValue(error.message);
         }
@@ -51,6 +55,7 @@ export const fetchComberUqcDataEntries = createAsyncThunk(
 const initialState = {
     data: null,
     uqcEntries: [],
+    uqcMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
     isLoading: false,
     listLoading: false,
     error: null,
@@ -62,7 +67,10 @@ const comberSlice = createSlice({
     reducers: {
         clearComberState: (state) => {
             state.data = null;
+            state.uqcEntries = [];
+            state.uqcMeta = { page: 1, limit: 10, total: 0, totalPages: 0 };
             state.isLoading = false;
+            state.listLoading = false;
             state.error = null;
         },
     },
@@ -92,27 +100,33 @@ const comberSlice = createSlice({
                 state.isLoading = false;
                 state.error = action.payload;
             })
-            .addCase(submitComberUqcDataEntry.pending, (state) => {
+            .addCase(submitComberUqc.pending, (state) => {
                 state.isLoading = true;
                 state.error = null;
             })
-            .addCase(submitComberUqcDataEntry.fulfilled, (state, action) => {
+            .addCase(submitComberUqc.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.data = action.payload;
             })
-            .addCase(submitComberUqcDataEntry.rejected, (state, action) => {
+            .addCase(submitComberUqc.rejected, (state, action) => {
                 state.isLoading = false;
                 state.error = action.payload;
             })
-            .addCase(fetchComberUqcDataEntries.pending, (state) => {
+            .addCase(getComberUqcEntries.pending, (state) => {
                 state.listLoading = true;
                 state.error = null;
             })
-            .addCase(fetchComberUqcDataEntries.fulfilled, (state, action) => {
+            .addCase(getComberUqcEntries.fulfilled, (state, action) => {
                 state.listLoading = false;
-                state.uqcEntries = action.payload;
+                state.uqcEntries = action.payload?.data || [];
+                state.uqcMeta = {
+                    page: action.payload?.page || 1,
+                    limit: action.payload?.limit || 10,
+                    total: action.payload?.total || 0,
+                    totalPages: action.payload?.totalPages || 0,
+                };
             })
-            .addCase(fetchComberUqcDataEntries.rejected, (state, action) => {
+            .addCase(getComberUqcEntries.rejected, (state, action) => {
                 state.listLoading = false;
                 state.error = action.payload;
             });

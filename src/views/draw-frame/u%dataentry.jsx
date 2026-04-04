@@ -4,7 +4,7 @@ import CustomSelect from "@/components/CustomSelect";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 
-function UPercentDataEntry({ types, selectedType, onTypeChange }) {
+function UPercentDataEntry() {
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
     shift: "",
@@ -21,6 +21,18 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
   const [showPreview, setShowPreview] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [selectedType, setSelectedType] = useState("");
+
+  const types = [{ name: "Carding U% Data Entry" }];
+
+  const onTypeChange = (value) => {
+    setSelectedType(value);
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.selectedType;
+      return next;
+    });
+  };
 
   const handleChange = (field, value) => {
     setForm({ ...form, [field]: value });
@@ -89,7 +101,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
   ];
 
   return (
-    <div className={styles.container}>
+    <>
       <div className={styles.formGrid}>
         <div>
           <label>Type</label>
@@ -166,7 +178,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
           <input value={form.m3_cvm} onChange={(e) => handleChange("m3_cvm", e.target.value)} className={errors.m3_cvm ? styles.errorField : ""} />
         </div>
 
-        <div className={styles.fullWidth}>
+          <div className={styles.fullWidth}>
           <label>Remarks</label>
           <textarea
             rows={3}
@@ -193,7 +205,6 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
         }}
         saveLabel="Preview"
       />
-
       <PreviewModal
         open={showPreview}
         title="Carding Preview"
@@ -204,7 +215,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
         onConfirm={handleSubmit}
         confirmLabel="Submit"
       />
-    </div>
+    </>
   );
 }
 

@@ -81,8 +81,8 @@
 }
 
 .card-form-title h3 {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .card-form-title svg {
@@ -255,53 +255,6 @@
   font-size: 12px;
 }
 
-/* MAIN SPLIT LAYOUT */
-.carding-layout {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-/* LEFT SIDE */
-.left-section {
-  flex: 2;
-}
-
-/* RIGHT SIDE */
-.right-section {
-  flex: 1;
-  background: #fff;
-  padding: 16px;
-  border-radius: 10px;
-  border: 1px solid #e5e7eb;
-  height: fit-content;
-}
-
-/* TABLE TITLE */
-.table-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-/* TABLE */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.table th {
-  text-align: left;
-  padding: 8px;
-  font-weight: 600;
-  border-bottom: 1px solid #ddd;
-}
-
-.table td {
-  padding: 8px;
-  border-bottom: 1px solid #f1f1f1;
-}
 .card-machine-header .card-secondary {
   background: #3d539f;
   color: #fff;

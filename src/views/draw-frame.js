@@ -9,6 +9,7 @@ import UqcEntryForm from "@/components/UqcEntryForm";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
+  fetchDrawFrameUqcEntries,
   submitDrawFrameCotsInspection,
   submitDrawFrameUqcInspection,
   submitDrawFrameYarnCvInspection,
@@ -20,7 +21,7 @@ const today = new Date().toISOString().split("T")[0];
 const primaryTypeOptions = [
   "Yarn CV% Calculation Form",
   "Draw Frame Cots Data Entry",
-  "U% Data Entry",
+   "U% Data Entry",
 ];
 
 const processTypeOptions = ["Breaker", "Finisher", "Pre-Draw"];
@@ -56,12 +57,18 @@ const emptyMetric = () => ({
 function DrawFrame() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { actionLoading, actionSuccess, cotsEntries, listLoading, error } = useSelector(
+  const uqcRef = useRef(null);
+  const typeOptions = primaryTypeOptions.map((t, i) => ({
+    id: i + 1,
+    name: t,
+  }));
+  const { actionLoading, actionSuccess, cotsEntries, uqcEntries, listLoading, error } = useSelector(
     (state) =>
       state.drawFrame ?? {
         actionLoading: false,
         actionSuccess: false,
         cotsEntries: [],
+        uqcEntries: [],
         listLoading: false,
         error: null,
       }
@@ -87,7 +94,18 @@ function DrawFrame() {
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
-  const uqcRef = useRef(null);
+  const [uPercentForm, setUPercentForm] = useState({
+    date: today,
+    shift: "",
+    variety: "",
+    department: "",
+    mcNo: "",
+    uPercent: "",
+    cvm: "",
+    oneMeterCvm: "",
+    threeMeterCvm: "",
+    remarks: "",
+  });
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -159,6 +177,19 @@ function DrawFrame() {
     setErrors((prev) => ({ ...prev, header: { ...prev.header, readingCount: false }, oneYard: [], halfYard: [] }));
   };
 
+  const handleUPercentChange = (field, value) => {
+    setUPercentForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setErrors((prev) => {
+      if (!prev.uPercent?.[field]) return prev;
+      const nextUPercent = { ...(prev.uPercent || {}) };
+      delete nextUPercent[field];
+      return { ...prev, uPercent: nextUPercent };
+    });
+  };
+
   const handleCalculate = () => {
     const calculateMetricSet = (metrics) =>
       metrics.map((metric) => {
@@ -197,6 +228,18 @@ function DrawFrame() {
     setOneYardMetrics([]);
     setHalfYardMetrics([]);
     setHasCalculated(false);
+    setUPercentForm({
+      date: today,
+      shift: "",
+      variety: "",
+      department: "",
+      mcNo: "",
+      uPercent: "",
+      cvm: "",
+      oneMeterCvm: "",
+      threeMeterCvm: "",
+      remarks: "",
+    });
     setErrors({});
     dispatch(clearDrawFrameState());
   };
@@ -218,6 +261,9 @@ function DrawFrame() {
     if (form.type === "Draw Frame Cots Data Entry") {
       dispatch(fetchDrawFrameCotsEntries({ page: 1, limit: 10 }));
     }
+    if (form.type === "U% Data Entry") {
+      dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
+    }
   }, [dispatch, form.type]);
 
   const validate = () => {
@@ -229,6 +275,34 @@ function DrawFrame() {
     const machineErrors = [];
     const oneErrors = [];
     const halfErrors = [];
+
+    if (form.type === "U% Data Entry") {
+      if (!uPercentForm.date) headerErrors.date = true;
+
+      const uPercentErrors = {};
+      if (!uPercentForm.shift) uPercentErrors.shift = true;
+      if (!uPercentForm.variety) uPercentErrors.variety = true;
+      if (!uPercentForm.department) uPercentErrors.department = true;
+      if (!uPercentForm.mcNo) uPercentErrors.mcNo = true;
+      if (!uPercentForm.uPercent) uPercentErrors.uPercent = true;
+      if (!uPercentForm.cvm) uPercentErrors.cvm = true;
+      if (!uPercentForm.oneMeterCvm) uPercentErrors.oneMeterCvm = true;
+      if (!uPercentForm.threeMeterCvm) uPercentErrors.threeMeterCvm = true;
+      if (!uPercentForm.remarks.trim()) uPercentErrors.remarks = true;
+
+      const hasErrors =
+        Object.keys(headerErrors).length > 0 || Object.keys(uPercentErrors).length > 0;
+
+      setErrors({
+        header: headerErrors,
+        uPercent: uPercentErrors,
+        machines: [],
+        oneYard: [],
+        halfYard: [],
+      });
+
+      return !hasErrors;
+    }
 
     if (isCots) {
       if (!form.date) headerErrors.date = true;
@@ -316,6 +390,18 @@ function DrawFrame() {
           items.push({ label: "Scanning R", value: m.scanningR || "-" });
         }
       });
+    } else if (form.type === "U% Data Entry") {
+      items.push({ label: "Type", value: form.type });
+      items.push({ label: "Date", value: uPercentForm.date });
+      items.push({ label: "Shift", value: uPercentForm.shift });
+      items.push({ label: "Variety", value: uPercentForm.variety });
+      items.push({ label: "Department", value: uPercentForm.department });
+      items.push({ label: "MC No.", value: uPercentForm.mcNo });
+      items.push({ label: "U%", value: uPercentForm.uPercent });
+      items.push({ label: "CVM", value: uPercentForm.cvm });
+      items.push({ label: "1m CVM", value: uPercentForm.oneMeterCvm });
+      items.push({ label: "3m CVM", value: uPercentForm.threeMeterCvm });
+      items.push({ label: "Remarks", value: uPercentForm.remarks });
     } else {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "S. No.", value: form.serialNumber });
@@ -337,7 +423,7 @@ function DrawFrame() {
       });
     }
     return items;
-  }, [form, machineEntries, oneYardMetrics, halfYardMetrics]);
+  }, [form, machineEntries, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = () => {
     if (form.type === "U% Data Entry") {
@@ -348,6 +434,29 @@ function DrawFrame() {
     const isCots = form.type === "Draw Frame Cots Data Entry";
 
     if (!validate()) return;
+
+    if (form.type === "U% Data Entry") {
+      dispatch(
+        submitDrawFrameUqcInspection({
+          entry_type: form.type,
+          entry_date: uPercentForm.date,
+          shift: uPercentForm.shift,
+          variety: uPercentForm.variety,
+          department: uPercentForm.department,
+          mc_no: uPercentForm.mcNo,
+          u_percent: uPercentForm.uPercent,
+          cvm: uPercentForm.cvm,
+          cvm_1m: uPercentForm.oneMeterCvm,
+          cvm_3m: uPercentForm.threeMeterCvm,
+          remarks: uPercentForm.remarks,
+        })
+      ).then((result) => {
+        if (submitDrawFrameUqcInspection.fulfilled.match(result)) {
+          dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
+        }
+      });
+      return;
+    }
 
     const payload = isCots
       ? {
@@ -452,13 +561,16 @@ function DrawFrame() {
                   onChange={(e) => handleFormChange("type", e.target.value)}
                   className={styles.select}
                 >
-                  {primaryTypeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                  {typeOptions.map((option) => (
+                    <option key={option.id} value={option.name}>
+                      {option.name}
                     </option>
                   ))}
                 </select>
               </div>
+     
+                
+            
 
               {form.type === "U% Data Entry" ? null : form.type === "Draw Frame Cots Data Entry" ? (
                 <>
@@ -502,7 +614,129 @@ function DrawFrame() {
                     </select>
                   </div>
                 </>
-              ) : (
+              ) : form.type === "U% Data Entry" ? (
+                <>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Date</label>
+                    <input
+                      type="date"
+                      value={uPercentForm.date}
+                      onChange={(e) => handleUPercentChange("date", e.target.value)}
+                      className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
+                    />
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>Shift</label>
+                    <select
+                      value={uPercentForm.shift}
+                      onChange={(e) => handleUPercentChange("shift", e.target.value)}
+                      className={`${styles.select} ${errors.uPercent?.shift ? styles.inputError : ""}`}
+                    >
+                      <option value="">Select</option>
+                      {shiftOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>Variety</label>
+                    <select
+                      value={uPercentForm.variety}
+                      onChange={(e) => handleUPercentChange("variety", e.target.value)}
+                      className={`${styles.select} ${errors.uPercent?.variety ? styles.inputError : ""}`}
+                    >
+                      <option value="">Select</option>
+                      <option value="WPSF 0.90">WPSF 0.90</option>
+                      <option value="WPSF 1.20">WPSF 1.20</option>
+                      <option value="PSF Blend">PSF Blend</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>Department</label>
+                    <select
+                      value={uPercentForm.department}
+                      onChange={(e) => handleUPercentChange("department", e.target.value)}
+                      className={`${styles.select} ${errors.uPercent?.department ? styles.inputError : ""}`}
+                    >
+                      <option value="">Select Department</option>
+                      <option value="FR Drawing">FR Drawing</option>
+                      <option value="Draw Frame">Draw Frame</option>
+                      <option value="Finisher Drawing">Finisher Drawing</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>MC No.</label>
+                    <select
+                      value={uPercentForm.mcNo}
+                      onChange={(e) => handleUPercentChange("mcNo", e.target.value)}
+                      className={`${styles.select} ${errors.uPercent?.mcNo ? styles.inputError : ""}`}
+                    >
+                      <option value="">Select MC No.</option>
+                      <option value="DF-01">DF-01</option>
+                      <option value="DF-02">DF-02</option>
+                      <option value="DF-03">DF-03</option>
+                      <option value="DF-04">DF-04</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>U%</label>
+                    <input
+                      value={uPercentForm.uPercent}
+                      onChange={(e) => handleUPercentChange("uPercent", e.target.value)}
+                      className={`${styles.input} ${errors.uPercent?.uPercent ? styles.inputError : ""}`}
+                    />
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>CVM</label>
+                    <input
+                      value={uPercentForm.cvm}
+                      onChange={(e) => handleUPercentChange("cvm", e.target.value)}
+                      className={`${styles.input} ${errors.uPercent?.cvm ? styles.inputError : ""}`}
+                    />
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>1m CVM</label>
+                    <select
+                      value={uPercentForm.oneMeterCvm}
+                      onChange={(e) => handleUPercentChange("oneMeterCvm", e.target.value)}
+                      className={`${styles.select} ${errors.uPercent?.oneMeterCvm ? styles.inputError : ""}`}
+                    >
+                      <option value="">Select</option>
+                      <option value="0.32">0.32</option>
+                      <option value="0.45">0.45</option>
+                      <option value="0.58">0.58</option>
+                    </select>
+                  </div>
+
+                  <div className={styles.field}>
+                    <label className={styles.label}>3m CVM</label>
+                    <input
+                      value={uPercentForm.threeMeterCvm}
+                      onChange={(e) => handleUPercentChange("threeMeterCvm", e.target.value)}
+                      className={`${styles.input} ${errors.uPercent?.threeMeterCvm ? styles.inputError : ""}`}
+                    />
+                  </div>
+
+                  <div className={`${styles.field} ${styles.fieldWide}`}>
+                    <label className={styles.label}>Remarks</label>
+                    <textarea
+                      rows={4}
+                      value={uPercentForm.remarks}
+                      onChange={(e) => handleUPercentChange("remarks", e.target.value)}
+                      className={`${styles.textarea} ${errors.uPercent?.remarks ? styles.inputError : ""}`}
+                    />
+                  </div>
+                </>
+              ) :(
                 <>
                   <div className={styles.field}>
                     <label className={styles.label}>S. No.</label>
@@ -702,7 +936,7 @@ function DrawFrame() {
                 </div>
 
               </div>
-            ) : (
+            ) : form.type === "U% Data Entry" ? null : (
               <>
                 <div className={styles.calculateWrap}>
                   <button
@@ -832,6 +1066,132 @@ function DrawFrame() {
             disabled={actionLoading}
           />
         </div>
+        {form.type === "U% Data Entry" && (
+  <div
+    style={{
+      marginTop: "20px",
+      background: "#fff",
+      borderRadius: "10px",
+      padding: "16px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+      overflowX: "auto",
+    }}
+  >
+    <h3
+      style={{
+        marginBottom: "12px",
+        fontSize: "18px",
+        fontWeight: "600",
+        color: "#333",
+      }}
+    >
+      Last 10 Entries
+    </h3>
+
+    <table
+      style={{
+        width: "100%",
+        borderCollapse: "collapse",
+        fontSize: "14px",
+        minWidth: "900px",
+      }}
+    >
+      <thead style={{ backgroundColor: "#f4f6f8" }}>
+        <tr>
+          {[
+            "Date",
+            "Shift",
+            "Variety",
+            "Department",
+            "MC No.",
+            "U%",
+            "CVM",
+            "1mCVM",
+            "3mCVM",
+            "Remarks",
+          ].map((head) => (
+            <th
+              key={head}
+              style={{
+                padding: "12px 10px",
+                textAlign: "left",
+                fontWeight: "600",
+                color: "#444",
+                borderBottom: "2px solid #e0e0e0",
+              }}
+            >
+              {head}
+            </th>
+          ))}
+        </tr>
+      </thead>
+
+      <tbody>
+        {listLoading ? (
+          <tr>
+            <td
+              colSpan={10}
+              style={{
+                padding: "16px",
+                textAlign: "center",
+                color: "#64748b",
+              }}
+            >
+              Loading entries...
+            </td>
+          </tr>
+        ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
+          <tr
+            key={entry.id || i}
+            style={{
+              backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+            }}
+          >
+            {[
+              entry.entry_date
+                ? new Date(entry.entry_date).toLocaleDateString("en-GB")
+                : "-",
+              entry.shift || "-",
+              entry.variety || "-",
+              entry.department || "-",
+              entry.mc_no || "-",
+              entry.u_percent || "-",
+              entry.cvm || "-",
+              entry.cvm_1m || "-",
+              entry.cvm_3m || "-",
+              entry.remarks || "-",
+            ].map((cell, idx) => (
+              <td
+                key={idx}
+                style={{
+                  padding: "10px",
+                  borderBottom: "1px solid #eaeaea",
+                  color: idx === 5 ? "#1976d2" : "#555",
+                  fontWeight: idx === 5 ? "600" : "400",
+                }}
+              >
+                {cell}
+              </td>
+            ))}
+          </tr>
+        )) : (
+          <tr>
+            <td
+              colSpan={10}
+              style={{
+                padding: "16px",
+                textAlign: "center",
+                color: "#64748b",
+              }}
+            >
+              No entries found.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+)}
       </div>
 
       <PreviewModal

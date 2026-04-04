@@ -53,9 +53,9 @@ export const submitDrawFrameUqcInspection = createAsyncThunk(
 
 export const fetchDrawFrameUqcEntries = createAsyncThunk(
   "drawFrame/fetchUqcEntries",
-  async (_, { rejectWithValue }) => {
+  async (params, { rejectWithValue }) => {
     try {
-      return await fetchDrawFrameUqcEntriesApi();
+      return await fetchDrawFrameUqcEntriesApi(params);
     } catch (error) {
       return rejectWithValue(error?.message || "Something went wrong");
     }
@@ -66,6 +66,7 @@ const initialState = {
   data: null,
   cotsEntries: [],
   uqcEntries: [],
+  uqcMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
   actionLoading: false,
   actionSuccess: false,
   listLoading: false,
@@ -148,7 +149,13 @@ const drawFrameSlice = createSlice({
       })
       .addCase(fetchDrawFrameUqcEntries.fulfilled, (state, action) => {
         state.listLoading = false;
-        state.uqcEntries = action.payload;
+        state.uqcEntries = action.payload?.data || [];
+        state.uqcMeta = {
+          page: action.payload?.page || 1,
+          limit: action.payload?.limit || 10,
+          total: action.payload?.total || 0,
+          totalPages: action.payload?.totalPages || 0,
+        };
       })
       .addCase(fetchDrawFrameUqcEntries.rejected, (state, action) => {
         state.listLoading = false;

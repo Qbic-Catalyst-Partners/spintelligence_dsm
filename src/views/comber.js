@@ -3,13 +3,13 @@ import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 import RibbonLapCVDataEntry from "./comber/ribbonLapCVDataEntry";
 import NatiDataEntry from "./comber/natiDataEntry";
-import UqcEntryForm from "@/components/UqcEntryForm";
+import UPercentDataEntry from "./comber/u%dataentry";
 import styles from "./comber/ribbonLapCVDataEntry.module.css";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
-import { clearComberState, submitComberUqcDataEntry } from "@/store/slices/comber";
+import { clearComberState, submitComberUqc } from "@/store/slices/comber";
 
 const comberDepartmentTypes = [
     {
@@ -25,11 +25,10 @@ const comberDepartmentTypes = [
         name: "U% Data Entry",
     },
 ];
-
 function Comber() {
     const router = useRouter();
     const dispatch = useDispatch();
-    const { data, isLoading } = useSelector((state) => state.comber ?? {});
+    const { data, isLoading, listLoading, uqcEntries = [] } = useSelector((state) => state.comber ?? {});
     const childRef = useRef(null);
     const [checkingType, setCheckingType] = useState(null);
     const [showSuccess, setShowSuccess] = useState(false);
@@ -143,7 +142,26 @@ function Comber() {
                                 showForm={Boolean(checkingType)}
                             />
 
-                            <div style={{ margin: "16px -24px 0 -24px" }}>
+                            <div style={{ margin: "0 -24px -20px -24px" }}>
+                                <Footer
+                                    onBack={() => router.push("/dashboard")}
+                                    onClear={handleClear}
+                                    onSave={openPreview}
+                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        </>
+                    ) : selectedType === "U% Data Entry" ? (
+                        <>
+                            <UPercentDataEntry
+                                ref={childRef}
+                                types={comberDepartmentTypes}
+                                selectedType={selectedType}
+                                onTypeChange={handleTypeChange}
+                            />
+
+                            <div style={{ margin: "0 -24px -20px -24px" }}>
                                 <Footer
                                     onBack={() => router.push("/dashboard")}
                                     onClear={handleClear}
@@ -161,7 +179,7 @@ function Comber() {
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
                                 departmentValue="Comber"
-                                submitHandler={(payload) => dispatch(submitComberUqcDataEntry(payload)).unwrap()}
+                                submitHandler={(payload) => dispatch(submitComberUqc(payload)).unwrap()}
                             />
 
                             <div style={{ margin: "16px -24px 0 -24px" }}>
@@ -185,6 +203,117 @@ function Comber() {
                         />
                     )}
                 </div>
+                    {selectedType === "U% Data Entry" && (
+    <div
+        style={{
+            marginTop: "20px",
+            background: "#fff",
+            borderRadius: "10px",
+            padding: "16px",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+            overflowX: "auto",
+        }}
+    >
+        <h3
+            style={{
+                marginBottom: "12px",
+                fontSize: "18px",
+                fontWeight: "600",
+                color: "#333",
+            }}
+        >
+            Last 10 Entries
+        </h3>
+
+        <table
+            style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "14px",
+                minWidth: "900px",
+            }}
+        >
+            <thead style={{ backgroundColor: "#f4f6f8" }}>
+                <tr>
+                    {[
+                        "Date",
+                        "Shift",
+                        "Variety",
+                        "Department",
+                        "MC No.",
+                        "U%",
+                        "CVM",
+                        "1mCVM",
+                        "3mCVM",
+                        "Remarks",
+                    ].map((head) => (
+                        <th
+                            key={head}
+                            style={{
+                                padding: "12px 10px",
+                                textAlign: "left",
+                                fontWeight: "600",
+                                color: "#444",
+                                borderBottom: "2px solid #e0e0e0",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            {head}
+                        </th>
+                    ))}
+                </tr>
+            </thead>
+
+            <tbody>
+                {listLoading ? (
+                    <tr>
+                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                            Loading...
+                        </td>
+                    </tr>
+                ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
+                    <tr
+                        key={entry.id}
+                        style={{
+                            backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+                        }}
+                    >
+                        {[
+                            entry.entry_date ? new Date(entry.entry_date).toLocaleDateString("en-GB") : "-",
+                            entry.shift || "-",
+                            entry.variety || "-",
+                            entry.department || "-",
+                            entry.mc_no || "-",
+                            entry.u_percent || "-",
+                            entry.cvm || "-",
+                            entry.cvm_1m || "-",
+                            entry.cvm_3m || "-",
+                            entry.remarks || "-",
+                        ].map((cell, idx) => (
+                            <td
+                                key={idx}
+                                style={{
+                                    padding: "10px",
+                                    borderBottom: "1px solid #eaeaea",
+                                    color: idx === 5 ? "#1976d2" : "#555",
+                                    fontWeight: idx === 5 ? "600" : "400",
+                                }}
+                            >
+                                {cell}
+                            </td>
+                        ))}
+                    </tr>
+                )) : (
+                    <tr>
+                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                            No entries found.
+                        </td>
+                    </tr>
+                )}
+            </tbody>
+        </table>
+    </div>
+)}
             </div>
 
             <PreviewModal

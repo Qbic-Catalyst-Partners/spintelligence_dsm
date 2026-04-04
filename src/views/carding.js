@@ -8,6 +8,7 @@ import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
 import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
+import { useSelector } from "react-redux";
 
 import styles from "./carding/cardThickPlaceEntry.module.css";
 
@@ -22,6 +23,7 @@ const cardingDepartmentTypes = [
 
 function Carding() {
     const router = useRouter();
+    const { uqcEntries = [], listLoading } = useSelector((state) => state.carding ?? {});
     const [checkingType, setCheckingType] = useState(null);
 
     const handleTypeChange = (value) => {
@@ -131,6 +133,8 @@ function Carding() {
                     )}
                 </div>
 
+                
+                {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
                 {selectedType === "U% Data Entry" && (
                     <div
                         style={{
@@ -194,24 +198,30 @@ function Carding() {
                             </thead>
 
                             <tbody>
-                                {[...Array(10)].map((_, i) => (
+                                {listLoading ? (
+                                    <tr>
+                                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                                            Loading...
+                                        </td>
+                                    </tr>
+                                ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
                                     <tr
-                                        key={i}
+                                        key={entry.id}
                                         style={{
                                             backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
                                         }}
                                     >
                                         {[
-                                            "02/04/2026",
-                                            "General",
-                                            "WPSF 0.90",
-                                            "FR Drawing",
-                                            "FR DSS-1",
-                                            "1.32",
-                                            "1.67",
-                                            "0.32",
-                                            "1.55",
-                                            "Lorem Ipsum is simply dummy",
+                                            entry.entry_date ? new Date(entry.entry_date).toLocaleDateString("en-GB") : "-",
+                                            entry.shift || "-",
+                                            entry.variety || "-",
+                                            entry.department || "-",
+                                            entry.mc_no || "-",
+                                            entry.u_percent || "-",
+                                            entry.cvm || "-",
+                                            entry.cvm_1m || "-",
+                                            entry.cvm_3m || "-",
+                                            entry.remarks || "-",
                                         ].map((cell, idx) => (
                                             <td
                                                 key={idx}
@@ -226,7 +236,13 @@ function Carding() {
                                             </td>
                                         ))}
                                     </tr>
-                                ))}
+                                )) : (
+                                    <tr>
+                                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                                            No entries found.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
