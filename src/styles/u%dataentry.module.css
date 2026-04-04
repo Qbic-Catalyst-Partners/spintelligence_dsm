@@ -26,7 +26,7 @@
   border: 1px solid #E2E8F0;
   border-radius: 8px;
   font-size: 14px;
-  background: #F1F5F9;
+  background: #F8FAFC;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   height: 38px;
@@ -94,12 +94,34 @@
   border-top: 1px solid #eef1f6;
   color: #374151;
   background: #F6F7F8;
-
 }
-
-
 
 /* FOOTER SPACE FIX */
 .footer-space {
   margin-top: 16px;
+}
+
+.errorField {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
+.messageBox {
+  margin: 0 20px 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.messageSuccess {
+  background: #ecfdf5;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.messageError {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import UqcEntryForm from "@/components/UqcEntryForm";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -56,7 +57,8 @@ const emptyMetric = () => ({
 function DrawFrame() {
   const router = useRouter();
   const dispatch = useDispatch();
-    const typeOptions = primaryTypeOptions.map((t, i) => ({
+  const uqcRef = useRef(null);
+  const typeOptions = primaryTypeOptions.map((t, i) => ({
     id: i + 1,
     name: t,
   }));
@@ -207,6 +209,11 @@ function DrawFrame() {
   };
 
   const handleClear = () => {
+    if (form.type === "U% Data Entry") {
+      uqcRef.current?.clear?.();
+      dispatch(clearDrawFrameState());
+      return;
+    }
     setForm({
       type: "Yarn CV% Calculation Form",
       date: today,
@@ -260,6 +267,9 @@ function DrawFrame() {
   }, [dispatch, form.type]);
 
   const validate = () => {
+    if (form.type === "U% Data Entry") {
+      return uqcRef.current?.validate?.() ?? false;
+    }
     const isCots = form.type === "Draw Frame Cots Data Entry";
     const headerErrors = {};
     const machineErrors = [];
@@ -358,6 +368,9 @@ function DrawFrame() {
   };
 
   const buildPreviewItems = useMemo(() => {
+    if (form.type === "U% Data Entry") {
+      return uqcRef.current?.getPreviewData?.() ?? [];
+    }
     const items = [];
     if (form.type === "Draw Frame Cots Data Entry") {
       items.push({ label: "Type", value: form.type });
@@ -413,6 +426,11 @@ function DrawFrame() {
   }, [form, machineEntries, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = () => {
+    if (form.type === "U% Data Entry") {
+      if (!uqcRef.current?.validate?.()) return;
+      dispatch(submitDrawFrameUqcInspection(uqcRef.current?.getPayload?.() || {}));
+      return;
+    }
     const isCots = form.type === "Draw Frame Cots Data Entry";
 
     if (!validate()) return;
@@ -481,7 +499,7 @@ function DrawFrame() {
 
   const openPreview = () => {
     if (!validate()) return;
-    setPreviewItems(buildPreviewItems);
+    setPreviewItems(form.type === "U% Data Entry" ? uqcRef.current?.getPreviewData?.() || [] : buildPreviewItems);
     setShowPreview(true);
   };
 
@@ -554,7 +572,7 @@ function DrawFrame() {
                 
             
 
-              {form.type === "Draw Frame Cots Data Entry" ? (
+              {form.type === "U% Data Entry" ? null : form.type === "Draw Frame Cots Data Entry" ? (
                 <>
                   <div className={styles.field}>
                     <label className={styles.label}>Date</label>
@@ -788,7 +806,16 @@ function DrawFrame() {
               )}
             </div>
 
-            {form.type === "Draw Frame Cots Data Entry" ? (
+            {form.type === "U% Data Entry" ? (
+              <UqcEntryForm
+                ref={uqcRef}
+                hideTypeField
+                selectedType={form.type}
+                onTypeChange={(value) => handleFormChange("type", value)}
+                departmentValue="drawframe"
+                submitHandler={(payload) => dispatch(submitDrawFrameUqcInspection(payload)).unwrap()}
+              />
+            ) : form.type === "Draw Frame Cots Data Entry" ? (
               <div className={styles.machineSection}>
                 <h3 className={styles.machineSectionTitle}>Machine-Specific Data</h3>
 

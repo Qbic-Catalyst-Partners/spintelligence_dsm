@@ -76,6 +76,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       ...current,
       [field]: value,
     }));
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
 
   const handleGenerate = () => {
@@ -87,6 +93,13 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   };
 
   const handleRowChange = (stageIndex, rowIndex, field, value) => {
+    setErrors((prev) => {
+      const key = `stage-${stageIndex}-row-${rowIndex}-${field}`;
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
     setStages((current) => {
       const updated = current.map((stage, currentStageIndex) => {
         const updatedRows = stage.rows.map((row, currentRowIndex) => {

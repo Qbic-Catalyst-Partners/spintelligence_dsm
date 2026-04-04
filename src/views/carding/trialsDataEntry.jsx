@@ -1,14 +1,72 @@
 import { useEffect, useState } from "react";
-import { MdEditNote } from "react-icons/md";
 import { useRouter } from "next/navigation";
 
+import PreviewModal from "@/components/PreviewModal";
 import styles from "./trialsDataEntry.module.css";
+
+const topCutFields = [
+    ["Total Cuts", "totalCuts"],
+    ["Neps Cuts", "nepsCuts"],
+    ["Short Cuts", "shortCuts"],
+    ["Long Cuts", "longCuts"],
+    ["Thin Cuts", "thinCuts"],
+];
+
+const cutsGridFields = [
+    ["cp", "cm", "ccp", "ccm", "jp"],
+    ["a1", "a2", "a3", "a4"],
+    ["b1", "b2", "b3", "b4"],
+    ["c1", "c2", "c3", "c4"],
+    ["d1", "d2", "d3", "d4"],
+    ["e", "f", "g", "h1", "h2"],
+    ["i1", "i2", "cvp"],
+];
+
+const requiredFields = [
+    "trialId",
+    "machine",
+    "autoMachine",
+    "count",
+    "purpose",
+    "trialname",
+    "trialtype",
+    "nature",
+    "unit",
+    "material",
+    "mixing",
+    "yarnresults",
+    "totalCuts",
+    "nepsCuts",
+    "shortCuts",
+    "longCuts",
+    "thinCuts",
+    "userId",
+    "uPercent",
+    "cvm",
+    "cvmCvPercent",
+    "cvm10mtr",
+    "dr15m",
+    "thin50",
+    "thick50",
+    "neps200",
+    "thin40",
+    "thick35",
+    "neps140",
+    "thin30",
+    "countFinal",
+    "csp",
+    ...cutsGridFields.flat(),
+];
 
 function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false }) {
     const router = useRouter();
     const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [time, setTime] = useState("");
     const [formData, setFormData] = useState({});
+    const [errors, setErrors] = useState({});
+    const [showPreview, setShowPreview] = useState(false);
+    const [formMessage, setFormMessage] = useState("");
+    const [isError, setIsError] = useState(false);
 
     useEffect(() => {
         const now = new Date();
@@ -17,8 +75,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         );
     }, []);
 
-    const handleTypeChange = (value) => {
-        onTypeChange(value);
+    const refreshStamp = () => {
         const now = new Date();
         setDate(now.toISOString().split("T")[0]);
         setTime(
@@ -26,24 +83,70 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         );
     };
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData({ ...formData, [name]: value });
+    const handleTypeChange = (value) => {
+        onTypeChange(value);
+        refreshStamp();
+    };
+
+    const handleChange = (event) => {
+        const { name, value } = event.target;
+        setFormData((current) => ({
+            ...current,
+            [name]: value,
+        }));
+        setErrors((current) => {
+            const next = { ...current };
+            delete next[name];
+            return next;
+        });
     };
 
     const handleClear = () => {
         setFormData({});
-        const now = new Date();
-        setDate(now.toISOString().split("T")[0]);
-        setTime(
-            [String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0"), String(now.getSeconds()).padStart(2, "0")].join(":")
-        );
+        setErrors({});
+        setFormMessage("");
+        setIsError(false);
+        refreshStamp();
+    };
+
+    const validateForm = () => {
+        const nextErrors = {};
+        if (!selectedType) nextErrors.selectedType = true;
+        requiredFields.forEach((field) => {
+            if (!String(formData[field] || "").trim()) {
+                nextErrors[field] = true;
+            }
+        });
+        setErrors(nextErrors);
+
+        if (Object.keys(nextErrors).length) {
+            setFormMessage("Please fill all required fields before preview.");
+            setIsError(true);
+            return false;
+        }
+
+        setFormMessage("");
+        setIsError(false);
+        return true;
     };
 
     const handleSave = () => {
-        console.log(formData);
-        alert("Record Saved");
+        setShowPreview(false);
+        setFormMessage("Preview confirmed. API is not connected for Trials yet.");
+        setIsError(false);
     };
+
+    const previewItems = [
+        { label: "Type", value: selectedType },
+        { label: "Date", value: date },
+        { label: "Time", value: time },
+        ...requiredFields.map((field) => ({
+            label: field,
+            value: formData[field],
+        })),
+    ];
+
+    const fieldClass = (name) => (errors[name] ? styles.errorField : "");
 
     return (
         <div className={styles.cardShell}>
@@ -53,8 +156,9 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         <label>Type</label>
                         <select
                             value={selectedType}
-                            onChange={(e) => handleTypeChange(e.target.value)}
-                            onWheel={(e) => e.currentTarget.blur()}
+                            onChange={(event) => handleTypeChange(event.target.value)}
+                            onWheel={(event) => event.currentTarget.blur()}
+                            className={errors.selectedType ? styles.errorField : ""}
                         >
                             <option value="">Select Type</option>
                             {types.map((item) => (
@@ -67,7 +171,13 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
                     <div className={styles.cardFormGroup}>
                         <label>Basic Information</label>
-                        <input name="trialId" placeholder="TRL-20260304-001" onChange={handleChange} />
+                        <input
+                            name="trialId"
+                            placeholder="TRL-20260304-001"
+                            value={formData.trialId || ""}
+                            onChange={handleChange}
+                            className={fieldClass("trialId")}
+                        />
                     </div>
                 </div>
 
@@ -88,39 +198,42 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
                                 <label>Spinning Machine Name</label>
-                                <select name="machine">
-                                    <option>Select</option>
+                                <select name="machine" value={formData.machine || ""} onChange={handleChange} className={fieldClass("machine")}>
+                                    <option value="">Select</option>
+                                    <option value="Carding Machine">Carding Machine</option>
                                 </select>
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Autoconer Machine Name</label>
-                                <select name="autoMachine">
-                                    <option>Select</option>
+                                <select name="autoMachine" value={formData.autoMachine || ""} onChange={handleChange} className={fieldClass("autoMachine")}>
+                                    <option value="">Select</option>
+                                    <option value="Autoconer Machine">Autoconer Machine</option>
                                 </select>
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Count Name</label>
-                                <input name="count" />
+                                <input name="count" value={formData.count || ""} onChange={handleChange} className={fieldClass("count")} />
                             </div>
                         </div>
 
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
                                 <label>Purpose</label>
-                                <input name="purpose" />
+                                <input name="purpose" value={formData.purpose || ""} onChange={handleChange} className={fieldClass("purpose")} />
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Trial Name / ID</label>
-                                <input name="trialname" />
+                                <input name="trialname" value={formData.trialname || ""} onChange={handleChange} className={fieldClass("trialname")} />
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Type</label>
-                                <select name="trialtype">
-                                    <option>Select</option>
+                                <select name="trialtype" value={formData.trialtype || ""} onChange={handleChange} className={fieldClass("trialtype")}>
+                                    <option value="">Select</option>
+                                    <option value="Trial">Trial</option>
                                 </select>
                             </div>
                         </div>
@@ -128,29 +241,29 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
                                 <label>Nature</label>
-                                <input name="nature" />
+                                <input name="nature" value={formData.nature || ""} onChange={handleChange} className={fieldClass("nature")} />
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Unit No.</label>
-                                <input name="unit" />
+                                <input name="unit" value={formData.unit || ""} onChange={handleChange} className={fieldClass("unit")} />
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Raw Material</label>
-                                <input name="material" />
+                                <input name="material" value={formData.material || ""} onChange={handleChange} className={fieldClass("material")} />
                             </div>
                         </div>
 
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
                                 <label>Mixing</label>
-                                <input name="mixing" />
+                                <input name="mixing" value={formData.mixing || ""} onChange={handleChange} className={fieldClass("mixing")} />
                             </div>
 
                             <div className={`${styles.cardFormGroup} ${styles.fullWidth}`}>
                                 <label>Yarn Results</label>
-                                <textarea name="yarnresults" />
+                                <textarea name="yarnresults" value={formData.yarnresults || ""} onChange={handleChange} className={fieldClass("yarnresults")} />
                             </div>
                         </div>
                     </>
@@ -163,38 +276,24 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         <h3 className={styles.cutsTitle}>Cuts and Imperfection Parameters</h3>
 
                         <div className={styles.cutsTop}>
-                            {[
-                                { label: "Total Cuts" },
-                                { label: "Neps Cuts" },
-                                { label: "Short Cuts" },
-                                { label: "Long Cuts" },
-                                { label: "Thin Cuts" },
-                            ].map((item) => (
-                                <div className={styles.cardFormGroup} key={item.label}>
-                                    <label>{item.label}</label>
-                                    <input type="text" />
+                            {topCutFields.map(([label, name]) => (
+                                <div className={styles.cardFormGroup} key={name}>
+                                    <label>{label}</label>
+                                    <input type="text" name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
                                 </div>
                             ))}
                         </div>
 
                         <div className={styles.cutsGrid}>
-                            {[
-                                ["CP", "CM", "CCP", "CCM", "JP"],
-                                ["A1", "A2", "A3", "A4"],
-                                ["B1", "B2", "B3", "B4"],
-                                ["C1", "C2", "C3", "C4"],
-                                ["D1", "D2", "D3", "D4"],
-                                ["E", "F", "G", "H1", "H2"],
-                                ["I1", "I2", "CVP"],
-                            ].map((row, rowIndex) =>
+                            {cutsGridFields.map((row, rowIndex) =>
                                 row.map((item, columnIndex) => (
                                     <div
                                         className={styles.gridItem}
                                         key={`${item}-${rowIndex}`}
                                         style={{ gridRow: rowIndex + 1, gridColumn: columnIndex + 1 }}
                                     >
-                                        <label>{item}</label>
-                                        <input type="text" />
+                                        <label>{item.toUpperCase()}</label>
+                                        <input type="text" name={item} value={formData[item] || ""} onChange={handleChange} className={fieldClass(item)} />
                                     </div>
                                 ))
                             )}
@@ -204,19 +303,19 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                     <h3 className={styles.cutsTitle}>User Tester Parameters</h3>
                     <div className={styles.parameterCard}>
                         <div className={styles.cardRow}>
-                            {["User ID", "U%", "CVM"].map((label) => (
-                                <div className={styles.cardFormGroupfield} key={label}>
+                            {[["User ID", "userId"], ["U%", "uPercent"], ["CVM", "cvm"]].map(([label, name]) => (
+                                <div className={styles.cardFormGroupfield} key={name}>
                                     <label>{label}</label>
-                                    <input />
+                                    <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
                                 </div>
                             ))}
                         </div>
 
                         <div className={styles.cardRow}>
-                            {["CVM cv%", "CVM 10 mtr", "DR 1.5m"].map((label) => (
-                                <div className={styles.cardFormGroupfield} key={label}>
+                            {[["CVM cv%", "cvmCvPercent"], ["CVM 10 mtr", "cvm10mtr"], ["DR 1.5m", "dr15m"]].map(([label, name]) => (
+                                <div className={styles.cardFormGroupfield} key={name}>
                                     <label>{label}</label>
-                                    <input />
+                                    <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
                                 </div>
                             ))}
                         </div>
@@ -225,41 +324,39 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                     <h3 className={styles.cutsTitle}>IPI Parameters</h3>
                     <p className={styles.subTitle}>REGULAR IPI</p>
                     <div className={styles.grid4}>
-                        {[
-                            { label: "Thin -50%" },
-                            { label: "Thick +50%" },
-                            { label: "Neps +200%" },
-                            { label: "Total (Regular)", value: "0.00" },
-                        ].map((field) => (
-                            <div className={styles.formGroup} key={field.label}>
-                                <label>{field.label}</label>
-                                <input type="number" value={field.value ?? ""} readOnly={Boolean(field.value)} />
+                        {[["Thin -50%", "thin50"], ["Thick +50%", "thick50"], ["Neps +200%", "neps200"]].map(([label, name]) => (
+                            <div className={styles.formGroup} key={name}>
+                                <label>{label}</label>
+                                <input type="number" name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
                             </div>
                         ))}
+                        <div className={styles.formGroup}>
+                            <label>Total (Regular)</label>
+                            <input type="number" value="0.00" readOnly />
+                        </div>
                     </div>
 
                     <p className={`${styles.subTitle} ${styles.marginTop}`}>HIGHER SENSITIVE IPI</p>
                     <div className={styles.grid4}>
-                        {[
-                            { label: "Thin -40%" },
-                            { label: "Thick +35%" },
-                            { label: "Neps +140%" },
-                            { label: "Total (HS)", value: "0.00" },
-                        ].map((field) => (
-                            <div className={styles.formGroup} key={field.label}>
-                                <label>{field.label}</label>
-                                <input type="number" value={field.value ?? ""} readOnly={Boolean(field.value)} />
+                        {[["Thin -40%", "thin40"], ["Thick +35%", "thick35"], ["Neps +140%", "neps140"]].map(([label, name]) => (
+                            <div className={styles.formGroup} key={name}>
+                                <label>{label}</label>
+                                <input type="number" name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
                             </div>
                         ))}
+                        <div className={styles.formGroup}>
+                            <label>Total (HS)</label>
+                            <input type="number" value="0.00" readOnly />
+                        </div>
                     </div>
 
                     <p className={styles.cutsTitle}>Other IPI / Final values</p>
                     <div className={styles.cardBox}>
                         <div className={styles.grid3}>
-                            {["Thin -30%", "Count", "CSP"].map((label) => (
-                                <div className={styles.field} key={label}>
+                            {[["Thin -30%", "thin30"], ["Count", "countFinal"], ["CSP", "csp"]].map(([label, name]) => (
+                                <div className={styles.field} key={name}>
                                     <label>{label}</label>
-                                    <input type="number" />
+                                    <input type="number" name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
                                 </div>
                             ))}
                         </div>
@@ -269,17 +366,42 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
             <div className={styles.cardFooter}>
                 <button className={styles.cardBack} onClick={() => router.push("/dashboard")}>
-                    ← Back to Dashboard
+                    Back to Dashboard
                 </button>
                 <div className={styles.cardRightActions}>
                     <button className={styles.secondaryBtn} onClick={handleClear}>
                         Clear Form
                     </button>
-                    <button className={styles.primaryBtn} onClick={handleSave} disabled={!showForm}>
-                        Save Record
+                    <button
+                        className={styles.primaryBtn}
+                        onClick={() => {
+                            if (validateForm()) {
+                                setShowPreview(true);
+                            }
+                        }}
+                        disabled={!showForm}
+                    >
+                        Preview
                     </button>
                 </div>
             </div>
+
+            {formMessage ? (
+                <div className={`${styles.messageBox} ${isError ? styles.messageError : styles.messageSuccess}`}>
+                    {formMessage}
+                </div>
+            ) : null}
+
+            <PreviewModal
+                open={showPreview}
+                title="Carding Preview"
+                subtitle="Carding Notebook / Trials Data Entry Form"
+                items={previewItems}
+                typeValue={selectedType}
+                onCancel={() => setShowPreview(false)}
+                onConfirm={handleSave}
+                confirmLabel="Submit"
+            />
         </div>
     );
 }

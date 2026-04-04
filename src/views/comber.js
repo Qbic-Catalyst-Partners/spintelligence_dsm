@@ -9,7 +9,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
-import { clearComberState } from "@/store/slices/comber";
+import { clearComberState, submitComberUqc } from "@/store/slices/comber";
 
 const comberDepartmentTypes = [
     {
@@ -162,6 +162,27 @@ function Comber() {
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
+                                <Footer
+                                    onBack={() => router.push("/dashboard")}
+                                    onClear={handleClear}
+                                    onSave={openPreview}
+                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        </>
+                    ) : selectedType === "U% Data Entry" ? (
+                        <>
+                            <UqcEntryForm
+                                ref={childRef}
+                                typeOptions={comberDepartmentTypes}
+                                selectedType={selectedType}
+                                onTypeChange={handleTypeChange}
+                                departmentValue="Comber"
+                                submitHandler={(payload) => dispatch(submitComberUqc(payload)).unwrap()}
+                            />
+
+                            <div style={{ margin: "16px -24px 0 -24px" }}>
                                 <Footer
                                     onBack={() => router.push("/dashboard")}
                                     onClear={handleClear}

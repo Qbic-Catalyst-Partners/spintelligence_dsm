@@ -135,6 +135,8 @@ function Simplex() {
   key={selectedTypeName}
   ref={childRef}
   selectedTypeName={selectedTypeName}
+  onTypeChange={setSelectedTypeName}
+  typeOptions={simplexTypes.map((type) => type.name)}
 />
           </div>
 

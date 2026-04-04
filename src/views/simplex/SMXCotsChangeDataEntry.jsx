@@ -10,6 +10,8 @@ const detailItems = [
 
 const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04", "MC-05", "MC-06"];
 const today = new Date().toISOString().split("T")[0];
+const errorStyle = (flag) =>
+  flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
 
 const createDetailRows = () =>
   detailItems.map((item) => ({
@@ -36,6 +38,12 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
       ...current,
       [field]: value,
     }));
+    setErrors((prev) => {
+      if (!prev.form?.[field]) return prev;
+      const nextForm = { ...(prev.form || {}) };
+      delete nextForm[field];
+      return { ...prev, form: nextForm };
+    });
   };
 
   const handleDetailChange = (index, field, value) => {
@@ -49,6 +57,14 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
           : detail
       )
     );
+    setErrors((prev) => {
+      if (!prev.details?.[index]?.[field]) return prev;
+      const nextDetails = { ...(prev.details || {}) };
+      const nextRow = { ...(nextDetails[index] || {}) };
+      delete nextRow[field];
+      nextDetails[index] = nextRow;
+      return { ...prev, details: nextDetails };
+    });
   };
 
   const clear = () => {
@@ -123,8 +139,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
           <input
             type="text"
             className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-              errors.form?.serialNo ? "border-red-500 bg-red-50 focus:ring-red-400 focus:border-red-500" : ""
+              errors.form?.serialNo ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
+            style={errorStyle(errors.form?.serialNo)}
             value={form.serialNo}
             onChange={(e) => handleFormChange("serialNo", e.target.value)}
           />
@@ -135,8 +152,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
           <input
             type="date"
             className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-              errors.form?.date ? "border-red-500 bg-red-50 focus:ring-red-400 focus:border-red-500" : ""
+              errors.form?.date ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
+            style={errorStyle(errors.form?.date)}
             value={form.date}
             onChange={(e) => handleFormChange("date", e.target.value)}
           />
@@ -146,8 +164,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
           <label className="text-[14px] font-semibold text-slate-700">MC Name</label>
           <select
             className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-              errors.form?.mcName ? "border-red-500 bg-red-50 focus:ring-red-400 focus:border-red-500" : ""
+              errors.form?.mcName ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
+            style={errorStyle(errors.form?.mcName)}
             value={form.mcName}
             onChange={(e) => handleFormChange("mcName", e.target.value)}
           >
@@ -185,8 +204,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
                 <input
                   type="text"
                   className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-                    errors.details?.[index]?.statusValue ? "border-red-500 bg-red-50 focus:ring-red-400 focus:border-red-500" : ""
+                    errors.details?.[index]?.statusValue ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
                   }`}
+                  style={errorStyle(errors.details?.[index]?.statusValue)}
                   value={detail.statusValue}
                   onChange={(e) => handleDetailChange(index, "statusValue", e.target.value)}
                 />
@@ -194,8 +214,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
                 <input
                   type="text"
                   className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-                    errors.details?.[index]?.remarks ? "border-red-500 bg-red-50 focus:ring-red-400 focus:border-red-500" : ""
+                    errors.details?.[index]?.remarks ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
                   }`}
+                  style={errorStyle(errors.details?.[index]?.remarks)}
                   value={detail.remarks}
                   onChange={(e) => handleDetailChange(index, "remarks", e.target.value)}
                 />
