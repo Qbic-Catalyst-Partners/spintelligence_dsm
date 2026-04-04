@@ -5,7 +5,7 @@ import { MdOutlineEditNote } from "react-icons/md";
 import CustomInput from "@/components/CustomInput";
 import Footer from "@/components/Footer";
 import BlowRoomSync from "./blowroom/BlowRoomSync";
-import BrWasteStudyEntry from "./blowroom/brWasteStudyEntry";
+import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
 import DropTestDataEntry from "./blowroom/dropTestDataEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
@@ -17,6 +17,8 @@ const blowroomTypes = [
   { id: 2, name: "BR Waste Study Entry", component: BrWasteStudyEntry, needsLotNo: true },
   { id: 3, name: "Drop Test Data Entry", component: DropTestDataEntry, needsLotNo: true },
 ];
+
+export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
 
 const today = new Date().toISOString().split("T")[0];
 

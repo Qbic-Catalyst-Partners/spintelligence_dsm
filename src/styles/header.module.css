@@ -6,7 +6,7 @@
     width: 100%;
     background-color: #fff;
     border-bottom: 1px solid #d9e5f5;
-    padding: 0 22px;
+    padding: 0 28px;
     height: 72px;
     box-sizing: border-box;
 }
@@ -52,11 +52,63 @@
 }
 
 .nav-right {
-     display: flex;
+    display: flex;
     align-items: center;
+    gap: 14px;
 }
 
 .nav-right img {
-    height: 120px;
+    height: 130px;
     width: auto;
+}
+
+.icon-button {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: #1f2a44;
+    cursor: pointer;
+    padding: 0;
+}
+
+.icon-button svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -3px;
+    right: -4px;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+}
+
+.profile-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: none;
+    background: #4056a8;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
 }

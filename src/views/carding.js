@@ -21,6 +21,8 @@ const cardingDepartmentTypes = [
     { id: 6, name: "Card DFK Pressure Checking" },
 ];
 
+export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
+
 function Carding() {
     const router = useRouter();
     const { uqcEntries = [], listLoading } = useSelector((state) => state.carding ?? {});

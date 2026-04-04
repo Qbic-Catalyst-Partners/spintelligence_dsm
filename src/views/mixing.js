@@ -20,6 +20,8 @@ const mixingDepartmentTypes = [
     { id: 5, name: "Openness Data Entry", component: OpennessDataEntry, needsLotNo: false },
 ];
 
+export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
+
 const today = new Date().toISOString().split("T")[0];
 
 function Mixing() {

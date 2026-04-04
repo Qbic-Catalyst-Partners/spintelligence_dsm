@@ -35,6 +35,19 @@ const createCountChangeRows = (readingCount) => {
 
 const SHIFT_OPTIONS = ["Shift A", "Shift B", "Shift C", "General"];
 const RING_FRAME_CHECKERS = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
+const SPINNING_CHECKING_OPTIONS = [
+    "COTS Checking",
+    "Count Change",
+    "Ring Frame Log Book",
+    "Speed Checking",
+    "Lycra Missing",
+    "Bottom Apron Checking",
+    "Lycra Centering",
+    "RSM & Lycrasensor Checking Online",
+    "RSM & Lycrasensor Checking Offline",
+];
+
+export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 
 const createRingFrameRows = () =>
     Array.from({ length: 24 }, (_, index) => ({
@@ -93,7 +106,7 @@ function SpinningDepartment() {
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
-    const checkingOptions = ["COTS Checking", "Count Change", "Ring Frame Log Book", "Speed Checking", "Lycra Missing", "Bottom Apron Checking", "Lycra Centering", "RSM & Lycrasensor Checking Online", "RSM & Lycrasensor Checking Offline"];
+    const checkingOptions = SPINNING_CHECKING_OPTIONS;
     const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"];
     const employees = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
     const isCountChange = checkingType === "Count Change";
