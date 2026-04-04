@@ -1,7 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { submitAutocornerRewindingStudy } from "@/store/slices/autocorner";
+import { saveAutoconerRewindingStudy } from "@/store/slices/autoconer";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -75,7 +75,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   ref
 ) {
   const dispatch = useDispatch();
-  const { isLoading } = useSelector((state) => state.autocorner ?? {});
+  const { isLoading } = useSelector((state) => state.autoconer ?? {});
   const [form, setForm] = useState(createInitialForm);
   const [readingRows, setReadingRows] = useState(createReadingRows);
   const [allDrumEntries] = useState(createAllDrumEntries);
@@ -156,9 +156,9 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const submit = async () => {
     if (!validate()) return false;
 
-    const resultAction = await dispatch(submitAutocornerRewindingStudy(buildPayload()));
+    const resultAction = await dispatch(saveAutoconerRewindingStudy(buildPayload()));
 
-    if (submitAutocornerRewindingStudy.fulfilled.match(resultAction)) {
+    if (saveAutoconerRewindingStudy.fulfilled.match(resultAction)) {
       alert(resultAction.payload?.message || "Rewinding study created successfully");
       clear();
       return true;

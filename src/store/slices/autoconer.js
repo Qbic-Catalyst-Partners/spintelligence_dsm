@@ -4,9 +4,12 @@ import {
   fetchAutoconerDrumWise,
   fetchAutoconerLycraChecking,
   fetchAutoconerSpliceStrength,
+  submitAutoconerConeDensity,
+  submitAutoconerConePackingAudit,
   submitAutoconerCountWiseCuts,
   submitAutoconerDrumWise,
   submitAutoconerLycraChecking,
+  submitAutoconerRewindingStudy,
   submitAutoconerSpliceStrength,
 } from "@/apis/autoconer";
 
@@ -92,6 +95,39 @@ export const getAutoconerDrumWise = createAsyncThunk(
   async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
     try {
       return await fetchAutoconerDrumWise({ page, limit });
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const saveAutoconerRewindingStudy = createAsyncThunk(
+  "autoconer/saveRewindingStudy",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await submitAutoconerRewindingStudy(payload);
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const saveAutoconerConeDensity = createAsyncThunk(
+  "autoconer/saveConeDensity",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await submitAutoconerConeDensity(payload);
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const saveAutoconerConePackingAudit = createAsyncThunk(
+  "autoconer/saveConePackingAudit",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await submitAutoconerConePackingAudit(payload);
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -228,6 +264,42 @@ const autoconerSlice = createSlice({
       })
       .addCase(getAutoconerDrumWise.rejected, (state, action) => {
         state.isFetching = false;
+        state.error = action.payload;
+      })
+      .addCase(saveAutoconerRewindingStudy.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveAutoconerRewindingStudy.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.lastSaved = action.payload;
+      })
+      .addCase(saveAutoconerRewindingStudy.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveAutoconerConeDensity.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveAutoconerConeDensity.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.lastSaved = action.payload;
+      })
+      .addCase(saveAutoconerConeDensity.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveAutoconerConePackingAudit.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveAutoconerConePackingAudit.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.lastSaved = action.payload;
+      })
+      .addCase(saveAutoconerConePackingAudit.rejected, (state, action) => {
+        state.isLoading = false;
         state.error = action.payload;
       });
   },
