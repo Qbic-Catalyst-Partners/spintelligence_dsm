@@ -23,29 +23,29 @@ const extractErrorMessage = (error, fallbackMessage) => {
   return error?.message || fallbackMessage;
 };
 
-export const submitSimplexUqcEntry = async (payload) => {
+export const submitAutocornerRewindingStudyEntry = async (payload) => {
   try {
-    const response = await apiConfig.post("/simplex/uqc", payload);
+    const response = await apiConfig.post("/autoconer/rewinding-study", payload);
     return response.data;
   } catch (error) {
-    throw new Error(extractErrorMessage(error, "Invalid payload data."));
+    throw new Error(extractErrorMessage(error, "Invalid rewinding study payload."));
   }
 };
 
-export const submitSimplexStudyReportEntry = async (payload) => {
+export const submitAutocornerConeDensityEntry = async (payload) => {
   try {
-    const response = await apiConfig.post("/simplex/study", payload);
+    const response = await apiConfig.post("/autoconer/cone-density", payload);
     return response.data;
   } catch (error) {
-    throw new Error(extractErrorMessage(error, "Invalid study report payload."));
+    throw new Error(extractErrorMessage(error, "Invalid cone density payload."));
   }
 };
 
-export const fetchSimplexUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
+export const submitAutocornerConePackingAuditEntry = async (payload) => {
   try {
-    const response = await apiConfig.get("/simplex/uqc", { page, limit });
+    const response = await apiConfig.post("/autoconer/cone-packing-audit", payload);
     return response.data;
   } catch (error) {
-    throw new Error(extractErrorMessage(error, "Unable to fetch entries."));
+    throw new Error(extractErrorMessage(error, "Invalid cone packing audit payload."));
   }
 };

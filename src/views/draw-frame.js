@@ -24,6 +24,8 @@ const primaryTypeOptions = [
    "U% Data Entry",
 ];
 
+export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
+
 const processTypeOptions = ["Breaker", "Finisher", "Pre-Draw"];
 const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
 const cvMachineOptions = ["DF-01", "DF-02", "DF-03", "DF-04"];

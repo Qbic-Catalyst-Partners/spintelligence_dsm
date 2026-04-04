@@ -3,16 +3,29 @@ import { PiChartPieSliceFill } from "react-icons/pi";
 
 import styles from "@/styles/departmentDirectory.module.css";
 import { getDepartmentBySlug } from "./data";
+import { MIXING_INPUT_SCREEN_COUNT } from "@/views/mixing";
+import { BLOWROOM_INPUT_SCREEN_COUNT } from "@/views/blowroom";
+import { CARDING_INPUT_SCREEN_COUNT } from "@/views/carding";
+import { COMBER_INPUT_SCREEN_COUNT } from "@/views/comber";
+import { DRAW_FRAME_INPUT_SCREEN_COUNT } from "@/views/draw-frame";
+import { SIMPLEX_INPUT_SCREEN_COUNT } from "@/views/simplex";
+import { SPINNING_INPUT_SCREEN_COUNT } from "@/views/spinning";
+import { AUTOCORNER_INPUT_SCREEN_COUNT } from "@/views/autocorner";
 
 const subDepartmentScreenCounts = {
-    mixing: "7 Input Screens",
-    "blow-room": "2 Input Screens",
-    carding: "6 Input Screens",
-    comber: "2 Input Screens",
-    "draw-frame": "3 Input Screens",
-    simplex: "6 Input Screens",
-    spinning: "7 Input Screens",
-    autoconer: "2 Input Screens",
+    mixing: MIXING_INPUT_SCREEN_COUNT,
+    "blow-room": BLOWROOM_INPUT_SCREEN_COUNT,
+    carding: CARDING_INPUT_SCREEN_COUNT,
+    comber: COMBER_INPUT_SCREEN_COUNT,
+    "draw-frame": DRAW_FRAME_INPUT_SCREEN_COUNT,
+    simplex: SIMPLEX_INPUT_SCREEN_COUNT,
+    spinning: SPINNING_INPUT_SCREEN_COUNT,
+    autoconer: AUTOCORNER_INPUT_SCREEN_COUNT,
+};
+
+const formatInputScreenLabel = (count) => {
+    const safeCount = Number.isFinite(count) ? count : 0;
+    return `${safeCount} Input Screen${safeCount === 1 ? "" : "s"}`;
 };
 
 function SubDepartmentDirectory() {
@@ -72,7 +85,7 @@ function SubDepartmentDirectory() {
                             <span className={styles.cardContent}>
                                 <span className={styles.subCardLabel}>{subDepartment.name}</span>
                                 <span className={styles.cardMeta}>
-                                    {subDepartmentScreenCounts[subDepartment.slug] || "2 Input Screens"}
+                                    {formatInputScreenLabel(subDepartmentScreenCounts[subDepartment.slug])}
                                 </span>
                             </span>
                             <span className={styles.subCardArrow}>

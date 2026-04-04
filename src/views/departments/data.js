@@ -12,7 +12,7 @@ export const departmentDirectory = [
             { slug: "draw-frame", name: "Draw Frame", href: "/draw-frame", enabled: true },
             { slug: "simplex", name: "Simplex", href: "/simplex", enabled: true },
             { slug: "spinning", name: "Spinning", href: "/spinning", enabled: true },
-            { slug: "autoconer", name: "Autoconer", href: "/departments/quality-control/autoconer", enabled: false },
+            { slug: "autoconer", name: "Autoconer", href: "/autocorner", enabled: true },
         ],
     },
     {

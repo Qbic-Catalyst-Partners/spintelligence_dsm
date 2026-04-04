@@ -25,6 +25,8 @@ const comberDepartmentTypes = [
         name: "U% Data Entry",
     },
 ];
+
+export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
 function Comber() {
     const router = useRouter();
     const dispatch = useDispatch();

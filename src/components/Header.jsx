@@ -1,17 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { FiBell, FiMoon } from "react-icons/fi";
 import styles from "../styles/header.module.css";
 
-const defaultNavLinks = [
-    { href: "/dashboard", label: "Home" },
-    { href: "/usermanagement", label: "User Management" },
-    { href: "/rolespermission", label: "Roles & Permissions" },
-];
+const defaultNavLinks = [];
 
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
-
     const isActiveLink = (href) => {
         if (href === "/dashboard") {
             return router.pathname === "/dashboard";
@@ -40,7 +36,20 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             </div>
 
             <div className={styles["nav-right"]}>
-                <Image src="/logo.png" alt="logo" width={80} height={30} priority />
+                <button type="button" className={styles["icon-button"]} aria-label="Notifications">
+                    <FiBell />
+                    <span className={styles["notification-badge"]}>4</span>
+                </button>
+
+                <button type="button" className={styles["icon-button"]} aria-label="Dark mode">
+                    <FiMoon />
+                </button>
+
+                <button type="button" className={styles["profile-chip"]} aria-label="Profile">
+                    HB
+                </button>
+
+                <Image src="/logo.png" alt="logo" width={100} height={80} priority />
             </div>
         </header>
     );

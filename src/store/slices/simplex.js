@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import {
   fetchSimplexUqcEntries,
+  submitSimplexStudyReportEntry,
   submitSimplexUqcEntry,
 } from "@/apis/simplex";
 
@@ -9,6 +10,17 @@ export const submitSimplexUqc = createAsyncThunk(
   async (payload, { rejectWithValue }) => {
     try {
       return await submitSimplexUqcEntry(payload);
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const submitSimplexStudyReport = createAsyncThunk(
+  "simplex/submitStudyReport",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await submitSimplexStudyReportEntry(payload);
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -59,6 +71,18 @@ const simplexSlice = createSlice({
         state.data = action.payload;
       })
       .addCase(submitSimplexUqc.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(submitSimplexStudyReport.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(submitSimplexStudyReport.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.data = action.payload;
+      })
+      .addCase(submitSimplexStudyReport.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
       })
