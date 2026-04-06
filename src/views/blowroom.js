@@ -9,7 +9,6 @@ import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
 import DropTestDataEntry from "./blowroom/dropTestDataEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
-import { clearMixingState } from "@/store/slices/mixing";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
 
 const blowroomTypes = [
@@ -34,7 +33,6 @@ function BlowRoom() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [headerErrors, setHeaderErrors] = useState({});
 
-  const mixingState = useSelector((state) => state.mixing);
   const blowroomState = useSelector((state) => state.blowroom);
 
   const selectedType = useMemo(
@@ -43,16 +41,13 @@ function BlowRoom() {
   );
   const SelectedComponent = selectedType?.component ?? null;
 
-  const actionLoading =
-    selectedTypeName === "Blow Room Sync"
-      ? blowroomState?.loading
-      : mixingState?.actionLoading;
+  const actionLoading = blowroomState?.loading;
 
   useEffect(() => {
-    if (blowroomState?.success || mixingState?.actionSuccess) {
+    if (blowroomState?.success) {
       setShowSuccess(true);
     }
-  }, [blowroomState?.success, mixingState?.actionSuccess]);
+  }, [blowroomState?.success]);
 
   const validateHeader = () => {
     const errs = {};
@@ -93,7 +88,6 @@ function BlowRoom() {
 
   const handleSuccessClose = () => {
     setShowSuccess(false);
-    dispatch(clearMixingState());
     dispatch(resetBlowroom());
   };
   const isSyncType = selectedTypeName === "Blow Room Sync";
@@ -147,6 +141,7 @@ function BlowRoom() {
                     <label className="text-[14px] font-semibold text-slate-700">Type</label>
                     <select
                       className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
+                      style={{ backgroundColor: "#f1f5f9" }}
                       value={selectedTypeName}
                       onChange={(e) => setSelectedTypeName(e.target.value)}
                     >
@@ -184,6 +179,7 @@ function BlowRoom() {
                   date={date}
                   lotNo={lotNo}
                   selectedTypeName={selectedTypeName}
+                  typeOptions={blowroomTypes}
                   onTypeChange={setSelectedTypeName}
                   onDateChange={setDate}
                   onLotNoChange={setLotNo}

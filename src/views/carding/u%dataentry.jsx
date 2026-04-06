@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "@/styles/u%dataentry.module.css";
 import CustomSelect from "@/components/CustomSelect";
 import Footer from "@/components/Footer";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 
 function UPercentDataEntry({ types, selectedType, onTypeChange }) {
@@ -22,7 +23,10 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
   });
 
   const handleChange = (field, value) => {
-    setForm({ ...form, [field]: value });
+    const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
+    setForm({ ...form, [field]: nextValue });
   };
 
   const resetForm = () => {

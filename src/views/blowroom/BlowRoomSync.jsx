@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import styles from "@/styles/BlowRoomSync.module.css";
 import { useDispatch, useSelector } from "react-redux";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import {
   saveBlowroomData,
   fetchBlowroomData,
@@ -56,7 +57,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 
   const handleChange = (index, field, value) => {
     const updated = [...tableData];
-    updated[index][field] = value;
+    updated[index][field] = sanitizeNumericInput(value, { precision: 10, scale: 2 });
 
     const a = parseFloat(updated[index].a);
     const b = parseFloat(updated[index].b);
@@ -131,8 +132,18 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     try {
       await dispatch(
         saveBlowroomData({
-          ...form,
-          entries: tableData,
+          inspection_date: form.entryDate,
+          line_no: form.lineNo,
+          variety: form.variety,
+          checked_by: form.checkedBy,
+          beater: form.beater,
+          total_time: form.totalTime,
+          entries: tableData.map((row) => ({
+            value_a: Number(row.a) || 0,
+            value_b: Number(row.b) || 0,
+            value_c: Number(row.c) || 0,
+            sync_percentage: Number(row.sync) || 0,
+          })),
         })
       ).unwrap();
     } catch (e) {
@@ -278,7 +289,8 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
         <div className={styles.group}>
           <label>Total Time (MM:SS)</label>
           <input
-            placeholder="MM : SS"
+            type="time"
+            step="1"
             value={form.totalTime}
             onChange={(e) => handleFormChange("totalTime", e.target.value)}
             className={errors.totalTime ? styles.errorField : undefined}
@@ -297,7 +309,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
             type="number"
             min="1"
             value={rows}
-            onChange={(e) => setRows(Number(e.target.value))}
+            onChange={(e) => setRows(Number(sanitizeIntegerInput(e.target.value, 4) || 0))}
           />
         </div>
 

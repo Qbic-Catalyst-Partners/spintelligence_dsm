@@ -74,9 +74,20 @@
 }
 
 .rowNumber {
-  color: #0f172a;
-  font-size: 14px;
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: 24px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: #3d539f;
+  color: #ffffff;
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .rowGrid {

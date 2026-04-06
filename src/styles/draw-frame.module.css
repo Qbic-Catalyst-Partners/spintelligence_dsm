@@ -86,6 +86,12 @@
     font-weight: 700;
 }
 
+.sectionDivider {
+    height: 1px;
+    margin: 0 0 1.5rem;
+    background: #edf2f7;
+}
+
 .formGrid {
     display: grid;
     grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -100,6 +106,14 @@
 
 .fieldWide {
     grid-column: span 1;
+}
+
+.uPercentCompactField {
+    grid-column: span 1;
+}
+
+.uPercentRemarksField .textarea {
+    min-height: 6.25rem;
 }
 
 .fieldActions {
@@ -321,6 +335,10 @@
     }
 
     .fieldWide {
+        grid-column: span 2;
+    }
+
+    .uPercentRemarksField {
         grid-column: span 2;
     }
 

@@ -5,6 +5,7 @@ import { MdOutlineEditNote } from "react-icons/md";
 import Footer from "@/components/Footer";
 import ConePackingAudit from "@/views/autoconer/ConePackingAudit";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import ConeDensity from "@/views/autoconer/ConeDensity";
 import RewindingStudy from "@/views/autoconer/RewindingStudy";
 import LycraChecking from "@/views/autoconer/LycraChecking";
@@ -12,6 +13,8 @@ import CoastWasteCrateRecord from "@/views/autoconer/countwise";
 import DrumWiseAppearance from "@/views/autoconer/DrumWiseAppearance";
 import SpliceStrength from "@/views/autoconer/SpliceStrength";
 import styles from "@/styles/autoconer.module.css";
+import { useDispatch } from "react-redux";
+import { clearAutoconerState } from "@/store/slices/autoconer";
 
 const autoconerTypes = [
   { id: 1, name: "Rewinding Study", component: RewindingStudy },
@@ -27,10 +30,13 @@ export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
 
 function Autoconer() {
   const router = useRouter();
+  const dispatch = useDispatch();
   const childRef = useRef(null);
   const [checkingType, setCheckingType] = useState(autoconerTypes[0].name);
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [registeredActions, setRegisteredActions] = useState({});
   const selectedType = useMemo(
     () => autoconerTypes.find((item) => item.name === checkingType)?.name || "",
     [checkingType]
@@ -39,22 +45,38 @@ function Autoconer() {
     () => autoconerTypes.find((item) => item.name === checkingType)?.component || RewindingStudy,
     [checkingType]
   );
+  const usesRefFlow =
+    selectedType === "Rewinding Study" ||
+    selectedType === "Cone Density" ||
+    selectedType === "Cone Packing Audit";
 
   const openPreview = () => {
-    const valid = childRef.current?.validate ? childRef.current.validate() : true;
+    const valid = childRef.current?.validate
+      ? childRef.current.validate()
+      : registeredActions.validate
+        ? registeredActions.validate()
+        : true;
     if (valid === false) return;
-    const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+    const items = childRef.current?.getPreviewData
+      ? childRef.current.getPreviewData()
+      : registeredActions.getPreviewData
+        ? registeredActions.getPreviewData()
+        : [];
     setPreviewItems(items);
     setShowPreview(true);
   };
 
   const confirmSubmit = async () => {
     setShowPreview(false);
-    await childRef.current?.submit?.();
+    const ok = childRef.current?.submit
+      ? await childRef.current.submit()
+      : registeredActions.submit
+        ? await registeredActions.submit()
+        : false;
+    if (ok) {
+      setShowSuccess(true);
+    }
   };
-
-  const usesLegacyStandaloneLayout =
-    selectedType === "Splice Strength" || selectedType === "Drum wise Appearance";
 
   return (
     <div className={styles.page}>
@@ -80,42 +102,38 @@ function Autoconer() {
           <p>Record and manage industrial machine quality inspections.</p>
         </div>
 
-        {usesLegacyStandaloneLayout ? (
-          <SelectedComponent
-            types={autoconerTypes}
-            selectedType={selectedType}
-            onTypeChange={setCheckingType}
-            onRegisterActions={() => {}}
-          />
-        ) : (
-          <div className={styles.shell}>
-            <div className={styles.formBody}>
-              <div className={styles.formTitle}>
-                <MdOutlineEditNote />
-                <h3>Inspection Data Entry</h3>
-              </div>
-
-              <SelectedComponent
-                ref={childRef}
-                selectedTypeName={selectedType}
-                selectedType={selectedType}
-                onTypeChange={setCheckingType}
-                types={autoconerTypes}
-                typeOptions={autoconerTypes.map((type) => type.name)}
-                tablePortalTargetId="autoconer-table-slot"
-              />
+        <div className={styles.shell}>
+          <div className={styles.formBody}>
+            <div className={styles.formTitle}>
+              <MdOutlineEditNote />
+              <h3>Inspection Data Entry</h3>
             </div>
 
-            <Footer
-              onBack={() => router.push("/dashboard")}
-              onClear={() => childRef.current?.clear?.()}
-              onSave={openPreview}
-              saveLabel="Save Record"
+            <SelectedComponent
+              {...(usesRefFlow ? { ref: childRef } : {})}
+              selectedTypeName={selectedType}
+              selectedType={selectedType}
+              onTypeChange={setCheckingType}
+              types={autoconerTypes}
+              typeOptions={autoconerTypes.map((type) => type.name)}
+              tablePortalTargetId="autoconer-table-slot"
+              onRegisterActions={setRegisteredActions}
             />
           </div>
-        )}
 
-        {!usesLegacyStandaloneLayout && <div id="autoconer-table-slot" className={styles.tableSlot} />}
+          <Footer
+            onBack={() => router.push("/dashboard")}
+            onClear={() => {
+              childRef.current?.clear?.();
+              registeredActions.onClear?.();
+            }}
+            onSave={openPreview}
+            saveLabel={registeredActions.saveLabel || "Save Record"}
+            disabled={registeredActions.disabled}
+          />
+        </div>
+
+        <div id="autoconer-table-slot" className={styles.tableSlot} />
       </div>
 
       <PreviewModal
@@ -127,6 +145,18 @@ function Autoconer() {
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}
         confirmLabel="Submit"
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        message="Data Submitted"
+        typeValue={selectedType}
+        onClose={() => {
+          setShowSuccess(false);
+          childRef.current?.clear?.();
+          registeredActions.onClear?.();
+          dispatch(clearAutoconerState());
+        }}
       />
     </div>
   );

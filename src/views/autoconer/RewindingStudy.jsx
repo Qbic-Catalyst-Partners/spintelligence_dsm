@@ -6,10 +6,10 @@ import { saveAutoconerRewindingStudy } from "@/store/slices/autoconer";
 const today = new Date().toISOString().split("T")[0];
 
 const topFieldClass =
-  "w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F8FAFC] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
+  "w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const tableInputClass =
-  "w-full h-[38px] rounded-[8px] border border-slate-200 bg-slate-50 px-2 text-[12px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
+  "w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[12px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const countNameOptions = [
   "10 GRC POLY 40D SPX 8/2 YARN CONES",
@@ -159,12 +159,9 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     const resultAction = await dispatch(saveAutoconerRewindingStudy(buildPayload()));
 
     if (saveAutoconerRewindingStudy.fulfilled.match(resultAction)) {
-      alert(resultAction.payload?.message || "Rewinding study created successfully");
-      clear();
       return true;
     }
 
-    alert(resultAction.payload || "Failed to save rewinding study.");
     return false;
   };
 
@@ -229,7 +226,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
         <input
           type="text"
           placeholder="Enter break per lakh meter"
-          className={topFieldClass}
+          className={`${topFieldClass}${errorClass(errors.breakPerLakhMeter)}`}
           value={form.breakPerLakhMeter}
           onChange={(event) => handleFormChange("breakPerLakhMeter", event.target.value)}
         />

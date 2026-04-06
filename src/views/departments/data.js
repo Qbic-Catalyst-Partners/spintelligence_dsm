@@ -3,7 +3,7 @@ export const departmentDirectory = [
         slug: "quality-control",
         name: "Quality Control",
         enabled: true,
-        description: "Select the Department you need to access",
+        description: "Select the Sub-Department you need to access",
         subDepartments: [
             { slug: "mixing", name: "Mixing", href: "/mixing", enabled: true },
             { slug: "blow-room", name: "Blow Room", href: "/blowroom", enabled: true },

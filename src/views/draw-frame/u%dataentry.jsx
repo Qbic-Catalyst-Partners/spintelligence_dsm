@@ -3,6 +3,7 @@ import styles from "@/styles/u%dataentry.module.css";
 import CustomSelect from "@/components/CustomSelect";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 function UPercentDataEntry() {
   const [form, setForm] = useState({
@@ -35,7 +36,10 @@ function UPercentDataEntry() {
   };
 
   const handleChange = (field, value) => {
-    setForm({ ...form, [field]: value });
+    const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
+    setForm({ ...form, [field]: nextValue });
     setErrors((current) => {
       const next = { ...current };
       delete next[field];
