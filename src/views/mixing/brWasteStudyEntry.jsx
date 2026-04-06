@@ -1,7 +1,7 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
-import { submitBrWaste, clearMixingState } from '@/store/slices/mixing';
+import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
 const TYPE_3_COLUMNS = [
@@ -23,9 +23,69 @@ const emptyWasteRow = () => ({ production: '', totalWaste: '', wastePercent: '' 
 
 const initialForm = { brWasteId: '', variety: '', cardingProduction: '', studyType: '' };
 
+const buildBrWastePayloads = ({ date, lotNo, formData, wasteRows, type3Rows, overallWaste, remarks }) => {
+    const basePayload = {
+        waste_study_id: formData.brWasteId,
+        date,
+        variety: formData.variety,
+        study_type: formData.studyType,
+        carding_production_kg: Number(formData.cardingProduction) || 0,
+        type_entries: formData.studyType === "Type 3" ? type3Rows.length : wasteRows.length,
+        overall_percent: Number(overallWaste) || 0,
+        remarks,
+        mc_no: lotNo || "",
+        mc_production: 0,
+        waste_type: formData.studyType,
+        waste_kg: 0,
+        waste_percent: 0,
+        flat_speed: 0,
+        delivery_speed: 0,
+        wing1_speed: 0,
+        wing2_speed: 0,
+        lickerin_speed_1: 0,
+        lickerin_speed_2: 0,
+        lickerin_speed_3: 0,
+    };
+
+    if (formData.studyType === "Type 1") {
+        return wasteRows.map((row, index) => ({
+            ...basePayload,
+            waste_type: `Type 1 Entry ${index + 1}`,
+            flat_speed: Number(row.production) || 0,
+            delivery_speed: Number(row.totalWaste) || 0,
+            wing1_speed: Number(row.wastePercent) || 0,
+            waste_percent: Number(row.wastePercent) || 0,
+        }));
+    }
+
+    if (formData.studyType === "Type 2") {
+        return wasteRows.map((row, index) => ({
+            ...basePayload,
+            mc_no: lotNo || `MC-${index + 1}`,
+            mc_production: Number(row.production) || 0,
+            waste_type: `Type 2 Entry ${index + 1}`,
+            waste_kg: Number(row.totalWaste) || 0,
+            waste_percent: Number(row.wastePercent) || 0,
+        }));
+    }
+
+    return type3Rows.map((row, index) => ({
+        ...basePayload,
+        waste_type: `Type 3 Entry ${index + 1}`,
+        flat_speed: Number(row.flatStrip) || 0,
+        delivery_speed: Number(row.underGrid) || 0,
+        wing1_speed: Number(row.moteKnife) || 0,
+        wing2_speed: Number(row.cylinder) || 0,
+        lickerin_speed_1: Number(row.doffer) || 0,
+        lickerin_speed_2: Number(row.bowingFlat) || 0,
+        lickerin_speed_3: Number(row.filter) || 0,
+        waste_percent: Number(row.cardWaste) || 0,
+    }));
+};
+
 const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo }, ref) {
     const dispatch = useDispatch();
-    const { actionSuccess } = useSelector(state => state.mixing);
+    const { success } = useSelector(state => state.blowroom ?? {});
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
 
@@ -97,31 +157,34 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     useEffect(() => {
-        if (actionSuccess) {
+        if (success) {
             setFormData(initialForm);
             setWasteRows([emptyWasteRow()]);
             setType3Rows(Array.from({ length: 3 }, emptyType3Row));
             setOverallWaste('');
             setRemarks('');
         }
-    }, [actionSuccess, dispatch]);
+    }, [success, dispatch]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!validate()) return;
-        const entries = studyType === 'Type 3'
-            ? type3Rows
-            : wasteRows;
-        dispatch(submitBrWaste({
-            inspection_date:    date,
-            br_waste_id:        formData.brWasteId,
-            lot_no:             lotNo,
-            variety:            formData.variety,
-            carding_production: Number(formData.cardingProduction) || 0,
-            study_type:         formData.studyType,
-            overall_waste:      Number(overallWaste) || 0,
+        const payloads = buildBrWastePayloads({
+            date,
+            lotNo,
+            formData,
+            wasteRows,
+            type3Rows,
+            overallWaste,
             remarks,
-            entries,
-        }));
+        });
+
+        try {
+            for (const payload of payloads) {
+                await dispatch(saveBlowroomBrWaste(payload)).unwrap();
+            }
+        } catch (error) {
+            throw error;
+        }
     };
 
     const handleClear = () => {
@@ -130,7 +193,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         setType3Rows(Array.from({ length: 3 }, emptyType3Row));
         setOverallWaste('');
         setRemarks('');
-        dispatch(clearMixingState());
+        dispatch(resetState());
         setErrors({});
     };
 

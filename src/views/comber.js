@@ -335,6 +335,7 @@ function Comber() {
                 typeValue={selectedType || "Comber"}
                 onClose={() => {
                     setShowSuccess(false);
+                    childRef.current?.clear?.();
                     dispatch(clearComberState());
                 }}
             />

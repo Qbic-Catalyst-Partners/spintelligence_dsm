@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
-import Footer from "@/components/Footer";
 import {
   getAutoconerDrumWise,
   saveAutoconerDrumWise,
@@ -38,8 +36,7 @@ const buildRowsFromRange = (from, to) => {
   }));
 };
 
-function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
-  const router = useRouter();
+function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActions }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -52,6 +49,9 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
   const [drumTo, setDrumTo] = useState("");
   const [remarks, setRemarks] = useState("");
   const [rows, setRows] = useState([]);
+  const [errors, setErrors] = useState({});
+  const errorStyle = (flag) =>
+    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
 
   const totals = useMemo(
     () =>
@@ -84,9 +84,41 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
     setDrumTo("");
     setRemarks("");
     setRows([]);
+    setErrors({});
   };
 
-  const handleSave = async () => {
+  const validate = () => {
+    const nextErrors = {};
+    if (!String(selectedType || "").trim()) nextErrors.type = true;
+    if (!String(testNo || "").trim()) nextErrors.testNo = true;
+    if (!String(entryDate || "").trim()) nextErrors.entryDate = true;
+    if (!String(countName || "").trim()) nextErrors.countName = true;
+    if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
+    if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
+    if (!String(drumTo || "").trim()) nextErrors.drumTo = true;
+    if (!String(remarks || "").trim()) nextErrors.remarks = true;
+    if (!rows.length) nextErrors.rows = true;
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const getPreviewData = () => [
+    { label: "Type", value: selectedType || "-" },
+    { label: "Test No.", value: testNo || "-" },
+    { label: "Entry Date", value: entryDate || "-" },
+    { label: "Count Name", value: countName || "-" },
+    { label: "Auto Coner No.", value: autoconerNo || "-" },
+    { label: "Drum From", value: drumFrom || "-" },
+    { label: "Drum To", value: drumTo || "-" },
+    { label: "Remarks", value: remarks || "-" },
+    ...rows.map((row) => ({
+      label: `Drum ${row.drumNo}`,
+      value: row.ok ? "OK" : row.notOk ? "NOT OK" : "-",
+    })),
+  ];
+
+  const submit = async () => {
+    if (!validate()) return false;
     try {
       const payload = {
         test_no: Number(testNo) || 0,
@@ -107,9 +139,9 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
 
       await dispatch(saveAutoconerDrumWise(payload)).unwrap();
       await dispatch(getAutoconerDrumWise({ page: 1, limit: 10 })).unwrap();
-      alert("Drum wise Appearance saved successfully.");
-    } catch (error) {
-      alert(error || "Unable to save Drum wise Appearance.");
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -140,6 +172,30 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
     });
   }, [drumFrom, drumTo]);
 
+  useEffect(() => {
+    if (!onRegisterActions) return;
+    onRegisterActions({
+      validate,
+      getPreviewData,
+      submit,
+      onClear: resetForm,
+      saveLabel: "Save Record",
+      disabled: isLoading,
+    });
+  }, [
+    onRegisterActions,
+    selectedType,
+    testNo,
+    entryDate,
+    countName,
+    autoconerNo,
+    drumFrom,
+    drumTo,
+    remarks,
+    rows,
+    isLoading,
+  ]);
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.entryCard}>
@@ -151,7 +207,7 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
         <div className={styles.formGrid}>
           <div className={styles.field}>
             <label>Type</label>
-            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
+            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
               {types.map((type) => (
                 <option key={type.id} value={type.name}>
                   {type.name}
@@ -162,17 +218,17 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
 
           <div className={styles.field}>
             <label>Test No.</label>
-            <input value={testNo} onChange={(e) => setTestNo(e.target.value)} />
+            <input value={testNo} onChange={(e) => setTestNo(e.target.value)} style={errorStyle(errors.testNo)} />
           </div>
 
           <div className={styles.field}>
             <label>Entry Date</label>
-            <input type="date" value={entryDate} disabled />
+            <input type="date" value={entryDate} disabled style={errorStyle(errors.entryDate)} />
           </div>
 
           <div className={styles.field}>
             <label>Count Name</label>
-            <select value={countName} onChange={(e) => setCountName(e.target.value)}>
+            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
               {countOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -183,7 +239,7 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
 
           <div className={styles.field}>
             <label>Auto Coner No.</label>
-            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)}>
+            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
               {autoconerOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -195,25 +251,15 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
           <div className={styles.doubleField}>
             <div className={styles.field}>
               <label>Drum From/To</label>
-              <input value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} />
+              <input value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} style={errorStyle(errors.drumFrom || errors.rows)} />
             </div>
             <div className={styles.field}>
               <label className={styles.hiddenLabel}>To</label>
-              <input value={drumTo} onChange={(e) => setDrumTo(e.target.value)} />
+              <input value={drumTo} onChange={(e) => setDrumTo(e.target.value)} style={errorStyle(errors.drumTo || errors.rows)} />
             </div>
           </div>
         </div>
 
-      </div>
-
-      <div className={styles.footerWrap}>
-        <Footer
-          onBack={() => router.push("/dashboard")}
-          onClear={resetForm}
-          onSave={handleSave}
-          saveLabel="Save Record"
-          disabled={isLoading}
-        />
       </div>
 
       <div className={styles.appearanceSection}>
@@ -248,7 +294,7 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange }) {
 
         <div className={styles.remarksBlock}>
           <label>Remarks</label>
-          <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} style={errorStyle(errors.remarks)} />
         </div>
       </div>
 

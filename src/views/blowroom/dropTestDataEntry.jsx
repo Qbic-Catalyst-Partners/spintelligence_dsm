@@ -1,7 +1,7 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { HiChevronDown, HiChevronUp } from 'react-icons/hi2';
-import { submitDropTest, clearMixingState } from '@/store/slices/mixing';
+import { saveBlowroomDropTest, resetState } from '@/store/slices/blowroomSlice';
 import styles from '@/styles/dropTestDataEntry.module.css';
 
 const emptyTuft = () => ({
@@ -14,14 +14,13 @@ const emptyTuft = () => ({
 });
 
 const initialForm = { variety: '', blend: '' };
-const dropTestTypeOptions = ["Drop Test Data Entry"];
 
 const DropTestDataEntry = forwardRef(function DropTestDataEntry(
-    { date, lotNo, selectedTypeName, onTypeChange, onDateChange, onLotNoChange },
+    { date, lotNo, selectedTypeName, onTypeChange, onDateChange, onLotNoChange, typeOptions = [] },
     ref
 ) {
     const dispatch = useDispatch();
-    const { actionSuccess } = useSelector(state => state.mixing);
+    const { success } = useSelector(state => state.blowroom ?? {});
     const [formData, setFormData] = useState(initialForm);
     const [numTufts, setNumTufts] = useState('');
     const [tufts, setTufts] = useState([]);
@@ -29,20 +28,34 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const [errors, setErrors] = useState({});
 
     useEffect(() => {
-        if (actionSuccess) {
+        if (success) {
             setFormData(initialForm);
             setNumTufts('');
             setTufts([]);
             setExpandedTuftIndex(0);
         }
-    }, [actionSuccess, dispatch]);
+    }, [success, dispatch]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!validate()) return;
-        dispatch(submitDropTest({
-            baseData: { date, lotNo, variety: formData.variety, blend: formData.blend },
-            tufts,
-        }));
+        try {
+            for (let i = 0; i < tufts.length; i++) {
+                await dispatch(saveBlowroomDropTest({
+                    drop_id: lotNo,
+                    date,
+                    variety: formData.variety,
+                    blend: formData.blend,
+                    tuft_no: i + 1,
+                    tuft_variety: tufts[i].tuftVariety,
+                    display_weight: Number(tufts[i].displayWt) || 0,
+                    actual_weight: Number(tufts[i].actWt) || 0,
+                    difference: Number(tufts[i].diff) || 0,
+                    ratio_percent: Number(tufts[i].ratio) || 0,
+                })).unwrap();
+            }
+        } catch (error) {
+            throw error;
+        }
     };
 
     const handleClear = () => {
@@ -50,7 +63,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         setNumTufts('');
         setTufts([]);
         setExpandedTuftIndex(0);
-        dispatch(clearMixingState());
+        dispatch(resetState());
         setErrors({});
     };
 
@@ -153,8 +166,8 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                         value={selectedTypeName || "Drop Test Data Entry"}
                         onChange={e => onTypeChange?.(e.target.value)}
                     >
-                        {dropTestTypeOptions.map(option => (
-                            <option key={option} value={option}>{option}</option>
+                        {typeOptions.map(option => (
+                            <option key={option.id || option.name} value={option.name}>{option.name}</option>
                         ))}
                     </select>
                 </div>

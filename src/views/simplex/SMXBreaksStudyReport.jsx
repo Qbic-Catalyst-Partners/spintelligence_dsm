@@ -79,9 +79,14 @@ const createInitialBreakMatrix = () =>
 
 const errorClass = (flag) =>
   flag ? " border-red-500 bg-rose-50 focus:border-red-500 focus:ring-red-200" : "";
-
-const errorStyle = (flag) =>
-  flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
+const topFieldStyle = { backgroundColor: "#f1f5f9" };
+const tableFieldStyle = { backgroundColor: "#f8fafc" };
+const getFieldStyle = (flag, variant = "top") =>
+  flag
+    ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" }
+    : variant === "table"
+      ? tableFieldStyle
+      : topFieldStyle;
 
 const formatLabel = (value) =>
   value
@@ -310,7 +315,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                   type="text"
                   inputMode="decimal"
                   className={`${tableFieldClass}${errorClass(errors.matrix?.[rowLabel]?.[columnLabel])}`}
-                  style={errorStyle(errors.matrix?.[rowLabel]?.[columnLabel])}
+                  style={getFieldStyle(errors.matrix?.[rowLabel]?.[columnLabel], "table")}
                   value={breakMatrix[rowLabel]?.[columnLabel] ?? ""}
                   onChange={(event) =>
                     handleMatrixChange(rowLabel, columnLabel, event.target.value)
@@ -428,12 +433,10 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     const resultAction = await dispatch(submitSimplexStudyReport(buildStudyPayload()));
 
     if (submitSimplexStudyReport.fulfilled.match(resultAction)) {
-      alert(resultAction.payload?.message || "Study report saved successfully.");
       clear();
       return true;
     }
 
-    alert(resultAction.payload || "Failed to save study report.");
     return false;
   };
 
@@ -457,7 +460,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
               {type === "select" ? (
                 <select
                   className={`${topFieldClass}${errorClass(errors.form?.[field])}`}
-                  style={errorStyle(errors.form?.[field])}
+                  style={getFieldStyle(errors.form?.[field])}
                   value={fieldValue}
                   onChange={(event) => {
                     handleFormChange(field, event.target.value);
@@ -478,7 +481,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                   readOnly={type === "readonly"}
                   placeholder={placeholder}
                   className={`${topFieldClass}${type === "readonly" ? " text-slate-500" : ""}${errorClass(errors.form?.[field])}`}
-                  style={errorStyle(errors.form?.[field])}
+                  style={getFieldStyle(errors.form?.[field])}
                   value={fieldValue}
                   onChange={(event) => handleFormChange(field, event.target.value)}
                 />

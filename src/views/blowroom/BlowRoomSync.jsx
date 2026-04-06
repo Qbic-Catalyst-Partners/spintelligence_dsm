@@ -131,8 +131,18 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     try {
       await dispatch(
         saveBlowroomData({
-          ...form,
-          entries: tableData,
+          inspection_date: form.entryDate,
+          line_no: form.lineNo,
+          variety: form.variety,
+          checked_by: form.checkedBy,
+          beater: form.beater,
+          total_time: form.totalTime,
+          entries: tableData.map((row) => ({
+            value_a: Number(row.a) || 0,
+            value_b: Number(row.b) || 0,
+            value_c: Number(row.c) || 0,
+            sync_percentage: Number(row.sync) || 0,
+          })),
         })
       ).unwrap();
     } catch (e) {
