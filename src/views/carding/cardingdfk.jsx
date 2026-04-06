@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import CustomInput from "@/components/CustomInput";
 import PreviewModal from "@/components/PreviewModal";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import styles from "./cardingdfk.module.css";
 
@@ -56,11 +57,12 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
   );
 
   const handleValueChange = (machineName, key, value) => {
+    const nextValue = sanitizeNumericInput(value, { precision: 5, scale: 2 });
     setRows((currentRows) => ({
       ...currentRows,
       [machineName]: {
         ...currentRows[machineName],
-        [key]: value,
+        [key]: nextValue,
       },
     }));
     setErrors((current) => {

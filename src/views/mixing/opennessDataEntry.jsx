@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import CustomInput from "@/components/CustomInput";
 import styles from "@/styles/opennessDataEntry.module.css";
 import { mixingOpennessDataEntry } from "@/apis/mixing";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const initialForm = {
   target: "",
@@ -69,11 +70,16 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const [errors, setErrors] = useState({});
 
   const handleFormChange = (field, value) => {
-    if (field === "entries" && value !== "" && !/^\d+$/.test(value)) return;
+    const nextValue =
+      field === "entries"
+        ? sanitizeIntegerInput(value, 9)
+        : field === "target"
+          ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+          : value;
 
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
     setErrors((prev) => {
       if (!prev[field]) return prev;
@@ -92,6 +98,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   };
 
   const handleRowChange = (stageIndex, rowIndex, field, value) => {
+    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
     setErrors((prev) => {
       const key = `stage-${stageIndex}-row-${rowIndex}-${field}`;
       if (!prev[key]) return prev;
@@ -104,7 +111,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       const updated = current.map((stage, currentStageIndex) => {
         const updatedRows = stage.rows.map((row, currentRowIndex) => {
           if (currentStageIndex === stageIndex && currentRowIndex === rowIndex) {
-            const nextRow = { ...row, [field]: value };
+            const nextRow = { ...row, [field]: nextValue };
 
             const weight = parseNumber(nextRow.weight);
             const volumeOne = parseNumber(nextRow.vol1);

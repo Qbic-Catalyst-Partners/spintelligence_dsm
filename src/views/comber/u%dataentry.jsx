@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import CustomSelect from "@/components/CustomSelect";
 import styles from "@/styles/u%dataentry.module.css";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { getComberUqcEntries, submitComberUqc } from "@/store/slices/comber";
 
 const initialForm = () => ({
@@ -29,9 +30,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [formMessage, setFormMessage] = useState("");
 
   const handleChange = (field, value) => {
+    const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
     setErrors((prev) => {
       if (!prev[field]) return prev;

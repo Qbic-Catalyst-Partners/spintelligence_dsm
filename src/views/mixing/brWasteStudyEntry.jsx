@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
+import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
 const TYPE_3_COLUMNS = [
@@ -22,6 +23,7 @@ const emptyType3Row = () =>
 const emptyWasteRow = () => ({ production: '', totalWaste: '', wastePercent: '' });
 
 const initialForm = { brWasteId: '', variety: '', cardingProduction: '', studyType: '' };
+const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
 
 const buildBrWastePayloads = ({ date, lotNo, formData, wasteRows, type3Rows, overallWaste, remarks }) => {
     const basePayload = {
@@ -99,7 +101,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     const [remarks, setRemarks] = useState('');
 
     const handleChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        const nextValue = FORM_NUMERIC_FIELDS.has(field)
+            ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+            : value;
+        setFormData(prev => ({ ...prev, [field]: nextValue }));
         setErrors((prev) => {
             if (!prev[field]) return prev;
             const next = { ...prev };
@@ -109,6 +114,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     const handleWasteRowChange = (index, field, value) => {
+        const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
         setErrors((prev) => {
             const key = `waste-${index}-${field}`;
             if (!prev[key]) return prev;
@@ -118,12 +124,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         });
         setWasteRows(prev => {
             const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: value };
+            updated[index] = { ...updated[index], [field]: nextValue };
             return updated;
         });
     };
 
     const handleType3RowChange = (index, field, value) => {
+        const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
         setErrors((prev) => {
             const key = `t3-${index}-${field}`;
             if (!prev[key]) return prev;
@@ -133,7 +140,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         });
         setType3Rows(prev => {
             const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: value };
+            updated[index] = { ...updated[index], [field]: nextValue };
             return updated;
         });
     };
@@ -326,7 +333,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 className={styles['mixx-input']}
                                 value={wasteCountInput}
                                 min={1}
-                                onChange={e => setWasteCountInput(e.target.value)}
+                                onChange={e => setWasteCountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
@@ -386,7 +393,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 className={styles['mixx-input']}
                                 value={wasteCountInput}
                                 min={1}
-                                onChange={e => setWasteCountInput(e.target.value)}
+                                onChange={e => setWasteCountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
@@ -443,7 +450,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 className={styles['mixx-input']}
                                 value={type3CountInput}
                                 min={1}
-                                onChange={e => setType3CountInput(e.target.value)}
+                                onChange={e => setType3CountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
@@ -511,7 +518,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                         label="Overall Waste %"
                         placeholder="0.00"
                         value={overallWaste}
-                        onChange={setOverallWaste}
+                        onChange={(value) => setOverallWaste(sanitizeNumericInput(value, { precision: 6, scale: 2 }))}
                     />
                     <CustomInput
                         label="Remarks"

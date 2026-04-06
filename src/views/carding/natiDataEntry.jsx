@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import PreviewModal from "@/components/PreviewModal";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
 import styles from "./natiDataEntry.module.css";
 
@@ -74,11 +75,14 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
     };
 
     const handleEntryChange = (index, field, value) => {
+        const nextValue = ["ratio_size_1", "ratio_size_07", "ratio_size_05"].includes(field)
+            ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+            : value;
         setEntries((currentEntries) => {
             const nextEntries = [...currentEntries];
             nextEntries[index] = {
                 ...nextEntries[index],
-                [field]: value,
+                [field]: nextValue,
             };
             return nextEntries;
         });

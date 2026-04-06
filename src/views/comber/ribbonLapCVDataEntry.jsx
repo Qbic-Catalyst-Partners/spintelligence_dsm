@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberRibbonLapCV } from "@/store/slices/comber";
 import Footer from "@/components/Footer";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -377,8 +378,9 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 <input
                                     className={errors.lapWeight ? styles["input-error"] : ""}
                                     value={lapWeight}
+                                    inputMode="decimal"
                                     onChange={(e) => {
-                                        setLapWeight(e.target.value);
+                                        setLapWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }));
                                         setErrors((prev) => {
                                             if (!prev.lapWeight) return prev;
                                             const next = { ...prev };

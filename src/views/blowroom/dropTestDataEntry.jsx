@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { HiChevronDown, HiChevronUp } from 'react-icons/hi2';
 import { saveBlowroomDropTest, resetState } from '@/store/slices/blowroomSlice';
+import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '@/styles/dropTestDataEntry.module.css';
 
 const emptyTuft = () => ({
@@ -114,9 +115,9 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     };
 
     const handleTuftCountChange = (value) => {
-        if (!/^\d*$/.test(value)) return;
-        let n = Math.min(Number(value), 20);
-        setNumTufts(value);
+        const safeValue = sanitizeIntegerInput(value, 2);
+        let n = Math.min(Number(safeValue), 20);
+        setNumTufts(safeValue);
         setErrors((prev) => {
             if (!prev.numTufts) return prev;
             const next = { ...prev };
@@ -137,7 +138,9 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
 
     const handleTuftFieldChange = (index, field, value) => {
         const updated = [...tufts];
-        updated[index][field] = value;
+        updated[index][field] = field === 'tuftVariety'
+            ? value
+            : sanitizeNumericInput(value, { precision: 8, scale: 3 });
 
         const actDisplay = Number(updated[index].actDisplay) || 0;
         const displayWt  = Number(updated[index].displayWt)  || 0;

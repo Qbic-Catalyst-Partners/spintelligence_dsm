@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { getSimplexUqcEntries, submitSimplexUqc } from "@/store/slices/simplex";
 
 const initialForm = () => ({
@@ -30,7 +31,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [errors, setErrors] = useState({});
 
   const handleChange = (field, value) => {
-    setForm({ ...form, [field]: value });
+    const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
+    setForm({ ...form, [field]: nextValue });
     setErrors((current) => {
       if (!current[field]) return current;
       const next = { ...current };
