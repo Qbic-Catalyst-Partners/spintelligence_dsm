@@ -121,6 +121,11 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     s_no: form.serialNo,
     entry_date: form.date,
     machine_name: form.mcName,
+    items: details.map((detail) => ({
+      item_name: detail.item,
+      status_value: detail.statusValue,
+      remarks: detail.remarks,
+    })),
   });
 
   const submit = async () => {
@@ -202,6 +207,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
             style={getFieldStyle(errors.form?.date)}
             value={form.date}
             onChange={(e) => handleFormChange("date", e.target.value)}
+            disabled
           />
         </div>
 

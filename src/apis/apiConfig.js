@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 
 const resolvedBaseUrl = (
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
@@ -28,23 +29,22 @@ axiosInstance.interceptors.request.use(
 );
 
 // Response interceptor for handling global errors (e.g., automatically logging out on 401)
-// axiosInstance.interceptors.response.use(
-//     (response) => {
-//         return response;
-//     },
-//     (error) => {
-//         if (error.response) {
-//             // Check for 401 Unauthorized status and clear token if needed
-//             if (error.response.status === 401) {
-//                 if (typeof window !== 'undefined') {
-//                     localStorage.removeItem('token');
-//                     window.location.href = '/'; // Redirect to login
-//                 }
-//             }
-//         }
-//         return Promise.reject(error);
-//     }
-// );
+axiosInstance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (typeof window !== "undefined" && !error.config?.skipGlobalErrorModal) {
+            const status = error.response?.status;
+            const message =
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                (status ? `Request failed with status ${status}` : "API is not responsive. Please try again.");
+
+            emitGlobalFailureModal({ message, status });
+        }
+
+        return Promise.reject(error);
+    }
+);
 
 // Export robust helper methods for dealing with payloads, query parameters, and custom headers
 const apiConfig = {

@@ -20,8 +20,8 @@ const countNameOptions = [
 
 const createInitialForm = () => ({
   type: "Cone Packing Audit",
-  date: "",
-  packedDate: "",
+  date: today,
+  packedDate: today,
   countName: "",
   grossWtStd: "",
   grossWtAct: "",
@@ -70,20 +70,20 @@ const mapConePackingEntryToRows = (entry = {}) => {
   const drumEntries = Array.isArray(entry.drum_entries) ? entry.drum_entries : [];
   const yarnReadings = Array.isArray(entry.yarn_readings)
     ? entry.yarn_readings
-    : Array.isArray(entry.cone_readings)
-      ? entry.cone_readings
-      : [];
+    : [];
+  const coneReadings = Array.isArray(entry.cone_readings) ? entry.cone_readings : [];
+  const readingRows = yarnReadings.length >= coneReadings.length ? yarnReadings : coneReadings;
 
-  if (drumEntries.length > 0 || yarnReadings.length > 0) {
-    const rowCount = Math.max(drumEntries.length, yarnReadings.length);
+  if (drumEntries.length > 0 || readingRows.length > 0) {
+    const rowCount = Math.max(drumEntries.length, readingRows.length);
 
     return Array.from({ length: rowCount }, (_, index) => {
       const drumRow = drumEntries[index] ?? {};
-      const yarnRow = yarnReadings[index] ?? {};
+      const readingRow = readingRows[index] ?? {};
 
       return {
-        readingNumber: String(yarnRow.reading_number ?? yarnRow.readingNumber ?? index + 1),
-        precentYarn: String(yarnRow.percent_yarn ?? yarnRow.precentYarn ?? yarnRow.percentYarn ?? "-"),
+        readingNumber: String(readingRow.reading_number ?? readingRow.readingNumber ?? index + 1),
+        precentYarn: String(readingRow.percent_yarn ?? readingRow.precentYarn ?? readingRow.percentYarn ?? "-"),
         grossWeight: String(
           drumRow.gross_weight ?? entry.gross_weight_actual ?? entry.grossWtAct ?? "-"
         ),
@@ -229,6 +229,10 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       average: toNullableNumber(row.precentYarn),
     })),
     yarn_readings: rows.map((row) => ({
+      reading_number: toNullableNumber(row.readingNumber),
+      percent_yarn: toNullableNumber(row.precentYarn),
+    })),
+    cone_readings: rows.map((row) => ({
       reading_number: toNullableNumber(row.readingNumber),
       percent_yarn: toNullableNumber(row.precentYarn),
     })),
@@ -414,6 +418,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
             className={`${topFieldClass}${errorClass(errors[field])}`}
             value={fieldValue}
             onChange={(event) => handleFormChange(field, event.target.value)}
+            disabled={field === "date" || field === "packedDate"}
           />
         )}
       </div>
