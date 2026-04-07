@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from "react-redux";
 
 import CustomSelect from "@/components/CustomSelect";
 import styles from "@/styles/u%dataentry.module.css";
-import { clearComberState, getComberUqcEntries, submitComberUqc } from "@/store/slices/comber";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { getComberUqcEntries, submitComberUqc } from "@/store/slices/comber";
 
 const initialForm = () => ({
   date: new Date().toISOString().split("T")[0],
@@ -25,16 +26,30 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const dispatch = useDispatch();
   const { data, error } = useSelector((state) => state.comber ?? {});
   const [form, setForm] = useState(initialForm());
+  const [errors, setErrors] = useState({});
+  const [formMessage, setFormMessage] = useState("");
 
   const handleChange = (field, value) => {
+    const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    setFormMessage("");
   };
 
   const clear = () => {
     setForm(initialForm());
+    setErrors({});
+    setFormMessage("");
   };
 
   useEffect(() => {
@@ -43,41 +58,35 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
   useEffect(() => {
     if (data?.message === "UQC entry created successfully") {
-      alert(data.message);
       clear();
       dispatch(getComberUqcEntries({ page: 1, limit: 10 }));
-      dispatch(clearComberState());
+      setFormMessage("");
     }
   }, [data, dispatch]);
 
   useEffect(() => {
     if (error) {
-      alert(error);
-      dispatch(clearComberState());
+      setFormMessage(error);
     }
-  }, [dispatch, error]);
+  }, [error]);
 
   const validate = () => {
-    const requiredFields = [
-      selectedType,
-      form.date,
-      form.shift,
-      form.variety,
-      form.department,
-      form.mc_no,
-      form.u_percent,
-      form.cvm,
-      form.im_cvm,
-      form.m3_cvm,
-      form.remarks,
-    ];
+    const nextErrors = {};
+    if (!String(selectedType || "").trim()) nextErrors.type = true;
+    if (!String(form.date || "").trim()) nextErrors.date = true;
+    if (!String(form.shift || "").trim()) nextErrors.shift = true;
+    if (!String(form.variety || "").trim()) nextErrors.variety = true;
+    if (!String(form.department || "").trim()) nextErrors.department = true;
+    if (!String(form.mc_no || "").trim()) nextErrors.mc_no = true;
+    if (!String(form.u_percent || "").trim()) nextErrors.u_percent = true;
+    if (!String(form.cvm || "").trim()) nextErrors.cvm = true;
+    if (!String(form.im_cvm || "").trim()) nextErrors.im_cvm = true;
+    if (!String(form.m3_cvm || "").trim()) nextErrors.m3_cvm = true;
+    if (!String(form.remarks || "").trim()) nextErrors.remarks = true;
 
-    if (requiredFields.some((value) => String(value).trim() === "")) {
-      alert("Please fill all fields.");
-      return false;
-    }
-
-    return true;
+    setErrors(nextErrors);
+    setFormMessage(Object.keys(nextErrors).length ? "Please fill all fields." : "");
+    return Object.keys(nextErrors).length === 0;
   };
 
   const getPreviewData = () => [
@@ -95,22 +104,27 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
   const submit = async () => {
     if (!validate()) return false;
-    await dispatch(
-      submitComberUqc({
-        entry_type: selectedType,
-        entry_date: form.date,
-        shift: form.shift,
-        variety: form.variety,
-        department: form.department,
-        mc_no: form.mc_no,
-        u_percent: form.u_percent,
-        cvm: form.cvm,
-        cvm_1m: form.im_cvm,
-        cvm_3m: form.m3_cvm,
-        remarks: form.remarks,
-      })
-    );
-    return true;
+    try {
+      await dispatch(
+        submitComberUqc({
+          entry_type: selectedType,
+          entry_date: form.date,
+          shift: form.shift,
+          variety: form.variety,
+          department: form.department,
+          mc_no: form.mc_no,
+          u_percent: form.u_percent,
+          cvm: form.cvm,
+          cvm_1m: form.im_cvm,
+          cvm_3m: form.m3_cvm,
+          remarks: form.remarks,
+        })
+      ).unwrap();
+      return true;
+    } catch (submitError) {
+      setFormMessage(submitError || "Unable to submit U% entry.");
+      return false;
+    }
   };
 
   useImperativeHandle(ref, () => ({
@@ -129,6 +143,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             options={types}
             value={selectedType}
             onChange={onTypeChange}
+            error={errors.type}
           />
         </div>
 
@@ -138,6 +153,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             type="date"
             value={form.date}
             onChange={(e) => handleChange("date", e.target.value)}
+            className={errors.date ? styles.errorField : ""}
           />
         </div>
 
@@ -146,6 +162,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <select
             value={form.shift}
             onChange={(e) => handleChange("shift", e.target.value)}
+            className={errors.shift ? styles.errorField : ""}
           >
             <option value="">Select</option>
             <option>Shift A</option>
@@ -160,6 +177,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <select
             value={form.variety}
             onChange={(e) => handleChange("variety", e.target.value)}
+            className={errors.variety ? styles.errorField : ""}
           >
             <option value="">Select</option>
             <option>Cotton</option>
@@ -174,6 +192,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <select
             value={form.department}
             onChange={(e) => handleChange("department", e.target.value)}
+            className={errors.department ? styles.errorField : ""}
           >
             <option value="">Select Department</option>
             <option>Comber</option>
@@ -187,6 +206,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <select
             value={form.mc_no}
             onChange={(e) => handleChange("mc_no", e.target.value)}
+            className={errors.mc_no ? styles.errorField : ""}
           >
             <option value="">Select MC No.</option>
             <option>MC-01</option>
@@ -204,6 +224,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <input
             value={form.u_percent}
             onChange={(e) => handleChange("u_percent", e.target.value)}
+            className={errors.u_percent ? styles.errorField : ""}
           />
         </div>
 
@@ -212,6 +233,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <input
             value={form.cvm}
             onChange={(e) => handleChange("cvm", e.target.value)}
+            className={errors.cvm ? styles.errorField : ""}
           />
         </div>
 
@@ -220,6 +242,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <input
             value={form.im_cvm}
             onChange={(e) => handleChange("im_cvm", e.target.value)}
+            className={errors.im_cvm ? styles.errorField : ""}
           />
         </div>
 
@@ -228,6 +251,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           <input
             value={form.m3_cvm}
             onChange={(e) => handleChange("m3_cvm", e.target.value)}
+            className={errors.m3_cvm ? styles.errorField : ""}
           />
         </div>
 
@@ -237,9 +261,15 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             rows={3}
             value={form.remarks}
             onChange={(e) => handleChange("remarks", e.target.value)}
+            className={errors.remarks ? styles.errorField : ""}
           />
         </div>
       </div>
+      {formMessage ? (
+        <div className={`${styles.messageBox} ${error ? styles.messageError : styles.messageSuccess}`}>
+          {formMessage}
+        </div>
+      ) : null}
     </div>
   );
 });

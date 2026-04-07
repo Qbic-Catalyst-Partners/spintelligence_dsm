@@ -2,6 +2,8 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
   fetchBlowroomDataApi,
   saveBlowroomDataApi,
+  saveBlowroomDropTestApi,
+  saveBlowroomBrWasteApi,
 } from "../../apis/blowroom";
 
 // ✅ GET
@@ -22,6 +24,28 @@ export const saveBlowroomData = createAsyncThunk(
   async (payload, { rejectWithValue }) => {
     try {
       return await saveBlowroomDataApi(payload);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+export const saveBlowroomDropTest = createAsyncThunk(
+  "blowroom/saveDropTest",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await saveBlowroomDropTestApi(payload);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+export const saveBlowroomBrWaste = createAsyncThunk(
+  "blowroom/saveBrWaste",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await saveBlowroomBrWasteApi(payload);
     } catch (err) {
       return rejectWithValue(err.message);
     }
@@ -63,6 +87,8 @@ const blowroomSlice = createSlice({
       // POST
       .addCase(saveBlowroomData.pending, (state) => {
         state.loading = true;
+        state.success = false;
+        state.error = null;
       })
       .addCase(saveBlowroomData.fulfilled, (state, action) => {
         state.loading = false;
@@ -70,6 +96,34 @@ const blowroomSlice = createSlice({
         state.message = action.payload.message; // "Sync created"
       })
       .addCase(saveBlowroomData.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveBlowroomDropTest.pending, (state) => {
+        state.loading = true;
+        state.success = false;
+        state.error = null;
+      })
+      .addCase(saveBlowroomDropTest.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.message = action.payload.message;
+      })
+      .addCase(saveBlowroomDropTest.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveBlowroomBrWaste.pending, (state) => {
+        state.loading = true;
+        state.success = false;
+        state.error = null;
+      })
+      .addCase(saveBlowroomBrWaste.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.message = action.payload.message;
+      })
+      .addCase(saveBlowroomBrWaste.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

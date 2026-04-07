@@ -10,7 +10,7 @@ import { COMBER_INPUT_SCREEN_COUNT } from "@/views/comber";
 import { DRAW_FRAME_INPUT_SCREEN_COUNT } from "@/views/draw-frame";
 import { SIMPLEX_INPUT_SCREEN_COUNT } from "@/views/simplex";
 import { SPINNING_INPUT_SCREEN_COUNT } from "@/views/spinning";
-import { AUTOCORNER_INPUT_SCREEN_COUNT } from "@/views/autocorner";
+import { AUTOCONER_INPUT_SCREEN_COUNT } from "@/views/autoconer";
 
 const subDepartmentScreenCounts = {
     mixing: MIXING_INPUT_SCREEN_COUNT,
@@ -20,7 +20,7 @@ const subDepartmentScreenCounts = {
     "draw-frame": DRAW_FRAME_INPUT_SCREEN_COUNT,
     simplex: SIMPLEX_INPUT_SCREEN_COUNT,
     spinning: SPINNING_INPUT_SCREEN_COUNT,
-    autoconer: AUTOCORNER_INPUT_SCREEN_COUNT,
+    autoconer: AUTOCONER_INPUT_SCREEN_COUNT,
 };
 
 const formatInputScreenLabel = (count) => {

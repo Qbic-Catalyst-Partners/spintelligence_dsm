@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import PreviewModal from "@/components/PreviewModal";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./trialsDataEntry.module.css";
 
 const topCutFields = [
@@ -58,6 +59,53 @@ const requiredFields = [
     ...cutsGridFields.flat(),
 ];
 
+const INTEGER_FIELDS = new Set(["totalCuts", "nepsCuts", "shortCuts", "longCuts", "thinCuts"]);
+const DECIMAL_FIELD_CONFIG = {
+    cp: { precision: 6, scale: 2 },
+    cm: { precision: 6, scale: 2 },
+    ccp: { precision: 6, scale: 2 },
+    ccm: { precision: 6, scale: 2 },
+    jp: { precision: 6, scale: 2 },
+    a1: { precision: 6, scale: 2 },
+    a2: { precision: 6, scale: 2 },
+    a3: { precision: 6, scale: 2 },
+    a4: { precision: 6, scale: 2 },
+    b1: { precision: 6, scale: 2 },
+    b2: { precision: 6, scale: 2 },
+    b3: { precision: 6, scale: 2 },
+    b4: { precision: 6, scale: 2 },
+    c1: { precision: 6, scale: 2 },
+    c2: { precision: 6, scale: 2 },
+    c3: { precision: 6, scale: 2 },
+    c4: { precision: 6, scale: 2 },
+    d1: { precision: 6, scale: 2 },
+    d2: { precision: 6, scale: 2 },
+    d3: { precision: 6, scale: 2 },
+    d4: { precision: 6, scale: 2 },
+    e: { precision: 6, scale: 2 },
+    f: { precision: 6, scale: 2 },
+    g: { precision: 6, scale: 2 },
+    h1: { precision: 6, scale: 2 },
+    h2: { precision: 6, scale: 2 },
+    i1: { precision: 6, scale: 2 },
+    i2: { precision: 6, scale: 2 },
+    cvp: { precision: 6, scale: 2 },
+    uPercent: { precision: 6, scale: 2 },
+    cvm: { precision: 6, scale: 2 },
+    cvmCvPercent: { precision: 6, scale: 2 },
+    cvm10mtr: { precision: 6, scale: 2 },
+    dr15m: { precision: 6, scale: 2 },
+    thin50: { precision: 6, scale: 2 },
+    thick50: { precision: 6, scale: 2 },
+    neps200: { precision: 6, scale: 2 },
+    thin40: { precision: 6, scale: 2 },
+    thick35: { precision: 6, scale: 2 },
+    neps140: { precision: 6, scale: 2 },
+    thin30: { precision: 6, scale: 2 },
+    countFinal: { precision: 6, scale: 2 },
+    csp: { precision: 8, scale: 2 },
+};
+
 function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false }) {
     const router = useRouter();
     const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -90,9 +138,14 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
     const handleChange = (event) => {
         const { name, value } = event.target;
+        const nextValue = INTEGER_FIELDS.has(name)
+            ? sanitizeIntegerInput(value, 9)
+            : DECIMAL_FIELD_CONFIG[name]
+                ? sanitizeNumericInput(value, DECIMAL_FIELD_CONFIG[name])
+                : value;
         setFormData((current) => ({
             ...current,
-            [name]: value,
+            [name]: nextValue,
         }));
         setErrors((current) => {
             const next = { ...current };

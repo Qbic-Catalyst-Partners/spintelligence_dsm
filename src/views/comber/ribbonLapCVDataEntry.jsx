@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberRibbonLapCV } from "@/store/slices/comber";
 import Footer from "@/components/Footer";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -99,6 +100,11 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         setErrors((prev) => {
             const next = { ...prev };
             delete next.samplesEmpty;
+            Object.keys(next).forEach((key) => {
+                if (key.startsWith("sample-")) {
+                    delete next[key];
+                }
+            });
             return next;
         });
     };
@@ -109,12 +115,12 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         setSamples(nextSamples);
         setFormMessage("");
         setErrors((prev) => {
-            if (!prev.samplesEmpty) return prev;
+            const next = { ...prev };
+            delete next[`sample-${index}`];
             if (nextSamples.some((v) => v !== "")) {
-                const { samplesEmpty, ...rest } = prev;
-                return rest;
+                delete next.samplesEmpty;
             }
-            return prev;
+            return next;
         });
     };
 
@@ -176,9 +182,17 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
             }
         }
 
-        if (!samples.some((value) => value !== "")) {
+        const activeSamples = samples.slice(0, Number(sampleCount) || samples.length);
+
+        if (!activeSamples.some((value) => value !== "")) {
             nextErrors.samplesEmpty = true;
         }
+
+        activeSamples.forEach((value, index) => {
+            if (String(value || "").trim() === "") {
+                nextErrors[`sample-${index}`] = true;
+            }
+        });
 
         setErrors(nextErrors);
         setFormMessage("");
@@ -364,8 +378,9 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 <input
                                     className={errors.lapWeight ? styles["input-error"] : ""}
                                     value={lapWeight}
+                                    inputMode="decimal"
                                     onChange={(e) => {
-                                        setLapWeight(e.target.value);
+                                        setLapWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }));
                                         setErrors((prev) => {
                                             if (!prev.lapWeight) return prev;
                                             const next = { ...prev };
@@ -387,7 +402,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                             type="number"
                                             placeholder="0.00"
                                             value={value}
-                                            className={errors.samplesEmpty && value === "" ? styles["input-error"] : ""}
+                                            className={errors[`sample-${index}`] || (errors.samplesEmpty && value === "") ? styles["input-error"] : ""}
                                             onChange={(e) => handleSampleChange(index, e.target.value)}
                                         />
                                     </div>

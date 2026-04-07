@@ -135,12 +135,21 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const [lotNo, setLotNo] = useState("");
   const [frameNo, setFrameNo] = useState("");
   const [metrics, setMetrics] = useState(createInitialMetrics());
+  const [errors, setErrors] = useState({});
+  const errorStyle = (flag) =>
+    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
 
   const handleMetricChange = (key, value) => {
     setMetrics((prev) => ({
       ...prev,
       [key]: value,
     }));
+    setErrors((current) => {
+      if (!current[`metric-${key}`]) return current;
+      const next = { ...current };
+      delete next[`metric-${key}`];
+      return next;
+    });
   };
 
   const resetForm = () => {
@@ -152,72 +161,107 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     setLotNo("");
     setFrameNo("");
     setMetrics(createInitialMetrics());
+    setErrors({});
+  };
+
+  const validate = () => {
+    const nextErrors = {};
+    if (!String(selectedType || "").trim()) nextErrors.type = true;
+    if (!String(date || "").trim()) nextErrors.date = true;
+    if (!String(machineNo || "").trim() || machineNo === machineOptions[0]) nextErrors.machineNo = true;
+    if (!String(count || "").trim() || count === countOptions[0]) nextErrors.count = true;
+    if (!String(drumsFromTo || "").trim()) nextErrors.drumsFromTo = true;
+    if (!String(craneTip || "").trim()) nextErrors.craneTip = true;
+    if (!String(lotNo || "").trim()) nextErrors.lotNo = true;
+    if (!String(frameNo || "").trim()) nextErrors.frameNo = true;
+    metricKeys.forEach((key) => {
+      if (!String(metrics[key] || "").trim()) nextErrors[`metric-${key}`] = true;
+    });
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const getPreviewData = () => [
+    { label: "Type", value: selectedType || "-" },
+    { label: "Date", value: date || "-" },
+    { label: "Machine No.", value: machineNo || "-" },
+    { label: "Count", value: count || "-" },
+    { label: "Drums From/To", value: drumsFromTo || "-" },
+    { label: "Crane Tip", value: craneTip || "-" },
+    { label: "Lot No.", value: lotNo || "-" },
+    { label: "Frame No.", value: frameNo || "-" },
+    ...metricKeys.map((key) => ({ label: key, value: metrics[key] || "-" })),
+  ];
+
+  const submit = async () => {
+    if (!validate()) return false;
+    try {
+      const { drumFrom, drumTo } = splitDrumsRange(drumsFromTo);
+      const payload = {
+        inspection_type: selectedType,
+        entry_date: date,
+        machine_no: machineNo,
+        count_name: count,
+        drum_from: drumFrom,
+        drum_to: drumTo,
+        cone_tip: craneTip,
+        lot_no: lotNo,
+        frame_no: frameNo,
+        yf: metrics.YF || null,
+        yj: metrics.YJ || null,
+        n: metrics.N || null,
+        s: metrics.S || null,
+        l: metrics.L || null,
+        t: metrics.T || null,
+        cp: metrics.CP || null,
+        cm: metrics.CM || null,
+        ccp: metrics.CCP || null,
+        ccm: metrics.CCM || null,
+        pc: metrics.PC || null,
+        fd: metrics.FD || null,
+        jp: metrics.JP || null,
+        jm: metrics.JM || null,
+        cvd: metrics.CVD || null,
+        a1: metrics.A1 || null,
+        a2: metrics.A2 || null,
+        a3: metrics.A3 || null,
+        a4: metrics.A4 || null,
+        b1: metrics.B1 || null,
+        b2: metrics.B2 || null,
+        b3: metrics.B3 || null,
+        b4: metrics.B4 || null,
+        c1: metrics.C1 || null,
+        c2: metrics.C2 || null,
+        c3: metrics.C3 || null,
+        c4: metrics.C4 || null,
+        d1: metrics.D1 || null,
+        d2: metrics.D2 || null,
+        d3: metrics.D3 || null,
+        d4: metrics.D4 || null,
+        e: metrics.E || null,
+        f: metrics.F || null,
+        g: metrics.G || null,
+        h1: metrics.H1 || null,
+        h2: metrics.H2 || null,
+        l1: metrics.I1 || null,
+        l2: metrics.I2 || null,
+      };
+
+      await dispatch(saveAutoconerCountWiseCuts(payload)).unwrap();
+      await dispatch(getAutoconerCountWiseCuts()).unwrap();
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   useEffect(() => {
     if (!onRegisterActions) return;
 
     onRegisterActions({
-      onSave: async () => {
-        try {
-          const { drumFrom, drumTo } = splitDrumsRange(drumsFromTo);
-          const payload = {
-            inspection_type: selectedType,
-            entry_date: date,
-            machine_no: machineNo,
-            count_name: count,
-            drum_from: drumFrom,
-            drum_to: drumTo,
-            cone_tip: craneTip,
-            lot_no: lotNo,
-            frame_no: frameNo,
-            yf: metrics.YF || null,
-            yj: metrics.YJ || null,
-            n: metrics.N || null,
-            s: metrics.S || null,
-            l: metrics.L || null,
-            t: metrics.T || null,
-            cp: metrics.CP || null,
-            cm: metrics.CM || null,
-            ccp: metrics.CCP || null,
-            ccm: metrics.CCM || null,
-            pc: metrics.PC || null,
-            fd: metrics.FD || null,
-            jp: metrics.JP || null,
-            jm: metrics.JM || null,
-            cvd: metrics.CVD || null,
-            a1: metrics.A1 || null,
-            a2: metrics.A2 || null,
-            a3: metrics.A3 || null,
-            a4: metrics.A4 || null,
-            b1: metrics.B1 || null,
-            b2: metrics.B2 || null,
-            b3: metrics.B3 || null,
-            b4: metrics.B4 || null,
-            c1: metrics.C1 || null,
-            c2: metrics.C2 || null,
-            c3: metrics.C3 || null,
-            c4: metrics.C4 || null,
-            d1: metrics.D1 || null,
-            d2: metrics.D2 || null,
-            d3: metrics.D3 || null,
-            d4: metrics.D4 || null,
-            e: metrics.E || null,
-            f: metrics.F || null,
-            g: metrics.G || null,
-            h1: metrics.H1 || null,
-            h2: metrics.H2 || null,
-            l1: metrics.I1 || null,
-            l2: metrics.I2 || null,
-          };
-
-          await dispatch(saveAutoconerCountWiseCuts(payload)).unwrap();
-          await dispatch(getAutoconerCountWiseCuts()).unwrap();
-          alert("Count wise cuts saved successfully.");
-        } catch (error) {
-          alert(error || "Unable to save Count wise cuts.");
-        }
-      },
+      validate,
+      getPreviewData,
+      submit,
       onClear: resetForm,
       saveLabel: "Save Record",
       disabled: isLoading,
@@ -242,7 +286,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
       <div className={styles.formGrid}>
         <div className={styles.field}>
           <label>Type</label>
-          <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
+          <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
             {types.map((type) => (
               <option key={type.id} value={type.name}>
                 {type.name}
@@ -253,12 +297,12 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
         <div className={styles.field}>
           <label>Date</label>
-          <input type="date" value={date} disabled />
+          <input type="date" value={date} disabled style={errorStyle(errors.date)} />
         </div>
 
         <div className={styles.field}>
           <label>Machine No.</label>
-          <select value={machineNo} onChange={(e) => setMachineNo(e.target.value)}>
+          <select value={machineNo} onChange={(e) => setMachineNo(e.target.value)} style={errorStyle(errors.machineNo)}>
             {machineOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -269,7 +313,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
         <div className={styles.field}>
           <label>Count</label>
-          <select value={count} onChange={(e) => setCount(e.target.value)}>
+          <select value={count} onChange={(e) => setCount(e.target.value)} style={errorStyle(errors.count)}>
             {countOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -280,22 +324,22 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
         <div className={styles.field}>
           <label>Drums From/ To</label>
-          <input value={drumsFromTo} onChange={(e) => setDrumsFromTo(e.target.value)} />
+          <input value={drumsFromTo} onChange={(e) => setDrumsFromTo(e.target.value)} style={errorStyle(errors.drumsFromTo)} />
         </div>
 
         <div className={styles.field}>
           <label>Crane Tip</label>
-          <input value={craneTip} onChange={(e) => setCraneTip(e.target.value)} />
+          <input value={craneTip} onChange={(e) => setCraneTip(e.target.value)} style={errorStyle(errors.craneTip)} />
         </div>
 
         <div className={styles.field}>
           <label>Lot No.</label>
-          <input value={lotNo} onChange={(e) => setLotNo(e.target.value)} />
+          <input value={lotNo} onChange={(e) => setLotNo(e.target.value)} style={errorStyle(errors.lotNo)} />
         </div>
 
         <div className={styles.field}>
           <label>Frame No.</label>
-          <input value={frameNo} onChange={(e) => setFrameNo(e.target.value)} />
+          <input value={frameNo} onChange={(e) => setFrameNo(e.target.value)} style={errorStyle(errors.frameNo)} />
         </div>
       </div>
 
@@ -306,6 +350,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
             <input
               value={metrics[key]}
               onChange={(e) => handleMetricChange(key, e.target.value)}
+              style={errorStyle(errors[`metric-${key}`])}
             />
           </div>
         ))}

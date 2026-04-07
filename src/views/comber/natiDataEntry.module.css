@@ -44,7 +44,7 @@
 }
 
 .cb-form-group-field label {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #475569;
 }
@@ -137,7 +137,7 @@
 }
 
 .cb-form-group label {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: #334155;
 }
@@ -258,7 +258,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1;
   font-weight: 700;
 }
@@ -357,18 +357,18 @@
   }
 
   .cb-header p {
-    font-size: 11px;
+    font-size:14px;
   }
 
   .cb-form-group label {
-    font-size: 11px;
+    font-size: 14px;
     color: #3d539f;
   }
 
   .cb-form-group input,
   .cb-form-group select {
     height: 36px;
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .cb-generate {
@@ -376,7 +376,7 @@
   }
 
   .cb-generate button {
-    font-size: 12px;
+    font-size: 14px;
     padding: 0 14px;
   }
 
@@ -396,7 +396,7 @@
   .cb-secondary,
   .cb-primary {
     flex: 1;
-    font-size: 12px;
+    font-size: 14px;
     padding: 9px 12px;
   }
 
