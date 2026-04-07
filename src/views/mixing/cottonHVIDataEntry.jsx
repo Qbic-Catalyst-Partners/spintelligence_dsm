@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitCottonHVI, clearMixingState } from '@/store/slices/mixing';
+import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/cottonHVIDataEntry.module.css';
 
 const initialForm = {
@@ -12,6 +13,10 @@ const initialForm = {
     trash: '', rd: '', colourGrade: '',
 };
 
+const NUMERIC_FIELDS = new Set([
+    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trash', 'rd', 'colourGrade',
+]);
+
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
@@ -19,7 +24,10 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo 
     const [errors, setErrors] = useState({});
 
     const handleChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        const nextValue = NUMERIC_FIELDS.has(field)
+            ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+            : value;
+        setFormData(prev => ({ ...prev, [field]: nextValue }));
         setErrors((prev) => {
             if (!prev[field]) return prev;
             const next = { ...prev };

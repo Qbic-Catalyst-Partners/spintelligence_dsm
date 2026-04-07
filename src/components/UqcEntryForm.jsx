@@ -1,4 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useState } from "react";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -28,6 +29,8 @@ const createInitialForm = (departmentValue) => ({
   remarks: "",
 });
 
+const UQC_NUMERIC_FIELDS = new Set(["u_percent", "cvm", "cvm_1m", "cvm_3m"]);
+
 const UqcEntryForm = forwardRef(function UqcEntryForm(
   {
     typeOptions = [],
@@ -46,9 +49,13 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
   const [errors, setErrors] = useState({});
 
   const handleChange = (field, value) => {
+    const nextValue = UQC_NUMERIC_FIELDS.has(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
+
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
     setErrors((current) => {
       if (!current[field]) return current;
@@ -225,6 +232,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             className={`${topFieldClass}${errorClass(errors.u_percent)}`}
             value={form.u_percent}
             onChange={(e) => handleChange("u_percent", e.target.value)}
+            inputMode="decimal"
             style={errorStyle(errors.u_percent)}
           />
         </div>
@@ -237,6 +245,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             className={`${topFieldClass}${errorClass(errors.cvm)}`}
             value={form.cvm}
             onChange={(e) => handleChange("cvm", e.target.value)}
+            inputMode="decimal"
             style={errorStyle(errors.cvm)}
           />
         </div>
@@ -249,6 +258,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             className={`${topFieldClass}${errorClass(errors.cvm_1m)}`}
             value={form.cvm_1m}
             onChange={(e) => handleChange("cvm_1m", e.target.value)}
+            inputMode="decimal"
             style={errorStyle(errors.cvm_1m)}
           />
         </div>
@@ -261,6 +271,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             className={`${topFieldClass}${errorClass(errors.cvm_3m)}`}
             value={form.cvm_3m}
             onChange={(e) => handleChange("cvm_3m", e.target.value)}
+            inputMode="decimal"
             style={errorStyle(errors.cvm_3m)}
           />
         </div>

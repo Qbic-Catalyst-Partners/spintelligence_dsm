@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
-import Footer from "@/components/Footer";
 import {
   getAutoconerSpliceStrength,
   saveAutoconerSpliceStrength,
@@ -35,7 +33,6 @@ const initialRows = (count) =>
   }));
 
 function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }) {
-  const router = useRouter();
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -50,6 +47,9 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
   const [cspValue, setCspValue] = useState("");
   const [readingCount, setReadingCount] = useState("");
   const [generatedRows, setGeneratedRows] = useState([]);
+  const [errors, setErrors] = useState({});
+  const errorStyle = (flag) =>
+    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
 
   const rowsWithPercent = useMemo(
     () =>
@@ -90,6 +90,12 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
         parentYarn: "",
       }))
     );
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.readingCount;
+      delete next.generatedRows;
+      return next;
+    });
   };
 
   const resetForm = () => {
@@ -103,9 +109,49 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
     setCspValue("");
     setReadingCount("");
     setGeneratedRows([]);
+    setErrors({});
   };
 
-  const handleSave = async () => {
+  const validate = () => {
+    const nextErrors = {};
+    if (!String(selectedType || "").trim()) nextErrors.type = true;
+    if (!String(testNo || "").trim()) nextErrors.testNo = true;
+    if (!String(date || "").trim()) nextErrors.date = true;
+    if (!String(countName || "").trim()) nextErrors.countName = true;
+    if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
+    if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
+    if (!String(drumTo || "").trim()) nextErrors.drumTo = true;
+    if (!String(coneTip || "").trim()) nextErrors.coneTip = true;
+    if (!String(cspValue || "").trim()) nextErrors.cspValue = true;
+    if (!String(readingCount || "").trim()) nextErrors.readingCount = true;
+    if (!rowsWithPercent.length) nextErrors.generatedRows = true;
+    rowsWithPercent.forEach((row, index) => {
+      if (!String(row.spliceStrength || "").trim()) nextErrors[`splice-${index}`] = true;
+      if (!String(row.parentYarn || "").trim()) nextErrors[`parent-${index}`] = true;
+    });
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const getPreviewData = () => [
+    { label: "Type", value: selectedType || "-" },
+    { label: "Test No.", value: testNo || "-" },
+    { label: "Date", value: date || "-" },
+    { label: "Count Name", value: countName || "-" },
+    { label: "Auto Coner No.", value: autoconerNo || "-" },
+    { label: "Drum From", value: drumFrom || "-" },
+    { label: "Drum To", value: drumTo || "-" },
+    { label: "Cone Tip", value: coneTip || "-" },
+    { label: "CSP Value", value: cspValue || "-" },
+    { label: "Average", value: average.splice || "-" },
+    ...rowsWithPercent.map((row, index) => ({
+      label: `Reading ${index + 1}`,
+      value: `${row.spliceStrength || "-"} | ${row.parentYarn || "-"} | ${row.percent || "-"}`,
+    })),
+  ];
+
+  const submit = async () => {
+    if (!validate()) return false;
     try {
       const payload = {
         type: "Splice Strength Test",
@@ -129,9 +175,9 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
       await dispatch(saveAutoconerSpliceStrength(payload)).unwrap();
       await dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 })).unwrap();
-      alert("Splice Strength saved successfully.");
-    } catch (error) {
-      alert(error || "Unable to save Splice Strength.");
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -139,7 +185,9 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
     if (!onRegisterActions) return;
 
     onRegisterActions({
-      onSave: handleSave,
+      validate,
+      getPreviewData,
+      submit,
       onClear: resetForm,
       saveLabel: "Save Record",
       disabled: isLoading,
@@ -158,7 +206,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
     cspValue,
     rowsWithPercent,
     average.splice,
-    handleSave,
+    rowsWithPercent,
   ]);
 
   const handleRowChange = (index, field, value) => {
@@ -180,7 +228,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
         <div className={styles.formGrid}>
           <div className={styles.field}>
             <label>Type</label>
-            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)}>
+            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
               {types.map((type) => (
                 <option key={type.id} value={type.name}>
                   {type.name}
@@ -191,17 +239,17 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
           <div className={styles.field}>
             <label>Test No.</label>
-            <input value={testNo} onChange={(e) => setTestNo(e.target.value)} />
+            <input value={testNo} onChange={(e) => setTestNo(e.target.value)} style={errorStyle(errors.testNo)} />
           </div>
 
           <div className={styles.field}>
             <label>Date</label>
-            <input type="date" value={date} disabled />
+            <input type="date" value={date} disabled style={errorStyle(errors.date)} />
           </div>
 
           <div className={styles.field}>
             <label>Count Name (From)</label>
-            <select value={countName} onChange={(e) => setCountName(e.target.value)}>
+            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
               {countOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -212,7 +260,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
           <div className={styles.field}>
             <label>Auto Coner No.</label>
-            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)}>
+            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
               {autoconerOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -224,7 +272,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
           <div className={styles.doubleField}>
             <div className={styles.field}>
               <label>Drum From/To</label>
-              <select value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)}>
+              <select value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} style={errorStyle(errors.drumFrom || errors.generatedRows)}>
                 {drumOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -234,7 +282,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
             </div>
             <div className={styles.field}>
               <label className={styles.hiddenLabel}>To</label>
-              <select value={drumTo} onChange={(e) => setDrumTo(e.target.value)}>
+              <select value={drumTo} onChange={(e) => setDrumTo(e.target.value)} style={errorStyle(errors.drumTo || errors.generatedRows)}>
                 {drumOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -246,12 +294,12 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
           <div className={styles.field}>
             <label>Cone Tip</label>
-            <input value={coneTip} onChange={(e) => setConeTip(e.target.value)} />
+            <input value={coneTip} onChange={(e) => setConeTip(e.target.value)} style={errorStyle(errors.coneTip)} />
           </div>
 
           <div className={styles.field}>
             <label>CSP Value</label>
-            <input value={cspValue} onChange={(e) => setCspValue(e.target.value)} />
+            <input value={cspValue} onChange={(e) => setCspValue(e.target.value)} style={errorStyle(errors.cspValue)} />
           </div>
 
           <div className={styles.field}>
@@ -262,20 +310,10 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
       </div>
 
-      <div className={styles.footerWrap}>
-        <Footer
-          onBack={() => router.push("/dashboard")}
-          onClear={resetForm}
-          onSave={handleSave}
-          saveLabel="Save Record"
-          disabled={isLoading}
-        />
-      </div>
-
       <div className={styles.generateBar}>
         <div className={styles.generateField}>
           <label>Drum No</label>
-          <select value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)}>
+          <select value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} style={errorStyle(errors.drumFrom || errors.generatedRows)}>
             {drumOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -286,7 +324,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
         <div className={styles.generateField}>
           <label>No. of Readings.</label>
-          <input value={readingCount} onChange={(e) => setReadingCount(e.target.value)} />
+          <input value={readingCount} onChange={(e) => setReadingCount(e.target.value)} style={errorStyle(errors.readingCount || errors.generatedRows)} />
         </div>
 
         <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
@@ -314,12 +352,14 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
                   <input
                     value={row.spliceStrength}
                     onChange={(e) => handleRowChange(index, "spliceStrength", e.target.value)}
+                    style={errorStyle(errors[`splice-${index}`])}
                   />
                 </td>
                 <td>
                   <input
                     value={row.parentYarn}
                     onChange={(e) => handleRowChange(index, "parentYarn", e.target.value)}
+                    style={errorStyle(errors[`parent-${index}`])}
                   />
                 </td>
                 <td>{row.percent}</td>

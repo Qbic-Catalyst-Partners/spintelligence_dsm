@@ -6,7 +6,7 @@ import { saveAutoconerConePackingAudit } from "@/store/slices/autoconer";
 const today = new Date().toISOString().split("T")[0];
 
 const topFieldClass =
-  "w-full h-[42px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
+  "w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const countNameOptions = [
   "10 COTTON POLY LINEN 60/20/20...",
@@ -135,12 +135,9 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     const resultAction = await dispatch(saveAutoconerConePackingAudit(buildPayload()));
 
     if (saveAutoconerConePackingAudit.fulfilled.match(resultAction)) {
-      alert(resultAction.payload?.message || "Cone packing audit created successfully");
-      clear();
       return true;
     }
 
-    alert(resultAction.payload || "Failed to save cone packing audit.");
     return false;
   };
 

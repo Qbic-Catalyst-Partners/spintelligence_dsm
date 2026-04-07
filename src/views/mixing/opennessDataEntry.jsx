@@ -1,7 +1,8 @@
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import CustomInput from "@/components/CustomInput";
 import styles from "@/styles/opennessDataEntry.module.css";
-import { mixingOpennessDataEntry } from "@/apis/mixing"; // direct API call
+import { mixingOpennessDataEntry } from "@/apis/mixing";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const initialForm = {
   target: "",
@@ -13,7 +14,6 @@ const parseNumber = (value) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-// ✅ dynamic stage creation
 const createStages = (totalEntries) => {
   const stages = [];
   let remaining = totalEntries;
@@ -61,7 +61,7 @@ function ReadOnlyField({ label, value }) {
 }
 
 const OpennessDataEntry = forwardRef(function OpennessDataEntry(
-  { date, mixing }, // ✅ mixing passed as prop
+  { date, mixing, onSubmitSuccess },
   ref
 ) {
   const [form, setForm] = useState(initialForm);
@@ -70,11 +70,16 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const [errors, setErrors] = useState({});
 
   const handleFormChange = (field, value) => {
-    if (field === "entries" && value !== "" && !/^\d+$/.test(value)) return;
+    const nextValue =
+      field === "entries"
+        ? sanitizeIntegerInput(value, 9)
+        : field === "target"
+          ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+          : value;
 
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
     setErrors((prev) => {
       if (!prev[field]) return prev;
@@ -86,13 +91,14 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
   const handleGenerate = () => {
     const totalEntries = Number(form.entries);
-    
+
     setStages(createStages(totalEntries));
     setOverallOpen("");
     setErrors((prev) => ({ ...prev, target: !form.target, entries: !form.entries }));
   };
 
   const handleRowChange = (stageIndex, rowIndex, field, value) => {
+    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
     setErrors((prev) => {
       const key = `stage-${stageIndex}-row-${rowIndex}-${field}`;
       if (!prev[key]) return prev;
@@ -100,11 +106,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       delete next[key];
       return next;
     });
+
     setStages((current) => {
       const updated = current.map((stage, currentStageIndex) => {
         const updatedRows = stage.rows.map((row, currentRowIndex) => {
           if (currentStageIndex === stageIndex && currentRowIndex === rowIndex) {
-            const nextRow = { ...row, [field]: value };
+            const nextRow = { ...row, [field]: nextValue };
 
             const weight = parseNumber(nextRow.weight);
             const volumeOne = parseNumber(nextRow.vol1);
@@ -145,15 +152,20 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         const avgVol = validRows ? (totalVol / validRows).toFixed(2) : "";
         const avgAov = validRows ? (totalAov / validRows).toFixed(2) : "";
         const target = parseNumber(form.target);
-        const openness = target > 0 && avgAov !== "" ? ((parseNumber(avgAov) / target) * 100).toFixed(2) : "";
+        const openness =
+          target > 0 && avgAov !== "" ? ((parseNumber(avgAov) / target) * 100).toFixed(2) : "";
 
         return { ...stage, rows: updatedRows, avgVol, avgAov, openness };
       });
 
       const validStages = updated.filter((stage) => stage.openness !== "");
-      const overall = validStages.length > 0
-        ? (validStages.reduce((sum, stage) => sum + parseNumber(stage.openness), 0) / validStages.length).toFixed(2)
-        : "";
+      const overall =
+        validStages.length > 0
+          ? (
+              validStages.reduce((sum, stage) => sum + parseNumber(stage.openness), 0) /
+              validStages.length
+            ).toFixed(2)
+          : "";
       setOverallOpen(overall);
 
       return updated;
@@ -176,11 +188,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     setForm(initialForm);
     setStages([]);
     setOverallOpen("");
+    setErrors({});
   };
 
   const buildPayload = () => ({
     inspection_date: date,
-    mixing: mixing,
+    mixing,
     actual_specific_volume_target: Number(form.target),
     no_of_entries: Number(form.entries),
     entries: stages.flatMap((stage) =>
@@ -197,9 +210,9 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
   const handleSubmit = async () => {
     try {
-      const res = await mixingOpennessDataEntry(buildPayload());
-      alert(res.message || "Saved successfully");
+      await mixingOpennessDataEntry(buildPayload());
       handleClear();
+      onSubmitSuccess?.();
     } catch (error) {
       alert(error.message || "Failed to save");
     }
@@ -213,14 +226,14 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       { label: "Entries (N)", value: form.entries },
     ];
 
-    const stageRows = stages.flatMap((stage, stageIndex) =>
+    const stageRows = stages.flatMap((stage) =>
       stage.rows.map((row, rowIndex) => ({
         label: `${stage.stageName} - Row ${rowIndex + 1}`,
         value: `W:${row.weight} | V1:${row.vol1} | V2:${row.vol2} | ASV:${row.asv} | AOV:${row.aov}`,
       }))
     );
 
-    const stageSummaries = stages.map((stage, idx) => ({
+    const stageSummaries = stages.map((stage) => ({
       label: `${stage.stageName} Openness %`,
       value: stage.openness,
     }));
@@ -239,13 +252,15 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       if (!form.entries) nextErrors.entries = true;
       stages.forEach((stage, sIdx) => {
         stage.rows.forEach((row, rIdx) => {
-          ["weight","vol1","vol2"].forEach((k)=>{
-            if (String(row[k]||"").trim()==="") nextErrors[`stage-${sIdx}-row-${rIdx}-${k}`]=true;
+          ["weight", "vol1", "vol2"].forEach((key) => {
+            if (String(row[key] || "").trim() === "") {
+              nextErrors[`stage-${sIdx}-row-${rIdx}-${key}`] = true;
+            }
           });
         });
       });
       setErrors(nextErrors);
-      return Object.keys(nextErrors).length === 0;
+      return Object.keys(nextErrors).length === 0 && canSubmit;
     },
   }));
 
@@ -282,12 +297,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           <input className={styles.stageNameInput} value={stage.stageName} readOnly />
 
           {stage.rows.map((row, rowIndex) => {
-            runningIndex++;
+            runningIndex += 1;
             return (
               <div key={`${stage.stageName}-${rowIndex}`} className={styles.rowBox}>
                 <div className={styles.rowNumber}>{runningIndex}</div>
                 <div className={styles.rowGrid}>
-                 <CustomInput
+                  <CustomInput
                     label="Weight (W)"
                     placeholder="0.00"
                     value={row.weight}

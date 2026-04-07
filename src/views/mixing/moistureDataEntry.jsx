@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { MdEditNote } from 'react-icons/md';
 import CustomInput from '@/components/CustomInput';
 import { submitMoisture, clearMixingState } from '@/store/slices/mixing';
+import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
@@ -26,7 +27,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
 
     const handleMoistureChange = (index, value) => {
         const updated = [...moistureValues];
-        updated[index] = value;
+        updated[index] = sanitizeNumericInput(value, { precision: 10, scale: 2 });
         setMoistureValues(updated);
         setErrors((prev) => {
             const key = `value${index}`;

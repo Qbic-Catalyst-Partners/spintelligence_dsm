@@ -1,4 +1,9 @@
 import React, { forwardRef, useImperativeHandle, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  getSimplexCotsChangeEntries,
+  submitSimplexCotsChange,
+} from "@/store/slices/simplex";
 
 const detailItems = [
   "Cots Damage",
@@ -10,8 +15,14 @@ const detailItems = [
 
 const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04", "MC-05", "MC-06"];
 const today = new Date().toISOString().split("T")[0];
-const errorStyle = (flag) =>
-  flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
+const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
+const defaultTableFieldStyle = { backgroundColor: "#f8fafc" };
+const getFieldStyle = (flag, variant = "default") =>
+  flag
+    ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" }
+    : variant === "table"
+      ? defaultTableFieldStyle
+      : defaultFieldStyle;
 
 const createDetailRows = () =>
   detailItems.map((item) => ({
@@ -21,9 +32,11 @@ const createDetailRows = () =>
   }));
 
 const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
-  _,
+  { selectedTypeName = "SMXCots Change Data Entry", onTypeChange, typeOptions = [] },
   ref
 ) {
+  const dispatch = useDispatch();
+  const { isLoading } = useSelector((state) => state.simplex ?? {});
   const [form, setForm] = useState({
     type: "SMXCots Change Data Entry",
     serialNo: "1",
@@ -103,9 +116,23 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     );
   };
 
-  const submit = () => {
+  const buildPayload = () => ({
+    type: selectedTypeName || form.type,
+    s_no: form.serialNo,
+    entry_date: form.date,
+    machine_name: form.mcName,
+  });
+
+  const submit = async () => {
     if (!validate()) return false;
-    return true;
+    const resultAction = await dispatch(submitSimplexCotsChange(buildPayload()));
+
+    if (submitSimplexCotsChange.fulfilled.match(resultAction)) {
+      dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
+      return true;
+    }
+
+    return false;
   };
 
   const getPreviewData = () => {
@@ -135,13 +162,31 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-3 gap-[18px]">
         <div className="flex flex-col gap-1.5 min-w-0">
+          <label className="text-[14px] font-semibold text-slate-700">Type</label>
+          <select
+            className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
+              errors.form?.type ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
+            }`}
+            style={getFieldStyle(errors.form?.type)}
+            value={selectedTypeName}
+            onChange={(e) => onTypeChange?.(e.target.value)}
+          >
+            {typeOptions.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">S. No.</label>
           <input
             type="text"
             className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
               errors.form?.serialNo ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
-            style={errorStyle(errors.form?.serialNo)}
+            style={getFieldStyle(errors.form?.serialNo)}
             value={form.serialNo}
             onChange={(e) => handleFormChange("serialNo", e.target.value)}
           />
@@ -154,19 +199,19 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
             className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
               errors.form?.date ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
-            style={errorStyle(errors.form?.date)}
+            style={getFieldStyle(errors.form?.date)}
             value={form.date}
             onChange={(e) => handleFormChange("date", e.target.value)}
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 min-w-0 max-w-[280px]">
+        <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">MC Name</label>
           <select
             className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
               errors.form?.mcName ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
-            style={errorStyle(errors.form?.mcName)}
+            style={getFieldStyle(errors.form?.mcName)}
             value={form.mcName}
             onChange={(e) => handleFormChange("mcName", e.target.value)}
           >
@@ -206,7 +251,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
                   className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
                     errors.details?.[index]?.statusValue ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
                   }`}
-                  style={errorStyle(errors.details?.[index]?.statusValue)}
+                  style={getFieldStyle(errors.details?.[index]?.statusValue, "table")}
                   value={detail.statusValue}
                   onChange={(e) => handleDetailChange(index, "statusValue", e.target.value)}
                 />
@@ -216,7 +261,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
                   className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
                     errors.details?.[index]?.remarks ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
                   }`}
-                  style={errorStyle(errors.details?.[index]?.remarks)}
+                  style={getFieldStyle(errors.details?.[index]?.remarks, "table")}
                   value={detail.remarks}
                   onChange={(e) => handleDetailChange(index, "remarks", e.target.value)}
                 />
@@ -225,6 +270,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
           </div>
         </div>
       </div>
+      {isLoading ? <p style={{ marginTop: "12px", color: "#2563eb" }}>Saving...</p> : null}
     </div>
   );
 });

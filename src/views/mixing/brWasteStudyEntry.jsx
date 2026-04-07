@@ -1,7 +1,8 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
-import { submitBrWaste, clearMixingState } from '@/store/slices/mixing';
+import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
+import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
 const TYPE_3_COLUMNS = [
@@ -22,10 +23,71 @@ const emptyType3Row = () =>
 const emptyWasteRow = () => ({ production: '', totalWaste: '', wastePercent: '' });
 
 const initialForm = { brWasteId: '', variety: '', cardingProduction: '', studyType: '' };
+const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
+
+const buildBrWastePayloads = ({ date, lotNo, formData, wasteRows, type3Rows, overallWaste, remarks }) => {
+    const basePayload = {
+        waste_study_id: formData.brWasteId,
+        date,
+        variety: formData.variety,
+        study_type: formData.studyType,
+        carding_production_kg: Number(formData.cardingProduction) || 0,
+        type_entries: formData.studyType === "Type 3" ? type3Rows.length : wasteRows.length,
+        overall_percent: Number(overallWaste) || 0,
+        remarks,
+        mc_no: lotNo || "",
+        mc_production: 0,
+        waste_type: formData.studyType,
+        waste_kg: 0,
+        waste_percent: 0,
+        flat_speed: 0,
+        delivery_speed: 0,
+        wing1_speed: 0,
+        wing2_speed: 0,
+        lickerin_speed_1: 0,
+        lickerin_speed_2: 0,
+        lickerin_speed_3: 0,
+    };
+
+    if (formData.studyType === "Type 1") {
+        return wasteRows.map((row, index) => ({
+            ...basePayload,
+            waste_type: `Type 1 Entry ${index + 1}`,
+            flat_speed: Number(row.production) || 0,
+            delivery_speed: Number(row.totalWaste) || 0,
+            wing1_speed: Number(row.wastePercent) || 0,
+            waste_percent: Number(row.wastePercent) || 0,
+        }));
+    }
+
+    if (formData.studyType === "Type 2") {
+        return wasteRows.map((row, index) => ({
+            ...basePayload,
+            mc_no: lotNo || `MC-${index + 1}`,
+            mc_production: Number(row.production) || 0,
+            waste_type: `Type 2 Entry ${index + 1}`,
+            waste_kg: Number(row.totalWaste) || 0,
+            waste_percent: Number(row.wastePercent) || 0,
+        }));
+    }
+
+    return type3Rows.map((row, index) => ({
+        ...basePayload,
+        waste_type: `Type 3 Entry ${index + 1}`,
+        flat_speed: Number(row.flatStrip) || 0,
+        delivery_speed: Number(row.underGrid) || 0,
+        wing1_speed: Number(row.moteKnife) || 0,
+        wing2_speed: Number(row.cylinder) || 0,
+        lickerin_speed_1: Number(row.doffer) || 0,
+        lickerin_speed_2: Number(row.bowingFlat) || 0,
+        lickerin_speed_3: Number(row.filter) || 0,
+        waste_percent: Number(row.cardWaste) || 0,
+    }));
+};
 
 const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo }, ref) {
     const dispatch = useDispatch();
-    const { actionSuccess } = useSelector(state => state.mixing);
+    const { success } = useSelector(state => state.blowroom ?? {});
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
 
@@ -39,7 +101,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     const [remarks, setRemarks] = useState('');
 
     const handleChange = (field, value) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        const nextValue = FORM_NUMERIC_FIELDS.has(field)
+            ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+            : value;
+        setFormData(prev => ({ ...prev, [field]: nextValue }));
         setErrors((prev) => {
             if (!prev[field]) return prev;
             const next = { ...prev };
@@ -49,6 +114,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     const handleWasteRowChange = (index, field, value) => {
+        const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
         setErrors((prev) => {
             const key = `waste-${index}-${field}`;
             if (!prev[key]) return prev;
@@ -58,12 +124,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         });
         setWasteRows(prev => {
             const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: value };
+            updated[index] = { ...updated[index], [field]: nextValue };
             return updated;
         });
     };
 
     const handleType3RowChange = (index, field, value) => {
+        const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
         setErrors((prev) => {
             const key = `t3-${index}-${field}`;
             if (!prev[key]) return prev;
@@ -73,7 +140,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         });
         setType3Rows(prev => {
             const updated = [...prev];
-            updated[index] = { ...updated[index], [field]: value };
+            updated[index] = { ...updated[index], [field]: nextValue };
             return updated;
         });
     };
@@ -97,31 +164,34 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     useEffect(() => {
-        if (actionSuccess) {
+        if (success) {
             setFormData(initialForm);
             setWasteRows([emptyWasteRow()]);
             setType3Rows(Array.from({ length: 3 }, emptyType3Row));
             setOverallWaste('');
             setRemarks('');
         }
-    }, [actionSuccess, dispatch]);
+    }, [success, dispatch]);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!validate()) return;
-        const entries = studyType === 'Type 3'
-            ? type3Rows
-            : wasteRows;
-        dispatch(submitBrWaste({
-            inspection_date:    date,
-            br_waste_id:        formData.brWasteId,
-            lot_no:             lotNo,
-            variety:            formData.variety,
-            carding_production: Number(formData.cardingProduction) || 0,
-            study_type:         formData.studyType,
-            overall_waste:      Number(overallWaste) || 0,
+        const payloads = buildBrWastePayloads({
+            date,
+            lotNo,
+            formData,
+            wasteRows,
+            type3Rows,
+            overallWaste,
             remarks,
-            entries,
-        }));
+        });
+
+        try {
+            for (const payload of payloads) {
+                await dispatch(saveBlowroomBrWaste(payload)).unwrap();
+            }
+        } catch (error) {
+            throw error;
+        }
     };
 
     const handleClear = () => {
@@ -130,7 +200,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         setType3Rows(Array.from({ length: 3 }, emptyType3Row));
         setOverallWaste('');
         setRemarks('');
-        dispatch(clearMixingState());
+        dispatch(resetState());
         setErrors({});
     };
 
@@ -263,7 +333,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 className={styles['mixx-input']}
                                 value={wasteCountInput}
                                 min={1}
-                                onChange={e => setWasteCountInput(e.target.value)}
+                                onChange={e => setWasteCountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
@@ -323,7 +393,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 className={styles['mixx-input']}
                                 value={wasteCountInput}
                                 min={1}
-                                onChange={e => setWasteCountInput(e.target.value)}
+                                onChange={e => setWasteCountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
@@ -380,7 +450,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                 className={styles['mixx-input']}
                                 value={type3CountInput}
                                 min={1}
-                                onChange={e => setType3CountInput(e.target.value)}
+                                onChange={e => setType3CountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
@@ -448,7 +518,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                         label="Overall Waste %"
                         placeholder="0.00"
                         value={overallWaste}
-                        onChange={setOverallWaste}
+                        onChange={(value) => setOverallWaste(sanitizeNumericInput(value, { precision: 6, scale: 2 }))}
                     />
                     <CustomInput
                         label="Remarks"
