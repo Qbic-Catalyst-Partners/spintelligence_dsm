@@ -1,10 +1,19 @@
 function CustomSelect({ options = [], value = "", onChange = () => {}, error = false }) {
+    const errorStyle = error
+        ? {
+            border: "1px solid #ef4444",
+            background: "#fff1f2",
+            WebkitBoxShadow: "0 0 0 1000px #fff1f2 inset",
+            boxShadow: "0 0 0 1000px #fff1f2 inset",
+        }
+        : undefined;
+
     return (
         <select
-            className={`mixx-input ${error ? "border border-red-500" : ""}`.trim()}
+            className="mixx-input"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            style={error ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined}
+            style={errorStyle}
         >
             <option value="">Select Type</option>
             {options.map((option) => (

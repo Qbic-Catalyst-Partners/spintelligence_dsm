@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { MdEditNote } from "react-icons/md";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getAutoconerDrumWise,
   saveAutoconerDrumWise,
 } from "@/store/slices/autoconer";
 import styles from "@/styles/drumWiseAppearance.module.css";
+import { sanitizeIntegerInput } from "@/utils/inputValidation";
 
 const getTodayDate = () => {
   const today = new Date();
@@ -36,11 +37,31 @@ const buildRowsFromRange = (from, to) => {
   }));
 };
 
-function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActions }) {
+const mapDrumWiseEntryToRows = (entry = {}) => {
+  const inspections = Array.isArray(entry.drum_inspections) ? entry.drum_inspections : [];
+
+  if (inspections.length > 0) {
+    return inspections.map((row) => ({
+      drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_from ?? "-"),
+      ok: Number(row.appearance_ok_count ?? (row.appearance_ok ? 1 : 0) ?? row.ok ?? 0),
+      notOk: Number(row.appearance_not_ok_count ?? row.notOk ?? 0),
+    }));
+  }
+
+  return [
+    {
+      drumNo: String(entry.drum_no ?? entry.drum_from ?? "-"),
+      ok: Number(entry.appearance_ok_count ?? entry.ok ?? 0),
+      notOk: Number(entry.appearance_not_ok_count ?? entry.notOk ?? 0),
+    },
+  ];
+};
+
+function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActions, tablePortalTargetId }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
-  const { isLoading = false } = autoconerState;
+  const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
   const [countName, setCountName] = useState(countOptions[0]);
@@ -50,20 +71,24 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
   const [remarks, setRemarks] = useState("");
   const [rows, setRows] = useState([]);
   const [errors, setErrors] = useState({});
+  const [portalReady, setPortalReady] = useState(false);
   const errorStyle = (flag) =>
-    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
+    flag
+      ? {
+          borderColor: "#ef4444",
+          backgroundColor: "#fff1f2",
+          boxShadow: "0 0 0 1000px #fff1f2 inset",
+        }
+      : undefined;
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (acc, row) => ({
-          ok: acc.ok + row.ok,
-          notOk: acc.notOk + row.notOk,
-        }),
-        { ok: 0, notOk: 0 }
-      ),
-    [rows]
+  const savedRows = useMemo(
+    () => savedEntries.flatMap((entry) => mapDrumWiseEntryToRows(entry)).slice(0, 10),
+    [savedEntries]
   );
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   const updateAppearance = (drumNo, key) => {
     setRows((current) =>
@@ -138,7 +163,7 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
       };
 
       await dispatch(saveAutoconerDrumWise(payload)).unwrap();
-      await dispatch(getAutoconerDrumWise({ page: 1, limit: 10 })).unwrap();
+      dispatch(getAutoconerDrumWise({ page: 1, limit: 10 }));
       return true;
     } catch {
       return false;
@@ -173,6 +198,10 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
   }, [drumFrom, drumTo]);
 
   useEffect(() => {
+    dispatch(getAutoconerDrumWise({ page: 1, limit: 10 }));
+  }, [dispatch]);
+
+  useEffect(() => {
     if (!onRegisterActions) return;
     onRegisterActions({
       validate,
@@ -196,72 +225,13 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
     isLoading,
   ]);
 
-  return (
-    <div className={styles.wrapper}>
-      <div className={styles.entryCard}>
-        <div className={styles.formTitle}>
-          <MdEditNote />
-          <h3>Inspection Data Entry</h3>
-        </div>
+  const portalTarget =
+    portalReady && tablePortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(tablePortalTargetId)
+      : null;
 
-        <div className={styles.formGrid}>
-          <div className={styles.field}>
-            <label>Type</label>
-            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
-              {types.map((type) => (
-                <option key={type.id} value={type.name}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Test No.</label>
-            <input value={testNo} onChange={(e) => setTestNo(e.target.value)} style={errorStyle(errors.testNo)} />
-          </div>
-
-          <div className={styles.field}>
-            <label>Entry Date</label>
-            <input type="date" value={entryDate} disabled style={errorStyle(errors.entryDate)} />
-          </div>
-
-          <div className={styles.field}>
-            <label>Count Name</label>
-            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
-              {countOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Auto Coner No.</label>
-            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
-              {autoconerOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.doubleField}>
-            <div className={styles.field}>
-              <label>Drum From/To</label>
-              <input value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} style={errorStyle(errors.drumFrom || errors.rows)} />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.hiddenLabel}>To</label>
-              <input value={drumTo} onChange={(e) => setDrumTo(e.target.value)} style={errorStyle(errors.drumTo || errors.rows)} />
-            </div>
-          </div>
-        </div>
-
-      </div>
-
+  const lowerSection = (
+    <>
       <div className={styles.appearanceSection}>
         <div className={styles.appearanceTable}>
           <div className={styles.appearanceHeader}>
@@ -309,21 +279,87 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={`summary-${row.drumNo}`}>
+            {savedRows.map((row, index) => (
+              <tr key={`summary-${row.drumNo}-${index}`}>
                 <td>{row.drumNo}</td>
                 <td>{row.ok}</td>
                 <td>{row.notOk}</td>
               </tr>
             ))}
-            <tr className={styles.summaryRow}>
-              <td>{rows.length ? `${rows.length} Nos` : ""}</td>
-              <td>{totals.ok}</td>
-              <td>{totals.notOk}</td>
-            </tr>
+            {!savedRows.length ? (
+              <tr>
+                <td colSpan={3}>
+                  {isFetching ? "Loading last 10 drum wise entries..." : "No drum wise entries available."}
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
+    </>
+  );
+
+  return (
+    <div className={styles.wrapper}>
+      <div className={styles.entryCard}>
+        <div className={styles.formGrid}>
+          <div className={styles.field}>
+            <label>Type</label>
+            <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
+              {types.map((type) => (
+                <option key={type.id} value={type.name}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label>Test No.</label>
+            <input value={testNo} onChange={(e) => setTestNo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.testNo)} />
+          </div>
+
+          <div className={styles.field}>
+            <label>Entry Date</label>
+            <input type="date" value={entryDate} disabled style={errorStyle(errors.entryDate)} />
+          </div>
+
+          <div className={styles.field}>
+            <label>Count Name</label>
+            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
+              {countOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label>Auto Coner No.</label>
+            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
+              {autoconerOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.doubleField}>
+            <div className={styles.field}>
+              <label>Drum From/To</label>
+              <input value={drumFrom} onChange={(e) => setDrumFrom(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.drumFrom || errors.rows)} />
+            </div>
+            <div className={styles.field}>
+              <label className={styles.hiddenLabel}>To</label>
+              <input value={drumTo} onChange={(e) => setDrumTo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.drumTo || errors.rows)} />
+            </div>
+          </div>
+        </div>
+
+      </div>
+      {portalTarget ? createPortal(lowerSection, portalTarget) : null}
     </div>
   );
 }

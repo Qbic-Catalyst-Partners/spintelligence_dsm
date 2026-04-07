@@ -8,6 +8,7 @@ import Image from "next/image";
 import Footer from "../components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "../styles/spinning.module.css";
 
 const COUNT_NAME_OPTIONS = [
@@ -48,6 +49,8 @@ const SPINNING_CHECKING_OPTIONS = [
 ];
 
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
+const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
+const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
 
 const createRingFrameRows = () =>
     Array.from({ length: 24 }, (_, index) => ({
@@ -146,7 +149,23 @@ function SpinningDepartment() {
 
     const getTodayDate = () => new Date().toISOString().split("T")[0];
     const parseNumericInput = (value) => (value === "" ? null : Number.isNaN(Number.parseFloat(value)) ? null : Number.parseFloat(value));
+    const parseDecimalPayloadValue = (value) => {
+        const parsedValue = parseNumericInput(value);
+        return parsedValue === null ? null : Number(parsedValue.toFixed(2));
+    };
     const hasTextValue = (value) => String(value ?? "").trim() !== "";
+    const handleDecimalInputChange = (setter, field) => (event) => {
+        setter(sanitizeNumericInput(event.target.value, DECIMAL_10_2_CONFIG));
+        clearFieldError(field);
+    };
+    const handleCustomDecimalInputChange = (setter, field, config) => (event) => {
+        setter(sanitizeNumericInput(event.target.value, config));
+        clearFieldError(field);
+    };
+    const handleIntegerInputChange = (setter, field, maxDigits = null) => (event) => {
+        setter(sanitizeIntegerInput(event.target.value, maxDigits));
+        clearFieldError(field);
+    };
     const clearFieldError = (field) => {
         setErrors((prev) => {
             if (!prev[field]) return prev;
@@ -282,18 +301,18 @@ function SpinningDepartment() {
                 entry_date: date || getTodayDate(),
                 test_no: Number.parseInt(testNo, 10) || 0,
                 rf_no: Number.parseInt(rfNo, 10) || 0,
-                lycra_draft: parseNumericInput(lycraDraft) ?? 0,
+                lycra_draft: parseDecimalPayloadValue(lycraDraft) ?? 0,
                 count_name_from: countNameFrom,
                 count_name_to: countNameTo,
                 readings: countChangeRows.map((row, index) => ({
                     reading_no: row.reading_no || index + 1,
-                    reading_value: parseNumericInput(row.reading_value) ?? 0,
-                    count: parseNumericInput(row.count) ?? 0,
-                    cv_percent: parseNumericInput(row.cv_percent) ?? 0,
-                    strength: parseNumericInput(row.strength) ?? 0,
-                    mean: parseNumericInput(row.mean) ?? 0,
-                    cv_percent_2: parseNumericInput(row.cv_percent_2) ?? 0,
-                    csp: parseNumericInput(row.csp) ?? 0,
+                    reading_value: parseDecimalPayloadValue(row.reading_value) ?? 0,
+                    count: parseDecimalPayloadValue(row.count) ?? 0,
+                    cv_percent: parseDecimalPayloadValue(row.cv_percent) ?? 0,
+                    strength: parseDecimalPayloadValue(row.strength) ?? 0,
+                    mean: parseDecimalPayloadValue(row.mean) ?? 0,
+                    cv_percent_2: parseDecimalPayloadValue(row.cv_percent_2) ?? 0,
+                    csp: parseDecimalPayloadValue(row.csp) ?? 0,
                 })),
             };
         }
@@ -319,10 +338,10 @@ function SpinningDepartment() {
                     total: String(getRingFrameRowTotal(row)),
                 })),
                 summary: {
-                    out_of_center: parseNumericInput(outOfCenter) ?? 0,
-                    lycra_missing: parseNumericInput(ringFrameLycraMissing) ?? 0,
-                    fault_cops: parseNumericInput(faultCops) ?? 0,
-                    total_cops: parseNumericInput(totalCops) ?? 0,
+                    out_of_center: parseDecimalPayloadValue(outOfCenter) ?? 0,
+                    lycra_missing: parseDecimalPayloadValue(ringFrameLycraMissing) ?? 0,
+                    fault_cops: parseDecimalPayloadValue(faultCops) ?? 0,
+                    total_cops: parseDecimalPayloadValue(totalCops) ?? 0,
                     comments: comments.trim(),
                 },
             };
@@ -331,8 +350,8 @@ function SpinningDepartment() {
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: parseInt(selectedMachine.replace("MC-", ""), 10) || 0,
             employeename: employeeSearch,
-            lhs_value: parseFloat(lhsValue) || 0,
-            rhs_value: parseFloat(rhsValue) || 0,
+            lhs_value: parseDecimalPayloadValue(lhsValue) ?? 0,
+            rhs_value: parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_textremarks: lhsRemarks.trim(),
             rhs_textremarks: rhsRemarks.trim(),
             lhs_audio: "",
@@ -340,11 +359,11 @@ function SpinningDepartment() {
             checking_type: checkingType,
         };
         if (checkingType === "Speed Checking") {
-            payload.display_speed = displaySpeedValue;
-            payload.spindle_speed = spindleSpeedValue;
-            payload.difference = calculatedDifferenceValue;
-            payload.displaySpeed = displaySpeedValue;
-            payload.spindleSpeed = spindleSpeedValue;
+            payload.display_speed = parseDecimalPayloadValue(displaySpeed);
+            payload.spindle_speed = parseDecimalPayloadValue(spindleSpeed);
+            payload.difference = calculatedDifferenceValue === null ? null : Number(calculatedDifferenceValue.toFixed(2));
+            payload.displaySpeed = parseDecimalPayloadValue(displaySpeed);
+            payload.spindleSpeed = parseDecimalPayloadValue(spindleSpeed);
         }
         return payload;
     };
@@ -374,6 +393,9 @@ function SpinningDepartment() {
             )
         );
         clearRingFrameRowError(machineNo, field);
+    };
+    const handleRingFrameTextChange = (machineNo, field) => (event) => {
+        handleRingFrameChange(machineNo, field, event.target.value);
     };
 
     const getRingFrameRowTotal = (row) => {
@@ -495,18 +517,18 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Test No.</label>
-                                        <input type="text" placeholder="Enter test number" className={`${styles["highlight-input"]} ${errors.testNo ? styles["input-error"] : ""}`} value={testNo} onChange={(e) => { setTestNo(e.target.value); clearFieldError("testNo"); }} />
+                                        <input type="text" inputMode="numeric" placeholder="Enter test number" className={`${styles["highlight-input"]} ${errors.testNo ? styles["input-error"] : ""}`} value={testNo} onChange={handleIntegerInputChange(setTestNo, "testNo")} />
                                     </div>
                                 </div>
 
                                 <div className={styles.row}>
                                     <div className={styles["sp-form-group"]}>
                                         <label>RF No.</label>
-                                        <input type="text" placeholder="Enter RF number" className={`${styles["highlight-input"]} ${errors.rfNo ? styles["input-error"] : ""}`} value={rfNo} onChange={(e) => { setRfNo(e.target.value); clearFieldError("rfNo"); }} />
+                                        <input type="text" inputMode="numeric" placeholder="Enter RF number" className={`${styles["highlight-input"]} ${errors.rfNo ? styles["input-error"] : ""}`} value={rfNo} onChange={handleIntegerInputChange(setRfNo, "rfNo")} />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Lycra Draft</label>
-                                        <input type="text" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={(e) => { setLycraDraft(e.target.value); clearFieldError("lycraDraft"); }} />
+                                        <input type="text" inputMode="decimal" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={handleCustomDecimalInputChange(setLycraDraft, "lycraDraft", DECIMAL_5_2_CONFIG)} />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label className={styles.countTypeSpacer}>&nbsp;</label>
@@ -541,7 +563,7 @@ function SpinningDepartment() {
                                     <div className={styles.countReadingGroup}>
                                         <label>No. of Readings</label>
                                         <div className={styles.countReadingControls}>
-                                            <input type="number" min="1" placeholder="Enter readings count" className={`${styles["highlight-input"]} ${errors.countReadingCount ? styles["input-error"] : ""}`} value={countReadingCount} onChange={(e) => { setCountReadingCount(e.target.value); clearFieldError("countReadingCount"); }} />
+                                            <input type="text" inputMode="numeric" placeholder="Enter readings count" className={`${styles["highlight-input"]} ${errors.countReadingCount ? styles["input-error"] : ""}`} value={countReadingCount} onChange={handleIntegerInputChange(setCountReadingCount, "countReadingCount")} />
                                             <button type="button" className={styles.generateButton} onClick={handleGenerateCountChangeRows}>Generate</button>
                                         </div>
                                     </div>
@@ -634,18 +656,18 @@ function SpinningDepartment() {
                                             {ringFrameRows.map((row) => (
                                                 <tr key={row.machine_no}>
                                                     <td className={styles.ringFrameMachineCell}>{row.machine_no}</td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={(e) => handleRingFrameChange(row.machine_no, "lycra", e.target.value)} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.bobbin_color} onChange={(e) => handleRingFrameChange(row.machine_no, "bobbin_color", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.bobbin_color ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.position_1} onChange={(e) => handleRingFrameChange(row.machine_no, "position_1", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_1 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.position_2} onChange={(e) => handleRingFrameChange(row.machine_no, "position_2", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_2 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.position_3} onChange={(e) => handleRingFrameChange(row.machine_no, "position_3", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_3 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.position_4} onChange={(e) => handleRingFrameChange(row.machine_no, "position_4", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_4 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.position_5} onChange={(e) => handleRingFrameChange(row.machine_no, "position_5", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_5 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.position_6} onChange={(e) => handleRingFrameChange(row.machine_no, "position_6", e.target.value)} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_6 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.lycra_missing} onChange={(e) => handleRingFrameChange(row.machine_no, "lycra_missing", e.target.value)} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra_missing ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.guide_roll_lapping} onChange={(e) => handleRingFrameChange(row.machine_no, "guide_roll_lapping", e.target.value)} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" placeholder="Enter" value={row.others} onChange={(e) => handleRingFrameChange(row.machine_no, "others", e.target.value)} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.others ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="number" value={getRingFrameRowTotal(row)} readOnly className={styles.ringFrameInputWide} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "lycra")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.bobbin_color ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "bobbin_color")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.bobbin_color ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_1 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_1")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_1 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_2 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_2")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_2 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_3 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_3")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_3 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_4 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_4")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_4 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_5 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_5")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_5 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_6 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_6")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_6 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra_missing ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "lycra_missing")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra_missing ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.guide_roll_lapping ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "guide_roll_lapping")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.others ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" value={String(getRingFrameRowTotal(row))} readOnly className={styles.ringFrameInputWide} /></td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -656,11 +678,11 @@ function SpinningDepartment() {
                                     <div className={styles.ringFrameSummaryGrid}>
                                         <div className={styles["sp-form-group"]}>
                                             <label>Out of Center (AC/RF)</label>
-                                            <input type="number" placeholder="Enter" value={outOfCenter} onChange={(e) => { setOutOfCenter(e.target.value); clearFieldError("outOfCenter"); }} className={`${styles["highlight-input"]} ${errors.outOfCenter ? styles["input-error"] : ""}`} />
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={outOfCenter} onChange={handleDecimalInputChange(setOutOfCenter, "outOfCenter")} className={`${styles["highlight-input"]} ${errors.outOfCenter ? styles["input-error"] : ""}`} />
                                         </div>
                                         <div className={styles["sp-form-group"]}>
                                             <label>Lycra Missing (AC/RF)</label>
-                                            <input type="number" placeholder="Enter" value={ringFrameLycraMissing} onChange={(e) => { setRingFrameLycraMissing(e.target.value); clearFieldError("ringFrameLycraMissing"); }} className={`${styles["highlight-input"]} ${errors.ringFrameLycraMissing ? styles["input-error"] : ""}`} />
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={ringFrameLycraMissing} onChange={handleDecimalInputChange(setRingFrameLycraMissing, "ringFrameLycraMissing")} className={`${styles["highlight-input"]} ${errors.ringFrameLycraMissing ? styles["input-error"] : ""}`} />
                                         </div>
                                         <div className={`${styles["sp-form-group"]} ${styles.ringFrameComments}`}>
                                             <label>Comments</label>
@@ -668,11 +690,11 @@ function SpinningDepartment() {
                                         </div>
                                         <div className={styles["sp-form-group"]}>
                                             <label>Fault Cops</label>
-                                            <input type="number" placeholder="Enter" value={faultCops} onChange={(e) => { setFaultCops(e.target.value); clearFieldError("faultCops"); }} className={`${styles["highlight-input"]} ${errors.faultCops ? styles["input-error"] : ""}`} />
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCops} onChange={handleDecimalInputChange(setFaultCops, "faultCops")} className={`${styles["highlight-input"]} ${errors.faultCops ? styles["input-error"] : ""}`} />
                                         </div>
                                         <div className={styles["sp-form-group"]}>
                                             <label>Total Cops</label>
-                                            <input type="number" placeholder="Enter" value={totalCops} onChange={(e) => { setTotalCops(e.target.value); clearFieldError("totalCops"); }} className={`${styles["highlight-input"]} ${errors.totalCops ? styles["input-error"] : ""}`} />
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={totalCops} onChange={handleDecimalInputChange(setTotalCops, "totalCops")} className={`${styles["highlight-input"]} ${errors.totalCops ? styles["input-error"] : ""}`} />
                                         </div>
                                     </div>
                                 </div>
@@ -740,15 +762,15 @@ function SpinningDepartment() {
                                         <div className={styles.row}>
                                             <div className={styles["sp-form-group"]}>
                                                 <label>Display Speed</label>
-                                                <input type="number" placeholder="0.00" value={displaySpeed} onChange={(e) => { setDisplaySpeed(e.target.value); clearFieldError("displaySpeed"); }} onWheel={(e) => e.target.blur()} className={errors.displaySpeed ? styles["input-error"] : ""} />
+                                                <input type="text" inputMode="decimal" placeholder="0.00" value={displaySpeed} onChange={handleDecimalInputChange(setDisplaySpeed, "displaySpeed")} className={errors.displaySpeed ? styles["input-error"] : ""} />
                                             </div>
                                             <div className={styles["sp-form-group"]}>
                                                 <label>Spindle Speed</label>
-                                                <input type="number" placeholder="0.00" value={spindleSpeed} onChange={(e) => { setSpindleSpeed(e.target.value); clearFieldError("spindleSpeed"); }} onWheel={(e) => e.target.blur()} className={errors.spindleSpeed ? styles["input-error"] : ""} />
+                                                <input type="text" inputMode="decimal" placeholder="0.00" value={spindleSpeed} onChange={handleDecimalInputChange(setSpindleSpeed, "spindleSpeed")} className={errors.spindleSpeed ? styles["input-error"] : ""} />
                                             </div>
                                             <div className={styles["sp-form-group"]}>
                                                 <label>Difference</label>
-                                                <input type="number" value={calculatedDifference} readOnly className={styles.readonly} />
+                                                <input type="text" inputMode="decimal" value={calculatedDifference} readOnly className={styles.readonly} />
                                             </div>
                                         </div>
                                     </div>
@@ -766,7 +788,7 @@ function SpinningDepartment() {
                                                 <label>LHS (Left Hand Side)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
-                                            <input type="text" placeholder="Enter value..." value={lhsValue} onChange={(e) => { setLhsValue(e.target.value); clearFieldError("lhsValue"); }} className={errors.lhsValue ? styles["input-error"] : ""} />
+                                            <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={handleDecimalInputChange(setLhsValue, "lhsValue")} className={errors.lhsValue ? styles["input-error"] : ""} />
                                             <div className={styles["remarks-header"]}>
                                                 <span>LHS Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
@@ -782,7 +804,7 @@ function SpinningDepartment() {
                                                 <label>RHS (Right Hand Side)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
-                                            <input type="text" placeholder="Enter value..." value={rhsValue} onChange={(e) => { setRhsValue(e.target.value); clearFieldError("rhsValue"); }} className={errors.rhsValue ? styles["input-error"] : ""} />
+                                            <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={handleDecimalInputChange(setRhsValue, "rhsValue")} className={errors.rhsValue ? styles["input-error"] : ""} />
                                             <div className={styles["remarks-header"]}>
                                                 <span>RHS Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>

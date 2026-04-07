@@ -5,6 +5,7 @@ import {
   saveAutoconerLycraChecking,
 } from "@/store/slices/autoconer";
 import styles from "@/styles/lycraChecking.module.css";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const getTodayDate = () => {
   const today = new Date();
@@ -42,7 +43,13 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
   const [generatedRows, setGeneratedRows] = useState([]);
   const [errors, setErrors] = useState({});
   const errorStyle = (flag) =>
-    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
+    flag
+      ? {
+          borderColor: "#ef4444",
+          backgroundColor: "#fff1f2",
+          boxShadow: "0 0 0 1000px #fff1f2 inset",
+        }
+      : undefined;
 
   const totalWeight = useMemo(() => {
     if (!lycraWeight && !fabricWeight) return "";
@@ -79,9 +86,10 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
   };
 
   const handleReadingChange = (index, value) => {
+    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
     setGeneratedRows((current) =>
       current.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, length: value } : row
+        rowIndex === index ? { ...row, length: nextValue } : row
       )
     );
     setErrors((current) => {
@@ -171,7 +179,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
       };
 
       await dispatch(saveAutoconerLycraChecking(payload)).unwrap();
-      await dispatch(getAutoconerLycraChecking()).unwrap();
+      dispatch(getAutoconerLycraChecking());
       return true;
     } catch {
       return false;
@@ -224,7 +232,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
 
         <div className={styles.field}>
           <label>Test No.</label>
-          <input value={testNo} onChange={(e) => setTestNo(e.target.value)} style={errorStyle(errors.testNo)} />
+          <input value={testNo} onChange={(e) => setTestNo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.testNo)} />
         </div>
 
         <div className={styles.field}>
@@ -234,7 +242,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
 
         <div className={styles.field}>
           <label>Lycra Draft</label>
-          <input value={lycraDraft} onChange={(e) => setLycraDraft(e.target.value)} style={errorStyle(errors.lycraDraft)} />
+          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraDraft)} />
         </div>
 
         <div className={styles.field}>
@@ -253,7 +261,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
             <label>No. of Readings</label>
             <input
               value={readingsCount}
-              onChange={(e) => setReadingsCount(e.target.value)}
+              onChange={(e) => setReadingsCount(sanitizeIntegerInput(e.target.value, 10))}
               style={errorStyle(errors.readingsCount || errors.generatedRows)}
             />
           </div>
@@ -264,12 +272,12 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
 
         <div className={styles.field}>
           <label>Lycra Weight</label>
-          <input value={lycraWeight} onChange={(e) => setLycraWeight(e.target.value)} style={errorStyle(errors.lycraWeight)} />
+          <input value={lycraWeight} onChange={(e) => setLycraWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraWeight)} />
         </div>
 
         <div className={styles.field}>
           <label>Fabric Weight</label>
-          <input value={fabricWeight} onChange={(e) => setFabricWeight(e.target.value)} style={errorStyle(errors.fabricWeight)} />
+          <input value={fabricWeight} onChange={(e) => setFabricWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.fabricWeight)} />
         </div>
 
         <div className={styles.field}>

@@ -1,14 +1,19 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import {
   fetchAutoconerCountWiseCuts,
+  fetchAutoconerConeDensity,
+  fetchAutoconerConePackingAudit,
   fetchAutoconerDrumWise,
   fetchAutoconerLycraChecking,
+  fetchAutoconerParameterEntries,
+  fetchAutoconerRewindingStudy,
   fetchAutoconerSpliceStrength,
   submitAutoconerConeDensity,
   submitAutoconerConePackingAudit,
   submitAutoconerCountWiseCuts,
   submitAutoconerDrumWise,
   submitAutoconerLycraChecking,
+  submitAutoconerParameterEntries,
   submitAutoconerRewindingStudy,
   submitAutoconerSpliceStrength,
 } from "@/apis/autoconer";
@@ -112,11 +117,44 @@ export const saveAutoconerRewindingStudy = createAsyncThunk(
   }
 );
 
+export const getAutoconerParameterEntries = createAsyncThunk(
+  "autoconer/getParameterEntries",
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchAutoconerParameterEntries();
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const getAutoconerRewindingStudy = createAsyncThunk(
+  "autoconer/getRewindingStudy",
+  async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
+    try {
+      return await fetchAutoconerRewindingStudy({ page, limit });
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 export const saveAutoconerConeDensity = createAsyncThunk(
   "autoconer/saveConeDensity",
   async (payload, { rejectWithValue }) => {
     try {
       return await submitAutoconerConeDensity(payload);
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const getAutoconerConeDensity = createAsyncThunk(
+  "autoconer/getConeDensity",
+  async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
+    try {
+      return await fetchAutoconerConeDensity({ page, limit });
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -134,16 +172,45 @@ export const saveAutoconerConePackingAudit = createAsyncThunk(
   }
 );
 
+export const saveAutoconerParameterEntries = createAsyncThunk(
+  "autoconer/saveParameterEntries",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await submitAutoconerParameterEntries(payload);
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const getAutoconerConePackingAudit = createAsyncThunk(
+  "autoconer/getConePackingAudit",
+  async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
+    try {
+      return await fetchAutoconerConePackingAudit({ page, limit });
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 const initialState = {
   isLoading: false,
   isFetching: false,
   error: null,
   lycraChecking: [],
   countWiseCuts: [],
+  parameterEntries: [],
   spliceStrength: [],
   spliceStrengthMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
   drumWise: [],
   drumWiseMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+  rewindingStudy: [],
+  rewindingStudyMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+  coneDensity: [],
+  coneDensityMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+  conePackingAudit: [],
+  conePackingAuditMeta: { page: 1, limit: 10, total: 0, totalPages: 0 },
   lastSaved: null,
 };
 
@@ -203,6 +270,18 @@ const autoconerSlice = createSlice({
         state.countWiseCuts = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(getAutoconerCountWiseCuts.rejected, (state, action) => {
+        state.isFetching = false;
+        state.error = action.payload;
+      })
+      .addCase(getAutoconerParameterEntries.pending, (state) => {
+        state.isFetching = true;
+        state.error = null;
+      })
+      .addCase(getAutoconerParameterEntries.fulfilled, (state, action) => {
+        state.isFetching = false;
+        state.parameterEntries = action.payload?.data || [];
+      })
+      .addCase(getAutoconerParameterEntries.rejected, (state, action) => {
         state.isFetching = false;
         state.error = action.payload;
       })
@@ -278,6 +357,24 @@ const autoconerSlice = createSlice({
         state.isLoading = false;
         state.error = action.payload;
       })
+      .addCase(getAutoconerRewindingStudy.pending, (state) => {
+        state.isFetching = true;
+        state.error = null;
+      })
+      .addCase(getAutoconerRewindingStudy.fulfilled, (state, action) => {
+        state.isFetching = false;
+        state.rewindingStudy = action.payload?.data || [];
+        state.rewindingStudyMeta = {
+          page: action.payload?.page || 1,
+          limit: action.payload?.limit || 10,
+          total: action.payload?.total || 0,
+          totalPages: action.payload?.totalPages || 0,
+        };
+      })
+      .addCase(getAutoconerRewindingStudy.rejected, (state, action) => {
+        state.isFetching = false;
+        state.error = action.payload;
+      })
       .addCase(saveAutoconerConeDensity.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -290,6 +387,24 @@ const autoconerSlice = createSlice({
         state.isLoading = false;
         state.error = action.payload;
       })
+      .addCase(getAutoconerConeDensity.pending, (state) => {
+        state.isFetching = true;
+        state.error = null;
+      })
+      .addCase(getAutoconerConeDensity.fulfilled, (state, action) => {
+        state.isFetching = false;
+        state.coneDensity = action.payload?.data || [];
+        state.coneDensityMeta = {
+          page: action.payload?.page || 1,
+          limit: action.payload?.limit || 10,
+          total: action.payload?.total || 0,
+          totalPages: action.payload?.totalPages || 0,
+        };
+      })
+      .addCase(getAutoconerConeDensity.rejected, (state, action) => {
+        state.isFetching = false;
+        state.error = action.payload;
+      })
       .addCase(saveAutoconerConePackingAudit.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -300,6 +415,36 @@ const autoconerSlice = createSlice({
       })
       .addCase(saveAutoconerConePackingAudit.rejected, (state, action) => {
         state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveAutoconerParameterEntries.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveAutoconerParameterEntries.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.lastSaved = action.payload;
+      })
+      .addCase(saveAutoconerParameterEntries.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
+      })
+      .addCase(getAutoconerConePackingAudit.pending, (state) => {
+        state.isFetching = true;
+        state.error = null;
+      })
+      .addCase(getAutoconerConePackingAudit.fulfilled, (state, action) => {
+        state.isFetching = false;
+        state.conePackingAudit = action.payload?.data || [];
+        state.conePackingAuditMeta = {
+          page: action.payload?.page || 1,
+          limit: action.payload?.limit || 10,
+          total: action.payload?.total || 0,
+          totalPages: action.payload?.totalPages || 0,
+        };
+      })
+      .addCase(getAutoconerConePackingAudit.rejected, (state, action) => {
+        state.isFetching = false;
         state.error = action.payload;
       });
   },

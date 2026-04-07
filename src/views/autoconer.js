@@ -9,6 +9,8 @@ import SuccessModal from "@/components/SuccessModal";
 import ConeDensity from "@/views/autoconer/ConeDensity";
 import RewindingStudy from "@/views/autoconer/RewindingStudy";
 import LycraChecking from "@/views/autoconer/LycraChecking";
+import CspParameterEntries from "@/views/autoconer/CspParameterEntries";
+import UPercentParameterEntries from "@/views/autoconer/UPercentParameterEntries";
 import CoastWasteCrateRecord from "@/views/autoconer/countwise";
 import DrumWiseAppearance from "@/views/autoconer/DrumWiseAppearance";
 import SpliceStrength from "@/views/autoconer/SpliceStrength";
@@ -21,9 +23,11 @@ const autoconerTypes = [
   { id: 2, name: "Cone Density", component: ConeDensity },
   { id: 3, name: "Cone Packing Audit", component: ConePackingAudit },
   { id: 4, name: "Lycra Checking", component: LycraChecking },
-  { id: 5, name: "Count wise cuts Record", component: CoastWasteCrateRecord },
+  { id: 5, name: "Count Wise Cuts Record", component: CoastWasteCrateRecord },
   { id: 6, name: "Splice Strength", component: SpliceStrength },
   { id: 7, name: "Drum wise Appearance", component: DrumWiseAppearance },
+  { id: 8, name: "CSP Parameter Entries", component: CspParameterEntries },
+  { id: 9, name: "U% Parameter Entries", component: UPercentParameterEntries },
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
@@ -78,6 +82,14 @@ function Autoconer() {
     }
   };
 
+  const handleTypeChange = (nextType) => {
+    setCheckingType(nextType);
+    setRegisteredActions({});
+    setPreviewItems([]);
+    setShowPreview(false);
+    setShowSuccess(false);
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.container}>
@@ -113,7 +125,7 @@ function Autoconer() {
               {...(usesRefFlow ? { ref: childRef } : {})}
               selectedTypeName={selectedType}
               selectedType={selectedType}
-              onTypeChange={setCheckingType}
+              onTypeChange={handleTypeChange}
               types={autoconerTypes}
               typeOptions={autoconerTypes.map((type) => type.name)}
               tablePortalTargetId="autoconer-table-slot"

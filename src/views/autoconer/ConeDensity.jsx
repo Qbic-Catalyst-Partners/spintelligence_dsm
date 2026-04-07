@@ -1,7 +1,12 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { saveAutoconerConeDensity } from "@/store/slices/autoconer";
+import {
+  getAutoconerConeDensity,
+  saveAutoconerConeDensity,
+} from "@/store/slices/autoconer";
+import { toNullableNumber } from "@/apis/autoconer";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -16,6 +21,25 @@ const countNameOptions = [
 const autoConerOptions = ["AC01", "AC02", "AC03", "AC04"];
 const coneTipOptions = ["Blue", "Red", "White"];
 
+const formFieldSanitizers = {
+  testNo: (value) => sanitizeIntegerInput(value, 10),
+  baseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  noseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  drumFrom: (value) => sanitizeIntegerInput(value, 10),
+  drumTo: (value) => sanitizeIntegerInput(value, 10),
+};
+
+const rowFieldSanitizers = {
+  baseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  noseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  baseDia: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  noseDia: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  coneWeight: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  coneTrav: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  density: (value) => sanitizeNumericInput(value, { precision: 10, scale: 3 }),
+  hardness: (value) => sanitizeNumericInput(value, { precision: 10, scale: 3 }),
+};
+
 const createInitialForm = () => ({
   type: "Cone Density",
   testNo: "",
@@ -27,41 +51,83 @@ const createInitialForm = () => ({
   drumFrom: "",
   drumTo: "",
   coneTip: "",
-  weight: "",
-  noOfCuts: "",
 });
 
-const createReadingRows = () => [
-  { drumNo: "1", baseDiaE: "1", noseDiaE: "2", baseDia: "1", noseDia: "2", coneWeight: "5", coneTrav: "6", density: "4", hardness: "4" },
-  { drumNo: "1", baseDiaE: "1", noseDiaE: "2", baseDia: "1", noseDia: "2", coneWeight: "5", coneTrav: "6", density: "4", hardness: "4" },
-  { drumNo: "1", baseDiaE: "1", noseDiaE: "2", baseDia: "1", noseDia: "2", coneWeight: "5", coneTrav: "6", density: "4", hardness: "4" },
-];
+const tableInputClass =
+  "w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
-const createAllDrumEntries = () => [
-  { drumNo: "1", baseDiaE: "1.00", noseDiaE: "2.00", baseDia: "1.00", noseDia: "2.00", coneWeight: "5.00", coneTraverse: "6.00", coneDensity: "4.000", percentYarn: "4.00" },
-  { drumNo: "2", baseDiaE: "1.00", noseDiaE: "2.00", baseDia: "5.00", noseDia: "6.00", coneWeight: "5.00", coneTraverse: "4.00", coneDensity: "5.000", percentYarn: "3.00" },
-  { drumNo: "3", baseDiaE: "1.00", noseDiaE: "2.00", baseDia: "5.00", noseDia: "4.00", coneWeight: "4.00", coneTraverse: "5.00", coneDensity: "4.000", percentYarn: "4.00" },
-];
+const createReadingRows = (from = "", to = "", baseDiaE = "", noseDiaE = "") => {
+  const start = Number(from);
+  const end = Number(to);
 
-const summaryRows = [
-  { label: "Average", baseDia: "3.67", noseDia: "4.00", coneWeight: "4.667", coneTraverse: "5.00", coneDensity: "4.333", percentYarn: "3.67" },
-  { label: "Min", baseDia: "1.00", noseDia: "2.00", coneWeight: "4.000", coneTraverse: "4.00", coneDensity: "4.000", percentYarn: "3.00" },
-  { label: "Max", baseDia: "5.00", noseDia: "6.00", coneWeight: "5.000", coneTraverse: "6.00", coneDensity: "5.000", percentYarn: "4.00" },
-  { label: "Range", baseDia: "4.00", noseDia: "4.00", coneWeight: "1.000", coneTraverse: "2.00", coneDensity: "1.000", percentYarn: "1.00" },
-];
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) {
+    return [];
+  }
+
+  return Array.from({ length: end - start + 1 }, (_, index) => ({
+    drumNo: String(start + index),
+    baseDiaE: baseDiaE || "",
+    noseDiaE: noseDiaE || "",
+    baseDia: "",
+    noseDia: "",
+    coneWeight: "",
+    coneTrav: "",
+    density: "",
+    hardness: "",
+  }));
+};
+
+const mapConeDensityEntryToRows = (entry = {}) => {
+  const nestedRows = Array.isArray(entry.cone_density_readings)
+    ? entry.cone_density_readings
+    : Array.isArray(entry.cone_readings)
+      ? entry.cone_readings
+      : [];
+
+  if (nestedRows.length > 0) {
+    return nestedRows.map((row, index) => ({
+      drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_from ?? "-"),
+      baseDiaE: String(row.base_dia_e ?? entry.base_dia_e ?? "-"),
+      noseDiaE: String(row.nose_dia_e ?? entry.nose_dia_e ?? "-"),
+      baseDia: String(row.base_dia ?? row.baseDia ?? "-"),
+      noseDia: String(row.nose_dia ?? row.noseDia ?? "-"),
+      coneWeight: String(row.cone_weight ?? row.coneWeight ?? "-"),
+      coneTraverse: String(row.cone_traverse ?? row.coneTrav ?? "-"),
+      coneDensity: String(row.density ?? row.cone_density ?? row.coneDensity ?? "-"),
+      percentYarn: String(row.hardness ?? "-"),
+      label: index,
+    }));
+  }
+
+  return [
+    {
+      drumNo: String(entry.drum_from ?? entry.drumNo ?? "-"),
+      baseDiaE: String(entry.base_dia_e ?? "-"),
+      noseDiaE: String(entry.nose_dia_e ?? "-"),
+      baseDia: String(entry.base_dia ?? "-"),
+      noseDia: String(entry.nose_dia ?? "-"),
+      coneWeight: String(entry.cone_weight ?? "-"),
+      coneTraverse: String(entry.cone_traverse ?? "-"),
+      coneDensity: String(entry.cone_density ?? "-"),
+      percentYarn: String(entry.percent_yarn ?? "-"),
+      label: 0,
+    },
+  ];
+};
 
 const errorClass = (flag) =>
-  flag ? " border-red-500 bg-rose-50 focus:border-red-500 focus:ring-red-200" : "";
+  flag
+    ? " !border-red-500 !bg-[#fff1f2] focus:!border-red-500 focus:!ring-[rgba(239,68,68,0.35)] [box-shadow:0_0_0_1000px_#fff1f2_inset]"
+    : "";
 
 const ConeDensity = forwardRef(function ConeDensity(
   { selectedTypeName = "Cone Density", onTypeChange, typeOptions = [], tablePortalTargetId },
   ref
 ) {
   const dispatch = useDispatch();
-  const { isLoading } = useSelector((state) => state.autoconer ?? {});
+  const { isLoading, isFetching, coneDensity = [] } = useSelector((state) => state.autoconer ?? {});
   const [form, setForm] = useState(createInitialForm);
-  const [readingRows] = useState(createReadingRows);
-  const [allDrumEntries] = useState(createAllDrumEntries);
+  const [readingRows, setReadingRows] = useState([]);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
 
@@ -80,7 +146,8 @@ const ConeDensity = forwardRef(function ConeDensity(
   );
 
   const handleFormChange = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
+    const nextValue = formFieldSanitizers[field] ? formFieldSanitizers[field](value) : value;
+    setForm((current) => ({ ...current, [field]: nextValue }));
     setErrors((current) => {
       if (!current[field]) return current;
       const next = { ...current };
@@ -91,13 +158,37 @@ const ConeDensity = forwardRef(function ConeDensity(
 
   const clear = () => {
     setForm(createInitialForm());
+    setReadingRows([]);
     setErrors({});
+  };
+
+  const handleRowChange = (index, field, value) => {
+    const nextValue = rowFieldSanitizers[field] ? rowFieldSanitizers[field](value) : value;
+    setReadingRows((current) =>
+      current.map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [field]: nextValue } : row
+      )
+    );
+    setErrors((current) => {
+      if (!current[`row-${index}-${field}`]) return current;
+      const next = { ...current };
+      delete next[`row-${index}-${field}`];
+      return next;
+    });
   };
 
   const validate = () => {
     const nextErrors = {};
     Object.entries(form).forEach(([key, value]) => {
       if (String(value).trim() === "") nextErrors[key] = true;
+    });
+    if (!readingRows.length) nextErrors.drumRange = true;
+    readingRows.forEach((row, index) => {
+      ["baseDiaE", "noseDiaE", "baseDia", "noseDia", "coneWeight", "coneTrav", "density", "hardness"].forEach((field) => {
+        if (!String(row[field] || "").trim()) {
+          nextErrors[`row-${index}-${field}`] = true;
+        }
+      });
     });
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -112,30 +203,29 @@ const ConeDensity = forwardRef(function ConeDensity(
   ];
 
   const buildPayload = () => ({
-    test_no: Number(form.testNo),
+    test_no: toNullableNumber(form.testNo),
     entry_date: form.date,
     type: selectedTypeName || form.type,
     machine_name: form.autoConerNo,
     count_name: form.countNameFrom,
     cone_tip: form.coneTip,
-    base_dia_e: Number(form.baseDiaE),
-    nose_dia_e: Number(form.noseDiaE),
-    drum_from: Number(form.drumFrom),
-    drum_to: Number(form.drumTo),
-    weight: Number(form.weight),
-    no_of_cuts: Number(form.noOfCuts),
+    base_dia_e: toNullableNumber(form.baseDiaE),
+    nose_dia_e: toNullableNumber(form.noseDiaE),
+    drum_from: toNullableNumber(form.drumFrom),
+    drum_to: toNullableNumber(form.drumTo),
+    weight: null,
+    no_of_cuts: null,
     remarks: "Normal",
-    cone_readings: readingRows.map((row) => ({
-      drum_no: Number(row.drumNo),
-      reading_number: 1,
-      short_cut: row.baseDia,
-      short_name: row.noseDia,
-      fault_percent: Number(row.coneWeight),
-      length_mm: Number(row.coneTrav),
-      weight: Number(row.baseDiaE),
-      break_per_meter: Number(row.noseDiaE),
-      density: Number(row.density),
-      hardness: Number(row.hardness),
+    cone_density_readings: readingRows.map((row) => ({
+      drum_no: toNullableNumber(row.drumNo),
+      base_dia_e: toNullableNumber(row.baseDiaE),
+      nose_dia_e: toNullableNumber(row.noseDiaE),
+      base_dia: toNullableNumber(row.baseDia),
+      nose_dia: toNullableNumber(row.noseDia),
+      cone_weight: toNullableNumber(row.coneWeight),
+      cone_traverse: toNullableNumber(row.coneTrav),
+      density: toNullableNumber(row.density),
+      hardness: toNullableNumber(row.hardness),
     })),
   });
 
@@ -145,6 +235,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     const resultAction = await dispatch(saveAutoconerConeDensity(buildPayload()));
 
     if (saveAutoconerConeDensity.fulfilled.match(resultAction)) {
+      dispatch(getAutoconerConeDensity({ page: 1, limit: 10 }));
       return true;
     }
 
@@ -157,6 +248,40 @@ const ConeDensity = forwardRef(function ConeDensity(
     getPreviewData,
     submit,
   }));
+
+  useEffect(() => {
+    dispatch(getAutoconerConeDensity({ page: 1, limit: 10 }));
+  }, [dispatch]);
+
+  useEffect(() => {
+    setReadingRows((current) => {
+      const nextRows = createReadingRows(
+        form.drumFrom,
+        form.drumTo,
+        form.baseDiaE,
+        form.noseDiaE
+      );
+
+      if (!nextRows.length) return [];
+
+      return nextRows.map((nextRow) => {
+        const existingRow = current.find((row) => row.drumNo === nextRow.drumNo);
+        return existingRow
+          ? {
+              ...nextRow,
+              ...existingRow,
+              baseDiaE: form.baseDiaE || existingRow.baseDiaE || "",
+              noseDiaE: form.noseDiaE || existingRow.noseDiaE || "",
+            }
+          : nextRow;
+      });
+    });
+  }, [form.drumFrom, form.drumTo, form.baseDiaE, form.noseDiaE]);
+
+  const allDrumEntries = useMemo(
+    () => coneDensity.flatMap((entry) => mapConeDensityEntryToRows(entry)).slice(0, 10),
+    [coneDensity]
+  );
 
   const portalTarget =
     portalReady && tablePortalTargetId && typeof document !== "undefined"
@@ -180,16 +305,79 @@ const ConeDensity = forwardRef(function ConeDensity(
             {readingRows.map((row, index) => (
               <tr key={`${row.drumNo}-${index}`} className="border-b border-slate-200">
                 <td className="px-0 py-5 pr-6">{row.drumNo}</td>
-                <td className="px-0 py-5 pr-6">{row.baseDiaE}</td>
-                <td className="px-0 py-5 pr-6">{row.noseDiaE}</td>
-                <td className="px-0 py-5 pr-6">{row.baseDia}</td>
-                <td className="px-0 py-5 pr-6">{row.noseDia}</td>
-                <td className="px-0 py-5 pr-6">{row.coneWeight}</td>
-                <td className="px-0 py-5 pr-6">{row.coneTrav}</td>
-                <td className="px-0 py-5 pr-6">{row.density}</td>
-                <td className="px-0 py-5">{row.hardness}</td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-baseDiaE`])}`}
+                    value={row.baseDiaE}
+                    onChange={(event) => handleRowChange(index, "baseDiaE", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-noseDiaE`])}`}
+                    value={row.noseDiaE}
+                    onChange={(event) => handleRowChange(index, "noseDiaE", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-baseDia`])}`}
+                    value={row.baseDia}
+                    onChange={(event) => handleRowChange(index, "baseDia", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-noseDia`])}`}
+                    value={row.noseDia}
+                    onChange={(event) => handleRowChange(index, "noseDia", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-coneWeight`])}`}
+                    value={row.coneWeight}
+                    onChange={(event) => handleRowChange(index, "coneWeight", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-coneTrav`])}`}
+                    value={row.coneTrav}
+                    onChange={(event) => handleRowChange(index, "coneTrav", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5 pr-6">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-density`])}`}
+                    value={row.density}
+                    onChange={(event) => handleRowChange(index, "density", event.target.value)}
+                  />
+                </td>
+                <td className="px-0 py-5">
+                  <input
+                    type="text"
+                    className={`${tableInputClass}${errorClass(errors[`row-${index}-hardness`])}`}
+                    value={row.hardness}
+                    onChange={(event) => handleRowChange(index, "hardness", event.target.value)}
+                  />
+                </td>
               </tr>
             ))}
+            {!readingRows.length ? (
+              <tr>
+                <td colSpan={9} className="px-0 py-5 text-center text-[12px] text-slate-400">
+                  Enter a valid drum range to generate drum rows.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -221,19 +409,13 @@ const ConeDensity = forwardRef(function ConeDensity(
                   <td className="px-4 py-4 last:pr-0">{entry.percentYarn}</td>
                 </tr>
               ))}
-              {summaryRows.map((row) => (
-                <tr key={row.label} className="border-b border-slate-200 last:border-b-0">
-                  <td className="px-4 py-4 font-bold first:pl-0">{row.label.toUpperCase()}</td>
-                  <td className="px-4 py-4" />
-                  <td className="px-4 py-4" />
-                  <td className="px-4 py-4 font-semibold">{row.baseDia}</td>
-                  <td className="px-4 py-4 font-semibold">{row.noseDia}</td>
-                  <td className="px-4 py-4 font-semibold">{row.coneWeight}</td>
-                  <td className="px-4 py-4 font-semibold">{row.coneTraverse}</td>
-                  <td className="px-4 py-4 font-semibold">{row.coneDensity}</td>
-                  <td className="px-4 py-4 font-semibold last:pr-0">{row.percentYarn}</td>
+              {!allDrumEntries.length ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-5 text-center text-[12px] text-slate-400">
+                    {isFetching ? "Loading last 10 cone density entries..." : "No cone density entries available."}
+                  </td>
                 </tr>
-              ))}
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -251,8 +433,6 @@ const ConeDensity = forwardRef(function ConeDensity(
     { label: "Nose Dia (E)", field: "noseDiaE", type: "text", placeholder: "Enter nose dia (e)" },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Enter cone tip" },
-    { label: "Weight", field: "weight", type: "text", placeholder: "Enter weight" },
-    { label: "No. of Cuts", field: "noOfCuts", type: "text", placeholder: "Enter no. of cuts" },
   ];
 
   return (
@@ -267,14 +447,14 @@ const ConeDensity = forwardRef(function ConeDensity(
                   <input
                     type="text"
                     placeholder="Enter from"
-                    className={`${topFieldClass}${errorClass(errors.drumFrom)}`}
+                    className={`${topFieldClass}${errorClass(errors.drumFrom || errors.drumRange)}`}
                     value={form.drumFrom}
                     onChange={(event) => handleFormChange("drumFrom", event.target.value)}
                   />
                   <input
                     type="text"
                     placeholder="Enter to"
-                    className={`${topFieldClass}${errorClass(errors.drumTo)}`}
+                    className={`${topFieldClass}${errorClass(errors.drumTo || errors.drumRange)}`}
                     value={form.drumTo}
                     onChange={(event) => handleFormChange("drumTo", event.target.value)}
                   />

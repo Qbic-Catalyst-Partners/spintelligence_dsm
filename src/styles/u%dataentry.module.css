@@ -110,8 +110,17 @@
 }
 
 .errorField {
+  border: 1px solid #ef4444 !important;
+  background: #fff1f2 !important;
+  -webkit-box-shadow: 0 0 0 1000px #fff1f2 inset !important;
+  box-shadow: 0 0 0 1000px #fff1f2 inset !important;
+}
+
+.errorField:focus {
   border-color: #ef4444 !important;
   background: #fff1f2 !important;
+  -webkit-box-shadow: 0 0 0 1000px #fff1f2 inset, 0 0 0 2px rgba(239, 68, 68, 0.35) !important;
+  box-shadow: 0 0 0 1000px #fff1f2 inset, 0 0 0 2px rgba(239, 68, 68, 0.35) !important;
 }
 
 @media (min-width: 768px) {

@@ -5,6 +5,7 @@ import {
   saveAutoconerCountWiseCuts,
 } from "@/store/slices/autoconer";
 import styles from "@/styles/countwise.module.css";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const getTodayDate = () => {
   const today = new Date();
@@ -137,12 +138,18 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const [metrics, setMetrics] = useState(createInitialMetrics());
   const [errors, setErrors] = useState({});
   const errorStyle = (flag) =>
-    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
+    flag
+      ? {
+          borderColor: "#ef4444",
+          backgroundColor: "#fff1f2",
+          boxShadow: "0 0 0 1000px #fff1f2 inset",
+        }
+      : undefined;
 
   const handleMetricChange = (key, value) => {
     setMetrics((prev) => ({
       ...prev,
-      [key]: value,
+      [key]: sanitizeNumericInput(value, { precision: 10, scale: 2 }),
     }));
     setErrors((current) => {
       if (!current[`metric-${key}`]) return current;
@@ -198,7 +205,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     try {
       const { drumFrom, drumTo } = splitDrumsRange(drumsFromTo);
       const payload = {
-        inspection_type: selectedType,
+        inspection_type: "Count Wise Cuts Record",
         entry_date: date,
         machine_no: machineNo,
         count_name: count,
@@ -248,12 +255,16 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
       };
 
       await dispatch(saveAutoconerCountWiseCuts(payload)).unwrap();
-      await dispatch(getAutoconerCountWiseCuts()).unwrap();
+      dispatch(getAutoconerCountWiseCuts());
       return true;
     } catch {
       return false;
     }
   };
+
+  useEffect(() => {
+    dispatch(getAutoconerCountWiseCuts());
+  }, [dispatch]);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -324,7 +335,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
         <div className={styles.field}>
           <label>Drums From/ To</label>
-          <input value={drumsFromTo} onChange={(e) => setDrumsFromTo(e.target.value)} style={errorStyle(errors.drumsFromTo)} />
+          <input value={drumsFromTo} onChange={(e) => setDrumsFromTo(e.target.value.replace(/[^\d\s\-/,]/g, ""))} style={errorStyle(errors.drumsFromTo)} />
         </div>
 
         <div className={styles.field}>

@@ -6,6 +6,7 @@ import {
   saveAutoconerSpliceStrength,
 } from "@/store/slices/autoconer";
 import styles from "@/styles/spliceStrength.module.css";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const getTodayDate = () => {
   const today = new Date();
@@ -32,11 +33,44 @@ const initialRows = (count) =>
     parentYarn: "",
   }));
 
+const mapSpliceEntryToRows = (entry = {}) => {
+  const nestedRows = Array.isArray(entry.drum_readings) ? entry.drum_readings : [];
+
+  if (nestedRows.length > 0) {
+    return nestedRows.map((row, index) => {
+      const spliceStrength = String(row.splice_strength ?? row.spliceStrength ?? "-");
+      const parentYarn = String(row.parent_yarn ?? row.parentYarn ?? "-");
+      const percentValue =
+        row.percent_yarn ?? row.percentYarn ?? (
+          Number(parentYarn) ? ((Number(spliceStrength) / Number(parentYarn)) * 100).toFixed(2) : "-"
+        );
+
+      return {
+        drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_from ?? "-"),
+        readingNumber: String(row.reading_number ?? row.readingNumber ?? index + 1),
+        spliceStrength,
+        parentYarn,
+        percent: String(percentValue),
+      };
+    });
+  }
+
+  return [
+    {
+      drumNo: String(entry.drum_from ?? entry.drumNo ?? "-"),
+      readingNumber: String(entry.reading_number ?? "1"),
+      spliceStrength: String(entry.splice_strength ?? "-"),
+      parentYarn: String(entry.parent_yarn ?? "-"),
+      percent: String(entry.percent_yarn ?? entry.average ?? "-"),
+    },
+  ];
+};
+
 function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
-  const { isLoading = false } = autoconerState;
+  const { isLoading = false, isFetching = false, spliceStrength: savedEntries = [] } = autoconerState;
   const [testNo, setTestNo] = useState("");
   const [date, setDate] = useState(todayDate);
   const [countName, setCountName] = useState(countOptions[0]);
@@ -49,7 +83,13 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
   const [generatedRows, setGeneratedRows] = useState([]);
   const [errors, setErrors] = useState({});
   const errorStyle = (flag) =>
-    flag ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : undefined;
+    flag
+      ? {
+          borderColor: "#ef4444",
+          backgroundColor: "#fff1f2",
+          boxShadow: "0 0 0 1000px #fff1f2 inset",
+        }
+      : undefined;
 
   const rowsWithPercent = useMemo(
     () =>
@@ -84,7 +124,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
     const count = Math.max(1, Number(readingCount) || 1);
     setGeneratedRows(
       Array.from({ length: count }, (_, index) => ({
-        drumNo: drumFrom,
+        drumNo: drumFrom || "",
         readingNumber: String(index + 1),
         spliceStrength: "",
         parentYarn: "",
@@ -174,12 +214,16 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
       };
 
       await dispatch(saveAutoconerSpliceStrength(payload)).unwrap();
-      await dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 })).unwrap();
+      dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 }));
       return true;
     } catch {
       return false;
     }
   };
+
+  useEffect(() => {
+    dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 }));
+  }, [dispatch]);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -210,12 +254,28 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
   ]);
 
   const handleRowChange = (index, field, value) => {
+    const nextValue =
+      field === "spliceStrength" || field === "parentYarn"
+        ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+        : value;
     setGeneratedRows((current) =>
       current.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, [field]: value } : row
+        rowIndex === index ? { ...row, [field]: nextValue } : row
       )
     );
+    setErrors((current) => {
+      const errorKey = field === "spliceStrength" ? `splice-${index}` : `parent-${index}`;
+      if (!current[errorKey]) return current;
+      const next = { ...current };
+      delete next[errorKey];
+      return next;
+    });
   };
+
+  const allEntries = useMemo(
+    () => savedEntries.flatMap((entry) => mapSpliceEntryToRows(entry)).slice(0, 10),
+    [savedEntries]
+  );
 
   return (
     <div className={styles.wrapper}>
@@ -239,7 +299,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
           <div className={styles.field}>
             <label>Test No.</label>
-            <input value={testNo} onChange={(e) => setTestNo(e.target.value)} style={errorStyle(errors.testNo)} />
+            <input value={testNo} onChange={(e) => setTestNo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.testNo)} />
           </div>
 
           <div className={styles.field}>
@@ -299,7 +359,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
           <div className={styles.field}>
             <label>CSP Value</label>
-            <input value={cspValue} onChange={(e) => setCspValue(e.target.value)} style={errorStyle(errors.cspValue)} />
+            <input value={cspValue} onChange={(e) => setCspValue(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.cspValue)} />
           </div>
 
           <div className={styles.field}>
@@ -324,7 +384,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
 
         <div className={styles.generateField}>
           <label>No. of Readings.</label>
-          <input value={readingCount} onChange={(e) => setReadingCount(e.target.value)} style={errorStyle(errors.readingCount || errors.generatedRows)} />
+          <input value={readingCount} onChange={(e) => setReadingCount(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.readingCount || errors.generatedRows)} />
         </div>
 
         <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
@@ -382,7 +442,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
             </tr>
           </thead>
           <tbody>
-            {rowsWithPercent.map((row, index) => (
+            {allEntries.map((row, index) => (
               <tr key={`all-${row.drumNo}-${row.readingNumber}-${index}`}>
                 <td>{row.drumNo}</td>
                 <td>{row.readingNumber}</td>
@@ -391,13 +451,11 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
                 <td>{row.percent}</td>
               </tr>
             ))}
-            <tr className={styles.summaryRow}>
-              <td>1 AVG</td>
-              <td>{average.readingNumber}</td>
-              <td>{average.splice}</td>
-              <td>{average.parent}</td>
-              <td>{average.percent}</td>
-            </tr>
+            {!allEntries.length ? (
+              <tr>
+                <td colSpan={5}>{isFetching ? "Loading last 10 splice strength entries..." : "No splice strength entries available."}</td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

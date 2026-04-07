@@ -1,4 +1,7 @@
 import { AiOutlineAudio } from "react-icons/ai";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
+
+const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 
 function RsmLycrasensorCheckingOfflineEntry({
     styles,
@@ -24,7 +27,7 @@ function RsmLycrasensorCheckingOfflineEntry({
                         <label>LHS (Left Hand Side)</label>
                         <span className={styles.required}>REQUIRED</span>
                     </div>
-                    <input type="text" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(e.target.value)} />
+                    <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
                     <div className={styles["remarks-header"]}>
                         <span>LHS Remarks</span>
                         <AiOutlineAudio className={styles["mic-icon"]} />
@@ -38,7 +41,7 @@ function RsmLycrasensorCheckingOfflineEntry({
                         <label>RHS (Right Hand Side)</label>
                         <span className={styles.required}>REQUIRED</span>
                     </div>
-                    <input type="text" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(e.target.value)} />
+                    <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
                     <div className={styles["remarks-header"]}>
                         <span>RHS Remarks</span>
                         <AiOutlineAudio className={styles["mic-icon"]} />

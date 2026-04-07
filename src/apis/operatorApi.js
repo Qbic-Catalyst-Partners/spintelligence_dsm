@@ -3,11 +3,14 @@ import apiConfig from "./apiConfig";
 // GET Operator Tickets
 export const getOperatorTickets = async (params = {}) => {
   try {
-    const response = await apiConfig.get("/operator-tickets", { params });
+    const response = await apiConfig.get("/operator-tickets", params);
     return response.data;
   } catch (error) {
     if (error.response && error.response.data) {
       throw new Error(error.response.data.message || "Failed to fetch operator tickets.");
+    }
+    if (error.request) {
+      throw new Error("Network Error: unable to reach the API server. Check NEXT_PUBLIC_API_URL and backend availability.");
     }
     throw new Error(error.message || "Server error occurred");
   }
@@ -21,6 +24,9 @@ export const getOperatorTicketById = async (ticketId) => {
   } catch (error) {
     if (error.response && error.response.data) {
       throw new Error(error.response.data.message || "Failed to fetch ticket details.");
+    }
+    if (error.request) {
+      throw new Error("Network Error: unable to reach the API server. Check NEXT_PUBLIC_API_URL and backend availability.");
     }
     throw new Error(error.message || "Server error occurred");
   }

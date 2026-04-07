@@ -1,4 +1,7 @@
 import { AiOutlineAudio } from "react-icons/ai";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
+
+const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 
 function SpeedCheckingEntry({
     styles,
@@ -23,15 +26,15 @@ function SpeedCheckingEntry({
                 <div className={styles.row}>
                     <div className={styles["sp-form-group"]}>
                         <label>Display Speed</label>
-                        <input type="number" placeholder="0.00" value={displaySpeed} onChange={(e) => setDisplaySpeed(e.target.value)} onWheel={(e) => e.target.blur()} />
+                        <input type="text" inputMode="decimal" placeholder="0.00" value={displaySpeed} onChange={(e) => setDisplaySpeed(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
                     </div>
                     <div className={styles["sp-form-group"]}>
                         <label>Spindle Speed</label>
-                        <input type="number" placeholder="0.00" value={spindleSpeed} onChange={(e) => setSpindleSpeed(e.target.value)} onWheel={(e) => e.target.blur()} />
+                        <input type="text" inputMode="decimal" placeholder="0.00" value={spindleSpeed} onChange={(e) => setSpindleSpeed(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
                     </div>
                     <div className={styles["sp-form-group"]}>
                         <label>Difference</label>
-                        <input type="number" value={calculatedDifference} readOnly className={styles.readonly} />
+                        <input type="text" inputMode="decimal" value={calculatedDifference} readOnly className={styles.readonly} />
                     </div>
                 </div>
             </div>
@@ -47,7 +50,7 @@ function SpeedCheckingEntry({
                             <label>LHS (Left Hand Side)</label>
                             <span className={styles.required}>REQUIRED</span>
                         </div>
-                        <input type="text" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(e.target.value)} />
+                        <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
                         <div className={styles["remarks-header"]}>
                             <span>LHS Remarks</span>
                             <AiOutlineAudio className={styles["mic-icon"]} />
@@ -61,7 +64,7 @@ function SpeedCheckingEntry({
                             <label>RHS (Right Hand Side)</label>
                             <span className={styles.required}>REQUIRED</span>
                         </div>
-                        <input type="text" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(e.target.value)} />
+                        <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
                         <div className={styles["remarks-header"]}>
                             <span>RHS Remarks</span>
                             <AiOutlineAudio className={styles["mic-icon"]} />
