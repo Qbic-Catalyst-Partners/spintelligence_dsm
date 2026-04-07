@@ -2,10 +2,14 @@
 .formGrid {
   background: #ffffff;
   padding: 0;
-
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
 }
 
 /* LABEL */
@@ -26,7 +30,7 @@
   border: 1px solid #E2E8F0;
   border-radius: 8px;
   font-size: 14px;
-  background: #F8FAFC;
+  background: #F1F5F9 !important;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   height: 38px;
@@ -47,7 +51,11 @@
 
 /* FULL WIDTH FIELD */
 .fullWidth {
-  grid-column: span 3;
+  grid-column: span 1;
+}
+
+.remarksWide {
+  grid-column: span 1;
 }
 
 /* TABLE SECTION */
@@ -104,6 +112,16 @@
 .errorField {
   border-color: #ef4444 !important;
   background: #fff1f2 !important;
+}
+
+@media (min-width: 768px) {
+  .formGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .remarksWide {
+    grid-column: span 2;
+  }
 }
 
 .messageBox {

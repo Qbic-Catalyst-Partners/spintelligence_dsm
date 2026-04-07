@@ -5,7 +5,7 @@ export const primaryTypeOptions = [
   "Draw Frame Cots Data Entry",
 ];
 
-export const processTypeOptions = ["Breaker", "Finisher", "Pre-Draw"];
+export const processTypeOptions = ["Breaker", "Finisher"];
 export const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
 export const cvMachineOptions = ["DF-01", "DF-02", "DF-03", "DF-04"];
 

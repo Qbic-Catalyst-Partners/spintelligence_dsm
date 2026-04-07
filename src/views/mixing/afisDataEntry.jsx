@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitAfis, clearMixingState } from '@/store/slices/mixing';
+import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/afisDataEntery.module.css';
 
 const initialForm = {
@@ -11,6 +12,10 @@ const initialForm = {
     maturity: '', fineness: '', scnGms: '',
 };
 
+const NUMERIC_FIELDS = new Set([
+    'uql', 'l5', 'sfcN', 'ifc', 'fibreNepsGms', 'sfcW', 'maturity', 'fineness', 'scnGms',
+]);
+
 const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
@@ -18,7 +23,10 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
     const [errors, setErrors] = useState({});
 
     const handleChange = (field, value) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
+        const nextValue = NUMERIC_FIELDS.has(field)
+            ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+            : value;
+        setFormData((prev) => ({ ...prev, [field]: nextValue }));
         setErrors((prev) => {
             if (!prev[field]) return prev;
             const next = { ...prev };

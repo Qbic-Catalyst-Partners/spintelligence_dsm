@@ -25,6 +25,8 @@ const comberDepartmentTypes = [
         name: "U% Data Entry",
     },
 ];
+
+export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
 function Comber() {
     const router = useRouter();
     const dispatch = useDispatch();
@@ -333,6 +335,7 @@ function Comber() {
                 typeValue={selectedType || "Comber"}
                 onClose={() => {
                     setShowSuccess(false);
+                    childRef.current?.clear?.();
                     dispatch(clearComberState());
                 }}
             />

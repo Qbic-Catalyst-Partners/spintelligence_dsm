@@ -59,7 +59,7 @@ export const submitDropTest = createAsyncThunk(
             const results = [];
             for (let i = 0; i < tufts.length; i++) {
                 const result = await dropTestApi({
-                    date:           baseData.date,
+                    inspection_date: baseData.date,
                     lot_no:         baseData.lotNo,
                     variety:        baseData.variety,
                     blend:          baseData.blend,

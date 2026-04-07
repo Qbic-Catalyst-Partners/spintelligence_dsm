@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
-import UqcEntryForm from "@/components/UqcEntryForm";
+import SuccessModal from "@/components/SuccessModal";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -24,7 +24,9 @@ const primaryTypeOptions = [
    "U% Data Entry",
 ];
 
-const processTypeOptions = ["Breaker", "Finisher", "Pre-Draw"];
+export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
+
+const processTypeOptions = ["Breaker", "Finisher"];
 const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
 const cvMachineOptions = ["DF-01", "DF-02", "DF-03", "DF-04"];
 
@@ -57,7 +59,6 @@ const emptyMetric = () => ({
 function DrawFrame() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const uqcRef = useRef(null);
   const typeOptions = primaryTypeOptions.map((t, i) => ({
     id: i + 1,
     name: t,
@@ -94,6 +95,7 @@ function DrawFrame() {
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
     shift: "",
@@ -209,11 +211,6 @@ function DrawFrame() {
   };
 
   const handleClear = () => {
-    if (form.type === "U% Data Entry") {
-      uqcRef.current?.clear?.();
-      dispatch(clearDrawFrameState());
-      return;
-    }
     setForm({
       type: "Yarn CV% Calculation Form",
       date: today,
@@ -244,6 +241,12 @@ function DrawFrame() {
     dispatch(clearDrawFrameState());
   };
 
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    handleClear();
+    dispatch(clearDrawFrameState());
+  };
+
   useEffect(() => {
     if (form.type !== "Draw Frame Cots Data Entry") return;
 
@@ -267,9 +270,6 @@ function DrawFrame() {
   }, [dispatch, form.type]);
 
   const validate = () => {
-    if (form.type === "U% Data Entry") {
-      return uqcRef.current?.validate?.() ?? false;
-    }
     const isCots = form.type === "Draw Frame Cots Data Entry";
     const headerErrors = {};
     const machineErrors = [];
@@ -368,9 +368,6 @@ function DrawFrame() {
   };
 
   const buildPreviewItems = useMemo(() => {
-    if (form.type === "U% Data Entry") {
-      return uqcRef.current?.getPreviewData?.() ?? [];
-    }
     const items = [];
     if (form.type === "Draw Frame Cots Data Entry") {
       items.push({ label: "Type", value: form.type });
@@ -426,11 +423,6 @@ function DrawFrame() {
   }, [form, machineEntries, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = () => {
-    if (form.type === "U% Data Entry") {
-      if (!uqcRef.current?.validate?.()) return;
-      dispatch(submitDrawFrameUqcInspection(uqcRef.current?.getPayload?.() || {}));
-      return;
-    }
     const isCots = form.type === "Draw Frame Cots Data Entry";
 
     if (!validate()) return;
@@ -508,7 +500,9 @@ function DrawFrame() {
       if (form.type === "Draw Frame Cots Data Entry") {
         dispatch(fetchDrawFrameCotsEntries({ page: 1, limit: 10 }));
       }
-      handleClear();
+      if (form.type !== "U% Data Entry") {
+        setShowSuccess(true);
+      }
     }
   }, [actionSuccess, dispatch, form.type]);
 
@@ -552,6 +546,7 @@ function DrawFrame() {
               <MdOutlineEditNote className={styles.sectionIcon} />
               <h2 className={styles.sectionTitle}>Inspection Data Entry</h2>
             </div>
+            <div className={styles.sectionDivider} />
 
             <div className={styles.formGrid}>
               <div className={styles.field}>
@@ -717,7 +712,7 @@ function DrawFrame() {
                     </select>
                   </div>
 
-                  <div className={styles.field}>
+                  <div className={`${styles.field} ${styles.uPercentCompactField}`}>
                     <label className={styles.label}>3m CVM</label>
                     <input
                       value={uPercentForm.threeMeterCvm}
@@ -726,7 +721,7 @@ function DrawFrame() {
                     />
                   </div>
 
-                  <div className={`${styles.field} ${styles.fieldWide}`}>
+                  <div className={`${styles.field} ${styles.fieldWide} ${styles.uPercentRemarksField}`}>
                     <label className={styles.label}>Remarks</label>
                     <textarea
                       rows={4}
@@ -806,16 +801,7 @@ function DrawFrame() {
               )}
             </div>
 
-            {form.type === "U% Data Entry" ? (
-              <UqcEntryForm
-                ref={uqcRef}
-                hideTypeField
-                selectedType={form.type}
-                onTypeChange={(value) => handleFormChange("type", value)}
-                departmentValue="drawframe"
-                submitHandler={(payload) => dispatch(submitDrawFrameUqcInspection(payload)).unwrap()}
-              />
-            ) : form.type === "Draw Frame Cots Data Entry" ? (
+            {form.type === "Draw Frame Cots Data Entry" ? (
               <div className={styles.machineSection}>
                 <h3 className={styles.machineSectionTitle}>Machine-Specific Data</h3>
 
@@ -1052,9 +1038,6 @@ function DrawFrame() {
               </>
             )}
 
-            {actionSuccess && (
-              <p className={styles.messageSuccess}>Draw Frame inspection saved successfully.</p>
-            )}
             {error && <p className={styles.messageError}>{error}</p>}
           </div>
 
@@ -1206,6 +1189,13 @@ function DrawFrame() {
           handleSubmit();
         }}
         confirmLabel="Submit"
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        message="Data Submitted"
+        typeValue={form.type}
+        onClose={handleSuccessClose}
       />
     </div>
   );

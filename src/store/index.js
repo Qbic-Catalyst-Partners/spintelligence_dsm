@@ -11,6 +11,7 @@ import userReducer from "./slices/userSlice";
 import supervisorReducer from "./slices/supervisorSlice";
 import drawFrameReducer from "./slices/draw-frame";
 import simplexReducer from "./slices/simplex";
+import autoconerReducer from "./slices/autoconer";
 
 export const store = configureStore({
   reducer: {
@@ -26,6 +27,7 @@ export const store = configureStore({
     supervisor: supervisorReducer,
     drawFrame: drawFrameReducer,
     simplex: simplexReducer,
+    autoconer: autoconerReducer,
 
   },
   middleware: (getDefaultMiddleware) =>

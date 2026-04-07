@@ -3,7 +3,7 @@ export const departmentDirectory = [
         slug: "quality-control",
         name: "Quality Control",
         enabled: true,
-        description: "Select the Department you need to access",
+        description: "Select the Sub-Department you need to access",
         subDepartments: [
             { slug: "mixing", name: "Mixing", href: "/mixing", enabled: true },
             { slug: "blow-room", name: "Blow Room", href: "/blowroom", enabled: true },
@@ -12,7 +12,7 @@ export const departmentDirectory = [
             { slug: "draw-frame", name: "Draw Frame", href: "/draw-frame", enabled: true },
             { slug: "simplex", name: "Simplex", href: "/simplex", enabled: true },
             { slug: "spinning", name: "Spinning", href: "/spinning", enabled: true },
-            { slug: "autoconer", name: "Autoconer", href: "/departments/quality-control/autoconer", enabled: false },
+            { slug: "autoconer", name: "Autoconer", href: "/autoconer", enabled: true },
         ],
     },
     {

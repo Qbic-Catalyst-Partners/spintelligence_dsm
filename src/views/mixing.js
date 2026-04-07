@@ -20,16 +20,19 @@ const mixingDepartmentTypes = [
     { id: 5, name: "Openness Data Entry", component: OpennessDataEntry, needsLotNo: false },
 ];
 
-const today = new Date().toISOString().split("T")[0];
+export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
+
+const getCurrentDate = () => new Date().toISOString().split("T")[0];
 
 function Mixing() {
     const router = useRouter();
     const childRef = useRef(null);
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
+    const currentDate = getCurrentDate();
 
     const [selectedTypeName, setSelectedTypeName] = useState("Cotton HVI Data Entry");
-    const [date, setDate] = useState(today);
+    const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
     const [mixingValue, setMixingValue] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
@@ -45,6 +48,37 @@ function Mixing() {
             setShowSuccess(true);
         }
     }, [actionSuccess]);
+
+    useEffect(() => {
+        setDate(getCurrentDate());
+    }, [router.asPath]);
+
+    const handleDateChange = (value) => {
+        const nextDate = getCurrentDate();
+        setDate(value === nextDate ? value : nextDate);
+        setHeaderErrors((prev) => {
+            if (!prev.date) return prev;
+            const next = { ...prev };
+            delete next.date;
+            return next;
+        });
+    };
+
+    const handleTypeChange = (value) => {
+        setSelectedTypeName(value);
+        setLotNo("");
+        setMixingValue("");
+        setHeaderErrors({});
+        childRef.current?.clear?.();
+    };
+
+    const handleClear = () => {
+        setDate(getCurrentDate());
+        setLotNo("");
+        setMixingValue("");
+        setHeaderErrors({});
+        childRef.current?.clear?.();
+    };
 
     const buildHeaderPreview = () => {
         const list = [
@@ -89,6 +123,10 @@ function Mixing() {
     const handleSuccessClose = () => {
         setShowSuccess(false);
         dispatch(clearMixingState());
+    };
+
+    const handleOpennessSubmitSuccess = () => {
+        setShowSuccess(true);
     };
 
     return (
@@ -136,8 +174,9 @@ function Mixing() {
                                     <label className="text-[14px] font-semibold text-slate-700">Type</label>
                                     <select
                                         className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
+                                        style={{ backgroundColor: "#f1f5f9" }}
                                         value={selectedTypeName}
-                                        onChange={(e) => setSelectedTypeName(e.target.value)}
+                                        onChange={(e) => handleTypeChange(e.target.value)}
                                     >
                                         <option value="">Select Type</option>
                                         {mixingDepartmentTypes.map((item) => (
@@ -162,8 +201,10 @@ function Mixing() {
                     label="Date"
                     type="date"
                     value={date}
-                    onChange={(value) => setDate(value)}
+                    onChange={handleDateChange}
                     error={headerErrors.date}
+                    min={currentDate}
+                    max={currentDate}
                 />
                                 
 
@@ -184,6 +225,7 @@ function Mixing() {
                                     date={date}
                                     lotNo={lotNo}
                                     mixing={mixingValue}
+                                    onSubmitSuccess={handleOpennessSubmitSuccess}
                                 />
                             )}
                         </div>
@@ -191,7 +233,7 @@ function Mixing() {
 
                     <Footer
                         onBack={() => router.push("/dashboard")}
-                        onClear={() => childRef.current?.clear()}
+                        onClear={handleClear}
                         onSave={openPreview}
                         saveLabel={actionLoading ? "Saving..." : "Save Record"}
                         disabled={actionLoading}

@@ -5,24 +5,34 @@ import { useDispatch, useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import SMXCotsChangeDataEntry from "@/views/simplex/SMXCotsChangeDataEntry";
 import SMXBreaksStudyReport from "@/views/simplex/SMXBreaksStudyReport";
 import UPercentDataEntry from "@/views/simplex/u%dataentry";
-import { getSimplexUqcEntries } from "@/store/slices/simplex";
+import {
+  clearSimplexState,
+  getSimplexCotsChangeEntries,
+  getSimplexUqcEntries,
+} from "@/store/slices/simplex";
 const simplexTypes = [
   { id: 1, name: "SMXCots Change Data Entry", component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", component: SMXBreaksStudyReport },
    { id: 3, name: "U% Data Entry", component: UPercentDataEntry },
 ];
 
+export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
+
 function Simplex() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
-  const [selectedTypeName, setSelectedTypeName] = useState("SMXCots Change Data Entry");
+  const [selectedTypeName, setSelectedTypeName] = useState("SMX Breaks Study Report");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
-  const { uqcEntries = [], listLoading } = useSelector((state) => state.simplex ?? {});
+  const [showSuccess, setShowSuccess] = useState(false);
+  const { uqcEntries = [], cotsChangeEntries = [], listLoading } = useSelector(
+    (state) => state.simplex ?? {}
+  );
 
   const selectedType = useMemo(
     () => simplexTypes.find((item) => item.name === selectedTypeName),
@@ -33,6 +43,9 @@ function Simplex() {
   useEffect(() => {
     if (selectedTypeName === "U% Data Entry") {
       dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
+    }
+    if (selectedTypeName === "SMXCots Change Data Entry") {
+      dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
     }
   }, [dispatch, selectedTypeName]);
 
@@ -46,14 +59,18 @@ function Simplex() {
 
   const confirmSubmit = async () => {
     setShowPreview(false);
-    await childRef.current?.submit?.();
+    const ok = await childRef.current?.submit?.();
+    if (ok) {
+      setShowSuccess(true);
+    }
   };
 
-  const showLastTenEntries = selectedTypeName === "U% Data Entry";
+  const showUqcEntries = selectedTypeName === "U% Data Entry";
+  const showCotsChangeEntries = selectedTypeName === "SMXCots Change Data Entry";
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">
-      <div className="w-full max-w-5xl pt-8 px-4 pb-8">
+      <div className="w-full max-w-7xl pt-8 px-4 pb-8">
         <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
           <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/")}>
             Home
@@ -95,24 +112,27 @@ function Simplex() {
               </span>
               <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
             </div>
+            <div className="mb-6 h-px bg-slate-100" />
    
-   <div className="mb-4">
-  <label className="block text-sm font-medium text-slate-700 mb-1">
-    Type
-  </label>
+            {selectedTypeName !== "SMX Breaks Study Report" &&
+              selectedTypeName !== "U% Data Entry" &&
+              selectedTypeName !== "SMXCots Change Data Entry" && (
+              <div className="mb-4">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Type</label>
 
-  <select
-    value={selectedTypeName}
-    onChange={(e) => setSelectedTypeName(e.target.value)}
-    className="w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
-  >
-    {simplexTypes.map((type) => (
-      <option key={type.id} value={type.name}>
-        {type.name}
-      </option>
-    ))}
-  </select>
-</div>
+                <select
+                  value={selectedTypeName}
+                  onChange={(e) => setSelectedTypeName(e.target.value)}
+                  className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-[14px] transition-colors focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  {simplexTypes.map((type) => (
+                    <option key={type.id} value={type.name}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
 
 
@@ -131,13 +151,14 @@ function Simplex() {
 
 
   
-           <SelectedComponent
-  key={selectedTypeName}
-  ref={childRef}
-  selectedTypeName={selectedTypeName}
-  onTypeChange={setSelectedTypeName}
-  typeOptions={simplexTypes.map((type) => type.name)}
-/>
+            <SelectedComponent
+              key={selectedTypeName}
+              ref={childRef}
+              selectedTypeName={selectedTypeName}
+              onTypeChange={setSelectedTypeName}
+              typeOptions={simplexTypes.map((type) => type.name)}
+              tablePortalTargetId="simplex-report-table-slot"
+            />
           </div>
 
           <Footer
@@ -148,7 +169,9 @@ function Simplex() {
           />
         </div>
 
-        {showLastTenEntries && (
+        <div id="simplex-report-table-slot" className="mt-8" />
+
+        {showUqcEntries && (
           <div
             style={{
               marginTop: "20px",
@@ -267,6 +290,113 @@ function Simplex() {
             </table>
           </div>
         )}
+
+        {showCotsChangeEntries && (
+          <div
+            style={{
+              marginTop: "20px",
+              background: "#fff",
+              borderRadius: "10px",
+              padding: "16px",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+              overflowX: "auto",
+            }}
+          >
+            <h3
+              style={{
+                marginBottom: "12px",
+                fontSize: "18px",
+                fontWeight: "600",
+                color: "#333",
+              }}
+            >
+              Last 10 Entries
+            </h3>
+
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "14px",
+                minWidth: "700px",
+              }}
+            >
+              <thead style={{ backgroundColor: "#f4f6f8" }}>
+                <tr>
+                  {["Type", "S. No.", "Date", "MC Name", "Created At"].map((head) => (
+                    <th
+                      key={head}
+                      style={{
+                        padding: "12px 10px",
+                        textAlign: "left",
+                        fontWeight: "600",
+                        color: "#444",
+                        borderBottom: "2px solid #e0e0e0",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {head}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {listLoading ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      style={{ padding: "16px", textAlign: "center", color: "#64748b" }}
+                    >
+                      Loading entries...
+                    </td>
+                  </tr>
+                ) : cotsChangeEntries.length ? (
+                  cotsChangeEntries.map((entry, i) => (
+                    <tr
+                      key={entry.id || i}
+                      style={{
+                        backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+                      }}
+                    >
+                      {[
+                        entry.type || "-",
+                        entry.s_no || "-",
+                        entry.entry_date
+                          ? new Date(entry.entry_date).toLocaleDateString("en-GB")
+                          : "-",
+                        entry.machine_name || "-",
+                        entry.created_at
+                          ? new Date(entry.created_at).toLocaleString("en-GB")
+                          : "-",
+                      ].map((cell, idx) => (
+                        <td
+                          key={idx}
+                          style={{
+                            padding: "10px",
+                            borderBottom: "1px solid #eaeaea",
+                            color: "#555",
+                          }}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      style={{ padding: "16px", textAlign: "center", color: "#64748b" }}
+                    >
+                      No entries found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <PreviewModal
@@ -278,6 +408,23 @@ function Simplex() {
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}
         confirmLabel="Submit"
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        message="Data Submitted"
+        typeValue={selectedTypeName}
+        onClose={() => {
+          setShowSuccess(false);
+          childRef.current?.clear?.();
+          dispatch(clearSimplexState());
+          if (selectedTypeName === "U% Data Entry") {
+            dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
+          }
+          if (selectedTypeName === "SMXCots Change Data Entry") {
+            dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
+          }
+        }}
       />
     </div>
   );
