@@ -22,6 +22,7 @@ import {
 import {
   deleteUserAPI,
   updateStatusAPI,
+  bulkUploadUsersAPI,
 } from "../../apis/userApi";
 
 export default function UserManagement() {
@@ -42,6 +43,8 @@ export default function UserManagement() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadError, setUploadError] = useState(false);
 
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedDept, setSelectedDept] = useState("");
@@ -84,6 +87,31 @@ export default function UserManagement() {
     dispatch(fetchUsers());
   };
 
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadMessage("");
+    setUploadError(false);
+
+    try {
+      const response = await bulkUploadUsersAPI(file);
+      setUploadMessage(response?.message || "Bulk upload completed successfully.");
+      setUploadError(false);
+      dispatch(fetchUsers());
+    } catch (error) {
+      setUploadMessage(error.message || "Bulk upload failed.");
+      setUploadError(true);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
   // SEARCH + FILTER
   const filteredUsers = users.filter((u) => {
     const searchValue = search.toLowerCase();
@@ -124,7 +152,12 @@ export default function UserManagement() {
             <label className={styles.btnOutline}>
               <MdOutlineFileUpload />
               {uploading ? "Uploading..." : "Bulk Upload"}
-              <input type="file" hidden />
+              <input
+                type="file"
+                hidden
+                accept=".xlsx,.xls,.csv"
+                onChange={handleBulkUpload}
+              />
             </label>
 
             <button
@@ -190,6 +223,24 @@ export default function UserManagement() {
             Clear
           </button>
         </div>
+
+        {uploadMessage ? (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "12px 14px",
+              borderRadius: "10px",
+              fontSize: "14px",
+              fontWeight: 500,
+              background: uploadError ? "#fef2f2" : "#ecfdf5",
+              color: uploadError ? "#b91c1c" : "#166534",
+              border: uploadError ? "1px solid #fecaca" : "1px solid #bbf7d0",
+            }}
+          >
+            {uploadMessage}
+          </div>
+        ) : null}
+
         {/* TABLE */}
         <table className={styles.table}>
           <thead>

@@ -67,6 +67,32 @@ export const exportUsersAPI = async () => {
   a.click();
   a.remove();
 };
+
+export const bulkUploadUsersAPI = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${BASE_URL}/users/bulk-upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const responseData = contentType.includes("application/json")
+    ? await res.json()
+    : await res.text();
+
+  if (!res.ok) {
+    const message =
+      typeof responseData === "string"
+        ? responseData
+        : responseData?.message;
+
+    throw new Error(message || "Bulk upload failed");
+  }
+
+  return responseData;
+};
 //  UPDATE USER
 export const updateUserAPI = async (id, data) => {
   const res = await fetch(`${BASE_URL}/users/${id}`, {

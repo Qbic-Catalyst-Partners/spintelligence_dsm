@@ -68,7 +68,7 @@ export const submitNatiDataEntry = async (payload) => {
 
 export const submitTrialsDataEntry = async (payload) => {
     try {
-        const response = await apiConfig.post("/trials", payload);
+        const response = await apiConfig.post("/carding/trials", payload);
         return response.data;
     } catch (error) {
         if (error.response) {
@@ -82,6 +82,10 @@ export const submitTrialsDataEntry = async (payload) => {
             }
 
             if (error.response.status === 400) {
+                const missingFields = error.response.data?.missingFields;
+                if (Array.isArray(missingFields) && missingFields.length) {
+                    throw new Error(`${backendMessage || "Missing required fields"}: ${missingFields.join(", ")}`);
+                }
                 throw new Error(backendMessage || "Invalid payload data.");
             }
 
