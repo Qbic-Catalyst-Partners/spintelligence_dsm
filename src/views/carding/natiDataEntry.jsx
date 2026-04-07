@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
+import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
@@ -33,6 +34,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
     const [formMessage, setFormMessage] = useState("");
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
@@ -55,6 +57,13 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
             dispatch(clearComberState());
         };
     }, [dispatch]);
+
+    useEffect(() => {
+        const checkScreen = () => setIsMobile(window.innerWidth <= 767);
+        checkScreen();
+        window.addEventListener("resize", checkScreen);
+        return () => window.removeEventListener("resize", checkScreen);
+    }, []);
 
     const handleGenerate = () => {
         const nextCount = Math.min(Math.max(1, Number(entryCount) || 1), 10);
@@ -92,6 +101,17 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
             delete next[`${index}-${field}`];
             return next;
         });
+    };
+
+    const handleClear = () => {
+        setNatiId("");
+        setEntryDate(new Date().toISOString().split("T")[0]);
+        setVariety("");
+        setEntryCount(1);
+        setEntries(createEmptyEntries(1));
+        setFormMessage("");
+        setErrors({});
+        setShowPreview(false);
     };
 
     const buildPayload = () => ({
@@ -137,7 +157,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
     };
 
     const handleSubmit = async () => {
-
         try {
             await dispatch(submitComberNatiDataEntry(buildPayload())).unwrap();
             setShowPreview(false);
@@ -162,179 +181,171 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
 
     return (
         <div className={styles["cb-card"]}>
-            <div className={styles["cb-form"]}>
-                <div className={styles["cb-row"]}>
-                    <div className={styles["cb-form-group"]}>
-                        <label>Type</label>
-                        <select
-                            value={selectedType}
-                            onChange={(e) => onTypeChange(e.target.value)}
-                            className={errors.selectedType ? styles["field-error"] : ""}
-                        >
-                            <option value="">Select Type</option>
-                            {types.map((item) => (
-                                <option key={item.id} value={item.name}>
-                                    {item.name}
-                                </option>
-                            ))}
-                        </select>
+            <div className={styles["cb-body"]}>
+                <div className={styles["cb-form"]}>
+                    <div className={styles["cb-row"]}>
+                        <div className={styles["cb-form-group"]}>
+                            <label>Type</label>
+                            <select
+                                value={selectedType}
+                                onChange={(e) => onTypeChange(e.target.value)}
+                                className={errors.selectedType ? styles["field-error"] : ""}
+                            >
+                                <option value="">Select Type</option>
+                                {types.map((item) => (
+                                    <option key={item.id} value={item.name}>
+                                        {item.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {showForm && (
+                            <>
+                                <div className={styles["cb-form-group"]}>
+                                    <label>Nati ID</label>
+                                    <input
+                                        value={natiId}
+                                        onChange={(e) => {
+                                            setNatiId(e.target.value);
+                                            setErrors((current) => {
+                                                const next = { ...current };
+                                                delete next.natiId;
+                                                return next;
+                                            });
+                                        }}
+                                        className={errors.natiId ? styles["field-error"] : ""}
+                                    />
+                                </div>
+
+                                <div className={styles["cb-form-group"]}>
+                                    <label>Entry Date</label>
+                                    <input
+                                        type="date"
+                                        value={entryDate}
+                                        onChange={(e) => setEntryDate(e.target.value)}
+                                        readOnly
+                                        className={errors.entryDate ? styles["field-error"] : ""}
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {showForm && (
                         <>
-                            <div className={styles["cb-form-group"]}>
-                                <label>Nati ID</label>
-                                <input
-                                    value={natiId}
-                                    onChange={(e) => {
-                                        setNatiId(e.target.value);
-                                        setErrors((current) => {
-                                            const next = { ...current };
-                                            delete next.natiId;
-                                            return next;
-                                        });
-                                    }}
-                                    className={errors.natiId ? styles["field-error"] : ""}
-                                />
+                            <div className={styles["cb-row"]}>
+                                <div className={styles["cb-form-group"]}>
+                                    <label>Variety</label>
+                                    <select
+                                        value={variety}
+                                        onChange={(e) => {
+                                            setVariety(e.target.value);
+                                            setErrors((current) => {
+                                                const next = { ...current };
+                                                delete next.variety;
+                                                return next;
+                                            });
+                                        }}
+                                        className={errors.variety ? styles["field-error"] : ""}
+                                    >
+                                        <option value="">Select</option>
+                                        <option value="Cotton">Cotton</option>
+                                        <option value="Polyester">Polyester</option>
+                                        <option value="PC Blend">PC Blend</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            <div className={styles["cb-form-group"]}>
-                                <label>Entry Date</label>
-                                <input
-                                    type="date"
-                                    value={entryDate}
-                                    onChange={(e) => setEntryDate(e.target.value)}
-                                    readOnly
-                                    className={errors.entryDate ? styles["field-error"] : ""}
-                                />
+                            <div className={styles["cb-sample-section"]}>
+                                <h4>Neps Details</h4>
+                                <div className={styles["cb-form-group"]}>
+                                    <label>Number of Neps Entries (Max 10)</label>
+                                    <div className={styles["cb-generate"]}>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="10"
+                                            value={entryCount}
+                                            onChange={(e) => setEntryCount(e.target.value)}
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                            className={errors.entryCount ? styles["field-error"] : ""}
+                                        />
+                                        <button type="button" onClick={handleGenerate}>
+                                            Generate
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className={styles["cb-neps-stack"]}>
+                                    {entries.map((entry, index) => (
+                                        <div key={`neps-entry-${index + 1}`} className={styles["cb-neps-card"]}>
+                                            <div className={styles["cb-neps-index"]}>{index + 1}</div>
+                                            <div className={styles["cb-neps-grid"]}>
+                                                <div className={styles["cb-form-group"]}>
+                                                    <label>MC No</label>
+                                                    <input
+                                                        value={entry.mc_no}
+                                                        onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
+                                                        className={errors[`${index}-mc_no`] ? styles["field-error"] : ""}
+                                                    />
+                                                </div>
+                                                <div className={styles["cb-form-group"]}>
+                                                    <label>Ratio into size-1.0</label>
+                                                    <input
+                                                        value={entry.ratio_size_1}
+                                                        onChange={(e) => handleEntryChange(index, "ratio_size_1", e.target.value)}
+                                                        className={errors[`${index}-ratio_size_1`] ? styles["field-error"] : ""}
+                                                    />
+                                                </div>
+                                                <div className={styles["cb-form-group"]}>
+                                                    <label>Ratio into size-0.7</label>
+                                                    <input
+                                                        value={entry.ratio_size_07}
+                                                        onChange={(e) => handleEntryChange(index, "ratio_size_07", e.target.value)}
+                                                        className={errors[`${index}-ratio_size_07`] ? styles["field-error"] : ""}
+                                                    />
+                                                </div>
+                                                <div className={styles["cb-form-group"]}>
+                                                    <label>Ratio into size-0.5</label>
+                                                    <input
+                                                        value={entry.ratio_size_05}
+                                                        onChange={(e) => handleEntryChange(index, "ratio_size_05", e.target.value)}
+                                                        className={errors[`${index}-ratio_size_05`] ? styles["field-error"] : ""}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </>
                     )}
                 </div>
-
-                {showForm && (
-                    <>
-                        <div className={styles["cb-row"]}>
-                            <div className={styles["cb-form-group"]}>
-                                <label>Variety</label>
-                                <select
-                                    value={variety}
-                                    onChange={(e) => {
-                                        setVariety(e.target.value);
-                                        setErrors((current) => {
-                                            const next = { ...current };
-                                            delete next.variety;
-                                            return next;
-                                        });
-                                    }}
-                                    className={errors.variety ? styles["field-error"] : ""}
-                                >
-                                    <option value="">Select</option>
-                                    <option value="Cotton">Cotton</option>
-                                    <option value="Polyester">Polyester</option>
-                                    <option value="PC Blend">PC Blend</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className={styles["cb-sample-section"]}>
-                            <h4>Neps Details</h4>
-                            <div className={styles["cb-form-group"]}>
-                                <label>Number of Neps Entries (Max 10)</label>
-                                <div className={styles["cb-generate"]}>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="10"
-                                        value={entryCount}
-                                        onChange={(e) => setEntryCount(e.target.value)}
-                                        onWheel={(e) => e.currentTarget.blur()}
-                                        className={errors.entryCount ? styles["field-error"] : ""}
-                                    />
-                                    <button type="button" onClick={handleGenerate}>
-                                        Generate
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className={styles["cb-neps-stack"]}>
-                                {entries.map((entry, index) => (
-                                    <div key={`neps-entry-${index + 1}`} className={styles["cb-neps-card"]}>
-                                        <div className={styles["cb-neps-index"]}>{index + 1}</div>
-                                        <div className={styles["cb-neps-grid"]}>
-                                            <div className={styles["cb-form-group"]}>
-                                                <label>MC No</label>
-                                                <input
-                                                    value={entry.mc_no}
-                                                    onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
-                                                    className={errors[`${index}-mc_no`] ? styles["field-error"] : ""}
-                                                />
-                                            </div>
-                                            <div className={styles["cb-form-group"]}>
-                                                <label>Ratio into size-1.0</label>
-                                                <input
-                                                    value={entry.ratio_size_1}
-                                                    onChange={(e) => handleEntryChange(index, "ratio_size_1", e.target.value)}
-                                                    className={errors[`${index}-ratio_size_1`] ? styles["field-error"] : ""}
-                                                />
-                                            </div>
-                                            <div className={styles["cb-form-group"]}>
-                                                <label>Ratio into size-0.7</label>
-                                                <input
-                                                    value={entry.ratio_size_07}
-                                                    onChange={(e) => handleEntryChange(index, "ratio_size_07", e.target.value)}
-                                                    className={errors[`${index}-ratio_size_07`] ? styles["field-error"] : ""}
-                                                />
-                                            </div>
-                                            <div className={styles["cb-form-group"]}>
-                                                <label>Ratio into size-0.5</label>
-                                                <input
-                                                    value={entry.ratio_size_05}
-                                                    onChange={(e) => handleEntryChange(index, "ratio_size_05", e.target.value)}
-                                                    className={errors[`${index}-ratio_size_05`] ? styles["field-error"] : ""}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </>
-                )}
             </div>
 
             {showForm && (
                 <>
-                    <div className={styles["cb-footer"]}>
-                        <button
-                            type="button"
-                            className={styles["cb-back"]}
-                            onClick={() => router.push("/dashboard")}
-                        >
-                            ← Back to Dashboard
-                        </button>
-
-                        <div className={styles["cb-right-actions"]}>
-                            <button
-                                type="button"
-                                className={styles["cb-primary"]}
-                                onClick={() => {
-                                    if (validateForm()) {
-                                        setShowPreview(true);
-                                    }
-                                }}
-                                disabled={isLoading}
-                            >
-                                {isLoading ? "Submitting..." : "Preview"}
-                            </button>
-                        </div>
-                    </div>
-
                     {formMessage ? (
                         <div className={`${styles["message-box"]} ${error ? styles["message-error"] : styles["message-success"]}`}>
                             {formMessage}
                         </div>
                     ) : null}
+
+                    <div className={styles["cb-footer"]}>
+                        <Footer
+                            isMobile={isMobile}
+                            onBack={() => router.push("/dashboard")}
+                            onClear={handleClear}
+                            onSave={() => {
+                                if (validateForm()) {
+                                    setShowPreview(true);
+                                }
+                            }}
+                            saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                            disabled={isLoading}
+                        />
+                    </div>
 
                     <PreviewModal
                         open={showPreview}

@@ -1,4 +1,5 @@
 import React from "react";
+import { AiOutlineArrowLeft } from "react-icons/ai";
 import { AiOutlineSave } from "react-icons/ai";
 import styles from "../styles/footer.module.css";
 
@@ -23,6 +24,7 @@ const Footer = ({
             className={`${styles["button-base"]} ${styles["back-btn"]}`}
             onClick={onBack}
           >
+            <AiOutlineArrowLeft size={14} />
             Back to Dashboard
           </button>
         </div>

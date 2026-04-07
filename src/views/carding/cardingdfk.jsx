@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 
 import CustomInput from "@/components/CustomInput";
+import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
@@ -47,6 +48,14 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
   const [showPreview, setShowPreview] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkScreen = () => setIsMobile(window.innerWidth <= 767);
+    checkScreen();
+    window.addEventListener("resize", checkScreen);
+    return () => window.removeEventListener("resize", checkScreen);
+  }, []);
 
   const hasValues = useMemo(
     () =>
@@ -227,37 +236,26 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
         </div>
       </div>
 
-      <div className={styles.dfkFooterWrap}>
-        <div className={styles.dfkFooter}>
-          <button type="button" className={styles.dfkBack} onClick={() => router.push("/dashboard")}>
-            Back to Dashboard
-          </button>
-
-          <div className={styles.dfkActions}>
-            <button type="button" className={styles.dfkSecondary} onClick={handleClear}>
-              Clear Form
-            </button>
-            <button
-              type="button"
-              className={styles.dfkPrimary}
-              onClick={() => {
-                if (validateForm()) {
-                  setShowPreview(true);
-                }
-              }}
-              disabled={!hasValues || isLoading}
-            >
-              {isLoading ? "Saving..." : "Preview"}
-            </button>
-          </div>
-        </div>
-      </div>
-
       {formMessage ? (
         <div className={`${styles.dfkMessage} ${isError ? styles.dfkMessageError : styles.dfkMessageSuccess}`}>
           {formMessage}
         </div>
       ) : null}
+
+      <div className={styles.dfkFooterWrap}>
+        <Footer
+          isMobile={isMobile}
+          onBack={() => router.push("/dashboard")}
+          onClear={handleClear}
+          onSave={() => {
+            if (validateForm()) {
+              setShowPreview(true);
+            }
+          }}
+          saveLabel={isLoading ? "Saving..." : "Save Record"}
+          disabled={!hasValues || isLoading}
+        />
+      </div>
 
       <PreviewModal
         open={showPreview}

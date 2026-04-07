@@ -30,6 +30,7 @@ function Simplex() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [validationMessage, setValidationMessage] = useState("");
   const { uqcEntries = [], cotsChangeEntries = [], listLoading } = useSelector(
     (state) => state.simplex ?? {}
   );
@@ -51,7 +52,11 @@ function Simplex() {
 
   const openPreview = () => {
     const valid = childRef.current?.validate ? childRef.current.validate() : true;
-    if (valid === false) return;
+    if (valid === false) {
+      setValidationMessage("Please fill all required fields before saving.");
+      return;
+    }
+    setValidationMessage("");
     const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
     setPreviewItems(items);
     setShowPreview(true);
@@ -161,9 +166,20 @@ function Simplex() {
             />
           </div>
 
+          {validationMessage ? (
+            <div className="px-5 pb-4">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
+                {validationMessage}
+              </div>
+            </div>
+          ) : null}
+
           <Footer
             onBack={() => router.push("/dashboard")}
-            onClear={() => childRef.current?.clear()}
+            onClear={() => {
+              setValidationMessage("");
+              childRef.current?.clear();
+            }}
             onSave={openPreview}
             saveLabel="Save Record"
           />
@@ -416,6 +432,7 @@ function Simplex() {
         typeValue={selectedTypeName}
         onClose={() => {
           setShowSuccess(false);
+          setValidationMessage("");
           childRef.current?.clear?.();
           dispatch(clearSimplexState());
           if (selectedTypeName === "U% Data Entry") {

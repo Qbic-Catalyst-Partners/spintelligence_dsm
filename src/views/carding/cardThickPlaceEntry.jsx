@@ -242,13 +242,13 @@ function CardThickPlaceEntry({
                         <div className={styles["card-machine-section"]}>
                             <div className={styles["card-machine-header"]}>
                                 <h4>Enter value for each machine</h4>
-                                <button
+                                {/* <button
                                     type="button"
                                     className={styles["card-secondary"]}
                                     onClick={handleClear}
                                 >
                                     + New Entry
-                                </button>
+                                </button> */}
                             </div>
 
                             <p className={styles["card-machine-subtitle"]}>Card Thick Place Values</p>
@@ -260,7 +260,6 @@ function CardThickPlaceEntry({
                                         <input
                                             type="number"
                                             step="any"
-                                            placeholder="5m CV"
                                             value={machineValues[machine]}
                                             onChange={(e) => handleChange(machine, e.target.value)}
                                             onWheel={(e) => e.currentTarget.blur()}
@@ -276,6 +275,16 @@ function CardThickPlaceEntry({
 
             {showForm ? (
                 <>
+                    {formMessage ? (
+                        <div
+                            className={`${styles["message-box"]} ${
+                                isError ? styles["message-error"] : styles["message-success"]
+                            }`}
+                        >
+                            {formMessage}
+                        </div>
+                    ) : null}
+
                     <div className={styles["card-footer"]}>
                         <Footer
                             isMobile={isMobile}
@@ -286,20 +295,10 @@ function CardThickPlaceEntry({
                                     setShowPreview(true);
                                 }
                             }}
-                            saveLabel={isLoading ? "Submitting..." : "Preview"}
+                            saveLabel={isLoading ? "Submitting..." : "Save Record"}
                             disabled={isLoading}
                         />
                     </div>
-
-                    {formMessage ? (
-                        <div
-                            className={`${styles["message-box"]} ${
-                                isError ? styles["message-error"] : styles["message-success"]
-                            }`}
-                        >
-                            {formMessage}
-                        </div>
-                    ) : null}
 
                     <PreviewModal
                         open={showPreview}

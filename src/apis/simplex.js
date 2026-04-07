@@ -42,46 +42,12 @@ export const submitSimplexStudyReportEntry = async (payload) => {
 };
 
 export const submitSimplexCotsChangeEntry = async (payload) => {
-  const payloadVariants = [
-    payload,
-    {
-      type: payload?.type,
-      s_no: payload?.s_no,
-      date: payload?.entry_date,
-      machine_name: payload?.machine_name,
-    },
-    {
-      type: payload?.type,
-      s_no: payload?.s_no,
-      entry_date: payload?.entry_date,
-      mc_name: payload?.machine_name,
-    },
-    {
-      type: payload?.type,
-      s_no: payload?.s_no,
-      date: payload?.entry_date,
-      mc_name: payload?.machine_name,
-    },
-    {
-      type: payload?.type,
-      serial_no: payload?.s_no,
-      date: payload?.entry_date,
-      machine_name: payload?.machine_name,
-    },
-  ];
-
-  let lastError;
-
-  for (const candidate of payloadVariants) {
-    try {
-      const response = await apiConfig.post("/simplex/SMXCotsChange", candidate);
-      return response.data;
-    } catch (error) {
-      lastError = error;
-    }
+  try {
+    const response = await apiConfig.post("/simplex/SMXCotsChange", payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Invalid SMXCots Change payload."));
   }
-
-  throw new Error(extractErrorMessage(lastError, "Invalid SMXCots Change payload."));
 };
 
 export const fetchSimplexUqcEntries = async ({ page = 1, limit = 10 } = {}) => {

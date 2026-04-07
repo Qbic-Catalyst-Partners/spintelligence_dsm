@@ -3,10 +3,10 @@
   justify-content: space-between;
   align-items: center;
   gap: 0;
-  padding: 12px 24px;
-  border-top: 1px solid #dce6ef;
+  padding: 10px 16px;
+  border-top: 1px solid #e6edf7;
   border-radius: 0;
-  background: #f1f5f9;
+  background: #f4f8fd;
   margin: 0;
   width: 100%;
   
@@ -25,26 +25,32 @@
 .left-actions,
 .right-actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .button-base {
-  border-radius: 8px;
+  border-radius: 6px;
   font-weight: 500;
-  font-size: 14px;
-  padding: 8px 20px;
-  min-width: 120px;
+  font-size: 11px;
+  padding: 5px 12px;
+  min-width: 0;
   line-height: 1.25;
-  border: 1px solid #c4cdd8;
+  border: 1px solid #cfd8e5;
   cursor: pointer;
   background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
 }
 
 .button-base:disabled {
   opacity: 0.65;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .back-btn,
@@ -54,16 +60,13 @@
 }
 
 .primary-btn {
-  background: #3353a8;
+  background: #3f5db6;
   color: #ffffff;
-  border-color: #3353a8;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  border-color: #3f5db6;
 }
 
 .primary-btn:hover {
-  background: #2f4385;
+  background: #3550a4;
 }
 
 .secondary-btn:hover,
@@ -81,13 +84,13 @@
     justify-content: center;  
     align-items: center;
     flex-direction: column;  
-    gap: 10px;
+    gap: 8px;
   }
 
   .right-actions {
     display: flex;
     justify-content: center;   
     width: 100%;
-    gap: 10px;
+    gap: 8px;
   }
 }

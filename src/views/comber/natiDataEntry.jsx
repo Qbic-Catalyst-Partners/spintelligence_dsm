@@ -124,7 +124,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
         if (!entries.some((entry) => entry.mc_no !== "")) nextErrors.entries = true;
 
         setErrors(nextErrors);
-        setFormMessage("");
+        setFormMessage(Object.keys(nextErrors).length ? "Please fill all required fields before saving." : "");
         return Object.keys(nextErrors).length === 0;
     };
 

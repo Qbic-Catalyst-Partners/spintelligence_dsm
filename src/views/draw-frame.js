@@ -15,6 +15,8 @@ import {
   submitDrawFrameYarnCvInspection,
 } from "@/store/slices/draw-frame";
 import styles from "@/styles/draw-frame.module.css";
+import uPercentStyles from "@/styles/u%dataentry.module.css";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -29,6 +31,7 @@ export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
 const processTypeOptions = ["Breaker", "Finisher"];
 const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
 const cvMachineOptions = ["DF-01", "DF-02", "DF-03", "DF-04"];
+const U_PERCENT_NUMERIC_FIELDS = ["uPercent", "cvm", "oneMeterCvm", "threeMeterCvm"];
 
 const createMachineEntry = (machineName = "") => ({
   machineName,
@@ -108,6 +111,7 @@ function DrawFrame() {
     threeMeterCvm: "",
     remarks: "",
   });
+  const isUPercentEntry = form.type === "U% Data Entry";
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -180,9 +184,13 @@ function DrawFrame() {
   };
 
   const handleUPercentChange = (field, value) => {
+    const nextValue = U_PERCENT_NUMERIC_FIELDS.includes(field)
+      ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+      : value;
+
     setUPercentForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
     setErrors((prev) => {
       if (!prev.uPercent?.[field]) return prev;
@@ -491,7 +499,7 @@ function DrawFrame() {
 
   const openPreview = () => {
     if (!validate()) return;
-    setPreviewItems(form.type === "U% Data Entry" ? uqcRef.current?.getPreviewData?.() || [] : buildPreviewItems);
+    setPreviewItems(buildPreviewItems);
     setShowPreview(true);
   };
 
@@ -500,9 +508,10 @@ function DrawFrame() {
       if (form.type === "Draw Frame Cots Data Entry") {
         dispatch(fetchDrawFrameCotsEntries({ page: 1, limit: 10 }));
       }
-      if (form.type !== "U% Data Entry") {
-        setShowSuccess(true);
+      if (form.type === "U% Data Entry") {
+        dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
       }
+      setShowSuccess(true);
     }
   }, [actionSuccess, dispatch, form.type]);
 
@@ -548,6 +557,140 @@ function DrawFrame() {
             </div>
             <div className={styles.sectionDivider} />
 
+            {isUPercentEntry ? (
+              <div className={uPercentStyles.formGrid}>
+                <div className={uPercentStyles.field}>
+                  <label>Type</label>
+                  <select value={form.type} onChange={(e) => handleFormChange("type", e.target.value)}>
+                    {typeOptions.map((option) => (
+                      <option key={option.id} value={option.name}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>Date</label>
+                  <input
+                    type="date"
+                    value={uPercentForm.date}
+                    onChange={(e) => handleUPercentChange("date", e.target.value)}
+                    className={errors.header?.date ? uPercentStyles.errorField : ""}
+                  />
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>Shift</label>
+                  <select
+                    value={uPercentForm.shift}
+                    onChange={(e) => handleUPercentChange("shift", e.target.value)}
+                    className={errors.uPercent?.shift ? uPercentStyles.errorField : ""}
+                  >
+                    <option value="">Select</option>
+                    {shiftOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>Variety</label>
+                  <select
+                    value={uPercentForm.variety}
+                    onChange={(e) => handleUPercentChange("variety", e.target.value)}
+                    className={errors.uPercent?.variety ? uPercentStyles.errorField : ""}
+                  >
+                    <option value="">Select</option>
+                    <option value="WPSF 0.90">WPSF 0.90</option>
+                    <option value="WPSF 1.20">WPSF 1.20</option>
+                    <option value="PSF Blend">PSF Blend</option>
+                  </select>
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>Department</label>
+                  <select
+                    value={uPercentForm.department}
+                    onChange={(e) => handleUPercentChange("department", e.target.value)}
+                    className={errors.uPercent?.department ? uPercentStyles.errorField : ""}
+                  >
+                    <option value="">Select Department</option>
+                    <option value="FR Drawing">FR Drawing</option>
+                    <option value="Draw Frame">Draw Frame</option>
+                    <option value="Finisher Drawing">Finisher Drawing</option>
+                  </select>
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>MC No.</label>
+                  <select
+                    value={uPercentForm.mcNo}
+                    onChange={(e) => handleUPercentChange("mcNo", e.target.value)}
+                    className={errors.uPercent?.mcNo ? uPercentStyles.errorField : ""}
+                  >
+                    <option value="">Select MC No.</option>
+                    <option value="DF-01">DF-01</option>
+                    <option value="DF-02">DF-02</option>
+                    <option value="DF-03">DF-03</option>
+                    <option value="DF-04">DF-04</option>
+                  </select>
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>U%</label>
+                  <input
+                    value={uPercentForm.uPercent}
+                    onChange={(e) => handleUPercentChange("uPercent", e.target.value)}
+                    className={errors.uPercent?.uPercent ? uPercentStyles.errorField : ""}
+                  />
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>CVM</label>
+                  <input
+                    value={uPercentForm.cvm}
+                    onChange={(e) => handleUPercentChange("cvm", e.target.value)}
+                    className={errors.uPercent?.cvm ? uPercentStyles.errorField : ""}
+                  />
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>1m CVM</label>
+                  <select
+                    value={uPercentForm.oneMeterCvm}
+                    onChange={(e) => handleUPercentChange("oneMeterCvm", e.target.value)}
+                    className={errors.uPercent?.oneMeterCvm ? uPercentStyles.errorField : ""}
+                  >
+                    <option value="">Select</option>
+                    <option value="0.32">0.32</option>
+                    <option value="0.45">0.45</option>
+                    <option value="0.58">0.58</option>
+                  </select>
+                </div>
+
+                <div className={uPercentStyles.field}>
+                  <label>3m CVM</label>
+                  <input
+                    value={uPercentForm.threeMeterCvm}
+                    onChange={(e) => handleUPercentChange("threeMeterCvm", e.target.value)}
+                    className={errors.uPercent?.threeMeterCvm ? uPercentStyles.errorField : ""}
+                  />
+                </div>
+
+                <div className={`${uPercentStyles.field} ${uPercentStyles.fullWidth} ${uPercentStyles.remarksWide}`}>
+                  <label>Remarks</label>
+                  <textarea
+                    rows={3}
+                    value={uPercentForm.remarks}
+                    onChange={(e) => handleUPercentChange("remarks", e.target.value)}
+                    className={errors.uPercent?.remarks ? uPercentStyles.errorField : ""}
+                  />
+                </div>
+              </div>
+            ) : (
             <div className={styles.formGrid}>
               <div className={styles.field}>
                 <label className={styles.label}>Type</label>
@@ -563,11 +706,8 @@ function DrawFrame() {
                   ))}
                 </select>
               </div>
-     
-                
-            
 
-              {form.type === "U% Data Entry" ? null : form.type === "Draw Frame Cots Data Entry" ? (
+              {form.type === "Draw Frame Cots Data Entry" ? (
                 <>
                   <div className={styles.field}>
                     <label className={styles.label}>Date</label>
@@ -607,128 +747,6 @@ function DrawFrame() {
                         </option>
                       ))}
                     </select>
-                  </div>
-                </>
-              ) : form.type === "U% Data Entry" ? (
-                <>
-                  <div className={styles.field}>
-                    <label className={styles.label}>Date</label>
-                    <input
-                      type="date"
-                      value={uPercentForm.date}
-                      onChange={(e) => handleUPercentChange("date", e.target.value)}
-                      className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
-                    />
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>Shift</label>
-                    <select
-                      value={uPercentForm.shift}
-                      onChange={(e) => handleUPercentChange("shift", e.target.value)}
-                      className={`${styles.select} ${errors.uPercent?.shift ? styles.inputError : ""}`}
-                    >
-                      <option value="">Select</option>
-                      {shiftOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>Variety</label>
-                    <select
-                      value={uPercentForm.variety}
-                      onChange={(e) => handleUPercentChange("variety", e.target.value)}
-                      className={`${styles.select} ${errors.uPercent?.variety ? styles.inputError : ""}`}
-                    >
-                      <option value="">Select</option>
-                      <option value="WPSF 0.90">WPSF 0.90</option>
-                      <option value="WPSF 1.20">WPSF 1.20</option>
-                      <option value="PSF Blend">PSF Blend</option>
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>Department</label>
-                    <select
-                      value={uPercentForm.department}
-                      onChange={(e) => handleUPercentChange("department", e.target.value)}
-                      className={`${styles.select} ${errors.uPercent?.department ? styles.inputError : ""}`}
-                    >
-                      <option value="">Select Department</option>
-                      <option value="FR Drawing">FR Drawing</option>
-                      <option value="Draw Frame">Draw Frame</option>
-                      <option value="Finisher Drawing">Finisher Drawing</option>
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>MC No.</label>
-                    <select
-                      value={uPercentForm.mcNo}
-                      onChange={(e) => handleUPercentChange("mcNo", e.target.value)}
-                      className={`${styles.select} ${errors.uPercent?.mcNo ? styles.inputError : ""}`}
-                    >
-                      <option value="">Select MC No.</option>
-                      <option value="DF-01">DF-01</option>
-                      <option value="DF-02">DF-02</option>
-                      <option value="DF-03">DF-03</option>
-                      <option value="DF-04">DF-04</option>
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>U%</label>
-                    <input
-                      value={uPercentForm.uPercent}
-                      onChange={(e) => handleUPercentChange("uPercent", e.target.value)}
-                      className={`${styles.input} ${errors.uPercent?.uPercent ? styles.inputError : ""}`}
-                    />
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>CVM</label>
-                    <input
-                      value={uPercentForm.cvm}
-                      onChange={(e) => handleUPercentChange("cvm", e.target.value)}
-                      className={`${styles.input} ${errors.uPercent?.cvm ? styles.inputError : ""}`}
-                    />
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.label}>1m CVM</label>
-                    <select
-                      value={uPercentForm.oneMeterCvm}
-                      onChange={(e) => handleUPercentChange("oneMeterCvm", e.target.value)}
-                      className={`${styles.select} ${errors.uPercent?.oneMeterCvm ? styles.inputError : ""}`}
-                    >
-                      <option value="">Select</option>
-                      <option value="0.32">0.32</option>
-                      <option value="0.45">0.45</option>
-                      <option value="0.58">0.58</option>
-                    </select>
-                  </div>
-
-                  <div className={`${styles.field} ${styles.uPercentCompactField}`}>
-                    <label className={styles.label}>3m CVM</label>
-                    <input
-                      value={uPercentForm.threeMeterCvm}
-                      onChange={(e) => handleUPercentChange("threeMeterCvm", e.target.value)}
-                      className={`${styles.input} ${errors.uPercent?.threeMeterCvm ? styles.inputError : ""}`}
-                    />
-                  </div>
-
-                  <div className={`${styles.field} ${styles.fieldWide} ${styles.uPercentRemarksField}`}>
-                    <label className={styles.label}>Remarks</label>
-                    <textarea
-                      rows={4}
-                      value={uPercentForm.remarks}
-                      onChange={(e) => handleUPercentChange("remarks", e.target.value)}
-                      className={`${styles.textarea} ${errors.uPercent?.remarks ? styles.inputError : ""}`}
-                    />
                   </div>
                 </>
               ) :(
@@ -800,6 +818,7 @@ function DrawFrame() {
                 </>
               )}
             </div>
+            )}
 
             {form.type === "Draw Frame Cots Data Entry" ? (
               <div className={styles.machineSection}>
@@ -1050,36 +1069,11 @@ function DrawFrame() {
           />
         </div>
         {form.type === "U% Data Entry" && (
-  <div
-    style={{
-      marginTop: "20px",
-      background: "#fff",
-      borderRadius: "10px",
-      padding: "16px",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-      overflowX: "auto",
-    }}
-  >
-    <h3
-      style={{
-        marginBottom: "12px",
-        fontSize: "18px",
-        fontWeight: "600",
-        color: "#333",
-      }}
-    >
-      Last 10 Entries
-    </h3>
+  <div className={uPercentStyles.tableSection}>
+    <h3>Last 10 Entries</h3>
 
-    <table
-      style={{
-        width: "100%",
-        borderCollapse: "collapse",
-        fontSize: "14px",
-        minWidth: "900px",
-      }}
-    >
-      <thead style={{ backgroundColor: "#f4f6f8" }}>
+    <table>
+      <thead>
         <tr>
           {[
             "Date",
@@ -1093,18 +1087,7 @@ function DrawFrame() {
             "3mCVM",
             "Remarks",
           ].map((head) => (
-            <th
-              key={head}
-              style={{
-                padding: "12px 10px",
-                textAlign: "left",
-                fontWeight: "600",
-                color: "#444",
-                borderBottom: "2px solid #e0e0e0",
-              }}
-            >
-              {head}
-            </th>
+            <th key={head}>{head}</th>
           ))}
         </tr>
       </thead>
@@ -1112,24 +1095,10 @@ function DrawFrame() {
       <tbody>
         {listLoading ? (
           <tr>
-            <td
-              colSpan={10}
-              style={{
-                padding: "16px",
-                textAlign: "center",
-                color: "#64748b",
-              }}
-            >
-              Loading entries...
-            </td>
+            <td colSpan={10}>Loading entries...</td>
           </tr>
         ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
-          <tr
-            key={entry.id || i}
-            style={{
-              backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
-            }}
-          >
+          <tr key={entry.id || i}>
             {[
               entry.entry_date
                 ? new Date(entry.entry_date).toLocaleDateString("en-GB")
@@ -1144,31 +1113,12 @@ function DrawFrame() {
               entry.cvm_3m || "-",
               entry.remarks || "-",
             ].map((cell, idx) => (
-              <td
-                key={idx}
-                style={{
-                  padding: "10px",
-                  borderBottom: "1px solid #eaeaea",
-                  color: idx === 5 ? "#1976d2" : "#555",
-                  fontWeight: idx === 5 ? "600" : "400",
-                }}
-              >
-                {cell}
-              </td>
+              <td key={idx}>{cell}</td>
             ))}
           </tr>
         )) : (
           <tr>
-            <td
-              colSpan={10}
-              style={{
-                padding: "16px",
-                textAlign: "center",
-                color: "#64748b",
-              }}
-            >
-              No entries found.
-            </td>
+            <td colSpan={10}>No entries found.</td>
           </tr>
         )}
       </tbody>
