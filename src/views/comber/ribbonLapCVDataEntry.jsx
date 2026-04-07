@@ -415,6 +415,12 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
             {showForm ? (
                 <>
+                    {formMessage ? (
+                        <div className={`${styles["message-box"]} ${error ? styles["message-error"] : styles["message-success"]}`}>
+                            {formMessage}
+                        </div>
+                    ) : null}
+
                     <div style={{ margin: "16px -24px 0" }}>
                         <Footer
                             onBack={() => router.push("/dashboard")}
@@ -425,12 +431,6 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                             disabled={isLoading}
                         />
                     </div>
-
-                    {formMessage ? (
-                        <div className={`${styles["message-box"]} ${error ? styles["message-error"] : styles["message-success"]}`}>
-                            {formMessage}
-                        </div>
-                    ) : null}
 
                     <div className={styles["cb-stats"]}>
                         <h4>Calculated Statistics</h4>

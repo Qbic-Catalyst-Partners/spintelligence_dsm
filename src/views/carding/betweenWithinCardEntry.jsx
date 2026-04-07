@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { FiCalendar, FiCheckSquare } from "react-icons/fi";
 import { useDispatch, useSelector } from "react-redux";
+import Footer from "@/components/Footer";
 import { clearCardingState, submitCardingBetweenWithin } from "@/store/slices/carding";
 import PreviewModal from "@/components/PreviewModal";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const machineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 
@@ -72,6 +73,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     const [isError, setIsError] = useState(false);
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         const today = new Date();
@@ -101,6 +103,13 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     }, [error]);
 
     useEffect(() => () => dispatch(clearCardingState()), [dispatch]);
+
+    useEffect(() => {
+        const checkScreen = () => setIsMobile(window.innerWidth <= 767);
+        checkScreen();
+        window.addEventListener("resize", checkScreen);
+        return () => window.removeEventListener("resize", checkScreen);
+    }, []);
 
     const sampleWeights = useMemo(
         () => rows.map((row) => parseFloat(row.sampleWeight)).filter((value) => !Number.isNaN(value)),
@@ -134,9 +143,10 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     };
 
     const handleRowChange = (index, field, value) => {
+        const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 3 });
         setRows((currentRows) => {
             const next = [...currentRows];
-            next[index] = { ...next[index], [field]: value };
+            next[index] = { ...next[index], [field]: nextValue };
             return next;
         });
         setFormMessage("");
@@ -332,7 +342,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                                 <label>Sample Weight</label>
                                 <input
                                     type="number"
-                                    step="any"
+                                    step="0.001"
                                     value={row.sampleWeight}
                                     onChange={(e) => handleRowChange(index, "sampleWeight", e.target.value)}
                                     onWheel={(e) => e.currentTarget.blur()}
@@ -343,7 +353,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                                 <label>Hank</label>
                                 <input
                                     type="number"
-                                    step="any"
+                                    step="0.001"
                                     value={row.hank}
                                     onChange={(e) => handleRowChange(index, "hank", e.target.value)}
                                     onWheel={(e) => e.currentTarget.blur()}
@@ -379,37 +389,27 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                 </div>
             </div>
 
-            <div className="bwc-footer">
-                <button type="button" className="bwc-back" onClick={() => router.push("/dashboard")}>
-                    ← Back to Dashboard
-                </button>
-
-                <div className="bwc-right-actions">
-                    <button type="button" className="bwc-secondary" onClick={handleCalculateAll}>
-                        Calculate All
-                    </button>
-
-                    <button
-                        type="button"
-                        className="bwc-primary"
-                        onClick={() => {
-                            if (validateForm()) {
-                                setShowPreview(true);
-                            }
-                        }}
-                        disabled={isLoading}
-                    >
-                        <FiCheckSquare />
-                        <span>{isLoading ? "Saving..." : "Preview"}</span>
-                    </button>
-                </div>
-            </div>
-
             {formMessage && (
                 <div className={`bwc-message-box ${isError ? "bwc-message-error" : "bwc-message-success"}`}>
                     {formMessage}
                 </div>
             )}
+
+            <div className="bwc-footer">
+                <Footer
+                    isMobile={isMobile}
+                    onBack={() => router.push("/dashboard")}
+                    onSecondary={handleCalculateAll}
+                    onSave={() => {
+                        if (validateForm()) {
+                            setShowPreview(true);
+                        }
+                    }}
+                    secondaryLabel="Calculate All"
+                    saveLabel={isLoading ? "Saving..." : "Save Record"}
+                    disabled={isLoading}
+                />
+            </div>
 
             <PreviewModal
                 open={showPreview}

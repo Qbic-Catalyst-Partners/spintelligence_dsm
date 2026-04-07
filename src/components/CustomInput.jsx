@@ -22,7 +22,9 @@ function CustomInput({
     const normal = "border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-400 focus:border-transparent";
     const errored = "border border-red-500 focus:ring-2 focus:ring-red-400 focus:border-red-500";
     const normalStyle = { borderColor: "#e2e8f0", backgroundColor: "#f1f5f9" };
-    const errorStyle = error ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" } : normalStyle;
+    const errorStyle = error
+        ? { borderColor: "#ef4444", backgroundColor: "#fff1f2", boxShadow: "none" }
+        : normalStyle;
     const inputType = isNumericField ? "text" : type;
     const dateInputClass = inputType === "date" ? "hide-date-picker-icon" : "";
 

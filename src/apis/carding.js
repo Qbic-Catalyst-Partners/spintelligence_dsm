@@ -66,6 +66,31 @@ export const submitNatiDataEntry = async (payload) => {
     }
 };
 
+export const submitTrialsDataEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/trials", payload);
+        return response.data;
+    } catch (error) {
+        if (error.response) {
+            const backendMessage =
+                error.response.data?.message ||
+                error.response.data?.error ||
+                error.response.statusText;
+
+            if (error.response.status === 404) {
+                throw new Error(backendMessage || "Trials API endpoint not found.");
+            }
+
+            if (error.response.status === 400) {
+                throw new Error(backendMessage || "Invalid payload data.");
+            }
+
+            throw new Error(backendMessage || `Request failed with status ${error.response.status}.`);
+        }
+        throw new Error(error.message || "Server error occurred");
+    }
+};
+
 export const submitCardingUqcEntry = async (payload) => {
     try {
         const response = await apiConfig.post("/carding/uqc", payload);

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { submitTrialsDataEntry } from "@/apis/carding";
 import styles from "./trialsDataEntry.module.css";
 
 const topCutFields = [
@@ -183,10 +185,106 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         return true;
     };
 
-    const handleSave = () => {
+    const buildTrialsPayload = () => {
+        const totalRegular =
+            (Number.parseFloat(formData.thin50) || 0) +
+            (Number.parseFloat(formData.thick50) || 0) +
+            (Number.parseFloat(formData.neps200) || 0);
+        const totalHs =
+            (Number.parseFloat(formData.thin40) || 0) +
+            (Number.parseFloat(formData.thick35) || 0) +
+            (Number.parseFloat(formData.neps140) || 0);
+
+        const payload = {
+            date,
+            time,
+            type: selectedType,
+            entry_date: date,
+            entry_time: time,
+            entry_type: selectedType,
+            trial_id: formData.trialId || "",
+            spinning_machine: formData.machine || "",
+            autoconer_machine: formData.autoMachine || "",
+            count_name: formData.count || "",
+            purpose: formData.purpose || "",
+            trial_id_name: formData.trialname || "",
+            trial_name: formData.trialname || "",
+            trial_type: formData.trialtype || "",
+            nature: formData.nature || "",
+            unit_no: formData.unit || "",
+            material: formData.material || "",
+            raw_material: formData.material || "",
+            mixing: formData.mixing || "",
+            yarn_results: formData.yarnresults || "",
+            user_id: formData.userId || "",
+            u_percent: formData.uPercent || "",
+            cvm: formData.cvm || "",
+            cvm_cv_percent: formData.cvmCvPercent || "",
+            cvm_10mtr: formData.cvm10mtr || "",
+            dr_1_5m: formData.dr15m || "",
+            thin_minus_50: formData.thin50 || "",
+            thick_plus_50: formData.thick50 || "",
+            neps_plus_200: formData.neps200 || "",
+            total_regular: totalRegular ? String(totalRegular) : "",
+            thin_minus_40: formData.thin40 || "",
+            thick_plus_35: formData.thick35 || "",
+            neps_plus_140: formData.neps140 || "",
+            total_hs: totalHs ? String(totalHs) : "",
+            thin_minus_30: formData.thin30 || "",
+            yarn_count: formData.countFinal || "",
+            csp: formData.csp || "",
+            total_cuts: formData.totalCuts || "",
+            neps_cuts: formData.nepsCuts || "",
+            shorts_cuts: formData.shortCuts || "",
+            long_cuts: formData.longCuts || "",
+            thin_cuts: formData.thinCuts || "",
+            cp: formData.cp || "",
+            cm: formData.cm || "",
+            ccp: formData.ccp || "",
+            ccm: formData.ccm || "",
+            jp: formData.jp || "",
+            a1: formData.a1 || "",
+            a2: formData.a2 || "",
+            a3: formData.a3 || "",
+            a4: formData.a4 || "",
+            b1: formData.b1 || "",
+            b2: formData.b2 || "",
+            b3: formData.b3 || "",
+            b4: formData.b4 || "",
+            c1: formData.c1 || "",
+            c2: formData.c2 || "",
+            c3: formData.c3 || "",
+            c4: formData.c4 || "",
+            d1: formData.d1 || "",
+            d2: formData.d2 || "",
+            d3: formData.d3 || "",
+            d4: formData.d4 || "",
+            e: formData.e || "",
+            f: formData.f || "",
+            g: formData.g || "",
+            h1: formData.h1 || "",
+            h2: formData.h2 || "",
+            l1: formData.i1 || "",
+            l2: formData.i2 || "",
+            cvp: formData.cvp || "",
+        };
+
+        return payload;
+    };
+
+    const handleSave = async () => {
         setShowPreview(false);
-        setFormMessage("Preview confirmed. API is not connected for Trials yet.");
-        setIsError(false);
+        try {
+            const payload = buildTrialsPayload();
+            await submitTrialsDataEntry(payload);
+            setFormMessage("Trials data submitted successfully.");
+            setIsError(false);
+            // Optionally clear the form or redirect
+            // handleClear();
+        } catch (error) {
+            setFormMessage(error.message || "Failed to submit trials data.");
+            setIsError(true);
+        }
     };
 
     const previewItems = [
@@ -417,33 +515,25 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                 </>
             )}
 
-            <div className={styles.cardFooter}>
-                <button className={styles.cardBack} onClick={() => router.push("/dashboard")}>
-                    Back to Dashboard
-                </button>
-                <div className={styles.cardRightActions}>
-                    <button className={styles.secondaryBtn} onClick={handleClear}>
-                        Clear Form
-                    </button>
-                    <button
-                        className={styles.primaryBtn}
-                        onClick={() => {
-                            if (validateForm()) {
-                                setShowPreview(true);
-                            }
-                        }}
-                        disabled={!showForm}
-                    >
-                        Preview
-                    </button>
-                </div>
-            </div>
-
             {formMessage ? (
                 <div className={`${styles.messageBox} ${isError ? styles.messageError : styles.messageSuccess}`}>
                     {formMessage}
                 </div>
             ) : null}
+
+            <div className={styles.cardFooter}>
+                <Footer
+                    onBack={() => router.push("/dashboard")}
+                    onClear={handleClear}
+                    onSave={() => {
+                        if (validateForm()) {
+                            setShowPreview(true);
+                        }
+                    }}
+                    saveLabel="Save Record"
+                    disabled={!showForm}
+                />
+            </div>
 
             <PreviewModal
                 open={showPreview}
