@@ -41,6 +41,7 @@ function Autoconer() {
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredActions, setRegisteredActions] = useState({});
+  const [validationMessage, setValidationMessage] = useState("");
   const selectedType = useMemo(
     () => autoconerTypes.find((item) => item.name === checkingType)?.name || "",
     [checkingType]
@@ -60,7 +61,11 @@ function Autoconer() {
       : registeredActions.validate
         ? registeredActions.validate()
         : true;
-    if (valid === false) return;
+    if (valid === false) {
+      setValidationMessage("Please fill all required fields before saving.");
+      return;
+    }
+    setValidationMessage("");
     const items = childRef.current?.getPreviewData
       ? childRef.current.getPreviewData()
       : registeredActions.getPreviewData
@@ -133,9 +138,16 @@ function Autoconer() {
             />
           </div>
 
+          {validationMessage ? (
+            <div className={styles.validationMessage}>
+              {validationMessage}
+            </div>
+          ) : null}
+
           <Footer
             onBack={() => router.push("/dashboard")}
             onClear={() => {
+              setValidationMessage("");
               childRef.current?.clear?.();
               registeredActions.onClear?.();
             }}
@@ -165,6 +177,7 @@ function Autoconer() {
         typeValue={selectedType}
         onClose={() => {
           setShowSuccess(false);
+          setValidationMessage("");
           childRef.current?.clear?.();
           registeredActions.onClear?.();
           dispatch(clearAutoconerState());

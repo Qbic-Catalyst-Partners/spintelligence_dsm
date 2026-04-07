@@ -106,6 +106,7 @@ function SpinningDepartment() {
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
+    const [validationMessage, setValidationMessage] = useState("");
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -236,6 +237,7 @@ function SpinningDepartment() {
         setRhsValue("");
         setRhsRemarks("");
         setErrors({});
+        setValidationMessage("");
         router.push("/spinning", undefined, { shallow: true });
     };
 
@@ -404,7 +406,11 @@ function SpinningDepartment() {
     };
 
     const handleSaveRecord = () => {
-        if (!validate()) return;
+        if (!validate()) {
+            setValidationMessage("Please fill all required fields before saving.");
+            return;
+        }
+        setValidationMessage("");
 
         const headerItems = isCountChange
             ? [
@@ -821,6 +827,9 @@ function SpinningDepartment() {
                     </div>
 
                     <div className={styles["card-footer-wrapper"]}>
+                        {validationMessage ? (
+                            <div className={styles.messageError}>{validationMessage}</div>
+                        ) : null}
                         <Footer isMobile={isMobile} onBack={() => router.push("/dashboard")} onClear={handleClearForm} onSave={handleSaveRecord} />
                     </div>
                 </div>

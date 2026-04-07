@@ -74,7 +74,7 @@ function UPercentDataEntry() {
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length) {
-      setFormMessage("Please fill all required fields before preview.");
+      setFormMessage("Please fill all required fields before saving.");
       setIsError(true);
       return false;
     }

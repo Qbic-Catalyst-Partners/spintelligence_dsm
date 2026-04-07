@@ -1,3 +1,13 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.body {
+  padding: 0 16px 0;
+}
+
 /* FORM GRID */
 .formGrid {
   background: #ffffff;
@@ -16,7 +26,7 @@
 .formGrid label {
   font-size: 14px;
   color: #334155;
- font-weight: 600;
+  font-weight: 600;
   margin-bottom: 5px;
   display: block;
 }
@@ -32,7 +42,7 @@
   font-size: 14px;
   background: #F1F5F9 !important;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
   height: 38px;
 }
 
@@ -106,7 +116,15 @@
 
 /* FOOTER SPACE FIX */
 .footer-space {
-  margin-top: 16px;
+  width: 100%;
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.messageError {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
 .errorField {
@@ -130,6 +148,17 @@
 
   .remarksWide {
     grid-column: span 2;
+  }
+}
+
+@media (max-width: 767px) {
+  .body {
+    padding: 0 14px 0;
+  }
+
+  .footer-space {
+    width: 100%;
+    margin-top: 18px;
   }
 }
 

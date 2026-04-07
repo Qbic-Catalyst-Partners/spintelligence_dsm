@@ -39,6 +39,7 @@ function Mixing() {
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [validationMessage, setValidationMessage] = useState("");
 
     const selectedType = mixingDepartmentTypes.find((item) => item.name === selectedTypeName);
     const SelectedComponent = selectedType?.component ?? null;
@@ -69,6 +70,7 @@ function Mixing() {
         setLotNo("");
         setMixingValue("");
         setHeaderErrors({});
+        setValidationMessage("");
         childRef.current?.clear?.();
     };
 
@@ -77,6 +79,7 @@ function Mixing() {
         setLotNo("");
         setMixingValue("");
         setHeaderErrors({});
+        setValidationMessage("");
         childRef.current?.clear?.();
     };
 
@@ -104,7 +107,11 @@ function Mixing() {
 
         const childValid = childRef.current?.validate ? childRef.current.validate() : true;
         const hasErrors = Object.keys(errors).length > 0 || childValid === false;
-        if (hasErrors) return;
+        if (hasErrors) {
+            setValidationMessage("Please fill all required fields before saving.");
+            return;
+        }
+        setValidationMessage("");
 
         if (!SelectedComponent || !childRef.current?.getPreviewData) {
             childRef.current?.submit?.();
@@ -230,6 +237,14 @@ function Mixing() {
                             )}
                         </div>
                     </div>
+
+                    {validationMessage ? (
+                        <div className="px-5 pb-4">
+                            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
+                                {validationMessage}
+                            </div>
+                        </div>
+                    ) : null}
 
                     <Footer
                         onBack={() => router.push("/dashboard")}
