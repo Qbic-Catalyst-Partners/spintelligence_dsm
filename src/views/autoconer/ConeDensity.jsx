@@ -43,7 +43,7 @@ const rowFieldSanitizers = {
 const createInitialForm = () => ({
   type: "Cone Density",
   testNo: "",
-  date: "",
+  date: today,
   countNameFrom: "",
   autoConerNo: "",
   baseDiaE: "",
@@ -491,6 +491,7 @@ const ConeDensity = forwardRef(function ConeDensity(
                   className={`${topFieldClass}${errorClass(errors[field])}`}
                   value={fieldValue}
                   onChange={(event) => handleFormChange(field, event.target.value)}
+                  disabled={field === "date"}
                 />
               )}
             </div>

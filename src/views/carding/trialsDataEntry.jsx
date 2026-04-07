@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { submitTrialsDataEntry } from "@/apis/carding";
 import styles from "./trialsDataEntry.module.css";
@@ -115,6 +116,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     const [formData, setFormData] = useState({});
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
     const [formMessage, setFormMessage] = useState("");
     const [isError, setIsError] = useState(false);
 
@@ -161,6 +163,8 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         setErrors({});
         setFormMessage("");
         setIsError(false);
+        setShowPreview(false);
+        setShowSuccess(false);
         refreshStamp();
     };
 
@@ -279,8 +283,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             await submitTrialsDataEntry(payload);
             setFormMessage("Trials data submitted successfully.");
             setIsError(false);
-            // Optionally clear the form or redirect
-            // handleClear();
+            setShowSuccess(true);
         } catch (error) {
             setFormMessage(error.message || "Failed to submit trials data.");
             setIsError(true);
@@ -544,6 +547,13 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                 onCancel={() => setShowPreview(false)}
                 onConfirm={handleSave}
                 confirmLabel="Submit"
+            />
+
+            <SuccessModal
+                open={showSuccess}
+                message="Trials data submitted successfully."
+                typeValue={selectedType}
+                onClose={handleClear}
             />
         </div>
     );

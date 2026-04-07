@@ -278,7 +278,22 @@ export const submitAutoconerCountWiseCuts = async (payload) => {
 };
 
 export const submitAutoconerConePackingAudit = async (payload) =>
-  postAutoconer("cone-packing-audit", payload, "Unable to save cone packing audit.");
+  postAutoconerCandidates(
+    "cone-packing-audit",
+    [
+      payload,
+      {
+        ...payload,
+        cone_readings: payload?.cone_readings ?? payload?.yarn_readings,
+      },
+      {
+        ...payload,
+        yarn_readings: payload?.yarn_readings ?? payload?.cone_readings,
+        cone_readings: payload?.cone_readings ?? payload?.yarn_readings,
+      },
+    ],
+    "Unable to save cone packing audit."
+  );
 
 export const submitAutoconerParameterEntries = async (payload) =>
   postAutoconerCandidates(

@@ -46,7 +46,7 @@ const rowFieldSanitizers = {
 const createInitialForm = () => ({
   type: "Rewinding Study",
   testNo: "",
-  date: "",
+  date: today,
   countNameFrom: "",
   autoConerNo: "",
   drumFrom: "",
@@ -489,6 +489,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
                   className={`${topFieldClass}${errorClass(errors[field])}`}
                   value={fieldValue}
                   onChange={(event) => handleFormChange(field, event.target.value)}
+                  disabled={field === "date"}
                 />
               )}
             </div>
