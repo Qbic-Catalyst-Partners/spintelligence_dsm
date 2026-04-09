@@ -59,17 +59,16 @@ const createInitialForm = () => ({
   breakPerLakhMeter: "",
 });
 
-const createReadingRows = (from = "", to = "", weight = "") => {
-  const start = Number(from);
-  const end = Number(to);
+const createReadingRows = (count = "", drumNo = "", weight = "") => {
+  const total = Number(count);
 
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) {
+  if (!Number.isInteger(total) || total <= 0) {
     return [];
   }
 
-  return Array.from({ length: end - start + 1 }, (_, index) => ({
-    drumNo: String(start + index),
-    readingNumber: "1",
+  return Array.from({ length: total }, (_, index) => ({
+    drumNo: drumNo || "",
+    readingNumber: String(index + 1),
     shortCut: "",
     shortName: "",
     faultPercent: "",
@@ -183,7 +182,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     Object.entries(form).forEach(([key, value]) => {
       if (String(value).trim() === "") nextErrors[key] = true;
     });
-    if (!readingRows.length) nextErrors.drumRange = true;
+    if (!readingRows.length) nextErrors.noOfCuts = true;
     readingRows.forEach((row, index) => {
       ["shortCut", "shortName", "faultPercent", "length", "weight", "breakPerMeter"].forEach((field) => {
         if (!String(row[field] || "").trim()) {
@@ -261,22 +260,23 @@ const RewindingStudy = forwardRef(function RewindingStudy(
 
   useEffect(() => {
     setReadingRows((current) => {
-      const nextRows = createReadingRows(form.drumFrom, form.drumTo, form.weight);
+      const nextRows = createReadingRows(form.noOfCuts, form.drumNo, form.weight);
 
       if (!nextRows.length) return [];
 
       return nextRows.map((nextRow) => {
-        const existingRow = current.find((row) => row.drumNo === nextRow.drumNo);
+        const existingRow = current.find((row) => row.readingNumber === nextRow.readingNumber);
         return existingRow
           ? {
               ...nextRow,
               ...existingRow,
+              drumNo: form.drumNo || existingRow.drumNo || "",
               weight: form.weight || existingRow.weight || "",
             }
           : nextRow;
       });
     });
-  }, [form.drumFrom, form.drumTo, form.weight]);
+  }, [form.noOfCuts, form.drumNo, form.weight]);
 
   const allDrumEntries = useMemo(
     () => rewindingStudy.flatMap((entry) => mapRewindingEntryToRows(entry)).slice(0, 10),
@@ -373,7 +373,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
             {!readingRows.length ? (
               <tr>
                 <td colSpan={8} className="px-0 py-5 text-center text-[12px] text-slate-400">
-                  Enter a valid drum range to generate drum rows.
+                  Enter a valid number of cuts to generate rows.
                 </td>
               </tr>
             ) : null}
@@ -444,14 +444,14 @@ const RewindingStudy = forwardRef(function RewindingStudy(
                   <input
                     type="text"
                     placeholder="Enter from"
-                    className={`${topFieldClass}${errorClass(errors.drumFrom || errors.drumRange)}`}
+                    className={`${topFieldClass}${errorClass(errors.drumFrom)}`}
                     value={form.drumFrom}
                     onChange={(event) => handleFormChange("drumFrom", event.target.value)}
                   />
                   <input
                     type="text"
                     placeholder="Enter to"
-                    className={`${topFieldClass}${errorClass(errors.drumTo || errors.drumRange)}`}
+                    className={`${topFieldClass}${errorClass(errors.drumTo)}`}
                     value={form.drumTo}
                     onChange={(event) => handleFormChange("drumTo", event.target.value)}
                   />

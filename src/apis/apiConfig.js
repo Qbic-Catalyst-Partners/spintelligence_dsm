@@ -13,6 +13,41 @@ const axiosInstance = axios.create({
     },
 });
 
+const buildRequestConfig = (options = {}) => {
+    if (!options || typeof options !== "object" || Array.isArray(options)) {
+        return {};
+    }
+
+    const {
+        headers,
+        skipGlobalErrorModal,
+        timeout,
+        signal,
+        ...rest
+    } = options;
+
+    const resolvedHeaders = headers ?? rest;
+    const config = {};
+
+    if (resolvedHeaders && Object.keys(resolvedHeaders).length > 0) {
+        config.headers = resolvedHeaders;
+    }
+
+    if (typeof skipGlobalErrorModal !== "undefined") {
+        config.skipGlobalErrorModal = skipGlobalErrorModal;
+    }
+
+    if (typeof timeout !== "undefined") {
+        config.timeout = timeout;
+    }
+
+    if (typeof signal !== "undefined") {
+        config.signal = signal;
+    }
+
+    return config;
+};
+
 // Request interceptor to automatically add the Bearer token and any other globally required headers
 axiosInstance.interceptors.request.use(
     (config) => {
@@ -57,7 +92,7 @@ const apiConfig = {
     get: (url, params = {}, customHeaders = {}) => {
         return axiosInstance.get(url, {
             params,
-            headers: customHeaders,
+            ...buildRequestConfig(customHeaders),
         });
     },
 
@@ -69,7 +104,7 @@ const apiConfig = {
      */
     post: (url, data = {}, customHeaders = {}) => {
         return axiosInstance.post(url, data, {
-            headers: customHeaders,
+            ...buildRequestConfig(customHeaders),
         });
     },
 
@@ -81,7 +116,7 @@ const apiConfig = {
      */
     put: (url, data = {}, customHeaders = {}) => {
         return axiosInstance.put(url, data, {
-            headers: customHeaders,
+            ...buildRequestConfig(customHeaders),
         });
     },
 
@@ -93,7 +128,7 @@ const apiConfig = {
      */
     patch: (url, data = {}, customHeaders = {}) => {
         return axiosInstance.patch(url, data, {
-            headers: customHeaders,
+            ...buildRequestConfig(customHeaders),
         });
     },
 
@@ -106,7 +141,7 @@ const apiConfig = {
     delete: (url, params = {}, customHeaders = {}) => {
         return axiosInstance.delete(url, {
             params,
-            headers: customHeaders,
+            ...buildRequestConfig(customHeaders),
         });
     },
 };

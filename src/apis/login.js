@@ -2,39 +2,19 @@ import apiConfig from './apiConfig';
 
 export const loginAPI = async (employee_id, password) => {
     try {
-        const response = await apiConfig.post('/auth/login', { employee_id, password });
-        const loginData = response.data;
-        const roleId = loginData?.user?.role_id;
-        const token = loginData?.token;
-
-        if (!roleId || !token) {
-            return loginData;
-        }
-
-        try {
-            const accessResponse = await apiConfig.get(
-                `/auth/accessible-screens/${roleId}`,
-                {},
-                { Authorization: `Bearer ${token}` }
-            );
-
-            return {
-                ...loginData,
-                accessibleScreens: accessResponse.data?.access || [],
-                accessByDepartment: accessResponse.data || null,
-            };
-        } catch (accessError) {
-            return {
-                ...loginData,
-                accessibleScreens: [],
-                accessByDepartment: null,
-            };
-        }
+        const response = await apiConfig.post(
+            '/auth/login',
+            { employee_id, password },
+            { skipGlobalErrorModal: true }
+        );
+        return response.data;
     } catch (error) {
         if (error.response && error.response.data) {
             throw new Error(error.response.data.message || 'Invalid Employee ID or password.');
         }
-        throw new Error(error.message || 'Server error occurred');
+        throw new Error(
+            error.message || 'Network Error: unable to reach the API server. Check NEXT_PUBLIC_API_URL and backend availability.'
+        );
     }
 };
 

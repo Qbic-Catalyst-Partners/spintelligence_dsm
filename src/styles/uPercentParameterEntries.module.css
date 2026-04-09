@@ -6,74 +6,210 @@
 
 .topGrid {
   display: grid;
-  grid-template-columns: repeat(1, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: 1fr 1fr 2.1fr;
+  gap: 14px;
 }
 
-.metricsGrid {
+.countNameField {
+  min-width: 0;
+}
+
+.formCard {
+  background: #fbfbfc;
+  border: 1px solid #edf1f6;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sectionBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sectionGridFive {
   display: grid;
-  grid-template-columns: repeat(1, minmax(0, 1fr));
-  gap: 16px 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.field {
+.sectionGridThree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricField {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
-.field label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #334155;
+.metricField label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #66758c;
 }
 
-.field input,
-.field select {
+.input {
   width: 100%;
-  height: 42px;
-  padding: 0 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #f1f5f9;
-  color: #334155;
-  font-size: 14px;
+  height: 38px;
+  border: 1px solid #e6ebf2;
+  border-radius: 8px;
+  background: #f3f6fa;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #243041;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-.field input:focus,
-.field select:focus {
-  border-color: #3d539f;
-  box-shadow: 0 0 0 2px #d7def5;
+.input:focus {
+  border-color: #4760b2;
+  box-shadow: 0 0 0 2px rgba(71, 96, 178, 0.14);
+  background: #ffffff;
 }
 
-.disabledField,
-.field input:disabled,
-.field select:disabled {
-  background: #f1f5f9 !important;
-  color: #64748b;
+.readOnlyField,
+.input:read-only,
+.input:disabled {
+  background: #f3f6fa !important;
+  color: #8a95a8;
   cursor: not-allowed;
-  opacity: 1;
 }
 
 .errorField {
-  border: 1px solid #ef4444 !important;
+  border-color: #ef4444 !important;
   background: #fff1f2 !important;
   box-shadow: 0 0 0 1000px #fff1f2 inset !important;
 }
 
-.errorField:focus {
-  border-color: #ef4444 !important;
-  box-shadow: 0 0 0 1000px #fff1f2 inset, 0 0 0 2px rgba(239, 68, 68, 0.35) !important;
+.pendingSection {
+  margin-top: 18px;
 }
 
-@media (min-width: 768px) {
+.pendingHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pendingHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2b3d;
+}
+
+.pendingList {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pendingCard {
+  background: #ffffff;
+  border: 1px solid #e5ebf3;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.pendingMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pendingMetaItem {
+  min-width: 0;
+  background: #f5f7fb;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pendingMetaWide {
+  grid-column: span 3;
+}
+
+.pendingMetaItem span {
+  font-size: 10px;
+  font-weight: 700;
+  color: #8a95a8;
+  text-transform: uppercase;
+}
+
+.pendingMetaItem strong {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1f2b3d;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.emptyState {
+  background: #ffffff;
+  border: 1px dashed #d9e1ec;
+  border-radius: 12px;
+  padding: 18px;
+  font-size: 13px;
+  color: #748094;
+}
+
+@media (max-width: 1024px) {
   .topGrid {
-    grid-template-columns: 1.2fr 1fr 1.35fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .metricsGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .countNameField {
+    grid-column: 1 / -1;
+  }
+
+  .sectionGridFive,
+  .pendingMetaGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .pendingMetaWide {
+    grid-column: span 3;
+  }
+}
+
+@media (max-width: 768px) {
+  .topGrid,
+  .sectionGridFive,
+  .sectionGridThree,
+  .pendingMetaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pendingMetaWide {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 520px) {
+  .formCard {
+    padding: 14px;
+  }
+
+  .topGrid,
+  .sectionGridFive,
+  .sectionGridThree,
+  .pendingMetaGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pendingMetaWide {
+    grid-column: auto;
   }
 }

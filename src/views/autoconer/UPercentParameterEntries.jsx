@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 
 import styles from "@/styles/uPercentParameterEntries.module.css";
@@ -15,57 +16,166 @@ const COUNT_NAME_OPTIONS = [
   "30 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
 ];
 
-const METRIC_FIELDS = [
-  { key: "actCount", label: "Act Count", disabled: true, numeric: true },
-  { key: "strength", label: "Strength", disabled: true, numeric: true },
-  { key: "cv1", label: "CV1", disabled: true, numeric: true },
-  { key: "cv2", label: "CV2", disabled: true, numeric: true },
-  { key: "csp", label: "CSP", disabled: true, numeric: true },
-  { key: "coneColor", label: "Cone Color", disabled: false, numeric: false },
-  { key: "uPercent", label: "U", disabled: false, numeric: true },
-  { key: "cvm", label: "CVM", disabled: false, numeric: true },
-  { key: "oneMtrCv", label: "1Mtr CV", disabled: false, numeric: true },
-  { key: "threeMtrCv", label: "3Mtr CV", disabled: false, numeric: true },
-  { key: "tenMtrCv", label: "10Mtr CV", disabled: false, numeric: true },
-  { key: "brOnePointFive", label: "BR 1.5mm", disabled: false, numeric: true },
-  { key: "cvb", label: "CVB", disabled: false, numeric: true },
-  { key: "thinMinus50", label: "Thin -50%", disabled: false, numeric: true },
-  { key: "thickPlus50", label: "Thick +50%", disabled: false, numeric: true },
-  { key: "nepsPlus200", label: "Neps +200%", disabled: false, numeric: true },
-  { key: "totalOne", label: "Total", disabled: false, numeric: true },
-  { key: "thinMinus40", label: "Thin -40%", disabled: false, numeric: true },
-  { key: "thickPlus35", label: "Thick +35%", disabled: false, numeric: true },
-  { key: "thickPlus70", label: "Thick +70%", disabled: false, numeric: true },
-  { key: "nepsPlus140", label: "Neps +140%", disabled: false, numeric: true },
-  { key: "totalTwo", label: "Total", disabled: false, numeric: true },
-  { key: "thinMinus30", label: "Thin -30%", disabled: false, numeric: true },
-  { key: "nepsPlus400", label: "Neps +400%", disabled: false, numeric: true },
+const TOP_FIELDS = [
+  { key: "actCount", label: "Act Count", numeric: true },
+  { key: "strength", label: "Strength", numeric: true },
+  { key: "cv1", label: "CV1", numeric: true },
+  { key: "cv2", label: "CV2", numeric: true },
+  { key: "csp", label: "CSP", numeric: true },
+];
+
+const QUALITY_FIELDS = [
+  { key: "coneColor", label: "Cone Color", numeric: false },
+  { key: "uPercent", label: "U%", numeric: true },
+  { key: "cvm", label: "CVM", numeric: true },
+  { key: "oneMtrCv", label: "1Mtr CV", numeric: true },
+  { key: "threeMtrCv", label: "3Mtr CV", numeric: true },
+  { key: "tenMtrCv", label: "10Mtr CV", numeric: true },
+  { key: "brOnePointFive", label: "BR 1.5mm", numeric: true },
+  { key: "cvb", label: "CVB", numeric: true },
+];
+
+const REGULAR_IPI_FIELDS = [
+  { key: "thinMinus50", label: "Thin -50%", numeric: true },
+  { key: "thickPlus50", label: "Thick +50%", numeric: true },
+  { key: "nepsPlus200", label: "Neps +200%", numeric: true },
+];
+
+const HS_IPI_FIELDS = [
+  { key: "thinMinus40", label: "Thin -40%", numeric: true },
+  { key: "thickPlus35", label: "Thick +35%", numeric: true },
+  { key: "thickPlus70", label: "Thick +70%", numeric: true },
+  { key: "nepsPlus140", label: "Neps +140%", numeric: true },
+];
+
+const FINAL_FIELDS = [
+  { key: "thinMinus30", label: "Thin -30%", numeric: true },
+  { key: "nepsPlus400", label: "Neps +400%", numeric: true },
+];
+
+const ALL_FIELDS = [
+  ...TOP_FIELDS,
+  ...QUALITY_FIELDS,
+  ...REGULAR_IPI_FIELDS,
+  { key: "totalOne", label: "TOTAL", numeric: true },
+  ...HS_IPI_FIELDS,
+  { key: "totalTwo", label: "TOTAL", numeric: true },
+  ...FINAL_FIELDS,
 ];
 
 const createInitialValues = () =>
-  METRIC_FIELDS.reduce((accumulator, field) => {
+  ALL_FIELDS.reduce((accumulator, field) => {
     accumulator[field.key] = "";
     return accumulator;
   }, {});
 
 const getTodayDate = () => new Date().toISOString().split("T")[0];
 
+const sumValues = (values, keys) => {
+  const total = keys.reduce(
+    (sum, key) => sum + (Number.parseFloat(values[key]) || 0),
+    0
+  );
+  return total ? total.toFixed(2) : "";
+};
+
+const getEntryValue = (entry, keys) => {
+  const sourceValues = entry?.payload?.values ?? entry?.values ?? {};
+  const candidates = Array.isArray(keys) ? keys : [keys];
+
+  for (const key of candidates) {
+    const directValue = entry?.[key];
+    if (directValue !== undefined && directValue !== null && directValue !== "") {
+      return String(directValue);
+    }
+
+    const nestedValue = sourceValues?.[key];
+    if (nestedValue !== undefined && nestedValue !== null && nestedValue !== "") {
+      return String(nestedValue);
+    }
+  }
+
+  return "";
+};
+
+const mapParameterEntry = (entry = {}, index = 0) => {
+  const values = createInitialValues();
+  ALL_FIELDS.forEach((field) => {
+    values[field.key] = getEntryValue(entry, field.key);
+  });
+
+  if (!values.totalOne) {
+    values.totalOne = sumValues(values, REGULAR_IPI_FIELDS.map((field) => field.key));
+  }
+
+  if (!values.totalTwo) {
+    values.totalTwo = sumValues(values, HS_IPI_FIELDS.map((field) => field.key));
+  }
+
+  return {
+    id: entry.id || entry._id || entry.entry_id || `${entry.entry_date || "entry"}-${index}`,
+    date: getEntryValue(entry, ["entry_date", "date", "inspection_date"]),
+    countName: getEntryValue(entry, ["count_name", "countName"]),
+    values,
+  };
+};
+
+const isCspEntry = (entry = {}) => {
+  const inspectionType = String(entry.inspection_type || entry.type || "").toLowerCase();
+  const inspectionPhase = String(entry.inspection_phase || "").toLowerCase();
+  const payloadType = String(entry?.payload?.type || "").toLowerCase();
+
+  return (
+    inspectionPhase === "csp_entered" ||
+    inspectionType.includes("csp parameter") ||
+    payloadType.includes("csp parameter")
+  );
+};
+
 function UPercentParameterEntries({
   types,
   selectedType,
   onTypeChange,
   onRegisterActions,
+  tablePortalTargetId,
 }) {
   const dispatch = useDispatch();
-  const { isLoading = false } = useSelector((state) => state.autoconer ?? {});
+  const autoconerState = useSelector((state) => state.autoconer ?? {});
+  const {
+    isLoading = false,
+    isFetching = false,
+    parameterEntries = [],
+  } = autoconerState;
   const [entryDate, setEntryDate] = useState(getTodayDate());
   const [countName, setCountName] = useState(COUNT_NAME_OPTIONS[0]);
   const [values, setValues] = useState(createInitialValues);
   const [errors, setErrors] = useState({});
+  const [portalReady, setPortalReady] = useState(false);
 
-  const editableFields = useMemo(
-    () => METRIC_FIELDS.filter((field) => !field.disabled),
-    []
+  const totalOne = useMemo(
+    () => sumValues(values, REGULAR_IPI_FIELDS.map((field) => field.key)),
+    [values]
+  );
+  const totalTwo = useMemo(
+    () => sumValues(values, HS_IPI_FIELDS.map((field) => field.key)),
+    [values]
+  );
+
+  const mergedValues = useMemo(
+    () => ({
+      ...values,
+      totalOne,
+      totalTwo,
+    }),
+    [values, totalOne, totalTwo]
+  );
+
+  const pendingEntries = useMemo(
+    () =>
+      parameterEntries
+        .filter((entry) => isCspEntry(entry))
+        .map((entry, index) => mapParameterEntry(entry, index)),
+    [parameterEntries]
   );
 
   const handleValueChange = (fieldConfig, value) => {
@@ -100,7 +210,7 @@ function UPercentParameterEntries({
     if (!String(entryDate || "").trim()) nextErrors.entryDate = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
 
-    editableFields.forEach((field) => {
+    [...TOP_FIELDS, ...QUALITY_FIELDS, ...REGULAR_IPI_FIELDS, ...HS_IPI_FIELDS, ...FINAL_FIELDS].forEach((field) => {
       if (!String(values[field.key] || "").trim()) {
         nextErrors[field.key] = true;
       }
@@ -114,9 +224,9 @@ function UPercentParameterEntries({
     { label: "Type", value: selectedType || "-" },
     { label: "Date", value: entryDate || "-" },
     { label: "Count Name", value: countName || "-" },
-    ...METRIC_FIELDS.map((field) => ({
+    ...ALL_FIELDS.map((field) => ({
       label: field.label,
-      value: values[field.key] || "-",
+      value: mergedValues[field.key] || "-",
     })),
   ];
 
@@ -143,18 +253,18 @@ function UPercentParameterEntries({
       thin_minus_50: toNullableNumber(values.thinMinus50),
       thick_plus_50: toNullableNumber(values.thickPlus50),
       neps_plus_200: toNullableNumber(values.nepsPlus200),
-      total_1: toNullableNumber(values.totalOne),
+      total_1: toNullableNumber(totalOne),
       thin_minus_40: toNullableNumber(values.thinMinus40),
       thick_plus_35: toNullableNumber(values.thickPlus35),
       thick_plus_70: toNullableNumber(values.thickPlus70),
       neps_plus_140: toNullableNumber(values.nepsPlus140),
-      total_2: toNullableNumber(values.totalTwo),
+      total_2: toNullableNumber(totalTwo),
       thin_minus_30: toNullableNumber(values.thinMinus30),
       neps_plus_400: toNullableNumber(values.nepsPlus400),
       inspection_phase: "u_percent_entered",
       payload: {
         type: selectedType || "U% Parameter Entries",
-        values,
+        values: mergedValues,
       },
     };
 
@@ -164,6 +274,10 @@ function UPercentParameterEntries({
     }
     return saveAutoconerParameterEntries.fulfilled.match(resultAction);
   };
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     setEntryDate(getTodayDate());
@@ -184,17 +298,137 @@ function UPercentParameterEntries({
       saveLabel: "Save Record",
       disabled: isLoading,
     });
-  }, [onRegisterActions, selectedType, entryDate, countName, values, isLoading]);
+  }, [onRegisterActions, selectedType, entryDate, countName, mergedValues, isLoading]);
+
+  const portalTarget =
+    portalReady && tablePortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(tablePortalTargetId)
+      : null;
+
+  const renderField = (field, options = {}) => {
+    const {
+      value = mergedValues[field.key] || "",
+      readOnly = false,
+      error = false,
+    } = options;
+
+    return (
+      <div key={field.key} className={styles.metricField}>
+        <label>{field.label}</label>
+        <input
+          value={value}
+          onChange={(event) => handleValueChange(field, event.target.value)}
+          readOnly={readOnly}
+          className={`${styles.input} ${error ? styles.errorField : ""} ${readOnly ? styles.readOnlyField : ""}`}
+        />
+      </div>
+    );
+  };
+
+  const pendingSection = (
+    <section className={styles.pendingSection}>
+      <div className={styles.pendingHeader}>
+        <h3>Pending Entries</h3>
+      </div>
+
+      {pendingEntries.length ? (
+        <div className={styles.pendingList}>
+          {pendingEntries.map((entry) => (
+            <article key={entry.id} className={styles.pendingCard}>
+              <div className={styles.pendingMetaGrid}>
+                <div className={styles.pendingMetaItem}>
+                  <span>CSP</span>
+                  <strong>{entry.values.csp || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Date</span>
+                  <strong>{entry.date || "-"}</strong>
+                </div>
+                <div className={`${styles.pendingMetaItem} ${styles.pendingMetaWide}`}>
+                  <span>Count Name</span>
+                  <strong>{entry.countName || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Act Count</span>
+                  <strong>{entry.values.actCount || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Strength</span>
+                  <strong>{entry.values.strength || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>CV1</span>
+                  <strong>{entry.values.cv1 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>CV2</span>
+                  <strong>{entry.values.cv2 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thin -50%</span>
+                  <strong>{entry.values.thinMinus50 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thick +50%</span>
+                  <strong>{entry.values.thickPlus50 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Neps +200%</span>
+                  <strong>{entry.values.nepsPlus200 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Total</span>
+                  <strong>{entry.values.totalOne || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thin -40%</span>
+                  <strong>{entry.values.thinMinus40 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thick +35%</span>
+                  <strong>{entry.values.thickPlus35 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thick +70%</span>
+                  <strong>{entry.values.thickPlus70 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Neps +140%</span>
+                  <strong>{entry.values.nepsPlus140 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Total</span>
+                  <strong>{entry.values.totalTwo || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thin -30%</span>
+                  <strong>{entry.values.thinMinus30 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Neps +400%</span>
+                  <strong>{entry.values.nepsPlus400 || "-"}</strong>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.emptyState}>
+          {isFetching ? "Loading pending entries..." : "No pending entries available."}
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.topGrid}>
-        <div className={styles.field}>
+        <div className={styles.metricField}>
           <label>Type</label>
           <select
             value={selectedType}
             onChange={(event) => onTypeChange(event.target.value)}
-            className={errors.type ? styles.errorField : ""}
+            className={`${styles.input} ${errors.type ? styles.errorField : ""}`}
           >
             {types.map((type) => (
               <option key={type.id} value={type.name}>
@@ -204,22 +438,23 @@ function UPercentParameterEntries({
           </select>
         </div>
 
-        <div className={styles.field}>
+        <div className={styles.metricField}>
           <label>Date</label>
           <input
             type="date"
             value={entryDate}
             onChange={(event) => setEntryDate(event.target.value)}
-            className={errors.entryDate ? styles.errorField : ""}
+            disabled
+            className={`${styles.input} ${styles.readOnlyField} ${errors.entryDate ? styles.errorField : ""}`}
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={`${styles.metricField} ${styles.countNameField}`}>
           <label>Count Name</label>
           <select
             value={countName}
             onChange={(event) => setCountName(event.target.value)}
-            className={errors.countName ? styles.errorField : ""}
+            className={`${styles.input} ${errors.countName ? styles.errorField : ""}`}
           >
             {COUNT_NAME_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -230,25 +465,56 @@ function UPercentParameterEntries({
         </div>
       </div>
 
-      <div className={styles.metricsGrid}>
-        {METRIC_FIELDS.map((field) => (
-          <div key={field.key} className={styles.field}>
-            <label>{field.label}</label>
-            <input
-              value={values[field.key]}
-              onChange={(event) => handleValueChange(field, event.target.value)}
-              disabled={field.disabled}
-              className={
-                errors[field.key]
-                  ? styles.errorField
-                  : field.disabled
-                    ? styles.disabledField
-                    : ""
-              }
-            />
+      <div className={styles.formCard}>
+        <div className={styles.sectionBlock}>
+          <div className={styles.sectionGridFive}>
+            {TOP_FIELDS.map((field) =>
+              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+            )}
           </div>
-        ))}
+        </div>
+
+        <div className={styles.sectionBlock}>
+          <div className={styles.sectionGridFive}>
+            {QUALITY_FIELDS.slice(0, 5).map((field) =>
+              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+            )}
+          </div>
+          <div className={styles.sectionGridThree}>
+            {QUALITY_FIELDS.slice(5).map((field) =>
+              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+            )}
+          </div>
+        </div>
+
+        <div className={styles.sectionBlock}>
+          <div className={styles.sectionGridFive}>
+            {REGULAR_IPI_FIELDS.map((field) =>
+              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+            )}
+            {renderField({ key: "totalOne", label: "TOTAL", numeric: true }, { value: totalOne, readOnly: true })}
+          </div>
+        </div>
+
+        <div className={styles.sectionBlock}>
+          <div className={styles.sectionGridFive}>
+            {HS_IPI_FIELDS.map((field) =>
+              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+            )}
+            {renderField({ key: "totalTwo", label: "TOTAL", numeric: true }, { value: totalTwo, readOnly: true })}
+          </div>
+        </div>
+
+        <div className={styles.sectionBlock}>
+          <div className={styles.sectionGridFive}>
+            {FINAL_FIELDS.map((field) =>
+              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+            )}
+          </div>
+        </div>
       </div>
+
+      {portalTarget ? createPortal(pendingSection, portalTarget) : null}
     </div>
   );
 }
