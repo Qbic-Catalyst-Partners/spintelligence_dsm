@@ -17,6 +17,12 @@ export const loginUser = createAsyncThunk(
 const initialState = {
     user: null,
     token: typeof window !== 'undefined' ? localStorage.getItem('token') : null,
+    accessibleScreens: typeof window !== 'undefined'
+        ? JSON.parse(localStorage.getItem('accessibleScreens') || '[]')
+        : [],
+    accessByDepartment: typeof window !== 'undefined'
+        ? JSON.parse(localStorage.getItem('accessByDepartment') || 'null')
+        : null,
     isLoading: false,
     error: null,
 };
@@ -28,9 +34,13 @@ const authSlice = createSlice({
         logout: (state) => {
             state.user = null;
             state.token = null;
+            state.accessibleScreens = [];
+            state.accessByDepartment = null;
             state.error = null;
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('token');
+                localStorage.removeItem('accessibleScreens');
+                localStorage.removeItem('accessByDepartment');
             }
         },
         clearError: (state) => {
@@ -46,10 +56,20 @@ const authSlice = createSlice({
             .addCase(loginUser.fulfilled, (state, action) => {
                 state.isLoading = false;
                 state.token = action.payload.token;
-                state.user = action.payload.user || action.payload; 
+                state.user = action.payload.user || action.payload;
+                state.accessibleScreens = action.payload.accessibleScreens || [];
+                state.accessByDepartment = action.payload.accessByDepartment || null;
                 
                 if (typeof window !== 'undefined' && action.payload.token) {
                     localStorage.setItem('token', action.payload.token);
+                    localStorage.setItem(
+                        'accessibleScreens',
+                        JSON.stringify(action.payload.accessibleScreens || [])
+                    );
+                    localStorage.setItem(
+                        'accessByDepartment',
+                        JSON.stringify(action.payload.accessByDepartment || null)
+                    );
                 }
             })
             .addCase(loginUser.rejected, (state, action) => {
