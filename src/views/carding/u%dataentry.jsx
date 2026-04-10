@@ -142,7 +142,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
               <option value="">Select Type</option>
               {types.map((item) => (
                 <option key={item.id ?? item.name} value={item.name}>
-                  {item.name}
+                  {item.displayName ?? item.name}
                 </option>
               ))}
             </select>

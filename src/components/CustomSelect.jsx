@@ -18,7 +18,7 @@ function CustomSelect({ options = [], value = "", onChange = () => {}, error = f
             <option value="">Select Type</option>
             {options.map((option) => (
                 <option key={option.id ?? option.name} value={option.name}>
-                    {option.name}
+                    {option.displayName ?? option.name}
                 </option>
             ))}
         </select>

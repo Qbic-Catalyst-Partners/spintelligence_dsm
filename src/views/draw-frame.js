@@ -17,13 +17,14 @@ import {
 import styles from "@/styles/draw-frame.module.css";
 import uPercentStyles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const today = new Date().toISOString().split("T")[0];
 
 const primaryTypeOptions = [
-  "Yarn CV% Calculation Form",
-  "Draw Frame Cots Data Entry",
-   "U% Data Entry",
+  { id: 1, name: "Yarn CV% Calculation Form", aliases: ["Yarn CV% Calculation Form", "Yarn CV Calculation Form"] },
+  { id: 2, name: "Draw Frame Cots Data Entry", aliases: ["Draw Frame Cots Data Entry", "Drawframe Cots Data Entry"] },
+  { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"] },
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
@@ -62,10 +63,14 @@ const emptyMetric = () => ({
 function DrawFrame() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const typeOptions = primaryTypeOptions.map((t, i) => ({
-    id: i + 1,
-    name: t,
-  }));
+  const user = useSelector((state) => state.auth?.user);
+  const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+  const typeOptions = filterOptionsByDepartmentAccess(
+    primaryTypeOptions,
+    accessByDepartment,
+    user,
+    "Draw Frame"
+  );
   const { actionLoading, actionSuccess, cotsEntries, uqcEntries, listLoading, error } = useSelector(
     (state) =>
       state.drawFrame ?? {
@@ -79,7 +84,7 @@ function DrawFrame() {
   );
 
   const [form, setForm] = useState({
-    type: "Yarn CV% Calculation Form",
+    type: typeOptions[0]?.name || "",
     date: today,
     shift: "General",
     processType: "Breaker",
@@ -112,6 +117,15 @@ function DrawFrame() {
     remarks: "",
   });
   const isUPercentEntry = form.type === "U% Data Entry";
+
+  useEffect(() => {
+    if (!typeOptions.some((option) => option.name === form.type)) {
+      setForm((current) => ({
+        ...current,
+        type: typeOptions[0]?.name || "",
+      }));
+    }
+  }, [form.type, typeOptions]);
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -557,6 +571,12 @@ function DrawFrame() {
             </div>
             <div className={styles.sectionDivider} />
 
+            {!typeOptions.length ? (
+              <div className={styles.messageInfo}>
+                No accessible input screens are available for this department.
+              </div>
+            ) : null}
+
             {isUPercentEntry ? (
               <div className={uPercentStyles.formGrid}>
                 <div className={uPercentStyles.field}>
@@ -564,7 +584,7 @@ function DrawFrame() {
                   <select value={form.type} onChange={(e) => handleFormChange("type", e.target.value)}>
                     {typeOptions.map((option) => (
                       <option key={option.id} value={option.name}>
-                        {option.name}
+                        {option.displayName ?? option.name}
                       </option>
                     ))}
                   </select>
@@ -701,7 +721,7 @@ function DrawFrame() {
                 >
                   {typeOptions.map((option) => (
                     <option key={option.id} value={option.name}>
-                      {option.name}
+                      {option.displayName ?? option.name}
                     </option>
                   ))}
                 </select>

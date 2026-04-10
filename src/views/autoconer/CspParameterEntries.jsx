@@ -383,7 +383,7 @@ function CspParameterEntries({
           >
             {types.map((type) => (
               <option key={type.id} value={type.name}>
-                {type.name}
+                {type.displayName ?? type.name}
               </option>
             ))}
           </select>

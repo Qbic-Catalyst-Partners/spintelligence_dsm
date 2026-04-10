@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 
+let authToken = null;
+
 const resolvedBaseUrl = (
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 ).trim();
@@ -12,6 +14,10 @@ const axiosInstance = axios.create({
         'Content-Type': 'application/json',
     },
 });
+
+export const setAuthToken = (token) => {
+    authToken = token || null;
+};
 
 const buildRequestConfig = (options = {}) => {
     if (!options || typeof options !== "object" || Array.isArray(options)) {
@@ -51,12 +57,8 @@ const buildRequestConfig = (options = {}) => {
 // Request interceptor to automatically add the Bearer token and any other globally required headers
 axiosInstance.interceptors.request.use(
     (config) => {
-        // Only run safely in the browser context (Next.js)
-        if (typeof window !== 'undefined') {
-            const token = localStorage.getItem('token');
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
+        if (authToken) {
+            config.headers.Authorization = `Bearer ${authToken}`;
         }
         return config;
     },

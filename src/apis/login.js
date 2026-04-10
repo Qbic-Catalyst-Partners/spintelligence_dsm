@@ -18,6 +18,17 @@ export const loginAPI = async (employee_id, password) => {
     }
 };
 
+export const getAccessibleScreensByRole = async (roleId) => {
+    try {
+        const response = await apiConfig.get(`/auth/accessible-screens/${roleId}`);
+        return response.data;
+    } catch (error) {
+        throw new Error(
+            error.response?.data?.message || 'Failed to fetch accessible screens'
+        );
+    }
+};
+
 
 export const getUserProfile = async (userId) => {
     try {

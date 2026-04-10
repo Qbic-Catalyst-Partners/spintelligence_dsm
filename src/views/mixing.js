@@ -11,13 +11,14 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const mixingDepartmentTypes = [
-    { id: 1, name: "Cotton HVI Data Entry", component: CottonHVIDataEntry, needsLotNo: true },
-    { id: 2, name: "Fibre Data Entry", component: FibreDataEntry, needsLotNo: true },
-    { id: 3, name: "AFIS Data Entry", component: AfisDataEntry, needsLotNo: true },
-    { id: 4, name: "Moisture Data Entry", component: MoistureDataEntry, needsLotNo: true },
-    { id: 5, name: "Openness Data Entry", component: OpennessDataEntry, needsLotNo: false },
+    { id: 1, name: "Cotton HVI Data Entry", aliases: ["Cotton HVI Data Entry", "Cotton HVI"], component: CottonHVIDataEntry, needsLotNo: true },
+    { id: 2, name: "Fibre Data Entry", aliases: ["Fibre Data Entry", "Fiber Data Entry"], component: FibreDataEntry, needsLotNo: true },
+    { id: 3, name: "AFIS Data Entry", aliases: ["AFIS Data Entry", "Afis Data Entry"], component: AfisDataEntry, needsLotNo: true },
+    { id: 4, name: "Moisture Data Entry", aliases: ["Moisture Data Entry"], component: MoistureDataEntry, needsLotNo: true },
+    { id: 5, name: "Openness Data Entry", aliases: ["Openness Data Entry"], component: OpennessDataEntry, needsLotNo: false },
 ];
 
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
@@ -29,9 +30,16 @@ function Mixing() {
     const childRef = useRef(null);
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
+    const user = useSelector((state) => state.auth?.user);
+    const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const currentDate = getCurrentDate();
-
-    const [selectedTypeName, setSelectedTypeName] = useState("Cotton HVI Data Entry");
+    const typeOptions = filterOptionsByDepartmentAccess(
+        mixingDepartmentTypes,
+        accessByDepartment,
+        user,
+        "Mixing"
+    );
+    const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
     const [mixingValue, setMixingValue] = useState("");
@@ -41,8 +49,14 @@ function Mixing() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
 
-    const selectedType = mixingDepartmentTypes.find((item) => item.name === selectedTypeName);
+    const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
+
+    useEffect(() => {
+        if (!typeOptions.some((item) => item.name === selectedTypeName)) {
+            setSelectedTypeName(typeOptions[0]?.name || "");
+        }
+    }, [selectedTypeName, typeOptions]);
 
     useEffect(() => {
         if (actionSuccess) {
@@ -186,9 +200,9 @@ function Mixing() {
                                         onChange={(e) => handleTypeChange(e.target.value)}
                                     >
                                         <option value="">Select Type</option>
-                                        {mixingDepartmentTypes.map((item) => (
+                                        {typeOptions.map((item) => (
                                             <option key={item.id} value={item.name}>
-                                                {item.name}
+                                                {item.displayName ?? item.name}
                                             </option>
                                         ))}
                                     </select>
@@ -226,7 +240,7 @@ function Mixing() {
                 )}
                             </div>
 
-                            {SelectedComponent && (
+                            {SelectedComponent ? (
                                 <SelectedComponent
                                     ref={childRef}
                                     date={date}
@@ -234,6 +248,10 @@ function Mixing() {
                                     mixing={mixingValue}
                                     onSubmitSuccess={handleOpennessSubmitSuccess}
                                 />
+                            ) : (
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                                    No accessible input screens are available for this department.
+                                </div>
                             )}
                         </div>
                     </div>

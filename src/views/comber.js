@@ -10,19 +10,23 @@ import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
 import { clearComberState, submitComberUqc } from "@/store/slices/comber";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const comberDepartmentTypes = [
     {
         id: 1,
         name: "Ribbon Lap CV Data Entry",
+        aliases: ["Ribbon Lap CV Data Entry", "Ribbon Lap CV"],
     },
     {
         id: 2,
         name: "Nati Data Entry",
+        aliases: ["Nati Data Entry"],
     },
     {
         id: 3,
         name: "U% Data Entry",
+        aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"],
     },
 ];
 
@@ -31,18 +35,32 @@ function Comber() {
     const router = useRouter();
     const dispatch = useDispatch();
     const { data, isLoading, listLoading, uqcEntries = [] } = useSelector((state) => state.comber ?? {});
+    const user = useSelector((state) => state.auth?.user);
+    const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+    const typeOptions = filterOptionsByDepartmentAccess(
+        comberDepartmentTypes,
+        accessByDepartment,
+        user,
+        "Comber"
+    );
     const childRef = useRef(null);
-    const [checkingType, setCheckingType] = useState(null);
+    const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
     const [showSuccess, setShowSuccess] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
 
     const handleTypeChange = (value) => {
-        const selectedType = comberDepartmentTypes.find((item) => item.name === value);
+        const selectedType = typeOptions.find((item) => item.name === value);
         setCheckingType(selectedType?.id ?? null);
     };
 
-    const selectedType = comberDepartmentTypes.find((item) => item.id === checkingType)?.name || "";
+    const selectedType = typeOptions.find((item) => item.id === checkingType)?.name || "";
+
+    useEffect(() => {
+        if (!typeOptions.some((item) => item.id === checkingType)) {
+            setCheckingType(typeOptions[0]?.id ?? null);
+        }
+    }, [checkingType, typeOptions]);
 
     useEffect(() => {
         if (data) setShowSuccess(true);
@@ -134,11 +152,15 @@ function Comber() {
                         <h3>Inspection Data Entry</h3>
                     </div>
 
-                    {selectedType === "Nati Data Entry" ? (
+                    {!typeOptions.length ? (
+                        <div className={styles["cb-message-box"]}>
+                            No accessible input screens are available for this department.
+                        </div>
+                    ) : selectedType === "Nati Data Entry" ? (
                         <>
                             <NatiDataEntry
                                 ref={childRef}
-                                types={comberDepartmentTypes}
+                                types={typeOptions}
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
                                 showForm={Boolean(checkingType)}
@@ -158,7 +180,7 @@ function Comber() {
                         <>
                             <UPercentDataEntry
                                 ref={childRef}
-                                types={comberDepartmentTypes}
+                                types={typeOptions}
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
                             />
@@ -177,7 +199,7 @@ function Comber() {
                         <>
                             <UqcEntryForm
                                 ref={childRef}
-                                typeOptions={comberDepartmentTypes}
+                                typeOptions={typeOptions}
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
                                 departmentValue="Comber"
@@ -197,7 +219,7 @@ function Comber() {
                     ) : (
                         <RibbonLapCVDataEntry
                             ref={childRef}
-                            types={comberDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm={Boolean(checkingType)}

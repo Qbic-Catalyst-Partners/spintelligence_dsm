@@ -170,7 +170,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                         onChange={e => onTypeChange?.(e.target.value)}
                     >
                         {typeOptions.map(option => (
-                            <option key={option.id || option.name} value={option.name}>{option.name}</option>
+                            <option key={option.id || option.name} value={option.name}>{option.displayName ?? option.name}</option>
                         ))}
                     </select>
                 </div>

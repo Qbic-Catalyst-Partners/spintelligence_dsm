@@ -300,7 +300,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
           <select value={selectedType} onChange={(e) => onTypeChange(e.target.value)} style={errorStyle(errors.type)}>
             {types.map((type) => (
               <option key={type.id} value={type.name}>
-                {type.name}
+                {type.displayName ?? type.name}
               </option>
             ))}
           </select>
