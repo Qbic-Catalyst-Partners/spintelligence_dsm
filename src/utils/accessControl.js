@@ -1,0 +1,58 @@
+const normalizeName = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\s+/g, " ")
+    .replace(/-/g, " ");
+
+const FULL_ACCESS_EMPLOYEE_IDS = ["EMP001"].map((value) => normalizeName(value));
+
+const getEmployeeKey = (user) =>
+  normalizeName(user?.employee_id || user?.employeeId || user?.emp_id || "");
+
+export const isFullAccessUser = (user) =>
+  Boolean(getEmployeeKey(user)) && FULL_ACCESS_EMPLOYEE_IDS.includes(getEmployeeKey(user));
+
+export const routeDepartmentMap = {
+  "/mixing": "Mixing",
+  "/blowroom": "Blow Room",
+  "/carding": "Carding",
+  "/comber": "Comber",
+  "/draw-frame": "Draw Frame",
+  "/simplex": "Simplex",
+  "/spinning": "Spinning",
+  "/autoconer": "Autoconer",
+};
+
+export const buildAccessibleDepartmentSet = (accessByDepartment) => {
+  const accessList = Array.isArray(accessByDepartment) ? accessByDepartment : [];
+
+  return new Set(
+    accessList
+      .map((entry) => normalizeName(entry?.department_name))
+      .filter(Boolean)
+  );
+};
+
+export const hasSubDepartmentAccess = (accessByDepartment, subDepartmentName, user) =>
+  isFullAccessUser(user) ||
+  buildAccessibleDepartmentSet(accessByDepartment).has(normalizeName(subDepartmentName));
+
+export const hasRouteAccess = (pathname, accessByDepartment, user) => {
+  if (isFullAccessUser(user)) {
+    return true;
+  }
+
+  const requiredDepartment = routeDepartmentMap[pathname];
+
+  if (!requiredDepartment) {
+    return true;
+  }
+
+  return hasSubDepartmentAccess(accessByDepartment, requiredDepartment, user);
+};
+
+export const hasAnyQualityControlAccess = (accessByDepartment, user) =>
+  isFullAccessUser(user) ||
+  Array.from(buildAccessibleDepartmentSet(accessByDepartment)).length > 0;

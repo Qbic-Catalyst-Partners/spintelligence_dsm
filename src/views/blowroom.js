@@ -10,11 +10,12 @@ import DropTestDataEntry from "./blowroom/dropTestDataEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const blowroomTypes = [
-  { id: 1, name: "Blow Room Sync", component: BlowRoomSync, needsLotNo: false },
-  { id: 2, name: "BR Waste Study Entry", component: BrWasteStudyEntry, needsLotNo: true },
-  { id: 3, name: "Drop Test Data Entry", component: DropTestDataEntry, needsLotNo: true },
+  { id: 1, name: "Blow Room Sync", aliases: ["Blow Room Sync"], component: BlowRoomSync, needsLotNo: false },
+  { id: 2, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: true },
+  { id: 3, name: "Drop Test Data Entry", aliases: ["Drop Test Data Entry", "Drop Test"], component: DropTestDataEntry, needsLotNo: true },
 ];
 
 export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
@@ -25,7 +26,19 @@ function BlowRoom() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
-  const [selectedTypeName, setSelectedTypeName] = useState("Blow Room Sync");
+  const user = useSelector((state) => state.auth?.user);
+  const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+  const typeOptions = useMemo(
+    () =>
+      filterOptionsByDepartmentAccess(
+        blowroomTypes,
+        accessByDepartment,
+        user,
+        "Blow Room"
+      ),
+    [accessByDepartment, user]
+  );
+  const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [date, setDate] = useState(today);
   const [lotNo, setLotNo] = useState("");
   const [showPreview, setShowPreview] = useState(false);
@@ -37,10 +50,16 @@ function BlowRoom() {
   const blowroomState = useSelector((state) => state.blowroom);
 
   const selectedType = useMemo(
-    () => blowroomTypes.find((item) => item.name === selectedTypeName),
-    [selectedTypeName]
+    () => typeOptions.find((item) => item.name === selectedTypeName) || null,
+    [selectedTypeName, typeOptions]
   );
   const SelectedComponent = selectedType?.component ?? null;
+
+  useEffect(() => {
+    if (!typeOptions.some((item) => item.name === selectedTypeName)) {
+      setSelectedTypeName(typeOptions[0]?.name || "");
+    }
+  }, [selectedTypeName, typeOptions]);
 
   const actionLoading = blowroomState?.loading;
 
@@ -150,9 +169,9 @@ function BlowRoom() {
                       value={selectedTypeName}
                       onChange={(e) => setSelectedTypeName(e.target.value)}
                     >
-                      {blowroomTypes.map((item) => (
+                      {typeOptions.map((item) => (
                         <option key={item.id} value={item.name}>
-                          {item.name}
+                          {item.displayName ?? item.name}
                         </option>
                       ))}
                     </select>
@@ -178,17 +197,21 @@ function BlowRoom() {
                 </div>
               )}
 
-              {SelectedComponent && (
+              {SelectedComponent ? (
                 <SelectedComponent
                   ref={childRef}
                   date={date}
                   lotNo={lotNo}
                   selectedTypeName={selectedTypeName}
-                  typeOptions={blowroomTypes}
+                  typeOptions={typeOptions}
                   onTypeChange={setSelectedTypeName}
                   onDateChange={setDate}
                   onLotNoChange={setLotNo}
                 />
+              ) : (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  No accessible input screens are available for this department.
+                </div>
               )}
             </div>
           </div>

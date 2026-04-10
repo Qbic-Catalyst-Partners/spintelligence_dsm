@@ -14,10 +14,11 @@ import {
   getSimplexCotsChangeEntries,
   getSimplexUqcEntries,
 } from "@/store/slices/simplex";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 const simplexTypes = [
-  { id: 1, name: "SMXCots Change Data Entry", component: SMXCotsChangeDataEntry },
-  { id: 2, name: "SMX Breaks Study Report", component: SMXBreaksStudyReport },
-   { id: 3, name: "U% Data Entry", component: UPercentDataEntry },
+  { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
+  { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
+   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
@@ -26,7 +27,19 @@ function Simplex() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
-  const [selectedTypeName, setSelectedTypeName] = useState("SMX Breaks Study Report");
+  const user = useSelector((state) => state.auth?.user);
+  const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+  const typeOptions = useMemo(
+    () =>
+      filterOptionsByDepartmentAccess(
+        simplexTypes,
+        accessByDepartment,
+        user,
+        "Simplex"
+      ),
+    [accessByDepartment, user]
+  );
+  const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -36,10 +49,16 @@ function Simplex() {
   );
 
   const selectedType = useMemo(
-    () => simplexTypes.find((item) => item.name === selectedTypeName),
-    [selectedTypeName]
+    () => typeOptions.find((item) => item.name === selectedTypeName) || null,
+    [selectedTypeName, typeOptions]
   );
-  const SelectedComponent = selectedType?.component ?? SMXCotsChangeDataEntry;
+  const SelectedComponent = selectedType?.component ?? null;
+
+  useEffect(() => {
+    if (!typeOptions.some((item) => item.name === selectedTypeName)) {
+      setSelectedTypeName(typeOptions[0]?.name || "");
+    }
+  }, [selectedTypeName, typeOptions]);
 
   useEffect(() => {
     if (selectedTypeName === "U% Data Entry") {
@@ -130,9 +149,9 @@ function Simplex() {
                   onChange={(e) => setSelectedTypeName(e.target.value)}
                   className="h-[38px] w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-[14px] transition-colors focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
-                  {simplexTypes.map((type) => (
+                  {typeOptions.map((type) => (
                     <option key={type.id} value={type.name}>
-                      {type.name}
+                      {type.displayName ?? type.name}
                     </option>
                   ))}
                 </select>
@@ -156,14 +175,20 @@ function Simplex() {
 
 
   
-            <SelectedComponent
-              key={selectedTypeName}
-              ref={childRef}
-              selectedTypeName={selectedTypeName}
-              onTypeChange={setSelectedTypeName}
-              typeOptions={simplexTypes.map((type) => type.name)}
-              tablePortalTargetId="simplex-report-table-slot"
-            />
+            {SelectedComponent ? (
+              <SelectedComponent
+                key={selectedTypeName}
+                ref={childRef}
+                selectedTypeName={selectedTypeName}
+                onTypeChange={setSelectedTypeName}
+                typeOptions={typeOptions.map((type) => type.name)}
+                tablePortalTargetId="simplex-report-table-slot"
+              />
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                No accessible input screens are available for this department.
+              </div>
+            )}
           </div>
 
           {validationMessage ? (

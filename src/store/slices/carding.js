@@ -9,9 +9,7 @@ import {
     fetchCardingUqcEntries,
 } from "@/apis/carding";
 
-/* =======================
-   THUNKS
-======================= */
+
 
 // Between & Within
 export const submitCardingBetweenWithin = createAsyncThunk(
@@ -93,9 +91,6 @@ export const getCardingUqcEntries = createAsyncThunk(
     }
 );
 
-/* =======================
-   INITIAL STATE
-======================= */
 
 const initialState = {
     betweenWithin: null,
@@ -112,9 +107,7 @@ const initialState = {
     error: null,
 };
 
-/* =======================
-   SLICE
-======================= */
+
 
 const cardingSlice = createSlice({
     name: "carding",

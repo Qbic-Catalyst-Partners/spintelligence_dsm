@@ -262,7 +262,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                             <option value="">Select Type</option>
                             {types.map((item) => (
                                 <option key={item.id} value={item.name}>
-                                    {item.name}
+                                    {item.displayName ?? item.name}
                                 </option>
                             ))}
                         </select>

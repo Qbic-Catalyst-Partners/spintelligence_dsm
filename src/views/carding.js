@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
@@ -9,16 +9,17 @@ import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
 import { useSelector } from "react-redux";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 import styles from "./carding/cardThickPlaceEntry.module.css";
 
 const cardingDepartmentTypes = [
-    { id: 1, name: "Between & Within Card Data Entry" },
-    { id: 2, name: "Card Thick Place Entry" },
-    { id: 3, name: "Trials Data Entry Form" },
-    { id: 4, name: "Nati Data Entry" },
-    { id: 5, name: "U% Data Entry" },
-    { id: 6, name: "Card DFK Pressure Checking" },
+    { id: 1, name: "Between & Within Card Data Entry", aliases: ["Between & Within Card Data Entry", "Between and Within Card Data Entry", "Between Within Card Entry"] },
+    { id: 2, name: "Card Thick Place Entry", aliases: ["Card Thick Place Entry", "Card Thick Place Checking"] },
+    { id: 3, name: "Trials Data Entry Form", aliases: ["Trials Data Entry Form", "Trials Data Entry", "Trials"] },
+    { id: 4, name: "Nati Data Entry", aliases: ["Nati Data Entry"] },
+    { id: 5, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U Percentage Data Entry", "U% Checking"] },
+    { id: 6, name: "Card DFK Pressure Checking", aliases: ["Card DFK Pressure Checking", "DFK Pressure Checking", "Carding DFK Pressure"] },
 ];
 
 export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
@@ -26,17 +27,31 @@ export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
 function Carding() {
     const router = useRouter();
     const { uqcEntries = [], listLoading } = useSelector((state) => state.carding ?? {});
-    const [checkingType, setCheckingType] = useState(null);
+    const user = useSelector((state) => state.auth?.user);
+    const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+    const typeOptions = filterOptionsByDepartmentAccess(
+        cardingDepartmentTypes,
+        accessByDepartment,
+        user,
+        "Carding"
+    );
+    const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
+
+    useEffect(() => {
+        if (!typeOptions.some((item) => item.id === checkingType)) {
+            setCheckingType(typeOptions[0]?.id ?? null);
+        }
+    }, [checkingType, typeOptions]);
 
     const handleTypeChange = (value) => {
-        const selected = cardingDepartmentTypes.find(
+        const selected = typeOptions.find(
             (item) => item.name === value
         );
         setCheckingType(selected?.id ?? null);
     };
 
     const selectedType =
-        cardingDepartmentTypes.find((item) => item.id === checkingType)?.name || "";
+        typeOptions.find((item) => item.id === checkingType)?.name || "";
 
     return (
         <div className={styles["card-page"]}>
@@ -82,9 +97,15 @@ function Carding() {
                         <h3>Inspection Data Entry</h3>
                     </div>
 
+                    {!typeOptions.length ? (
+                        <div className={styles["message-box"]}>
+                            No accessible input screens are available for this department.
+                        </div>
+                    ) : null}
+
                     {selectedType === "Between & Within Card Data Entry" && (
                         <BetweenWithinCardEntry
-                            types={cardingDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
@@ -93,7 +114,7 @@ function Carding() {
 
                     {selectedType === "Trials Data Entry Form" && (
                         <TrialDepartment
-                            types={cardingDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
@@ -102,7 +123,7 @@ function Carding() {
 
                     {selectedType === "Nati Data Entry" && (
                         <NatiDataEntry
-                            types={cardingDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
@@ -111,7 +132,7 @@ function Carding() {
 
                     {selectedType === "Card Thick Place Entry" || !selectedType ? (
                         <CardThickPlaceEntry
-                            types={cardingDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm={selectedType === "Card Thick Place Entry"}
@@ -120,7 +141,7 @@ function Carding() {
 
                     {selectedType === "U% Data Entry" && (
                         <UPercentDataEntry
-                            types={cardingDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                         />
@@ -128,7 +149,7 @@ function Carding() {
 
                     {selectedType === "Card DFK Pressure Checking" && (
                         <CardingDfk
-                            types={cardingDepartmentTypes}
+                            types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                         />

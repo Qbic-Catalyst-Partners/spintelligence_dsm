@@ -9,6 +9,7 @@ import Footer from "../components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import styles from "../styles/spinning.module.css";
 
 const COUNT_NAME_OPTIONS = [
@@ -37,15 +38,15 @@ const createCountChangeRows = (readingCount) => {
 const SHIFT_OPTIONS = ["Shift A", "Shift B", "Shift C", "General"];
 const RING_FRAME_CHECKERS = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
 const SPINNING_CHECKING_OPTIONS = [
-    "COTS Checking",
-    "Count Change",
-    "Ring Frame Log Book",
-    "Speed Checking",
-    "Lycra Missing",
-    "Bottom Apron Checking",
-    "Lycra Centering",
-    "RSM & Lycrasensor Checking Online",
-    "RSM & Lycrasensor Checking Offline",
+    { id: 1, name: "COTS Checking", aliases: ["COTS Checking", "COTS - CHECKING"] },
+    { id: 2, name: "Count Change", aliases: ["Count Change", "COUNT CHANGE"] },
+    { id: 3, name: "Ring Frame Log Book", aliases: ["Ring Frame Log Book", "RING FRAME LOG BOOK"] },
+    { id: 4, name: "Speed Checking", aliases: ["Speed Checking", "SPEED CHECKING"] },
+    { id: 5, name: "Lycra Missing", aliases: ["Lycra Missing", "LYCRA MISSING"] },
+    { id: 6, name: "Bottom Apron Checking", aliases: ["Bottom Apron Checking", "BOTTOM APRON CHECKING"] },
+    { id: 7, name: "Lycra Centering", aliases: ["Lycra Centering", "LYCRA CENTERING"] },
+    { id: 8, name: "RSM & Lycrasensor Checking Online", aliases: ["RSM & Lycrasensor Checking Online", "RSM AND LYCRASENSOR CHECKING ONLINE"] },
+    { id: 9, name: "RSM & Lycrasensor Checking Offline", aliases: ["RSM & Lycrasensor Checking Offline", "RSM AND LYCRASENSOR CHECKING OFFLINE"] },
 ];
 
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
@@ -72,10 +73,20 @@ function SpinningDepartment() {
     const router = useRouter();
     const dispatch = useDispatch();
     const { success, error } = useSelector((state) => state.spinning);
+    const user = useSelector((state) => state.auth?.user);
+    const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+    const checkingOptions = filterOptionsByDepartmentAccess(
+        SPINNING_CHECKING_OPTIONS,
+        accessByDepartment,
+        user,
+        "Spinning"
+    );
 
     const queryType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+    const findCheckingOption = (value) =>
+        checkingOptions.find((item) => item.name === value || item.displayName === value) || null;
 
-    const [checkingType, setCheckingType] = useState(queryType || "");
+    const [checkingType, setCheckingType] = useState(findCheckingOption(queryType)?.name || checkingOptions[0]?.name || "");
     const [selectedMachine, setSelectedMachine] = useState("");
     const [employeeSearch, setEmployeeSearch] = useState("");
     const [showEmployeeList, setShowEmployeeList] = useState(false);
@@ -110,7 +121,6 @@ function SpinningDepartment() {
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
-    const checkingOptions = SPINNING_CHECKING_OPTIONS;
     const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"];
     const employees = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
     const isCountChange = checkingType === "Count Change";
@@ -124,13 +134,14 @@ function SpinningDepartment() {
     }, []);
 
     useEffect(() => {
-        setCheckingType(queryType || "");
-        if (queryType) {
+        const nextType = findCheckingOption(queryType)?.name || checkingOptions[0]?.name || "";
+        setCheckingType(nextType);
+        if (nextType) {
             setDate(getTodayDate());
         } else {
             setDate("");
         }
-    }, [queryType]);
+    }, [checkingOptions, queryType]);
 
     useEffect(() => {
         if (success) {
@@ -514,7 +525,7 @@ function SpinningDepartment() {
                                         <label>Type</label>
                                         <select className={`${styles["highlight-input"]} ${errors.checkingType ? styles["input-error"] : ""}`} value={checkingType} onChange={handleTypeChange}>
                                             <option value="">Select checking type</option>
-                                            {checkingOptions.map((item) => <option key={item}>{item}</option>)}
+                                            {checkingOptions.map((item) => <option key={item.id} value={item.name}>{item.displayName ?? item.name}</option>)}
                                         </select>
                                     </div>
                                     <div className={styles["sp-form-group"]}>
@@ -613,7 +624,7 @@ function SpinningDepartment() {
                                         <label>Type</label>
                                         <select className={`${styles["highlight-input"]} ${errors.checkingType ? styles["input-error"] : ""}`} value={checkingType} onChange={handleTypeChange}>
                                             <option value="">Select checking type</option>
-                                            {checkingOptions.map((item) => <option key={item}>{item}</option>)}
+                                            {checkingOptions.map((item) => <option key={item.id} value={item.name}>{item.displayName ?? item.name}</option>)}
                                         </select>
                                     </div>
                                     <div className={styles["sp-form-group"]}>
@@ -712,7 +723,7 @@ function SpinningDepartment() {
                                         <label>Type</label>
                                         <select className={`${styles["highlight-input"]} ${errors.checkingType ? styles["input-error"] : ""}`} value={checkingType} onChange={handleTypeChange}>
                                             <option value="">Select checking type</option>
-                                            {checkingOptions.map((item) => <option key={item}>{item}</option>)}
+                                            {checkingOptions.map((item) => <option key={item.id} value={item.name}>{item.displayName ?? item.name}</option>)}
                                         </select>
                                     </div>
                                     <div className={styles["sp-form-group"]}>

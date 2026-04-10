@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { MdOutlineEditNote } from "react-icons/md";
 
@@ -15,19 +15,20 @@ import CoastWasteCrateRecord from "@/views/autoconer/countwise";
 import DrumWiseAppearance from "@/views/autoconer/DrumWiseAppearance";
 import SpliceStrength from "@/views/autoconer/SpliceStrength";
 import styles from "@/styles/autoconer.module.css";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { clearAutoconerState } from "@/store/slices/autoconer";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const autoconerTypes = [
-  { id: 1, name: "Rewinding Study", component: RewindingStudy },
-  { id: 2, name: "Cone Density", component: ConeDensity },
-  { id: 3, name: "Cone Packing Audit", component: ConePackingAudit },
-  { id: 4, name: "Lycra Checking", component: LycraChecking },
-  { id: 5, name: "Count Wise Cuts Record", component: CoastWasteCrateRecord },
-  { id: 6, name: "Splice Strength", component: SpliceStrength },
-  { id: 7, name: "Drum wise Appearance", component: DrumWiseAppearance },
-  { id: 8, name: "CSP Parameter Entries", component: CspParameterEntries },
-  { id: 9, name: "U% Parameter Entries", component: UPercentParameterEntries },
+  { id: 1, name: "Rewinding Study", aliases: ["Rewinding Study"], component: RewindingStudy },
+  { id: 2, name: "Cone Density", aliases: ["Cone Density"], component: ConeDensity },
+  { id: 3, name: "Cone Packing Audit", aliases: ["Cone Packing Audit"], component: ConePackingAudit },
+  { id: 4, name: "Lycra Checking", aliases: ["Lycra Checking"], component: LycraChecking },
+  { id: 5, name: "Count Wise Cuts Record", aliases: ["Count Wise Cuts Record", "Countwise Cuts Record"], component: CoastWasteCrateRecord },
+  { id: 6, name: "Splice Strength", aliases: ["Splice Strength"], component: SpliceStrength },
+  { id: 7, name: "Drum wise Appearance", aliases: ["Drum wise Appearance", "Drum Wise Appearance"], component: DrumWiseAppearance },
+  { id: 8, name: "CSP Parameter Entries", aliases: ["CSP Parameter Entries"], component: CspParameterEntries },
+  { id: 9, name: "U% Parameter Entries", aliases: ["U% Parameter Entries", "U Percent Parameter Entries"], component: UPercentParameterEntries },
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
@@ -36,19 +37,31 @@ function Autoconer() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
-  const [checkingType, setCheckingType] = useState(autoconerTypes[0].name);
+  const user = useSelector((state) => state.auth?.user);
+  const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+  const typeOptions = useMemo(
+    () =>
+      filterOptionsByDepartmentAccess(
+        autoconerTypes,
+        accessByDepartment,
+        user,
+        "Autoconer"
+      ),
+    [accessByDepartment, user]
+  );
+  const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
   const selectedType = useMemo(
-    () => autoconerTypes.find((item) => item.name === checkingType)?.name || "",
-    [checkingType]
+    () => typeOptions.find((item) => item.name === checkingType)?.name || "",
+    [checkingType, typeOptions]
   );
   const SelectedComponent = useMemo(
-    () => autoconerTypes.find((item) => item.name === checkingType)?.component || RewindingStudy,
-    [checkingType]
+    () => typeOptions.find((item) => item.name === checkingType)?.component || null,
+    [checkingType, typeOptions]
   );
   const usesRefFlow =
     selectedType === "Rewinding Study" ||
@@ -95,6 +108,12 @@ function Autoconer() {
     setShowSuccess(false);
   };
 
+  useEffect(() => {
+    if (!typeOptions.some((item) => item.name === checkingType)) {
+      setCheckingType(typeOptions[0]?.name || "");
+    }
+  }, [checkingType, typeOptions]);
+
   return (
     <div className={styles.page}>
       <div className={styles.container}>
@@ -126,16 +145,22 @@ function Autoconer() {
               <h3>Inspection Data Entry</h3>
             </div>
 
-            <SelectedComponent
-              {...(usesRefFlow ? { ref: childRef } : {})}
-              selectedTypeName={selectedType}
-              selectedType={selectedType}
-              onTypeChange={handleTypeChange}
-              types={autoconerTypes}
-              typeOptions={autoconerTypes.map((type) => type.name)}
-              tablePortalTargetId="autoconer-table-slot"
-              onRegisterActions={setRegisteredActions}
-            />
+            {SelectedComponent ? (
+              <SelectedComponent
+                {...(usesRefFlow ? { ref: childRef } : {})}
+                selectedTypeName={selectedType}
+                selectedType={selectedType}
+                onTypeChange={handleTypeChange}
+                types={typeOptions}
+                typeOptions={typeOptions.map((type) => type.name)}
+                tablePortalTargetId="autoconer-table-slot"
+                onRegisterActions={setRegisteredActions}
+              />
+            ) : (
+              <div className={styles.validationMessage}>
+                No accessible input screens are available for this department.
+              </div>
+            )}
           </div>
 
           {validationMessage ? (

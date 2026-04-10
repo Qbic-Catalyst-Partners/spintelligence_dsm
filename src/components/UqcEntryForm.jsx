@@ -144,7 +144,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             >
               {typeOptions.map((option) => (
                 <option key={option.id} value={option.name}>
-                  {option.name}
+                  {option.displayName ?? option.name}
                 </option>
               ))}
             </select>
