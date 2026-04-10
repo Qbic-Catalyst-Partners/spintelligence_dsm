@@ -117,6 +117,20 @@ const postAutoconerCandidates = async (path, payloadCandidates, fallbackMessage)
   throw new Error(getErrorMessage(lastError, fallbackMessage));
 };
 
+const postAutoconerPathCandidates = async (paths, payloadCandidates, fallbackMessage) => {
+  let lastError;
+
+  for (const path of paths) {
+    try {
+      return await postAutoconerCandidates(path, payloadCandidates, fallbackMessage);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(getErrorMessage(lastError, fallbackMessage));
+};
+
 const getAutoconer = async (
   path,
   params,
@@ -162,6 +176,81 @@ export const fetchAutoconerParameterEntries = async () =>
   getAutoconer("parameter-entries", {}, "Unable to fetch parameter entries.", {
     suppressFailure: true,
   });
+
+export const fetchAutoconerPendingCspParameterEntries = async () =>
+  getAutoconer(
+    "parameter-entries/pending-csp",
+    {},
+    "Unable to fetch pending CSP parameter entries.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerPendingQualityParameterEntries = async () =>
+  getAutoconer(
+    "parameter-entries/pending-quality",
+    {},
+    "Unable to fetch pending quality parameter entries.",
+    { suppressFailure: true }
+  );
+
+const buildParameterEntryPayload = (payload) => ({
+  inspection_type: payload?.inspection_type,
+  entry_date: payload?.entry_date,
+  count_name: payload?.count_name,
+  act_count: payload?.act_count,
+  strength: payload?.strength,
+  count_cv: payload?.count_cv,
+  strength_cv: payload?.strength_cv,
+  csp: payload?.csp,
+  cone_color: payload?.cone_color,
+  u: payload?.u,
+  cvm: payload?.cvm,
+  cv_1m: payload?.cv_1m,
+  cv_3m: payload?.cv_3m,
+  cv_10m: payload?.cv_10m,
+  br_1_5mm: payload?.br_1_5mm,
+  cvb: payload?.cvb,
+  thin_minus_50: payload?.thin_minus_50,
+  thick_plus_50: payload?.thick_plus_50,
+  neps_plus_200: payload?.neps_plus_200,
+  total_1: payload?.total_1,
+  thin_minus_40: payload?.thin_minus_40,
+  thick_plus_35: payload?.thick_plus_35,
+  thick_plus_70: payload?.thick_plus_70,
+  neps_plus_140: payload?.neps_plus_140,
+  total_2: payload?.total_2,
+  thin_minus_30: payload?.thin_minus_30,
+  neps_plus_400: payload?.neps_plus_400,
+});
+
+export const submitAutoconerParameterEntry = async (payload) =>
+  postAutoconer(
+    "parameter-entries",
+    buildParameterEntryPayload(payload),
+    "Unable to save parameter entry."
+  );
+
+export const updateAutoconerParameterEntry = async (id, payload) => {
+  const endpoints = buildAutoconerEndpoints(`parameter-entries/${id}`);
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.put(
+        endpoint,
+        removeEmptyValues(normalizePayload(buildParameterEntryPayload(payload)))
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!shouldTryAlternateEndpoint(error)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(getErrorMessage(lastError, "Unable to update parameter entry."));
+};
 
 export const submitAutoconerSpliceStrength = async (payload) =>
   postAutoconer("splice-strength", payload, "Unable to save splice strength.");
@@ -293,19 +382,6 @@ export const submitAutoconerConePackingAudit = async (payload) =>
       },
     ],
     "Unable to save cone packing audit."
-  );
-
-export const submitAutoconerParameterEntries = async (payload) =>
-  postAutoconerCandidates(
-    "parameter-entries",
-    [
-      payload,
-      {
-        ...payload,
-        payload: payload?.payload ?? payload,
-      },
-    ],
-    "Unable to save parameter entries."
   );
 
 export { toNullableNumber };

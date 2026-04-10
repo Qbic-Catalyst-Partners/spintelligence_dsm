@@ -9,7 +9,7 @@
 }
 
 .modal {
-  width: min(1050px, 92vw);
+  width: min(1180px, 94vw);
   max-height: 86vh;
   background: #fff;
   border: 1px solid #d0e2f4;
@@ -90,7 +90,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
   overflow-y: auto;
   padding-right: 4px;
@@ -101,7 +101,12 @@
   border-radius: 7.35px;
   padding: 10px 12px;
   background: #f6f7f8;
-  min-height: 65px;
+  min-height: 72px;
+  min-width: 0;
+}
+
+.cardWide {
+  grid-column: span 2;
 }
 
 .label {
@@ -111,6 +116,8 @@
   margin-bottom: 4px;
   text-transform: uppercase;
   line-height: 20px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .value {
@@ -118,7 +125,9 @@
   font-weight: 700;
   color: #0f172a;
   word-break: break-word;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
+  line-height: 1.45;
 }
 
 .footer {
@@ -152,4 +161,10 @@
 
 .confirm:hover {
   background: #2f4084;
+}
+
+@media (max-width: 768px) {
+  .cardWide {
+    grid-column: span 1;
+  }
 }

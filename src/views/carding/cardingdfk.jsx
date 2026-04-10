@@ -36,6 +36,14 @@ const createInitialRows = () =>
     return accumulator;
   }, {});
 
+const MACHINE_GROUP_SIZE = 5;
+const MACHINE_GROUPS = MACHINE_NAMES.reduce((groups, machineName, index) => {
+  const groupIndex = Math.floor(index / MACHINE_GROUP_SIZE);
+  if (!groups[groupIndex]) groups[groupIndex] = [];
+  groups[groupIndex].push(machineName);
+  return groups;
+}, []);
+
 function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
   const router = useRouter();
   const dispatch = useDispatch();
@@ -49,6 +57,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [openGroup, setOpenGroup] = useState(0);
 
   useEffect(() => {
     const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -198,41 +207,67 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
           </div>
         </div>
 
-        <div className={styles.dfkTableCard}>
-          <div className={styles.dfkTableWrap}>
-            <table className={styles.dfkTable}>
-              <thead>
-                <tr>
-                  <th></th>
-                  {TABLE_COLUMNS.map((column) => (
-                    <th key={column.key}>{column.label}</th>
-                  ))}
-                </tr>
-              </thead>
+        <div className={styles.dfkAccordionList}>
+          {MACHINE_GROUPS.map((group, groupIndex) => {
+            const firstMachine = group[0];
+            const lastMachine = group[group.length - 1];
+            const isOpen = openGroup === groupIndex;
 
-              <tbody>
-                {MACHINE_NAMES.map((machineName) => (
-                  <tr key={machineName}>
-                    <td className={styles.machineCell}>{machineName}</td>
-                    {TABLE_COLUMNS.map((column) => (
-                      <td key={`${machineName}-${column.key}`}>
-                        <CustomInput
-                          type="number"
-                          placeholder="0.00"
-                          value={rows[machineName][column.key]}
-                          onChange={(value) => handleValueChange(machineName, column.key, value)}
-                          step="0.01"
-                          onWheel={(event) => event.currentTarget.blur()}
-                          className={styles.dfkTableInput}
-                          error={errors[`${machineName}-${column.key}`]}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            return (
+              <div key={`${firstMachine}-${lastMachine}`} className={styles.dfkSection}>
+                <button
+                  type="button"
+                  className={styles.dfkSectionToggle}
+                  onClick={() => setOpenGroup((current) => (current === groupIndex ? -1 : groupIndex))}
+                  aria-expanded={isOpen}
+                >
+                  <span>{`${firstMachine} to ${lastMachine}`}</span>
+                  <span className={`${styles.dfkChevron} ${isOpen ? styles.dfkChevronOpen : ""}`}>
+                    ˅
+                  </span>
+                </button>
+
+                {isOpen ? (
+                  <div className={styles.dfkTableCard}>
+                    <div className={styles.dfkTableWrap}>
+                      <table className={styles.dfkTable}>
+                        <thead>
+                          <tr>
+                            <th>Machine Name</th>
+                            {TABLE_COLUMNS.map((column) => (
+                              <th key={column.key}>{column.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {group.map((machineName) => (
+                            <tr key={machineName}>
+                              <td className={styles.machineCell}>{machineName}</td>
+                              {TABLE_COLUMNS.map((column) => (
+                                <td key={`${machineName}-${column.key}`}>
+                                  <CustomInput
+                                    type="number"
+                                    placeholder="0.00"
+                                    value={rows[machineName][column.key]}
+                                    onChange={(value) => handleValueChange(machineName, column.key, value)}
+                                    step="0.01"
+                                    onWheel={(event) => event.currentTarget.blur()}
+                                    className={styles.dfkTableInput}
+                                    error={errors[`${machineName}-${column.key}`]}
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
 

@@ -38,8 +38,11 @@ function PreviewModal({
         </div>
 
         <div className={styles.grid}>
-          {items.map(({ label, value }, idx) => (
-            <div key={`${label}-${idx}`} className={styles.card}>
+          {items.map(({ label, value, wide }, idx) => (
+            <div
+              key={`${label}-${idx}`}
+              className={`${styles.card} ${wide ? styles.cardWide : ""}`}
+            >
               <div className={styles.label}>{label}</div>
               <div className={styles.value}>{formatValue(value)}</div>
             </div>

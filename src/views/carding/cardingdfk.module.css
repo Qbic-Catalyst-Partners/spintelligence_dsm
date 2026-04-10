@@ -50,6 +50,47 @@
   overflow: hidden;
 }
 
+.dfkAccordionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dfkSection {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.dfkSectionToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  background: #fff;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dfkChevron {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.dfkChevronOpen {
+  transform: rotate(180deg);
+}
+
 .dfkTableWrap {
   overflow-x: hidden;
 }
@@ -95,7 +136,7 @@
 }
 
 .machineCell {
-  width: 92px;
+  width: 112px;
   font-size: 12px;
   font-weight: 700;
   color: #334155;
@@ -147,6 +188,11 @@
 
   .dfkTable {
     min-width: 980px;
+  }
+
+  .dfkSectionToggle {
+    padding: 10px 12px;
+    font-size: 11px;
   }
 
   .dfkFooterWrap {

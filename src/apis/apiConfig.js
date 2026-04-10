@@ -5,6 +5,23 @@ const resolvedBaseUrl = (
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 ).trim();
 
+const buildNetworkErrorMessage = (error) => {
+    const method = String(error.config?.method || "request").toUpperCase();
+    const path = error.config?.url || "unknown endpoint";
+    const base = error.config?.baseURL || resolvedBaseUrl;
+    const endpoint = `${base}${path.startsWith("/") ? path : `/${path}`}`;
+
+    if (error.code === "ECONNABORTED") {
+        return `Request timed out for ${method} ${endpoint}`;
+    }
+
+    if (error.message === "Network Error" || error.request) {
+        return `Unable to reach ${method} ${endpoint}`;
+    }
+
+    return error.message || `Unable to complete ${method} ${endpoint}`;
+};
+
 // Create the base Axios instance with default settings
 const axiosInstance = axios.create({
     baseURL: resolvedBaseUrl,
@@ -72,7 +89,7 @@ axiosInstance.interceptors.response.use(
             const message =
                 error.response?.data?.message ||
                 error.response?.data?.error ||
-                (status ? `Request failed with status ${status}` : "API is not responsive. Please try again.");
+                (status ? `Request failed with status ${status}` : buildNetworkErrorMessage(error));
 
             emitGlobalFailureModal({ message, status });
         }

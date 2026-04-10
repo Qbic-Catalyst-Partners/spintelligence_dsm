@@ -5,13 +5,13 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "@/styles/uPercentParameterEntries.module.css";
 import { toNullableNumber } from "@/apis/autoconer";
 import {
-  getAutoconerParameterEntries,
-  saveAutoconerParameterEntries,
+  getAutoconerPendingQualityParameterEntries,
+  saveAutoconerParameterEntriesOther,
 } from "@/store/slices/autoconer";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const COUNT_NAME_OPTIONS = [
-  "12 BLACK POLY SLUB DS-0700 70D SPX...",
+  "12 RECYCLE (GRG) POLY COTTON CW 49.5",
   "20 WHITE POLY 40D SPX YARN CONES",
   "30 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
 ];
@@ -79,6 +79,8 @@ const sumValues = (values, keys) => {
   return total ? total.toFixed(2) : "";
 };
 
+const getEntryId = (entry) => entry?.id ?? entry?._id ?? entry?.entry_id ?? null;
+
 const getEntryValue = (entry, keys) => {
   const sourceValues = entry?.payload?.values ?? entry?.values ?? {};
   const candidates = Array.isArray(keys) ? keys : [keys];
@@ -98,39 +100,95 @@ const getEntryValue = (entry, keys) => {
   return "";
 };
 
-const mapParameterEntry = (entry = {}, index = 0) => {
-  const values = createInitialValues();
-  ALL_FIELDS.forEach((field) => {
-    values[field.key] = getEntryValue(entry, field.key);
-  });
+const hasFilledValue = (value) =>
+  value !== undefined && value !== null && String(value).trim() !== "";
 
-  if (!values.totalOne) {
-    values.totalOne = sumValues(values, REGULAR_IPI_FIELDS.map((field) => field.key));
-  }
+const getEntrySortTimestamp = (entry) => {
+  const rawDate = getEntryValue(entry, ["entry_date", "date", "inspection_date"]);
+  if (!rawDate) return 0;
 
-  if (!values.totalTwo) {
-    values.totalTwo = sumValues(values, HS_IPI_FIELDS.map((field) => field.key));
-  }
-
-  return {
-    id: entry.id || entry._id || entry.entry_id || `${entry.entry_date || "entry"}-${index}`,
-    date: getEntryValue(entry, ["entry_date", "date", "inspection_date"]),
-    countName: getEntryValue(entry, ["count_name", "countName"]),
-    values,
-  };
+  const timestamp = new Date(rawDate).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 };
 
-const isCspEntry = (entry = {}) => {
-  const inspectionType = String(entry.inspection_type || entry.type || "").toLowerCase();
-  const inspectionPhase = String(entry.inspection_phase || "").toLowerCase();
-  const payloadType = String(entry?.payload?.type || "").toLowerCase();
+const formatDisplayDate = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
 
-  return (
-    inspectionPhase === "csp_entered" ||
-    inspectionType.includes("csp parameter") ||
-    payloadType.includes("csp parameter")
-  );
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 };
+
+const formatPreviewDateTime = (value) => {
+  if (!value) return "-";
+  const rawValue = String(value);
+  const hasExplicitTime = rawValue.includes("T") || rawValue.includes(":");
+  const date = hasExplicitTime ? new Date(rawValue) : new Date();
+  if (Number.isNaN(date.getTime())) return rawValue;
+  const now = new Date();
+
+  if (!hasExplicitTime) {
+    const [yearPart, monthPart, dayPart] = rawValue.split("-");
+    if (yearPart && monthPart && dayPart) {
+      date.setFullYear(Number(yearPart), Number(monthPart) - 1, Number(dayPart));
+    }
+  } else if (
+    date.getHours() === 0 &&
+    date.getMinutes() === 0 &&
+    date.getSeconds() === 0 &&
+    date.getMilliseconds() === 0
+  ) {
+    date.setHours(
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds()
+    );
+  }
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+};
+
+const mapPendingEntry = (entry = {}, index = 0) => ({
+  id: getEntryId(entry) || `${entry.entry_date || "entry"}-${index}`,
+  date: formatDisplayDate(getEntryValue(entry, ["entry_date", "date", "inspection_date"])),
+  countName: getEntryValue(entry, ["count_name", "countName"]),
+  values: {
+    coneColor: getEntryValue(entry, ["coneColor", "cone_color"]),
+    actCount: getEntryValue(entry, ["actCount", "act_count"]),
+    strength: getEntryValue(entry, "strength"),
+    cv1: getEntryValue(entry, ["cv1", "countCv", "count_cv"]),
+    cv2: getEntryValue(entry, ["cv2", "strengthCv", "strength_cv"]),
+    csp: getEntryValue(entry, "csp"),
+    uPercent: getEntryValue(entry, ["uPercent", "u"]),
+    cvm: getEntryValue(entry, "cvm"),
+    oneMtrCv: getEntryValue(entry, ["oneMtrCv", "cv_1m"]),
+    threeMtrCv: getEntryValue(entry, ["threeMtrCv", "cv_3m"]),
+    tenMtrCv: getEntryValue(entry, ["tenMtrCv", "cv_10m"]),
+    brOnePointFive: getEntryValue(entry, ["brOnePointFive", "br_1_5mm"]),
+    cvb: getEntryValue(entry, "cvb"),
+    thinMinus50: getEntryValue(entry, ["thinMinus50", "thin_minus_50"]),
+    thickPlus50: getEntryValue(entry, ["thickPlus50", "thick_plus_50"]),
+    nepsPlus200: getEntryValue(entry, ["nepsPlus200", "neps_plus_200"]),
+    totalOne: getEntryValue(entry, ["totalOne", "total_1"]),
+    thinMinus40: getEntryValue(entry, ["thinMinus40", "thin_minus_40"]),
+    thickPlus35: getEntryValue(entry, ["thickPlus35", "thick_plus_35"]),
+    thickPlus70: getEntryValue(entry, ["thickPlus70", "thick_plus_70"]),
+    nepsPlus140: getEntryValue(entry, ["nepsPlus140", "neps_plus_140"]),
+    totalTwo: getEntryValue(entry, ["totalTwo", "total_2"]),
+    thinMinus30: getEntryValue(entry, ["thinMinus30", "thin_minus_30"]),
+    nepsPlus400: getEntryValue(entry, ["nepsPlus400", "neps_plus_400"]),
+  },
+});
 
 function UPercentParameterEntries({
   types,
@@ -144,13 +202,31 @@ function UPercentParameterEntries({
   const {
     isLoading = false,
     isFetching = false,
-    parameterEntries = [],
+    pendingQualityParameterEntries = [],
   } = autoconerState;
   const [entryDate, setEntryDate] = useState(getTodayDate());
   const [countName, setCountName] = useState(COUNT_NAME_OPTIONS[0]);
   const [values, setValues] = useState(createInitialValues);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const [selectedEntryId, setSelectedEntryId] = useState(null);
+  const selectedPendingEntry = useMemo(
+    () =>
+      pendingQualityParameterEntries.find(
+        (entry) => String(getEntryId(entry)) === String(selectedEntryId)
+      ) || null,
+    [pendingQualityParameterEntries, selectedEntryId]
+  );
+  const topValues = useMemo(
+    () => ({
+      actCount: getEntryValue(selectedPendingEntry, ["actCount", "act_count"]) || values.actCount || "",
+      strength: getEntryValue(selectedPendingEntry, "strength") || values.strength || "",
+      cv1: getEntryValue(selectedPendingEntry, ["cv1", "countCv", "count_cv"]) || values.cv1 || "",
+      cv2: getEntryValue(selectedPendingEntry, ["cv2", "strengthCv", "strength_cv"]) || values.cv2 || "",
+      csp: getEntryValue(selectedPendingEntry, "csp") || values.csp || "",
+    }),
+    [selectedPendingEntry, values.actCount, values.strength, values.cv1, values.cv2, values.csp]
+  );
 
   const totalOne = useMemo(
     () => sumValues(values, REGULAR_IPI_FIELDS.map((field) => field.key)),
@@ -164,18 +240,20 @@ function UPercentParameterEntries({
   const mergedValues = useMemo(
     () => ({
       ...values,
+      ...topValues,
       totalOne,
       totalTwo,
     }),
-    [values, totalOne, totalTwo]
+    [topValues, values, totalOne, totalTwo]
   );
 
   const pendingEntries = useMemo(
     () =>
-      parameterEntries
-        .filter((entry) => isCspEntry(entry))
-        .map((entry, index) => mapParameterEntry(entry, index)),
-    [parameterEntries]
+      [...pendingQualityParameterEntries]
+        .sort((leftEntry, rightEntry) => getEntrySortTimestamp(rightEntry) - getEntrySortTimestamp(leftEntry))
+        .map((entry, index) => mapPendingEntry(entry, index))
+        .slice(0, 5),
+    [pendingQualityParameterEntries]
   );
 
   const handleValueChange = (fieldConfig, value) => {
@@ -197,6 +275,7 @@ function UPercentParameterEntries({
   };
 
   const clear = () => {
+    setSelectedEntryId(null);
     setEntryDate(getTodayDate());
     setCountName(COUNT_NAME_OPTIONS[0]);
     setValues(createInitialValues());
@@ -210,7 +289,7 @@ function UPercentParameterEntries({
     if (!String(entryDate || "").trim()) nextErrors.entryDate = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
 
-    [...TOP_FIELDS, ...QUALITY_FIELDS, ...REGULAR_IPI_FIELDS, ...HS_IPI_FIELDS, ...FINAL_FIELDS].forEach((field) => {
+    [...QUALITY_FIELDS, ...REGULAR_IPI_FIELDS, ...HS_IPI_FIELDS, ...FINAL_FIELDS].forEach((field) => {
       if (!String(values[field.key] || "").trim()) {
         nextErrors[field.key] = true;
       }
@@ -221,9 +300,10 @@ function UPercentParameterEntries({
   };
 
   const getPreviewData = () => [
+    { label: "ID", value: selectedEntryId || "-", wide: true },
     { label: "Type", value: selectedType || "-" },
-    { label: "Date", value: entryDate || "-" },
-    { label: "Count Name", value: countName || "-" },
+    { label: "Date", value: formatPreviewDateTime(entryDate) },
+    { label: "Count Name", value: countName || "-", wide: true },
     ...ALL_FIELDS.map((field) => ({
       label: field.label,
       value: mergedValues[field.key] || "-",
@@ -232,16 +312,18 @@ function UPercentParameterEntries({
 
   const submit = async () => {
     if (!validate()) return false;
-
     const payload = {
+      id: selectedEntryId || undefined,
       inspection_type: selectedType || "U% Parameter Entries",
       entry_date: entryDate,
       count_name: countName,
-      act_count: toNullableNumber(values.actCount),
-      strength: toNullableNumber(values.strength),
-      cv1: toNullableNumber(values.cv1),
-      cv2: toNullableNumber(values.cv2),
-      csp: toNullableNumber(values.csp),
+      act_count: toNullableNumber(topValues.actCount),
+      strength: toNullableNumber(topValues.strength),
+      count_cv: toNullableNumber(topValues.cv1),
+      cv1: toNullableNumber(topValues.cv1),
+      strength_cv: toNullableNumber(topValues.cv2),
+      cv2: toNullableNumber(topValues.cv2),
+      csp: toNullableNumber(topValues.csp),
       cone_color: values.coneColor || null,
       u: toNullableNumber(values.uPercent),
       cvm: toNullableNumber(values.cvm),
@@ -261,31 +343,62 @@ function UPercentParameterEntries({
       total_2: toNullableNumber(totalTwo),
       thin_minus_30: toNullableNumber(values.thinMinus30),
       neps_plus_400: toNullableNumber(values.nepsPlus400),
-      inspection_phase: "u_percent_entered",
+      inspection_phase: "other_entered",
       payload: {
         type: selectedType || "U% Parameter Entries",
         values: mergedValues,
       },
     };
 
-    const resultAction = await dispatch(saveAutoconerParameterEntries(payload));
-    if (saveAutoconerParameterEntries.fulfilled.match(resultAction)) {
-      dispatch(getAutoconerParameterEntries());
+    const resultAction = await dispatch(saveAutoconerParameterEntriesOther(payload));
+    if (saveAutoconerParameterEntriesOther.fulfilled.match(resultAction)) {
+      return true;
     }
-    return saveAutoconerParameterEntries.fulfilled.match(resultAction);
+    return false;
   };
-
-  useEffect(() => {
-    setPortalReady(true);
-  }, []);
 
   useEffect(() => {
     setEntryDate(getTodayDate());
   }, [selectedType]);
 
   useEffect(() => {
-    dispatch(getAutoconerParameterEntries());
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    dispatch(getAutoconerPendingQualityParameterEntries());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!selectedPendingEntry) return;
+
+    setEntryDate(
+      getEntryValue(selectedPendingEntry, ["entry_date", "date", "inspection_date"]) || getTodayDate()
+    );
+    setCountName(
+      getEntryValue(selectedPendingEntry, ["count_name", "countName"]) || COUNT_NAME_OPTIONS[0]
+    );
+    setValues((current) => ({
+      ...current,
+      coneColor: getEntryValue(selectedPendingEntry, ["coneColor", "cone_color"]),
+      uPercent: getEntryValue(selectedPendingEntry, ["uPercent", "u"]),
+      cvm: getEntryValue(selectedPendingEntry, "cvm"),
+      oneMtrCv: getEntryValue(selectedPendingEntry, ["oneMtrCv", "cv_1m"]),
+      threeMtrCv: getEntryValue(selectedPendingEntry, ["threeMtrCv", "cv_3m"]),
+      tenMtrCv: getEntryValue(selectedPendingEntry, ["tenMtrCv", "cv_10m"]),
+      brOnePointFive: getEntryValue(selectedPendingEntry, ["brOnePointFive", "br_1_5mm"]),
+      cvb: getEntryValue(selectedPendingEntry, "cvb"),
+      thinMinus50: getEntryValue(selectedPendingEntry, ["thinMinus50", "thin_minus_50"]),
+      thickPlus50: getEntryValue(selectedPendingEntry, ["thickPlus50", "thick_plus_50"]),
+      nepsPlus200: getEntryValue(selectedPendingEntry, ["nepsPlus200", "neps_plus_200"]),
+      thinMinus40: getEntryValue(selectedPendingEntry, ["thinMinus40", "thin_minus_40"]),
+      thickPlus35: getEntryValue(selectedPendingEntry, ["thickPlus35", "thick_plus_35"]),
+      thickPlus70: getEntryValue(selectedPendingEntry, ["thickPlus70", "thick_plus_70"]),
+      nepsPlus140: getEntryValue(selectedPendingEntry, ["nepsPlus140", "neps_plus_140"]),
+      thinMinus30: getEntryValue(selectedPendingEntry, ["thinMinus30", "thin_minus_30"]),
+      nepsPlus400: getEntryValue(selectedPendingEntry, ["nepsPlus400", "neps_plus_400"]),
+    }));
+  }, [selectedPendingEntry]);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -300,15 +413,12 @@ function UPercentParameterEntries({
     });
   }, [onRegisterActions, selectedType, entryDate, countName, mergedValues, isLoading]);
 
-  const portalTarget =
-    portalReady && tablePortalTargetId && typeof document !== "undefined"
-      ? document.getElementById(tablePortalTargetId)
-      : null;
-
   const renderField = (field, options = {}) => {
     const {
       value = mergedValues[field.key] || "",
       readOnly = false,
+      disabled = false,
+      darkDisabled = false,
       error = false,
     } = options;
 
@@ -319,11 +429,17 @@ function UPercentParameterEntries({
           value={value}
           onChange={(event) => handleValueChange(field, event.target.value)}
           readOnly={readOnly}
-          className={`${styles.input} ${error ? styles.errorField : ""} ${readOnly ? styles.readOnlyField : ""}`}
+          disabled={disabled}
+          className={`${styles.input} ${error ? styles.errorField : ""} ${readOnly || disabled ? styles.readOnlyField : ""} ${darkDisabled ? styles.darkDisabledField : ""}`}
         />
       </div>
     );
   };
+
+  const portalTarget =
+    portalReady && tablePortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(tablePortalTargetId)
+      : null;
 
   const pendingSection = (
     <section className={styles.pendingSection}>
@@ -334,12 +450,20 @@ function UPercentParameterEntries({
       {pendingEntries.length ? (
         <div className={styles.pendingList}>
           {pendingEntries.map((entry) => (
-            <article key={entry.id} className={styles.pendingCard}>
-              <div className={styles.pendingMetaGrid}>
-                <div className={styles.pendingMetaItem}>
-                  <span>CSP</span>
-                  <strong>{entry.values.csp || "-"}</strong>
-                </div>
+            <article
+              key={entry.id}
+              className={styles.pendingCard}
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedEntryId(entry.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedEntryId(entry.id);
+                }
+              }}
+            >
+              <div className={styles.pendingPrimaryRow}>
                 <div className={styles.pendingMetaItem}>
                   <span>Date</span>
                   <strong>{entry.date || "-"}</strong>
@@ -347,6 +471,17 @@ function UPercentParameterEntries({
                 <div className={`${styles.pendingMetaItem} ${styles.pendingMetaWide}`}>
                   <span>Count Name</span>
                   <strong>{entry.countName || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>CSP ID</span>
+                  <strong>{entry.id || "-"}</strong>
+                </div>
+              </div>
+
+              <div className={styles.pendingSecondaryRow}>
+                <div className={styles.pendingMetaItem}>
+                  <span>Cone Color</span>
+                  <strong>{entry.values.coneColor || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
                   <span>Act Count</span>
@@ -365,48 +500,8 @@ function UPercentParameterEntries({
                   <strong>{entry.values.cv2 || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
-                  <span>Thin -50%</span>
-                  <strong>{entry.values.thinMinus50 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Thick +50%</span>
-                  <strong>{entry.values.thickPlus50 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Neps +200%</span>
-                  <strong>{entry.values.nepsPlus200 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Total</span>
-                  <strong>{entry.values.totalOne || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Thin -40%</span>
-                  <strong>{entry.values.thinMinus40 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Thick +35%</span>
-                  <strong>{entry.values.thickPlus35 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Thick +70%</span>
-                  <strong>{entry.values.thickPlus70 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Neps +140%</span>
-                  <strong>{entry.values.nepsPlus140 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Total</span>
-                  <strong>{entry.values.totalTwo || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Thin -30%</span>
-                  <strong>{entry.values.thinMinus30 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
-                  <span>Neps +400%</span>
-                  <strong>{entry.values.nepsPlus400 || "-"}</strong>
+                  <span>CSP</span>
+                  <strong>{entry.values.csp || "-"}</strong>
                 </div>
               </div>
             </article>
@@ -428,7 +523,7 @@ function UPercentParameterEntries({
           <select
             value={selectedType}
             onChange={(event) => onTypeChange(event.target.value)}
-            className={`${styles.input} ${errors.type ? styles.errorField : ""}`}
+            className={`${styles.input} ${styles.topControlInput} ${errors.type ? styles.errorField : ""}`}
           >
             {types.map((type) => (
               <option key={type.id} value={type.name}>
@@ -445,7 +540,7 @@ function UPercentParameterEntries({
             value={entryDate}
             onChange={(event) => setEntryDate(event.target.value)}
             disabled
-            className={`${styles.input} ${styles.readOnlyField} ${errors.entryDate ? styles.errorField : ""}`}
+            className={`${styles.input} ${styles.topControlInput} ${styles.topControlDisabled} ${errors.entryDate ? styles.errorField : ""}`}
           />
         </div>
 
@@ -454,7 +549,7 @@ function UPercentParameterEntries({
           <select
             value={countName}
             onChange={(event) => setCountName(event.target.value)}
-            className={`${styles.input} ${errors.countName ? styles.errorField : ""}`}
+            className={`${styles.input} ${styles.topControlInput} ${errors.countName ? styles.errorField : ""}`}
           >
             {COUNT_NAME_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -469,7 +564,12 @@ function UPercentParameterEntries({
         <div className={styles.sectionBlock}>
           <div className={styles.sectionGridFive}>
             {TOP_FIELDS.map((field) =>
-              renderField(field, { value: values[field.key] || "", error: errors[field.key] })
+              renderField(field, {
+                value: topValues[field.key] || "",
+                disabled: true,
+                darkDisabled: true,
+                error: errors[field.key],
+              })
             )}
           </div>
         </div>
@@ -514,7 +614,7 @@ function UPercentParameterEntries({
         </div>
       </div>
 
-      {portalTarget ? createPortal(pendingSection, portalTarget) : null}
+      {portalTarget ? createPortal(pendingSection, portalTarget) : pendingSection}
     </div>
   );
 }
