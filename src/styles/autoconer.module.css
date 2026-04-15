@@ -86,6 +86,16 @@
   padding: 20px;
 }
 
+.processFooterWrap {
+  margin-top: 24px;
+  border-top: 1px solid #eef2f7;
+  padding-top: 16px;
+}
+
+.postFooterSlot {
+  margin-top: 16px;
+}
+
 .formTitle {
   display: flex;
   gap: 8px;

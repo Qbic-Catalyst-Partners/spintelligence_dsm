@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -12,6 +12,8 @@ const today = new Date().toISOString().split("T")[0];
 const topFieldClass =
   "w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
+const compactSelectClass = "";
+
 const tableInputClass =
   "w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
@@ -22,6 +24,7 @@ const countNameOptions = [
 
 const autoConerOptions = ["AC01", "AC02", "AC03", "AC04"];
 const coneTipOptions = ["Red Color with Blue", "Blue Color with White", "Yellow Color with Black"];
+const drumRangeOptions = Array.from({ length: 73 }, (_, index) => String(index));
 
 const formFieldSanitizers = {
   testNo: (value) => sanitizeIntegerInput(value, 10),
@@ -62,7 +65,7 @@ const createInitialForm = () => ({
 const createReadingRows = (count = "", drumNo = "", weight = "") => {
   const total = Number(count);
 
-  if (!Number.isInteger(total) || total <= 0) {
+  if (!Number.isInteger(total) || total <= 0 || !String(drumNo).trim()) {
     return [];
   }
 
@@ -76,6 +79,17 @@ const createReadingRows = (count = "", drumNo = "", weight = "") => {
     weight: weight || "",
     breakPerMeter: "",
   }));
+};
+
+const buildDrumNumberOptions = (from = "", to = "") => {
+  const start = Number(from);
+  const end = Number(to);
+
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) {
+    return [];
+  }
+
+  return Array.from({ length: end - start + 1 }, (_, index) => String(start + index));
 };
 
 const mapRewindingEntryToRows = (entry = {}) => {
@@ -116,7 +130,13 @@ const errorClass = (flag) =>
     : "";
 
 const RewindingStudy = forwardRef(function RewindingStudy(
-  { selectedTypeName = "Rewinding Study", onTypeChange, typeOptions = [], tablePortalTargetId },
+  {
+    selectedTypeName = "Rewinding Study",
+    onTypeChange,
+    typeOptions = [],
+    tablePortalTargetId,
+    postFooterPortalTargetId,
+  },
   ref
 ) {
   const dispatch = useDispatch();
@@ -125,9 +145,22 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const [readingRows, setReadingRows] = useState([]);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const dropdownAreaRef = useRef(null);
 
   useEffect(() => {
     setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!dropdownAreaRef.current?.contains(event.target)) {
+        setOpenDropdown(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   const tableHeaders = useMemo(
@@ -283,6 +316,76 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     [rewindingStudy]
   );
 
+  const drumNumberOptions = useMemo(
+    () => buildDrumNumberOptions(form.drumFrom, form.drumTo),
+    [form.drumFrom, form.drumTo]
+  );
+
+  useEffect(() => {
+    setForm((current) => {
+      if (!current.drumNo) return current;
+      return { ...current, drumNo: "" };
+    });
+    setOpenDropdown(null);
+  }, [form.drumFrom, form.drumTo]);
+
+  const renderDownwardDropdown = ({ field, value, options, placeholder, errorFlag }) => (
+    <div className="relative" ref={openDropdown === field ? dropdownAreaRef : null}>
+      <button
+        type="button"
+        className={`${topFieldClass} flex items-center justify-between text-left${errorClass(errorFlag)}`}
+        onClick={() => setOpenDropdown((current) => (current === field ? null : field))}
+      >
+        <span className={value ? "text-slate-700" : "text-slate-400"}>
+          {value || placeholder}
+        </span>
+        <svg
+          className="h-4 w-4 text-slate-500"
+          viewBox="0 0 20 20"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M5 7.5L10 12.5L15 7.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {openDropdown === field ? (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-[10px] border border-slate-200 bg-white py-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
+          <button
+            type="button"
+            className="block w-full px-3 py-2 text-left text-[14px] text-slate-400 hover:bg-slate-50"
+            onClick={() => {
+              handleFormChange(field, "");
+              setOpenDropdown(null);
+            }}
+          >
+            {placeholder}
+          </button>
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className="block w-full px-3 py-2 text-left text-[14px] text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                handleFormChange(field, option);
+                setOpenDropdown(null);
+              }}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
@@ -292,95 +395,112 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "No. of Cones", field: "noOfCones", type: "text", placeholder: "Enter no. of cones" },
     { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Enter cone tip" },
-    { label: "Drum No.", field: "drumNo", type: "text", placeholder: "Enter drum no." },
+    {
+      label: "Drum No.",
+      field: "drumNo",
+      type: "select",
+      options: drumNumberOptions,
+      placeholder: "Select",
+      className: compactSelectClass,
+      wrapperClassName: "",
+    },
     { label: "Weight", field: "weight", type: "text", placeholder: "Enter weight" },
     { label: "No. of Cuts", field: "noOfCuts", type: "text", placeholder: "Enter no. of cuts" },
   ];
 
-  const portalTarget =
+  const topPortalTarget =
     portalReady && tablePortalTargetId && typeof document !== "undefined"
       ? document.getElementById(tablePortalTargetId)
       : null;
 
-  const lowerSection = (
-    <div className="flex flex-col gap-8">
-      <div className="overflow-x-auto pt-2">
-        <table className="min-w-full border-collapse text-[11px] text-slate-700">
-          <thead>
-            <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
-              {tableHeaders.map((header) => (
-                <th key={header} className="px-0 py-3 pr-6 font-semibold">
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {readingRows.map((row, index) => (
-              <tr key={`${row.drumNo}-${row.readingNumber}`} className="border-b border-slate-200">
-                <td className="px-0 py-4 pr-6">{row.drumNo}</td>
-                <td className="px-0 py-4 pr-6">{row.readingNumber}</td>
-                <td className="px-0 py-4 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-shortCut`])}`}
-                    value={row.shortCut}
-                    onChange={(event) => handleRowChange(index, "shortCut", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-4 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-shortName`])}`}
-                    value={row.shortName}
-                    onChange={(event) => handleRowChange(index, "shortName", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-4 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-faultPercent`])}`}
-                    value={row.faultPercent}
-                    onChange={(event) => handleRowChange(index, "faultPercent", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-4 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-length`])}`}
-                    value={row.length}
-                    onChange={(event) => handleRowChange(index, "length", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-4 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-weight`])}`}
-                    value={row.weight}
-                    onChange={(event) => handleRowChange(index, "weight", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-4">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-breakPerMeter`])}`}
-                    value={row.breakPerMeter}
-                    onChange={(event) => handleRowChange(index, "breakPerMeter", event.target.value)}
-                  />
-                </td>
-              </tr>
-            ))}
-            {!readingRows.length ? (
-              <tr>
-                <td colSpan={8} className="px-0 py-5 text-center text-[12px] text-slate-400">
-                  Enter a valid number of cuts to generate rows.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+  const bottomPortalTarget =
+    portalReady && postFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(postFooterPortalTargetId)
+      : null;
 
+  const generatedTableSection = (
+    <div className="px-6 pt-2">
+      <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse text-[11px] text-slate-700">
+        <thead>
+          <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
+            {tableHeaders.map((header) => (
+              <th key={header} className="px-0 py-3 pr-6 font-semibold">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {readingRows.map((row, index) => (
+            <tr key={`${row.drumNo}-${row.readingNumber}`} className="border-b border-slate-200">
+              <td className="px-0 py-4 pr-6">{row.drumNo}</td>
+              <td className="px-0 py-4 pr-6">{row.readingNumber}</td>
+              <td className="px-0 py-4 pr-6">
+                <input
+                  type="text"
+                  className={`${tableInputClass}${errorClass(errors[`row-${index}-shortCut`])}`}
+                  value={row.shortCut}
+                  onChange={(event) => handleRowChange(index, "shortCut", event.target.value)}
+                />
+              </td>
+              <td className="px-0 py-4 pr-6">
+                <input
+                  type="text"
+                  className={`${tableInputClass}${errorClass(errors[`row-${index}-shortName`])}`}
+                  value={row.shortName}
+                  onChange={(event) => handleRowChange(index, "shortName", event.target.value)}
+                />
+              </td>
+              <td className="px-0 py-4 pr-6">
+                <input
+                  type="text"
+                  className={`${tableInputClass}${errorClass(errors[`row-${index}-faultPercent`])}`}
+                  value={row.faultPercent}
+                  onChange={(event) => handleRowChange(index, "faultPercent", event.target.value)}
+                />
+              </td>
+              <td className="px-0 py-4 pr-6">
+                <input
+                  type="text"
+                  className={`${tableInputClass}${errorClass(errors[`row-${index}-length`])}`}
+                  value={row.length}
+                  onChange={(event) => handleRowChange(index, "length", event.target.value)}
+                />
+              </td>
+              <td className="px-0 py-4 pr-6">
+                <input
+                  type="text"
+                  className={`${tableInputClass}${errorClass(errors[`row-${index}-weight`])}`}
+                  value={row.weight}
+                  onChange={(event) => handleRowChange(index, "weight", event.target.value)}
+                />
+              </td>
+              <td className="px-0 py-4">
+                <input
+                  type="text"
+                  className={`${tableInputClass}${errorClass(errors[`row-${index}-breakPerMeter`])}`}
+                  value={row.breakPerMeter}
+                  onChange={(event) => handleRowChange(index, "breakPerMeter", event.target.value)}
+                />
+              </td>
+            </tr>
+          ))}
+          {!readingRows.length ? (
+            <tr>
+              <td colSpan={8} className="px-0 py-5 text-center text-[12px] text-slate-400">
+                Enter a valid number of cuts to generate rows.
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  );
+
+  const summarySection = (
+    <div className="flex flex-col gap-8 pt-6">
       <div className="max-w-[160px]">
         <label className="mb-2 block text-[14px] font-semibold text-slate-700">Break per Lakh Meter</label>
         <input
@@ -435,26 +555,26 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   return (
     <>
       <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
-        {formFields.map(({ label, field, type, options = [], value, placeholder }) => {
+        {formFields.map(({ label, field, type, options = [], value, placeholder, className = "", wrapperClassName = "" }) => {
           if (type === "pair") {
             return (
               <div key={field} className="flex flex-col gap-2">
                 <label className="text-[14px] font-semibold text-slate-700">{label}</label>
                 <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Enter from"
-                    className={`${topFieldClass}${errorClass(errors.drumFrom)}`}
-                    value={form.drumFrom}
-                    onChange={(event) => handleFormChange("drumFrom", event.target.value)}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Enter to"
-                    className={`${topFieldClass}${errorClass(errors.drumTo)}`}
-                    value={form.drumTo}
-                    onChange={(event) => handleFormChange("drumTo", event.target.value)}
-                  />
+                  {renderDownwardDropdown({
+                    field: "drumFrom",
+                    value: form.drumFrom,
+                    options: drumRangeOptions,
+                    placeholder: "Select from",
+                    errorFlag: errors.drumFrom,
+                  })}
+                  {renderDownwardDropdown({
+                    field: "drumTo",
+                    value: form.drumTo,
+                    options: drumRangeOptions,
+                    placeholder: "Select to",
+                    errorFlag: errors.drumTo,
+                  })}
                 </div>
               </div>
             );
@@ -463,12 +583,20 @@ const RewindingStudy = forwardRef(function RewindingStudy(
           const fieldValue = value ?? form[field] ?? "";
 
           return (
-            <div key={field} className="flex flex-col gap-2">
+            <div key={field} className={`flex flex-col gap-2 ${wrapperClassName}`}>
               <label className="text-[14px] font-semibold text-slate-700">{label}</label>
 
-              {type === "select" ? (
+              {type === "select" && field === "drumNo" ? (
+                renderDownwardDropdown({
+                  field,
+                  value: fieldValue,
+                  options,
+                  placeholder: placeholder || "Select",
+                  errorFlag: errors[field],
+                })
+              ) : type === "select" ? (
                 <select
-                  className={`${topFieldClass}${errorClass(errors[field])}`}
+                  className={`${topFieldClass} ${className}${errorClass(errors[field])}`}
                   value={fieldValue}
                   onChange={(event) => {
                     handleFormChange(field, event.target.value);
@@ -496,7 +624,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
           );
         })}
       </div>
-      {portalTarget ? createPortal(lowerSection, portalTarget) : null}
+      {topPortalTarget ? createPortal(generatedTableSection, topPortalTarget) : null}
+      {bottomPortalTarget ? createPortal(summarySection, bottomPortalTarget) : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving rewinding study...</p> : null}
     </>
   );
