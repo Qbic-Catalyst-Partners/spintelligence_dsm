@@ -8,14 +8,9 @@ import {
 } from "../../store/slices/blowroomSlice";
 
 const todayValue = new Date().toISOString().split("T")[0];
-const blowroomTypeOptions = [
-  "Blow Room Sync",
-  "BR Waste Study Entry",
-  "Drop Test Data Entry",
-];
 
 const BlowRoomSync = forwardRef(function BlowRoomSync(
-  { date, selectedTypeName, onTypeChange, onDateChange },
+  { date, selectedTypeName, onTypeChange, onDateChange, typeOptions = [] },
   ref
 ) {
   const dispatch = useDispatch();
@@ -43,6 +38,13 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     beater: "",
     totalTime: "",
   });
+
+  const availableTypeOptions = typeOptions.length
+    ? typeOptions.map((option) => ({
+        value: option.name,
+        label: option.displayName ?? option.name,
+      }))
+    : [{ value: "Blow Room Sync", label: "Blow Room Sync" }];
 
   useEffect(() => {
     dispatch(fetchBlowroomData());
@@ -227,9 +229,9 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
             value={selectedTypeName || form.type}
             onChange={(e) => onTypeChange?.(e.target.value)}
           >
-            {blowroomTypeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
+            {availableTypeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>

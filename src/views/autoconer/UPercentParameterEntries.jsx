@@ -24,7 +24,7 @@ const TOP_FIELDS = [
   { key: "csp", label: "CSP", numeric: true },
 ];
 
-const QUALITY_FIELDS = [
+const QUALITY_FIELDS = [  
   { key: "coneColor", label: "Cone Color", numeric: false },
   { key: "uPercent", label: "U%", numeric: true },
   { key: "cvm", label: "CVM", numeric: true },

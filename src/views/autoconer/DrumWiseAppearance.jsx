@@ -57,7 +57,14 @@ const mapDrumWiseEntryToRows = (entry = {}) => {
   ];
 };
 
-function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActions, tablePortalTargetId }) {
+function DrumWiseAppearance({
+  types,
+  selectedType,
+  onTypeChange,
+  onRegisterActions,
+  tablePortalTargetId,
+  postFooterPortalTargetId,
+}) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -225,78 +232,83 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
     isLoading,
   ]);
 
-  const portalTarget =
+  const tablePortalTarget =
     portalReady && tablePortalTargetId && typeof document !== "undefined"
       ? document.getElementById(tablePortalTargetId)
       : null;
 
-  const lowerSection = (
-    <>
-      <div className={styles.appearanceSection}>
-        <div className={styles.appearanceTable}>
-          <div className={styles.appearanceHeader}>
-            <span>DRUM NO.</span>
-            <span>APPEARANCE</span>
-          </div>
+  const summaryPortalTarget =
+    portalReady && postFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(postFooterPortalTargetId)
+      : null;
 
-          {rows.map((row) => (
-            <div key={row.drumNo} className={styles.appearanceRow}>
-              <span className={styles.drumNo}>{row.drumNo}</span>
-              <div className={styles.toggleGroup}>
-                <button
-                  type="button"
-                  className={`${styles.toggleBtn} ${row.ok ? styles.active : ""}`}
-                  onClick={() => updateAppearance(row.drumNo, "ok")}
-                >
-                  OK
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.toggleBtn} ${row.notOk ? styles.active : ""}`}
-                  onClick={() => updateAppearance(row.drumNo, "notOk")}
-                >
-                  NOT OK
-                </button>
-              </div>
+  const appearanceSection = (
+    <div className={styles.appearanceSection}>
+      <div className={styles.appearanceTable}>
+        <div className={styles.appearanceHeader}>
+          <span>DRUM NO.</span>
+          <span>APPEARANCE</span>
+        </div>
+
+        {rows.map((row) => (
+          <div key={row.drumNo} className={styles.appearanceRow}>
+            <span className={styles.drumNo}>{row.drumNo}</span>
+            <div className={styles.toggleGroup}>
+              <button
+                type="button"
+                className={`${styles.toggleBtn} ${row.ok ? styles.active : ""}`}
+                onClick={() => updateAppearance(row.drumNo, "ok")}
+              >
+                OK
+              </button>
+              <button
+                type="button"
+                className={`${styles.toggleBtn} ${row.notOk ? styles.active : ""}`}
+                onClick={() => updateAppearance(row.drumNo, "notOk")}
+              >
+                NOT OK
+              </button>
             </div>
-          ))}
-        </div>
-
-        <div className={styles.remarksBlock}>
-          <label>Remarks</label>
-          <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} style={errorStyle(errors.remarks)} />
-        </div>
+          </div>
+        ))}
       </div>
 
-      <div className={styles.summaryCard}>
-        <h4>All Drum Entries</h4>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>DRUM NO.</th>
-              <th>APPEARANCE OK</th>
-              <th>APPEARANCE NOT OK</th>
+      <div className={styles.remarksBlock}>
+        <label>Remarks</label>
+        <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} style={errorStyle(errors.remarks)} />
+      </div>
+    </div>
+  );
+
+  const summarySection = (
+    <div className={styles.summaryCard}>
+      <h4>All Drum Entries</h4>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>DRUM NO.</th>
+            <th>APPEARANCE OK</th>
+            <th>APPEARANCE NOT OK</th>
+          </tr>
+        </thead>
+        <tbody>
+          {savedRows.map((row, index) => (
+            <tr key={`summary-${row.drumNo}-${index}`}>
+              <td>{row.drumNo}</td>
+              <td>{row.ok}</td>
+              <td>{row.notOk}</td>
             </tr>
-          </thead>
-          <tbody>
-            {savedRows.map((row, index) => (
-              <tr key={`summary-${row.drumNo}-${index}`}>
-                <td>{row.drumNo}</td>
-                <td>{row.ok}</td>
-                <td>{row.notOk}</td>
-              </tr>
-            ))}
-            {!savedRows.length ? (
-              <tr>
-                <td colSpan={3}>
-                  {isFetching ? "Loading last 10 drum wise entries..." : "No drum wise entries available."}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-    </>
+          ))}
+          {!savedRows.length ? (
+            <tr>
+              <td colSpan={3}>
+                {isFetching ? "Loading last 10 drum wise entries..." : "No drum wise entries available."}
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
   );
 
   return (
@@ -359,7 +371,8 @@ function DrumWiseAppearance({ types, selectedType, onTypeChange, onRegisterActio
         </div>
 
       </div>
-      {portalTarget ? createPortal(lowerSection, portalTarget) : null}
+      {tablePortalTarget ? createPortal(appearanceSection, tablePortalTarget) : null}
+      {summaryPortalTarget ? createPortal(summarySection, summaryPortalTarget) : null}
     </div>
   );
 }

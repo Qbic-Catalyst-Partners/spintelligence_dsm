@@ -90,6 +90,8 @@ const buildAutoconerEndpoints = (path) => [
   `/api/autoconer/${path}`,
 ];
 
+const silentRequestConfig = { skipGlobalErrorModal: true };
+
 const postAutoconer = async (path, payload, fallbackMessage) => {
   return postAutoconerCandidates(path, [payload], fallbackMessage);
 };
@@ -103,7 +105,7 @@ const postAutoconerCandidates = async (path, payloadCandidates, fallbackMessage)
 
     for (const endpoint of endpoints) {
       try {
-        const response = await apiConfig.post(endpoint, normalizedPayload);
+        const response = await apiConfig.post(endpoint, normalizedPayload, silentRequestConfig);
         return response.data;
       } catch (error) {
         lastError = error;
@@ -142,7 +144,7 @@ const getAutoconer = async (
 
   for (const endpoint of endpoints) {
     try {
-      const response = await apiConfig.get(endpoint, params);
+      const response = await apiConfig.get(endpoint, params, silentRequestConfig);
       return response.data;
     } catch (error) {
       lastError = error;
@@ -238,7 +240,8 @@ export const updateAutoconerParameterEntry = async (id, payload) => {
     try {
       const response = await apiConfig.put(
         endpoint,
-        removeEmptyValues(normalizePayload(buildParameterEntryPayload(payload)))
+        removeEmptyValues(normalizePayload(buildParameterEntryPayload(payload))),
+        silentRequestConfig
       );
       return response.data;
     } catch (error) {
@@ -383,5 +386,116 @@ export const submitAutoconerConePackingAudit = async (payload) =>
     ],
     "Unable to save cone packing audit."
   );
+
+export const fetchAutoconerProcessParameters = async ({
+  page = 1,
+  limit = 10,
+} = {}) =>
+  getAutoconer(
+    "process",
+    { page, limit },
+    "Unable to fetch process parameter entries.",
+    { suppressFailure: true, paginated: true }
+  );
+
+export const submitAutoconerProcessParameter = async (payload) =>
+  postAutoconer("process", payload, "Unable to save process parameter entry.");
+
+export const updateAutoconerProcessParameter = async (id, payload) => {
+  const endpoints = buildAutoconerEndpoints(`process/${id}`);
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.put(
+        endpoint,
+        removeEmptyValues(normalizePayload(payload)),
+        silentRequestConfig
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!shouldTryAlternateEndpoint(error)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(getErrorMessage(lastError, "Unable to update process parameter entry."));
+};
+
+export const fetchAutoconerQ2Entries = async ({
+  page = 1,
+  limit = 10,
+} = {}) =>
+  getAutoconer(
+    "q2",
+    { page, limit },
+    "Unable to fetch Autoconer Q2 entries.",
+    { suppressFailure: true, paginated: true }
+  );
+
+export const submitAutoconerQ2Entry = async (payload) =>
+  postAutoconer("q2", payload, "Unable to save Autoconer Q2 entry.");
+
+export const updateAutoconerQ2Entry = async (id, payload) => {
+  const endpoints = buildAutoconerEndpoints(`q2/${id}`);
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.put(
+        endpoint,
+        removeEmptyValues(normalizePayload(payload)),
+        silentRequestConfig
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!shouldTryAlternateEndpoint(error)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(getErrorMessage(lastError, "Unable to update Autoconer Q2 entry."));
+};
+
+export const fetchAutoconerQ3Entries = async ({
+  page = 1,
+  limit = 10,
+} = {}) =>
+  getAutoconer(
+    "q3",
+    { page, limit },
+    "Unable to fetch Autoconer Q3 entries.",
+    { suppressFailure: true, paginated: true }
+  );
+
+export const submitAutoconerQ3Entry = async (payload) =>
+  postAutoconer("q3", payload, "Unable to save Autoconer Q3 entry.");
+
+export const updateAutoconerQ3Entry = async (id, payload) => {
+  const endpoints = buildAutoconerEndpoints(`q3/${id}`);
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.put(
+        endpoint,
+        removeEmptyValues(normalizePayload(payload)),
+        silentRequestConfig
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!shouldTryAlternateEndpoint(error)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(getErrorMessage(lastError, "Unable to update Autoconer Q3 entry."));
+};
 
 export { toNullableNumber };

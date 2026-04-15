@@ -116,7 +116,13 @@ const errorClass = (flag) =>
     : "";
 
 const ConePackingAudit = forwardRef(function ConePackingAudit(
-  { selectedTypeName = "Cone Packing Audit", onTypeChange, typeOptions = [], tablePortalTargetId },
+  {
+    selectedTypeName = "Cone Packing Audit",
+    onTypeChange,
+    typeOptions = [],
+    tablePortalTargetId,
+    postFooterPortalTargetId,
+  },
   ref
 ) {
   const dispatch = useDispatch();
@@ -268,13 +274,13 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   );
 
   const portalTarget =
-    portalReady && tablePortalTargetId && typeof document !== "undefined"
-      ? document.getElementById(tablePortalTargetId)
+    portalReady && postFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(postFooterPortalTargetId)
       : null;
 
   const lowerSection = (
-    <div className="grid gap-8 pt-2 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-      <div>
+    <div className="grid gap-8 pt-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+      <div className="px-6 lg:px-0">
         <div className="mb-5 max-w-[184px]">
           <label className="mb-2 block text-[14px] font-semibold text-slate-700">No. of Cuts</label>
           <div className="flex items-center gap-2">
@@ -329,7 +335,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
         </div>
       </div>
 
-      <div className="max-w-[460px] rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-[11px] text-slate-700">

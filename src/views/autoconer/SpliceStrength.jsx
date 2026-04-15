@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { MdEditNote } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -66,7 +67,13 @@ const mapSpliceEntryToRows = (entry = {}) => {
   ];
 };
 
-function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }) {
+function SpliceStrength({
+  types,
+  selectedType,
+  onTypeChange,
+  onRegisterActions,
+  postFooterPortalTargetId,
+}) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -82,6 +89,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
   const [readingCount, setReadingCount] = useState("");
   const [generatedRows, setGeneratedRows] = useState([]);
   const [errors, setErrors] = useState({});
+  const [portalReady, setPortalReady] = useState(false);
   const errorStyle = (flag) =>
     flag
       ? {
@@ -226,6 +234,10 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
   }, [dispatch]);
 
   useEffect(() => {
+    setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
     if (!onRegisterActions) return;
 
     onRegisterActions({
@@ -275,6 +287,44 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
   const allEntries = useMemo(
     () => savedEntries.flatMap((entry) => mapSpliceEntryToRows(entry)).slice(0, 10),
     [savedEntries]
+  );
+
+  const summaryPortalTarget =
+    portalReady && postFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(postFooterPortalTargetId)
+      : null;
+
+  const summarySection = (
+    <div className={styles.tableCard}>
+      <h4>All Drum Entries</h4>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>DRUM NO.</th>
+            <th>READING NUMBER</th>
+            <th>SPLICE STRENGTH</th>
+            <th>PARENT YARN</th>
+            <th>PREGENT YARN</th>
+          </tr>
+        </thead>
+        <tbody>
+          {allEntries.map((row, index) => (
+            <tr key={`all-${row.drumNo}-${row.readingNumber}-${index}`}>
+              <td>{row.drumNo}</td>
+              <td>{row.readingNumber}</td>
+              <td>{row.spliceStrength}</td>
+              <td>{row.parentYarn}</td>
+              <td>{row.percent}</td>
+            </tr>
+          ))}
+          {!allEntries.length ? (
+            <tr>
+              <td colSpan={5}>{isFetching ? "Loading last 10 splice strength entries..." : "No splice strength entries available."}</td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
   );
 
   return (
@@ -428,37 +478,7 @@ function SpliceStrength({ types, selectedType, onTypeChange, onRegisterActions }
           </tbody>
         </table>
       </div>
-
-      <div className={styles.tableCard}>
-        <h4>All Drum Entries</h4>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>DRUM NO.</th>
-              <th>READING NUMBER</th>
-              <th>SPLICE STRENGTH</th>
-              <th>PARENT YARN</th>
-              <th>PREGENT YARN</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allEntries.map((row, index) => (
-              <tr key={`all-${row.drumNo}-${row.readingNumber}-${index}`}>
-                <td>{row.drumNo}</td>
-                <td>{row.readingNumber}</td>
-                <td>{row.spliceStrength}</td>
-                <td>{row.parentYarn}</td>
-                <td>{row.percent}</td>
-              </tr>
-            ))}
-            {!allEntries.length ? (
-              <tr>
-                <td colSpan={5}>{isFetching ? "Loading last 10 splice strength entries..." : "No splice strength entries available."}</td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      {summaryPortalTarget ? createPortal(summarySection, summaryPortalTarget) : null}
     </div>
   );
 }

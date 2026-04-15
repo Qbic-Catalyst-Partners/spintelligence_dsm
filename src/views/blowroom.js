@@ -7,6 +7,7 @@ import Footer from "@/components/Footer";
 import BlowRoomSync from "./blowroom/BlowRoomSync";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
 import DropTestDataEntry from "./blowroom/dropTestDataEntry";
+import ProcessParameter from "./blowroom/ProcessParameter";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
@@ -14,8 +15,9 @@ import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const blowroomTypes = [
   { id: 1, name: "Blow Room Sync", aliases: ["Blow Room Sync"], component: BlowRoomSync, needsLotNo: false },
-  { id: 2, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: true },
-  { id: 3, name: "Drop Test Data Entry", aliases: ["Drop Test Data Entry", "Drop Test"], component: DropTestDataEntry, needsLotNo: true },
+  { id: 2, name: "Process Parameter", aliases: ["Process Parameter"], component: ProcessParameter, needsLotNo: false },
+  { id: 3, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: true },
+  { id: 4, name: "Drop Test Data Entry", aliases: ["Drop Test Data Entry", "Drop Test"], component: DropTestDataEntry, needsLotNo: true },
 ];
 
 export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
@@ -116,7 +118,7 @@ function BlowRoom() {
   };
   const isSyncType = selectedTypeName === "Blow Room Sync";
   const isDropTestType = selectedTypeName === "Drop Test Data Entry";
-
+  const isProcessParameterType = selectedTypeName === "Process Parameter";
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">
       <div className="w-full max-w-5xl pt-8 px-4 pb-8">
@@ -151,15 +153,17 @@ function BlowRoom() {
 
         <div className="bg-white rounded-xl border border-slate-200">
           <div className="p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-[#3d539f] text-xl leading-none">
-                <MdOutlineEditNote />
-              </span>
-              <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
-            </div>
+            {!isProcessParameterType ? (
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-[#3d539f] text-xl leading-none">
+                  <MdOutlineEditNote />
+                </span>
+                <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+              </div>
+            ) : null}
 
             <div className="flex flex-col gap-4">
-              {!isSyncType && !isDropTestType && (
+              {!isSyncType && !isDropTestType && !isProcessParameterType && (
                 <div className={`grid gap-[18px] ${selectedType?.needsLotNo ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div className="flex flex-col gap-1.5 min-w-0">
                     <label className="text-[14px] font-semibold text-slate-700">Type</label>
@@ -177,23 +181,23 @@ function BlowRoom() {
                     </select>
                   </div>
 
-              <CustomInput
-                label="Date"
-                type="date"
-                value={date}
-                onChange={(value) => setDate(value)}
-                error={headerErrors.date}
-              />
+                  <CustomInput
+                    label="Date"
+                    type="date"
+                    value={date}
+                    onChange={(value) => setDate(value)}
+                    error={headerErrors.date}
+                  />
 
-              {selectedType?.needsLotNo && (
-                <CustomInput
-                  label="Lot No"
-                  placeholder="Enter Lot Number"
-                  value={lotNo}
-                  onChange={(value) => setLotNo(value)}
-                  error={headerErrors.lotNo}
-                />
-              )}
+                  {selectedType?.needsLotNo && (
+                    <CustomInput
+                      label="Lot No"
+                      placeholder="Enter Lot Number"
+                      value={lotNo}
+                      onChange={(value) => setLotNo(value)}
+                      error={headerErrors.lotNo}
+                    />
+                  )}
                 </div>
               )}
 
@@ -207,6 +211,8 @@ function BlowRoom() {
                   onTypeChange={setSelectedTypeName}
                   onDateChange={setDate}
                   onLotNoChange={setLotNo}
+                  savedVersionsTargetId="blowroom-process-parameter-history"
+                  postFooterPortalTargetId="blowroom-post-footer-slot"
                 />
               ) : (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
@@ -217,24 +223,44 @@ function BlowRoom() {
           </div>
 
           {validationMessage ? (
-            <div className="px-5 pb-4">
+            <div className={isProcessParameterType ? "px-5 pt-6" : "px-5 pb-4"}>
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
                 {validationMessage}
               </div>
             </div>
           ) : null}
 
-          <Footer
-            onBack={() => router.push("/dashboard")}
-            onClear={() => {
-              setValidationMessage("");
-              childRef.current?.clear();
-            }}
-            onSave={openPreview}
-            saveLabel={actionLoading ? "Saving..." : "Save Record"}
-            disabled={actionLoading}
-          />
+          {isProcessParameterType ? (
+            <div className="mt-6 border-t border-slate-100 px-5 pt-4">
+              <Footer
+                onBack={() => router.push("/dashboard")}
+                onClear={() => {
+                  setValidationMessage("");
+                  childRef.current?.clear();
+                }}
+                onSave={openPreview}
+                saveLabel={actionLoading ? "Saving..." : "Save Record"}
+                disabled={actionLoading}
+              />
+            </div>
+          ) : (
+            <Footer
+              onBack={() => router.push("/dashboard")}
+              onClear={() => {
+                setValidationMessage("");
+                childRef.current?.clear();
+              }}
+              onSave={openPreview}
+              saveLabel={actionLoading ? "Saving..." : "Save Record"}
+              disabled={actionLoading}
+            />
+          )}
         </div>
+
+        <div id="blowroom-post-footer-slot" className="w-full max-w-5xl pt-5" />
+        {isProcessParameterType ? (
+          <div id="blowroom-process-parameter-history" className="w-full max-w-5xl pt-5" />
+        ) : null}
       </div>
 
       <PreviewModal

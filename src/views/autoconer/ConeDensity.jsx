@@ -121,7 +121,13 @@ const errorClass = (flag) =>
     : "";
 
 const ConeDensity = forwardRef(function ConeDensity(
-  { selectedTypeName = "Cone Density", onTypeChange, typeOptions = [], tablePortalTargetId },
+  {
+    selectedTypeName = "Cone Density",
+    onTypeChange,
+    typeOptions = [],
+    tablePortalTargetId,
+    postFooterPortalTargetId,
+  },
   ref
 ) {
   const dispatch = useDispatch();
@@ -283,14 +289,19 @@ const ConeDensity = forwardRef(function ConeDensity(
     [coneDensity]
   );
 
-  const portalTarget =
+  const topPortalTarget =
     portalReady && tablePortalTargetId && typeof document !== "undefined"
       ? document.getElementById(tablePortalTargetId)
       : null;
 
-  const lowerSection = (
-    <div className="flex flex-col gap-8">
-      <div className="overflow-x-auto pt-2">
+  const bottomPortalTarget =
+    portalReady && postFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(postFooterPortalTargetId)
+      : null;
+
+  const generatedTableSection = (
+    <div className="px-6 pt-2">
+      <div className="overflow-x-auto">
         <table className="min-w-full border-collapse text-[11px] text-slate-700">
           <thead>
             <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
@@ -381,7 +392,11 @@ const ConeDensity = forwardRef(function ConeDensity(
           </tbody>
         </table>
       </div>
+    </div>
+  );
 
+  const summarySection = (
+    <div className="flex flex-col gap-8 pt-6">
       <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
         <div className="overflow-x-auto">
@@ -498,7 +513,8 @@ const ConeDensity = forwardRef(function ConeDensity(
           );
         })}
       </div>
-      {portalTarget ? createPortal(lowerSection, portalTarget) : null}
+      {topPortalTarget ? createPortal(generatedTableSection, topPortalTarget) : null}
+      {bottomPortalTarget ? createPortal(summarySection, bottomPortalTarget) : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving cone density...</p> : null}
     </>
   );

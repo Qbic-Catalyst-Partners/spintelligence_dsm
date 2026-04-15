@@ -8,6 +8,9 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import ConeDensity from "@/views/autoconer/ConeDensity";
 import RewindingStudy from "@/views/autoconer/RewindingStudy";
+import ProcessParameter from "@/views/autoconer/ProcessParameter";
+import AutoconerQ2 from "@/views/autoconer/AutoconerQ2";
+import AutoconerQ3 from "@/views/autoconer/AutoconerQ3";
 import LycraChecking from "@/views/autoconer/LycraChecking";
 import CspParameterEntries from "@/views/autoconer/CspParameterEntries";
 import UPercentParameterEntries from "@/views/autoconer/UPercentParameterEntries";
@@ -20,15 +23,18 @@ import { clearAutoconerState } from "@/store/slices/autoconer";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const autoconerTypes = [
-  { id: 1, name: "Rewinding Study", aliases: ["Rewinding Study"], component: RewindingStudy },
-  { id: 2, name: "Cone Density", aliases: ["Cone Density"], component: ConeDensity },
-  { id: 3, name: "Cone Packing Audit", aliases: ["Cone Packing Audit"], component: ConePackingAudit },
-  { id: 4, name: "Lycra Checking", aliases: ["Lycra Checking"], component: LycraChecking },
-  { id: 5, name: "Count Wise Cuts Record", aliases: ["Count Wise Cuts Record", "Countwise Cuts Record"], component: CoastWasteCrateRecord },
-  { id: 6, name: "Splice Strength", aliases: ["Splice Strength"], component: SpliceStrength },
-  { id: 7, name: "Drum wise Appearance", aliases: ["Drum wise Appearance", "Drum Wise Appearance"], component: DrumWiseAppearance },
-  { id: 8, name: "CSP Parameter Entries", aliases: ["CSP Parameter Entries"], component: CspParameterEntries },
-  { id: 9, name: "U% Parameter Entries", aliases: ["U% Parameter Entries", "U Percent Parameter Entries"], component: UPercentParameterEntries },
+  { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameter },
+  { id: 1, name: "PP - Autoconer Q2", aliases: ["PP - Autoconer Q2", "Autoconer Q2", "Q2"], component: AutoconerQ2 },
+  { id: 2, name: "PP - Autoconer Q3", aliases: ["PP - Autoconer Q3", "Autoconer Q3", "Q3"], component: AutoconerQ3 },
+  { id: 3, name: "Rewinding Study", aliases: ["Rewinding Study"], component: RewindingStudy },
+  { id: 4, name: "Cone Density", aliases: ["Cone Density"], component: ConeDensity },
+  { id: 5, name: "Cone Packing Audit", aliases: ["Cone Packing Audit"], component: ConePackingAudit },
+  { id: 6, name: "Lycra Checking", aliases: ["Lycra Checking"], component: LycraChecking },
+  { id: 7, name: "Count Wise Cuts Record", aliases: ["Count Wise Cuts Record", "Countwise Cuts Record"], component: CoastWasteCrateRecord },
+  { id: 8, name: "Splice Strength", aliases: ["Splice Strength"], component: SpliceStrength },
+  { id: 9, name: "Drum wise Appearance", aliases: ["Drum wise Appearance", "Drum Wise Appearance"], component: DrumWiseAppearance },
+  { id: 10, name: "CSP Parameter Entries", aliases: ["CSP Parameter Entries"], component: CspParameterEntries },
+  { id: 11, name: "U% Parameter Entries", aliases: ["U% Parameter Entries", "U Percent Parameter Entries"], component: UPercentParameterEntries },
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
@@ -63,7 +69,14 @@ function Autoconer() {
     () => typeOptions.find((item) => item.name === checkingType)?.component || null,
     [checkingType, typeOptions]
   );
+  const isFooterHistoryType =
+    selectedType === "Process Parameter" ||
+    selectedType === "PP - Autoconer Q2" ||
+    selectedType === "PP - Autoconer Q3";
   const usesRefFlow =
+    selectedType === "Process Parameter" ||
+    selectedType === "PP - Autoconer Q2" ||
+    selectedType === "PP - Autoconer Q3" ||
     selectedType === "Rewinding Study" ||
     selectedType === "Cone Density" ||
     selectedType === "Cone Packing Audit";
@@ -140,10 +153,12 @@ function Autoconer() {
 
         <div className={styles.shell}>
           <div className={styles.formBody}>
-            <div className={styles.formTitle}>
-              <MdOutlineEditNote />
-              <h3>Inspection Data Entry</h3>
-            </div>
+            {!isFooterHistoryType ? (
+              <div className={styles.formTitle}>
+                <MdOutlineEditNote />
+                <h3>Inspection Data Entry</h3>
+              </div>
+            ) : null}
 
             {SelectedComponent ? (
               <SelectedComponent
@@ -154,6 +169,8 @@ function Autoconer() {
                 types={typeOptions}
                 typeOptions={typeOptions.map((type) => type.name)}
                 tablePortalTargetId="autoconer-table-slot"
+                savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}
+                postFooterPortalTargetId="autoconer-post-footer-slot"
                 onRegisterActions={setRegisteredActions}
               />
             ) : (
@@ -163,26 +180,47 @@ function Autoconer() {
             )}
           </div>
 
+          <div id="autoconer-table-slot" className={styles.tableSlot} />
+
           {validationMessage ? (
             <div className={styles.validationMessage}>
               {validationMessage}
             </div>
           ) : null}
 
-          <Footer
-            onBack={() => router.push("/dashboard")}
-            onClear={() => {
-              setValidationMessage("");
-              childRef.current?.clear?.();
-              registeredActions.onClear?.();
-            }}
-            onSave={openPreview}
-            saveLabel={registeredActions.saveLabel || "Save Record"}
-            disabled={registeredActions.disabled}
-          />
+          {isFooterHistoryType ? (
+            <div className={styles.processFooterWrap}>
+              <Footer
+                onBack={() => router.push("/dashboard")}
+                onClear={() => {
+                  setValidationMessage("");
+                  childRef.current?.clear?.();
+                  registeredActions.onClear?.();
+                }}
+                onSave={openPreview}
+                saveLabel={registeredActions.saveLabel || "Save Record"}
+                disabled={registeredActions.disabled}
+              />
+            </div>
+          ) : (
+            <Footer
+              onBack={() => router.push("/dashboard")}
+              onClear={() => {
+                setValidationMessage("");
+                childRef.current?.clear?.();
+                registeredActions.onClear?.();
+              }}
+              onSave={openPreview}
+              saveLabel={registeredActions.saveLabel || "Save Record"}
+              disabled={registeredActions.disabled}
+            />
+          )}
         </div>
 
-        <div id="autoconer-table-slot" className={styles.tableSlot} />
+        <div
+          id="autoconer-post-footer-slot"
+          className={isFooterHistoryType ? styles.postFooterSlot : styles.tableSlot}
+        />
       </div>
 
       <PreviewModal
