@@ -196,7 +196,6 @@ function Autoconer() {
                   registeredActions.onClear?.();
                 }}
                 onSave={openPreview}
-                variant="compact"
                 saveLabel={registeredActions.saveLabel || "Save Record"}
                 disabled={registeredActions.disabled}
               />
