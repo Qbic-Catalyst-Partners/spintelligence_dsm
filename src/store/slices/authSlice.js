@@ -3,6 +3,8 @@ import { getAccessibleScreensByRole, loginAPI } from '../../apis/login';
 import { setAuthToken } from '../../apis/apiConfig';
 
 const AUTH_USER_STORAGE_KEY = 'authUser';
+const AUTH_USER_ID_STORAGE_KEY = 'authUserId';
+const AUTH_TOKEN_STORAGE_KEY = 'token';
 const ACCESSIBLE_SCREENS_STORAGE_KEY = 'accessibleScreens';
 const ACCESS_BY_DEPARTMENT_STORAGE_KEY = 'accessByDepartment';
 
@@ -70,15 +72,59 @@ const normalizeAccessibleScreensPayload = (payload) => {
     };
 };
 
+const getStoredJson = (key, fallbackValue) => {
+    if (typeof window === 'undefined') {
+        return fallbackValue;
+    }
+
+    const rawValue = localStorage.getItem(key);
+    if (!rawValue) {
+        return fallbackValue;
+    }
+
+    try {
+        return JSON.parse(rawValue);
+    } catch {
+        return fallbackValue;
+    }
+};
+
+const getUserStorageId = (user) =>
+    user?.id ||
+    user?.user_id ||
+    user?.userId ||
+    user?.employee_id ||
+    user?.employeeId ||
+    '';
+
+const persistAuthToStorage = ({ token, user, accessibleScreens, accessByDepartment }) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token || '');
+    localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user || null));
+    localStorage.setItem(AUTH_USER_ID_STORAGE_KEY, String(getUserStorageId(user) || ''));
+    localStorage.setItem(
+        ACCESSIBLE_SCREENS_STORAGE_KEY,
+        JSON.stringify(Array.isArray(accessibleScreens) ? accessibleScreens : [])
+    );
+    localStorage.setItem(
+        ACCESS_BY_DEPARTMENT_STORAGE_KEY,
+        JSON.stringify(accessByDepartment || null)
+    );
+};
+
 const clearLegacyStoredAuth = () => {
     if (typeof window === 'undefined') {
         return;
     }
 
-    localStorage.removeItem('token');
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
     localStorage.removeItem(ACCESSIBLE_SCREENS_STORAGE_KEY);
     localStorage.removeItem(ACCESS_BY_DEPARTMENT_STORAGE_KEY);
     localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    localStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
 };
 
 // Async thunk action creator for login
@@ -134,7 +180,15 @@ const authSlice = createSlice({
             clearLegacyStoredAuth();
         },
         hydrateAuthFromStorage: (state) => {
-            clearLegacyStoredAuth();
+            const storedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+            const storedUser = getStoredJson(AUTH_USER_STORAGE_KEY, null);
+            const storedAccessibleScreens = getStoredJson(ACCESSIBLE_SCREENS_STORAGE_KEY, []);
+            const storedAccessByDepartment = getStoredJson(ACCESS_BY_DEPARTMENT_STORAGE_KEY, null);
+
+            state.token = storedToken || null;
+            state.user = storedUser ? normalizeUser(storedUser) : null;
+            state.accessibleScreens = Array.isArray(storedAccessibleScreens) ? storedAccessibleScreens : [];
+            state.accessByDepartment = storedAccessByDepartment || null;
             setAuthToken(state.token);
             state.isHydrated = true;
         },
@@ -156,7 +210,12 @@ const authSlice = createSlice({
                 state.accessByDepartment = action.payload.accessByDepartment || null;
                 state.isHydrated = true;
                 setAuthToken(action.payload.token);
-                clearLegacyStoredAuth();
+                persistAuthToStorage({
+                    token: state.token,
+                    user: state.user,
+                    accessibleScreens: state.accessibleScreens,
+                    accessByDepartment: state.accessByDepartment,
+                });
             })
             .addCase(loginUser.rejected, (state, action) => {
                 state.isLoading = false;
