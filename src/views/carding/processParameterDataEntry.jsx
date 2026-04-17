@@ -5,11 +5,18 @@ import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SearchableSelect from "@/components/SearchableSelect";
+import SuccessModal from "@/components/SuccessModal";
 import {
   getCardingProcessParameterEntries,
   submitCardingProcessParameterEntry,
   updateCardingProcessParameterEntry,
 } from "@/apis/carding";
+import {
+  buildProcessParameterOptions,
+  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+  PROCESS_PARAMETER_COUNT_OPTIONS,
+} from "@/data/processParameterMasterOptions";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -67,6 +74,8 @@ const InspectionEntryIcon = () => (
   <svg
     aria-hidden="true"
     viewBox="0 0 20 20"
+    width="18"
+    height="18"
     className="h-[18px] w-[18px] text-[#3d8bfd]"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
@@ -147,6 +156,17 @@ const mapApiEntryToVersion = (entry) => {
       flats: entry?.flats == null ? "" : String(entry.flats),
     },
   };
+};
+
+const getVersionSortValue = (version) => {
+  const paramId = String(version?.data?.paramId || "").trim();
+  const numericParamId = Number(paramId);
+  if (paramId && Number.isFinite(numericParamId)) return numericParamId;
+
+  if (paramId) return paramId.toLowerCase();
+
+  const numericId = Number(version?.id);
+  return Number.isFinite(numericId) ? numericId : String(version?.id || "").toLowerCase();
 };
 
 const SavedVersionsSection = ({
@@ -282,30 +302,21 @@ function CardingProcessParameterDataEntry({
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [validationMessage, setValidationMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const countOptions = Array.from(
-    new Set(
-      versions
-        .map((version) => String(version?.data?.countName || "").trim())
-        .filter(Boolean)
-        .concat(String(form.countName || "").trim() ? [String(form.countName || "").trim()] : [])
-    )
+  const countOptions = buildProcessParameterOptions(
+    PROCESS_PARAMETER_COUNT_OPTIONS,
+    versions.map((version) => version?.data?.countName),
+    form.countName
   );
 
-  const consigneeOptions = Array.from(
-    new Set(
-      versions
-        .map((version) => String(version?.data?.consigneeName || "").trim())
-        .filter(Boolean)
-        .concat(
-          String(form.consigneeName || "").trim()
-            ? [String(form.consigneeName || "").trim()]
-            : []
-        )
-    )
+  const consigneeOptions = buildProcessParameterOptions(
+    PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+    versions.map((version) => version?.data?.consigneeName),
+    form.consigneeName
   );
 
   const loadVersions = async () => {
@@ -313,7 +324,21 @@ function CardingProcessParameterDataEntry({
     try {
       const response = await getCardingProcessParameterEntries({ page: 1, limit: 100 });
       const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
-      const nextVersions = rows.map(mapApiEntryToVersion);
+      const nextVersions = rows
+        .map(mapApiEntryToVersion)
+        .sort((left, right) => {
+          const leftValue = getVersionSortValue(left);
+          const rightValue = getVersionSortValue(right);
+
+          if (typeof leftValue === "number" && typeof rightValue === "number") {
+            return rightValue - leftValue;
+          }
+
+          return String(rightValue).localeCompare(String(leftValue), undefined, {
+            numeric: true,
+            sensitivity: "base",
+          });
+        });
 
       setVersions(nextVersions);
       setVersionsError("");
@@ -322,7 +347,7 @@ function CardingProcessParameterDataEntry({
         const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
         setForm((current) => {
           const activeVersion =
-            nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
+            nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
           return { ...activeVersion.data, versionId: activeVersion.id };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
@@ -477,11 +502,17 @@ function CardingProcessParameterDataEntry({
       setShowPreview(false);
       await loadVersions();
       setValidationMessage("");
+      setShowSuccess(true);
     } catch (error) {
       setValidationMessage(error.message || "Unable to submit the form.");
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    resetForm();
   };
 
   const savedVersionsPortal =
@@ -516,35 +547,27 @@ function CardingProcessParameterDataEntry({
             </div>
 
             <div className="flex flex-col gap-1.5 min-w-0">
-              <label className="text-[14px] font-semibold text-slate-700">Count Name</label>
-              <select
+            <label className="text-[14px] font-semibold text-slate-700">Count Name</label>
+              <SearchableSelect
                 className={`${topFieldClass}${errors.countName ? " border-red-500 bg-red-50" : ""}`}
                 value={form.countName}
-                onChange={(event) => handleFieldChange("countName", event.target.value)}
-              >
-                <option value="">Select Count Name</option>
-                {countOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => handleFieldChange("countName", value)}
+                options={countOptions}
+                placeholder="Search or select count name"
+                ariaLabel="Count Name"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5 min-w-0">
-              <label className="text-[14px] font-semibold text-slate-700">Consignee Name</label>
-              <select
+            <label className="text-[14px] font-semibold text-slate-700">Consignee Name</label>
+              <SearchableSelect
                 className={`${topFieldClass}${errors.consigneeName ? " border-red-500 bg-red-50" : ""}`}
                 value={form.consigneeName}
-                onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
-              >
-                <option value="">Select Consignee Name</option>
-                {consigneeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) => handleFieldChange("consigneeName", value)}
+                options={consigneeOptions}
+                placeholder="Search or select consignee name"
+                ariaLabel="Consignee Name"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5 min-w-0">
@@ -609,6 +632,13 @@ function CardingProcessParameterDataEntry({
         onCancel={() => setShowPreview(false)}
         onConfirm={handleSubmit}
         confirmLabel="Submit"
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        message="Carding process parameter entry saved successfully"
+        typeValue={selectedType || "Process Parameter"}
+        onClose={handleSuccessClose}
       />
     </>
   );

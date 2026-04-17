@@ -7,6 +7,7 @@ import { MdOutlineEditNote } from "react-icons/md";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   fetchDrawFrameFinisherEntries,
   fetchDrawFrameHeaderEntries,
@@ -15,6 +16,11 @@ import {
   updateDrawFrameFinisherEntry,
   updateDrawFrameHeaderEntry,
 } from "@/apis/draw-frame";
+import {
+  buildProcessParameterOptions,
+  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+  PROCESS_PARAMETER_COUNT_OPTIONS,
+} from "@/data/processParameterMasterOptions";
 import styles from "@/styles/draw-frame.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -388,30 +394,20 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
 
   const countNameOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          recentEntries
-            .map((entry) => String(entry.countName || "").trim())
-            .filter(Boolean)
-            .concat(String(form.countName || "").trim() ? [String(form.countName || "").trim()] : [])
-        )
+      buildProcessParameterOptions(
+        PROCESS_PARAMETER_COUNT_OPTIONS,
+        recentEntries.map((entry) => String(entry.countName || "").trim()),
+        form.countName
       ),
     [form.countName, recentEntries]
   );
 
   const consigneeOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          recentEntries
-            .map((entry) => String(entry.consigneeName || "").trim())
-            .filter(Boolean)
-            .concat(
-              String(form.consigneeName || "").trim()
-                ? [String(form.consigneeName || "").trim()]
-                : []
-            )
-        )
+      buildProcessParameterOptions(
+        PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+        recentEntries.map((entry) => String(entry.consigneeName || "").trim()),
+        form.consigneeName
       ),
     [form.consigneeName, recentEntries]
   );
@@ -538,17 +534,6 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
     setExpandedEntryId((current) => (String(current) === String(entry.id) ? null : entry.id));
   };
 
-  const renderSelectOptions = (options, placeholder) => (
-    <>
-      <option value="">{placeholder}</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </>
-  );
-
   const renderField = (field) => {
     const hasError = field.key === "type" ? errors.selectedType : errors[field.key];
     const controlClass = `${styles.input} ${styles.headerEntryControl} ${
@@ -580,15 +565,16 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
       return (
         <div key={field.key} className={styles.field}>
           <label className={styles.label}>{field.label}</label>
-          <select
+          <SearchableSelect
             value={form.countName}
-            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-            className={`${styles.select} ${styles.headerEntryControl} ${
+            onChange={(value) => handleFieldChange(field.key, value)}
+            className={`${styles.input} ${styles.headerEntryControl} ${
               errors.countName ? styles.inputError : ""
             }`}
-          >
-            {renderSelectOptions(countNameOptions, field.placeholder)}
-          </select>
+            options={countNameOptions}
+            placeholder={field.placeholder}
+            ariaLabel={field.label}
+          />
         </div>
       );
     }
@@ -597,15 +583,16 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
       return (
         <div key={field.key} className={styles.field}>
           <label className={styles.label}>{field.label}</label>
-          <select
+          <SearchableSelect
             value={form.consigneeName}
-            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-            className={`${styles.select} ${styles.headerEntryControl} ${
+            onChange={(value) => handleFieldChange(field.key, value)}
+            className={`${styles.input} ${styles.headerEntryControl} ${
               errors.consigneeName ? styles.inputError : ""
             }`}
-          >
-            {renderSelectOptions(consigneeOptions, field.placeholder)}
-          </select>
+            options={consigneeOptions}
+            placeholder={field.placeholder}
+            ariaLabel={field.label}
+          />
         </div>
       );
     }

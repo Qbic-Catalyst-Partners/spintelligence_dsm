@@ -431,9 +431,13 @@
 }
 
 .title-icon {
-  font-size: 22px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  display: block;
+  flex-shrink: 0;
   color: #3d539f;
-  margin-bottom: 15px;
 }
 
 /* Employee input wrapper */
