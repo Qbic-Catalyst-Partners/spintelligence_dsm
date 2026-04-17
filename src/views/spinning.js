@@ -74,6 +74,8 @@ const InspectionEntryIcon = () => (
     <svg
         aria-hidden="true"
         viewBox="0 0 20 20"
+        width="18"
+        height="18"
         className={styles["title-icon"]}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"

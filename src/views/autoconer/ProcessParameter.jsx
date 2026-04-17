@@ -2,12 +2,18 @@ import { createPortal } from "react-dom";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
+import SearchableSelect from "@/components/SearchableSelect";
 
 import {
   fetchAutoconerProcessParameters,
   submitAutoconerProcessParameter,
   updateAutoconerProcessParameter,
 } from "@/apis/autoconer";
+import {
+  buildProcessParameterOptions,
+  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+  PROCESS_PARAMETER_COUNT_OPTIONS,
+} from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/AutoconerProcessParameter.module.css";
 
@@ -200,30 +206,20 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   const countOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          versions
-            .map((version) => String(version?.data?.countName || "").trim())
-            .filter(Boolean)
-            .concat(String(form.countName || "").trim() ? [String(form.countName || "").trim()] : [])
-        )
+      buildProcessParameterOptions(
+        PROCESS_PARAMETER_COUNT_OPTIONS,
+        versions.map((version) => version?.data?.countName),
+        form.countName
       ),
     [form.countName, versions]
   );
 
   const consigneeOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          versions
-            .map((version) => String(version?.data?.consigneeName || "").trim())
-            .filter(Boolean)
-            .concat(
-              String(form.consigneeName || "").trim()
-                ? [String(form.consigneeName || "").trim()]
-                : []
-            )
-        )
+      buildProcessParameterOptions(
+        PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+        versions.map((version) => version?.data?.consigneeName),
+        form.consigneeName
       ),
     [form.consigneeName, versions]
   );
@@ -471,34 +467,26 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
           <div className={styles.fieldGroup}>
             <label>Count Name</label>
-            <select
+            <SearchableSelect
               className={`${styles.field}${errors.countName ? ` ${styles.errorField}` : ""}`}
               value={form.countName}
-              onChange={(event) => handleFieldChange("countName", event.target.value)}
-            >
-              <option value="">Select Count Name</option>
-              {countOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => handleFieldChange("countName", value)}
+              options={countOptions}
+              placeholder="Search or select count name"
+              ariaLabel="Count Name"
+            />
           </div>
 
           <div className={styles.fieldGroup}>
             <label>Consignee Name</label>
-            <select
+            <SearchableSelect
               className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
               value={form.consigneeName}
-              onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
-            >
-              <option value="">Select Consignee Name</option>
-              {consigneeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => handleFieldChange("consigneeName", value)}
+              options={consigneeOptions}
+              placeholder="Search or select consignee name"
+              ariaLabel="Consignee Name"
+            />
           </div>
 
           <div className={styles.fieldGroup}>

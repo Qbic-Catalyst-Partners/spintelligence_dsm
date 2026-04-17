@@ -2,11 +2,17 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   getSpinningProcessParameterEntries,
   spinningProcessParameterDataEntry,
   updateSpinningProcessParameterEntry,
 } from "@/apis/spinning";
+import {
+  buildProcessParameterOptions,
+  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+  PROCESS_PARAMETER_COUNT_OPTIONS,
+} from "@/data/processParameterMasterOptions";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -132,6 +138,8 @@ const InspectionEntryIcon = () => (
   <svg
     aria-hidden="true"
     viewBox="0 0 20 20"
+    width="18"
+    height="18"
     className="h-[18px] w-[18px] text-[#3d8bfd]"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
@@ -325,26 +333,16 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
 
-  const countOptions = Array.from(
-    new Set(
-      versions
-        .map((version) => String(version?.data?.countName || "").trim())
-        .filter(Boolean)
-        .concat(String(form.countName || "").trim() ? [String(form.countName || "").trim()] : [])
-    )
+  const countOptions = buildProcessParameterOptions(
+    PROCESS_PARAMETER_COUNT_OPTIONS,
+    versions.map((version) => version?.data?.countName),
+    form.countName
   );
 
-  const consigneeOptions = Array.from(
-    new Set(
-      versions
-        .map((version) => String(version?.data?.consigneeName || "").trim())
-        .filter(Boolean)
-        .concat(
-          String(form.consigneeName || "").trim()
-            ? [String(form.consigneeName || "").trim()]
-            : []
-        )
-    )
+  const consigneeOptions = buildProcessParameterOptions(
+    PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+    versions.map((version) => version?.data?.consigneeName),
+    form.consigneeName
   );
 
   const loadVersions = async () => {
@@ -518,34 +516,26 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
 
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Count Name</label>
-          <select
+          <SearchableSelect
             className={`${topFieldClass}${errors.countName ? " border-red-500 bg-red-50" : ""}`}
             value={form.countName}
-            onChange={(event) => handleFieldChange("countName", event.target.value)}
-          >
-            <option value="">Select Count Name</option>
-            {countOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => handleFieldChange("countName", value)}
+            options={countOptions}
+            placeholder="Search or select count name"
+            ariaLabel="Count Name"
+          />
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Consignee Name</label>
-          <select
+          <SearchableSelect
             className={`${topFieldClass}${errors.consigneeName ? " border-red-500 bg-red-50" : ""}`}
             value={form.consigneeName}
-            onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
-          >
-            <option value="">Select Consignee Name</option>
-            {consigneeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => handleFieldChange("consigneeName", value)}
+            options={consigneeOptions}
+            placeholder="Search or select consignee name"
+            ariaLabel="Consignee Name"
+          />
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">

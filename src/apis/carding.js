@@ -4,7 +4,7 @@ export const submitCardingProcessParameterEntry = async (payload) => {
     try {
         const response = await apiConfig.post(
             "/carding/qc-header",
-            Array.isArray(payload) ? payload : [payload]
+            payload
         );
         return response.data;
     } catch (error) {
