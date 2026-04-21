@@ -6,7 +6,9 @@ import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
 import FailureModal from "@/components/FailureModal";
 import Header from "@/components/Header";
+import SuccessModal from "@/components/SuccessModal";
 import { subscribeToGlobalFailureModal } from "@/utils/globalFailureModal";
+import { subscribeToGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { hydrateAuthFromStorage } from "@/store/slices/authSlice";
 import { hasRouteAccess, isFullAccessUser } from "@/utils/accessControl";
 import { store } from '../store';
@@ -20,6 +22,7 @@ function AppShell({ Component, pageProps }) {
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
+  const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const showHeader = router.pathname !== "/";
   const isProtectedRoute = router.pathname !== "/";
   const isDepartmentFlow =
@@ -74,6 +77,15 @@ function AppShell({ Component, pageProps }) {
   }, []);
 
   useEffect(() => {
+    return subscribeToGlobalSuccessModal(() => {
+      setSuccessModal({
+        open: true,
+        message: "Data Submitted",
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     if (!router.isReady || !isHydrated) {
       return;
     }
@@ -106,6 +118,12 @@ function AppShell({ Component, pageProps }) {
         open={failureModal.open}
         message={failureModal.message}
         onClose={() => setFailureModal({ open: false, message: "Error Occured" })}
+      />
+      <SuccessModal
+        open={successModal.open}
+        message={successModal.message}
+        scope="global"
+        onClose={() => setSuccessModal({ open: false, message: "Data Submitted" })}
       />
     </>
   );

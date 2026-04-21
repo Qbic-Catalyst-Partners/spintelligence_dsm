@@ -69,11 +69,10 @@ export default function UmChangePassword() {
 
   useEffect(() => {
     if (actionSuccess) {
-      alert("Password Updated Successfully");
       dispatch(clearActionState());
       router.push("/usermanagement");
     }
-  }, [actionSuccess]);
+  }, [actionSuccess, dispatch, router]);
 
   useEffect(() => {
     if (error) alert(error);

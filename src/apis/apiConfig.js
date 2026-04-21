@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
+import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 
 let authToken = null;
 
@@ -26,6 +27,34 @@ const buildNetworkErrorMessage = (error) => {
     return error.message || `Unable to complete ${method} ${endpoint}`;
 };
 
+const shouldShowGlobalErrorModal = (error) => {
+    if (error.config?.skipGlobalErrorModal) {
+        return false;
+    }
+
+    const status = error.response?.status;
+
+    return !error.response || status === 404;
+};
+
+const shouldShowGlobalSuccessModal = (response) => {
+    if (response.config?.skipGlobalSuccessModal) {
+        return false;
+    }
+
+    const method = String(response.config?.method || "get").toLowerCase();
+    if (!["post", "put", "patch", "delete"].includes(method)) {
+        return false;
+    }
+
+    const path = String(response.config?.url || "");
+    if (path.startsWith("/auth/")) {
+        return false;
+    }
+
+    return response.status >= 200 && response.status < 300;
+};
+
 // Create the base Axios instance with default settings
 const axiosInstance = axios.create({
     baseURL: resolvedBaseUrl,
@@ -46,6 +75,8 @@ const buildRequestConfig = (options = {}) => {
     const {
         headers,
         skipGlobalErrorModal,
+        skipGlobalSuccessModal,
+        successMessage,
         timeout,
         signal,
         ...rest
@@ -60,6 +91,14 @@ const buildRequestConfig = (options = {}) => {
 
     if (typeof skipGlobalErrorModal !== "undefined") {
         config.skipGlobalErrorModal = skipGlobalErrorModal;
+    }
+
+    if (typeof skipGlobalSuccessModal !== "undefined") {
+        config.skipGlobalSuccessModal = skipGlobalSuccessModal;
+    }
+
+    if (typeof successMessage !== "undefined") {
+        config.successMessage = successMessage;
     }
 
     if (typeof timeout !== "undefined") {
@@ -86,9 +125,18 @@ axiosInstance.interceptors.request.use(
 
 // Response interceptor for handling global errors (e.g., automatically logging out on 401)
 axiosInstance.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        if (typeof window !== "undefined" && shouldShowGlobalSuccessModal(response)) {
+            emitGlobalSuccessModal({
+                message: "Data Submitted",
+                status: response.status,
+            });
+        }
+
+        return response;
+    },
     (error) => {
-        if (typeof window !== "undefined" && !error.config?.skipGlobalErrorModal) {
+        if (typeof window !== "undefined" && shouldShowGlobalErrorModal(error)) {
             const status = error.response?.status;
             const message =
                 error.response?.data?.message ||

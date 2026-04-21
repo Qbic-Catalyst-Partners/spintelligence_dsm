@@ -1,4 +1,5 @@
 import apiConfig, { resolvedBaseUrl } from "./apiConfig";
+import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 
 const API_BASE_URL = resolvedBaseUrl;
 
@@ -16,6 +17,12 @@ const UQC_BASE_URL =
 
 const parseJson = async (response) => response.json().catch(() => null);
 const DRAW_FRAME_UQC_ENDPOINTS = ["/drawframe/uqc", "/draw-frame/uqc"];
+
+const emitFetchSuccess = () => {
+    emitGlobalSuccessModal({
+        message: "Data Submitted",
+    });
+};
 
 const buildFetchNetworkError = (endpoint) =>
     `Unable to reach ${endpoint}. Check backend availability and NEXT_PUBLIC_API_URL.`;
@@ -52,6 +59,7 @@ export const submitDrawFrameYarnCvInspection = async (payload) => {
             throw new Error(data?.message || "Failed to save draw frame sync data");
         }
 
+        emitFetchSuccess(data);
         return data;
     } catch (error) {
         throw new Error(error.message === "Failed to fetch" ? buildFetchNetworkError(YARN_CV_BASE_URL) : error.message || "Server error occurred");
@@ -74,6 +82,7 @@ export const submitDrawFrameCotsInspection = async (payload) => {
             throw new Error(data?.message || "Failed to save draw frame cots data");
         }
 
+        emitFetchSuccess(data);
         return data;
     } catch (error) {
         throw new Error(error.message === "Failed to fetch" ? buildFetchNetworkError(COTS_BASE_URL) : error.message || "Server error occurred");

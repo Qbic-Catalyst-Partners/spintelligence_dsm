@@ -79,11 +79,10 @@ export default function EditUser() {
   // REDIRECT ON SUCCESS
   useEffect(() => {
     if (actionSuccess) {
-      alert("User updated successfully!");
       dispatch(clearActionState());
       router.push("/usermanagement");
     }
-  }, [actionSuccess]);
+  }, [actionSuccess, dispatch, router]);
 
   useEffect(() => {
     if (error) alert(error);
@@ -132,7 +131,6 @@ export default function EditUser() {
       };
 
       await updateUserAPI(id, updatedData);
-      alert("User updated successfully!");
       router.push("/usermanagement");
     } catch (err) {
       console.error(err);

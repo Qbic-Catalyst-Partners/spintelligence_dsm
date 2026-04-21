@@ -49,12 +49,10 @@ export default function UmAddUser() {
   // SUCCESS REDIRECT
   useEffect(() => {
     if (actionSuccess) {
-      alert("User created successfully!");
-
       dispatch(clearActionState());
       router.push("/usermanagement");
     }
-  }, [actionSuccess]);
+  }, [actionSuccess, dispatch, router]);
 
   useEffect(() => {
     if (error) {

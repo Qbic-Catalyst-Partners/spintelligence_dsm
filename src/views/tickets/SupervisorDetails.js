@@ -82,7 +82,6 @@ export default function SupervisorDetails() {
   const handleApprove = async () => {
     try {
       await dispatch(approveTicket(ticket.ticket_id)).unwrap();
-      alert("Ticket Approved");
       router.push("/supervisordashboard");
     } catch (err) {
       alert(err);
@@ -97,10 +96,9 @@ export default function SupervisorDetails() {
 
     try {
       await dispatch(
-        rejectTicket({ ticketId: ticket.ticket_id, reason })
+      rejectTicket({ ticketId: ticket.ticket_id, reason })
       ).unwrap();
 
-      alert("Ticket Rejected");
       setShowRejectModal(false);
       setReason("");
       router.push("/supervisordashboard");

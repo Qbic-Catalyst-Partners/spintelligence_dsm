@@ -63,7 +63,6 @@ export default function EditRole() {
 
             await dispatch(updateRole({ id, payload })).unwrap();
 
-            alert("Role updated successfully");
             router.push("/rolespermission");
         } catch (error) {
             alert(error.message || "Update failed");
