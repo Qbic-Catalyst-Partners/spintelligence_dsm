@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import styles from "@/styles/u%dataentry.module.css";
 import Footer from "@/components/Footer";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 
@@ -23,6 +24,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
   const [errors, setErrors] = useState({});
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -65,6 +67,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
     setErrors({});
     setFormMessage("");
     setIsError(false);
+    setShowSuccess(false);
   };
 
   useEffect(() => {
@@ -74,7 +77,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
   useEffect(() => {
     if (uqc?.message) {
       resetForm();
-      setFormMessage(uqc.message);
+      setShowSuccess(true);
       setIsError(false);
       dispatch(getCardingUqcEntries({ page: 1, limit: 10 }));
       dispatch(clearCardingState());
@@ -245,6 +248,11 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
           disabled={isLoading}
         />
       </div>
+
+      <SuccessModal
+        open={showSuccess}
+        onClose={() => setShowSuccess(false)}
+      />
     </div>
   );
 }

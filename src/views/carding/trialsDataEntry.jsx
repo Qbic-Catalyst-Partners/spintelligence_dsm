@@ -281,7 +281,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         try {
             const payload = buildTrialsPayload();
             await submitTrialsDataEntry(payload);
-            setFormMessage("Trials data submitted successfully.");
+            setFormMessage("");
             setIsError(false);
             setShowSuccess(true);
         } catch (error) {
@@ -551,8 +551,6 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
             <SuccessModal
                 open={showSuccess}
-                message="Trials data submitted successfully."
-                typeValue={selectedType}
                 onClose={handleClear}
             />
         </div>

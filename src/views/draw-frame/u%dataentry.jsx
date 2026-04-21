@@ -3,6 +3,7 @@ import styles from "@/styles/u%dataentry.module.css";
 import CustomSelect from "@/components/CustomSelect";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 function UPercentDataEntry() {
@@ -20,6 +21,7 @@ function UPercentDataEntry() {
   });
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [selectedType, setSelectedType] = useState("");
@@ -63,6 +65,7 @@ function UPercentDataEntry() {
     setErrors({});
     setFormMessage("");
     setIsError(false);
+    setShowSuccess(false);
   };
 
   const validateForm = () => {
@@ -86,8 +89,9 @@ function UPercentDataEntry() {
 
   const handleSubmit = () => {
     setShowPreview(false);
-    setFormMessage("Preview confirmed. API is not connected for Carding U% yet.");
+    setFormMessage("");
     setIsError(false);
+    setShowSuccess(true);
   };
 
   const previewItems = [
@@ -218,6 +222,11 @@ function UPercentDataEntry() {
         onCancel={() => setShowPreview(false)}
         onConfirm={handleSubmit}
         confirmLabel="Submit"
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        onClose={() => setShowSuccess(false)}
       />
     </>
   );

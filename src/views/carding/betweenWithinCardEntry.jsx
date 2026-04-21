@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import Footer from "@/components/Footer";
 import { clearCardingState, submitCardingBetweenWithin } from "@/store/slices/carding";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const machineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -73,6 +74,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     const [isError, setIsError] = useState(false);
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
@@ -87,12 +89,6 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
 
     useEffect(() => {
         if (data?.inspection_id) setEntryId(data.inspection_id);
-        if (data?.message) {
-            setSampleWeightStats(calculateStats(sampleWeights));
-            setHankStats(calculateStats(hanks));
-            setFormMessage(data.message);
-            setIsError(false);
-        }
     }, [data]);
 
     useEffect(() => {
@@ -217,6 +213,9 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         try {
             await dispatch(submitCardingBetweenWithin(payload)).unwrap();
             setShowPreview(false);
+            setFormMessage("");
+            setIsError(false);
+            setShowSuccess(true);
         } catch (submitError) {
             setFormMessage(submitError || "Save failed");
             setIsError(true);
@@ -420,6 +419,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                 onCancel={() => setShowPreview(false)}
                 onConfirm={handleSubmit}
                 confirmLabel={isLoading ? "Saving..." : "Submit"}
+            />
+
+            <SuccessModal
+                open={showSuccess}
+                onClose={() => setShowSuccess(false)}
             />
         </>
     );

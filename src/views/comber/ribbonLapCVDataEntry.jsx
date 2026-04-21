@@ -51,7 +51,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
     useEffect(() => {
         if (data) {
-            setFormMessage("Data saved successfully.");
+            setFormMessage("");
         }
     }, [data]);
 

@@ -6,6 +6,7 @@ import Image from "next/image";
 
 import Footer from "../components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
@@ -141,6 +142,7 @@ function SpinningDepartment() {
     const [isMobile, setIsMobile] = useState(false);
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
 
@@ -173,7 +175,8 @@ function SpinningDepartment() {
 
     useEffect(() => {
         if (success) {
-            handleClearForm();
+            setShowPreview(false);
+            setShowSuccess(true);
             dispatch(resetSpinningState());
         }
         if (error) dispatch(resetSpinningState());
@@ -570,6 +573,7 @@ function SpinningDepartment() {
                             selectedTypeName={checkingType}
                             typeOptions={checkingOptions}
                             onTypeChange={(value) => handleTypeChange({ target: { value } })}
+                            onSubmitSuccess={() => setShowSuccess(true)}
                             standaloneSection
                             savedVersionsTargetId="spinning-process-parameter-saved-versions"
                         />
@@ -924,6 +928,14 @@ function SpinningDepartment() {
                 onCancel={() => setShowPreview(false)}
                 onConfirm={confirmSubmit}
                 confirmLabel="Submit"
+            />
+
+            <SuccessModal
+                open={showSuccess}
+                onClose={() => {
+                    setShowSuccess(false);
+                    handleClearForm();
+                }}
             />
         </div>
     );

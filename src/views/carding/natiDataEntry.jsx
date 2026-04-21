@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
 import styles from "./natiDataEntry.module.css";
@@ -34,6 +35,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
     const [formMessage, setFormMessage] = useState("");
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
@@ -42,7 +44,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
 
     useEffect(() => {
         if (data) {
-            setFormMessage("Data saved successfully.");
+            setFormMessage("");
         }
     }, [data]);
 
@@ -112,6 +114,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
         setFormMessage("");
         setErrors({});
         setShowPreview(false);
+        setShowSuccess(false);
     };
 
     const buildPayload = () => ({
@@ -160,6 +163,8 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
         try {
             await dispatch(submitComberNatiDataEntry(buildPayload())).unwrap();
             setShowPreview(false);
+            setFormMessage("");
+            setShowSuccess(true);
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save nati data.");
         }
@@ -356,6 +361,11 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
                         onCancel={() => setShowPreview(false)}
                         onConfirm={handleSubmit}
                         confirmLabel={isLoading ? "Submitting..." : "Submit"}
+                    />
+
+                    <SuccessModal
+                        open={showSuccess}
+                        onClose={() => setShowSuccess(false)}
                     />
                 </>
             )}

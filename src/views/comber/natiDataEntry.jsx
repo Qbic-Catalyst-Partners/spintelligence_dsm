@@ -41,7 +41,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
 
     useEffect(() => {
         if (data) {
-            setFormMessage("Data saved successfully.");
+            setFormMessage("");
         }
     }, [data]);
 

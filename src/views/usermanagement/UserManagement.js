@@ -8,6 +8,8 @@ import {
 } from "react-icons/md";
 import { IoMdSearch } from "react-icons/io";
 import { FaTrash } from "react-icons/fa";
+import { FiCheckCircle, FiX } from "react-icons/fi";
+import { HiMiniChevronDown } from "react-icons/hi2";
 
 import { useRouter } from "next/router";
 
@@ -48,9 +50,14 @@ export default function UserManagement() {
 
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedDept, setSelectedDept] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [page, setPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState({
+    key: "employeeId",
+    direction: "asc",
+  });
   const rowsPerPage = 10;
 
   // FETCH DATA
@@ -112,19 +119,74 @@ export default function UserManagement() {
     }
   };
 
-  // SEARCH + FILTER
-  const filteredUsers = users.filter((u) => {
-    const searchValue = search.toLowerCase();
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedRole, selectedDept, selectedStatus, sortConfig]);
 
-    return (
-      (!selectedRole || u.role === selectedRole) &&
-      (!selectedDept || u.dept === selectedDept) &&
-      (!search ||
-        u.name?.toLowerCase().includes(searchValue) ||
-        u.email?.toLowerCase().includes(searchValue) ||
-        u.employeeId?.toLowerCase().includes(searchValue))
-    );
-  });
+  const handleSort = (key) => {
+    setSortConfig((current) => {
+      if (current.key === key) {
+        return {
+          key,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        key,
+        direction: "asc",
+      };
+    });
+  };
+
+  const getSortArrowClass = (key, direction) => {
+    if (sortConfig.key !== key || sortConfig.direction !== direction) {
+      return styles.sortArrowMuted;
+    }
+
+    if (key === "employeeId" && direction === "desc") {
+      return styles.sortArrowRed;
+    }
+
+    if (key === "fullName" && direction === "asc") {
+      return styles.sortArrowGreen;
+    }
+
+    return styles.sortArrowActive;
+  };
+
+  // SEARCH + FILTER
+  const filteredUsers = users
+    .filter((u) => {
+      const searchValue = search.toLowerCase();
+
+      return (
+        (!selectedRole || u.role === selectedRole) &&
+        (!selectedDept || u.dept === selectedDept) &&
+        (!selectedStatus || u.status === selectedStatus) &&
+        (!search ||
+          u.name?.toLowerCase().includes(searchValue) ||
+          u.email?.toLowerCase().includes(searchValue) ||
+          u.employeeId?.toLowerCase().includes(searchValue))
+      );
+    })
+    .sort((left, right) => {
+      const leftValue =
+        sortConfig.key === "employeeId"
+          ? left.employeeId || ""
+          : left.name || "";
+      const rightValue =
+        sortConfig.key === "employeeId"
+          ? right.employeeId || ""
+          : right.name || "";
+
+      const result = leftValue.localeCompare(rightValue, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+
+      return sortConfig.direction === "asc" ? result : -result;
+    });
 
   // PAGINATION
   const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
@@ -175,13 +237,29 @@ export default function UserManagement() {
             <IoMdSearch />
             <input
               placeholder="Search by Name / Emp ID "
+              value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
+          <div className={styles.inputWrapper}>
+            <FiCheckCircle className={styles.filterSvgIcon} />
+            <select
+              className={styles.inputWithIcon}
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+            >
+              <option value="">Status: All</option>
+              <option value="Active">Status: Active</option>
+              <option value="Inactive">Status: Inactive</option>
+              <option value="Locked">Status: Locked</option>
+            </select>
+            <HiMiniChevronDown className={styles.selectChevron} />
+          </div>
 
           {/* ROLE SELECT */}
           <div className={styles.inputWrapper}>
+            <img src="/role.png" className={styles.selectIcon} alt="role icon" />
             <select
               className={styles.inputWithIcon}
               value={selectedRole}
@@ -192,11 +270,12 @@ export default function UserManagement() {
                 <option key={r.id}>{r.role_name}</option>
               ))}
             </select>
-            <img src="/role.png" className={styles.selectIcon} alt="role icon" />
+            <HiMiniChevronDown className={styles.selectChevron} />
           </div>
 
           {/* DEPARTMENT SELECT */}
           <div className={styles.inputWrapper}>
+            <img src="/dept.png" className={styles.selectIcon} alt="department icon" />
             <select
               className={styles.inputWithIcon}
               value={selectedDept}
@@ -207,7 +286,7 @@ export default function UserManagement() {
                 <option key={d.id}>{d.name}</option>
               ))}
             </select>
-            <img src="/dept.png" className={styles.selectIcon} alt="department icon" />
+            <HiMiniChevronDown className={styles.selectChevron} />
           </div>
 
           {/* CLEAR BUTTON */}
@@ -216,10 +295,11 @@ export default function UserManagement() {
             onClick={() => {
               setSelectedRole("");
               setSelectedDept("");
+              setSelectedStatus("");
               setSearch("");
             }}
           >
-            <img src="/clear.png" className={styles.clearIcon} alt="clear icon" />
+            <FiX className={styles.clearSvgIcon} />
             Clear
           </button>
         </div>
@@ -246,8 +326,40 @@ export default function UserManagement() {
           <thead>
             <tr>
               <th>SR NO</th>
-              <th>EMP ID</th>
-              <th>FULL NAME</th>
+              <th>
+                <button
+                  type="button"
+                  className={styles.sortButton}
+                  onClick={() => handleSort("employeeId")}
+                >
+                  <span>EMP ID</span>
+                  <span className={styles.sortArrows}>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("employeeId", "asc")}`}>
+                      ▲
+                    </span>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("employeeId", "desc")}`}>
+                      ▼
+                    </span>
+                  </span>
+                </button>
+              </th>
+              <th>
+                <button
+                  type="button"
+                  className={styles.sortButton}
+                  onClick={() => handleSort("fullName")}
+                >
+                  <span>FULL NAME</span>
+                  <span className={styles.sortArrows}>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("fullName", "asc")}`}>
+                      ▲
+                    </span>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("fullName", "desc")}`}>
+                      ▼
+                    </span>
+                  </span>
+                </button>
+              </th>
               <th>CONTACT DETAILS</th>
               <th>ROLE</th>
               <th>DEPARTMENT</th>

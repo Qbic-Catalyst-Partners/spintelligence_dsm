@@ -144,10 +144,10 @@ background: #F6F7F8;
 .searchBox,
 .inputWithIcon,
 .clearBtn {
-  height: 38px; /* SAME HEIGHT */
+  height: 40px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  background: #ffffff;
   font-size: 14px;
 }
 
@@ -158,10 +158,12 @@ background: #F6F7F8;
   align-items: center;
   padding: 0 12px;
   gap: 8px;
+  min-width: 280px;
 }
 
 .searchBox svg {
   font-size: 16px;
+  color: #94a3b8;
 }
 
 .searchBox input {
@@ -178,10 +180,11 @@ background: #F6F7F8;
 
 /* SELECT */
 .inputWithIcon {
-  padding: 0 12px 0 36px; /* LEFT SPACE FOR ICON */
-  min-width: 160px;
+  padding: 0 38px 0 38px;
+  min-width: 150px;
   appearance: none;
   cursor: pointer;
+  color: #0f172a;
 }
 
 /* ICON INSIDE SELECT */
@@ -193,6 +196,27 @@ background: #F6F7F8;
   width: 16px;
   height: 16px;
   pointer-events: none;
+  opacity: 0.75;
+}
+
+.filterSvgIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.selectChevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  color: #94a3b8;
+  pointer-events: none;
 }
 
 /* CLEAR BUTTON */
@@ -202,6 +226,7 @@ background: #F6F7F8;
   gap: 6px;
   padding: 0 14px;
   cursor: pointer;
+  color: #334155;
 }
 
 /* CLEAR ICON */
@@ -209,13 +234,19 @@ background: #F6F7F8;
   width: 18px;
   height: 12px;
 }
+
+.clearSvgIcon {
+  font-size: 16px;
+  color: #64748b;
+}
 /* ================= TABLE ================= */
 .table {
   width: 100%;
   border-collapse: collapse;
   background: #ffffff;
   border-radius: 10px;
-  overflow: visible;  /* ✅ FIX */
+  overflow: visible;
+  border: 1px solid #e2e8f0;
 }
 
 .table thead {
@@ -229,6 +260,7 @@ background: #F6F7F8;
   padding: 12px;
   height: 65px;
   border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 0.03em;
 }
 
 .table td {
@@ -271,6 +303,14 @@ background: #F6F7F8;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
+}
+
+.status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .active {
@@ -396,6 +436,48 @@ background: #F6F7F8;
   position: relative;
 }
 
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.sortArrows {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sortArrow {
+  font-size: 10px;
+  line-height: 1;
+  color: #cbd5e1;
+}
+
+.sortArrowMuted {
+  color: #cbd5e1;
+}
+
+.sortArrowActive {
+  color: #64748b;
+}
+
+.sortArrowRed {
+  color: #dc2626;
+}
+
+.sortArrowGreen {
+  color: #16a34a;
+}
+
 .dots {
   cursor: pointer;
   font-size: 18px;
@@ -437,8 +519,8 @@ background: #F6F7F8;
 /* dropdown menu */
 .userMenu {
   position: absolute;
-     
   right: 0;
+  top: calc(100% + 4px);
 
   width: 130px;
   background: #ffffff;
@@ -558,4 +640,27 @@ border-radius: 15px;
 
 .deleteBtn:hover {
   background: #ff3339;
+}
+
+@media (max-width: 1100px) {
+  .header,
+  .filters,
+  .umPagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions,
+  .pageControls {
+    flex-wrap: wrap;
+  }
+
+  .inputWrapper,
+  .clearBtn {
+    width: 100%;
+  }
+
+  .inputWithIcon {
+    width: 100%;
+  }
 }

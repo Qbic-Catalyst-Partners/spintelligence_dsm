@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 import CustomInput from "@/components/CustomInput";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import styles from "./cardingdfk.module.css";
@@ -54,6 +55,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
   const [rows, setRows] = useState(createInitialRows);
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -129,8 +131,9 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
 
       handleClear();
       setShowPreview(false);
-      setFormMessage("Record submitted successfully.");
+      setFormMessage("");
       setIsError(false);
+      setShowSuccess(true);
       dispatch(fetchCardingDfkPressure({ page: 1, limit: 10 }));
     } catch (submitError) {
       setFormMessage(submitError?.message || "Unable to save DFK pressure data.");
@@ -301,6 +304,11 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
         onCancel={() => setShowPreview(false)}
         onConfirm={handleSave}
         confirmLabel={isLoading ? "Saving..." : "Submit"}
+      />
+
+      <SuccessModal
+        open={showSuccess}
+        onClose={() => setShowSuccess(false)}
       />
     </>
   );

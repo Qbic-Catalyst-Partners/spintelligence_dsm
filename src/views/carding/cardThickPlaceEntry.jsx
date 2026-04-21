@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SuccessModal from "@/components/SuccessModal";
 import { clearCardingState, submitCardingCardThickPlace } from "@/store/slices/carding";
 import styles from "./cardThickPlaceEntry.module.css";
 
@@ -39,6 +40,7 @@ function CardThickPlaceEntry({
     const [isMobile, setIsMobile] = useState(false);
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
 
     const stampNow = () => {
         const now = new Date();
@@ -65,7 +67,7 @@ function CardThickPlaceEntry({
 
     useEffect(() => {
         if (data?.message) {
-            setFormMessage(data.message);
+            setFormMessage("");
             setIsError(false);
         }
     }, [data]);
@@ -107,6 +109,7 @@ function CardThickPlaceEntry({
 
     const handleClear = () => {
         resetFormFields();
+        setShowSuccess(false);
     };
 
     const handleTypeSelect = (value) => {
@@ -161,9 +164,10 @@ function CardThickPlaceEntry({
                 ).unwrap();
             }
 
-            setFormMessage("Record submitted successfully.");
+            setFormMessage("");
             setIsError(false);
             setShowPreview(false);
+            setShowSuccess(true);
             resetFormFields();
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");
@@ -309,6 +313,11 @@ function CardThickPlaceEntry({
                         onCancel={() => setShowPreview(false)}
                         onConfirm={handleSubmit}
                         confirmLabel={isLoading ? "Submitting..." : "Submit"}
+                    />
+
+                    <SuccessModal
+                        open={showSuccess}
+                        onClose={() => setShowSuccess(false)}
                     />
                 </>
             ) : null}
