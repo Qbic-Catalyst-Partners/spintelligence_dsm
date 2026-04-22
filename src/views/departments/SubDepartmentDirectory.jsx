@@ -125,14 +125,18 @@ function SubDepartmentDirectory() {
                                 onClick={() => isEnabled && router.push(subDepartment.href)}
                                 disabled={!isEnabled}
                             >
-                                <span className={styles.cardContent}>
+                                <span className={styles.subCardTop}>
                                     <span className={styles.subCardLabel}>{subDepartment.name}</span>
-                                    <span className={styles.cardMeta}>
-                                        {formatInputScreenLabel(screenCount)}
+                                    <span className={styles.subCardArrow}>
+                                        <PiChartPieSliceFill />
                                     </span>
                                 </span>
-                                <span className={styles.subCardArrow}>
-                                    <PiChartPieSliceFill />
+                                <span className={styles.subCardBody}>
+                                    Open this sub-department and continue to the related input screens.
+                                </span>
+                                <span className={styles.subCardStats}>
+                                    <strong>{screenCount}</strong>
+                                    <span>{formatInputScreenLabel(screenCount)}</span>
                                 </span>
                             </button>
                         );
