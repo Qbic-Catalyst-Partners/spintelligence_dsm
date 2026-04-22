@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { FiBell, FiLogOut, FiMoon } from "react-icons/fi";
+import { FiBell, FiChevronDown, FiLogOut, FiMoon } from "react-icons/fi";
 import { logout } from "../store/slices/authSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "../styles/header.module.css";
@@ -12,6 +13,8 @@ const defaultNavLinks = [];
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
     const dispatch = useDispatch();
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const profileMenuRef = useRef(null);
     const user = useSelector((state) => state.auth?.user);
     const fullName = user?.full_name || user?.name || "User";
     const employeeId = user?.employee_id || user?.employeeId || "No ID";
@@ -36,9 +39,23 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     };
 
     const handleLogout = () => {
+        setIsProfileMenuOpen(false);
         dispatch(logout());
         router.replace("/");
     };
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (!profileMenuRef.current?.contains(event.target)) {
+                setIsProfileMenuOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
 
     return (
         <header className={styles["top-navbar"]}>
@@ -69,20 +86,33 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     <FiMoon />
                 </button>
 
-                <div className={styles["profile-summary"]}>
-                    <button type="button" className={styles["profile-chip"]} aria-label="Profile">
-                        {initials}
+                <div className={styles["profile-menu"]} ref={profileMenuRef}>
+                    <button
+                        type="button"
+                        className={styles["profile-summary"]}
+                        aria-label="Profile menu"
+                        aria-expanded={isProfileMenuOpen}
+                        onClick={() => setIsProfileMenuOpen((current) => !current)}
+                    >
+                        <span className={styles["profile-chip"]}>{initials}</span>
+                        <div className={styles["profile-meta"]}>
+                            <span className={styles["profile-name"]}>{fullName}</span>
+                            <span className={styles["profile-id"]}>{employeeId}</span>
+                        </div>
+                        <FiChevronDown
+                            className={`${styles["profile-caret"]} ${isProfileMenuOpen ? styles["profile-caret-open"] : ""}`}
+                        />
                     </button>
-                    <div className={styles["profile-meta"]}>
-                        <span className={styles["profile-name"]}>{fullName}</span>
-                        <span className={styles["profile-id"]}>{employeeId}</span>
-                    </div>
-                </div>
 
-                <button type="button" className={styles["logout-button"]} onClick={handleLogout}>
-                    <FiLogOut />
-                    <span>Logout</span>
-                </button>
+                    {isProfileMenuOpen && (
+                        <div className={styles["profile-dropdown"]}>
+                            <button type="button" className={styles["dropdown-item"]} onClick={handleLogout}>
+                                <FiLogOut />
+                                <span>Logout</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
 
                 <Image src="/logo.png" alt="logo" width={100} height={80} priority />
             </div>

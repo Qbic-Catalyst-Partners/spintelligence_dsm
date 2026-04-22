@@ -11,7 +11,7 @@ import { FiCircle } from "react-icons/fi";
 
 // REDUX
 import { useDispatch, useSelector } from "react-redux";
-import { fetchRoles, fetchDepartments, clearActionState } from "../../store/slices/userSlice";
+import { fetchRoles, clearActionState } from "../../store/slices/userSlice";
 
 // API
 import { updateUserAPI } from "../../apis/userApi";
@@ -23,7 +23,7 @@ export default function EditUser() {
   const { id } = router.query;
 
   const dispatch = useDispatch();
-  const { roles, departments, actionLoading, error, actionSuccess } = useSelector(
+  const { roles, actionLoading, error, actionSuccess } = useSelector(
     (state) => state.users
   );
 
@@ -37,13 +37,11 @@ export default function EditUser() {
     phone: "",
     employee_id: "",
     role: "",
-    department: "",
   });
 
-  // FETCH ROLES + DEPARTMENTS
+  // FETCH ROLES
   useEffect(() => {
     dispatch(fetchRoles());
-    dispatch(fetchDepartments());
   }, [dispatch]);
 
   // FETCH USER DATA
@@ -66,7 +64,6 @@ export default function EditUser() {
           phone: user.phone || "",
           employee_id: user.employee_id || "",
           role: user.role || "",
-          department: user.department || "",
         });
       } catch (err) {
         console.error(err);
@@ -113,8 +110,7 @@ export default function EditUser() {
     if (
       !formData.email ||
       !formData.phone ||
-      !formData.role ||
-      !formData.department
+      !formData.role
     ) {
       setLocalError("All fields are required");
       return;
@@ -126,7 +122,6 @@ export default function EditUser() {
         email: formData.email,
         phone: formData.phone,
         role: formData.role,
-        department: formData.department,
         ...(password && { password }),
       };
 
@@ -211,20 +206,6 @@ export default function EditUser() {
                   <option value="">Select user role</option>
                   {roles.map((r) => (
                     <option key={r.id}>{r.role_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>Department <span>*</span></label>
-                <select
-                  name="department"
-                  value={formData.department}
-                  onChange={handleChange}
-                >
-                  <option value="">Select Department</option>
-                  {departments.map((d) => (
-                    <option key={d.id}>{d.name}</option>
                   ))}
                 </select>
               </div>
