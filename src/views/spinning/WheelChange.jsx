@@ -3,6 +3,11 @@ import { sanitizeIntegerInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
+const WHEEL_CHANGE_API_TYPES = {
+  "Type 1": "type1",
+  "Type 2": "type2",
+  "Type 3": "type3",
+};
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
@@ -88,6 +93,131 @@ const WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE = {
   "Type 3": TYPE_3_PARAMETER_ROWS,
 };
 
+const WHEEL_CHANGE_FIELD_MAP = {
+  "Type 1": {
+    referenceField: "fm_no",
+    rows: {
+      countForm: "count_from",
+      lycraType: "lycra_type",
+      lycraDraft: "lycra_draft",
+      tmDisc: "slub_code",
+      range: "range",
+      offsetDia: "offset",
+      gapsCourseCondition: "core_condition",
+      diameterDoffSpeed: "production",
+      rovingHank: "roving_hank",
+      rh: "eow",
+      bd: "epi",
+      dca: "dca",
+      dcb: "dcb",
+      dpc: "dfc",
+      dc: "dc",
+      tdv: "tcw",
+      tm: "tw",
+      tciTm: "tpm",
+      travellerDia: "travelers_no",
+      spacer: "spacer",
+      capWeight: "cop_weight",
+      spindleMotorRpm: "speed_front",
+      empaleeColour: "speed_rpm",
+      traveller: "empires_colour",
+      totalDraft: "total_draft",
+    },
+  },
+  "Type 2": {
+    referenceField: "fm_no",
+    rows: {
+      countForm: "count_from",
+      lycraType: "lycra_type",
+      lycraDraft: "lycra_draft",
+      slubCode: "slub_code",
+      ramp: "ramp",
+      offsetOnOff: "offset",
+      copOrConeCondition: "core_condition",
+      productQty: "production",
+      backplate: "roving_hank",
+      battAirflow: "back_roll_wheel",
+      obliquePin: "change_pinion",
+      bdv: "edw",
+      bd: "ed",
+      t: "b",
+      b: "a",
+      f: "d",
+      c: "c",
+      tpiTm: "tpi_tpm",
+      windingHp: "winding_kf",
+      rollerMoved: "ratchet_wheel",
+      traveller: "travelers_no",
+      taper: "spacer",
+      spindleInitialRpm: "speed_spindle",
+      spindleMtrRpm: "speed_main",
+      emptiesColour: "empires_colour",
+      totalDraft: "total_draft",
+    },
+  },
+  "Type 3": {
+    referenceField: "fr_no",
+    rows: {
+      countForm: "count_from",
+      lycraType: "lycra_type",
+      lycraDraft: "lycra_draft",
+      slubCode: "slub_code",
+      ramp: "ramp",
+      offsetOnOff: "offset_on_off",
+      copOrConeCondition: "cop_core_condition",
+      productQty: "product_qty",
+      rovingHank: "roving_hank",
+      bdv: "edw",
+      bd: "bd",
+      tpiTm: "tpi_tm",
+      travellersNo: "travelers_no",
+      spacer: "spacer",
+      copWeight: "cop_weight",
+      speedInitial: "speed_initial",
+      speedMax: "speed_max",
+      emptiesColour: "empties_colour",
+    },
+  },
+};
+
+const WHEEL_CHANGE_NUMERIC_FIELDS = {
+  "Type 1": new Set([
+    "lycra_draft",
+    "production",
+    "roving_hank",
+    "epi",
+    "dcb",
+    "tpm",
+    "cop_weight",
+    "speed_front",
+    "speed_rpm",
+    "total_draft",
+  ]),
+  "Type 2": new Set([
+    "lycra_draft",
+    "production",
+    "roving_hank",
+    "ed",
+    "a",
+    "c",
+    "tpi_tpm",
+    "winding_kf",
+    "speed_spindle",
+    "speed_main",
+    "total_draft",
+  ]),
+  "Type 3": new Set([
+    "lycra_draft",
+    "product_qty",
+    "roving_hank",
+    "bd",
+    "tpi_tm",
+    "cop_weight",
+    "speed_initial",
+    "speed_max",
+  ]),
+};
+
 const ALL_WHEEL_CHANGE_PARAMETER_ROWS = Object.values(WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE).flat();
 
 const getTodayDate = () => new Date().toISOString().split("T")[0];
@@ -105,6 +235,11 @@ const createWheelChangeValues = () =>
   );
 
 const hasTextValue = (value) => String(value ?? "").trim() !== "";
+const getTextValue = (value) => String(value ?? "").trim();
+const parseNumericValue = (value) => {
+  const parsed = Number.parseFloat(String(value ?? "").trim());
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const InspectionEntryIcon = () => (
   <svg
@@ -210,11 +345,25 @@ const WheelChange = forwardRef(function WheelChange(
     if (!rfNo.trim()) nextErrors.rfNo = true;
 
     const valueErrors = {};
+    const typeFieldConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
+    const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS[wheelChangeType] || new Set();
+
     activeRows.forEach((row) => {
       const rowValues = values[row.key] || {};
       const rowErrors = {};
       if (!hasTextValue(rowValues.existing)) rowErrors.existing = true;
       if (!hasTextValue(rowValues.proposed)) rowErrors.proposed = true;
+
+      const fieldBase = typeFieldConfig?.rows?.[row.key];
+      if (fieldBase && numericFields.has(fieldBase)) {
+        if (hasTextValue(rowValues.existing) && parseNumericValue(rowValues.existing) === null) {
+          rowErrors.existing = true;
+        }
+        if (hasTextValue(rowValues.proposed) && parseNumericValue(rowValues.proposed) === null) {
+          rowErrors.proposed = true;
+        }
+      }
+
       if (Object.keys(rowErrors).length > 0) valueErrors[row.key] = rowErrors;
     });
 
@@ -224,19 +373,46 @@ const WheelChange = forwardRef(function WheelChange(
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPayload = () => ({
-    type: selectedTypeName,
-    wheel_change_type: wheelChangeType,
-    entry_date: date || getTodayDate(),
-    test_no: Number.parseInt(testNo, 10) || 0,
-    rf_no: Number.parseInt(rfNo, 10) || 0,
-    parameters: activeRows.map((row) => ({
-      key: row.key,
-      parameter: row.label,
-      existing: String(values[row.key]?.existing ?? "").trim(),
-      proposed: String(values[row.key]?.proposed ?? "").trim(),
-    })),
-  });
+  const getPayload = () => {
+    const typeFieldConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
+    const typeCode = WHEEL_CHANGE_API_TYPES[wheelChangeType];
+    const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS[wheelChangeType] || new Set();
+
+    if (!typeFieldConfig || !typeCode) {
+      return {
+        type: selectedTypeName,
+        wheel_change_type: "",
+        date: date || getTodayDate(),
+        test_no: getTextValue(testNo),
+      };
+    }
+
+    const payload = {
+      type: selectedTypeName,
+      wheel_change_type: typeCode,
+      date: date || getTodayDate(),
+      test_no: getTextValue(testNo),
+      [typeFieldConfig.referenceField]: getTextValue(rfNo),
+    };
+
+    activeRows.forEach((row) => {
+      const fieldBase = typeFieldConfig.rows[row.key];
+      if (!fieldBase) return;
+      const existingValue = getTextValue(values[row.key]?.existing);
+      const proposedValue = getTextValue(values[row.key]?.proposed);
+
+      if (numericFields.has(fieldBase)) {
+        payload[`${fieldBase}_existing`] = parseNumericValue(existingValue);
+        payload[`${fieldBase}_proposed`] = parseNumericValue(proposedValue);
+        return;
+      }
+
+      payload[`${fieldBase}_existing`] = existingValue;
+      payload[`${fieldBase}_proposed`] = proposedValue;
+    });
+
+    return payload;
+  };
 
   const getPreviewData = () => [
     { label: "Checking Type", value: selectedTypeName || "-" },
@@ -320,7 +496,7 @@ const WheelChange = forwardRef(function WheelChange(
                 clearFieldError("wheelChangeType");
               }}
             >
-             
+              <option value="">Select wheel change type</option>
               {WHEEL_CHANGE_TYPES.map((item) => (
                 <option key={item} value={item}>
                   {item}
