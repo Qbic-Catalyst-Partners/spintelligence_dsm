@@ -21,7 +21,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         .slice(0, 2)
         .map((part) => part[0]?.toUpperCase())
         .join("") || employeeId.slice(0, 2).toUpperCase();
-    const visibleNavLinks = isFullAccessUser(user)
+    const visibleNavLinks = !user || isFullAccessUser(user)
         ? navLinks
         : navLinks.filter((link) =>
             link.href !== "/usermanagement" && link.href !== "/rolespermission"

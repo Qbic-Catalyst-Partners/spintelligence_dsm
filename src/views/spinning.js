@@ -8,6 +8,7 @@ import Footer from "../components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
+import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
@@ -49,6 +50,7 @@ const SPINNING_CHECKING_OPTIONS = [
     { id: 7, name: "Lycra Centering", aliases: ["Lycra Centering", "LYCRA CENTERING"] },
     { id: 8, name: "RSM & Lycrasensor Checking Online", aliases: ["RSM & Lycrasensor Checking Online", "RSM AND LYCRASENSOR CHECKING ONLINE"] },
     { id: 9, name: "RSM & Lycrasensor Checking Offline", aliases: ["RSM & Lycrasensor Checking Offline", "RSM AND LYCRASENSOR CHECKING OFFLINE"] },
+    { id: 10, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"], component: WheelChange },
 ];
 
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
@@ -155,6 +157,7 @@ function SpinningDepartment() {
     const isProcessParameter = checkingType === "Process Parameter";
     const isCountChange = checkingType === "Count Change";
     const isRingFrame = checkingType === "Ring Frame Log Book";
+    const isWheelChange = checkingType === "Wheel Change";
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -252,7 +255,7 @@ function SpinningDepartment() {
     };
 
     const handleClearForm = () => {
-        if (isProcessParameter) {
+        if (isProcessParameter || isWheelChange) {
             childRef.current?.clear?.();
             setErrors({});
             setValidationMessage("");
@@ -396,6 +399,9 @@ function SpinningDepartment() {
                 },
             };
         }
+        if (isWheelChange) {
+            return childRef.current?.getPayload?.() || {};
+        }
         const payload = {
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: parseInt(selectedMachine.replace("MC-", ""), 10) || 0,
@@ -459,7 +465,7 @@ function SpinningDepartment() {
     };
 
     const handleSaveRecord = () => {
-        if (isProcessParameter) {
+        if (isProcessParameter || isWheelChange) {
             const childValid = childRef.current?.validate ? childRef.current.validate() : true;
             if (childValid === false) {
                 setValidationMessage("Please fill all required fields before saving.");
@@ -567,15 +573,15 @@ function SpinningDepartment() {
                 <p className={styles["sp-page-description"]}>Record and manage industrial machine quality inspections.</p>
 
                 <div className={styles["sp-card"]}>
-                    {isProcessParameter && SelectedComponent ? (
+                    {(isProcessParameter || isWheelChange) && SelectedComponent ? (
                         <SelectedComponent
                             ref={childRef}
                             selectedTypeName={checkingType}
                             typeOptions={checkingOptions}
                             onTypeChange={(value) => handleTypeChange({ target: { value } })}
                             onSubmitSuccess={() => setShowSuccess(true)}
-                            standaloneSection
-                            savedVersionsTargetId="spinning-process-parameter-saved-versions"
+                            standaloneSection={isProcessParameter}
+                            savedVersionsTargetId={isProcessParameter ? "spinning-process-parameter-saved-versions" : ""}
                         />
                     ) : (
                         <>

@@ -24,7 +24,6 @@ function AppShell({ Component, pageProps }) {
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const showHeader = router.pathname !== "/";
-  const isProtectedRoute = router.pathname !== "/";
   const isDepartmentFlow =
     router.pathname === "/dashboard" || router.pathname.startsWith("/departments");
   const isTicketingFlow =
@@ -43,12 +42,13 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");
   const canAccessManagementFlow = isFullAccessUser(user);
-  const headerNavLinks = canAccessManagementFlow
-    ? [
-        { href: "/dashboard", label: "Home" },
-        { href: "/usermanagement", label: "User Management" },
-        { href: "/rolespermission", label: "Roles & Permissions" },
-      ]
+  const managementNavLinks = [
+    { href: "/dashboard", label: "Home" },
+    { href: "/usermanagement", label: "User Management" },
+    { href: "/rolespermission", label: "Roles & Permissions" },
+  ];
+  const headerNavLinks = canAccessManagementFlow || isAdminFlow
+    ? managementNavLinks
     : isDepartmentFlow || isTicketingFlow
     ? [
         { href: "/dashboard", label: "Home" },
@@ -90,11 +90,6 @@ function AppShell({ Component, pageProps }) {
       return;
     }
 
-    if (!token && isProtectedRoute) {
-      router.replace("/");
-      return;
-    }
-
     if (token && isAdminFlow && !canAccessManagementFlow) {
       router.replace("/dashboard");
       return;
@@ -108,11 +103,11 @@ function AppShell({ Component, pageProps }) {
     if (token && router.pathname === "/") {
       router.replace("/dashboard");
     }
-  }, [accessByDepartment, canAccessManagementFlow, isAdminFlow, isHydrated, isProtectedRoute, router, token, user]);
+  }, [accessByDepartment, canAccessManagementFlow, isAdminFlow, isHydrated, router, token, user]);
 
   return (
     <>
-      {showHeader && isHydrated && token && <Header navLinks={headerNavLinks} />}
+      {showHeader && isHydrated && <Header navLinks={headerNavLinks} />}
       <Component {...pageProps} />
       <FailureModal
         open={failureModal.open}

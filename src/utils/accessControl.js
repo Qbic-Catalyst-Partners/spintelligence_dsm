@@ -11,6 +11,9 @@ const FULL_ACCESS_EMPLOYEE_IDS = ["EMP001"].map((value) => normalizeName(value))
 const getEmployeeKey = (user) =>
   normalizeName(user?.employee_id || user?.employeeId || user?.emp_id || "");
 
+const isAnonymousDirectAccess = (accessByDepartment, user) =>
+  !user && !Array.isArray(accessByDepartment);
+
 export const isFullAccessUser = (user) =>
   Boolean(getEmployeeKey(user)) && FULL_ACCESS_EMPLOYEE_IDS.includes(getEmployeeKey(user));
 
@@ -36,10 +39,15 @@ export const buildAccessibleDepartmentSet = (accessByDepartment) => {
 };
 
 export const hasSubDepartmentAccess = (accessByDepartment, subDepartmentName, user) =>
+  isAnonymousDirectAccess(accessByDepartment, user) ||
   isFullAccessUser(user) ||
   buildAccessibleDepartmentSet(accessByDepartment).has(normalizeName(subDepartmentName));
 
 export const hasRouteAccess = (pathname, accessByDepartment, user) => {
+  if (isAnonymousDirectAccess(accessByDepartment, user)) {
+    return true;
+  }
+
   if (isFullAccessUser(user)) {
     return true;
   }
@@ -54,5 +62,6 @@ export const hasRouteAccess = (pathname, accessByDepartment, user) => {
 };
 
 export const hasAnyQualityControlAccess = (accessByDepartment, user) =>
+  isAnonymousDirectAccess(accessByDepartment, user) ||
   isFullAccessUser(user) ||
   Array.from(buildAccessibleDepartmentSet(accessByDepartment)).length > 0;

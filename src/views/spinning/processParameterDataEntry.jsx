@@ -332,6 +332,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
+  const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
 
   const countOptions = buildProcessParameterOptions(
     PROCESS_PARAMETER_COUNT_OPTIONS,
@@ -380,6 +381,15 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   useEffect(() => {
     loadVersions();
   }, []);
+
+  useEffect(() => {
+    if (!standaloneSection || !savedVersionsTargetId) {
+      setSavedVersionsPortal(null);
+      return;
+    }
+
+    setSavedVersionsPortal(document.getElementById(savedVersionsTargetId));
+  }, [savedVersionsTargetId, standaloneSection]);
 
   const clearError = (field) => {
     setErrors((current) => {
@@ -566,11 +576,6 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   );
 
   if (standaloneSection) {
-    const savedVersionsPortal =
-      typeof document !== "undefined" && savedVersionsTargetId
-        ? document.getElementById(savedVersionsTargetId)
-        : null;
-
     return (
       <>
         <div className="p-5">

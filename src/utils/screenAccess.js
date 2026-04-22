@@ -64,6 +64,10 @@ export const filterOptionsByDepartmentAccess = (
     displayName: matchedScreen?.name || option?.name || "",
   });
 
+  if (!user && !Array.isArray(accessByDepartment)) {
+    return options.map((option) => withDisplayName(option));
+  }
+
   if (isFullAccessUser(user)) {
     return options.map((option) => withDisplayName(option));
   }
@@ -85,6 +89,10 @@ export const getDepartmentScreenCount = (
   departmentName,
   fallbackCount = 0
 ) => {
+  if (!user && !Array.isArray(accessByDepartment)) {
+    return fallbackCount;
+  }
+
   if (isFullAccessUser(user)) {
     return fallbackCount;
   }

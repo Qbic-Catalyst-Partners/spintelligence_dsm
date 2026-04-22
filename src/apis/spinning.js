@@ -12,6 +12,7 @@ const endpoints = {
   "Lycra Centering": "/spinning/lycra-centering",
   "RSM & Lycrasensor Checking Online": "/spinning/rsm-lycra-online",
   "RSM & Lycrasensor Checking Offline": "/spinning/rsm-lycra-offline",
+  "Wheel Change": "/spinning/wheel-change",
 };
 
 // POST API
