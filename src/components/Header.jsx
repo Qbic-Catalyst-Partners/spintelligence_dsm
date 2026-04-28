@@ -13,8 +13,8 @@ const defaultNavLinks = [];
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
     const dispatch = useDispatch();
-    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const profileMenuRef = useRef(null);
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const user = useSelector((state) => state.auth?.user);
     const fullName = user?.full_name || user?.name || "User";
     const employeeId = user?.employee_id || user?.employeeId || "No ID";
@@ -45,16 +45,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     };
 
     useEffect(() => {
-        const handleClickOutside = (event) => {
+        const handlePointerDown = (event) => {
             if (!profileMenuRef.current?.contains(event.target)) {
                 setIsProfileMenuOpen(false);
             }
         };
 
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
+        document.addEventListener("mousedown", handlePointerDown);
+        return () => document.removeEventListener("mousedown", handlePointerDown);
     }, []);
 
     return (
@@ -92,21 +90,19 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         className={styles["profile-summary"]}
                         aria-label="Profile menu"
                         aria-expanded={isProfileMenuOpen}
-                        onClick={() => setIsProfileMenuOpen((current) => !current)}
+                        onClick={() => setIsProfileMenuOpen((isOpen) => !isOpen)}
                     >
                         <span className={styles["profile-chip"]}>{initials}</span>
-                        <div className={styles["profile-meta"]}>
+                        <span className={styles["profile-meta"]}>
                             <span className={styles["profile-name"]}>{fullName}</span>
                             <span className={styles["profile-id"]}>{employeeId}</span>
-                        </div>
-                        <FiChevronDown
-                            className={`${styles["profile-caret"]} ${isProfileMenuOpen ? styles["profile-caret-open"] : ""}`}
-                        />
+                        </span>
+                        <FiChevronDown className={`${styles["profile-chevron"]} ${isProfileMenuOpen ? styles["profile-chevron-open"] : ""}`} />
                     </button>
 
                     {isProfileMenuOpen && (
                         <div className={styles["profile-dropdown"]}>
-                            <button type="button" className={styles["dropdown-item"]} onClick={handleLogout}>
+                            <button type="button" className={styles["logout-button"]} onClick={handleLogout}>
                                 <FiLogOut />
                                 <span>Logout</span>
                             </button>
