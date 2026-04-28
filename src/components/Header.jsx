@@ -27,16 +27,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleNavLinks = !user || isFullAccessUser(user)
         ? navLinks
         : navLinks.filter((link) =>
-            link.href !== "/usermanagement" && link.href !== "/rolespermission"
+            link.href !== "/usermanagement" &&
+            link.href !== "/rolespermission" &&
+            link.href !== "/threshold-values"
         );
 
-    const isActiveLink = (href) => {
-        if (href === "/dashboard") {
-            return router.pathname === "/dashboard";
-        }
-
-        return router.pathname === href || router.pathname.startsWith(`${href}/`);
-    };
+    const isActiveLink = (href) =>
+        router.pathname === href || router.pathname.startsWith(`${href}/`);
 
     const handleLogout = () => {
         setIsProfileMenuOpen(false);

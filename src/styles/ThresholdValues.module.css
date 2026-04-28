@@ -1,0 +1,580 @@
+.page {
+    min-height: calc(100vh - 88px);
+    background:
+        radial-gradient(circle at top left, rgba(21, 101, 192, 0.14), transparent 32%),
+        linear-gradient(180deg, #f6f9fc 0%, #eef4fb 100%);
+    padding: 28px;
+}
+
+.shell {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: grid;
+    gap: 20px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 28px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, #123c73 0%, #1d6ec1 100%);
+    color: #ffffff;
+    box-shadow: 0 20px 45px rgba(14, 48, 88, 0.18);
+}
+
+.eyebrow {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 34px;
+    line-height: 1.1;
+}
+
+.subtitle {
+    margin: 10px 0 0;
+    max-width: 640px;
+    color: rgba(255, 255, 255, 0.84);
+    font-size: 15px;
+}
+
+.refreshButton {
+    border: none;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+    padding: 12px 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.refreshButton:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.spinning {
+    animation: spin 0.9s linear infinite;
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.statCard {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 22px 24px;
+    box-shadow: 0 14px 32px rgba(18, 60, 115, 0.08);
+    border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.statCard span {
+    display: block;
+    font-size: 13px;
+    color: #5f6f84;
+    margin-bottom: 10px;
+}
+
+.statCard strong {
+    font-size: 32px;
+    color: #15345d;
+}
+
+.formCard,
+.tableCard {
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 16px 36px rgba(18, 60, 115, 0.08);
+    border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.formCard {
+    padding: 24px;
+    display: grid;
+    gap: 18px;
+}
+
+.sectionHeading h2 {
+    margin: 0;
+    font-size: 24px;
+    color: #15345d;
+}
+
+.sectionHeading p {
+    margin: 8px 0 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.formGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.multiSelectSection,
+.rulesSection {
+    grid-column: 1 / -1;
+}
+
+.multiSelectHeader span {
+    display: block;
+    margin-bottom: 4px;
+    color: #334155;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.multiSelectHeader p {
+    margin: 0 0 12px;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.screenGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.screenOption {
+    min-height: 52px;
+    border: 1px solid #d7e0ea;
+    border-radius: 14px;
+    background: #f8fbff;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #1e293b;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.screenOption input {
+    width: 16px;
+    height: 16px;
+}
+
+.emptyInlineState {
+    border: 1px dashed #cbd5e1;
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 14px 16px;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.ruleCard {
+    border: 1px solid #dbe6f2;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: 18px;
+}
+
+.ruleCard + .ruleCard {
+    margin-top: 14px;
+}
+
+.ruleCardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.ruleCardHeader h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #15345d;
+}
+
+.ruleCardHeader p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.addRuleButton {
+    border: none;
+    background: #e8f0fb;
+    color: #18467d;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ruleRows {
+    display: grid;
+    gap: 14px;
+}
+
+.ruleRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 48px;
+    gap: 12px;
+    align-items: end;
+}
+
+.removeRuleButton {
+    min-height: 48px;
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.field {
+    display: grid;
+    gap: 8px;
+    color: #334155;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.field input,
+.field select {
+    min-height: 48px;
+    border-radius: 14px;
+    border: 1px solid #d7e0ea;
+    padding: 0 14px;
+    font-size: 14px;
+    color: #0f172a;
+    background: #f8fbff;
+    outline: none;
+}
+
+.field input:focus,
+.field select:focus {
+    border-color: #1d6ec1;
+    box-shadow: 0 0 0 3px rgba(29, 110, 193, 0.12);
+}
+
+.formActions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.primaryButton,
+.secondaryButton {
+    min-height: 46px;
+    padding: 0 18px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.primaryButton {
+    border: none;
+    background: linear-gradient(135deg, #123c73 0%, #1d6ec1 100%);
+    color: #ffffff;
+}
+
+.secondaryButton {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.successMessage,
+.errorMessage {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.successMessage {
+    background: #ecfdf5;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+}
+
+.errorMessage {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+.infoMessage {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.filterBar {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.searchBox,
+.selectWrap {
+    background: #ffffff;
+    border: 1px solid rgba(17, 24, 39, 0.08);
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.05);
+}
+
+.searchBox {
+    flex: 1 1 360px;
+    min-height: 52px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    color: #5f6f84;
+}
+
+.searchBox input {
+    border: none;
+    outline: none;
+    width: 100%;
+    font-size: 14px;
+    background: transparent;
+    color: #1f2937;
+}
+
+.selectWrap {
+    position: relative;
+    min-width: 220px;
+    border-radius: 16px;
+}
+
+.selectWrap select {
+    width: 100%;
+    min-height: 52px;
+    border: none;
+    outline: none;
+    appearance: none;
+    background: transparent;
+    padding: 0 42px 0 42px;
+    font-size: 14px;
+    color: #1f2937;
+}
+
+.selectIcon,
+.selectChevron {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b7280;
+    pointer-events: none;
+}
+
+.selectIcon {
+    left: 14px;
+}
+
+.selectChevron {
+    right: 14px;
+}
+
+.tableCard {
+    overflow: hidden;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table thead {
+    background: #f2f7fc;
+}
+
+.table th,
+.table td {
+    padding: 16px 18px;
+    text-align: left;
+    font-size: 14px;
+}
+
+.table th {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #5f6f84;
+}
+
+.table tbody tr {
+    border-top: 1px solid #edf2f7;
+}
+
+.table tbody tr:hover {
+    background: #f9fbfe;
+}
+
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 88px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.conditionBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 96px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #1d4ed8;
+    background: #dbeafe;
+}
+
+.active {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.inactive {
+    color: #9f1239;
+    background: #ffe4e6;
+}
+
+.footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 18px;
+    border-top: 1px solid #edf2f7;
+}
+
+.footerMeta {
+    color: #64748b;
+    font-size: 14px;
+}
+
+.pagination {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pagination button {
+    border: none;
+    background: #e8f0fb;
+    color: #18467d;
+    min-width: 72px;
+    min-height: 38px;
+    border-radius: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.pagination button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.pagination span {
+    min-width: 38px;
+    text-align: center;
+    font-weight: 700;
+    color: #15345d;
+}
+
+.emptyState {
+    padding: 48px 24px;
+    text-align: center;
+    color: #64748b;
+    font-size: 15px;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (max-width: 900px) {
+    .page {
+        padding: 16px;
+    }
+
+    .header,
+    .footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .statsGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .formGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .screenGrid,
+    .ruleRow {
+        grid-template-columns: 1fr;
+    }
+
+    .removeRuleButton {
+        width: 100%;
+    }
+
+    .tableCard {
+        overflow-x: auto;
+    }
+
+    .table {
+        min-width: 880px;
+    }
+}

@@ -20,7 +20,7 @@ const Login = () => {
 
     useEffect(() => {
         if (token) {
-            router.push("/dashboard");
+            router.push("/departments");
         }
     }, [token, router]);
 
@@ -109,7 +109,7 @@ const Login = () => {
                     </div>
 
                     <button type="submit" className={styles['login-btn']} disabled={isLoading}>
-                        {isLoading ? "Logging in..." : "Login to Dashboard"}
+                        {isLoading ? "Logging in..." : "Login"}
                     </button>
 
                 </form>
