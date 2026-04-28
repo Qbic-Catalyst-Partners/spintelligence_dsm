@@ -285,6 +285,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
 
   const countOptions = useMemo(
     () =>
@@ -338,6 +339,10 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   };
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
     loadVersions();
   }, []);
 
@@ -388,6 +393,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     if (!String(selectedTypeName || "").trim()) nextErrors.type = true;
     if (!String(form.countName || "").trim()) nextErrors.countName = true;
     if (!String(form.consigneeName || "").trim()) nextErrors.consigneeName = true;
+    if (!String(form.creationDate || "").trim()) nextErrors.creationDate = true;
     fieldDefs.forEach((field) => {
       if (!String(form[field.key] || "").trim()) nextErrors[field.key] = true;
     });
@@ -469,7 +475,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   }));
 
   const savedVersionsPortal =
-    typeof document !== "undefined" && tablePortalTargetId
+    isMounted && tablePortalTargetId
       ? document.getElementById(tablePortalTargetId)
       : null;
 
@@ -523,7 +529,12 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
           <div className="flex flex-col gap-1.5 min-w-0">
             <label className="text-[14px] font-semibold text-slate-700">Creation Date</label>
-            <input type="text" className={topFieldClass} value={formatDisplayDate(form.creationDate)} readOnly />
+            <input
+              type="date"
+              className={`${topFieldClass}${errors.creationDate ? " border-red-500 bg-red-50" : ""}`}
+              value={form.creationDate}
+              onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+            />
           </div>
         </div>
 

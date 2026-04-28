@@ -203,6 +203,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const countOptions = useMemo(
     () =>
@@ -256,6 +257,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setLoadingVersions(false);
     }
   };
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     loadVersions();
@@ -375,7 +380,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   }));
 
   const savedVersionsPortal =
-    typeof document !== "undefined" && savedVersionsTargetId
+    isMounted && savedVersionsTargetId
       ? document.getElementById(savedVersionsTargetId)
       : null;
 

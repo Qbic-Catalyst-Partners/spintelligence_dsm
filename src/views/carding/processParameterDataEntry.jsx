@@ -1,12 +1,8 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { createPortal } from "react-dom";
-import { useRouter } from "next/router";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
-import Footer from "@/components/Footer";
-import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
-import SuccessModal from "@/components/SuccessModal";
 import {
   getCardingProcessParameterEntries,
   submitCardingProcessParameterEntry,
@@ -288,24 +284,24 @@ const SavedVersionsSection = ({
   </div>
 );
 
-function CardingProcessParameterDataEntry({
-  types,
-  selectedType,
-  onTypeChange,
-  savedVersionsTargetId = "",
-}) {
-  const router = useRouter();
+const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParameterDataEntry(
+  {
+    types,
+    selectedType,
+    onTypeChange,
+    savedVersionsTargetId = "",
+  },
+  ref
+) {
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
-  const [showPreview, setShowPreview] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [previewItems, setPreviewItems] = useState([]);
-  const [validationMessage, setValidationMessage] = useState("");
+  const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   const countOptions = buildProcessParameterOptions(
     PROCESS_PARAMETER_COUNT_OPTIONS,
@@ -365,6 +361,10 @@ function CardingProcessParameterDataEntry({
   };
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
     loadVersions();
   }, []);
 
@@ -395,11 +395,13 @@ function CardingProcessParameterDataEntry({
       return nextForm;
     });
     clearError(field);
+    setSubmitError("");
   };
 
   const handleVersionSelect = (version) => {
     setForm({ ...version.data, versionId: version.id });
     setErrors({});
+    setSubmitError("");
   };
 
   const handleVersionToggle = (version) => {
@@ -411,6 +413,7 @@ function CardingProcessParameterDataEntry({
     }
     setExpandedVersionId((current) => (current === version.id ? null : version.id));
     setErrors({});
+    setSubmitError("");
   };
 
   const validate = () => {
@@ -418,6 +421,7 @@ function CardingProcessParameterDataEntry({
     if (!String(selectedType || "").trim()) nextErrors.selectedType = true;
     if (!String(form.countName || "").trim()) nextErrors.countName = true;
     if (!String(form.consigneeName || "").trim()) nextErrors.consigneeName = true;
+    if (!String(form.creationDate || "").trim()) nextErrors.creationDate = true;
 
     fieldDefs.forEach((field) => {
       if (!String(form[field.key] || "").trim()) {
@@ -455,14 +459,10 @@ function CardingProcessParameterDataEntry({
     flats: parseNumberValue(form.flats),
   });
 
-  const resetForm = () => {
+  const clear = () => {
     setForm(createDefaultForm());
     setErrors({});
-    setValidationMessage("");
-  };
-
-  const handleClear = () => {
-    resetForm();
+    setSubmitError("");
   };
 
   const getPreviewData = () => [
@@ -476,20 +476,12 @@ function CardingProcessParameterDataEntry({
     })),
   ];
 
-  const handleSave = () => {
-    if (!validate()) {
-      setValidationMessage("Please fill all required fields before saving.");
-      return;
-    }
+  const submit = async () => {
+    if (!validate()) return false;
 
-    setValidationMessage("");
-    setPreviewItems(getPreviewData());
-    setShowPreview(true);
-  };
-
-  const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
+      setSubmitError("");
       const payload = buildPayload();
       const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
 
@@ -499,24 +491,25 @@ function CardingProcessParameterDataEntry({
         await submitCardingProcessParameterEntry(payload);
       }
 
-      setShowPreview(false);
       await loadVersions();
-      setValidationMessage("");
-      setShowSuccess(true);
+      return true;
     } catch (error) {
-      setValidationMessage(error.message || "Unable to submit the form.");
+      setSubmitError(error.message || "Unable to submit the form.");
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSuccessClose = () => {
-    setShowSuccess(false);
-    resetForm();
-  };
+  useImperativeHandle(ref, () => ({
+    clear,
+    validate,
+    getPreviewData,
+    submit,
+  }));
 
   const savedVersionsPortal =
-    typeof document !== "undefined" && savedVersionsTargetId
+    isMounted && savedVersionsTargetId
       ? document.getElementById(savedVersionsTargetId)
       : null;
 
@@ -572,7 +565,12 @@ function CardingProcessParameterDataEntry({
 
             <div className="flex flex-col gap-1.5 min-w-0">
               <label className="text-[14px] font-semibold text-slate-700">Creation Date</label>
-              <input type="text" className={topFieldClass} value={formatDisplayDate(form.creationDate)} readOnly />
+            <input
+              type="date"
+              className={`${topFieldClass}${errors.creationDate ? " border-red-500 bg-red-50" : ""}`}
+              value={form.creationDate}
+              onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+            />
             </div>
           </div>
 
@@ -591,21 +589,17 @@ function CardingProcessParameterDataEntry({
           </div>
         </div>
 
-        <div className="mt-6 -mx-7 border-t border-slate-100 px-5 pt-4">
-          {validationMessage ? (
-            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
-              {validationMessage}
-            </div>
-          ) : null}
+        {submitError ? (
+          <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
+            {submitError}
+          </div>
+        ) : null}
 
-          <Footer
-            onBack={() => router.push("/dashboard")}
-            onClear={handleClear}
-            onSave={handleSave}
-            saveLabel={isSubmitting ? "Submitting..." : "Save Record"}
-            disabled={isSubmitting}
-          />
-        </div>
+        {isSubmitting ? (
+          <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+            Submitting...
+          </div>
+        ) : null}
       </div>
 
       {savedVersionsPortal
@@ -623,25 +617,8 @@ function CardingProcessParameterDataEntry({
           )
         : null}
 
-      <PreviewModal
-        open={showPreview}
-        title="Quality Control - Carding Notebook"
-        subtitle="Preview"
-        items={previewItems}
-        typeValue={selectedType || "Select Type"}
-        onCancel={() => setShowPreview(false)}
-        onConfirm={handleSubmit}
-        confirmLabel="Submit"
-      />
-
-      <SuccessModal
-        open={showSuccess}
-        message="Carding process parameter entry saved successfully"
-        typeValue={selectedType || "Process Parameter"}
-        onClose={handleSuccessClose}
-      />
     </>
   );
-}
+});
 
 export default CardingProcessParameterDataEntry;
