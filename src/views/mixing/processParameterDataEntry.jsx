@@ -347,6 +347,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
 
   const loadVersions = async () => {
     setLoadingVersions(true);
@@ -393,6 +394,10 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   );
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
     loadVersions();
   }, []);
 
@@ -424,14 +429,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const handleVersionSelect = (version) => {
-    setForm((current) => ({
-      ...current,
-      versionId: version.id,
-      paramId: version.data.paramId,
-      countName: version.data.countName,
-      consigneeName: version.data.consigneeName,
-      creationDate: version.data.creationDate,
-    }));
+    setForm({ ...cloneForm(version.data), versionId: version.id });
     setErrors({});
   };
 
@@ -456,6 +454,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
     if (!String(form.countName || "").trim()) nextErrors.countName = true;
     if (!String(form.consigneeName || "").trim()) nextErrors.consigneeName = true;
+    if (!String(form.creationDate || "").trim()) nextErrors.creationDate = true;
 
     form.rows.forEach((row, index) => {
       ["lotNo", "blend", "cutLength", "tenacity", "elongation", "mergeNo"].forEach((field) => {
@@ -577,10 +576,10 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Creation Date</label>
           <input
-            type="text"
-            className={topFieldClass}
-            value={formatDisplayDate(form.creationDate)}
-            readOnly
+            type="date"
+            className={`${topFieldClass}${errors.creationDate ? " border-red-500 bg-red-50" : ""}`}
+            value={form.creationDate}
+            onChange={(event) => handleFieldChange("creationDate", event.target.value)}
           />
         </div>
       </div>
@@ -658,7 +657,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
   if (standaloneSection) {
     const savedVersionsPortal =
-      typeof document !== "undefined" && savedVersionsTargetId
+      isMounted && savedVersionsTargetId
         ? document.getElementById(savedVersionsTargetId)
         : null;
 

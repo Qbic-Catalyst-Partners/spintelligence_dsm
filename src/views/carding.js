@@ -1,15 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
+import Footer from "@/components/Footer";
+import PreviewModal from "@/components/PreviewModal";
 import ProcessParameterDataEntry from "./carding/processParameterDataEntry";
+import SuccessModal from "@/components/SuccessModal";
 import BetweenWithinCardEntry from "./carding/betweenWithinCardEntry";
 import CardingDfk from "./carding/cardingdfk";
 import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
 import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { clearCardingState } from "@/store/slices/carding";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 import styles from "./carding/cardThickPlaceEntry.module.css";
@@ -28,6 +32,8 @@ export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
 
 function Carding() {
     const router = useRouter();
+    const dispatch = useDispatch();
+    const childRef = useRef(null);
     const { uqcEntries = [], listLoading } = useSelector((state) => state.carding ?? {});
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -38,6 +44,10 @@ function Carding() {
         "Carding"
     );
     const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
+    const [showPreview, setShowPreview] = useState(false);
+    const [previewItems, setPreviewItems] = useState([]);
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [validationMessage, setValidationMessage] = useState("");
 
     useEffect(() => {
         if (!typeOptions.some((item) => item.id === checkingType)) {
@@ -50,6 +60,10 @@ function Carding() {
             (item) => item.name === value
         );
         setCheckingType(selected?.id ?? null);
+        setValidationMessage("");
+        setPreviewItems([]);
+        setShowPreview(false);
+        setShowSuccess(false);
     };
 
     const selectedType =
@@ -57,6 +71,27 @@ function Carding() {
     const selectedOption = typeOptions.find((item) => item.id === checkingType) || null;
     const SelectedComponent = selectedOption?.component ?? null;
     const isProcessParameter = selectedType === "Process Parameter";
+
+    const openPreview = () => {
+        const valid = childRef.current?.validate ? childRef.current.validate() : true;
+        if (valid === false) {
+            setValidationMessage("Please fill all required fields before saving.");
+            return;
+        }
+
+        setValidationMessage("");
+        const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
+        setPreviewItems(items);
+        setShowPreview(true);
+    };
+
+    const confirmSubmit = async () => {
+        setShowPreview(false);
+        const ok = await childRef.current?.submit?.();
+        if (ok) {
+            setShowSuccess(true);
+        }
+    };
 
     return (
         <div className={styles["card-page"]}>
@@ -112,6 +147,7 @@ function Carding() {
 
                     {isProcessParameter && SelectedComponent ? (
                         <SelectedComponent
+                            ref={childRef}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
@@ -170,6 +206,24 @@ function Carding() {
                             onTypeChange={handleTypeChange}
                         />
                     )}
+
+                    {isProcessParameter && validationMessage ? (
+                        <div className={styles["message-box"]}>
+                            {validationMessage}
+                        </div>
+                    ) : null}
+
+                    {isProcessParameter ? (
+                        <Footer
+                            onBack={() => router.push("/dashboard")}
+                            onClear={() => {
+                                setValidationMessage("");
+                                childRef.current?.clear?.();
+                            }}
+                            onSave={openPreview}
+                            saveLabel="Save Record"
+                        />
+                    ) : null}
                 </div>
 
                 {isProcessParameter && SelectedComponent ? (
@@ -291,6 +345,29 @@ function Carding() {
                     </div>
                 )}
             </div>
+
+            <PreviewModal
+                open={showPreview}
+                title="Quality Control - Carding Notebook"
+                subtitle="Preview"
+                items={previewItems}
+                typeValue={selectedType}
+                onCancel={() => setShowPreview(false)}
+                onConfirm={confirmSubmit}
+                confirmLabel="Submit"
+            />
+
+            <SuccessModal
+                open={showSuccess}
+                message="Data Submitted"
+                typeValue={selectedType}
+                onClose={() => {
+                    setShowSuccess(false);
+                    setValidationMessage("");
+                    childRef.current?.clear?.();
+                    dispatch(clearCardingState());
+                }}
+            />
         </div>
     );
 }
