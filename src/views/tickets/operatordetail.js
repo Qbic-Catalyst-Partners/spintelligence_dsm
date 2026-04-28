@@ -6,6 +6,10 @@ import {
   fetchOperatorTicketById,
   submitTicketFix,
 } from "@/store/slices/operatorSlice";
+import {
+  formatThresholdValue,
+  getTicketValueForParameter,
+} from "@/utils/ticketTransformer";
 
 import { IoClose, IoTimeSharp } from "react-icons/io5";
 import { FaRegCommentAlt } from "react-icons/fa";
@@ -38,22 +42,6 @@ export default function TicketDetails() {
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
-
-  const getValueForParameter = (source, parameterName) => {
-    if (!source || !parameterName) return "-";
-
-    const directMatch = source[parameterName];
-    if (directMatch !== undefined && directMatch !== null) {
-      return directMatch;
-    }
-
-    const normalizedParameter = parameterName.toLowerCase().trim();
-    const matchedKey = Object.keys(source).find(
-      (key) => key.toLowerCase().trim() === normalizedParameter
-    );
-
-    return matchedKey ? source[matchedKey] : "-";
-  };
 
   const dashboardTicket = useMemo(() => {
     if (!ticketId) return null;
@@ -107,8 +95,10 @@ export default function TicketDetails() {
   const parameterMap =
     resolvedTicket?.parameter_name?.map((param) => ({
       name: param,
-      actual: getValueForParameter(resolvedTicket?.actual_value, param),
-      threshold: getValueForParameter(resolvedTicket?.threshold_value, param),
+      actual: getTicketValueForParameter(resolvedTicket?.actual_value, param),
+      threshold: formatThresholdValue(
+        getTicketValueForParameter(resolvedTicket?.threshold_value, param)
+      ),
     })) || [];
 
   const visibleRows = expanded ? parameterMap : parameterMap.slice(0, 1);

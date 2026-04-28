@@ -23,6 +23,7 @@ import {
 } from "@/data/processParameterMasterOptions";
 import styles from "@/styles/draw-frame.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -501,6 +502,23 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
         await activeConfig.updateEntry(selectedExistingEntry.id, payload);
       } else {
         await activeConfig.submitEntry(payload);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          screenName: activeType,
+          machineName: activeType,
+          values: allFields
+            .filter((field) => !["type", "creationDate"].includes(field.key))
+            .map((field) => ({
+              label: field.label,
+              value: form[field.key],
+            })),
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       await loadEntries(activeType);

@@ -13,6 +13,7 @@ import {
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -456,6 +457,21 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
         await updateSimplexProcessParameterEntry(selectedExistingVersion.id, payload);
       } else {
         await submitSimplexProcessParameterEntry(payload);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Simplex",
+          screenName: selectedTypeName || "Process Parameter",
+          machineName: form.machineNo || selectedTypeName || "Process Parameter",
+          values: fieldDefs.map((field) => ({
+            label: field.label,
+            value: form[field.key],
+          })),
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       await loadVersions();

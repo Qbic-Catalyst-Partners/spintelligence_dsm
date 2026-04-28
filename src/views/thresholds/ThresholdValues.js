@@ -16,20 +16,11 @@ const ROWS_PER_PAGE = 8;
 const createRule = () => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     fieldName: "",
-    comparison: "more_than",
-    thresholdValue: "",
+    comparison: "more_and_less_than",
+    actualValue: "",
+    positiveTolerance: "",
+    negativeTolerance: "",
 });
-const formatConditionLabel = (value) => {
-    if (value === "less_than") {
-        return "Less Than";
-    }
-
-    if (value === "more_and_less_than") {
-        return "More and Less Than";
-    }
-
-    return "More Than";
-};
 
 const formatTimestamp = (value) => {
     if (!value) {
@@ -117,11 +108,13 @@ export default function ThresholdValues() {
             }
 
             const haystack = [
-                item?.management_field,
-                item?.erp_product_code,
-                item?.machine_name,
-                item?.parameter_name,
-                item?.threshold_value,
+                item?.department || item?.management_field,
+                item?.sub_department || item?.erp_product_code,
+                item?.input_screen || item?.machine_name,
+                item?.input_field || item?.parameter_name,
+                item?.actual_value,
+                item?.plus_threshold || item?.positive_tolerance,
+                item?.minus_threshold || item?.negative_tolerance,
             ]
                 .map((value) => String(value || "").toLowerCase())
                 .join(" ");
@@ -147,8 +140,8 @@ export default function ThresholdValues() {
         const grouped = {};
 
         thresholds.forEach((item) => {
-            const screenName = item?.machine_name;
-            const fieldName = item?.parameter_name;
+            const screenName = item?.input_screen || item?.machine_name;
+            const fieldName = item?.input_field || item?.parameter_name;
 
             if (!screenName || !fieldName) {
                 return;
@@ -258,14 +251,22 @@ export default function ThresholdValues() {
     const handleSubmit = async (event) => {
         event.preventDefault();
 
-        if (!selectedDepartment || !selectedSubDepartment) {
-            setFormError("Please choose a department and sub-department.");
-            setFormMessage("");
-            return;
+        const missingFields = [];
+
+        if (!selectedDepartment) {
+            missingFields.push("department");
+        }
+
+        if (!selectedSubDepartment) {
+            missingFields.push("sub_department");
         }
 
         if (!selectedScreenNames.length) {
-            setFormError("Please select at least one input screen.");
+            missingFields.push("input_screen");
+        }
+
+        if (missingFields.length) {
+            setFormError(`${missingFields.join(", ")} are required.`);
             setFormMessage("");
             return;
         }
@@ -276,26 +277,78 @@ export default function ThresholdValues() {
             const rules = screenRules[screenName] || [];
             for (const rule of rules) {
                 const fieldName = rule.fieldName.trim();
-                const rawThreshold = rule.thresholdValue.trim();
+                const rawActualValue = rule.actualValue.trim();
+                const rawPositiveTolerance = rule.positiveTolerance.trim();
+                const rawNegativeTolerance = rule.negativeTolerance.trim();
 
-                if (!fieldName || !rawThreshold) {
-                    setFormError("Every selected screen needs field name and threshold value.");
+                if (!screenName || !fieldName || !rawActualValue) {
+                    const rowMissingFields = [];
+
+                    if (!fieldName) {
+                        rowMissingFields.push("input_field");
+                    }
+
+                    if (!rawActualValue) {
+                        rowMissingFields.push("actual_value");
+                    }
+
+                    if (!rawPositiveTolerance && !rawNegativeTolerance) {
+                        rowMissingFields.push("plus_or_minus_value");
+                    }
+
+                    setFormError(`${rowMissingFields.join(", ")} are required.`);
                     setFormMessage("");
                     return;
                 }
 
-                const numericThreshold = Number(rawThreshold);
+                const numericActualValue = Number(rawActualValue);
+                const numericPositiveTolerance = Number(rawPositiveTolerance);
+                const numericNegativeTolerance = Number(rawNegativeTolerance);
                 thresholdItems.push({
+                    department: selectedDepartment.name,
+                    sub_department: selectedSubDepartment.name,
+                    input_screen: screenName,
+                    input_field: fieldName,
                     management_field: selectedDepartment.name,
                     erp_product_code: selectedSubDepartment.name,
                     machine_name: screenName,
                     parameter_name: fieldName,
                     comparison_operator: rule.comparison,
                     condition_level: rule.comparison,
-                    threshold_value:
-                        rawThreshold !== "" && Number.isFinite(numericThreshold)
-                            ? numericThreshold
-                            : rawThreshold,
+                    actual_value:
+                        rawActualValue !== "" && Number.isFinite(numericActualValue)
+                            ? numericActualValue
+                            : rawActualValue,
+                    plus_threshold:
+                        rawPositiveTolerance !== "" && Number.isFinite(numericPositiveTolerance)
+                            ? numericPositiveTolerance
+                            : rawPositiveTolerance,
+                    minus_threshold:
+                        rawNegativeTolerance !== "" && Number.isFinite(numericNegativeTolerance)
+                            ? numericNegativeTolerance
+                            : rawNegativeTolerance,
+                    positive_tolerance:
+                        rawPositiveTolerance !== "" && Number.isFinite(numericPositiveTolerance)
+                            ? numericPositiveTolerance
+                            : rawPositiveTolerance,
+                    negative_tolerance:
+                        rawNegativeTolerance !== "" && Number.isFinite(numericNegativeTolerance)
+                            ? numericNegativeTolerance
+                            : rawNegativeTolerance,
+                    min_allowed_value:
+                        rawActualValue !== "" &&
+                        rawNegativeTolerance !== "" &&
+                        Number.isFinite(numericActualValue) &&
+                        Number.isFinite(numericNegativeTolerance)
+                            ? numericActualValue - numericNegativeTolerance
+                            : undefined,
+                    max_allowed_value:
+                        rawActualValue !== "" &&
+                        rawPositiveTolerance !== "" &&
+                        Number.isFinite(numericActualValue) &&
+                        Number.isFinite(numericPositiveTolerance)
+                            ? numericActualValue + numericPositiveTolerance
+                            : undefined,
                     is_active: formStatus === "true",
                 });
             }
@@ -496,27 +549,50 @@ export default function ThresholdValues() {
                                                     </label>
 
                                                     <label className={styles.field}>
-                                                        <span>Condition</span>
-                                                        <select
-                                                            value={rule.comparison}
+                                                        <span>Actual Value</span>
+                                                        <input
+                                                            value={rule.actualValue}
                                                             onChange={(event) =>
-                                                                handleRuleChange(screenName, rule.id, "comparison", event.target.value)
+                                                                handleRuleChange(
+                                                                    screenName,
+                                                                    rule.id,
+                                                                    "actualValue",
+                                                                    event.target.value
+                                                                )
                                                             }
-                                                        >
-                                                            <option value="more_than">More Than</option>
-                                                            <option value="less_than">Less Than</option>
-                                                            <option value="more_and_less_than">More and Less Than</option>
-                                                        </select>
+                                                            placeholder="Enter actual value"
+                                                        />
                                                     </label>
 
                                                     <label className={styles.field}>
-                                                        <span>Threshold Value</span>
+                                                        <span>Plus (+)</span>
                                                         <input
-                                                            value={rule.thresholdValue}
+                                                            value={rule.positiveTolerance}
                                                             onChange={(event) =>
-                                                                handleRuleChange(screenName, rule.id, "thresholdValue", event.target.value)
+                                                                handleRuleChange(
+                                                                    screenName,
+                                                                    rule.id,
+                                                                    "positiveTolerance",
+                                                                    event.target.value
+                                                                )
                                                             }
-                                                            placeholder="Enter threshold value"
+                                                            placeholder="Enter + tolerance"
+                                                        />
+                                                    </label>
+
+                                                    <label className={styles.field}>
+                                                        <span>Minus (-)</span>
+                                                        <input
+                                                            value={rule.negativeTolerance}
+                                                            onChange={(event) =>
+                                                                handleRuleChange(
+                                                                    screenName,
+                                                                    rule.id,
+                                                                    "negativeTolerance",
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            placeholder="Enter - tolerance"
                                                         />
                                                     </label>
 
@@ -564,8 +640,8 @@ export default function ThresholdValues() {
                     </form>
 
                     <p className={styles.infoMessage}>
-                        Condition levels can now be saved as `More Than`, `Less Than`, or `More and Less Than`
-                        using the same threshold value.
+                        Use `Actual Value` with `+ / -` tolerances.
+                        Example: actual `140`, `+5`, `-4` means `136` to `145` is allowed.
                     </p>
                     {formMessage ? <p className={styles.successMessage}>{formMessage}</p> : null}
                     {formError ? <p className={styles.errorMessage}>{formError}</p> : null}
@@ -610,24 +686,22 @@ export default function ThresholdValues() {
                                         <th>Sub-Department</th>
                                         <th>Input Screen</th>
                                         <th>Input Field</th>
-                                        <th>Condition Level</th>
-                                        <th>Threshold Value</th>
+                                        <th>Actual Value</th>
+                                        <th>Plus (+)</th>
+                                        <th>Minus (-)</th>
                                         <th>Created At</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {currentRows.map((item) => (
                                         <tr key={item.id}>
-                                            <td>{item.management_field || "-"}</td>
-                                            <td>{item.erp_product_code || "-"}</td>
-                                            <td>{item.machine_name || "-"}</td>
-                                            <td>{item.parameter_name || "-"}</td>
-                                            <td>
-                                                <span className={styles.conditionBadge}>
-                                                    {formatConditionLabel(item.comparison_operator || item.condition_level)}
-                                                </span>
-                                            </td>
-                                            <td>{item.threshold_value ?? "-"}</td>
+                                            <td>{item.department || item.management_field || "-"}</td>
+                                            <td>{item.sub_department || item.erp_product_code || "-"}</td>
+                                            <td>{item.input_screen || item.machine_name || "-"}</td>
+                                            <td>{item.input_field || item.parameter_name || "-"}</td>
+                                            <td>{item.actual_value ?? "-"}</td>
+                                            <td>{item.plus_threshold ?? item.positive_tolerance ?? "-"}</td>
+                                            <td>{item.minus_threshold ?? item.negative_tolerance ?? "-"}</td>
                                             <td>{formatTimestamp(item.created_at)}</td>
                                         </tr>
                                     ))}

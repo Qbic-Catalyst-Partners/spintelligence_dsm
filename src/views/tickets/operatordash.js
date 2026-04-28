@@ -3,6 +3,10 @@ import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { getOperatorTickets } from "../../apis/operatorApi";
+import {
+    formatThresholdValue,
+    getTicketValueForParameter,
+} from "../../utils/ticketTransformer";
 
 export default function operatorboard() {
     const [ticketData, setTicketData] = useState([]);
@@ -41,12 +45,16 @@ export default function operatorboard() {
                     id: ticket.ticket_id,
                     machine: ticket.machine_name,
                     parameter: ticket.parameter_name?.[0] || "-",
-                    actual: ticket.actual_value
-                        ? ticket.actual_value[ticket.parameter_name[0]?.toLowerCase()] || "-"
-                        : "-",
-                    threshold: ticket.threshold_value
-                        ? ticket.threshold_value[ticket.parameter_name[0]?.toLowerCase()] || "-"
-                        : "-",
+                    actual: getTicketValueForParameter(
+                        ticket.actual_value,
+                        ticket.parameter_name?.[0]
+                    ),
+                    threshold: formatThresholdValue(
+                        getTicketValueForParameter(
+                            ticket.threshold_value,
+                            ticket.parameter_name?.[0]
+                        )
+                    ),
                     severity: ticket.severity,
                     status: ticket.status,
                     rawCreatedAt: createdDate,
