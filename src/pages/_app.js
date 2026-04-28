@@ -24,8 +24,7 @@ function AppShell({ Component, pageProps }) {
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const showHeader = router.pathname !== "/";
-  const isDepartmentFlow =
-    router.pathname === "/departments/quality-control" || router.pathname.startsWith("/departments");
+  const isDepartmentFlow = router.pathname.startsWith("/departments");
   const isTicketingFlow =
     router.pathname === "/operator" ||
     router.pathname.startsWith("/operator/") ||
@@ -39,6 +38,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/umedit") ||
     router.pathname.startsWith("/umchangepassword") ||
     router.pathname === "/rolespermission" ||
+    router.pathname === "/threshold-values" ||
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");
   const canAccessManagementFlow = isFullAccessUser(user);
@@ -46,6 +46,7 @@ function AppShell({ Component, pageProps }) {
     { href: "/departments", label: "Home" },
     { href: "/usermanagement", label: "User Management" },
     { href: "/rolespermission", label: "Roles & Permissions" },
+    { href: "/threshold-values", label: "Threshold Values" },
   ];
   const headerNavLinks = canAccessManagementFlow || isAdminFlow
     ? managementNavLinks

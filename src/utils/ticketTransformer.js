@@ -1,6 +1,46 @@
+export const getTicketParameterKey = (parameterName) =>
+  String(parameterName || "").toLowerCase().trim();
+
+export const getTicketValueForParameter = (source, parameterName) => {
+  if (!source || !parameterName) return "-";
+
+  const directMatch = source[parameterName];
+  if (directMatch !== undefined && directMatch !== null) {
+    return directMatch;
+  }
+
+  const normalizedParameter = getTicketParameterKey(parameterName);
+  const matchedKey = Object.keys(source).find(
+    (key) => getTicketParameterKey(key) === normalizedParameter
+  );
+
+  return matchedKey ? source[matchedKey] : "-";
+};
+
+export const formatThresholdValue = (value) => {
+  if (value === null || typeof value === "undefined") {
+    return "-";
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const conditionLevel = value.condition_level || "-";
+  const actualValue = value.actual_value ?? "-";
+  const plusThreshold = value.plus_threshold ?? "-";
+  const minusThreshold = value.minus_threshold ?? "-";
+
+  return `${conditionLevel} | A:${actualValue} | +:${plusThreshold} | -:${minusThreshold}`;
+};
+
 export const transformTicket = (ticket) => {
   const createdDate = new Date(ticket.created_at);
-  const key = ticket.parameter_name?.[0]?.toLowerCase()?.trim();
+  const parameter = ticket.parameter_name?.[0] || "-";
+  const actual = getTicketValueForParameter(ticket.actual_value, parameter);
+  const threshold = formatThresholdValue(
+    getTicketValueForParameter(ticket.threshold_value, parameter)
+  );
 
   return {
     ...ticket,
@@ -11,11 +51,11 @@ export const transformTicket = (ticket) => {
     machine: ticket.machine_name,
     machine_name: ticket.machine_name,
 
-    parameter: ticket.parameter_name?.[0] || "-",
+    parameter,
     parameter_name: ticket.parameter_name,
 
-    actual: ticket.actual_value?.[key] ?? "-",
-    threshold: ticket.threshold_value?.[key] ?? "-",
+    actual,
+    threshold,
 
     actual_value: ticket.actual_value,
     threshold_value: ticket.threshold_value,

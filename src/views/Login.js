@@ -109,7 +109,7 @@ const Login = () => {
                     </div>
 
                     <button type="submit" className={styles['login-btn']} disabled={isLoading}>
-                        {isLoading ? "Logging in..." : "Login to Quality Control"}
+                        {isLoading ? "Logging in..." : "Login"}
                     </button>
 
                 </form>

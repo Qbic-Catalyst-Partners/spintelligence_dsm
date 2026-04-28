@@ -15,6 +15,7 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "@/styles/ProcessParameter.module.css";
 
 const createDefaultForm = (selectedTypeName = "Process Parameter") => ({
@@ -322,6 +323,21 @@ const ProcessParameter = forwardRef(function ProcessParameter(
         await updateBlowroomProcessParameterApi(selectedExistingVersion.id, payload);
       } else {
         await saveBlowroomProcessParameterApi(payload);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Blow Room",
+          screenName: selectedTypeName || "Process Parameter",
+          machineName: selectedTypeName || "Process Parameter",
+          values: fieldDefs.map((field) => ({
+            label: field.label,
+            value: form[field.key],
+          })),
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       await loadVersions();

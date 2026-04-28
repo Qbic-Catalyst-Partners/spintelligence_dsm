@@ -15,6 +15,7 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "@/styles/AutoconerProcessParameter.module.css";
 
 const createDefaultForm = (selectedType = "Process Parameter") => ({
@@ -354,6 +355,21 @@ const ProcessParameter = forwardRef(function ProcessParameter(
         await updateAutoconerProcessParameter(selectedExistingVersion.id, payload);
       } else {
         await submitAutoconerProcessParameter(payload);
+      }
+
+      try {
+        await createThresholdViolationTickets({
+          department: "Quality Control",
+          subDepartment: "Autoconer",
+          screenName: selectedType || "Process Parameter",
+          machineName: form.machineNo || selectedType || "Process Parameter",
+          values: fieldDefs.map((field) => ({
+            label: field.label,
+            value: form[field.key],
+          })),
+        });
+      } catch (ticketError) {
+        console.error("Threshold ticket generation failed:", ticketError);
       }
 
       await loadVersions();
