@@ -13,7 +13,6 @@ import { FiCircle } from "react-icons/fi";
 import { useDispatch, useSelector } from "react-redux";
 import {
   fetchRoles,
-  fetchDepartments,
   addUser,
   clearActionState,
 } from "../../store/slices/userSlice";
@@ -22,7 +21,7 @@ export default function UmAddUser() {
   const dispatch = useDispatch();
   const router = useRouter();
 
-  const { roles, departments, actionLoading, error, actionSuccess } =
+  const { roles, actionLoading, error, actionSuccess } =
     useSelector((state) => state.users);
 
   const [localError, setLocalError] = useState("");
@@ -37,13 +36,11 @@ export default function UmAddUser() {
     phone: "",
     employee_id: "",
     role: "",
-    department: "",
   });
 
   // FETCH DROPDOWN DATA
   useEffect(() => {
     dispatch(fetchRoles());
-    dispatch(fetchDepartments());
   }, [dispatch]);
 
   // SUCCESS REDIRECT
@@ -90,7 +87,6 @@ export default function UmAddUser() {
       !formData.phone ||
       !formData.employee_id ||
       !formData.role ||
-      !formData.department ||
       !password
     ) {
       setLocalError("All fields are required");
@@ -164,16 +160,6 @@ export default function UmAddUser() {
                   <option value="">Select user role</option>
                   {roles.map((r) => (
                     <option key={r.id}>{r.role_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>Department <span>*</span></label>
-                <select name="department" onChange={handleChange}>
-                  <option value="">Select Department</option>
-                  {departments.map((d) => (
-                    <option key={d.id}>{d.name}</option>
                   ))}
                 </select>
               </div>

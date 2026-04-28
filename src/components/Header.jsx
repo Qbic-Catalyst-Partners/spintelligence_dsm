@@ -59,7 +59,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         <header className={styles["top-navbar"]}>
             <div className={styles["nav-left"]}>
                 <div className={styles["spintel-logo"]}>
-                    <Image src="/spintel.svg" alt="spintel" width={50} height={40} style={{ height: "70px" }} />
+                    <Image src="/spintel.svg" alt="spintel" width={50} height={40} style={{ width: "auto", height: "70px" }} />
                 </div>
                 {visibleNavLinks.length > 0 && <nav className={styles["nav-links"]}>
                     {visibleNavLinks.map((link, index) => (

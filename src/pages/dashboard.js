@@ -1,5 +1,5 @@
-import DepartmentDirectory from "@/views/departments/DepartmentDirectory";
+import CustomDashboard from "@/views/dashboard/CustomDashboard";
 
 export default function DashboardPage() {
-    return <DepartmentDirectory />;
+    return <CustomDashboard />;
 }

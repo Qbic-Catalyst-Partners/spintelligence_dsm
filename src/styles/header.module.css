@@ -117,6 +117,10 @@
     flex-shrink: 0;
 }
 
+.profile-menu {
+    position: relative;
+}
+
 .profile-summary {
     display: inline-flex;
     align-items: center;
@@ -197,7 +201,7 @@
     background: #f8faff;
 }
 
-.logout-button svg {
+.dropdown-item svg {
     width: 14px;
     height: 14px;
 }
@@ -226,6 +230,11 @@
 
     .profile-meta {
         max-width: 120px;
+    }
+
+    .profile-dropdown {
+        left: 50%;
+        transform: translateX(-50%);
     }
 
     .profile-name,

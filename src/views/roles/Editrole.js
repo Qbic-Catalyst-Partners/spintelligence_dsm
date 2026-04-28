@@ -1,9 +1,7 @@
 "use client";
 
 import styles from "../../styles/editrole.module.css";
-import { IoArrowBack } from "react-icons/io5";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import { RiIdCardFill } from "react-icons/ri";
@@ -11,7 +9,6 @@ import { RiIdCardFill } from "react-icons/ri";
 import {
     fetchRoleById,
     fetchScreens,
-    fetchDepartments,
     updateRole
 } from "../../store/slices/rolesSlice";
 
@@ -21,48 +18,40 @@ export default function EditRole() {
     const dispatch = useDispatch();
     const id = params?.id;
 
-    const { currentRole, screens, departments, loading, error } = useSelector(state => state.roles);
+    const { currentRole, screens } = useSelector((state) => state.roles);
 
     const [usersCount, setUsersCount] = useState(0);
     const [roleName, setRoleName] = useState("");
     const [description, setDescription] = useState("");
     const [selectedScreens, setSelectedScreens] = useState([]);
-    const [selectedDepartments, setSelectedDepartments] = useState([]);
     const [roleUpdatedAt, setRoleUpdatedAt] = useState("");
 
-    /* ================= FETCH ROLE ================= */
     useEffect(() => {
         if (!id) return;
         dispatch(fetchRoleById(id));
         dispatch(fetchScreens());
-        dispatch(fetchDepartments());
     }, [id, dispatch]);
 
-    /* ================= PREFILL ================= */
     useEffect(() => {
         if (currentRole) {
             setRoleName(currentRole.name || "");
             setDescription(currentRole.description || "");
             setSelectedScreens(currentRole.screen_ids || []);
-            setSelectedDepartments(currentRole.department_ids || []);
             setRoleUpdatedAt(currentRole.updated_at || "");
             setUsersCount(currentRole.users_count || 0);
         }
     }, [currentRole]);
 
-    /* ================= UPDATE ================= */
     const handleUpdateRole = async () => {
         try {
             const payload = {
                 name: roleName,
                 description,
                 status: true,
-                department_ids: [...new Set(selectedDepartments)],
                 screen_ids: [...new Set(selectedScreens)],
             };
 
             await dispatch(updateRole({ id, payload })).unwrap();
-
             router.push("/rolespermission");
         } catch (error) {
             alert(error.message || "Update failed");
@@ -71,7 +60,6 @@ export default function EditRole() {
 
     return (
         <div className={styles["edit-page-container"]}>
-            {/* CONTENT */}
             <div className={styles["edit-content-wrapper"]}>
                 <div className={styles["edit-last-modified"]}>
                     Last modified:{" "}
@@ -80,7 +68,6 @@ export default function EditRole() {
                         : "-"}
                 </div>
 
-                {/* GENERAL */}
                 <div className={styles["edit-card-box"]}>
                     <div className={styles["edit-card-header"]}>
                         <RiIdCardFill className={styles["edit-header-icon"]} />
@@ -108,7 +95,6 @@ export default function EditRole() {
                     </div>
                 </div>
 
-                {/* SCREEN ACCESS */}
                 <div className={styles["edit-card-box"]}>
                     <div className={styles["edit-card-header"]}>
                         <img src="/Screen.png" alt="screen" />
@@ -130,7 +116,7 @@ export default function EditRole() {
                                     onChange={() => {
                                         if (selectedScreens.includes(screen.id)) {
                                             setSelectedScreens(
-                                                selectedScreens.filter((id) => id !== screen.id)
+                                                selectedScreens.filter((screenId) => screenId !== screen.id)
                                             );
                                         } else {
                                             setSelectedScreens([...selectedScreens, screen.id]);
@@ -142,42 +128,8 @@ export default function EditRole() {
                         ))}
                     </div>
                 </div>
-
-                {/* DEPARTMENTS */}
-                <div className={styles["edit-card-box"]}>
-                    <div className={styles["edit-card-header"]}>
-                        <img src="/Dept.png" alt="dept" />
-                        Department Access
-                    </div>
-
-                    <div className={styles["edit-dept-selector"]}>
-                        {departments.map((dept) => (
-                            <label key={dept.id} className={styles["edit-tag"]}>
-                                <input
-                                    type="checkbox"
-                                    className={styles["checkbox"]}
-                                    checked={selectedDepartments.includes(dept.id)}
-                                    onChange={() => {
-                                        if (selectedDepartments.includes(dept.id)) {
-                                            setSelectedDepartments(
-                                                selectedDepartments.filter((id) => id !== dept.id)
-                                            );
-                                        } else {
-                                            setSelectedDepartments([
-                                                ...selectedDepartments,
-                                                dept.id,
-                                            ]);
-                                        }
-                                    }}
-                                />
-                                {dept.name}
-                            </label>
-                        ))}
-                    </div>
-                </div>
             </div>
 
-            {/* SMALL FOOTER */}
             <div className={styles["edit-small-footer"]}>
                 <div className={styles["edit-small-footer-sp"]}>Change to this role will affect :</div>
 
@@ -186,7 +138,6 @@ export default function EditRole() {
                 </span>
             </div>
 
-            {/* FOOTER */}
             <div className={styles["edit-footer-bar"]}>
                 <div className={styles["edit-footer-buttons"]}>
                     <button

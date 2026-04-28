@@ -15,10 +15,29 @@ const endpoints = {
   "Wheel Change": "/spinning/wheel-change",
 };
 
+const resolveWheelChangeEndpoint = (endpoint, payload) => {
+  const wheelType = String(payload?.wheel_change_type || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  const allowedTypes = new Set(["type1", "type2", "type3"]);
+
+  if (!allowedTypes.has(wheelType)) {
+    throw new Error("Invalid wheel change type. Use Type 1, Type 2, or Type 3.");
+  }
+
+  return `${endpoint}/${wheelType}`;
+};
+
 // POST API
 export const saveSpinningRecord = async (type, payload) => {
-  const endpoint = endpoints[type];
-  if (!endpoint) throw new Error("Invalid checking type");
+  const baseEndpoint = endpoints[type];
+  let endpoint = baseEndpoint;
+  if (!baseEndpoint) throw new Error("Invalid checking type");
+
+  if (type === "Wheel Change") {
+    endpoint = resolveWheelChangeEndpoint(baseEndpoint, payload);
+  }
 
   try {
     const response = await api.post(endpoint, payload);
