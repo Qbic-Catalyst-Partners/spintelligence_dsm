@@ -292,7 +292,7 @@ function CardThickPlaceEntry({
                     <div className={styles["card-footer"]}>
                         <Footer
                             isMobile={isMobile}
-                            onBack={() => router.push("/dashboard")}
+                            onBack={() => router.push("/departments/quality-control")}
                             onClear={handleClear}
                             onSave={() => {
                                 if (validateForm()) {

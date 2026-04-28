@@ -423,7 +423,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
                     <div style={{ margin: "16px -24px 0" }}>
                         <Footer
-                            onBack={() => router.push("/dashboard")}
+                            onBack={() => router.push("/departments/quality-control")}
                             onSecondary={calculateStats}
                             secondaryLabel="Calculate Statistics"
                             onSave={onPreview ?? handleSubmit}

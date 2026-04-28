@@ -163,7 +163,7 @@ function Mixing() {
                         Home
                     </button>
                     <span>&rsaquo;</span>
-                    <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/dashboard")}>
+                    <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/departments")}>
                         Dashboard
                     </button>
                     <span>&rsaquo;</span>
@@ -293,7 +293,7 @@ function Mixing() {
                     ) : null}
 
                     <Footer
-                        onBack={() => router.push("/dashboard")}
+                        onBack={() => router.push("/departments/quality-control")}
                         onClear={handleClear}
                         onSave={openPreview}
                         saveLabel={actionLoading ? "Submitting..." : "Save Record"}

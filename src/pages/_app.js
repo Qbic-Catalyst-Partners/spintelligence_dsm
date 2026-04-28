@@ -25,7 +25,7 @@ function AppShell({ Component, pageProps }) {
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const showHeader = router.pathname !== "/";
   const isDepartmentFlow =
-    router.pathname === "/dashboard" || router.pathname.startsWith("/departments");
+    router.pathname === "/departments/quality-control" || router.pathname.startsWith("/departments");
   const isTicketingFlow =
     router.pathname === "/operator" ||
     router.pathname.startsWith("/operator/") ||
@@ -43,7 +43,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/editrole");
   const canAccessManagementFlow = isFullAccessUser(user);
   const managementNavLinks = [
-    { href: "/dashboard", label: "Home" },
+    { href: "/departments", label: "Home" },
     { href: "/usermanagement", label: "User Management" },
     { href: "/rolespermission", label: "Roles & Permissions" },
   ];
@@ -51,7 +51,7 @@ function AppShell({ Component, pageProps }) {
     ? managementNavLinks
     : isDepartmentFlow || isTicketingFlow
     ? [
-        { href: "/dashboard", label: "Home" },
+        { href: "/departments", label: "Home" },
         { href: "/operator", label: "Ticketing System" },
       ]
       : undefined;
@@ -91,17 +91,17 @@ function AppShell({ Component, pageProps }) {
     }
 
     if (token && isAdminFlow && !canAccessManagementFlow) {
-      router.replace("/dashboard");
+      router.replace("/departments");
       return;
     }
 
     if (token && !isAdminFlow && !hasRouteAccess(router.pathname, accessByDepartment, user)) {
-      router.replace("/dashboard");
+      router.replace("/departments");
       return;
     }
 
     if (token && router.pathname === "/") {
-      router.replace("/dashboard");
+      router.replace("/departments");
     }
   }, [accessByDepartment, canAccessManagementFlow, isAdminFlow, isHydrated, router, token, user]);
 

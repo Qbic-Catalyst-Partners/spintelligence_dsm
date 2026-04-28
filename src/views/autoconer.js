@@ -135,7 +135,7 @@ function Autoconer() {
             Home
           </button>
           <span>&rsaquo;</span>
-          <button type="button" onClick={() => router.push("/dashboard")}>
+          <button type="button" onClick={() => router.push("/departments")}>
             Dashboard
           </button>
           <span>&rsaquo;</span>
@@ -143,7 +143,7 @@ function Autoconer() {
             Quality Control
           </button>
           <span>&rsaquo;</span>
-          <span className={styles.active}>Autoconer QC</span>
+          <span className={styles.active}>Autoconer Notebook QC</span>
         </div>
 
         <div className={styles.header}>
@@ -189,7 +189,7 @@ function Autoconer() {
           {isFooterHistoryType ? (
             <div className={styles.processFooterWrap}>
               <Footer
-                onBack={() => router.push("/dashboard")}
+                onBack={() => router.push("/departments/quality-control")}
                 onClear={() => {
                   setValidationMessage("");
                   childRef.current?.clear?.();
@@ -202,7 +202,7 @@ function Autoconer() {
             </div>
           ) : (
             <Footer
-              onBack={() => router.push("/dashboard")}
+              onBack={() => router.push("/departments/quality-control")}
               onClear={() => {
                 setValidationMessage("");
                 childRef.current?.clear?.();
