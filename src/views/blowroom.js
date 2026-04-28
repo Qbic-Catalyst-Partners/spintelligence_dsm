@@ -127,7 +127,7 @@ function BlowRoom() {
             Home
           </button>
           <span>&rsaquo;</span>
-          <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/dashboard")}>
+          <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/departments")}>
             Dashboard
           </button>
           <span>&rsaquo;</span>
@@ -233,7 +233,7 @@ function BlowRoom() {
           {isProcessParameterType ? (
             <div className="mt-6 border-t border-slate-100 px-5 pt-4">
               <Footer
-                onBack={() => router.push("/dashboard")}
+                onBack={() => router.push("/departments/quality-control")}
                 onClear={() => {
                   setValidationMessage("");
                   childRef.current?.clear();
@@ -245,7 +245,7 @@ function BlowRoom() {
             </div>
           ) : (
             <Footer
-              onBack={() => router.push("/dashboard")}
+              onBack={() => router.push("/departments/quality-control")}
               onClear={() => {
                 setValidationMessage("");
                 childRef.current?.clear();

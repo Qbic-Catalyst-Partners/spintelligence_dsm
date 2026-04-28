@@ -562,7 +562,7 @@ function SpinningDepartment() {
                 <div className={styles.breadcrumbs}>
                     <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/")}>Home</button>
                     <span>›</span>
-                    <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/dashboard")}>Dashboard</button>
+                    <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/departments")}>Dashboard</button>
                     <span>›</span>
                     <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/departments/quality-control")}>Quality Control</button>
                     <span>›</span>
@@ -916,7 +916,7 @@ function SpinningDepartment() {
                         {validationMessage ? (
                             <div className={styles.messageError}>{validationMessage}</div>
                         ) : null}
-                        <Footer isMobile={isMobile} onBack={() => router.push("/dashboard")} onClear={handleClearForm} onSave={handleSaveRecord} />
+                        <Footer isMobile={isMobile} onBack={() => router.push("/departments/quality-control")} onClear={handleClearForm} onSave={handleSaveRecord} />
                     </div>
                 </div>
 

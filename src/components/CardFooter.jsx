@@ -11,7 +11,7 @@ function CardFooter({ onBack, onClear, onSave, isLoading, error }) {
                     onClick={onBack}
                     className="flex items-center gap-2 px-5 py-2 rounded-lg border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                    ← Back to Dashboard
+                    Back to Quality Control
                 </button>
 
                 <div className="flex items-center gap-4">

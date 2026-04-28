@@ -397,7 +397,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
             <div className="bwc-footer">
                 <Footer
                     isMobile={isMobile}
-                    onBack={() => router.push("/dashboard")}
+                    onBack={() => router.push("/departments/quality-control")}
                     onSecondary={handleCalculateAll}
                     onSave={() => {
                         if (validateForm()) {

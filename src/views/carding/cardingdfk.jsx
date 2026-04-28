@@ -283,7 +283,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
       <div className={styles.dfkFooterWrap}>
         <Footer
           isMobile={isMobile}
-          onBack={() => router.push("/dashboard")}
+          onBack={() => router.push("/departments/quality-control")}
           onClear={handleClear}
           onSave={() => {
             if (validateForm()) {
