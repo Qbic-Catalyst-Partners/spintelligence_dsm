@@ -31,8 +31,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         );
 
     const isActiveLink = (href) => {
-        if (href === "/departments") {
-            return router.pathname === "/departments" || router.pathname.startsWith("/departments/");
+        if (href === "/dashboard") {
+            return router.pathname === "/dashboard";
         }
 
         return router.pathname === href || router.pathname.startsWith(`${href}/`);
