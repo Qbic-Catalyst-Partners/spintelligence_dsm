@@ -526,7 +526,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
             <div className={styles.cardFooter}>
                 <Footer
-                    onBack={() => router.push("/dashboard")}
+                    onBack={() => router.push("/departments/quality-control")}
                     onClear={handleClear}
                     onSave={() => {
                         if (validateForm()) {

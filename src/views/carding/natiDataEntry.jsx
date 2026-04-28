@@ -340,7 +340,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
                     <div className={styles["cb-footer"]}>
                         <Footer
                             isMobile={isMobile}
-                            onBack={() => router.push("/dashboard")}
+                            onBack={() => router.push("/departments/quality-control")}
                             onClear={handleClear}
                             onSave={() => {
                                 if (validateForm()) {

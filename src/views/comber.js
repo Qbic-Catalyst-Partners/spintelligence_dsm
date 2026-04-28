@@ -125,7 +125,7 @@ function Comber() {
                     <button
                         type="button"
                         className={styles["cb-breadcrumb-link"]}
-                        onClick={() => router.push("/dashboard")}
+                        onClick={() => router.push("/departments")}
                     >
                         Dashboard
                     </button>
@@ -168,7 +168,7 @@ function Comber() {
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
                                 <Footer
-                                    onBack={() => router.push("/dashboard")}
+                                    onBack={() => router.push("/departments/quality-control")}
                                     onClear={handleClear}
                                     onSave={openPreview}
                                     saveLabel={isLoading ? "Submitting..." : "Save Record"}
@@ -187,7 +187,7 @@ function Comber() {
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
                                 <Footer
-                                    onBack={() => router.push("/dashboard")}
+                                    onBack={() => router.push("/departments/quality-control")}
                                     onClear={handleClear}
                                     onSave={openPreview}
                                     saveLabel={isLoading ? "Submitting..." : "Save Record"}
@@ -208,7 +208,7 @@ function Comber() {
 
                             <div style={{ margin: "16px -24px 0 -24px" }}>
                                 <Footer
-                                    onBack={() => router.push("/dashboard")}
+                                    onBack={() => router.push("/departments/quality-control")}
                                     onClear={handleClear}
                                     onSave={openPreview}
                                     saveLabel={isLoading ? "Submitting..." : "Save Record"}

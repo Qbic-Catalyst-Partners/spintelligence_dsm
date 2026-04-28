@@ -677,7 +677,7 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
 
           <div className={styles.headerEntryFooter}>
             <Footer
-              onBack={() => router.push("/dashboard")}
+              onBack={() => router.push("/departments/quality-control")}
               onClear={resetForm}
               onSave={handleSave}
               saveLabel={isSubmitting ? "Submitting..." : "Save Record"}

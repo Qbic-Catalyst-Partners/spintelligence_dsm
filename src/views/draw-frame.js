@@ -560,7 +560,7 @@ function DrawFrame() {
             Home
           </button>
           <span>&rsaquo;</span>
-          <button type="button" className={styles.breadcrumbButton} onClick={() => router.push("/dashboard")}>
+          <button type="button" className={styles.breadcrumbButton} onClick={() => router.push("/departments")}>
             Dashboard
           </button>
           <span>&rsaquo;</span>
@@ -1105,7 +1105,7 @@ function DrawFrame() {
             </div>
 
             <Footer
-              onBack={() => router.push("/dashboard")}
+              onBack={() => router.push("/departments/quality-control")}
               onClear={handleClear}
               onSave={openPreview}
               saveLabel={actionLoading ? "Submitting..." : "Save Record"}

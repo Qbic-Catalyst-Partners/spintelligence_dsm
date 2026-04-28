@@ -108,7 +108,7 @@ function Carding() {
                     <button
                         type="button"
                         className={styles["card-breadcrumb-link"]}
-                        onClick={() => router.push("/dashboard")}
+                        onClick={() => router.push("/departments")}
                     >
                         Dashboard
                     </button>
@@ -121,9 +121,7 @@ function Carding() {
                         Quality Control
                     </button>
                     <span>&rsaquo;</span>
-                    <span className={styles["card-breadcrumb-active"]}>
-                        {selectedType || "Carding Notebook QC"}
-                    </span>
+                    <span className={styles["card-breadcrumb-active"]}>Carding Notebook QC</span>
                 </div>
 
                 <div className={styles["card-header"]}>
@@ -215,7 +213,7 @@ function Carding() {
 
                     {isProcessParameter ? (
                         <Footer
-                            onBack={() => router.push("/dashboard")}
+                            onBack={() => router.push("/departments/quality-control")}
                             onClear={() => {
                                 setValidationMessage("");
                                 childRef.current?.clear?.();

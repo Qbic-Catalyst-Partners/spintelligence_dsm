@@ -63,7 +63,7 @@ function SubDepartmentDirectory() {
         }
 
         if (departmentData?.slug === "quality-control" && !hasQualityControlAccess) {
-            router.replace("/dashboard");
+            router.replace("/departments/quality-control");
         }
     }, [departmentData?.slug, hasQualityControlAccess, router]);
 
@@ -85,8 +85,12 @@ function SubDepartmentDirectory() {
             <main className={styles.shell}>
                 <section className={styles.hero}>
                     <div className={styles.breadcrumbs}>
-                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/dashboard")}>
-                            Departments
+                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/")}>
+                            Home
+                        </button>
+                        <span>&rsaquo;</span>
+                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/departments")}>
+                            Dashboard
                         </button>
                         <span>&rsaquo;</span>
                         <button
@@ -126,17 +130,15 @@ function SubDepartmentDirectory() {
                                 disabled={!isEnabled}
                             >
                                 <span className={styles.subCardTop}>
-                                    <span className={styles.subCardLabel}>{subDepartment.name}</span>
+                                    <span className={styles.cardContent}>
+                                        <span className={styles.subCardLabel}>{subDepartment.name}</span>
+                                        <span className={styles.subCardStats}>
+                                            <span>{formatInputScreenLabel(screenCount)}</span>
+                                        </span>
+                                    </span>
                                     <span className={styles.subCardArrow}>
                                         <PiChartPieSliceFill />
                                     </span>
-                                </span>
-                                <span className={styles.subCardBody}>
-                                    Open this sub-department and continue to the related input screens.
-                                </span>
-                                <span className={styles.subCardStats}>
-                                    <strong>{screenCount}</strong>
-                                    <span>{formatInputScreenLabel(screenCount)}</span>
                                 </span>
                             </button>
                         );

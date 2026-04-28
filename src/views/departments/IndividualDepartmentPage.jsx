@@ -35,7 +35,7 @@ function IndividualDepartmentPage() {
             <main className={styles.shell}>
                 <section className={styles.hero}>
                     <div className={styles.breadcrumbs}>
-                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/dashboard")}>
+                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/departments/quality-control")}>
                             Departments
                         </button>
                         <span>&rsaquo;</span>

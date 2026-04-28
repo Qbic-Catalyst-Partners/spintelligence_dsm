@@ -105,7 +105,7 @@ function Simplex() {
           <button
             type="button"
             className="transition-colors hover:text-[#3d539f]"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/departments")}
           >
             Dashboard
           </button>
@@ -177,7 +177,7 @@ function Simplex() {
           ) : null}
 
           <Footer
-            onBack={() => router.push("/dashboard")}
+            onBack={() => router.push("/departments/quality-control")}
             onClear={() => {
               setValidationMessage("");
               childRef.current?.clear();
