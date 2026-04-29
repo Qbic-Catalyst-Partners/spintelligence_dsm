@@ -234,7 +234,7 @@
 
 .ruleRow {
     display: grid;
-    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) 48px;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 0.85fr) minmax(0, 0.85fr) 48px;
     gap: 12px;
     align-items: end;
 }

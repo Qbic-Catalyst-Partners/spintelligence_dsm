@@ -13,6 +13,7 @@ import {
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
+import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -475,6 +476,21 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       await updateSpinningProcessParameterEntry(selectedExistingVersion.id, payload);
     } else {
       await spinningProcessParameterDataEntry(payload);
+    }
+
+    try {
+      await createThresholdViolationTickets({
+        department: "Quality Control",
+        subDepartment: "Spinning",
+        screenName: selectedTypeName || "Process Parameter",
+        machineName: form.machineNo || selectedTypeName || "Process Parameter",
+        values: fieldDefs.map((field) => ({
+          label: field.label,
+          value: form[field.key],
+        })),
+      });
+    } catch (ticketError) {
+      console.error("Threshold ticket generation failed:", ticketError);
     }
 
     await loadVersions();
