@@ -24,7 +24,8 @@ function AppShell({ Component, pageProps }) {
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const showHeader = router.pathname !== "/";
-  const isDepartmentFlow = router.pathname.startsWith("/departments");
+  const isDepartmentFlow =
+    router.pathname === "/departments/quality-control" || router.pathname.startsWith("/departments");
   const isTicketingFlow =
     router.pathname === "/operator" ||
     router.pathname.startsWith("/operator/") ||
