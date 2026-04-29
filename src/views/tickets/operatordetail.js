@@ -8,6 +8,7 @@ import {
 } from "@/store/slices/operatorSlice";
 import {
   formatThresholdValue,
+  formatStandardValue,
   getTicketValueForParameter,
 } from "@/utils/ticketTransformer";
 
@@ -96,6 +97,9 @@ export default function TicketDetails() {
     resolvedTicket?.parameter_name?.map((param) => ({
       name: param,
       actual: getTicketValueForParameter(resolvedTicket?.actual_value, param),
+      standard: formatStandardValue(
+        getTicketValueForParameter(resolvedTicket?.threshold_value, param)
+      ),
       threshold: formatThresholdValue(
         getTicketValueForParameter(resolvedTicket?.threshold_value, param)
       ),
@@ -201,6 +205,7 @@ export default function TicketDetails() {
             <div className={styles["mobile-parameter-head"]}>
               <span>Parameter</span>
               <span>Actual</span>
+              <span>Standard</span>
               <span>Threshold</span>
             </div>
 
@@ -210,6 +215,7 @@ export default function TicketDetails() {
                 <span className={`${styles["mobile-parameter-value"]} ${styles.danger}`}>
                   {item.actual}
                 </span>
+                <span className={styles["mobile-parameter-value"]}>{item.standard}</span>
                 <span className={styles["mobile-parameter-value"]}>{item.threshold}</span>
               </div>
             ))}
@@ -247,6 +253,7 @@ export default function TicketDetails() {
               <span>Machine</span>
               <span>Parameter</span>
               <span>Actual Value</span>
+              <span>Standard Value</span>
               <span>Threshold Value</span>
               <span>Created At</span>
             </div>
@@ -256,6 +263,7 @@ export default function TicketDetails() {
                 <span className={styles["value-strong"]}>{resolvedTicket.machine_name}</span>
                 <span className={styles["value-strong"]}>{item.name}</span>
                 <span className={`${styles["value-strong"]} ${styles.danger}`}>{item.actual}</span>
+                <span className={styles["value-strong"]}>{item.standard}</span>
                 <span className={styles["value-strong"]}>{item.threshold}</span>
                 <span className={styles["value-strong"]}>
                   {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}

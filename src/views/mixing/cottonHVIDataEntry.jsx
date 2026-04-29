@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitCottonHVI, clearMixingState } from '@/store/slices/mixing';
+import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/cottonHVIDataEntry.module.css';
 
@@ -17,7 +18,7 @@ const NUMERIC_FIELDS = new Set([
     'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trash', 'rd', 'colourGrade',
 ]);
 
-const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo }, ref) {
+const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
@@ -62,8 +63,33 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo 
         colour_grade:    Number(formData.colourGrade) || 0,
     });
 
-    const handleSubmit = () => {
-        dispatch(submitCottonHVI(buildPayload()));
+    const handleSubmit = async () => {
+        await dispatch(submitCottonHVI(buildPayload())).unwrap();
+
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: selectedTypeName || "Cotton HVI Data Entry",
+                machineName: selectedTypeName || "Cotton HVI Data Entry",
+                values: [
+                    { label: "SCI", value: formData.sci },
+                    { label: "Span Length (2.5%)", value: formData.spanLength },
+                    { label: "Mic", value: formData.mic },
+                    { label: "GTEX", value: formData.gtex },
+                    { label: "Maturity", value: formData.maturity },
+                    { label: "UR", value: formData.ur },
+                    { label: "SFI", value: formData.sfi },
+                    { label: "Elongation", value: formData.elongation },
+                    { label: "Yellow + B", value: formData.yellowB },
+                    { label: "Trash", value: formData.trash },
+                    { label: "RD", value: formData.rd },
+                    { label: "Colour Grade", value: formData.colourGrade },
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+        }
     };
 
     const handleClear = () => {

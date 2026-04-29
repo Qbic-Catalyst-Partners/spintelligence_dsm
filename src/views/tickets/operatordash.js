@@ -5,6 +5,7 @@ import Image from "next/image";
 import { getOperatorTickets } from "../../apis/operatorApi";
 import {
     formatThresholdValue,
+    formatStandardValue,
     getTicketValueForParameter,
 } from "../../utils/ticketTransformer";
 
@@ -48,6 +49,12 @@ export default function operatorboard() {
                     actual: getTicketValueForParameter(
                         ticket.actual_value,
                         ticket.parameter_name?.[0]
+                    ),
+                    standard: formatStandardValue(
+                        getTicketValueForParameter(
+                            ticket.threshold_value,
+                            ticket.parameter_name?.[0]
+                        )
                     ),
                     threshold: formatThresholdValue(
                         getTicketValueForParameter(
@@ -186,6 +193,7 @@ export default function operatorboard() {
                             <th>MACHINE</th>
                             <th>PARAMETER</th>
                             <th>ACTUAL</th>
+                            <th>STANDARD</th>
                             <th>THRESHOLD</th>
                             <th>SEVERITY</th>
                             <th>STATUS</th>
@@ -204,6 +212,7 @@ export default function operatorboard() {
                                 <td>{t.machine}</td>
                                 <td>{t.parameter}</td>
                                 <td>{t.actual}</td>
+                                <td>{t.standard}</td>
                                 <td>{t.threshold}</td>
                                 <td>
                                     <span className={`${styles.badge} ${styles[t.severity?.toLowerCase()]}`}>

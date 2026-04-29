@@ -3,12 +3,13 @@ import { useDispatch, useSelector } from 'react-redux';
 import { MdEditNote } from 'react-icons/md';
 import CustomInput from '@/components/CustomInput';
 import { submitMoisture, clearMixingState } from '@/store/slices/mixing';
+import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
 
-const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
+const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
@@ -69,8 +70,32 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date }, ref) {
         average: parseFloat(average) || 0,
     });
 
-    const handleSubmit = () => {
-        dispatch(submitMoisture(buildPayload()));
+    const handleSubmit = async () => {
+        await dispatch(submitMoisture(buildPayload())).unwrap();
+
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: selectedTypeName || "Moisture Data Entry",
+                machineName: selectedTypeName || "Moisture Data Entry",
+                values: [
+                    { label: "Value 1", value: moistureValues[0] },
+                    { label: "Value 2", value: moistureValues[1] },
+                    { label: "Value 3", value: moistureValues[2] },
+                    { label: "Value 4", value: moistureValues[3] },
+                    { label: "Value 5", value: moistureValues[4] },
+                    { label: "Value 6", value: moistureValues[5] },
+                    { label: "Value 7", value: moistureValues[6] },
+                    { label: "Value 8", value: moistureValues[7] },
+                    { label: "Value 9", value: moistureValues[8] },
+                    { label: "Value 10", value: moistureValues[9] },
+                    { label: "Average", value: average },
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+        }
     };
 
     const handleClear = () => {

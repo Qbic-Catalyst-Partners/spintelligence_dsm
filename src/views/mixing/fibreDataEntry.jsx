@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitFibre, clearMixingState } from '@/store/slices/mixing';
+import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/fibreDataEntry.module.css';
 
@@ -18,7 +19,7 @@ const NUMERIC_FIELDS = new Set([
     'cutLength', 'lengthCV', 'meanDenier', 'cvPerDenier', 'tenacity', 'cvPerTenacity', 'elongation', 'cvPerElongation', 'crimp', 'whitenessIndex', 'spinFinish',
 ]);
 
-const FibreDataEntry = forwardRef(function FibreDataEntry({ date, lotNo }, ref) {
+const FibreDataEntry = forwardRef(function FibreDataEntry({ date, lotNo, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
@@ -62,8 +63,32 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, lotNo }, ref) 
         spin_finish:       Number(formData.spinFinish)      || 0,
     });
 
-    const handleSubmit = () => {
-        dispatch(submitFibre(buildPayload()));
+    const handleSubmit = async () => {
+        await dispatch(submitFibre(buildPayload())).unwrap();
+
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: selectedTypeName || "Fibre Data Entry",
+                machineName: selectedTypeName || "Fibre Data Entry",
+                values: [
+                    { label: "Cut Length", value: formData.cutLength },
+                    { label: "Length CV", value: formData.lengthCV },
+                    { label: "Mean Denier", value: formData.meanDenier },
+                    { label: "CV per Denier", value: formData.cvPerDenier },
+                    { label: "Tenacity", value: formData.tenacity },
+                    { label: "CV per Tenacity", value: formData.cvPerTenacity },
+                    { label: "Elongation", value: formData.elongation },
+                    { label: "CV per Elongation", value: formData.cvPerElongation },
+                    { label: "Crimp (ARC/CM)", value: formData.crimp },
+                    { label: "Whiteness Index", value: formData.whitenessIndex },
+                    { label: "Spin Finish", value: formData.spinFinish },
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+        }
     };
 
     const handleClear = () => {

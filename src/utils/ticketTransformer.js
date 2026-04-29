@@ -26,21 +26,32 @@ export const formatThresholdValue = (value) => {
     return value;
   }
 
-  const conditionLevel = value.condition_level || "-";
-  const actualValue = value.actual_value ?? "-";
   const plusThreshold = value.plus_threshold ?? "-";
   const minusThreshold = value.minus_threshold ?? "-";
 
-  return `${conditionLevel} | A:${actualValue} | +:${plusThreshold} | -:${minusThreshold}`;
+  return `+:${plusThreshold}/-:${minusThreshold}`;
+};
+
+export const formatStandardValue = (value) => {
+  if (value === null || typeof value === "undefined") {
+    return "-";
+  }
+
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const actualValue = value.actual_value ?? "-";
+  return actualValue;
 };
 
 export const transformTicket = (ticket) => {
   const createdDate = new Date(ticket.created_at);
   const parameter = ticket.parameter_name?.[0] || "-";
   const actual = getTicketValueForParameter(ticket.actual_value, parameter);
-  const threshold = formatThresholdValue(
-    getTicketValueForParameter(ticket.threshold_value, parameter)
-  );
+  const thresholdSource = getTicketValueForParameter(ticket.threshold_value, parameter);
+  const threshold = formatThresholdValue(thresholdSource);
+  const standard = formatStandardValue(thresholdSource);
 
   return {
     ...ticket,
@@ -55,6 +66,7 @@ export const transformTicket = (ticket) => {
     parameter_name: ticket.parameter_name,
 
     actual,
+    standard,
     threshold,
 
     actual_value: ticket.actual_value,

@@ -1,6 +1,42 @@
 import { createOperatorTicket } from "@/apis/operatorApi";
 import { fetchThresholdsAPI } from "@/apis/thresholdsApi";
 
+const getCurrentAuthUser = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawUser = window.localStorage.getItem("authUser");
+    return rawUser ? JSON.parse(rawUser) : null;
+  } catch {
+    return null;
+  }
+};
+
+const getCurrentTicketUser = () => {
+  const user = getCurrentAuthUser();
+
+  if (!user || typeof user !== "object") {
+    return { userId: null, userName: null };
+  }
+
+  return {
+    userId:
+      user.id ||
+      user.user_id ||
+      user.userId ||
+      user.employee_id ||
+      user.employeeId ||
+      null,
+    userName:
+      user.full_name ||
+      user.fullName ||
+      user.name ||
+      null,
+  };
+};
+
 const normalizeText = (value) =>
   String(value ?? "")
     .toLowerCase()
@@ -26,6 +62,23 @@ const buildObjectKey = (label) =>
 const normalizeConditionLevel = (value) =>
   String(value ?? "More and Less Than").trim().toLowerCase();
 
+const normalizeConditionKey = (value) =>
+  normalizeConditionLevel(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+
+const toServerConditionLabel = (value) => {
+  const normalized = normalizeConditionKey(value);
+
+  if (normalized === "more than") {
+    return "More Than";
+  }
+
+  if (normalized === "less than") {
+    return "Less Than";
+  }
+
+  return "More and Less Than";
+};
+
 const resolveViolation = ({
   conditionLevel,
   actualValue,
@@ -33,42 +86,36 @@ const resolveViolation = ({
   plusTolerance,
   minusTolerance,
 }) => {
-  if (conditionLevel === "less than") {
-    const limit = minusTolerance ?? targetValue;
-    if (limit === null) {
+  const normalizedCondition = normalizeConditionKey(conditionLevel);
+
+  if (normalizedCondition === "less than") {
+    if (minusTolerance === null) {
       return null;
     }
 
-    return actualValue < limit
-      ? { violated: true, referenceValue: limit }
-      : { violated: false, referenceValue: limit };
+    return actualValue < minusTolerance
+      ? { violated: true, referenceValue: minusTolerance }
+      : { violated: false, referenceValue: minusTolerance };
   }
 
-  if (conditionLevel === "more than") {
-    const limit = plusTolerance ?? targetValue;
-    if (limit === null) {
+  if (normalizedCondition === "more than") {
+    if (plusTolerance === null) {
       return null;
     }
 
-    return actualValue > limit
-      ? { violated: true, referenceValue: limit }
-      : { violated: false, referenceValue: limit };
+    return actualValue > plusTolerance
+      ? { violated: true, referenceValue: plusTolerance }
+      : { violated: false, referenceValue: plusTolerance };
   }
 
-  const minValue =
-    minusTolerance === null || targetValue === null
-      ? targetValue
-      : targetValue - minusTolerance;
-  const maxValue =
-    plusTolerance === null || targetValue === null
-      ? targetValue
-      : targetValue + plusTolerance;
-
-  if (minValue === null || maxValue === null) {
+  if (targetValue === null || plusTolerance === null || minusTolerance === null) {
     return null;
   }
 
-  return actualValue < minValue || actualValue > maxValue
+  const minValue = targetValue - minusTolerance;
+  const maxValue = targetValue + plusTolerance;
+
+  return actualValue <= minValue || actualValue >= maxValue
     ? {
         violated: true,
         minValue,
@@ -108,6 +155,7 @@ export const createThresholdViolationTickets = async ({
   machineName,
   values = [],
 }) => {
+  const { userId, userName } = getCurrentTicketUser();
   const thresholds = await fetchThresholdsAPI({
     department,
     sub_department: subDepartment,
@@ -166,9 +214,13 @@ export const createThresholdViolationTickets = async ({
       return {
         label,
         actualValue,
-        conditionLevel: threshold?.condition_level || "More and Less Than",
+        conditionLevel: toServerConditionLabel(
+          threshold?.condition_level || threshold?.comparison_operator
+        ),
         thresholdValue: {
-          condition_level: threshold?.condition_level || "More and Less Than",
+          condition_level: toServerConditionLabel(
+            threshold?.condition_level || threshold?.comparison_operator
+          ),
           actual_value: targetValue,
           plus_threshold: plusTolerance,
           minus_threshold: minusTolerance,
@@ -186,6 +238,8 @@ export const createThresholdViolationTickets = async ({
   return Promise.all(
     violations.map((violation) =>
       createOperatorTicket({
+        user_id: userId,
+        user_name: userName,
         department_name: department,
         sub_department_name: subDepartment,
         input_screen_name: screenName,

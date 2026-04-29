@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { submitAfis, clearMixingState } from '@/store/slices/mixing';
+import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '../../styles/afisDataEntery.module.css';
 
@@ -16,7 +17,7 @@ const NUMERIC_FIELDS = new Set([
     'uql', 'l5', 'sfcN', 'ifc', 'fibreNepsGms', 'sfcW', 'maturity', 'fineness', 'scnGms',
 ]);
 
-const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
+const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const [formData, setFormData] = useState(initialForm);
@@ -58,8 +59,30 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo }, ref) {
         scn_gms:          Number(formData.scnGms)       || 0,
     });
 
-    const handleSubmit = () => {
-        dispatch(submitAfis(buildPayload()));
+    const handleSubmit = async () => {
+        await dispatch(submitAfis(buildPayload())).unwrap();
+
+        try {
+            await createThresholdViolationTickets({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                screenName: selectedTypeName || "AFIS Data Entry",
+                machineName: selectedTypeName || "AFIS Data Entry",
+                values: [
+                    { label: "UQL", value: formData.uql },
+                    { label: "L5%", value: formData.l5 },
+                    { label: "SFC(N)", value: formData.sfcN },
+                    { label: "IFC %", value: formData.ifc },
+                    { label: "Fibre Neps Gms", value: formData.fibreNepsGms },
+                    { label: "SFC(W)", value: formData.sfcW },
+                    { label: "Maturity", value: formData.maturity },
+                    { label: "Fineness", value: formData.fineness },
+                    { label: "SCN (gms)", value: formData.scnGms },
+                ],
+            });
+        } catch (ticketError) {
+            console.error("Threshold ticket generation failed:", ticketError);
+        }
     };
 
     const handleClear = () => {

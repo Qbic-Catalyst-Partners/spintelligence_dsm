@@ -8,6 +8,11 @@ import {
   approveTicket,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
+import {
+  formatThresholdValue,
+  formatStandardValue,
+  getTicketValueForParameter,
+} from "../../utils/ticketTransformer";
 
 const formatDateTime = (dateString) => {
   if (!dateString) return "-";
@@ -176,6 +181,7 @@ export default function SupervisorDetails() {
                 <th>MACHINE ID</th>
                 <th>PARAMETER</th>
                 <th>ACTUAL VALUE</th>
+                <th>STANDARD VALUE</th>
                 <th>THRESHOLD VALUE</th>
                 <th>CREATED AT</th>
               </tr>
@@ -187,9 +193,18 @@ export default function SupervisorDetails() {
                   <td>{ticket.machine_name}</td>
                   <td>{key.toUpperCase()}</td>
                   <td style={{ color: "#CA0000" }}>
-                    {ticket?.actual_value?.[key]}
+                    {getTicketValueForParameter(ticket?.actual_value, key)}
                   </td>
-                  <td>{ticket.threshold_value?.[key]}</td>
+                  <td>
+                    {formatStandardValue(
+                      getTicketValueForParameter(ticket?.threshold_value, key)
+                    )}
+                  </td>
+                  <td>
+                    {formatThresholdValue(
+                      getTicketValueForParameter(ticket?.threshold_value, key)
+                    )}
+                  </td>
                   <td>{formatDateTime(ticket.created_at)}</td>
                 </tr>
               ))}
@@ -333,6 +348,7 @@ export default function SupervisorDetails() {
           <div className={styles.tableHeader}>
             <span>PARAMETER</span>
             <span>ACTUAL</span>
+            <span>STANDARD</span>
             <span>THRESHOLD</span>
           </div>
 
@@ -340,9 +356,18 @@ export default function SupervisorDetails() {
             <div className={styles.tableRow} key={i}>
               <span>{key.replace("_", " ")}</span>
               <span className={styles.actual}>
-                {ticket.actual_value?.[key]}
+                {getTicketValueForParameter(ticket.actual_value, key)}
               </span>
-              <span>{ticket.threshold_value?.[key]}</span>
+              <span>
+                {formatStandardValue(
+                  getTicketValueForParameter(ticket.threshold_value, key)
+                )}
+              </span>
+              <span>
+                {formatThresholdValue(
+                  getTicketValueForParameter(ticket.threshold_value, key)
+                )}
+              </span>
             </div>
           ))}
 
