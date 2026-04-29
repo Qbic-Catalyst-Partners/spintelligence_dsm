@@ -2,7 +2,7 @@
 
 import styles from "../../styles/editrole.module.css";
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { RiIdCardFill } from "react-icons/ri";
 
@@ -14,9 +14,8 @@ import {
 
 export default function EditRole() {
     const router = useRouter();
-    const params = useParams();
     const dispatch = useDispatch();
-    const id = params?.id;
+    const { id } = router.query;
 
     const { currentRole, screens } = useSelector((state) => state.roles);
 

@@ -48,6 +48,7 @@ export default function ThresholdValues() {
     const canAccessPage = isFullAccessUser(user);
 
     const [thresholds, setThresholds] = useState([]);
+    const [loadError, setLoadError] = useState("");
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -76,6 +77,13 @@ export default function ThresholdValues() {
         try {
             const data = await fetchThresholdsAPI();
             setThresholds(data);
+            setLoadError("");
+        } catch (error) {
+            setThresholds([]);
+            setLoadError(
+                error?.message ||
+                "Unable to load threshold values. Check backend availability and try again."
+            );
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -675,6 +683,10 @@ export default function ThresholdValues() {
                 <div className={styles.tableCard}>
                     {loading ? (
                         <div className={styles.emptyState}>Loading threshold values...</div>
+                    ) : loadError ? (
+                        <div className={styles.emptyState}>
+                            <p className={styles.errorMessage}>{loadError}</p>
+                        </div>
                     ) : currentRows.length === 0 ? (
                         <div className={styles.emptyState}>No threshold values found for the current filters.</div>
                     ) : (

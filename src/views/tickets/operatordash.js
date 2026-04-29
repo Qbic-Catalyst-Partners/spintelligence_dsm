@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import styles from "../../styles/operator.module.css";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Image from "next/image";
 import { getOperatorTickets } from "../../apis/operatorApi";
 import {
