@@ -106,7 +106,7 @@ export default function TicketDetails() {
     })) || [];
 
   const visibleRows = expanded ? parameterMap : parameterMap.slice(0, 1);
-  const mobileParameterRows = parameterMap.slice(0, 3);
+  const mobileParameterRows = expanded ? parameterMap : parameterMap.slice(0, 3);
   const statusClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.status)] || "" : "";
   const severityClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.severity)] || "" : "";
 
@@ -219,6 +219,17 @@ export default function TicketDetails() {
                 <span className={styles["mobile-parameter-value"]}>{item.threshold}</span>
               </div>
             ))}
+
+            {parameterMap.length > 3 && (
+              <button
+                type="button"
+                className={styles["expand-dots"]}
+                onClick={() => setExpanded((value) => !value)}
+                aria-label={expanded ? "Show fewer values" : "Show all values"}
+              >
+                <BsThreeDots />
+              </button>
+            )}
           </div>
         </section>
 

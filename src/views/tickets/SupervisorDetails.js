@@ -115,7 +115,7 @@ export default function SupervisorDetails() {
   if (!ticket) return <p className={styles.loading}>Loading...</p>;
 
   const keys = Object.keys(ticket.actual_value || {});
-  const visibleKeys = expanded ? keys.slice(0, 3) : keys.slice(0, 1);
+  const visibleKeys = expanded ? keys : keys.slice(0, 1);
 
   return (
     <div>

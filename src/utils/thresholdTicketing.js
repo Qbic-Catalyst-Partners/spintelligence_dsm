@@ -59,6 +59,17 @@ const buildObjectKey = (label) =>
     .toLowerCase()
     .trim();
 
+const buildFieldAliases = (fieldName) => {
+  const raw = String(fieldName || "").trim();
+  if (!raw) return [];
+
+  const lower = raw.toLowerCase();
+  const snake = lower.replace(/\s+/g, "_");
+  const compact = lower.replace(/\s+/g, "");
+
+  return Array.from(new Set([raw, lower, snake, compact]));
+};
+
 const normalizeConditionLevel = (value) =>
   String(value ?? "More and Less Than").trim().toLowerCase();
 
@@ -89,23 +100,25 @@ const resolveViolation = ({
   const normalizedCondition = normalizeConditionKey(conditionLevel);
 
   if (normalizedCondition === "less than") {
-    if (minusTolerance === null) {
+    const limit = minusTolerance ?? targetValue;
+    if (limit === null) {
       return null;
     }
 
-    return actualValue < minusTolerance
-      ? { violated: true, referenceValue: minusTolerance }
-      : { violated: false, referenceValue: minusTolerance };
+    return actualValue < limit
+      ? { violated: true, referenceValue: limit }
+      : { violated: false, referenceValue: limit };
   }
 
   if (normalizedCondition === "more than") {
-    if (plusTolerance === null) {
+    const limit = plusTolerance ?? targetValue;
+    if (limit === null) {
       return null;
     }
 
-    return actualValue > plusTolerance
-      ? { violated: true, referenceValue: plusTolerance }
-      : { violated: false, referenceValue: plusTolerance };
+    return actualValue > limit
+      ? { violated: true, referenceValue: limit }
+      : { violated: false, referenceValue: limit };
   }
 
   if (targetValue === null || plusTolerance === null || minusTolerance === null) {
@@ -156,12 +169,20 @@ export const createThresholdViolationTickets = async ({
   values = [],
 }) => {
   const { userId, userName } = getCurrentTicketUser();
-  const thresholds = await fetchThresholdsAPI({
+  let thresholds = await fetchThresholdsAPI({
     department,
     sub_department: subDepartment,
     input_screen: screenName,
     machine_name: machineName,
   });
+
+  if ((!Array.isArray(thresholds) || thresholds.length === 0) && machineName) {
+    thresholds = await fetchThresholdsAPI({
+      department,
+      sub_department: subDepartment,
+      input_screen: screenName,
+    });
+  }
 
   if (!Array.isArray(thresholds) || thresholds.length === 0) {
     return [];
@@ -195,7 +216,7 @@ export const createThresholdViolationTickets = async ({
       );
       const conditionLevel = threshold?.condition_level || threshold?.comparison_operator;
 
-      if (actualValue === null || targetValue === null) {
+      if (actualValue === null) {
         return null;
       }
 
@@ -213,6 +234,8 @@ export const createThresholdViolationTickets = async ({
 
       return {
         label,
+        ticketField:
+          String(threshold?.input_field || threshold?.parameter_name || label).trim(),
         actualValue,
         conditionLevel: toServerConditionLabel(
           threshold?.condition_level || threshold?.comparison_operator
@@ -235,25 +258,51 @@ export const createThresholdViolationTickets = async ({
     })
     .filter(Boolean);
 
-  return Promise.all(
-    violations.map((violation) =>
-      createOperatorTicket({
-        user_id: userId,
-        user_name: userName,
-        department_name: department,
-        sub_department_name: subDepartment,
-        input_screen_name: screenName,
-        machine_name: machineName || screenName,
-        parameter_name: [violation.label],
-        actual_value: {
-          [buildObjectKey(violation.label)]: violation.actualValue,
-        },
-        threshold_value: {
-          [buildObjectKey(violation.label)]: violation.thresholdValue,
-        },
-        status: "Open",
-        description: `System generated alert: ${violation.label} exceeded the configured threshold.`,
-      })
-    )
-  );
+  if (!violations.length) {
+    return [];
+  }
+
+  const actualValues = {};
+  const thresholdValues = {};
+  const parameterNameSet = new Set();
+
+  violations.forEach((violation) => {
+    const ticketField = violation.ticketField || violation.label;
+    parameterNameSet.add(ticketField);
+    const aliases = buildFieldAliases(ticketField);
+    aliases.forEach((alias) => {
+      actualValues[alias] = violation.actualValue;
+      thresholdValues[alias] = violation.thresholdValue;
+    });
+  });
+  const parameterNames = Array.from(parameterNameSet);
+
+  try {
+    const createdTicket = await createOperatorTicket({
+      user_id: userId,
+      user_name: userName,
+      department,
+      management_field: department,
+      sub_department: subDepartment,
+      erp_product_code: subDepartment,
+      input_screen: screenName,
+      machine_name: machineName || screenName,
+      parameter_name: parameterNames,
+      actual_value: actualValues,
+      threshold_value: thresholdValues,
+      status: "Open",
+      description: `System generated alert: ${parameterNames.length} threshold breach(es) detected.`,
+    });
+
+    return [createdTicket];
+  } catch (error) {
+    const message = String(error?.message || "").toLowerCase();
+    if (
+      message.includes("no violations found") ||
+      message.includes("threshold breach")
+    ) {
+      return [];
+    }
+    throw error;
+  }
 };
