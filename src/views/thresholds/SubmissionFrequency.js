@@ -114,32 +114,24 @@ export default function SubmissionFrequency() {
     setMessage("");
     setError("");
     try {
-      const frequencyDays = Number(form.frequency_days);
-      if (!Number.isFinite(frequencyDays) || frequencyDays < 1) {
-        throw new Error("Frequency days must be greater than or equal to 1.");
+      if (!form.screen_name) {
+        throw new Error("Please select a screen name.");
       }
 
-      const normalizedFrequency =
-        frequencyDays === 1 ? "daily" : frequencyDays === 3 ? "every_3_days" : null;
-      if (!normalizedFrequency) {
-        throw new Error(
-          "Custom frequency UI is enabled, but current backend accepts only 1 day (daily) or 3 days."
-        );
+      const frequencyDays = Number(form.frequency_days);
+      if (!Number.isFinite(frequencyDays) || frequencyDays < 1) {
+        throw new Error("Frequency days must be a positive integer.");
       }
 
       const payload = {
         screen_name: form.screen_name,
         department: form.department || null,
         sub_department: form.sub_department || null,
-        frequency: normalizedFrequency,
-        frequency_days: frequencyDays,
-        frequency_mode: "custom",
-        custom_frequency_days: frequencyDays,
-        notes: `Configured as every ${frequencyDays} day(s)`,
+        frequency: frequencyDays,
         is_active: form.is_active,
       };
       await saveSubmissionFrequencyConfigAPI(payload);
-      setMessage("Frequency saved successfully.");
+      setMessage("Submission frequency saved successfully.");
       setForm(defaultForm);
       await loadConfigs();
     } catch (err) {
@@ -170,7 +162,7 @@ export default function SubmissionFrequency() {
       <section className={styles.card}>
         <h1 className={styles.title}>Submission Frequency</h1>
         <p className={styles.subtitle}>
-          ERP Admin can set daily or every-3-days submission frequency per input screen.
+          Configure submission frequency (in days) for each input screen. Supported values: 1, 2, 3, 7, 14, 30, or any positive integer.
         </p>
 
         <form onSubmit={onSave}>
@@ -297,7 +289,7 @@ export default function SubmissionFrequency() {
                     <td>{item.screen_name}</td>
                     <td>{item.department || "-"}</td>
                     <td>{item.sub_department || "-"}</td>
-                    <td>{item.frequency === "every_3_days" ? "Every 3 Days" : "Daily"}</td>
+                    <td>{item.frequency} day{item.frequency !== 1 ? "s" : ""}</td>
                     <td>
                       <span
                         className={`${styles.pill} ${item.is_active ? styles.active : styles.inactive}`}
