@@ -26,15 +26,16 @@ import styles from "../styles/header.module.css";
 const defaultNavLinks = [];
 
 const sidebarLinks = [
-    { href: "/departments", label: "Dashboard", icon: FiHome },
-    { href: "/departments/quality-control", label: "Departments", icon: FiGrid, section: "departments" },
+    { href: "/", label: "Dashboard", icon: FiHome },
+    { href: "/departments", label: "Department", icon: FiGrid },
+    { href: "/departments/quality-control", label: "Sub-department", icon: FiGrid, section: "departments" },
     { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
     { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/reports", label: "Reports", icon: FiFileText, admin: true },
     { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true },
     { href: "/submission-frequency", label: "Submission Frequency", icon: FiRepeat, admin: true },
-    { href: null, label: "Settings", icon: FiSettings, admin: true },
+    { href: "/settings", label: "Settings", icon: FiSettings, admin: true, section: "settings" },
 ];
 
 const departmentLinks = [
@@ -48,6 +49,10 @@ const departmentLinks = [
     { href: "/autoconer", label: "Autoconer", department: "Autoconer" },
 ];
 
+const settingsLinks = [
+    { href: "/settings", label: "Dash Builder" },
+];
+
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
     const dispatch = useDispatch();
@@ -55,6 +60,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isDepartmentMenuOpen, setIsDepartmentMenuOpen] = useState(false);
+    const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
@@ -72,6 +78,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             link.href !== "/usermanagement" && link.href !== "/rolespermission"
         );
     const visibleHrefSet = new Set(visibleNavLinks.map((link) => link.href));
+    const hasDashboardNav = visibleHrefSet.has("/");
     const hasDepartmentNav = visibleHrefSet.has("/departments");
     const visibleSidebarLinks = sidebarLinks.filter((link) => {
         if (link.admin) {
@@ -86,7 +93,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return hasFullAccess || visibleHrefSet.has("/operator");
         }
 
-        return hasDepartmentNav || visibleHrefSet.has(link.href) || hasFullAccess;
+        if (link.section === "settings") {
+            return hasFullAccess || visibleHrefSet.has("/settings");
+        }
+
+        return hasDashboardNav || hasDepartmentNav || visibleHrefSet.has(link.href) || hasFullAccess;
     });
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
@@ -121,6 +132,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             );
         }
 
+        if (href === "/settings") {
+            return currentPath === "/settings" || currentPath.startsWith("/settings/");
+        }
+
         return currentPath === href || currentPath.startsWith(`${href}/`);
     };
 
@@ -135,6 +150,16 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             const nextIsOpen = !isOpen;
             if (nextIsOpen && router.asPath?.split("?")[0] !== "/departments/quality-control") {
                 router.push("/departments/quality-control");
+            }
+            return nextIsOpen;
+        });
+    };
+
+    const handleSettingsClick = () => {
+        setIsSettingsMenuOpen((isOpen) => {
+            const nextIsOpen = !isOpen;
+            if (nextIsOpen && router.asPath?.split("?")[0] !== "/settings") {
+                router.push("/settings");
             }
             return nextIsOpen;
         });
@@ -159,6 +184,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         return () => document.documentElement.style.removeProperty("--app-sidebar-width");
     }, [isSidebarCollapsed]);
+
+    useEffect(() => {
+        const currentPath = router.asPath?.split("?")[0] || router.pathname;
+        setIsDepartmentMenuOpen(
+            currentPath.startsWith("/departments/quality-control") || Boolean(routeDepartmentMap[router.pathname])
+        );
+        setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
+    }, [router.asPath, router.pathname]);
 
     return (
         <>
@@ -194,19 +227,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                         const linkClassName = `${styles["side-nav-link"]} ${isActiveLink(link.href) ? styles["side-nav-active"] : ""}`;
 
-                        if (!link.href) {
-                            return (
-                                <span
-                                    key={link.label}
-                                    className={`${styles["side-nav-link"]} ${styles["side-nav-disabled"]}`}
-                                    aria-disabled="true"
-                                    title={isSidebarCollapsed ? link.label : undefined}
-                                >
-                                    {content}
-                                </span>
-                            );
-                        }
-
                         if (link.section === "departments") {
                             return (
                                 <div key={link.href} className={styles["side-nav-group"]}>
@@ -228,6 +248,34 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(departmentLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
                                                 {departmentLink.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        if (link.section === "settings") {
+                            return (
+                                <div key={link.href} className={styles["side-nav-group"]}>
+                                    <button
+                                        type="button"
+                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
+                                        aria-expanded={isSettingsMenuOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={handleSettingsClick}
+                                    >
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isSettingsMenuOpen ? styles["department-chevron-open"] : ""}`} />
+                                    </button>
+                                    <div className={`${styles["side-subnav"]} ${isSettingsMenuOpen ? styles["side-subnav-open"] : ""}`}>
+                                        {settingsLinks.map((settingsLink) => (
+                                            <Link
+                                                key={settingsLink.href}
+                                                href={settingsLink.href}
+                                                className={`${styles["side-subnav-link"]} ${isActiveLink(settingsLink.href) ? styles["side-subnav-active"] : ""}`}
+                                            >
+                                                {settingsLink.label}
                                             </Link>
                                         ))}
                                     </div>

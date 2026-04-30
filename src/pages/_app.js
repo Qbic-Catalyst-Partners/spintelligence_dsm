@@ -23,7 +23,10 @@ function AppShell({ Component, pageProps }) {
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
-  const showHeader = router.pathname !== "/";
+  const isInputScreen = Boolean(routeDepartmentMap[router.pathname]);
+  const isHomeFlow = router.pathname === "/";
+  const isLoginScreen = isHomeFlow && !token;
+  const showHeader = !isLoginScreen;
   const isDepartmentFlow =
     router.pathname === "/departments/quality-control" ||
     router.pathname.startsWith("/departments") ||
@@ -44,6 +47,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname === "/threshold-values" ||
     router.pathname === "/submission-frequency" ||
     router.pathname === "/reports" ||
+    router.pathname === "/settings" ||
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");
   const canAccessManagementFlow = isFullAccessUser(user);
@@ -54,10 +58,11 @@ function AppShell({ Component, pageProps }) {
     { href: "/threshold-values", label: "Threshold Values" },
     { href: "/submission-frequency", label: "Submission Frequency" },
     { href: "/reports", label: "Reports" },
+    { href: "/settings", label: "Settings" },
   ];
   const headerNavLinks = canAccessManagementFlow || isAdminFlow
     ? managementNavLinks
-    : isDepartmentFlow || isTicketingFlow
+    : isHomeFlow || isDepartmentFlow || isTicketingFlow
     ? [
         { href: "/", label: "Home" },
         { href: "/operator", label: "Ticketing System" },
@@ -110,8 +115,8 @@ function AppShell({ Component, pageProps }) {
 
   return (
     <>
-      {showChrome && <Header navLinks={headerNavLinks} />}
-      <main className={showChrome ? "app-shell-content" : undefined}>
+      {showHeader && isHydrated && <Header navLinks={headerNavLinks} />}
+      <main className={showHeader ? "app-shell-content" : undefined}>
         <Component {...pageProps} />
       </main>
       <FailureModal
