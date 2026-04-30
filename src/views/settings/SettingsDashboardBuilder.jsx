@@ -2,7 +2,6 @@ import { useState } from "react";
 import { FiGrid, FiPlus, FiTrash2 } from "react-icons/fi";
 import { HiOutlineDotsVertical } from "react-icons/hi";
 
-import DashboardShell from "@/components/DashboardShell";
 import styles from "@/styles/departmentDirectory.module.css";
 
 const initialWidgets = Array.from({ length: 8 }, (_, index) => ({
@@ -38,7 +37,7 @@ function SettingsDashboardBuilder() {
     };
 
     return (
-        <DashboardShell>
+        <div className={styles.dashboardMain}>
             <section className={styles.builderHeader}>
                 <h1 className={styles.kicker}>Dashboard Builder</h1>
                 <button type="button" className={styles.addWidgetButton} onClick={handleAddWidget}>
@@ -79,7 +78,7 @@ function SettingsDashboardBuilder() {
                     </article>
                 ))}
             </section>
-        </DashboardShell>
+        </div>
     );
 }
 

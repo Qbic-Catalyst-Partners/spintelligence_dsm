@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { FiPieChart } from "react-icons/fi";
 
-import DashboardShell from "@/components/DashboardShell";
 import styles from "@/styles/departmentDirectory.module.css";
 
 function HomeDashboard() {
@@ -37,72 +36,72 @@ function HomeDashboard() {
     }));
 
     return (
-        <DashboardShell>
-                <section className={styles.heroPanel}>
-                    <h1 className={styles.kicker}>Dashboard / Quick insights</h1>
-                </section>
+        <div className={styles.dashboardMain}>
+            <section className={styles.heroPanel}>
+                <h1 className={styles.kicker}>Dashboard / Quick insights</h1>
+            </section>
 
-                <section className={styles.statsGrid}>
-                    {quickStats.map((item) => (
-                        <article key={item.id} className={styles.statCard}>
-                            <span className={styles.statLabel}>{item.label}</span>
-                            <strong className={styles.statValue}>{item.value}</strong>
-                            <span className={styles.statIconWrap}>
-                                <FiPieChart className={styles.statIcon} />
-                            </span>
-                        </article>
-                    ))}
-                </section>
-
-                <section className={styles.insightGrid}>
-                    <article className={`${styles.panelCard} ${styles.chartPanel}`}>
-                        <div className={styles.panelHeader}>
-                            <h2>Performance Report</h2>
-                        </div>
-                        <div className={styles.chartArea}>
-                            <div className={styles.chartYAxis}>
-                                {[100, 80, 60, 40, 20].map((tick) => (
-                                    <span key={tick}>{tick}</span>
-                                ))}
-                            </div>
-                            <div className={styles.chartPlot}>
-                                <div className={styles.chartGridLines}>
-                                    {[100, 80, 60, 40, 20].map((tick) => (
-                                        <span key={tick} className={styles.chartGridLine} />
-                                    ))}
-                                </div>
-                                <div className={styles.chartBars}>
-                                    {performanceBars.map((item) => (
-                                        <div key={item.label} className={styles.chartBarItem}>
-                                            <div className={styles.chartBarTrack}>
-                                                <div className={styles.chartBar} style={{ height: `${item.value}%` }} />
-                                            </div>
-                                            <span className={styles.chartLabel}>{item.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
+            <section className={styles.statsGrid}>
+                {quickStats.map((item) => (
+                    <article key={item.id} className={styles.statCard}>
+                        <span className={styles.statLabel}>{item.label}</span>
+                        <strong className={styles.statValue}>{item.value}</strong>
+                        <span className={styles.statIconWrap}>
+                            <FiPieChart className={styles.statIcon} />
+                        </span>
                     </article>
+                ))}
+            </section>
 
-                    <article className={`${styles.panelCard} ${styles.activityPanel}`}>
-                        <div className={styles.panelHeader}>
-                            <h2>Recent Activity</h2>
-                        </div>
-                        <div className={styles.activityList}>
-                            {recentItems.map((item) => (
-                                <div key={item.id} className={styles.activityItem}>
-                                    <div className={styles.activityRow}>
-                                        <strong>{item.title}</strong>
-                                        <time>{item.time}</time>
-                                    </div>
-                                    <span>{item.meta}</span>
-                                </div>
+            <section className={styles.insightGrid}>
+                <article className={`${styles.panelCard} ${styles.chartPanel}`}>
+                    <div className={styles.panelHeader}>
+                        <h2>Performance Report</h2>
+                    </div>
+                    <div className={styles.chartArea}>
+                        <div className={styles.chartYAxis}>
+                            {[100, 80, 60, 40, 20].map((tick) => (
+                                <span key={tick}>{tick}</span>
                             ))}
                         </div>
-                    </article>
-                </section>
-        </DashboardShell>
+                        <div className={styles.chartPlot}>
+                            <div className={styles.chartGridLines}>
+                                {[100, 80, 60, 40, 20].map((tick) => (
+                                    <span key={tick} className={styles.chartGridLine} />
+                                ))}
+                            </div>
+                            <div className={styles.chartBars}>
+                                {performanceBars.map((item) => (
+                                    <div key={item.label} className={styles.chartBarItem}>
+                                        <div className={styles.chartBarTrack}>
+                                            <div className={styles.chartBar} style={{ height: `${item.value}%` }} />
+                                        </div>
+                                        <span className={styles.chartLabel}>{item.label}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <article className={`${styles.panelCard} ${styles.activityPanel}`}>
+                    <div className={styles.panelHeader}>
+                        <h2>Recent Activity</h2>
+                    </div>
+                    <div className={styles.activityList}>
+                        {recentItems.map((item) => (
+                            <div key={item.id} className={styles.activityItem}>
+                                <div className={styles.activityRow}>
+                                    <strong>{item.title}</strong>
+                                    <time>{item.time}</time>
+                                </div>
+                                <span>{item.meta}</span>
+                            </div>
+                        ))}
+                    </div>
+                </article>
+            </section>
+        </div>
     );
 }
 
