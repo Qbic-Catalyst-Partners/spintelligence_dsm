@@ -15,6 +15,7 @@
     display: flex;
     align-items: center;
     gap: 22px;
+    min-width: 0;
 }
 
 .nav-left img {
@@ -33,7 +34,9 @@
 
 .nav-links {
     display: flex;
-    gap: 26px;
+    gap: 22px;
+    align-items: center;
+    flex-wrap: wrap;
 }
 
 .nav-link {
@@ -41,6 +44,7 @@
     color: #1f2a44;
     font-weight: 500;
     font-size: 13px;
+    white-space: nowrap;
 }
 
 .nav-link:hover {
@@ -55,6 +59,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
+    flex-shrink: 0;
 }
 
 .nav-right img {
