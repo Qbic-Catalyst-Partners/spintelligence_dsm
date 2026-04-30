@@ -113,34 +113,6 @@ function Comber() {
                     <img src="/logo.png" alt="Company Logo" />
                 </div>
 
-                <div className={styles["cb-breadcrumbs"]}>
-                    <button
-                        type="button"
-                        className={styles["cb-breadcrumb-link"]}
-                        onClick={() => router.push("/")}
-                    >
-                        Home
-                    </button>
-                    <span>&rsaquo;</span>
-                    <button
-                        type="button"
-                        className={styles["cb-breadcrumb-link"]}
-                        onClick={() => router.push("/departments")}
-                    >
-                        Dashboard
-                    </button>
-                    <span>&rsaquo;</span>
-                    <button
-                        type="button"
-                        className={styles["cb-breadcrumb-link"]}
-                        onClick={() => router.push("/departments/quality-control")}
-                    >
-                        Quality Control
-                    </button>
-                    <span>&rsaquo;</span>
-                    <span className={styles["cb-breadcrumb-active"]}>Comber Notebook QC</span>
-                </div>
-
                 <div className={styles["cb-header"]}>
                     <h1>Quality Control - Comber Notebook</h1>
                     <p>Record and manage industrial machine quality inspections.</p>

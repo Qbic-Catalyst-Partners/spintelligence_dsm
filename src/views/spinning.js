@@ -559,16 +559,6 @@ function SpinningDepartment() {
             </div>
 
             <div className={styles.container}>
-                <div className={styles.breadcrumbs}>
-                    <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/")}>Home</button>
-                    <span>›</span>
-                    <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/departments")}>Dashboard</button>
-                    <span>›</span>
-                    <button type="button" className={styles["breadcrumb-link"]} onClick={() => router.push("/departments/quality-control")}>Quality Control</button>
-                    <span>›</span>
-                    <span className={styles.active}>{checkingType || "Spinning Notebook QC"}</span>
-                </div>
-
                 <h1 className={styles["sp-page-title"]}>Quality Control - Spinning Notebook</h1>
                 <p className={styles["sp-page-description"]}>Record and manage industrial machine quality inspections.</p>
 

@@ -49,9 +49,7 @@ export const submitComberUqcEntry = async (payload) => {
 
 export const fetchComberUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
     try {
-        const response = await apiConfig.get("/comber/uqc", {
-            params: { page, limit },
-        });
+        const response = await apiConfig.get("/comber/uqc", { page, limit });
         return response.data;
     } catch (error) {
         throw new Error(extractApiError(error, "Unable to fetch entries."));

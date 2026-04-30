@@ -4,7 +4,7 @@
 }
 
 .shell {
-    width: min(1080px, calc(100% - 48px));
+    width: min(1180px, calc(100% - 48px));
     margin: 0 auto;
     padding: 40px 0 40px;
     box-sizing: border-box;
@@ -92,7 +92,7 @@
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 12px;
     max-width: 1080px;
 }
@@ -104,7 +104,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    width: 340px;
+    width: 100%;
     min-height: 96px;
     height: 96px;
     padding: 0 20px;
@@ -227,7 +227,7 @@
 }
 
 .subCard {
-    width: 340px;
+    width: 100%;
     min-height: 96px;
     height: 96px;
     display: flex;
@@ -367,12 +367,7 @@
         gap: 14px;
     }
 
-    .card,
     .subCard {
-        width: 100%;
-    }
-
-    .subCard {
-        min-height: 172px;
+        min-height: 112px;
     }
 }

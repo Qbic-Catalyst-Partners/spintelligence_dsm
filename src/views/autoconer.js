@@ -130,22 +130,6 @@ function Autoconer() {
   return (
     <div className={styles.page}>
       <div className={styles.container}>
-        <div className={styles.breadcrumbs}>
-          <button type="button" onClick={() => router.push("/")}>
-            Home
-          </button>
-          <span>&rsaquo;</span>
-          <button type="button" onClick={() => router.push("/departments")}>
-            Dashboard
-          </button>
-          <span>&rsaquo;</span>
-          <button type="button" onClick={() => router.push("/departments/quality-control")}>
-            Quality Control
-          </button>
-          <span>&rsaquo;</span>
-          <span className={styles.active}>Autoconer Notebook QC</span>
-        </div>
-
         <div className={styles.header}>
           <h1>Quality Control - Autoconer Notebook</h1>
           <p>Record and manage industrial machine quality inspections.</p>

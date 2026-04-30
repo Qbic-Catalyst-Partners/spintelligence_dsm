@@ -54,9 +54,7 @@ export const submitCardingDfkPressureEntry = async (payload) => {
 
 export const fetchCardingDfkPressureEntries = async ({ page = 1, limit = 10 } = {}) => {
     try {
-        const response = await apiConfig.get("/carding/dfk-pressure", {
-            params: { page, limit },
-        });
+        const response = await apiConfig.get("/carding/dfk-pressure", { page, limit });
         return response.data;
     } catch (error) {
         if (error.response && error.response.data) {
@@ -148,9 +146,7 @@ export const submitCardingUqcEntry = async (payload) => {
 
 export const fetchCardingUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
     try {
-        const response = await apiConfig.get("/carding/uqc", {
-            params: { page, limit },
-        });
+        const response = await apiConfig.get("/carding/uqc", { page, limit });
         return response.data;
     } catch (error) {
         if (error.response && error.response.data) {

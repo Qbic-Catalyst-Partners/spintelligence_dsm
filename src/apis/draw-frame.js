@@ -130,9 +130,7 @@ export const fetchDrawFrameUqcEntries = async ({ page = 1, limit = 10 } = {}) =>
 
     for (const endpoint of DRAW_FRAME_UQC_ENDPOINTS) {
         try {
-            const response = await apiConfig.get(endpoint, {
-                params: { page, limit },
-            });
+            const response = await apiConfig.get(endpoint, { page, limit });
             return response.data;
         } catch (error) {
             lastError = error;

@@ -290,7 +290,7 @@ export const fetchAutoconerRewindingStudy = async ({
 } = {}) =>
   getAutoconer(
     "rewinding-study",
-    {},
+    { page, limit },
     "Unable to fetch rewinding study.",
     { suppressFailure: true, paginated: true }
   );
@@ -308,7 +308,7 @@ export const fetchAutoconerConeDensity = async ({
 } = {}) =>
   getAutoconer(
     "cone-density",
-    {},
+    { page, limit },
     "Unable to fetch cone density.",
     { suppressFailure: true, paginated: true }
   );

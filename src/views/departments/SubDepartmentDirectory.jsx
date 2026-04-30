@@ -72,7 +72,6 @@ function SubDepartmentDirectory() {
             <div className={styles.page}>
                 <main className={styles.shell}>
                     <section className={styles.hero}>
-                        <p className={styles.breadcrumbs}>Departments</p>
                         <h1>Department Not Found</h1>
                     </section>
                 </main>
@@ -84,23 +83,6 @@ function SubDepartmentDirectory() {
         <div className={styles.page}>
             <main className={styles.shell}>
                 <section className={styles.hero}>
-                    <div className={styles.breadcrumbs}>
-                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/")}>
-                            Home
-                        </button>
-                        <span>&rsaquo;</span>
-                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/departments")}>
-                            Dashboard
-                        </button>
-                        <span>&rsaquo;</span>
-                        <button
-                            type="button"
-                            className={styles.breadcrumbCurrent}
-                            onClick={() => router.push(`/departments/${departmentData?.slug}`)}
-                        >
-                            {departmentData?.name}
-                        </button>
-                    </div>
                     <h1>{departmentData?.name}</h1>
                     <p>{departmentData?.description}</p>
                 </section>

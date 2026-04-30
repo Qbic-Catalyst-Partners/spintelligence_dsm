@@ -157,27 +157,7 @@ function Mixing() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex justify-center">
-            <div className="w-full max-w-5xl pt-8 px-4 pb-8">
-                <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
-                    <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/")}>
-                        Home
-                    </button>
-                    <span>&rsaquo;</span>
-                    <button type="button" className="transition-colors hover:text-[#3d539f]" onClick={() => router.push("/departments")}>
-                        Dashboard
-                    </button>
-                    <span>&rsaquo;</span>
-                    <button
-                        type="button"
-                        className="transition-colors hover:text-[#3d539f]"
-                        onClick={() => router.push("/departments/quality-control")}
-                    >
-                        Quality Control
-                    </button>
-                    <span>&rsaquo;</span>
-                    <span className="text-slate-900 font-semibold">Mixing Notebook QC</span>
-                </div>
-
+            <div className="w-full max-w-7xl pt-8 px-4 pb-8">
                 <div className="mb-5">
                     <h1 className="text-[24px] font-extrabold text-slate-900 m-0">
                         Quality Control - Mixing Notebook

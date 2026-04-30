@@ -2,6 +2,7 @@
   background: #f4f6f8;
   min-height: 100vh;
   font-family: Inter, sans-serif;
+  overflow-x: hidden;
 }
 
 /* ================= NAVBAR ================= */
@@ -61,7 +62,9 @@
 }
 /* ================= MAIN ================= */
 .wrapper {
-  padding: 20px 30px;
+  padding: 24px clamp(18px, 3vw, 30px);
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 /* ================= HEADER ================= */
@@ -133,6 +136,7 @@ background: #F6F7F8;
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   background: #ffffff;
   padding: 12px;
   border-radius: 10px;
@@ -242,11 +246,16 @@ background: #F6F7F8;
 /* ================= TABLE ================= */
 .table {
   width: 100%;
+  min-width: 900px;
   border-collapse: collapse;
   background: #ffffff;
   border-radius: 10px;
   overflow: visible;
   border: 1px solid #e2e8f0;
+}
+
+.wrapper {
+  overflow-x: auto;
 }
 
 .table thead {

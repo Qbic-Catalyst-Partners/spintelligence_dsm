@@ -20,9 +20,11 @@
 }
 
 .container {
-  max-width: 1120px;
+  width: 100%;
+  max-width: 80rem;
   margin: 0 auto;
-  padding: 10px 16px 28px;
+  padding: 2rem 1rem;
+  box-sizing: border-box;
 }
 
 .breadcrumbs {
@@ -53,14 +55,14 @@
 
 .header h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 24px;
   font-weight: 800;
   color: #172033;
 }
 
 .header p {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: 14px;
   color: #7b869a;
 }
 
@@ -110,12 +112,12 @@
 
 .formTitle svg {
   color: #3b82f6;
-  font-size: 14px;
+  font-size: 20px;
 }
 
 .formTitle h3 {
   margin: 0;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.01em;
   color: #22324a;
@@ -136,7 +138,7 @@
   }
 
   .header h1 {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .shell {

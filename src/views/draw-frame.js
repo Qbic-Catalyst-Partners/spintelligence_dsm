@@ -555,26 +555,6 @@ function DrawFrame() {
   return (
     <div className={styles.page}>
       <div className={styles.container}>
-        <div className={styles.breadcrumbs}>
-          <button type="button" className={styles.breadcrumbButton} onClick={() => router.push("/")}>
-            Home
-          </button>
-          <span>&rsaquo;</span>
-          <button type="button" className={styles.breadcrumbButton} onClick={() => router.push("/departments")}>
-            Dashboard
-          </button>
-          <span>&rsaquo;</span>
-          <button
-            type="button"
-            className={styles.breadcrumbButton}
-            onClick={() => router.push("/departments/quality-control")}
-          >
-            Quality Control
-          </button>
-          <span>&rsaquo;</span>
-          <span className={styles.breadcrumbCurrent}>Draw Frame Notebook QC</span>
-        </div>
-
         <div className={styles.header}>
           <h1 className={styles.title}>Quality Control - Draw Frame Notebook</h1>
           <p className={styles.description}>Record and manage industrial machine quality inspections.</p>
