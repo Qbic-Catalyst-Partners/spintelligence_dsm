@@ -36,3 +36,102 @@ export const saveThresholdsBulkAPI = async (payload) => {
 
     return responses.map((response) => response?.data);
 };
+
+const getThresholdIdentifier = (threshold) =>
+    threshold?.id ||
+    threshold?._id ||
+    threshold?.threshold_id ||
+    threshold?.thresholdId ||
+    null;
+
+const getBrowserToken = () =>
+    typeof window !== "undefined"
+        ? window.localStorage.getItem("token") || ""
+        : "";
+
+const parseApiResponse = async (response, fallbackMessage) => {
+    let data = null;
+    try {
+        data = await response.json();
+    } catch {
+        data = null;
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data?.message ||
+            `${fallbackMessage} Request failed with status ${response.status}.`
+        );
+    }
+
+    return data;
+};
+
+export const updateThresholdStatusAPI = async (threshold, isActive) => {
+    const thresholdId = getThresholdIdentifier(threshold);
+
+    if (!thresholdId) {
+        throw new Error("Threshold id is required to update active or inactive status.");
+    }
+
+    const token = getBrowserToken();
+
+    const payload = {
+        threshold,
+        is_active: isActive,
+        isActive,
+        status: isActive ? "Active" : "Inactive",
+    };
+
+    const response = await fetch(`/api/thresholds/${encodeURIComponent(thresholdId)}/status`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+    });
+
+    return parseApiResponse(response, "Unable to update threshold status.");
+};
+
+export const updateThresholdAPI = async (threshold, updates) => {
+    const thresholdId = getThresholdIdentifier(threshold);
+
+    if (!thresholdId) {
+        throw new Error("Threshold id is required to edit threshold values.");
+    }
+
+    const token = getBrowserToken();
+    const response = await fetch(`/api/thresholds/${encodeURIComponent(thresholdId)}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+            threshold,
+            updates,
+        }),
+    });
+
+    return parseApiResponse(response, "Unable to update threshold.");
+};
+
+export const deleteThresholdAPI = async (threshold) => {
+    const thresholdId = getThresholdIdentifier(threshold);
+
+    if (!thresholdId) {
+        throw new Error("Threshold id is required to delete a threshold.");
+    }
+
+    const token = getBrowserToken();
+    const response = await fetch(`/api/thresholds/${encodeURIComponent(thresholdId)}`, {
+        method: "DELETE",
+        headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+    });
+
+    return parseApiResponse(response, "Unable to delete threshold.");
+};

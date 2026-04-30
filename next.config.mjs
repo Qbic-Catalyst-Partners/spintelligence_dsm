@@ -1,7 +1,24 @@
 /** @type {import('next').NextConfig} */
+const allowedDevOrigins = (() => {
+  const origins = new Set();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  if (!apiUrl) {
+    return [];
+  }
+
+  try {
+    origins.add(new URL(apiUrl).hostname);
+  } catch {
+    // Ignore malformed env values here so Next can still start with defaults.
+  }
+
+  return [...origins];
+})();
+
 const nextConfig = {
   reactStrictMode: true,
-  allowedDevOrigins: ['192.168.1.4'],
+  allowedDevOrigins,
 };
 
 export default nextConfig;
