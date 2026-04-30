@@ -271,3 +271,16 @@
     grid-column: span 1;
   }
 }
+
+.container {
+  overflow-x: hidden;
+}
+
+.wrapper {
+  width: min(1000px, calc(100% - 40px));
+  box-sizing: border-box;
+}
+
+.security {
+  width: min(467px, calc(100% - 48px));
+}

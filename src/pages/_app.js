@@ -10,7 +10,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { subscribeToGlobalFailureModal } from "@/utils/globalFailureModal";
 import { subscribeToGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { hydrateAuthFromStorage } from "@/store/slices/authSlice";
-import { hasRouteAccess, isFullAccessUser } from "@/utils/accessControl";
+import { hasRouteAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
 import { store } from '../store';
 import "../styles/globals.css";
 
@@ -23,9 +23,11 @@ function AppShell({ Component, pageProps }) {
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
-  const showHeader = router.pathname !== "/" && router.pathname !== "/settings";
+  const showHeader = router.pathname !== "/";
   const isDepartmentFlow =
-    router.pathname === "/departments/quality-control" || router.pathname.startsWith("/departments");
+    router.pathname === "/departments/quality-control" ||
+    router.pathname.startsWith("/departments") ||
+    isInputScreen;
   const isTicketingFlow =
     router.pathname === "/operator" ||
     router.pathname.startsWith("/operator/") ||
@@ -108,8 +110,10 @@ function AppShell({ Component, pageProps }) {
 
   return (
     <>
-      {showHeader && isHydrated && <Header navLinks={headerNavLinks} />}
-      <Component {...pageProps} />
+      {showChrome && <Header navLinks={headerNavLinks} />}
+      <main className={showChrome ? "app-shell-content" : undefined}>
+        <Component {...pageProps} />
+      </main>
       <FailureModal
         open={failureModal.open}
         message={failureModal.message}
@@ -132,4 +136,3 @@ export default function App(props) {
     </Provider>
   );
 }
-

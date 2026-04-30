@@ -17,7 +17,6 @@ function IndividualDepartmentPage() {
             <div className={styles.page}>
                 <main className={styles.shell}>
                     <section className={styles.hero}>
-                        <p className={styles.breadcrumbs}>Departments</p>
                         <h1>Page Not Found</h1>
                     </section>
                 </main>
@@ -25,7 +24,6 @@ function IndividualDepartmentPage() {
         );
     }
 
-    const breadcrumbCurrent = subDepartmentData?.breadcrumbName || subDepartmentData?.name;
     const pageTitle = subDepartmentData?.pageTitle || `${departmentData?.name} - ${subDepartmentData?.name}`;
     const pageDescription =
         subDepartmentData?.pageDescription || "This individual page is ready for the next screen or form content.";
@@ -34,21 +32,6 @@ function IndividualDepartmentPage() {
         <div className={styles.page}>
             <main className={styles.shell}>
                 <section className={styles.hero}>
-                    <div className={styles.breadcrumbs}>
-                        <button type="button" className={styles.breadcrumbLink} onClick={() => router.push("/departments/quality-control")}>
-                            Departments
-                        </button>
-                        <span>&rsaquo;</span>
-                        <button
-                            type="button"
-                            className={styles.breadcrumbLink}
-                            onClick={() => router.push(`/departments/${departmentData?.slug}`)}
-                        >
-                            {departmentData?.name}
-                        </button>
-                        <span>&rsaquo;</span>
-                        <span className={styles.breadcrumbCurrent}>{breadcrumbCurrent}</span>
-                    </div>
                     <h1>{pageTitle}</h1>
                     <p>{pageDescription}</p>
                 </section>

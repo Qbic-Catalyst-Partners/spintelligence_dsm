@@ -1,7 +1,9 @@
 .page {
-  min-height: calc(100vh - 90px);
+  min-height: 100vh;
   padding: 24px;
   background: #f6f8fc;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .card {

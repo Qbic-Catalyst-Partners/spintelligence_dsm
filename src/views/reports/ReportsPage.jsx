@@ -18,10 +18,46 @@ import {
 } from "react-icons/fi";
 
 import apiConfig from "@/apis/apiConfig";
-import { fetchAutoconerProcessParameters } from "@/apis/autoconer";
-import { getCardingProcessParameterEntries } from "@/apis/carding";
-import { getMixingProcessParameterEntries } from "@/apis/mixing";
-import { fetchSimplexProcessParameterEntries } from "@/apis/simplex";
+import {
+  fetchAutoconerConeDensity,
+  fetchAutoconerConePackingAudit,
+  fetchAutoconerCountWiseCuts,
+  fetchAutoconerDrumWise,
+  fetchAutoconerLycraChecking,
+  fetchAutoconerPendingCspParameterEntries,
+  fetchAutoconerPendingQualityParameterEntries,
+  fetchAutoconerProcessParameters,
+  fetchAutoconerQ2Entries,
+  fetchAutoconerQ3Entries,
+  fetchAutoconerRewindingStudy,
+  fetchAutoconerSpliceStrength,
+} from "@/apis/autoconer";
+import { fetchBlowroomProcessParametersApi } from "@/apis/blowroom";
+import {
+  fetchCardingDfkPressureEntries,
+  fetchCardingUqcEntries,
+  getCardingProcessParameterEntries,
+} from "@/apis/carding";
+import { fetchComberUqcEntries } from "@/apis/comber";
+import {
+  fetchDrawFrameCotsEntries,
+  fetchDrawFrameFinisherEntries,
+  fetchDrawFrameHeaderEntries,
+  fetchDrawFrameUqcEntries,
+} from "@/apis/draw-frame";
+import {
+  fetchMixingAfisEntries,
+  fetchMixingCottonHviEntries,
+  fetchMixingFibreEntries,
+  fetchMixingMoistureEntries,
+  fetchMixingOpennessEntries,
+  getMixingProcessParameterEntries,
+} from "@/apis/mixing";
+import {
+  fetchSimplexCotsChangeEntries,
+  fetchSimplexProcessParameterEntries,
+  fetchSimplexUqcEntries,
+} from "@/apis/simplex";
 import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import styles from "@/styles/reports.module.css";
 
@@ -38,15 +74,15 @@ const reportSources = {
   "Quality Control": {
     Mixing: {
       "Process Parameter": { fetcher: getMixingProcessParameterEntries },
-      "Cotton HVI Data Entry": { endpoint: "/mixing/cotton-hvi" },
-      "Fibre Data Entry": { endpoint: "/mixing/fibre" },
-      "AFIS Data Entry": { endpoint: "/mixing/afis" },
-      "Moisture Data Entry": { endpoint: "/mixing/moisture" },
-      "Openness Data Entry": { endpoint: "/mixing/openness" },
+      "Cotton HVI Data Entry": { fetcher: fetchMixingCottonHviEntries },
+      "Fibre Data Entry": { fetcher: fetchMixingFibreEntries },
+      "AFIS Data Entry": { fetcher: fetchMixingAfisEntries },
+      "Moisture Data Entry": { fetcher: fetchMixingMoistureEntries },
+      "Openness Data Entry": { fetcher: fetchMixingOpennessEntries },
     },
     "Blow Room": {
-      "Blow Room Sync": { fetcher: fetchEndpointRows.bind(null, "/blowroom/sync") },
-      "Process Parameter": { fetcher: fetchEndpointRows.bind(null, "/blowroom/header") },
+      "Blow Room Sync": { endpoint: "/blowroom/sync" },
+      "Process Parameter": { fetcher: fetchBlowroomProcessParametersApi },
       "BR Waste Study Entry": { fetcher: fetchEndpointRows.bind(null, "/blowroom/br-waste-study") },
       "Drop Test Data Entry": { fetcher: fetchEndpointRows.bind(null, "/blowroom/drop-test") },
     },
@@ -56,26 +92,26 @@ const reportSources = {
       "Card Thick Place Entry": { endpoint: "/carding/card-thick-place" },
       "Trials Data Entry Form": { endpoint: "/carding/trials" },
       "Nati Data Entry": { endpoint: "/carding/nati-data" },
-      "U% Data Entry": { endpoint: "/carding/uqc" },
-      "Card DFK Pressure Checking": { endpoint: "/carding/dfk-pressure" },
+      "U% Data Entry": { fetcher: fetchCardingUqcEntries },
+      "Card DFK Pressure Checking": { fetcher: fetchCardingDfkPressureEntries },
     },
     Comber: {
       "Ribbon Lap CV Data Entry": { endpoint: "/comber/lap-cv" },
       "Nati Data Entry": { endpoint: "/comber/nati-data-entry" },
-      "U% Data Entry": { endpoint: "/comber/uqc" },
+      "U% Data Entry": { fetcher: fetchComberUqcEntries },
     },
     "Draw Frame": {
       "Yarn CV% Calculation Form": { endpoint: "/drawframe/yarn-cv" },
-      "Draw Frame Cots Data Entry": { endpoint: "/drawframe/cots" },
-      "U% Data Entry": { endpoint: "/drawframe/uqc" },
-      "PP - Breaker Drawing": { endpoint: "/drawframe/header" },
-      "PP - Finisher Drawing": { endpoint: "/drawframe/finisher" },
+      "Draw Frame Cots Data Entry": { fetcher: fetchDrawFrameCotsEntries },
+      "U% Data Entry": { fetcher: fetchDrawFrameUqcEntries },
+      "PP - Breaker Drawing": { fetcher: fetchDrawFrameHeaderEntries },
+      "PP - Finisher Drawing": { fetcher: fetchDrawFrameFinisherEntries },
     },
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },
-      "SMXCots Change Data Entry": { endpoint: "/simplex/SMXCotsChange" },
+      "SMXCots Change Data Entry": { fetcher: fetchSimplexCotsChangeEntries },
       "SMX Breaks Study Report": { endpoint: "/simplex/study" },
-      "U% Data Entry": { endpoint: "/simplex/uqc" },
+      "U% Data Entry": { fetcher: fetchSimplexUqcEntries },
     },
     Spinning: {
       "Process Parameter": { fetcher: getSpinningProcessParameterEntries },
@@ -92,23 +128,25 @@ const reportSources = {
     },
     Autoconer: {
       "Process Parameter": { fetcher: fetchAutoconerProcessParameters },
-      "PP - Autoconer Q2": { endpoint: "/autoconer/q2" },
-      "PP - Autoconer Q3": { endpoint: "/autoconer/q3" },
-      "Rewinding Study": { endpoint: "/autoconer/rewinding-study" },
-      "Cone Density": { endpoint: "/autoconer/cone-density" },
-      "Cone Packing Audit": { endpoint: "/autoconer/cone-packing-audit" },
-      "Lycra Checking": { endpoint: "/autoconer/lycra-checking" },
-      "Count Wise Cuts Record": { endpoint: "/autoconer/count-wise-cuts" },
-      "Splice Strength": { endpoint: "/autoconer/splice-strength" },
-      "Drum wise Appearance": { endpoint: "/autoconer/drum-wise" },
-      "CSP Parameter Entries": { endpoint: "/autoconer/parameter-entries/pending-csp" },
-      "U% Parameter Entries": { endpoint: "/autoconer/parameter-entries/pending-quality" },
+      "PP - Autoconer Q2": { fetcher: fetchAutoconerQ2Entries },
+      "PP - Autoconer Q3": { fetcher: fetchAutoconerQ3Entries },
+      "Rewinding Study": { fetcher: fetchAutoconerRewindingStudy },
+      "Cone Density": { fetcher: fetchAutoconerConeDensity },
+      "Cone Packing Audit": { fetcher: fetchAutoconerConePackingAudit },
+      "Lycra Checking": { fetcher: fetchAutoconerLycraChecking },
+      "Count Wise Cuts Record": { fetcher: fetchAutoconerCountWiseCuts },
+      "Splice Strength": { fetcher: fetchAutoconerSpliceStrength },
+      "Drum wise Appearance": { fetcher: fetchAutoconerDrumWise },
+      "CSP Parameter Entries": { fetcher: fetchAutoconerPendingCspParameterEntries },
+      "U% Parameter Entries": { fetcher: fetchAutoconerPendingQualityParameterEntries },
     },
   },
 };
 
 const defaultSelectedFields = [];
 const scheduledReportsStorageKey = "spintelligenceScheduledReports";
+const reportPageSize = 500;
+const maxReportPages = 100;
 const hourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
 
@@ -298,8 +336,91 @@ const normalizeRows = (response) => {
   return expandNestedRows(rows);
 };
 
+const getTotalPages = (response) => {
+  const candidates = [
+    response?.totalPages,
+    response?.total_pages,
+    response?.pages,
+    response?.meta?.totalPages,
+    response?.meta?.total_pages,
+    response?.pagination?.totalPages,
+    response?.pagination?.total_pages,
+    response?.data?.totalPages,
+    response?.data?.total_pages,
+    response?.data?.meta?.totalPages,
+    response?.data?.pagination?.totalPages,
+  ];
+  const totalPages = candidates.map(Number).find((value) => Number.isFinite(value) && value > 0);
+  if (totalPages) return totalPages;
+
+  const total = Number(response?.total ?? response?.data?.total ?? response?.meta?.total);
+  const limit = Number(response?.limit ?? response?.data?.limit ?? response?.meta?.limit);
+  return Number.isFinite(total) && Number.isFinite(limit) && limit > 0 ? Math.ceil(total / limit) : 0;
+};
+
+const stringifyForSignature = (value) => {
+  if (Array.isArray(value)) {
+    return `[${value.map(stringifyForSignature).join(",")}]`;
+  }
+
+  if (isRecordObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${key}:${stringifyForSignature(value[key])}`)
+      .join(",")}}`;
+  }
+
+  return String(value ?? "");
+};
+
+const getRowSignature = (rows) =>
+  rows
+    .slice(0, 10)
+    .map((row) => stringifyForSignature(row))
+    .join("|");
+
+const fetchAllReportRows = async (reportFetcher) => {
+  const allRows = [];
+  const seenPageSignatures = new Set();
+  let totalPages = 0;
+
+  for (let page = 1; page <= maxReportPages; page += 1) {
+    const response = await reportFetcher({ page, limit: reportPageSize });
+    const pageRows = normalizeRows(response);
+    const pageSignature = `${pageRows.length}:${getRowSignature(pageRows)}`;
+
+    if (page > 1 && seenPageSignatures.has(pageSignature)) {
+      break;
+    }
+
+    seenPageSignatures.add(pageSignature);
+    allRows.push(...pageRows);
+
+    totalPages = totalPages || getTotalPages(response);
+
+    if (totalPages && page >= totalPages) {
+      break;
+    }
+
+    if (!totalPages && pageRows.length < reportPageSize) {
+      break;
+    }
+
+    if (!pageRows.length) {
+      break;
+    }
+  }
+
+  return allRows;
+};
+
 const getRowDate = (row) =>
-  row?.creation_date || row?.invoice_date || row?.entry_date || row?.date || row?.created_at;
+  row?.inspection_date ||
+  row?.creation_date ||
+  row?.invoice_date ||
+  row?.entry_date ||
+  row?.date ||
+  row?.created_at;
 
 const inferFields = (rows) => {
   const keys = Array.from(
@@ -314,7 +435,12 @@ const inferFields = (rows) => {
 };
 
 const getCellValue = (row, field) => {
-  if (field.key === "creation_date" || field.key === "invoice_date" || field.key === "entry_date") {
+  if (
+    field.key === "inspection_date" ||
+    field.key === "creation_date" ||
+    field.key === "invoice_date" ||
+    field.key === "entry_date"
+  ) {
     return formatDate(row?.[field.key] || getRowDate(row));
   }
 
@@ -471,6 +597,9 @@ function ReportsPage() {
     const endpoint = selectedReportSource?.endpoint;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
+    setRows([]);
+    setSelectedFields([]);
+    setError("");
 
     const reportFetcher = fetcher || (endpoint ? fetchEndpointRows.bind(null, endpoint) : null);
     if (!reportFetcher) {
@@ -485,16 +614,11 @@ function ReportsPage() {
     const loadReport = async () => {
       try {
         setLoading(true);
-        const response = await reportFetcher({ page: 1, limit: 500 });
+        const nextRows = await fetchAllReportRows(reportFetcher);
         if (isActive && requestIdRef.current === requestId) {
-          const nextRows = normalizeRows(response);
           const nextFields = inferFields(nextRows);
           setRows(nextRows);
-          setSelectedFields((currentFields) => {
-            const availableKeys = new Set(nextFields.map((field) => field.key));
-            const preservedFields = currentFields.filter((field) => availableKeys.has(field.key));
-            return preservedFields.length ? preservedFields : nextFields.slice(0, Math.min(5, nextFields.length));
-          });
+          setSelectedFields(nextFields.slice(0, Math.min(5, nextFields.length)));
           setError("");
         }
       } catch (requestError) {
@@ -701,7 +825,7 @@ function ReportsPage() {
     return "Self";
   };
 
-  const exportRows = filteredRows.slice(0, 100);
+  const exportRows = filteredRows;
 
   const buildCsv = () => {
     const header = selectedFields.map((field) => field.label).join(",");
@@ -767,9 +891,6 @@ function ReportsPage() {
   return (
     <main className={styles.page}>
       <section className={styles.heading}>
-        <div className={styles.headingIcon}>
-          <FiFileText />
-        </div>
         <div>
           <h1>Reports</h1>
           <p>Generate and schedule custom task reports</p>
@@ -918,7 +1039,10 @@ function ReportsPage() {
 
             <section className={styles.previewCard}>
               <h2>Report Preview</h2>
-              <p>Drag to reorder, click X to remove</p>
+              <p>
+                Drag to reorder, click X to remove · {filteredRows.length}{" "}
+                {filteredRows.length === 1 ? "entry" : "entries"} loaded
+              </p>
               <div
                 className={styles.selectedFields}
                 onDragOver={(event) => event.preventDefault()}

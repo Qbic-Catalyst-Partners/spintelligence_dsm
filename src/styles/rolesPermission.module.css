@@ -107,8 +107,11 @@
 }
 
 .roles-page {
-  padding: 24px 40px;
+  padding: 24px clamp(18px, 3vw, 40px);
   background: #fafafa;
+  min-height: 100vh;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* OVERLAY */
@@ -297,6 +300,7 @@
 .stat-card {
 
   flex: 1;
+  min-width: 0;
 
   background: white;
   border-radius: 12px;
@@ -305,7 +309,6 @@
   align-items: center;
   gap: 16px;
   border: 1px solid #e5e7eb;
-  width: 468px;
   height: 98px;
 
   opacity: 1;
@@ -365,6 +368,8 @@
   margin-top: 10px;
   display: flex;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   background: white;
   padding: 12px;
   border-radius: 10px;
@@ -382,7 +387,9 @@
   border: 1px solid #E5E7EB;
   border-radius: 8px;
 
-  width: 560px;
+  flex: 1 1 320px;
+  max-width: 560px;
+  min-width: 240px;
   height: 40px;
 }
 
@@ -476,7 +483,7 @@
   background: #ffffff;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
-  overflow: visible;
+  overflow-x: auto;
 
 }
 

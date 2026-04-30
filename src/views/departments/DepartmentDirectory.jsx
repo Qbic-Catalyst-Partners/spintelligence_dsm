@@ -54,7 +54,11 @@ function DepartmentDirectory() {
                                 key={department.slug}
                                 type="button"
                                 className={`${styles.card} ${isEnabled ? styles.activeCard : styles.disabledCard}`}
-                                onClick={() => isEnabled && router.push(`/departments/${department.slug}`)}
+                                onClick={() => isEnabled && router.push(
+                                    department.slug === "quality-control"
+                                        ? "/departments/quality-control"
+                                        : `/departments/${department.slug}`
+                                )}
                                 disabled={!isEnabled}
                             >
                                 <span className={styles.cardContent}>
