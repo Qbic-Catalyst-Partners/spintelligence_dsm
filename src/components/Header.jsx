@@ -20,7 +20,7 @@ import {
     FiUsers,
 } from "react-icons/fi";
 import { logout } from "../store/slices/authSlice";
-import { hasSubDepartmentAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
+import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -52,6 +52,10 @@ const departmentLinks = [
 const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
 ];
+const ticketingLinks = [
+    { href: "/operator", label: "Operator Ticket Dashboard" },
+    { href: "/supervisordashboard", label: "Supervisor Ticket Dashboard" },
+];
 
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
@@ -60,6 +64,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isDepartmentMenuOpen, setIsDepartmentMenuOpen] = useState(false);
+    const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -80,13 +85,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleHrefSet = new Set(visibleNavLinks.map((link) => link.href));
     const hasDashboardNav = visibleHrefSet.has("/");
     const hasDepartmentNav = visibleHrefSet.has("/departments");
+    const canSeeDepartmentDropdown = hasAnyQualityControlAccess(accessByDepartment, user);
     const visibleSidebarLinks = sidebarLinks.filter((link) => {
         if (link.admin) {
             return hasFullAccess || Boolean(link.href && visibleHrefSet.has(link.href));
         }
 
         if (link.section === "departments") {
-            return hasDepartmentNav || hasFullAccess;
+            return canSeeDepartmentDropdown;
         }
 
         if (link.section === "tickets") {
@@ -126,10 +132,12 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                 currentPath === "/operator" ||
                 currentPath.startsWith("/operator/") ||
                 currentPath === "/operatordash" ||
-                currentPath.startsWith("/operatordetail") ||
-                currentPath === "/supervisordashboard" ||
-                currentPath === "/supervisordetails"
+                currentPath.startsWith("/operatordetail")
             );
+        }
+
+        if (href === "/supervisordashboard") {
+            return currentPath === "/supervisordashboard" || currentPath === "/supervisordetails";
         }
 
         if (href === "/settings") {
@@ -164,6 +172,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return nextIsOpen;
         });
     };
+    const handleTicketsClick = () => {
+        setIsTicketsMenuOpen((isOpen) => {
+            const nextIsOpen = !isOpen;
+            if (nextIsOpen && router.asPath?.split("?")[0] !== "/operator") {
+                router.push("/operator");
+            }
+            return nextIsOpen;
+        });
+    };
 
     useEffect(() => {
         const handlePointerDown = (event) => {
@@ -189,6 +206,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         const currentPath = router.asPath?.split("?")[0] || router.pathname;
         setIsDepartmentMenuOpen(
             currentPath.startsWith("/departments/quality-control") || Boolean(routeDepartmentMap[router.pathname])
+        );
+        setIsTicketsMenuOpen(
+            currentPath === "/operator" ||
+            currentPath.startsWith("/operator/") ||
+            currentPath === "/operatordash" ||
+            currentPath.startsWith("/operatordetail") ||
+            currentPath === "/supervisordashboard" ||
+            currentPath === "/supervisordetails"
         );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
     }, [router.asPath, router.pathname]);
@@ -276,6 +301,34 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(settingsLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
                                                 {settingsLink.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        if (link.section === "tickets" && hasFullAccess) {
+                            return (
+                                <div key={link.href} className={styles["side-nav-group"]}>
+                                    <button
+                                        type="button"
+                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
+                                        aria-expanded={isTicketsMenuOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={handleTicketsClick}
+                                    >
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isTicketsMenuOpen ? styles["department-chevron-open"] : ""}`} />
+                                    </button>
+                                    <div className={`${styles["side-subnav"]} ${isTicketsMenuOpen ? styles["side-subnav-open"] : ""}`}>
+                                        {ticketingLinks.map((ticketingLink) => (
+                                            <Link
+                                                key={ticketingLink.href}
+                                                href={ticketingLink.href}
+                                                className={`${styles["side-subnav-link"]} ${isActiveLink(ticketingLink.href) ? styles["side-subnav-active"] : ""}`}
+                                            >
+                                                {ticketingLink.label}
                                             </Link>
                                         ))}
                                     </div>

@@ -17,6 +17,13 @@ body {
   background-color: #F8F8F8;
 }
 
+@media (min-width: 768px) {
+  .page {
+    padding-left: 8px;
+    box-sizing: border-box;
+  }
+}
+
 /* ===== NAVBAR ===== */
 .top-navbar {
   background: #fff;
@@ -690,20 +697,28 @@ tbody tr:hover .ticket-link {
     display: flex;
     justify-content: space-between;
     align-items: center;
-
+    gap: 10px;
+    padding: 0 12px;
   }
 
   .mobile-filter-btn {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-right: 20px;
+    margin-right: 0;
     background: #3D539F;
     color: #fff;
     border: none;
     padding: 10px 20px 10px 14px;
     font-size: 12px;
     border-radius: 6px;
+    flex-shrink: 0;
+  }
+
+  .title {
+    margin: 16px 0;
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .filter-icon {

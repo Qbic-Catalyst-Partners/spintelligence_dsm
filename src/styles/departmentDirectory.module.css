@@ -178,9 +178,13 @@
 }
 
 .dashboardMain {
+    width: 100%;
+    max-width: 100%;
+    min-height: calc(100dvh - 72px);
     grid-column: 2;
     grid-row: 2;
     padding: 24px 22px 28px;
+    box-sizing: border-box;
 }
 
 .heroPanel {
@@ -294,6 +298,38 @@
     font-weight: 600;
 }
 
+.builderWidgetNameInput {
+    border: 1px solid #ddd7d2;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #525252;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 6px 8px;
+    min-width: 220px;
+}
+
+.builderWidgetNameInput:focus {
+    outline: none;
+    border-color: #4965b7;
+}
+
+.builderMetricSelect {
+    border: 1px solid #ddd7d2;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #525252;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 6px 8px;
+    min-width: 180px;
+}
+
+.builderMetricSelect:focus {
+    outline: none;
+    border-color: #4965b7;
+}
+
 .builderToggle {
     position: relative;
     width: 28px;
@@ -371,6 +407,44 @@
 .statIcon {
     color: #4965b7;
     font-size: 14px;
+}
+
+.statTrendCard {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    gap: 8px;
+}
+
+.trendMiniChart {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 74px;
+}
+
+.trendMiniBarItem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.trendMiniBar {
+    width: 100%;
+    max-width: 10px;
+    border-radius: 999px 999px 0 0;
+    background: #4965b7;
+    min-height: 6px;
+}
+
+.trendMiniBarItem small {
+    color: #777;
+    font-size: 9px;
+    line-height: 1;
 }
 
 .insightGrid {
@@ -456,8 +530,11 @@
     height: 100%;
     display: flex;
     align-items: flex-end;
-    justify-content: space-around;
-    gap: 18px;
+    justify-content: flex-start;
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
 }
 
 .chartBarItem {
@@ -467,7 +544,9 @@
     justify-content: flex-end;
     gap: 8px;
     height: 100%;
-    width: 48px;
+    flex: 1 0 56px;
+    min-width: 56px;
+    max-width: 72px;
 }
 
 .chartBarTrack {
@@ -487,6 +566,12 @@
 .chartLabel {
     color: #666666;
     font-size: 12px;
+    width: 100%;
+    max-width: 72px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
 }
 
 .activityPanel {
@@ -511,16 +596,22 @@
 
 .activityRow {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 10px;
+    min-width: 0;
 }
 
 .activityItem strong {
     display: block;
+    flex: 1 1 auto;
+    min-width: 0;
     color: #5a5a5a;
     font-size: 14px;
     font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .activityItem span {
@@ -528,12 +619,17 @@
     margin-top: 3px;
     color: #a1a1a1;
     font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .activityItem time {
     flex-shrink: 0;
+    margin-left: auto;
     color: #6c6c6c;
     font-size: 12px;
+    white-space: nowrap;
 }
 
 .emptyState {
@@ -935,6 +1031,7 @@
     }
 
     .dashboardMain {
+        min-height: calc(100dvh - 72px);
         padding: 16px 12px 24px;
     }
 
@@ -955,6 +1052,11 @@
     .builderRow {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .builderWidgetNameInput,
+    .builderMetricSelect {
+        min-width: 100%;
     }
 
     .builderRowRight {

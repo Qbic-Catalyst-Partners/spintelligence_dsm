@@ -73,6 +73,7 @@
 .side-nav-group {
     display: flex;
     flex-direction: column;
+    gap: 4px;
 }
 
 .side-nav-link {
@@ -115,6 +116,7 @@
 }
 
 .side-nav-label {
+    font-size: 14px;
     min-width: 0;
     overflow: visible;
     text-overflow: clip;
@@ -149,7 +151,7 @@
 
 .side-subnav {
     display: none;
-    gap: 2px;
+    gap: 6px;
     padding: 4px 14px 8px 66px;
 }
 
@@ -158,13 +160,16 @@
 }
 
 .side-subnav-link {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
     min-width: 0;
     border-radius: 6px;
-    padding: 7px 10px;
+    padding: 8px 10px;
     color: #626875;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
-    line-height: 16px;
+    line-height: 20px;
     text-decoration: none;
     white-space: nowrap;
     overflow: hidden;
@@ -397,9 +402,10 @@
 .profile-dropdown {
     position: absolute;
     top: calc(100% + 10px);
-    left: 0;
+    right: 0;
     z-index: 20;
     min-width: 182px;
+    max-width: min(260px, calc(100vw - 24px));
     padding: 0;
     border: 1px solid #d9e5f5;
     border-radius: 12px;
@@ -488,8 +494,9 @@
     }
 
     .profile-dropdown {
-        left: 50%;
-        transform: translateX(-50%);
+        right: 0;
+        left: auto;
+        transform: none;
     }
 
     .profile-name,
