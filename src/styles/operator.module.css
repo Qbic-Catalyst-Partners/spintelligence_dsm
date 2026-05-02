@@ -1,10 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 
 
-:root {
-  --content-width: 1350px;
-}
-
 body {
   margin: 0;
 }
@@ -15,6 +11,9 @@ body {
   display: flex;
   flex-direction: column;
   background-color: #F8F8F8;
+  padding: 24px clamp(18px, 3vw, 40px);
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 @media (min-width: 768px) {
@@ -69,26 +68,41 @@ body {
 }
 
 /* ===== TITLE ===== */
+.mobile-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 0 13px;
+}
+
 .title {
-  width: var(--content-width);
-  margin: 16px auto 10px;
-  font-size: 28px;
+  width: auto;
+  margin: 0;
+  color: #000000;
+  font-size: 24px;
+  line-height: 24px;
   font-weight: 700;
 }
 
 /* ===== FILTERS ===== */
 .filtrs {
-  width: var(--content-width);
-  margin: 15px auto 24px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  width: 100%;
+  margin: 10px 0 16px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px;
+  background: #ffffff;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-sizing: border-box;
 }
 
 .filter {
   display: flex;
   flex-direction: column;
-  flex: 1 1 200px;
+  flex: 1 1 180px;
 }
 
 .filter label {
@@ -117,15 +131,13 @@ body {
 
 /* DATE FILTERS: display side by side like other filters */
 .sup-date-group {
-  display: flex;
-  gap: 60px;
-  flex: 1 1 auto;
-  /* take available space */
+  display: contents;
 }
 
 .sup-filter {
-  gap: 20px;
+  display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .sup-filter label {
@@ -134,7 +146,7 @@ body {
 }
 
 .sup-select {
-  width: 125%;
+  width: 100%;
   height: 36px;
   padding: 0 10px;
   font-size: 13px;
@@ -158,11 +170,12 @@ body {
 /* ===== TABLE ===== */
 .table-wrapper {
   width: 100%;
-  max-width: var(--content-width);
-  margin: 0 auto 48px;
+  max-width: 100%;
+  margin: 0 0 48px;
   border: 1px solid #cfe0ff;
   border-radius: 12px;
   background: #fff;
+  overflow-x: auto;
 }
 
 /* operator.module.css */
@@ -269,6 +282,7 @@ tbody tr:hover .ticket-link {
     display: flex !important;
     flex-direction: column !important;
     background-color: #F8F8F8 !important;
+    padding: 20px;
   }
 
   .top-navbar {
@@ -277,20 +291,21 @@ tbody tr:hover .ticket-link {
   }
 
   .title {
-    width: calc(100% - 32px);
+    width: auto;
     font-size: 22px;
-    margin: 12px auto;
+    margin: 0;
   }
 
   .filtrs {
-    width: calc(100% - 32px);
-    margin: 12px auto;
+    width: 100%;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin: 10px 0 16px;
     gap: 8px;
   }
 
   .table-wrapper {
     max-width: 100%;
-    margin: 0 auto 24px;
+    margin: 0 0 24px;
     border: 1px solid #cfe0ff;
     border-radius: 10px;
   }
@@ -349,12 +364,13 @@ tbody tr:hover .ticket-link {
   /* Adjust title for tablet */
   .title {
     font-size: 24px;
-    margin: 12px auto 8px;
+    margin: 0;
   }
 
   /* Adjust filters for tablet */
   .filtrs {
-    margin: 12px auto 20px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin: 10px 0 16px;
     gap: 8px;
   }
 
@@ -373,22 +389,22 @@ tbody tr:hover .ticket-link {
   }
 
   .sup-date-group {
-    gap: 30px;
+    display: contents;
   }
 
   .sup-filter {
-    gap: 16px;
+    min-width: 0;
   }
 
   .sup-select {
-    width: 110%;
+    width: 100%;
     height: 32px;
     font-size: 12px;
   }
 
   /* Adjust table for tablet */
   .table-wrapper {
-    margin: 0 auto 32px;
+    margin: 0 0 32px;
   }
 
   .tableWrapperTable th {
