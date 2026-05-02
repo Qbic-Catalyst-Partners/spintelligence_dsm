@@ -97,6 +97,7 @@
     background: transparent;
     cursor: pointer;
     font: inherit;
+    font-size: 14px;
     text-align: left;
 }
 
@@ -116,6 +117,7 @@
 
 .side-nav-label {
     min-width: 0;
+    font-size: 14px;
     overflow: visible;
     text-overflow: clip;
 }
@@ -162,7 +164,7 @@
     border-radius: 6px;
     padding: 7px 10px;
     color: #626875;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 16px;
     text-decoration: none;
@@ -262,7 +264,7 @@
     text-decoration: none;
     color: #1f2a44;
     font-weight: 500;
-    font-size: 13px;
+    font-size: 14px;
     white-space: nowrap;
 }
 
@@ -304,17 +306,17 @@
 
 .notification-badge {
     position: absolute;
-    top: -3px;
-    right: -4px;
-    min-width: 13px;
-    height: 13px;
+    top: -7px;
+    right: -8px;
+    min-width: 18px;
+    height: 18px;
     padding: 0 3px;
     border-radius: 999px;
     background: #dc2626;
     color: #fff;
-    font-size: 9px;
+    font-size: 14px;
     font-weight: 700;
-    line-height: 13px;
+    line-height: 18px;
     text-align: center;
 }
 
@@ -332,7 +334,7 @@
     border: none;
     background: #4056a8;
     color: #fff;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     flex-shrink: 0;
 }
@@ -363,7 +365,7 @@
 
 .profile-name {
     color: #0f172a;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     line-height: 1.1;
     overflow: hidden;
@@ -373,7 +375,7 @@
 
 .profile-id {
     color: #64748b;
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 1.1;
     overflow: hidden;
