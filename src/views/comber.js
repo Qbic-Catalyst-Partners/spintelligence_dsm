@@ -6,6 +6,7 @@ import NatiDataEntry from "./comber/natiDataEntry";
 import UPercentDataEntry from "./comber/u%dataentry";
 import styles from "./comber/ribbonLapCVDataEntry.module.css";
 import PreviewModal from "@/components/PreviewModal";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
@@ -122,6 +123,7 @@ function Comber() {
                     <div className={styles["cb-form-title"]}>
                         <MdEditNote id="car-title-icon" />
                         <h3>Inspection Data Entry</h3>
+                        <InputScreenUploadButton className="ml-auto" />
                     </div>
 
                     {!typeOptions.length ? (

@@ -114,7 +114,7 @@
 .rolepage-wrapper {
   background: #f8fafc;
   min-height: 100vh;
-  padding: 24px clamp(18px, 3vw, 40px);
+  padding: var(--management-page-padding);
   font-family: Inter, sans-serif;
   box-sizing: border-box;
 }
@@ -448,7 +448,7 @@
 @media (max-width:1024px) {
 
   .rolepage-wrapper {
-    padding: 16px 20px;
+    padding: var(--management-page-padding);
   }
 
   .rolepage-cardinfo,

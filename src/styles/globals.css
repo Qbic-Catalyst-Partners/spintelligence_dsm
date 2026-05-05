@@ -3,6 +3,15 @@
 :root {
   --background: #f8f6f6;
   --foreground: #171717;
+  --management-page-padding: 24px clamp(18px, 3vw, 40px);
+  --management-page-x-padding: clamp(18px, 3vw, 40px);
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --management-page-padding: 20px;
+    --management-page-x-padding: 20px;
+  }
 }
 
 @theme inline {

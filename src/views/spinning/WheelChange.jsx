@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import { sanitizeIntegerInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
@@ -466,6 +467,7 @@ const WheelChange = forwardRef(function WheelChange(
       <div className={styles.titleRow}>
         <InspectionEntryIcon />
         <h3 className={styles.sectionTitle}>Inspection Data Entry</h3>
+        <InputScreenUploadButton className="ml-auto" />
       </div>
 
       <div className={styles.form}>

@@ -72,12 +72,16 @@ const normalizeAccessibleScreensPayload = (payload) => {
     };
 };
 
-const getStoredJson = (key, fallbackValue) => {
-    if (typeof window === 'undefined') {
-        return fallbackValue;
-    }
+const getUserStorageId = (user) =>
+    user?.id ||
+    user?.user_id ||
+    user?.userId ||
+    user?.employee_id ||
+    user?.employeeId ||
+    '';
 
-    const rawValue = localStorage.getItem(key);
+const getStoredJson = (storage, key, fallbackValue) => {
+    const rawValue = storage.getItem(key);
     if (!rawValue) {
         return fallbackValue;
     }
@@ -89,30 +93,23 @@ const getStoredJson = (key, fallbackValue) => {
     }
 };
 
-const getUserStorageId = (user) =>
-    user?.id ||
-    user?.user_id ||
-    user?.userId ||
-    user?.employee_id ||
-    user?.employeeId ||
-    '';
-
 const persistAuthToStorage = ({ token, user, accessibleScreens, accessByDepartment }) => {
     if (typeof window === 'undefined') {
         return;
     }
 
-    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token || '');
-    localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user || null));
-    localStorage.setItem(AUTH_USER_ID_STORAGE_KEY, String(getUserStorageId(user) || ''));
-    localStorage.setItem(
+    sessionStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token || '');
+    sessionStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user || null));
+    sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, String(getUserStorageId(user) || ''));
+    sessionStorage.setItem(
         ACCESSIBLE_SCREENS_STORAGE_KEY,
         JSON.stringify(Array.isArray(accessibleScreens) ? accessibleScreens : [])
     );
-    localStorage.setItem(
+    sessionStorage.setItem(
         ACCESS_BY_DEPARTMENT_STORAGE_KEY,
         JSON.stringify(accessByDepartment || null)
     );
+    clearLegacyStoredAuth();
 };
 
 const clearLegacyStoredAuth = () => {
@@ -125,6 +122,19 @@ const clearLegacyStoredAuth = () => {
     localStorage.removeItem(ACCESS_BY_DEPARTMENT_STORAGE_KEY);
     localStorage.removeItem(AUTH_USER_STORAGE_KEY);
     localStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
+};
+
+const clearStoredAuth = () => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    clearLegacyStoredAuth();
+    sessionStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(ACCESSIBLE_SCREENS_STORAGE_KEY);
+    sessionStorage.removeItem(ACCESS_BY_DEPARTMENT_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    sessionStorage.removeItem(AUTH_USER_ID_STORAGE_KEY);
 };
 
 // Async thunk action creator for login
@@ -177,19 +187,21 @@ const authSlice = createSlice({
             state.error = null;
             state.isHydrated = true;
             setAuthToken(null);
-            clearLegacyStoredAuth();
+            clearStoredAuth();
         },
         hydrateAuthFromStorage: (state) => {
-            const storedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-            const storedUser = getStoredJson(AUTH_USER_STORAGE_KEY, null);
-            const storedAccessibleScreens = getStoredJson(ACCESSIBLE_SCREENS_STORAGE_KEY, []);
-            const storedAccessByDepartment = getStoredJson(ACCESS_BY_DEPARTMENT_STORAGE_KEY, null);
+            const storedToken = sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+            const storedUser = getStoredJson(sessionStorage, AUTH_USER_STORAGE_KEY, null);
+            const storedAccessibleScreens = getStoredJson(sessionStorage, ACCESSIBLE_SCREENS_STORAGE_KEY, []);
+            const storedAccessByDepartment = getStoredJson(sessionStorage, ACCESS_BY_DEPARTMENT_STORAGE_KEY, null);
 
             state.token = storedToken || null;
             state.user = storedUser ? normalizeUser(storedUser) : null;
             state.accessibleScreens = Array.isArray(storedAccessibleScreens) ? storedAccessibleScreens : [];
             state.accessByDepartment = storedAccessByDepartment || null;
+            state.error = null;
             setAuthToken(state.token);
+            clearLegacyStoredAuth();
             state.isHydrated = true;
         },
         clearError: (state) => {

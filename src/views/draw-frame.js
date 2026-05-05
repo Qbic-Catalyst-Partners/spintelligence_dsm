@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
@@ -572,6 +573,7 @@ function DrawFrame() {
               <div className={styles.sectionHeader}>
                 <MdOutlineEditNote className={styles.sectionIcon} />
                 <h2 className={styles.sectionTitle}>Inspection Data Entry</h2>
+                <InputScreenUploadButton className="ml-auto" />
               </div>
               <div className={styles.sectionDivider} />
 

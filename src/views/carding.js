@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import ProcessParameterDataEntry from "./carding/processParameterDataEntry";
 import SuccessModal from "@/components/SuccessModal";
@@ -106,6 +107,7 @@ function Carding() {
                         <div className={styles["card-form-title"]}>
                             <MdEditNote />
                             <h3>Inspection Data Entry</h3>
+                            <InputScreenUploadButton className="ml-auto" />
                         </div>
                     ) : null}
 

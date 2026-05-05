@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useDispatch } from "react-redux";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
 import { getMixingProcessParameterEntries } from "@/apis/mixing";
 import { clearMixingState, submitProcessParameter, updateProcessParameter } from "@/store/slices/mixing";
@@ -664,9 +665,12 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     return (
       <>
         <div className="p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <InspectionEntryIcon />
-            <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <InspectionEntryIcon />
+              <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+            </div>
+            <InputScreenUploadButton />
           </div>
           {formContent}
         </div>

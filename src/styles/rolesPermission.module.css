@@ -107,7 +107,7 @@
 }
 
 .roles-page {
-  padding: 24px clamp(18px, 3vw, 40px);
+  padding: var(--management-page-padding);
   background: #fafafa;
   min-height: 100vh;
   box-sizing: border-box;
@@ -805,7 +805,7 @@
 @media (max-width: 1024px) {
 
   .roles-page {
-    padding: 20px;
+    padding: var(--management-page-padding);
   }
 
   /* Stats stack 2 per row */

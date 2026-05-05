@@ -7,8 +7,10 @@ import {
   submitTicketFix,
 } from "@/store/slices/operatorSlice";
 import {
+  formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  getTicketParameterNames,
   getTicketValueForParameter,
 } from "@/utils/ticketTransformer";
 
@@ -44,6 +46,10 @@ export default function TicketDetails() {
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
 
+  const normalizedRequestedTicketId = normalizeTicketId(ticketId);
+  const ticketDetailMatches =
+    ticket && normalizeTicketId(ticket.ticket_id) === normalizedRequestedTicketId;
+
   const dashboardTicket = useMemo(() => {
     if (!ticketId) return null;
 
@@ -52,17 +58,17 @@ export default function TicketDetails() {
     ) || null;
   }, [ticketId, tickets]);
 
-  const resolvedTicket = dashboardTicket || ticket;
+  const resolvedTicket = dashboardTicket || (ticketDetailMatches ? ticket : null);
 
   useEffect(() => {
     if (
       ticketId &&
       !dashboardTicket &&
-      normalizeTicketId(ticket?.ticket_id) !== normalizeTicketId(ticketId)
+      !ticketDetailMatches
     ) {
       dispatch(fetchOperatorTicketById(ticketId));
     }
-  }, [dashboardTicket, dispatch, ticket?.ticket_id, ticketId]);
+  }, [dashboardTicket, dispatch, ticketDetailMatches, ticketId]);
 
   const handleSubmit = () => {
     if (!comment.trim()) return alert("Enter comment");
@@ -94,7 +100,7 @@ export default function TicketDetails() {
 
   
   const parameterMap =
-    resolvedTicket?.parameter_name?.map((param) => ({
+    getTicketParameterNames(resolvedTicket).map((param) => ({
       name: param,
       actual: getTicketValueForParameter(resolvedTicket?.actual_value, param),
       standard: formatStandardValue(
@@ -103,12 +109,13 @@ export default function TicketDetails() {
       threshold: formatThresholdValue(
         getTicketValueForParameter(resolvedTicket?.threshold_value, param)
       ),
-    })) || [];
+    }));
 
   const visibleRows = expanded ? parameterMap : parameterMap.slice(0, 1);
   const mobileParameterRows = expanded ? parameterMap : parameterMap.slice(0, 3);
   const statusClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.status)] || "" : "";
   const severityClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.severity)] || "" : "";
+  const displayTicketId = formatTicketIdForDisplay(resolvedTicket?.ticket_id || ticketId);
 
   const timelineItems = [
     {
@@ -158,7 +165,7 @@ export default function TicketDetails() {
             Tickets
           </span>
           <span className={styles["breadcrumb-separator"]}>&gt;</span>
-          <span className={styles["breadcrumb-current"]}>{resolvedTicket.ticket_id}</span>
+          <span className={styles["breadcrumb-current"]}>{displayTicketId}</span>
         </div>
 
         <section className={styles["mobile-ticket-summary"]}>
@@ -172,7 +179,7 @@ export default function TicketDetails() {
               >
                 <HiChevronLeft />
               </button>
-              <h1 className={styles["mobile-ticket-id"]}>{resolvedTicket.ticket_id}</h1>
+              <h1 className={styles["mobile-ticket-id"]}>{displayTicketId}</h1>
             </div>
             <span className={`${styles["severity-badge"]} ${severityClassName}`}>
               Severity: {resolvedTicket.severity}
@@ -237,7 +244,7 @@ export default function TicketDetails() {
           <div className={styles["ticket-header"]}>
             <div className={styles["ticket-title-wrap"]}>
               <div className={styles["ticket-heading-row"]}>
-                <h1 className={styles["ticket-id"]}>{resolvedTicket.ticket_id}</h1>
+                <h1 className={styles["ticket-id"]}>{displayTicketId}</h1>
                 <span className={`${styles["status-badge"]} ${statusClassName}`}>
                   {resolvedTicket.status}
                 </span>

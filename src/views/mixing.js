@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
 import FibreDataEntry from "./mixing/fibreDataEntry";
 import CustomInput from "@/components/CustomInput";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import AfisDataEntry from "./mixing/afisDataEntry";
 import MoistureDataEntry from "./mixing/moistureDataEntry";
 import OpennessDataEntry from "./mixing/opennessDataEntry";
@@ -170,9 +171,12 @@ function Mixing() {
                 <div className="bg-white rounded-xl border border-slate-200">
                     {!isProcessParameter ? (
                         <div className="p-5">
-                            <div className="flex items-center gap-2 mb-4">
-                                <span className="text-[#3d539f] text-xl leading-none">&#8801;&#9998;</span>
-                                <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+                            <div className="flex items-center justify-between gap-3 mb-4">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[#3d539f] text-xl leading-none">&#8801;&#9998;</span>
+                                    <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+                                </div>
+                                <InputScreenUploadButton />
                             </div>
 
                             <div className="flex flex-col gap-4">

@@ -119,6 +119,7 @@
     background: #f8fafc;
     min-height: 100vh;
     font-family: Inter, sans-serif;
+    padding: var(--management-page-padding);
     box-sizing: border-box;
 }
 
@@ -169,9 +170,9 @@
 
 
 .edit-content-wrapper {
-    width: min(976px, calc(100% - 48px));
+    width: min(976px, 100%);
     margin: 0 auto;
-    padding: 24px 0;
+    padding: 0 0 24px;
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -437,7 +438,7 @@
 
     /* PAGE */
     .edit-page-container {
-        padding: 0;
+        padding: var(--management-page-padding);
     }
 
     /* HEADER */
@@ -456,8 +457,8 @@
 
     /* CONTENT WRAPPER */
     .edit-content-wrapper {
-        width: min(960px, calc(100% - 40px));
-        padding: 24px 0;
+        width: min(960px, 100%);
+        padding: 0 0 24px;
     }
 
     /* CARDS */

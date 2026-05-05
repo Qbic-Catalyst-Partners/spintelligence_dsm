@@ -183,7 +183,8 @@
     min-height: calc(100dvh - 72px);
     grid-column: 2;
     grid-row: 2;
-    padding: 24px 22px 28px;
+    padding: var(--management-page-padding);
+    padding-bottom: 28px;
     box-sizing: border-box;
 }
 

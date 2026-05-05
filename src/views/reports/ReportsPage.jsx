@@ -1297,14 +1297,14 @@ function ReportsPage() {
             </div>
 
             <div className={styles.sendToBlock}>
-              <span>Sent To</span>
+              <span>Send To</span>
               <label>
                 <input
                   type="checkbox"
                   checked={sendToMe}
                   onChange={(event) => setSendToMe(event.target.checked)}
                 />
-                <span>Sent to me (gmail.com)</span>
+                <span>Send to me</span>
               </label>
               <label>
                 <input
@@ -1312,7 +1312,7 @@ function ReportsPage() {
                   checked={sendToCustomer}
                   onChange={(event) => setSendToCustomer(event.target.checked)}
                 />
-                <span>Send to customer contacts (select a customer first)</span>
+                <span>Send to others</span>
               </label>
             </div>
 

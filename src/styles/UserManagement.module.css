@@ -62,7 +62,7 @@
 }
 /* ================= MAIN ================= */
 .wrapper {
-  padding: 24px clamp(18px, 3vw, 30px);
+  padding: var(--management-page-padding);
   box-sizing: border-box;
   min-width: 0;
 }

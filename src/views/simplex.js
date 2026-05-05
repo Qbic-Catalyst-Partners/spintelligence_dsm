@@ -4,6 +4,7 @@ import { MdOutlineEditNote } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "@/views/simplex/processParameterDataEntry";
@@ -110,11 +111,14 @@ function Simplex() {
           <div className="p-5">
             {selectedTypeName !== "Process Parameter" ? (
               <>
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-[#3d539f] text-xl leading-none">
-                    <MdOutlineEditNote />
-                  </span>
-                  <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[#3d539f] text-xl leading-none">
+                      <MdOutlineEditNote />
+                    </span>
+                    <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+                  </div>
+                  <InputScreenUploadButton />
                 </div>
                 <div className="mb-6 h-px bg-slate-100" />
               </>

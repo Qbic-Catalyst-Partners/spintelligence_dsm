@@ -3,6 +3,8 @@
   min-height: 100vh;
   font-family: "Inter", "Segoe UI", Arial, sans-serif;
   color: #1f2937;
+  padding: var(--management-page-padding);
+  box-sizing: border-box;
 }
 
 /* NAVBAR */
@@ -45,7 +47,7 @@
 
 /* BREADCRUMB */
 .breadcrumb {
-  padding: 16px 30px;
+  padding: 16px 0;
   font-size: 14px;
   color: #6b7280;
   
@@ -66,7 +68,7 @@
 /* CARD */
 .card {
   background: #ffffff;
-  margin: 18px 30px;
+  margin: 18px 0;
   padding: 20px;
   border-radius: 12px;
   box-shadow: 0 0 20px rgba(15, 23, 42, 0.05);
@@ -663,8 +665,8 @@ background: #CA0000;
   /* TABLE */
   .tableHeader {
     display: grid;
-    grid-template-columns: minmax(120px, 1.5fr) minmax(72px, 1fr) minmax(88px, 1fr);
-    column-gap: 12px;
+    grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(58px, 0.75fr));
+    column-gap: 8px;
     align-items: center;
     font-size: 12px;
     font-weight: 700;
@@ -675,8 +677,8 @@ background: #CA0000;
 
   .tableRow {
     display: grid;
-    grid-template-columns: minmax(120px, 1.5fr) minmax(72px, 1fr) minmax(88px, 1fr);
-    column-gap: 12px;
+    grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(58px, 0.75fr));
+    column-gap: 8px;
     align-items: center;
     font-size: 12px;
     padding: 6px 0;
