@@ -1,5 +1,18 @@
 import apiConfig, { resolvedBaseUrl } from "./apiConfig";
 
+const getTicketIdCandidates = (ticketId) => {
+  const id = String(ticketId || "").trim();
+  const withoutHash = id.replace(/^#/, "");
+  const withHash = withoutHash ? `#${withoutHash}` : "";
+
+  return Array.from(new Set([withoutHash, withHash].filter(Boolean)));
+};
+
+const getApiErrorMessage = (error, fallbackMessage) =>
+  error?.response?.data?.message ||
+  error?.response?.data?.error ||
+  fallbackMessage;
+
 // GET Operator Tickets
 export const getOperatorTickets = async (params = {}) => {
   try {
@@ -20,20 +33,33 @@ export const getOperatorTickets = async (params = {}) => {
 
 // GET single ticket details
 export const getOperatorTicketById = async (ticketId) => {
-  try {
-    const response = await apiConfig.get(`/operator-tickets/${encodeURIComponent(ticketId)}`);
-    return response.data;
-  } catch (error) {
-    if (error.response && error.response.data) {
-      throw new Error(error.response.data.message || "Failed to fetch ticket details.");
-    }
-    if (error.request) {
-      throw new Error(
-        `Network Error: unable to reach ${resolvedBaseUrl}/operator-tickets/${encodeURIComponent(ticketId)}. Check NEXT_PUBLIC_API_URL and backend availability.`
+  const candidates = getTicketIdCandidates(ticketId);
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    try {
+      const response = await apiConfig.get(
+        `/operator-tickets/${encodeURIComponent(candidate)}`,
+        {},
+        { skipGlobalErrorModal: true }
       );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+
+      if (!error.response || ![400, 404].includes(error.response.status)) {
+        break;
+      }
     }
-    throw new Error(error.message || "Server error occurred");
   }
+
+  if (lastError?.request && !lastError?.response) {
+    throw new Error(
+      `Network Error: unable to reach ${resolvedBaseUrl}/operator-tickets/${encodeURIComponent(String(ticketId || ""))}. Check NEXT_PUBLIC_API_URL and backend availability.`
+    );
+  }
+
+  throw new Error(getApiErrorMessage(lastError, "Failed to fetch ticket details."));
 };
 
 export const createOperatorTicket = async (payload) => {

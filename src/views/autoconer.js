@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import ConePackingAudit from "@/views/autoconer/ConePackingAudit";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
@@ -140,6 +141,7 @@ function Autoconer() {
             <div className={styles.formTitle}>
               <MdOutlineEditNote />
               <h3>Inspection Data Entry</h3>
+              <InputScreenUploadButton className="ml-auto" />
             </div>
 
             {SelectedComponent ? (

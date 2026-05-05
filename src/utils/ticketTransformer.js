@@ -1,8 +1,56 @@
 export const getTicketParameterKey = (parameterName) =>
   String(parameterName || "").toLowerCase().trim();
 
+export const formatTicketIdForDisplay = (ticketId) => {
+  const rawId = String(ticketId || "").trim();
+  if (!rawId) return "-";
+
+  const normalizedId = rawId.replace(/^#/, "");
+  const numericPart = normalizedId.match(/\d+$/)?.[0];
+
+  if (!numericPart) {
+    return rawId.startsWith("#") ? rawId : `#${rawId}`;
+  }
+
+  return `#TK-${numericPart.padStart(4, "0")}`;
+};
+
+const toParameterList = (value) => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+
+  return [];
+};
+
+export const getTicketParameterNames = (ticket) => {
+  const fromParameterName = toParameterList(ticket?.parameter_name);
+  const fromActualValue =
+    ticket?.actual_value && typeof ticket.actual_value === "object" && !Array.isArray(ticket.actual_value)
+      ? Object.keys(ticket.actual_value)
+      : [];
+
+  const seen = new Set();
+  return [...fromParameterName, ...fromActualValue].filter((name) => {
+    const normalized = getTicketParameterKey(name);
+    if (!normalized || seen.has(normalized)) {
+      return false;
+    }
+    seen.add(normalized);
+    return true;
+  });
+};
+
 export const getTicketValueForParameter = (source, parameterName) => {
   if (!source || !parameterName) return "-";
+
+  if (typeof source !== "object" || Array.isArray(source)) {
+    return source;
+  }
 
   const directMatch = source[parameterName];
   if (directMatch !== undefined && directMatch !== null) {
@@ -47,7 +95,8 @@ export const formatStandardValue = (value) => {
 
 export const transformTicket = (ticket) => {
   const createdDate = new Date(ticket.created_at);
-  const parameter = ticket.parameter_name?.[0] || "-";
+  const parameterNames = getTicketParameterNames(ticket);
+  const parameter = parameterNames[0] || "-";
   const actual = getTicketValueForParameter(ticket.actual_value, parameter);
   const thresholdSource = getTicketValueForParameter(ticket.threshold_value, parameter);
   const threshold = formatThresholdValue(thresholdSource);
@@ -63,7 +112,7 @@ export const transformTicket = (ticket) => {
     machine_name: ticket.machine_name,
 
     parameter,
-    parameter_name: ticket.parameter_name,
+    parameter_name: parameterNames,
 
     actual,
     standard,

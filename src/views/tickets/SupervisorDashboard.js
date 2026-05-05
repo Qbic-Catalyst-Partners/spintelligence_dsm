@@ -176,7 +176,7 @@ export default function SupervisorDashboard() {
 
           <div className={styles["sup-date-group"]}>
             <div className={styles["sup-filter"]}>
-              <label>Date Range</label>
+              <label>Start Date</label>
               <input
                 type="date"
                 className={styles["sup-select"]}
@@ -185,7 +185,7 @@ export default function SupervisorDashboard() {
               />
             </div>
             <div className={styles["sup-filter"]}>
-              <label>&nbsp;</label>
+              <label>End Date</label>
               <input
                 type="date"
                 className={styles["sup-select"]}
@@ -274,6 +274,12 @@ export default function SupervisorDashboard() {
             <div className={styles["sup-pagination"]}>
               <button
                 disabled={page === 1}
+                onClick={() => setPage(1)}
+              >
+                &lt;&lt;
+              </button>
+              <button
+                disabled={page === 1}
                 onClick={() => setPage(page - 1)}
               >
                 â€¹
@@ -292,6 +298,12 @@ export default function SupervisorDashboard() {
                 onClick={() => setPage(page + 1)}
               >
                 â€º
+              </button>
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage(totalPages)}
+              >
+                &gt;&gt;
               </button>
             </div>
           </div>

@@ -335,9 +335,9 @@ export default function operatorboard() {
 /* FILTER COMPONENT */
 function Filter({ label, value, onChange, options }) {
     return (
-        <div className={styles.filter}>
+        <div className={styles["sup-filter"]}>
             <label>{label}</label>
-            <select className={styles.select} value={value} onChange={(e) => onChange(e.target.value)}>
+            <select className={styles["sup-select"]} value={value} onChange={(e) => onChange(e.target.value)}>
                 {options.map(opt => <option key={opt}>{opt}</option>)}
             </select>
         </div>

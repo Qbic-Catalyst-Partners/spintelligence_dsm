@@ -1,6 +1,6 @@
 .page {
   min-height: 100vh;
-  padding: 24px;
+  padding: var(--management-page-padding);
   background: #f6f8fc;
   box-sizing: border-box;
   overflow-x: hidden;

@@ -39,7 +39,8 @@
 }
 
 .container {
-  padding: 14px 14px 32px;
+  padding: var(--management-page-padding);
+  padding-bottom: 32px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -746,8 +747,8 @@
   .mobile-parameter-head,
   .mobile-parameter-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 72px 72px;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1.25fr) repeat(3, minmax(58px, 0.75fr));
+    gap: 8px;
     align-items: center;
   }
 

@@ -103,6 +103,13 @@ function AppShell({ Component, pageProps }) {
       return;
     }
 
+    if (!token) {
+      if (!isHomeFlow) {
+        router.replace("/");
+      }
+      return;
+    }
+
     if (token && isAdminFlow && !canAccessManagementFlow) {
       router.replace("/");
       return;
@@ -111,7 +118,7 @@ function AppShell({ Component, pageProps }) {
     if (token && !isAdminFlow && !hasRouteAccess(router.pathname, accessByDepartment, user)) {
       router.replace("/");
     }
-  }, [accessByDepartment, canAccessManagementFlow, isAdminFlow, isHydrated, router, token, user]);
+  }, [accessByDepartment, canAccessManagementFlow, isAdminFlow, isHomeFlow, isHydrated, router, token, user]);
 
   return (
     <>

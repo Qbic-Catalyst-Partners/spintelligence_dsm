@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
 import {
   getSpinningProcessParameterEntries,
@@ -595,9 +596,12 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     return (
       <>
         <div className="p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <InspectionEntryIcon />
-            <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <InspectionEntryIcon />
+              <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+            </div>
+            <InputScreenUploadButton />
           </div>
           {formContent}
         </div>

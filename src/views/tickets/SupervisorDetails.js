@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { IoTime, IoChevronBackSharp } from "react-icons/io5";
 import styles from "../../styles/SupervisorDetails.module.css";
@@ -6,12 +6,16 @@ import Link from "next/link";
 import { useDispatch, useSelector } from "react-redux";
 import {
   approveTicket,
+  fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
 import {
+  formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  getTicketParameterNames,
   getTicketValueForParameter,
+  transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
 
 const formatDateTime = (dateString) => {
@@ -55,34 +59,42 @@ export default function SupervisorDetails() {
   const { ticketId } = router.query;
 
   const dispatch = useDispatch();
-  const { actionLoading } = useSelector((state) => state.supervisor);
+  const { actionLoading, ticket: ticketDetail, tickets, isLoading, error } = useSelector((state) => state.supervisor);
 
-  const [ticket, setTicket] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
 
+  const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
+  const requestedTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
+  const normalizedRequestedTicketId = normalizeTicketId(requestedTicketId);
+
+  const dashboardTicket = useMemo(() => {
+    if (!requestedTicketId || !Array.isArray(tickets)) return null;
+
+    return tickets.find(
+      (item) => normalizeTicketId(item?.ticket_id || item?.id) === normalizeTicketId(requestedTicketId)
+    ) || null;
+  }, [requestedTicketId, tickets]);
+
+  const ticket = useMemo(() => {
+    const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
+    const detailMatches =
+      detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
+    const source = detailMatches ? detailSource : dashboardTicket;
+    return source ? transformTicketWithDescription(source) : null;
+  }, [dashboardTicket, normalizedRequestedTicketId, ticketDetail]);
+
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || !requestedTicketId) return;
 
-    const fetchTicket = async () => {
-      const id = Array.isArray(ticketId) ? ticketId[0] : ticketId;
-      const formattedId = id?.startsWith("#") ? id : `#${id}`;
-      const encodedId = encodeURIComponent(formattedId);
-
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/operator-tickets/${encodedId}`
-        );
-        const data = await res.json();
-        setTicket(data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    if (ticketId) fetchTicket();
-  }, [router.isReady, ticketId]);
+    if (
+      !dashboardTicket &&
+      normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
+    ) {
+      dispatch(fetchTicketDetails(requestedTicketId));
+    }
+  }, [dashboardTicket, dispatch, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   const handleApprove = async () => {
     try {
@@ -112,10 +124,13 @@ export default function SupervisorDetails() {
     }
   };
 
-  if (!ticket) return <p className={styles.loading}>Loading...</p>;
+  if (isLoading && !ticket) return <p className={styles.loading}>Loading...</p>;
+  if (error && !ticket) return <p className={styles.loading}>{error}</p>;
+  if (!ticket) return <p className={styles.loading}>No ticket found</p>;
 
-  const keys = Object.keys(ticket.actual_value || {});
-  const visibleKeys = expanded ? keys : keys.slice(0, 1);
+  const parameterNames = getTicketParameterNames(ticket);
+  const visibleParameterNames = expanded ? parameterNames : parameterNames.slice(0, 1);
+  const displayTicketId = formatTicketIdForDisplay(ticket.ticket_id || requestedTicketId);
 
   return (
     <div>
@@ -125,14 +140,14 @@ export default function SupervisorDetails() {
         <div className={styles.breadcrumb}>
           <Link href="/supervisordashboard">Tickets</Link> &gt;{" "}
           <span className={styles.current}>
-            Review Ticket {ticket.ticket_id}
+            Review Ticket {displayTicketId}
           </span>
         </div>
 
         <div className={styles.card}>
           <div className={styles.cardTop}>
             <div>
-              <h2>{ticket.ticket_id}</h2>
+              <h2>{displayTicketId}</h2>
 
               <div className={styles.badges}>
                 <span
@@ -188,7 +203,7 @@ export default function SupervisorDetails() {
             </thead>
 
             <tbody>
-              {visibleKeys.map((key, i) => (
+              {visibleParameterNames.map((key, i) => (
                 <tr key={i}>
                   <td>{ticket.machine_name}</td>
                   <td>{key.toUpperCase()}</td>
@@ -211,7 +226,7 @@ export default function SupervisorDetails() {
             </tbody>
           </table>
 
-          {keys.length > 1 && (
+          {parameterNames.length > 1 && (
             <div
               className={styles.dots}
               onClick={() => setExpanded(!expanded)}
@@ -231,7 +246,7 @@ export default function SupervisorDetails() {
 
               <p className={styles.modalDesc}>
                 You are about to reject the resolution for Ticket{" "}
-                <b>{ticket.ticket_id}</b>. This action will notify the technician
+                <b>{displayTicketId}</b>. This action will notify the technician
                 and reopen the ticket for further action.
               </p>
 
@@ -317,7 +332,7 @@ export default function SupervisorDetails() {
             </span>
 
             <div>
-              <strong>{ticket.ticket_id}</strong>
+              <strong>{displayTicketId}</strong>
               <span className={styles.status}>Status: {ticket.status}</span>
             </div>
           </div>
@@ -352,7 +367,7 @@ export default function SupervisorDetails() {
             <span>THRESHOLD</span>
           </div>
 
-          {visibleKeys.map((key, i) => (
+          {visibleParameterNames.map((key, i) => (
             <div className={styles.tableRow} key={i}>
               <span>{key.replace("_", " ")}</span>
               <span className={styles.actual}>
@@ -371,7 +386,7 @@ export default function SupervisorDetails() {
             </div>
           ))}
 
-          {keys.length > 1 && (
+          {parameterNames.length > 1 && (
             <div
               className={styles.dots}
               onClick={() => setExpanded(!expanded)}
@@ -459,7 +474,7 @@ export default function SupervisorDetails() {
 
               <p className={styles.modalDesc}>
                 You are about to reject the resolution for Ticket{" "}
-                <b>{ticket.ticket_id}</b>. This action will notify the technician
+                <b>{displayTicketId}</b>. This action will notify the technician
                 and reopen the ticket for further action.
               </p>
 

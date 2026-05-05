@@ -12,7 +12,7 @@
 }
 
 .sup-content {
-  padding: 28px 100px;
+  padding: var(--management-page-padding);
 }
 
 /* ===== TOP NAVBAR ===== */
@@ -74,7 +74,7 @@
 
 .sup-content {
   padding-bottom: 60px;
-  padding-right: 100px;
+  padding-right: var(--management-page-x-padding);
 }
 
 .sup-title {
@@ -88,29 +88,21 @@
   width: var(--content-width);
   max-width: 100%;
   margin: 15px auto 24px;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
-  flex-wrap: wrap;
   align-items: flex-end;
+  box-sizing: border-box;
 }
 
 .sup-filter {
   display: flex;
   flex-direction: column;
-  flex: 1 1 200px;
-  min-width: 200px;
+  min-width: 0;
 }
 
 .sup-date-group {
-  display: flex;
-  gap: 10px;
-  flex: 1 1 440px;
-  min-width: 440px;
-}
-
-.sup-date-group .sup-filter {
-  flex: 1;
-  min-width: 200px;
+  display: contents;
 }
 
 
@@ -230,6 +222,49 @@ tbody tr:hover .sup-ticket-link {
 .sup-pagination .active {
   background: #3d539f;
   color: #ffffff;
+}
+
+.sup-pagination button:first-child,
+.sup-pagination button:nth-child(2),
+.sup-pagination button:nth-last-child(2),
+.sup-pagination button:last-child {
+  font-size: 0;
+}
+
+.sup-pagination button:first-child::before,
+.sup-pagination button:nth-child(2)::before,
+.sup-pagination button:nth-last-child(2)::before,
+.sup-pagination button:last-child::before {
+  font-size: 14px;
+}
+
+.sup-pagination button:first-child::before {
+  content: "<<";
+}
+
+.sup-pagination button:nth-child(2)::before {
+  content: "<";
+}
+
+.sup-pagination button:nth-last-child(2)::before {
+  content: ">";
+}
+
+.sup-pagination button:last-child::before {
+  content: ">>";
+}
+
+@media (min-width: 677px) {
+  .sup-table-footer {
+    padding: 12px 20px;
+    font-size: 13px;
+  }
+
+  .sup-pagination button {
+    width: 32px;
+    height: 32px;
+    margin-left: 4px;
+  }
 }
 
 
@@ -436,7 +471,7 @@ tbody tr:hover .sup-ticket-link {
   }
 
   .sup-content {
-    padding-right: 0;
+    padding-right: var(--management-page-x-padding);
   }
 
   /* ================= MOBILE HEADER (Title + Filter) ================= */

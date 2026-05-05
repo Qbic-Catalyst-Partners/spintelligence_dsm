@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "r
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
 import {
   fetchSimplexProcessParameterEntries,
@@ -498,9 +499,12 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   return (
     <>
       <div className="p-0">
-        <div className="flex items-center gap-2 mb-4">
-          <InspectionEntryIcon />
-          <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <InspectionEntryIcon />
+            <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+          </div>
+          <InputScreenUploadButton />
         </div>
 
         <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4">

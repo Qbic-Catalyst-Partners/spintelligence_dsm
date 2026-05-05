@@ -5,6 +5,7 @@ import { AiOutlineAudio } from "react-icons/ai";
 import Image from "next/image";
 
 import Footer from "../components/Footer";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
@@ -578,6 +579,7 @@ function SpinningDepartment() {
                     <div className={styles["title-row"]}>
                         <InspectionEntryIcon />
                         <h3 className={styles.sectiontitle}>Inspection Data Entry</h3>
+                        <InputScreenUploadButton className="ml-auto" />
                     </div>
 
                     <div className={styles["sp-form"]}>

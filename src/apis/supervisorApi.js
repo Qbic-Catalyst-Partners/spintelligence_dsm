@@ -1,4 +1,10 @@
 import apiConfig from "./apiConfig";
+import { getOperatorTicketById } from "./operatorApi";
+
+const formatTicketId = (ticketId) => {
+  const id = String(ticketId || "").trim();
+  return id.startsWith("#") ? id : `#${id}`;
+};
 
 // ✅ FETCH ALL SUPERVISOR TICKETS
 export const fetchSupervisorTicketsApi = async () => {
@@ -18,27 +24,16 @@ export const fetchSupervisorTicketsApi = async () => {
 // ✅ FETCH SINGLE TICKET DETAILS
 export const fetchTicketDetailsApi = async (ticketId) => {
   try {
-    const encodeId = encodeURIComponent(`#${ticketId}`);
-
-    const response = await apiConfig.get(
-      `/operator-tickets/${encodeId}`
-    );
-
-    return response.data;
+    return await getOperatorTicketById(ticketId);
   } catch (error) {
-    if (error.response && error.response.data) {
-      throw new Error(
-        error.response.data.message || "Failed to fetch ticket details"
-      );
-    }
-    throw new Error(error.message || "Server error occurred");
+    throw new Error(error.message || "Failed to fetch ticket details");
   }
 };
 
 // ✅ APPROVE TICKET
 export const approveTicketApi = async (ticketId) => {
   try {
-    const encodeId = encodeURIComponent(`#${ticketId}`);
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
 
     const response = await apiConfig.patch(
       `/api/supervisor-tickets/tickets/approve?ticketId=${encodeId}`,
@@ -61,7 +56,7 @@ export const approveTicketApi = async (ticketId) => {
 // ✅ REJECT TICKET
 export const rejectTicketApi = async (ticketId, reason) => {
   try {
-    const encodeId = encodeURIComponent(`#${ticketId}`);
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
 
     const response = await apiConfig.patch(
       `/api/supervisor-tickets/tickets/reject?ticketId=${encodeId}`,

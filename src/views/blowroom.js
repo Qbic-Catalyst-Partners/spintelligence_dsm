@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import { MdOutlineEditNote } from "react-icons/md";
 import CustomInput from "@/components/CustomInput";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import Footer from "@/components/Footer";
 import BlowRoomSync from "./blowroom/BlowRoomSync";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
@@ -133,14 +134,15 @@ function BlowRoom() {
 
         <div className="bg-white rounded-xl border border-slate-200">
           <div className="p-5">
-            {!isProcessParameterType ? (
-              <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2 min-w-0">
                 <span className="text-[#3d539f] text-xl leading-none">
                   <MdOutlineEditNote />
                 </span>
                 <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
               </div>
-            ) : null}
+              <InputScreenUploadButton />
+            </div>
 
             <div className="flex flex-col gap-4">
               {!isSyncType && !isDropTestType && !isProcessParameterType && (

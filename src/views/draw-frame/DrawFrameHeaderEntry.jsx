@@ -5,6 +5,7 @@ import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -656,6 +657,7 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
           <div className={styles.sectionHeader}>
             <MdOutlineEditNote className={styles.sectionIcon} />
             <h2 className={styles.sectionTitle}>Inspection Data Entry</h2>
+            <InputScreenUploadButton className="ml-auto" />
           </div>
           <div className={styles.sectionDivider} />
 
