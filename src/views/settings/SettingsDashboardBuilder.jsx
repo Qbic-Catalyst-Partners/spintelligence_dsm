@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { FiGrid, FiPlus, FiServer, FiTrash2 } from "react-icons/fi";
 
@@ -10,8 +10,6 @@ import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import {
     DASHBOARD_CHART_TYPES,
     FIELD_WIDGET_TYPE,
-    readStoredDashboardWidgets,
-    writeStoredDashboardWidgets,
 } from "@/utils/dashboardWidgets";
 import styles from "@/styles/departmentDirectory.module.css";
 
@@ -20,30 +18,28 @@ const BUILDER_SECTIONS = {
     performance: "performance",
 };
 
-const initialWidgets = Array.from({ length: 7 }, (_, index) => ({
-    id: `widget-${index + 1}`,
-    name: "SCI",
-    enabled: true,
-    order: index + 1,
-    metric_key: "today_submissions",
-    department: "Quality Control",
-    sub_department: "Mixing",
-    screen_name: "Cotton HVI Data Entry",
-    field_name: "SCI",
-    chart_type: index < 3 ? "value" : "line",
-    builder_section: index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance,
-}));
-const builderRoles = ["Operator", "Supervisor", "Admin"];
-const builderUsers = ["John Doe", "Hency Belix", "Aravinth"];
 const builderVisualizationOptions = [
     { key: "value", label: "Average Value Card", section: BUILDER_SECTIONS.average },
     { key: "line", label: "Performance Trends", section: BUILDER_SECTIONS.performance },
 ];
 const TICKET_TREND_SELECT_KEY = "tickets_trend";
 const TICKET_TREND_ID_PREFIX = "ticket-trend-";
+const chartTypeToVisualizationType = (chartType) => {
+    if (chartType === "value" || chartType === "average") return "average_value_card";
+    if (chartType === "area" || chartType === "timeline") return "area_chart";
+    if (chartType === "bar") return "bar_chart";
+    return "line_chart";
+};
+
+const visualizationTypeToChartType = (visualizationType) => {
+    if (visualizationType === "average_value_card") return "value";
+    if (visualizationType === "area_chart") return "timeline";
+    if (visualizationType === "bar_chart") return "line";
+    return "line";
+};
 
 function SettingsDashboardBuilder() {
-    const [widgets, setWidgets] = useState(initialWidgets);
+    const [widgets, setWidgets] = useState([]);
     const [metricOptions, setMetricOptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -53,9 +49,14 @@ function SettingsDashboardBuilder() {
     const [selectedScreenName, setSelectedScreenName] = useState("Cotton HVI Data Entry");
     const [selectedFieldName, setSelectedFieldName] = useState("SCI");
     const [selectedChartType, setSelectedChartType] = useState("value");
-    const [selectedRole, setSelectedRole] = useState("Operator");
-    const [selectedBuilderUser, setSelectedBuilderUser] = useState("John Doe");
+    const [selectedRole, setSelectedRole] = useState("");
+    const [selectedBuilderUser, setSelectedBuilderUser] = useState("");
+    const [builderRoles, setBuilderRoles] = useState([]);
+    const [builderUsers, setBuilderUsers] = useState([]);
     const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
+    const hasLoadedWidgetsRef = useRef(false);
+    const autosaveTimerRef = useRef(null);
+    const lastSavedSnapshotRef = useRef("");
 
     const authUser = useSelector((state) => state.auth?.user);
     const dashboardOwnerUserId = useMemo(
@@ -105,14 +106,16 @@ function SettingsDashboardBuilder() {
             order: Number.isInteger(widget?.order) ? widget.order : index + 1,
             metric_key: widget?.metric_key || "today_submissions",
             widget_type: widget?.widget_type || "metric",
-            chart_type: widget?.chart_type || "value",
+            chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
             department: widget?.department || "Quality Control",
             sub_department: widget?.sub_department || "Mixing",
-            screen_name: widget?.screen_name || "Cotton HVI Data Entry",
-            field_name: widget?.field_name || "SCI",
+            screen_name: widget?.screen_name || widget?.input_screen || "Cotton HVI Data Entry",
+            field_name: widget?.field_name || widget?.input_field || "SCI",
             builder_section:
                 widget?.builder_section ||
-                (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance),
+                ((widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type)) === "value"
+                    ? BUILDER_SECTIONS.average
+                    : BUILDER_SECTIONS.performance),
         }));
 
     const getMetricSelectValue = (widget) => {
@@ -120,6 +123,24 @@ function SettingsDashboardBuilder() {
             return TICKET_TREND_SELECT_KEY;
         }
         return widget?.metric_key || "today_submissions";
+    };
+
+    const getWithBuilderFallback = async (path, params = {}) => {
+        try {
+            return await apiConfig.get(`/api/dashboard/builder/${path}`, params, { skipGlobalErrorModal: true });
+        } catch (error) {
+            if (error?.response?.status !== 404) throw error;
+            return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, { skipGlobalErrorModal: true });
+        }
+    };
+
+    const postWithBuilderFallback = async (path, payload = {}) => {
+        try {
+            return await apiConfig.post(`/api/dashboard/builder/${path}`, payload, { skipGlobalErrorModal: true });
+        } catch (error) {
+            if (error?.response?.status !== 404) throw error;
+            return apiConfig.post(`/api/dashboard/dashbuilder/${path}`, payload, { skipGlobalErrorModal: true });
+        }
     };
 
     useEffect(() => {
@@ -136,20 +157,17 @@ function SettingsDashboardBuilder() {
 
             try {
                 setLoading(true);
-                const response = await apiConfig.get("/api/dashboard/widgets", { userId: dashboardOwnerUserId });
+                const response = await getWithBuilderFallback(`widgets/${dashboardOwnerUserId}`);
                 if (!isMounted) return;
                 const apiWidgets = normalizeWidgets(response?.data?.widgets);
-                const storedWidgets = normalizeWidgets(readStoredDashboardWidgets(dashboardOwnerUserId));
-                const hasApiCustomWidgets = apiWidgets.some((widget) => widget.widget_type === FIELD_WIDGET_TYPE);
-                const hasStoredCustomWidgets = storedWidgets.some((widget) => widget.widget_type === FIELD_WIDGET_TYPE);
-                setWidgets(hasApiCustomWidgets || !hasStoredCustomWidgets
-                    ? (apiWidgets.length ? apiWidgets : initialWidgets)
-                    : storedWidgets);
+                setWidgets(apiWidgets);
+                lastSavedSnapshotRef.current = JSON.stringify(apiWidgets);
+                hasLoadedWidgetsRef.current = true;
                 setSaveMessage("");
             } catch (error) {
                 if (!isMounted) return;
-                const storedWidgets = normalizeWidgets(readStoredDashboardWidgets(dashboardOwnerUserId));
-                setWidgets(storedWidgets.length ? storedWidgets : initialWidgets);
+                setWidgets([]);
+                hasLoadedWidgetsRef.current = true;
                 setSaveMessage(error?.response?.data?.message || "Unable to load dashboard widgets.");
             } finally {
                 if (isMounted) {
@@ -166,25 +184,104 @@ function SettingsDashboardBuilder() {
     }, [dashboardOwnerUserId]);
 
     useEffect(() => {
+        setMetricOptions([]);
+    }, []);
+
+    useEffect(() => {
         let isMounted = true;
 
-        const loadMetricOptions = async () => {
+        const toArray = (value) => {
+            if (Array.isArray(value)) return value;
+            if (Array.isArray(value?.roles)) return value.roles;
+            if (Array.isArray(value?.data)) return value.data;
+            if (Array.isArray(value?.rows)) return value.rows;
+            if (Array.isArray(value?.items)) return value.items;
+            return [];
+        };
+
+        const normalizeRoleName = (role) =>
+            String(
+                role?.role_name ||
+                role?.name ||
+                role?.role ||
+                ""
+            ).trim();
+
+        const normalizeUserName = (user) =>
+            String(
+                user?.full_name ||
+                user?.name ||
+                user?.username ||
+                user?.user_name ||
+                ""
+            ).trim();
+
+        const normalizeUserRole = (user) =>
+            String(
+                user?.role_name ||
+                user?.role ||
+                user?.role_title ||
+                ""
+            ).trim();
+
+        const loadRoleAndOperatorOptions = async () => {
             try {
-                const response = await apiConfig.get("/api/dashboard/widget-metrics");
+                const [rolesResponse, usersResponse] = await Promise.all([
+                    apiConfig.get("/roles", { page: 1, limit: 200 }, { skipGlobalErrorModal: true }),
+                    apiConfig.get("/users", {}, { skipGlobalErrorModal: true }),
+                ]);
+
                 if (!isMounted) return;
-                setMetricOptions(Array.isArray(response?.data?.metrics) ? response.data.metrics : []);
+
+                const roleRecords = toArray(rolesResponse?.data);
+                const roles = roleRecords
+                    .map(normalizeRoleName)
+                    .filter(Boolean);
+                const allowedRoles = new Set(roles);
+
+                const users = toArray(usersResponse?.data)
+                    .map((user) => ({
+                        name: normalizeUserName(user),
+                        role: normalizeUserRole(user),
+                    }))
+                    .filter((user) => user.name && user.role && allowedRoles.has(user.role));
+
+                const dedupedRoles = Array.from(new Set(roles));
+                const dedupedUsers = users.filter(
+                    (user, index, arr) =>
+                        index === arr.findIndex((entry) => entry.name === user.name && entry.role === user.role)
+                );
+
+                setBuilderRoles(dedupedRoles);
+                setBuilderUsers(dedupedUsers);
+                setSelectedRole((current) => current || dedupedRoles[0] || "");
             } catch {
                 if (!isMounted) return;
-                setMetricOptions([]);
+                setBuilderRoles([]);
+                setBuilderUsers([]);
             }
         };
 
-        loadMetricOptions();
+        loadRoleAndOperatorOptions();
 
         return () => {
             isMounted = false;
         };
     }, []);
+
+    const usersForSelectedRole = useMemo(() => {
+        const list = selectedRole
+            ? builderUsers.filter((user) => !user.role || user.role === selectedRole)
+            : builderUsers;
+        return list.map((user) => user.name);
+    }, [builderUsers, selectedRole]);
+
+    useEffect(() => {
+        setSelectedBuilderUser((current) => {
+            if (current && usersForSelectedRole.includes(current)) return current;
+            return usersForSelectedRole[0] || "";
+        });
+    }, [usersForSelectedRole]);
 
     const handleToggle = (widgetIndex) => {
         setWidgets((current) =>
@@ -395,11 +492,21 @@ function SettingsDashboardBuilder() {
 
         try {
             setSaving(true);
-            await apiConfig.put(`/api/dashboard/widgets?userId=${dashboardOwnerUserId}`, {
-                userId: dashboardOwnerUserId,
-                widgets: orderedWidgets,
+            const payloadWidgets = orderedWidgets.map((widget) => ({
+                id: widget.id,
+                department: widget.department || "Quality Control",
+                sub_department: widget.sub_department || "Mixing",
+                input_screen: widget.screen_name || "Cotton HVI Data Entry",
+                input_field: String(widget.field_name || "SCI").toLowerCase(),
+                visualization_type: chartTypeToVisualizationType(widget.chart_type),
+                enabled: widget.enabled !== false,
+                order: widget.order,
+            }));
+
+            await postWithBuilderFallback(`widgets/${dashboardOwnerUserId}`, {
+                widgets: payloadWidgets,
             });
-            writeStoredDashboardWidgets(dashboardOwnerUserId, orderedWidgets);
+            lastSavedSnapshotRef.current = JSON.stringify(orderedWidgets);
             setWidgets(orderedWidgets);
             if (successMessage) {
                 setSaveMessage(successMessage);
@@ -423,6 +530,26 @@ function SettingsDashboardBuilder() {
 
         await saveWidgets(widgets);
     };
+
+    useEffect(() => {
+        if (!hasLoadedWidgetsRef.current || !dashboardOwnerUserId) return;
+        const currentSnapshot = JSON.stringify(widgets);
+        if (currentSnapshot === lastSavedSnapshotRef.current) return;
+
+        if (autosaveTimerRef.current) {
+            clearTimeout(autosaveTimerRef.current);
+        }
+
+        autosaveTimerRef.current = setTimeout(() => {
+            saveWidgets(widgets, { successMessage: "" });
+        }, 500);
+
+        return () => {
+            if (autosaveTimerRef.current) {
+                clearTimeout(autosaveTimerRef.current);
+            }
+        };
+    }, [widgets, dashboardOwnerUserId]);
 
     const getBuilderRowText = (widget) =>
         [
@@ -474,7 +601,7 @@ function SettingsDashboardBuilder() {
                             value={selectedBuilderUser}
                             onChange={(event) => setSelectedBuilderUser(event.target.value)}
                         >
-                            {builderUsers.map((builderUser) => (
+                            {usersForSelectedRole.map((builderUser) => (
                                 <option key={builderUser} value={builderUser}>
                                     {builderUser}
                                 </option>
