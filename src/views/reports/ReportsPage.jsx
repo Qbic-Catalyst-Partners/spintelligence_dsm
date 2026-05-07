@@ -1307,7 +1307,7 @@ function ReportsPage() {
                 <span>Send to me</span>
               </label>
               <label>
-                <input
+                <input  
                   type="checkbox"
                   checked={sendToCustomer}
                   onChange={(event) => setSendToCustomer(event.target.checked)}

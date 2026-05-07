@@ -1,19 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { FiGrid, FiPlus, FiTrash2 } from "react-icons/fi";
-import { HiOutlineDotsVertical } from "react-icons/hi";
+import { FiGrid, FiPlus, FiServer, FiTrash2 } from "react-icons/fi";
 
 import apiConfig from "@/apis/apiConfig";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
+import { departmentDirectory } from "@/views/departments/data";
+import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
+import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
+import {
+    DASHBOARD_CHART_TYPES,
+    FIELD_WIDGET_TYPE,
+    readStoredDashboardWidgets,
+    writeStoredDashboardWidgets,
+} from "@/utils/dashboardWidgets";
 import styles from "@/styles/departmentDirectory.module.css";
 
-const initialWidgets = Array.from({ length: 8 }, (_, index) => ({
+const BUILDER_SECTIONS = {
+    average: "average",
+    performance: "performance",
+};
+
+const initialWidgets = Array.from({ length: 7 }, (_, index) => ({
     id: `widget-${index + 1}`,
-    name: "Input Submitted Today",
+    name: "SCI",
     enabled: true,
     order: index + 1,
     metric_key: "today_submissions",
+    department: "Quality Control",
+    sub_department: "Mixing",
+    screen_name: "Cotton HVI Data Entry",
+    field_name: "SCI",
+    chart_type: index < 3 ? "value" : "line",
+    builder_section: index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance,
 }));
+const builderRoles = ["Operator", "Supervisor", "Admin"];
+const builderUsers = ["John Doe", "Hency Belix", "Aravinth"];
+const builderVisualizationOptions = [
+    { key: "value", label: "Average Value Card", section: BUILDER_SECTIONS.average },
+    { key: "line", label: "Performance Trends", section: BUILDER_SECTIONS.performance },
+];
 const TICKET_TREND_SELECT_KEY = "tickets_trend";
 const TICKET_TREND_ID_PREFIX = "ticket-trend-";
 
@@ -23,12 +48,54 @@ function SettingsDashboardBuilder() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState("");
+    const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("quality-control");
+    const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("mixing");
+    const [selectedScreenName, setSelectedScreenName] = useState("Cotton HVI Data Entry");
+    const [selectedFieldName, setSelectedFieldName] = useState("SCI");
+    const [selectedChartType, setSelectedChartType] = useState("value");
+    const [selectedRole, setSelectedRole] = useState("Operator");
+    const [selectedBuilderUser, setSelectedBuilderUser] = useState("John Doe");
+    const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
 
     const authUser = useSelector((state) => state.auth?.user);
     const dashboardOwnerUserId = useMemo(
         () => getDashboardOwnerUserId(authUser),
         [authUser]
     );
+
+    const selectedDepartment = useMemo(
+        () => departmentDirectory.find((item) => item.slug === selectedDepartmentSlug),
+        [selectedDepartmentSlug]
+    );
+
+    const subDepartments = selectedDepartment?.subDepartments || [];
+
+    const selectedSubDepartment = useMemo(
+        () => subDepartments.find((item) => item.slug === selectedSubDepartmentSlug),
+        [selectedSubDepartmentSlug, subDepartments]
+    );
+
+    const inputScreens = useMemo(
+        () => getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug),
+        [selectedDepartmentSlug, selectedSubDepartmentSlug]
+    );
+
+    const availableFields = useMemo(
+        () => getThresholdFieldsForScreen(selectedScreenName),
+        [selectedScreenName]
+    );
+
+    const modalFieldOptions = useMemo(() => {
+        const fields = availableFields.length ? availableFields : ["SCI"];
+        return fields.includes(selectedFieldName) ? fields : [selectedFieldName, ...fields];
+    }, [availableFields, selectedFieldName]);
+
+    const displayUserName =
+        authUser?.full_name ||
+        authUser?.fullName ||
+        authUser?.name ||
+        authUser?.username ||
+        "Current User";
 
     const normalizeWidgets = (nextWidgets) =>
         (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => ({
@@ -37,6 +104,15 @@ function SettingsDashboardBuilder() {
             enabled: widget?.enabled !== false,
             order: Number.isInteger(widget?.order) ? widget.order : index + 1,
             metric_key: widget?.metric_key || "today_submissions",
+            widget_type: widget?.widget_type || "metric",
+            chart_type: widget?.chart_type || "value",
+            department: widget?.department || "Quality Control",
+            sub_department: widget?.sub_department || "Mixing",
+            screen_name: widget?.screen_name || "Cotton HVI Data Entry",
+            field_name: widget?.field_name || "SCI",
+            builder_section:
+                widget?.builder_section ||
+                (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance),
         }));
 
     const getMetricSelectValue = (widget) => {
@@ -62,11 +138,18 @@ function SettingsDashboardBuilder() {
                 setLoading(true);
                 const response = await apiConfig.get("/api/dashboard/widgets", { userId: dashboardOwnerUserId });
                 if (!isMounted) return;
-                setWidgets(normalizeWidgets(response?.data?.widgets).length ? normalizeWidgets(response?.data?.widgets) : initialWidgets);
+                const apiWidgets = normalizeWidgets(response?.data?.widgets);
+                const storedWidgets = normalizeWidgets(readStoredDashboardWidgets(dashboardOwnerUserId));
+                const hasApiCustomWidgets = apiWidgets.some((widget) => widget.widget_type === FIELD_WIDGET_TYPE);
+                const hasStoredCustomWidgets = storedWidgets.some((widget) => widget.widget_type === FIELD_WIDGET_TYPE);
+                setWidgets(hasApiCustomWidgets || !hasStoredCustomWidgets
+                    ? (apiWidgets.length ? apiWidgets : initialWidgets)
+                    : storedWidgets);
                 setSaveMessage("");
             } catch (error) {
                 if (!isMounted) return;
-                setWidgets(initialWidgets);
+                const storedWidgets = normalizeWidgets(readStoredDashboardWidgets(dashboardOwnerUserId));
+                setWidgets(storedWidgets.length ? storedWidgets : initialWidgets);
                 setSaveMessage(error?.response?.data?.message || "Unable to load dashboard widgets.");
             } finally {
                 if (isMounted) {
@@ -115,17 +198,134 @@ function SettingsDashboardBuilder() {
         setWidgets((current) => current.filter((_, index) => index !== widgetIndex));
     };
 
+    const handleOpenAddWidget = () => {
+        setIsAddWidgetModalOpen(true);
+    };
+
+    const handleCloseAddWidget = () => {
+        setIsAddWidgetModalOpen(false);
+    };
+
     const handleAddWidget = () => {
+        const selectedVisualization =
+            builderVisualizationOptions.find((option) => option.key === selectedChartType) ||
+            builderVisualizationOptions[0];
+
         setWidgets((current) => [
             ...current,
             {
-                id: `widget-${Date.now()}`,
-                name: "New Widget",
+                id: `field-widget-${Date.now()}`,
+                name: selectedFieldName || "SCI",
                 enabled: true,
                 order: current.length + 1,
-                metric_key: "today_submissions",
+                metric_key: "custom_field",
+                widget_type: FIELD_WIDGET_TYPE,
+                department: selectedDepartment?.name || "Quality Control",
+                sub_department: selectedSubDepartment?.name || "Mixing",
+                screen_name: selectedScreenName || "Cotton HVI Data Entry",
+                field_name: selectedFieldName || "SCI",
+                chart_type: selectedVisualization.key,
+                builder_section: selectedVisualization.section,
             },
         ]);
+        setIsAddWidgetModalOpen(false);
+    };
+
+    const buildFieldWidget = (fieldName, chartType = selectedChartType) => ({
+        id: `field-widget-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: `${fieldName} ${DASHBOARD_CHART_TYPES.find((item) => item.key === chartType)?.label || "Widget"}`,
+        enabled: true,
+        order: widgets.length + 1,
+        metric_key: "custom_field",
+        widget_type: FIELD_WIDGET_TYPE,
+        chart_type: chartType,
+        builder_section: chartType === "value" ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance,
+        department: selectedDepartment?.name || "",
+        sub_department: selectedSubDepartment?.name || "",
+        screen_name: selectedScreenName,
+        field_name: fieldName,
+    });
+
+    const handleAddFieldWidget = (fieldName, chartType = selectedChartType) => {
+        setWidgets((current) => [
+            ...current,
+            {
+                ...buildFieldWidget(fieldName, chartType),
+                order: current.length + 1,
+            },
+        ]);
+    };
+
+    const handleFieldDragStart = (event, fieldName) => {
+        event.dataTransfer.setData(
+            "application/json",
+            JSON.stringify({ fieldName, chartType: selectedChartType })
+        );
+        event.dataTransfer.effectAllowed = "copy";
+    };
+
+    const handleDropField = (event) => {
+        event.preventDefault();
+        const rawPayload = event.dataTransfer.getData("application/json");
+        if (!rawPayload) return;
+
+        try {
+            const payload = JSON.parse(rawPayload);
+            if (payload?.fieldName) {
+                handleAddFieldWidget(payload.fieldName, payload.chartType || selectedChartType);
+            }
+        } catch {
+            // Ignore malformed drag payloads.
+        }
+    };
+
+    const moveBuilderWidget = (sourceIndex, targetSection, targetPosition = null) => {
+        setWidgets((current) => {
+            const draggedWidget = current[sourceIndex];
+            if (!draggedWidget) return current;
+
+            const remainingWidgets = current.filter((_, index) => index !== sourceIndex);
+            const averageWidgets = remainingWidgets.filter(
+                (widget, index) =>
+                    (widget.builder_section || (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance)) === BUILDER_SECTIONS.average
+            );
+            const performanceWidgets = remainingWidgets.filter(
+                (widget, index) =>
+                    (widget.builder_section || (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance)) === BUILDER_SECTIONS.performance
+            );
+            const targetWidgets = targetSection === BUILDER_SECTIONS.average ? averageWidgets : performanceWidgets;
+            const insertAt = Number.isInteger(targetPosition)
+                ? Math.min(Math.max(targetPosition, 0), targetWidgets.length)
+                : targetWidgets.length;
+
+            targetWidgets.splice(insertAt, 0, {
+                ...draggedWidget,
+                builder_section: targetSection,
+                chart_type: targetSection === BUILDER_SECTIONS.average ? "value" : (draggedWidget.chart_type === "value" ? "line" : draggedWidget.chart_type),
+            });
+
+            return [...averageWidgets, ...performanceWidgets].map((widget, index) => ({
+                ...widget,
+                order: index + 1,
+            }));
+        });
+    };
+
+    const handleBuilderDragStart = (event, sourceIndex) => {
+        event.dataTransfer.setData("application/x-dashboard-widget", String(sourceIndex));
+        event.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleBuilderDrop = (event, targetSection, targetPosition = null) => {
+        event.preventDefault();
+        const rawSourceIndex = event.dataTransfer.getData("application/x-dashboard-widget");
+
+        if (rawSourceIndex !== "") {
+            moveBuilderWidget(Number(rawSourceIndex), targetSection, targetPosition);
+            return;
+        }
+
+        handleDropField(event);
     };
 
     const handleNameChange = (widgetIndex, nextName) => {
@@ -157,6 +357,23 @@ function SettingsDashboardBuilder() {
         });
     };
 
+    const handleChartTypeChange = (widgetIndex, chartType) => {
+        setWidgets((current) =>
+            current.map((widget, index) =>
+                index === widgetIndex
+                    ? {
+                        ...widget,
+                        chart_type: chartType,
+                        name:
+                            widget.widget_type === FIELD_WIDGET_TYPE
+                                ? `${widget.field_name} ${DASHBOARD_CHART_TYPES.find((item) => item.key === chartType)?.label || "Widget"}`
+                                : widget.name,
+                    }
+                    : widget
+            )
+        );
+    };
+
     const saveWidgets = async (widgetsToSave, { successMessage = "Dashboard widgets saved successfully." } = {}) => {
         if (!dashboardOwnerUserId) {
             setSaveMessage("Unable to identify logged-in user.");
@@ -182,6 +399,7 @@ function SettingsDashboardBuilder() {
                 userId: dashboardOwnerUserId,
                 widgets: orderedWidgets,
             });
+            writeStoredDashboardWidgets(dashboardOwnerUserId, orderedWidgets);
             setWidgets(orderedWidgets);
             if (successMessage) {
                 setSaveMessage(successMessage);
@@ -206,77 +424,276 @@ function SettingsDashboardBuilder() {
         await saveWidgets(widgets);
     };
 
+    const getBuilderRowText = (widget) =>
+        [
+            widget.department || "Quality Control",
+            widget.sub_department || "Mixing",
+            widget.screen_name || "Cotton HVI Data Entry",
+            widget.field_name || widget.name || "SCI",
+        ].join(" | ");
+
+    const builderRows = widgets.map((widget, index) => ({
+        widget,
+        index,
+        section: widget.builder_section || (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance),
+    }));
+    const averageRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.average);
+    const performanceRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.performance);
+
     return (
         <div className={styles.dashboardMain}>
             <section className={styles.builderHeader}>
                 <h1 className={styles.kicker}>Dashboard Builder</h1>
                 <div className={styles.rowActions}>
-                    <button type="button" className={styles.addWidgetButton} onClick={handleAddWidget}>
+                    <button type="button" className={styles.addWidgetButton} onClick={handleOpenAddWidget}>
                         <FiPlus />
                         <span>Add Widget</span>
-                    </button>
-                    <button type="button" className={styles.addWidgetButton} onClick={handleSave} disabled={saving || loading}>
-                        <span>{saving ? "Saving..." : "Save"}</span>
                     </button>
                 </div>
             </section>
 
-            {loading ? <p>Loading widgets...</p> : null}
-            {!loading && saveMessage ? <p>{saveMessage}</p> : null}
+            <section className={styles.builderTopPanel}>
+                <div className={styles.builderUserControls}>
+                    <label>
+                        <span>Role</span>
+                        <select
+                            value={selectedRole}
+                            onChange={(event) => setSelectedRole(event.target.value)}
+                        >
+                            {builderRoles.map((role) => (
+                                <option key={role} value={role}>
+                                    {role}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+
+                    <label>
+                        <span>Name</span>
+                        <select
+                            value={selectedBuilderUser}
+                            onChange={(event) => setSelectedBuilderUser(event.target.value)}
+                        >
+                            {builderUsers.map((builderUser) => (
+                                <option key={builderUser} value={builderUser}>
+                                    {builderUser}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+                <div className={styles.builderSelectedUser}>
+                    <strong>{selectedBuilderUser}</strong>
+                    <span>{selectedRole}</span>
+                </div>
+            </section>
 
             <section className={styles.builderList}>
-                {widgets.map((widget, index) => (
-                    <article key={`${widget.id}-${index}`} className={styles.builderRow}>
-                        <div className={styles.builderRowLeft}>
-                            <button type="button" className={styles.dragHandle} aria-label="Reorder widget">
-                                <HiOutlineDotsVertical />
-                            </button>
-                            <FiGrid className={styles.builderWidgetIcon} />
-                            <input
-                                type="text"
-                                className={styles.builderWidgetNameInput}
-                                value={widget.name}
-                                onChange={(event) => handleNameChange(index, event.target.value)}
-                                placeholder="Enter widget name"
-                                maxLength={60}
-                            />
-                            <select
-                                className={styles.builderMetricSelect}
-                                value={getMetricSelectValue(widget)}
-                                onChange={(event) => handleMetricChange(index, event.target.value)}
-                            >
-                                {[
-                                    ...(metricOptions.length ? metricOptions : [{ key: "today_submissions", label: "Input Submitted Today" }]),
-                                    { key: TICKET_TREND_SELECT_KEY, label: "Ticket Trend (7 Days)" },
-                                ].map((metric) => (
-                                    <option key={metric.key} value={metric.key}>
-                                        {metric.label}
-                                    </option>
-                                ))}
-                            </select>
+                <BuilderGroup
+                    title="Average Values Card"
+                    section={BUILDER_SECTIONS.average}
+                    rows={averageRows}
+                    getBuilderRowText={getBuilderRowText}
+                    handleBuilderDragStart={handleBuilderDragStart}
+                    handleBuilderDrop={handleBuilderDrop}
+                    handleToggle={handleToggle}
+                    handleDelete={handleDelete}
+                />
+                <BuilderGroup
+                    title="Performance Trends"
+                    section={BUILDER_SECTIONS.performance}
+                    rows={performanceRows}
+                    getBuilderRowText={getBuilderRowText}
+                    handleBuilderDragStart={handleBuilderDragStart}
+                    handleBuilderDrop={handleBuilderDrop}
+                    handleToggle={handleToggle}
+                    handleDelete={handleDelete}
+                />
+            </section>
+
+            {isAddWidgetModalOpen ? (
+                <div className={styles.builderModalOverlay}>
+                    <div className={styles.builderAddModal} role="dialog" aria-modal="true" aria-labelledby="add-widget-title">
+                        <header className={styles.builderAddModalHeader}>
+                            <h2 id="add-widget-title">Add Widget</h2>
+                            <p>Select the Widget you want to add in the Dashboard Builder</p>
+                        </header>
+
+                        <div className={styles.builderAddModalGrid}>
+                            <label>
+                                <span>Department</span>
+                                <select
+                                    value={selectedDepartmentSlug}
+                                    onChange={(event) => {
+                                        const nextDepartmentSlug = event.target.value;
+                                        const nextDepartment = departmentDirectory.find((item) => item.slug === nextDepartmentSlug);
+                                        const nextSubDepartmentSlug = nextDepartment?.subDepartments?.[0]?.slug || "";
+                                        const nextScreens = getThresholdScreensForSubDepartment(nextDepartmentSlug, nextSubDepartmentSlug);
+                                        const nextScreenName = nextScreens[0] || "";
+                                        const nextFields = getThresholdFieldsForScreen(nextScreenName);
+
+                                        setSelectedDepartmentSlug(nextDepartmentSlug);
+                                        setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
+                                        setSelectedScreenName(nextScreenName);
+                                        setSelectedFieldName(nextFields.includes("SCI") ? "SCI" : (nextFields[0] || "SCI"));
+                                    }}
+                                >
+                                    {departmentDirectory.map((department) => (
+                                        <option key={department.slug} value={department.slug}>
+                                            {department.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label>
+                                <span>Sub Department</span>
+                                <select
+                                    value={selectedSubDepartmentSlug}
+                                    onChange={(event) => {
+                                        const nextSubDepartmentSlug = event.target.value;
+                                        const nextScreens = getThresholdScreensForSubDepartment(selectedDepartmentSlug, nextSubDepartmentSlug);
+                                        const nextScreenName = nextScreens[0] || "";
+                                        const nextFields = getThresholdFieldsForScreen(nextScreenName);
+
+                                        setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
+                                        setSelectedScreenName(nextScreenName);
+                                        setSelectedFieldName(nextFields.includes("SCI") ? "SCI" : (nextFields[0] || "SCI"));
+                                    }}
+                                >
+                                    {subDepartments.map((subDepartment) => (
+                                        <option key={subDepartment.slug} value={subDepartment.slug}>
+                                            {subDepartment.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label>
+                                <span>Notebook Type</span>
+                                <select
+                                    value={selectedScreenName}
+                                    onChange={(event) => {
+                                        const nextScreenName = event.target.value;
+                                        const nextFields = getThresholdFieldsForScreen(nextScreenName);
+
+                                        setSelectedScreenName(nextScreenName);
+                                        setSelectedFieldName(nextFields.includes("SCI") ? "SCI" : (nextFields[0] || "SCI"));
+                                    }}
+                                >
+                                    {inputScreens.map((screen) => (
+                                        <option key={screen} value={screen}>
+                                            {screen}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label>
+                                <span>Field</span>
+                                <select value={selectedFieldName} onChange={(event) => setSelectedFieldName(event.target.value)}>
+                                    {modalFieldOptions.map((fieldName) => (
+                                        <option key={fieldName} value={fieldName}>
+                                            {fieldName}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label>
+                                <span>Visualization Type</span>
+                                <select value={selectedChartType} onChange={(event) => setSelectedChartType(event.target.value)}>
+                                    {builderVisualizationOptions.map((visualization) => (
+                                        <option key={visualization.key} value={visualization.key}>
+                                            {visualization.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
                         </div>
 
-                        <div className={styles.builderRowRight}>
-                            <button
-                                type="button"
-                                className={`${styles.builderToggle} ${widget.enabled ? styles.builderToggleOn : ""}`}
-                                aria-pressed={widget.enabled}
-                                onClick={() => handleToggle(index)}
-                            >
-                                <span className={styles.builderToggleThumb} />
+                        <footer className={styles.builderAddModalFooter}>
+                            <button type="button" className={styles.builderModalCancel} onClick={handleCloseAddWidget}>
+                                Cancel
                             </button>
-                            <button
-                                type="button"
-                                className={styles.builderDelete}
-                                aria-label="Delete widget"
-                                onClick={() => handleDelete(index)}
-                            >
-                                <FiTrash2 />
+                            <button type="button" className={styles.builderModalSubmit} onClick={handleAddWidget}>
+                                Add to Builder
                             </button>
-                        </div>
-                    </article>
-                ))}
-            </section>
+                        </footer>
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function BuilderGroup({
+    title,
+    section,
+    rows,
+    getBuilderRowText,
+    handleBuilderDragStart,
+    handleBuilderDrop,
+    handleToggle,
+    handleDelete,
+}) {
+    const WidgetIcon = section === BUILDER_SECTIONS.performance ? FiServer : FiGrid;
+
+    return (
+        <div
+            className={styles.builderGroup}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => handleBuilderDrop(event, section)}
+        >
+            <h2>{title}</h2>
+            {rows.map(({ widget, index }, rowIndex) => (
+                <article
+                    key={`${widget.id}-${index}`}
+                    className={styles.builderRow}
+                    draggable
+                    onDragStart={(event) => handleBuilderDragStart(event, index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                        event.stopPropagation();
+                        handleBuilderDrop(event, section, rowIndex);
+                    }}
+                >
+                    <div className={styles.builderRowLeft}>
+                        <button type="button" className={styles.dragHandle} aria-label="Reorder widget">
+                            <span className={styles.dragDots} aria-hidden="true">
+                                {Array.from({ length: 6 }).map((_, dotIndex) => (
+                                    <span key={dotIndex} />
+                                ))}
+                            </span>
+                        </button>
+                        <WidgetIcon
+                            className={`${styles.builderWidgetIcon} ${
+                                section === BUILDER_SECTIONS.performance ? styles.builderPerformanceWidgetIcon : ""
+                            }`}
+                        />
+                        <span className={styles.builderWidgetPath}>{getBuilderRowText(widget)}</span>
+                    </div>
+
+                    <div className={styles.builderRowRight}>
+                        <button
+                            type="button"
+                            className={`${styles.builderToggle} ${widget.enabled ? styles.builderToggleOn : ""}`}
+                            aria-pressed={widget.enabled}
+                            onClick={() => handleToggle(index)}
+                        >
+                            <span className={styles.builderToggleThumb} />
+                        </button>
+                        <button
+                            type="button"
+                            className={styles.builderDelete}
+                            aria-label="Delete widget"
+                            onClick={() => handleDelete(index)}
+                        >
+                            <FiTrash2 />
+                        </button>
+                    </div>
+                </article>
+            ))}
         </div>
     );
 }
