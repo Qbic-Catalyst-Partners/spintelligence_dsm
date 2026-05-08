@@ -8,6 +8,41 @@ import styles from "@/styles/departmentDirectory.module.css";
 
 const trendModes = ["1D", "1W", "1M", "1Y"];
 const DASHBOARD_FETCH_DEBOUNCE_MS = 350;
+const ABBREVIATIONS = new Set(["qc", "hvi", "afis", "dfk", "uqc", "gtex", "sfi", "rd", "ur", "csp", "rsm", "sci"]);
+
+const toCamelDisplay = (value) =>
+    String(value || "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((word) => {
+            const normalized = word.replace(/[^a-zA-Z0-9]/g, "");
+            if (!normalized) return word;
+            if (ABBREVIATIONS.has(normalized.toLowerCase())) return normalized.toUpperCase();
+            return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+        })
+        .join(" ");
+
+const formatWidgetSegment = (value) => {
+    const raw = String(value || "").replace(/\bData Entry\b/gi, "").trim();
+    if (!raw) return "";
+    if (raw.toLowerCase() === "quality control") return "QC";
+    return toCamelDisplay(raw);
+};
+
+const formatWidgetContext = (widget) =>
+    [formatWidgetSegment(widget?.department), formatWidgetSegment(widget?.sub_department), formatWidgetSegment(widget?.input_screen)]
+        .filter(Boolean)
+        .join(" | ");
+const normalizeInputFieldKey = (value) =>
+    String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[%()]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+
 const visualizationTypeToChartType = (visualizationType) => {
     if (visualizationType === "average_value_card") return "value";
     if (visualizationType === "area_chart") return "timeline";
@@ -53,7 +88,8 @@ function HomeDashboard() {
                 department: widget?.department || "Quality Control",
                 sub_department: widget?.sub_department || "Mixing",
                 input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
-                input_field: String(widget?.input_field || widget?.field_name || "SCI").toLowerCase(),
+                raw_input_field: String(widget?.input_field || widget?.field_name || "SCI"),
+                input_field: normalizeInputFieldKey(widget?.input_field || widget?.field_name || "SCI"),
                 visualization_type: widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
                 chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
             })),
@@ -73,6 +109,14 @@ function HomeDashboard() {
     const performanceWidgets = useMemo(
         () => visibleWidgets.filter((widget) => !(widget.visualization_type === "average_value_card" || widget.chart_type === "value")),
         [visibleWidgets]
+    );
+    const performanceWidgetsWithData = useMemo(
+        () =>
+            performanceWidgets.filter((widget) => {
+                const trend = widgetData?.[widget.id]?.trend;
+                return Array.isArray(trend) && trend.length > 0;
+            }),
+        [performanceWidgets, widgetData]
     );
 
     useEffect(() => {
@@ -178,6 +222,23 @@ function HomeDashboard() {
                         },
                         { signal: controller.signal }
                     )
+                        .catch(async (error) => {
+                            const fallbackInputField = String(widget.raw_input_field || "").trim();
+                            if (!fallbackInputField || fallbackInputField === widget.input_field) {
+                                throw error;
+                            }
+                            return getWithBuilderFallback(
+                                "data",
+                                {
+                                    department: widget.department,
+                                    sub_department: widget.sub_department,
+                                    input_screen: widget.input_screen,
+                                    input_field: fallbackInputField,
+                                    period,
+                                },
+                                { signal: controller.signal }
+                            );
+                        })
                         .then((response) => ({ widgetId: widget.id, requestKey, data: response?.data || null }))
                         .catch((error) => ({ widgetId: widget.id, requestKey, error }))
                 );
@@ -234,8 +295,8 @@ function HomeDashboard() {
                         <article key={widget.id} className={styles.referenceStatCard}>
                             <div className={styles.referenceStatHeader}>
                                 <div>
-                                    <h2>{String(widget.input_field || "").toUpperCase()}</h2>
-                                    <span>{`${widget.department} | ${widget.sub_department} | ${widget.input_screen}`}</span>
+                                    <h2>{formatWidgetSegment(widget.input_field || "")}</h2>
+                                    <span>{formatWidgetContext(widget)}</span>
                                 </div>
                                 <span className={styles.referenceStatIcon}>
                                     <FiPieChart />
@@ -268,7 +329,7 @@ function HomeDashboard() {
 
             <section className={styles.referenceSection}>
                 <h1>Performance Trends</h1>
-                {performanceWidgets.map((widget) => (
+                {performanceWidgetsWithData.map((widget) => (
                     <PerformanceLineCard
                         key={widget.id}
                         widget={widget}
@@ -281,19 +342,19 @@ function HomeDashboard() {
                 ))}
             </section>
             {loading ? <p>Loading dashboard...</p> : null}
-            {!loading && !averageWidgets.length && !performanceWidgets.length ? <p>No dashboard widgets configured.</p> : null}
+            {!loading && !averageWidgets.length && !performanceWidgetsWithData.length ? <p>No dashboard widgets configured.</p> : null}
             {errorMessage ? <p>{errorMessage}</p> : null}
         </div>
     );
 }
 
 function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
-    const linePoints = Array.isArray(data?.trend) && data.trend.length
+    const linePoints = Array.isArray(data?.trend)
         ? data.trend.map((point, index) => ({
             label: point?.label || `Point ${index + 1}`,
             value: Number(point?.value) || 0,
         }))
-        : [{ label: "No Data", value: 0 }];
+        : [];
 
     const currentLinePoints = useMemo(
         () => linePoints,
@@ -332,8 +393,8 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
         <article className={`${styles.referenceChartCard} ${styles.referenceLineCard}`}>
             <div className={styles.referenceChartHeader}>
                 <div>
-                    <h2>{String(widget?.input_field || "").toUpperCase()}</h2>
-                    <span>{`${widget?.department || ""} | ${widget?.sub_department || ""} | ${widget?.input_screen || ""}`}</span>
+                    <h2>{formatWidgetSegment(widget?.input_field || "")}</h2>
+                    <span>{formatWidgetContext(widget)}</span>
                 </div>
                 <div className={styles.referenceLineHeaderRight}>
                     <span className={styles.referenceLegend}>

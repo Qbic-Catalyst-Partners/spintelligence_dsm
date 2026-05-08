@@ -37,6 +37,13 @@ const visualizationTypeToChartType = (visualizationType) => {
     if (visualizationType === "bar_chart") return "line";
     return "line";
 };
+const normalizeInputFieldKey = (value) =>
+    String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[%()]/g, "")
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
 
 function SettingsDashboardBuilder() {
     const [widgets, setWidgets] = useState([]);
@@ -50,7 +57,7 @@ function SettingsDashboardBuilder() {
     const [selectedFieldName, setSelectedFieldName] = useState("SCI");
     const [selectedChartType, setSelectedChartType] = useState("value");
     const [selectedRole, setSelectedRole] = useState("");
-    const [selectedBuilderUser, setSelectedBuilderUser] = useState("");
+    const [selectedBuilderUserId, setSelectedBuilderUserId] = useState("");
     const [builderRoles, setBuilderRoles] = useState([]);
     const [builderUsers, setBuilderUsers] = useState([]);
     const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
@@ -63,6 +70,10 @@ function SettingsDashboardBuilder() {
         () => getDashboardOwnerUserId(authUser),
         [authUser]
     );
+    const isAdmin = useMemo(() => {
+        const role = String(authUser?.role || authUser?.role_name || "").trim().toLowerCase();
+        return role === "admin" || role === "super admin" || role === "superadmin";
+    }, [authUser]);
 
     const selectedDepartment = useMemo(
         () => departmentDirectory.find((item) => item.slug === selectedDepartmentSlug),
@@ -125,12 +136,28 @@ function SettingsDashboardBuilder() {
         return widget?.metric_key || "today_submissions";
     };
 
+    const toDashbuilderGetPath = (path) => {
+        if (String(path).startsWith("widgets/")) {
+            const userId = String(path).split("/")[1] || "";
+            return `${userId}/widgets`;
+        }
+        return path;
+    };
+
+    const toDashbuilderPostPath = (path) => {
+        if (String(path).startsWith("widgets/")) {
+            const userId = String(path).split("/")[1] || "";
+            return `${userId}/add-widget`;
+        }
+        return path;
+    };
+
     const getWithBuilderFallback = async (path, params = {}) => {
         try {
             return await apiConfig.get(`/api/dashboard/builder/${path}`, params, { skipGlobalErrorModal: true });
         } catch (error) {
             if (error?.response?.status !== 404) throw error;
-            return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, { skipGlobalErrorModal: true });
+            return apiConfig.get(`/api/dashboard/dashbuilder/${toDashbuilderGetPath(path)}`, params, { skipGlobalErrorModal: true });
         }
     };
 
@@ -139,8 +166,20 @@ function SettingsDashboardBuilder() {
             return await apiConfig.post(`/api/dashboard/builder/${path}`, payload, { skipGlobalErrorModal: true });
         } catch (error) {
             if (error?.response?.status !== 404) throw error;
-            return apiConfig.post(`/api/dashboard/dashbuilder/${path}`, payload, { skipGlobalErrorModal: true });
+            return apiConfig.post(`/api/dashboard/dashbuilder/${toDashbuilderPostPath(path)}`, payload, { skipGlobalErrorModal: true });
         }
+    };
+
+    const saveWithPathCandidates = async (paths, payload) => {
+        let lastError = null;
+        for (const path of paths) {
+            try {
+                return await postWithBuilderFallback(path, payload);
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError || new Error("Failed to save dashboard widgets.");
     };
 
     useEffect(() => {
@@ -157,7 +196,13 @@ function SettingsDashboardBuilder() {
 
             try {
                 setLoading(true);
-                const response = await getWithBuilderFallback(`widgets/${dashboardOwnerUserId}`);
+                setWidgets([]);
+                const selectedUserId = Number(selectedBuilderUserId);
+                const effectiveUserId =
+                    Number.isInteger(selectedUserId) && selectedUserId > 0
+                        ? selectedUserId
+                        : dashboardOwnerUserId;
+                const response = await getWithBuilderFallback(`widgets/${effectiveUserId}`);
                 if (!isMounted) return;
                 const apiWidgets = normalizeWidgets(response?.data?.widgets);
                 setWidgets(apiWidgets);
@@ -181,7 +226,7 @@ function SettingsDashboardBuilder() {
         return () => {
             isMounted = false;
         };
-    }, [dashboardOwnerUserId]);
+    }, [dashboardOwnerUserId, selectedBuilderUserId, isAdmin]);
 
     useEffect(() => {
         setMetricOptions([]);
@@ -216,6 +261,11 @@ function SettingsDashboardBuilder() {
                 ""
             ).trim();
 
+        const normalizeUserId = (user) => {
+            const id = Number(user?.id || user?.user_id || user?.userId);
+            return Number.isInteger(id) && id > 0 ? id : null;
+        };
+
         const normalizeUserRole = (user) =>
             String(
                 user?.role_name ||
@@ -241,15 +291,16 @@ function SettingsDashboardBuilder() {
 
                 const users = toArray(usersResponse?.data)
                     .map((user) => ({
+                        id: normalizeUserId(user),
                         name: normalizeUserName(user),
                         role: normalizeUserRole(user),
                     }))
-                    .filter((user) => user.name && user.role && allowedRoles.has(user.role));
+                    .filter((user) => user.id && user.name && user.role && allowedRoles.has(user.role));
 
                 const dedupedRoles = Array.from(new Set(roles));
                 const dedupedUsers = users.filter(
                     (user, index, arr) =>
-                        index === arr.findIndex((entry) => entry.name === user.name && entry.role === user.role)
+                        index === arr.findIndex((entry) => entry.id === user.id)
                 );
 
                 setBuilderRoles(dedupedRoles);
@@ -273,13 +324,13 @@ function SettingsDashboardBuilder() {
         const list = selectedRole
             ? builderUsers.filter((user) => !user.role || user.role === selectedRole)
             : builderUsers;
-        return list.map((user) => user.name);
+        return list;
     }, [builderUsers, selectedRole]);
 
     useEffect(() => {
-        setSelectedBuilderUser((current) => {
-            if (current && usersForSelectedRole.includes(current)) return current;
-            return usersForSelectedRole[0] || "";
+        setSelectedBuilderUserId((current) => {
+            if (current && usersForSelectedRole.some((user) => String(user.id) === String(current))) return current;
+            return usersForSelectedRole[0]?.id ? String(usersForSelectedRole[0].id) : "";
         });
     }, [usersForSelectedRole]);
 
@@ -497,15 +548,32 @@ function SettingsDashboardBuilder() {
                 department: widget.department || "Quality Control",
                 sub_department: widget.sub_department || "Mixing",
                 input_screen: widget.screen_name || "Cotton HVI Data Entry",
-                input_field: String(widget.field_name || "SCI").toLowerCase(),
+                input_field: normalizeInputFieldKey(widget.field_name || "SCI"),
                 visualization_type: chartTypeToVisualizationType(widget.chart_type),
                 enabled: widget.enabled !== false,
                 order: widget.order,
             }));
 
-            await postWithBuilderFallback(`widgets/${dashboardOwnerUserId}`, {
+            const selectedUserId = Number(selectedBuilderUserId);
+            const effectiveUserId =
+                Number.isInteger(selectedUserId) && selectedUserId > 0
+                    ? selectedUserId
+                    : dashboardOwnerUserId;
+
+            const savePayload = {
+                user_id: effectiveUserId,
+                userId: effectiveUserId,
+                assigned_user_id: effectiveUserId,
+                assignedUserId: effectiveUserId,
+                owner_user_id: effectiveUserId,
+                ownerUserId: effectiveUserId,
                 widgets: payloadWidgets,
-            });
+            };
+            const isSavingForAnotherUser = effectiveUserId !== dashboardOwnerUserId;
+            const savePaths = isSavingForAnotherUser
+                ? [`widgets/${effectiveUserId}`, `assign/${effectiveUserId}`]
+                : [`widgets/${effectiveUserId}`, "my-widgets"];
+            await saveWithPathCandidates(savePaths, savePayload);
             lastSavedSnapshotRef.current = JSON.stringify(orderedWidgets);
             setWidgets(orderedWidgets);
             if (successMessage) {
@@ -549,7 +617,7 @@ function SettingsDashboardBuilder() {
                 clearTimeout(autosaveTimerRef.current);
             }
         };
-    }, [widgets, dashboardOwnerUserId]);
+    }, [widgets, dashboardOwnerUserId, selectedBuilderUserId]);
 
     const getBuilderRowText = (widget) =>
         [
@@ -598,19 +666,19 @@ function SettingsDashboardBuilder() {
                     <label>
                         <span>Name</span>
                         <select
-                            value={selectedBuilderUser}
-                            onChange={(event) => setSelectedBuilderUser(event.target.value)}
+                            value={selectedBuilderUserId}
+                            onChange={(event) => setSelectedBuilderUserId(event.target.value)}
                         >
                             {usersForSelectedRole.map((builderUser) => (
-                                <option key={builderUser} value={builderUser}>
-                                    {builderUser}
+                                <option key={builderUser.id} value={builderUser.id}>
+                                    {builderUser.name}
                                 </option>
                             ))}
                         </select>
                     </label>
                 </div>
                 <div className={styles.builderSelectedUser}>
-                    <strong>{selectedBuilderUser}</strong>
+                    <strong>{usersForSelectedRole.find((user) => String(user.id) === String(selectedBuilderUserId))?.name || displayUserName}</strong>
                     <span>{selectedRole}</span>
                 </div>
             </section>

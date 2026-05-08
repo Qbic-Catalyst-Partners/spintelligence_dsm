@@ -70,6 +70,15 @@ const fetchEndpointRows = async (endpoint, params = {}) => {
   return response.data;
 };
 
+const getDashboardWithFallback = async (path, params = {}) => {
+  try {
+    return await apiConfig.get(`/api/dashboard/builder/${path}`, params, { skipGlobalErrorModal: true });
+  } catch (error) {
+    if (error?.response?.status !== 404) throw error;
+    return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, { skipGlobalErrorModal: true });
+  }
+};
+
 const reportSources = {
   "Quality Control": {
     Mixing: {
@@ -541,13 +550,21 @@ function ReportsPage() {
   const [sendToMe, setSendToMe] = useState(true);
   const [sendToCustomer, setSendToCustomer] = useState(false);
   const [schedulesLoaded, setSchedulesLoaded] = useState(false);
+  const [period, setPeriod] = useState("1W");
+  const [builderOptions, setBuilderOptions] = useState({
+    departments: [],
+    sub_departments: [],
+    input_screens: [],
+    input_fields: [],
+    periods: ["1D", "1W", "1M", "1Y"],
+  });
+  const [inputField, setInputField] = useState("");
   const requestIdRef = useRef(0);
   const timePickerRef = useRef(null);
 
-  const departments = Object.keys(reportSources);
-  const subDepartments = Object.keys(reportSources[department] || {});
-  const reportTypes = Object.keys(reportSources[department]?.[subDepartment] || {});
-  const selectedReportSource = reportSources[department]?.[subDepartment]?.[reportType];
+  const departments = builderOptions.departments;
+  const subDepartments = builderOptions.sub_departments;
+  const reportTypes = builderOptions.input_screens;
 
   const availableFields = useMemo(() => {
     const fields = inferFields(rows);
@@ -573,6 +590,88 @@ function ReportsPage() {
   }, [dateFilterActive, endDate, rows, startDate]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadDepartments = async () => {
+      try {
+        const response = await getDashboardWithFallback("options");
+        if (!isMounted) return;
+        const next = response?.data || {};
+        const nextDepartments = Array.isArray(next.departments) ? next.departments : [];
+        const nextPeriods = Array.isArray(next.periods) && next.periods.length ? next.periods : ["1D", "1W", "1M", "1Y"];
+        const defaultDepartment = nextDepartments[0] || "";
+        setBuilderOptions((current) => ({
+          ...current,
+          departments: nextDepartments,
+          periods: nextPeriods,
+        }));
+        setDepartment(defaultDepartment);
+      } catch {
+        if (!isMounted) return;
+        setBuilderOptions((current) => ({ ...current, departments: [], periods: ["1D", "1W", "1M", "1Y"] }));
+      }
+    };
+    loadDepartments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSubDepartments = async () => {
+      if (!department) return;
+      const response = await getDashboardWithFallback("options", { department });
+      if (!isMounted) return;
+      const nextSubDepartments = Array.isArray(response?.data?.sub_departments) ? response.data.sub_departments : [];
+      const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
+      setBuilderOptions((current) => ({ ...current, sub_departments: nextSubDepartments, input_screens: [], input_fields: [] }));
+      setSubDepartment(nextSubDepartment);
+    };
+    loadSubDepartments().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadScreens = async () => {
+      if (!department || !subDepartment) return;
+      const response = await getDashboardWithFallback("options", { department, sub_department: subDepartment });
+      if (!isMounted) return;
+      const nextScreens = Array.isArray(response?.data?.input_screens) ? response.data.input_screens : [];
+      const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
+      setBuilderOptions((current) => ({ ...current, input_screens: nextScreens, input_fields: [] }));
+      setReportType(nextScreen);
+    };
+    loadScreens().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department, subDepartment]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFields = async () => {
+      if (!department || !subDepartment || !reportType) return;
+      const response = await getDashboardWithFallback("options", {
+        department,
+        sub_department: subDepartment,
+        input_screen: reportType,
+      });
+      if (!isMounted) return;
+      const nextFields = Array.isArray(response?.data?.input_fields) ? response.data.input_fields : [];
+      const nextField = nextFields.includes(inputField) ? inputField : (nextFields[0] || "");
+      setBuilderOptions((current) => ({ ...current, input_fields: nextFields }));
+      setInputField(nextField);
+    };
+    loadFields().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department, subDepartment, reportType]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     try {
@@ -593,19 +692,15 @@ function ReportsPage() {
   }, [scheduledReports, schedulesLoaded]);
 
   useEffect(() => {
-    const fetcher = selectedReportSource?.fetcher;
-    const endpoint = selectedReportSource?.endpoint;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setRows([]);
     setSelectedFields([]);
     setError("");
 
-    const reportFetcher = fetcher || (endpoint ? fetchEndpointRows.bind(null, endpoint) : null);
-    if (!reportFetcher) {
+    if (!department || !subDepartment || !reportType || !inputField) {
       setRows([]);
       setSelectedFields([]);
-      setError("No report list API is configured for this selection.");
       return;
     }
 
@@ -614,11 +709,33 @@ function ReportsPage() {
     const loadReport = async () => {
       try {
         setLoading(true);
-        const nextRows = await fetchAllReportRows(reportFetcher);
+        const response = await getDashboardWithFallback("data", {
+          department,
+          sub_department: subDepartment,
+          input_screen: reportType,
+          input_field: inputField,
+          period,
+        });
+        const data = response?.data || {};
+        const trendRows = Array.isArray(data.trend) ? data.trend : [];
+        const nextRows = trendRows.map((item, index) => ({
+          id: `${index + 1}`,
+          label: item?.label ?? "",
+          trend_value: item?.value ?? null,
+          average_value: data?.average_value ?? null,
+          latest_value: data?.latest_value ?? null,
+          latest_at: data?.latest_at ?? null,
+        }));
         if (isActive && requestIdRef.current === requestId) {
-          const nextFields = inferFields(nextRows);
+          const nextFields = [
+            { key: "label", label: "Period" },
+            { key: "trend_value", label: "Trend Value" },
+            { key: "average_value", label: "Average Value" },
+            { key: "latest_value", label: "Latest Value" },
+            { key: "latest_at", label: "Latest At" },
+          ];
           setRows(nextRows);
-          setSelectedFields(nextFields.slice(0, Math.min(5, nextFields.length)));
+          setSelectedFields(nextFields);
           setError("");
         }
       } catch (requestError) {
@@ -635,7 +752,7 @@ function ReportsPage() {
     return () => {
       isActive = false;
     };
-  }, [department, reportType, subDepartment]);
+  }, [department, reportType, subDepartment, inputField, period]);
 
   useEffect(() => {
     if (!timePickerOpen) return undefined;
@@ -927,14 +1044,7 @@ function ReportsPage() {
                 <select
                   value={department}
                   onChange={(event) => {
-                    const nextDepartment = event.target.value;
-                    const nextSubDepartment = Object.keys(reportSources[nextDepartment] || {})[0] || "";
-                    const nextReportType =
-                      Object.keys(reportSources[nextDepartment]?.[nextSubDepartment] || {})[0] || "";
-
-                    setDepartment(nextDepartment);
-                    setSubDepartment(nextSubDepartment);
-                    setReportType(nextReportType);
+                    setDepartment(event.target.value);
                   }}
                 >
                   {departments.map((option) => (
@@ -948,9 +1058,7 @@ function ReportsPage() {
                 <select
                   value={subDepartment}
                   onChange={(event) => {
-                    const nextSubDepartment = event.target.value;
-                    setSubDepartment(nextSubDepartment);
-                    setReportType(Object.keys(reportSources[department]?.[nextSubDepartment] || {})[0] || "");
+                    setSubDepartment(event.target.value);
                   }}
                 >
                   {subDepartments.map((option) => (
@@ -960,9 +1068,27 @@ function ReportsPage() {
                 <FiChevronDown />
               </label>
               <label className={styles.fieldGroup}>
-                <span>Type</span>
+                <span>Input Screen</span>
                 <select value={reportType} onChange={(event) => setReportType(event.target.value)}>
                   {reportTypes.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+                <FiChevronDown />
+              </label>
+              <label className={styles.fieldGroup}>
+                <span>Input Field</span>
+                <select value={inputField} onChange={(event) => setInputField(event.target.value)}>
+                  {builderOptions.input_fields.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+                <FiChevronDown />
+              </label>
+              <label className={styles.fieldGroup}>
+                <span>Period</span>
+                <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+                  {(builderOptions.periods || ["1D", "1W", "1M", "1Y"]).map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </select>
