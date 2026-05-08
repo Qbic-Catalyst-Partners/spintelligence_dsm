@@ -113,7 +113,10 @@
 }
 
 .cardHeader {
-    margin-bottom: 18px;
+    display: grid;
+    justify-items: start;
+    gap: 4px;
+    margin-bottom: 10px;
 }
 
 .cardHeader h2 {
@@ -125,7 +128,7 @@
 }
 
 .cardHeader p {
-    margin: 4px 0 0;
+    margin: 0;
     color: #7b89a0;
     font-size: 14px;
 }
@@ -151,13 +154,13 @@
 .field select,
 .field input,
 .statusField select {
-    min-height: 40px;
+    min-height: 34px;
     border: 1px solid #dbe2ec;
     border-radius: 8px;
     background: #f8fbff;
-    padding: 0 12px;
+    padding: 0 8px;
     color: #29374f;
-    font-size: 14px;
+    font-size: 12px;
     outline: none;
 }
 
@@ -170,19 +173,22 @@
 
 .rulesTable {
     display: grid;
-    gap: 14px;
+    gap: 12px;
+    width: 100%;
 }
 
 .ruleLabels {
     display: grid;
-    grid-template-columns: 1.35fr 1fr 1fr 1fr 84px;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) 72px;
     gap: 12px;
+    width: 100%;
 }
 
 .ruleLabels span {
     color: #42516a;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
+    line-height: 1.2;
 }
 
 .ruleActionHeader {
@@ -191,16 +197,18 @@
 
 .ruleRow {
     display: grid;
-    grid-template-columns: 1.35fr 1fr 1fr 1fr 84px;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) 72px;
     gap: 12px;
     align-items: center;
+    width: 100%;
 }
 
 .ruleActions {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 8px;
+    min-width: 72px;
 }
 
 .addIconButton,
@@ -316,6 +324,13 @@
     box-shadow: none;
 }
 
+.existingFilterPanel {
+    display: grid;
+    grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+}
+
 .summaryGrid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -344,6 +359,22 @@
     font-size: 14px;
 }
 
+.existingThresholdCard {
+    padding: 10px 0 0;
+    overflow: hidden;
+}
+
+.existingSummaryRow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 4px 16px 18px;
+}
+
+.departmentSummaryCard {
+    background: #ededee;
+}
+
 .tableWrap {
     overflow-x: auto;
 }
@@ -368,6 +399,28 @@
     border-bottom: 1px solid #e6ebf2;
     color: #222b39;
     font-size: 13px;
+}
+
+.existingThresholdTable thead th {
+    background: #d2d2d5;
+    border-bottom: none;
+    color: #111111;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.existingThresholdTable thead th:first-child {
+    border-top-left-radius: 8px;
+}
+
+.existingThresholdTable thead th:last-child {
+    border-top-right-radius: 8px;
+}
+
+.existingThresholdTable tbody td {
+    padding: 14px 12px;
+    color: #111111;
+    font-weight: 600;
 }
 
 .positiveValue {
@@ -400,6 +453,34 @@
 .inactiveStatus {
     background: #efefef;
     color: #6b7280;
+}
+
+.criticalityBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 56px;
+    min-height: 22px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.criticalityHigh {
+    background: #ffdede;
+    color: #ff3b30;
+}
+
+.criticalityMedium {
+    background: #fff0bf;
+    color: #d2a100;
+}
+
+.criticalityLow {
+    background: #deefe9;
+    color: #66a58d;
 }
 
 .actionMenuWrap {
@@ -463,15 +544,10 @@
 
 .paginationBar {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     gap: 16px;
-    padding-top: 14px;
-}
-
-.paginationMeta {
-    color: #718096;
-    font-size: 13px;
+    padding: 16px 16px 14px;
 }
 
 .paginationControls {
@@ -482,11 +558,11 @@
 
 .paginationButton,
 .paginationNumber {
-    min-width: 30px;
-    height: 30px;
-    border: 1px solid #dbe2ec;
-    border-radius: 8px;
-    background: #f7f8fb;
+    min-width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: #edf0f4;
     color: #4a5568;
     display: inline-flex;
     align-items: center;
@@ -497,12 +573,12 @@
 }
 
 .paginationNumber {
-    background: #edf2f7;
+    background: #d9e8fb;
+    color: #385b8c;
 }
 
 .paginationNumberActive {
     background: #4f63b6;
-    border-color: #4f63b6;
     color: #ffffff;
 }
 
@@ -551,6 +627,11 @@
         grid-template-columns: 1fr;
     }
 
+    .existingFilterPanel,
+    .existingSummaryRow {
+        grid-template-columns: 1fr;
+    }
+
     .ruleLabels {
         display: none;
     }
@@ -580,7 +661,7 @@
 
     .paginationBar {
         flex-direction: column;
-        align-items: stretch;
+        align-items: flex-end;
     }
 
     .paginationControls {

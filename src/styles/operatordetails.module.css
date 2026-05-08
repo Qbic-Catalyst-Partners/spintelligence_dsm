@@ -134,6 +134,16 @@
   color: #7c3aed;
 }
 
+.in-progress {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.submit {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 .reopened {
   background: #fff4d6;
   color: #b7791f;
@@ -706,6 +716,16 @@
   .mobile-ticket-card .open {
     background: #e5f6eb;
     color: #1f8a4c;
+  }
+
+  .mobile-ticket-card .in-progress {
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+
+  .mobile-ticket-card .submit {
+    background: #ede9fe;
+    color: #6d28d9;
   }
 
   .mobile-ticket-card .high {

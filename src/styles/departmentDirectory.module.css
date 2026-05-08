@@ -1670,6 +1670,13 @@
     margin-top: 26px;
 }
 
+.builderStatusMessage {
+    margin: 0 0 16px;
+    color: #3550a4;
+    font-size: 13px;
+    font-weight: 700;
+}
+
 .builderModalCancel,
 .builderModalSubmit {
     min-width: 82px;

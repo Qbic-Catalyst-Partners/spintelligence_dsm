@@ -10,6 +10,13 @@ import {
     formatStandardValue,
     getTicketValueForParameter,
 } from "../../utils/ticketTransformer";
+import {
+    applyStoredTicketStatuses,
+    getStatusClassKey,
+    getOperatorStatusOptions,
+    setStoredTicketStatus,
+    TICKET_STATUS_OPTIONS,
+} from "../../utils/ticketStatus";
 
 export default function operatorboard() {
     const [ticketData, setTicketData] = useState([]);
@@ -42,7 +49,7 @@ export default function operatorboard() {
                 ? response
                 : response?.data || response?.tickets || [];
 
-            const formattedData = ticketsArray.map((ticket) => {
+            const formattedData = applyStoredTicketStatuses(ticketsArray).map((ticket) => {
                 const createdDate = new Date(ticket.created_at);
 
                 return {
@@ -151,7 +158,7 @@ export default function operatorboard() {
                     label="Status"
                     value={status}
                     onChange={setStatus}
-                    options={["All", "Open", "Pending Approval", "Closed", "Reopened", "Unresolved"]}
+                    options={["All", ...TICKET_STATUS_OPTIONS]}
                 />
 
                 <Filter
@@ -233,9 +240,26 @@ export default function operatorboard() {
                                     </span>
                                 </td>
                                 <td>
-                                    <span className={`${styles.badge} ${styles["status-" + t.status.toLowerCase().replace(/\s+/g, "-")]}`}>
-                                        {t.status}
-                                    </span>
+                                    <select
+                                        className={styles["status-select"]}
+                                        value={t.status}
+                                        onClick={(event) => event.stopPropagation()}
+                                        onChange={(event) => {
+                                            const nextStatus = event.target.value;
+                                            setStoredTicketStatus(t.id, nextStatus);
+                                            setTicketData((current) =>
+                                                current.map((ticket) =>
+                                                    ticket.id === t.id ? { ...ticket, status: nextStatus } : ticket
+                                                )
+                                            );
+                                        }}
+                                    >
+                                        {getOperatorStatusOptions(t.status).map((option) => (
+                                            <option key={option} value={option}>
+                                                {option}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </td>
                                 <td>{t.createdAt}</td>
                             </tr>
@@ -276,8 +300,8 @@ export default function operatorboard() {
                             <div className={styles["filter-body"]}>
                                 <label>Status</label>
                                 <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                                    <option>All</option><option>Open</option><option>Pending Approval</option>
-                                    <option>Closed</option><option>Reopened</option><option>Unresolved</option>
+                                    <option>All</option>
+                                    {TICKET_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                                 </select>
 
                                 <label>Severity</label>
@@ -332,9 +356,27 @@ export default function operatorboard() {
                         </div>
 
                         <div className={styles["card-bottom"]}>
-                            <div className={styles["status-left"]}>
-                                <span className={`${styles["status-dot"]} ${styles[t.status.toLowerCase().replace(/\s+/g, "_")]}`}></span>
-                                {t.status}
+                            <div className={styles["status-left"]} onClick={(event) => event.stopPropagation()}>
+                                <span className={`${styles["status-dot"]} ${styles[getStatusClassKey(t.status).replace(/-/g, "_")]}`}></span>
+                                <select
+                                    className={styles["mobile-status-select"]}
+                                    value={t.status}
+                                    onChange={(event) => {
+                                        const nextStatus = event.target.value;
+                                        setStoredTicketStatus(t.id, nextStatus);
+                                        setTicketData((current) =>
+                                            current.map((ticket) =>
+                                                ticket.id === t.id ? { ...ticket, status: nextStatus } : ticket
+                                            )
+                                        );
+                                    }}
+                                >
+                                    {getOperatorStatusOptions(t.status).map((option) => (
+                                        <option key={option} value={option}>
+                                            {option}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             <div className={styles["details-link"]}>Details &gt;</div>
                         </div>

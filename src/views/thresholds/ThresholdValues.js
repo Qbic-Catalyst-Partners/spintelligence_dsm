@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { FiChevronLeft, FiChevronRight, FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
 
 import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateThresholdAPI, updateThresholdStatusAPI } from "@/apis/thresholdsApi";
+import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
@@ -17,6 +18,8 @@ const createRule = () => ({
     actualValue: "",
     positiveTolerance: "",
     negativeTolerance: "",
+    criticality: "",
+    approvalL2: "",
 });
 
 const EXISTING_ROWS_PER_PAGE = 6;
@@ -43,10 +46,47 @@ const getScreenFieldOptions = (screenName, thresholds) => {
     return Array.from(new Set(inferredFields)).sort();
 };
 
+const getCriticalityLabel = (item) => {
+    const directValue = String(
+        item?.criticality || item?.severity || item?.priority || ""
+    ).trim();
+
+    if (directValue) {
+        const normalized = directValue.toLowerCase();
+        if (normalized === "high" || normalized === "medium" || normalized === "low") {
+            return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+        }
+    }
+
+    const plusValue = Number(item?.plus_threshold ?? item?.positive_tolerance);
+    const minusValue = Number(item?.minus_threshold ?? item?.negative_tolerance);
+    const tolerance = Math.max(
+        Number.isFinite(plusValue) ? Math.abs(plusValue) : 0,
+        Number.isFinite(minusValue) ? Math.abs(minusValue) : 0
+    );
+
+    if (tolerance >= 2) return "High";
+    if (tolerance >= 1) return "Medium";
+    return "Low";
+};
+
+const getApprovalLabel = (item, user) =>
+    item?.approval_l2 ||
+    item?.approved_by ||
+    item?.created_by ||
+    item?.updated_by ||
+    user?.full_name ||
+    user?.fullName ||
+    user?.name ||
+    user?.username ||
+    "-";
+
 export default function ThresholdValues() {
+    const dispatch = useDispatch();
     const router = useRouter();
     const user = useSelector((state) => state.auth?.user);
     const isHydrated = useSelector((state) => state.auth?.isHydrated);
+    const users = useSelector((state) => state.users?.users || []);
     const canAccessPage = isFullAccessUser(user);
 
     const [activeTab, setActiveTab] = useState("new");
@@ -105,6 +145,12 @@ export default function ThresholdValues() {
     }, [canAccessPage, isHydrated, router]);
 
     useEffect(() => {
+        if (canAccessPage && isHydrated && !users.length) {
+            dispatch(fetchUsers());
+        }
+    }, [canAccessPage, dispatch, isHydrated, users.length]);
+
+    useEffect(() => {
         const handlePointerDown = (event) => {
             const actionMenu = event.target.closest("[data-threshold-menu]");
             if (!actionMenu) {
@@ -130,6 +176,26 @@ export default function ThresholdValues() {
         () => getScreenFieldOptions(selectedScreenName, thresholds),
         [selectedScreenName, thresholds]
     );
+
+    const supervisorOptions = useMemo(() => {
+        const seenNames = new Set();
+
+        return users
+            .filter((item) =>
+                String(item?.role || "").trim().toLowerCase().includes("supervisor")
+            )
+            .filter((item) => {
+                const name = String(item?.name || "").trim();
+
+                if (!name || seenNames.has(name.toLowerCase())) {
+                    return false;
+                }
+
+                seenNames.add(name.toLowerCase());
+                return true;
+            })
+            .sort((left, right) => left.name.localeCompare(right.name));
+    }, [users]);
 
     useEffect(() => {
         setExistingFilters((current) => {
@@ -298,6 +364,8 @@ export default function ThresholdValues() {
                 actualValue: String(item?.actual_value ?? ""),
                 positiveTolerance: String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
                 negativeTolerance: String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
+                criticality: getCriticalityLabel(item),
+                approvalL2: String(item?.approval_l2 || item?.approved_by || ""),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
@@ -414,8 +482,10 @@ export default function ThresholdValues() {
             const rawActualValue = rule.actualValue.trim();
             const rawPositiveTolerance = rule.positiveTolerance.trim();
             const rawNegativeTolerance = rule.negativeTolerance.trim();
+            const criticality = String(rule.criticality || "").trim();
+            const approvalL2 = String(rule.approvalL2 || "").trim();
 
-            if (!fieldName || !rawActualValue || (!rawPositiveTolerance && !rawNegativeTolerance)) {
+            if (!fieldName || !rawActualValue || (!rawPositiveTolerance && !rawNegativeTolerance) || !criticality || !approvalL2) {
                 const missingFields = [];
 
                 if (!fieldName) {
@@ -428,6 +498,14 @@ export default function ThresholdValues() {
 
                 if (!rawPositiveTolerance && !rawNegativeTolerance) {
                     missingFields.push("plus_or_minus_value");
+                }
+
+                if (!criticality) {
+                    missingFields.push("criticality");
+                }
+
+                if (!approvalL2) {
+                    missingFields.push("approval_l2");
                 }
 
                 setFormError(`${missingFields.join(", ")} are required.`);
@@ -448,6 +526,10 @@ export default function ThresholdValues() {
                 erp_product_code: selectedSubDepartment.name,
                 machine_name: selectedScreenName,
                 parameter_name: fieldName,
+                criticality,
+                severity: criticality,
+                priority: criticality,
+                approval_l2: approvalL2,
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -667,6 +749,8 @@ export default function ThresholdValues() {
                                         <span>Actual Value</span>
                                         <span>Plus (+)</span>
                                         <span>Minus (-)</span>
+                                        <span>Criticality</span>
+                                        <span>Approval (L2)</span>
                                         <span className={styles.ruleActionHeader}>Actions</span>
                                     </div>
 
@@ -716,6 +800,39 @@ export default function ThresholdValues() {
                                                     }
                                                     placeholder="Enter - tolerance"
                                                 />
+                                            </label>
+
+                                            <label className={styles.field}>
+                                                <select
+                                                    value={rule.criticality}
+                                                    onChange={(event) =>
+                                                        handleRuleChange(rule.id, "criticality", event.target.value)
+                                                    }
+                                                >
+                                                    <option value="">Select</option>
+                                                    <option value="Low">Low</option>
+                                                    <option value="Medium">Medium</option>
+                                                    <option value="High">High</option>
+                                                </select>
+                                            </label>
+
+                                            <label className={styles.field}>
+                                                <select
+                                                    value={rule.approvalL2}
+                                                    disabled={!supervisorOptions.length}
+                                                    onChange={(event) =>
+                                                        handleRuleChange(rule.id, "approvalL2", event.target.value)
+                                                    }
+                                                >
+                                                    <option value="">
+                                                        {supervisorOptions.length ? "Select" : "No supervisors available"}
+                                                    </option>
+                                                    {supervisorOptions.map((supervisor) => (
+                                                        <option key={supervisor.id} value={supervisor.name}>
+                                                            {supervisor.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
                                             </label>
 
                                             <div className={styles.ruleActions}>
@@ -771,7 +888,7 @@ export default function ThresholdValues() {
                     </>
                 ) : (
                     <div className={styles.stack}>
-                        <section className={styles.filterPanel}>
+                        <section className={styles.existingFilterPanel}>
                             <label className={styles.field}>
                                 <span>Department</span>
                                 <select
@@ -871,9 +988,9 @@ export default function ThresholdValues() {
                             </button>
                         </section>
 
-                        <section className={styles.card}>
-                            <div className={styles.summaryGrid}>
-                                <article className={styles.summaryCard}>
+                        <section className={`${styles.card} ${styles.existingThresholdCard}`}>
+                            <div className={styles.existingSummaryRow}>
+                                <article className={`${styles.summaryCard} ${styles.departmentSummaryCard}`}>
                                     <span>Department</span>
                                     <strong>{existingDepartment?.name || "-"}</strong>
                                 </article>
@@ -897,10 +1014,13 @@ export default function ThresholdValues() {
                                 <div className={styles.emptyState}>No threshold values found for the current filters.</div>
                             ) : (
                                 <div className={styles.tableWrap}>
-                                    <table className={styles.table}>
+                                    <table className={`${styles.table} ${styles.existingThresholdTable}`}>
                                         <thead>
                                             <tr>
+                                                <th>Sub Department</th>
                                                 <th>Input Field</th>
+                                                <th>Approval (L2)</th>
+                                                <th>Criticality</th>
                                                 <th>Actual Value</th>
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
@@ -915,9 +1035,25 @@ export default function ThresholdValues() {
                                                 const isMenuOpen = openActionMenuId === rowKey;
                                                 const isStatusUpdating = statusUpdatingRowKey === rowKey;
                                                 const isDeleting = deletingRowKey === rowKey;
+                                                const criticalityLabel = getCriticalityLabel(item);
                                                 return (
                                                 <tr key={rowKey}>
+                                                    <td>{item.sub_department || item.erp_product_code || "-"}</td>
                                                     <td>{item.input_field || item.parameter_name || "-"}</td>
+                                                    <td>{getApprovalLabel(item, user)}</td>
+                                                    <td>
+                                                        <span
+                                                            className={`${styles.criticalityBadge} ${
+                                                                criticalityLabel === "High"
+                                                                    ? styles.criticalityHigh
+                                                                    : criticalityLabel === "Medium"
+                                                                        ? styles.criticalityMedium
+                                                                        : styles.criticalityLow
+                                                            }`}
+                                                        >
+                                                            {criticalityLabel}
+                                                        </span>
+                                                    </td>
                                                     <td>{item.actual_value ?? "-"}</td>
                                                     <td className={styles.positiveValue}>
                                                         {item.plus_threshold ?? item.positive_tolerance ?? "-"}
@@ -993,11 +1129,6 @@ export default function ThresholdValues() {
 
                             {!loading && !loadError && filteredThresholds.length > 0 ? (
                                 <div className={styles.paginationBar}>
-                                    <div className={styles.paginationMeta}>
-                                        Showing {existingPageStart + 1} to{" "}
-                                        {Math.min(existingPageStart + EXISTING_ROWS_PER_PAGE, filteredThresholds.length)} of{" "}
-                                        {filteredThresholds.length}
-                                    </div>
                                     <div className={styles.paginationControls}>
                                         <button
                                             type="button"

@@ -563,9 +563,40 @@ tbody tr:hover .ticket-link {
   color: #7c3aed;
 }
 
+.status-in-progress {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.status-submit {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 .status-unresolved {
   background: #f7d5d5;
   color: #dc3545;
+}
+
+.status-select,
+.mobile-status-select {
+  min-width: 118px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #cfe0ff;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mobile-status-select {
+  min-width: 128px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  padding: 0;
 }
 
 @media (min-width: 677px) and (max-width: 1024px) {
@@ -1289,8 +1320,20 @@ tbody tr:hover .ticket-link {
     background: #28a745;
   }
 
+  .status-dot.in_progress {
+    background: #0369a1;
+  }
+
+  .status-dot.submit {
+    background: #6d28d9;
+  }
+
   .status-dot.unresolved {
     background: #CA0000;
+  }
+
+  .mobile-status-select {
+    font-size: 11px;
   }
 
   .muted {

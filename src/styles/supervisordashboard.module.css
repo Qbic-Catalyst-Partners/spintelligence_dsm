@@ -185,6 +185,20 @@ tbody tr:hover .sup-ticket-link {
   font-weight: 600;
 }
 
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 4px 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .high {
   background: #fde2e2;
   color: #c00;
@@ -310,6 +324,16 @@ tbody tr:hover .sup-ticket-link {
   color: #007bff;
 }
 
+.status-in-progress {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.status-submit {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 /* Reopened */
 .status-reopened {
   background: #ffedde;
@@ -320,6 +344,29 @@ tbody tr:hover .sup-ticket-link {
 .status-unresolved {
   background: #f7d5d5;
   color: #dc3545;
+}
+
+.status-select,
+.mobile-status-select {
+  min-width: 118px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #cfe0ff;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mobile-status-select {
+  min-width: 120px;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #555555;
+  font-size: 11px;
 }
 
 /* ===== MOBILE NAVBAR ===== */
@@ -614,6 +661,7 @@ tbody tr:hover .sup-ticket-link {
   height: 8px;
   border-radius: 50%;
   margin-right: 6px;
+  flex-shrink: 0;
 }
 /* OPEN */
 .status-text.open {
@@ -645,6 +693,20 @@ tbody tr:hover .sup-ticket-link {
 }
 .status-text.closed .status-dot {
   background: #28a745;
+}
+
+.status-text.in_progress {
+  color: #555555;
+}
+.status-text.in_progress .status-dot {
+  background: #0369a1;
+}
+
+.status-text.submit {
+  color: #555555;
+}
+.status-text.submit .status-dot {
+  background: #6d28d9;
 }
 
 /* UNRESOLVED */
