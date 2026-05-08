@@ -19,6 +19,16 @@ import {
 
 import apiConfig from "@/apis/apiConfig";
 import {
+  deleteReportScheduleAPI,
+  fetchReportSchedulesAPI,
+  saveReportScheduleAPI,
+  sendStoredReportScheduleAPI,
+  toggleReportScheduleAPI,
+} from "@/apis/reportSchedulesApi";
+import { fetchUsersAPI } from "@/apis/userApi";
+import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
+import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
+import {
   fetchAutoconerConeDensity,
   fetchAutoconerConePackingAudit,
   fetchAutoconerCountWiseCuts,
@@ -68,6 +78,15 @@ const fetchEndpointRows = async (endpoint, params = {}) => {
     { skipGlobalErrorModal: true }
   );
   return response.data;
+};
+
+const getDashboardWithFallback = async (path, params = {}) => {
+  try {
+    return await apiConfig.get(`/api/dashboard/builder/${path}`, params, { skipGlobalErrorModal: true });
+  } catch (error) {
+    if (error?.response?.status !== 404) throw error;
+    return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, { skipGlobalErrorModal: true });
+  }
 };
 
 const reportSources = {
@@ -144,11 +163,15 @@ const reportSources = {
 };
 
 const defaultSelectedFields = [];
-const scheduledReportsStorageKey = "spintelligenceScheduledReports";
+const reportSenderEmail = "otpdemoin@gmail.com";
+const sendToMeEmail = "sivadharshini2807@gmail.com";
 const reportPageSize = 500;
 const maxReportPages = 100;
 const hourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+const weekdayOptions = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const frequencyOptions = ["Single Time", "Daily", "Weekly", "Monthly"];
+const monthDayOptions = Array.from({ length: 31 }, (_, index) => String(index + 1));
 
 const SixDotGrip = () => (
   <span className={styles.sixDotGrip} aria-hidden="true">
@@ -535,19 +558,53 @@ function ReportsPage() {
   const [activeReportTab, setActiveReportTab] = useState("generate");
   const [scheduledReports, setScheduledReports] = useState([]);
   const [editingScheduleId, setEditingScheduleId] = useState("");
+  const [sendingScheduleId, setSendingScheduleId] = useState("");
   const [scheduleReportName, setScheduleReportName] = useState("");
   const [scheduleFrequency, setScheduleFrequency] = useState("Weekly");
   const [scheduleWeekday, setScheduleWeekday] = useState("Monday");
+  const [scheduleMonthDay, setScheduleMonthDay] = useState("1");
+  const [scheduleSingleDate, setScheduleSingleDate] = useState(toInputDate(today));
   const [sendToMe, setSendToMe] = useState(true);
-  const [sendToCustomer, setSendToCustomer] = useState(false);
-  const [schedulesLoaded, setSchedulesLoaded] = useState(false);
+  const [period, setPeriod] = useState("1W");
+  const [builderOptions, setBuilderOptions] = useState({
+    departments: [],
+    sub_departments: [],
+    input_screens: [],
+    input_fields: [],
+    periods: ["1D", "1W", "1M", "1Y"],
+  });
+  const [inputField, setInputField] = useState("");
+  const [sendToOthers, setSendToOthers] = useState(false);
+  const [scheduleUsers, setScheduleUsers] = useState([]);
+  const [selectedScheduleUserIds, setSelectedScheduleUserIds] = useState([]);
+  const [recipientDropdownOpen, setRecipientDropdownOpen] = useState(false);
   const requestIdRef = useRef(0);
   const timePickerRef = useRef(null);
+  const recipientDropdownRef = useRef(null);
 
-  const departments = Object.keys(reportSources);
-  const subDepartments = Object.keys(reportSources[department] || {});
-  const reportTypes = Object.keys(reportSources[department]?.[subDepartment] || {});
-  const selectedReportSource = reportSources[department]?.[subDepartment]?.[reportType];
+  const departments = builderOptions.departments;
+  const subDepartments = builderOptions.sub_departments;
+  const reportTypes = builderOptions.input_screens;
+
+  const getUserId = (user) =>
+    String(user?.id || user?.user_id || user?.userId || user?.employeeId || user?.employee_id || user?.email || "");
+
+  const getUserName = (user) =>
+    user?.name ||
+    user?.full_name ||
+    user?.fullName ||
+    user?.username ||
+    user?.email ||
+    getUserId(user);
+
+  const selectedScheduleUsers = useMemo(
+    () => scheduleUsers.filter((user) => selectedScheduleUserIds.includes(getUserId(user))),
+    [scheduleUsers, selectedScheduleUserIds]
+  );
+
+  const selectedRecipientLabel = selectedScheduleUsers.length
+    ? selectedScheduleUsers.map(getUserName).join(", ")
+    : "Select users";
 
   const availableFields = useMemo(() => {
     const fields = inferFields(rows);
@@ -573,39 +630,137 @@ function ReportsPage() {
   }, [dateFilterActive, endDate, rows, startDate]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const savedSchedules = window.localStorage.getItem(scheduledReportsStorageKey);
-      if (savedSchedules) {
-        setScheduledReports(JSON.parse(savedSchedules));
+    let isMounted = true;
+    const loadDepartments = async () => {
+      try {
+        const response = await getDashboardWithFallback("options");
+        if (!isMounted) return;
+        const next = response?.data || {};
+        const nextDepartments = Array.isArray(next.departments) ? next.departments : [];
+        const nextPeriods = Array.isArray(next.periods) && next.periods.length ? next.periods : ["1D", "1W", "1M", "1Y"];
+        const defaultDepartment = nextDepartments[0] || "";
+        setBuilderOptions((current) => ({
+          ...current,
+          departments: nextDepartments,
+          periods: nextPeriods,
+        }));
+        setDepartment(defaultDepartment);
+      } catch {
+        if (!isMounted) return;
+        setBuilderOptions((current) => ({ ...current, departments: [], periods: ["1D", "1W", "1M", "1Y"] }));
       }
-    } catch {
-      setScheduledReports([]);
-    } finally {
-      setSchedulesLoaded(true);
-    }
+    };
+    loadDepartments();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !schedulesLoaded) return;
-    window.localStorage.setItem(scheduledReportsStorageKey, JSON.stringify(scheduledReports));
-  }, [scheduledReports, schedulesLoaded]);
+    let isMounted = true;
+    const loadSubDepartments = async () => {
+      if (!department) return;
+      const response = await getDashboardWithFallback("options", { department });
+      if (!isMounted) return;
+      const nextSubDepartments = Array.isArray(response?.data?.sub_departments) ? response.data.sub_departments : [];
+      const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
+      setBuilderOptions((current) => ({ ...current, sub_departments: nextSubDepartments, input_screens: [], input_fields: [] }));
+      setSubDepartment(nextSubDepartment);
+    };
+    loadSubDepartments().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department]);
 
   useEffect(() => {
-    const fetcher = selectedReportSource?.fetcher;
-    const endpoint = selectedReportSource?.endpoint;
+    let isMounted = true;
+    const loadScreens = async () => {
+      if (!department || !subDepartment) return;
+      const response = await getDashboardWithFallback("options", { department, sub_department: subDepartment });
+      if (!isMounted) return;
+      const nextScreens = Array.isArray(response?.data?.input_screens) ? response.data.input_screens : [];
+      const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
+      setBuilderOptions((current) => ({ ...current, input_screens: nextScreens, input_fields: [] }));
+      setReportType(nextScreen);
+    };
+    loadScreens().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department, subDepartment]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFields = async () => {
+      if (!department || !subDepartment || !reportType) return;
+      const response = await getDashboardWithFallback("options", {
+        department,
+        sub_department: subDepartment,
+        input_screen: reportType,
+      });
+      if (!isMounted) return;
+      const nextFields = Array.isArray(response?.data?.input_fields) ? response.data.input_fields : [];
+      const nextField = nextFields.includes(inputField) ? inputField : (nextFields[0] || "");
+      setBuilderOptions((current) => ({ ...current, input_fields: nextFields }));
+      setInputField(nextField);
+    };
+    loadFields().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department, subDepartment, reportType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let isActive = true;
+
+    const loadSchedules = async () => {
+      try {
+        const schedules = await fetchReportSchedulesAPI();
+        if (isActive) setScheduledReports(schedules);
+      } catch {
+        if (isActive) setScheduledReports([]);
+      }
+    };
+
+    loadSchedules();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadUsers = async () => {
+      try {
+        const response = await fetchUsersAPI();
+        if (!isActive) return;
+        setScheduleUsers(normalizeRows(response).filter((user) => getUserId(user)));
+      } catch {
+        if (isActive) setScheduleUsers([]);
+      }
+    };
+
+    loadUsers();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setRows([]);
     setSelectedFields([]);
     setError("");
 
-    const reportFetcher = fetcher || (endpoint ? fetchEndpointRows.bind(null, endpoint) : null);
-    if (!reportFetcher) {
+    if (!department || !subDepartment || !reportType || !inputField) {
       setRows([]);
       setSelectedFields([]);
-      setError("No report list API is configured for this selection.");
       return;
     }
 
@@ -614,11 +769,33 @@ function ReportsPage() {
     const loadReport = async () => {
       try {
         setLoading(true);
-        const nextRows = await fetchAllReportRows(reportFetcher);
+        const response = await getDashboardWithFallback("data", {
+          department,
+          sub_department: subDepartment,
+          input_screen: reportType,
+          input_field: inputField,
+          period,
+        });
+        const data = response?.data || {};
+        const trendRows = Array.isArray(data.trend) ? data.trend : [];
+        const nextRows = trendRows.map((item, index) => ({
+          id: `${index + 1}`,
+          label: item?.label ?? "",
+          trend_value: item?.value ?? null,
+          average_value: data?.average_value ?? null,
+          latest_value: data?.latest_value ?? null,
+          latest_at: data?.latest_at ?? null,
+        }));
         if (isActive && requestIdRef.current === requestId) {
-          const nextFields = inferFields(nextRows);
+          const nextFields = [
+            { key: "label", label: "Period" },
+            { key: "trend_value", label: "Trend Value" },
+            { key: "average_value", label: "Average Value" },
+            { key: "latest_value", label: "Latest Value" },
+            { key: "latest_at", label: "Latest At" },
+          ];
           setRows(nextRows);
-          setSelectedFields(nextFields.slice(0, Math.min(5, nextFields.length)));
+          setSelectedFields(nextFields);
           setError("");
         }
       } catch (requestError) {
@@ -635,7 +812,7 @@ function ReportsPage() {
     return () => {
       isActive = false;
     };
-  }, [department, reportType, subDepartment]);
+  }, [department, reportType, subDepartment, inputField, period]);
 
   useEffect(() => {
     if (!timePickerOpen) return undefined;
@@ -649,6 +826,19 @@ function ReportsPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [timePickerOpen]);
+
+  useEffect(() => {
+    if (!recipientDropdownOpen) return undefined;
+
+    const handleClickOutside = (event) => {
+      if (!recipientDropdownRef.current?.contains(event.target)) {
+        setRecipientDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [recipientDropdownOpen]);
 
   const addField = (field) => {
     setSelectedFields((current) =>
@@ -737,8 +927,12 @@ function ReportsPage() {
     setScheduleReportName(`${subDepartment} - ${reportType}`);
     setScheduleFrequency("Weekly");
     setScheduleWeekday("Monday");
+    setScheduleMonthDay("1");
+    setScheduleSingleDate(toInputDate(new Date()));
     setSendToMe(true);
-    setSendToCustomer(false);
+    setSendToOthers(false);
+    setSelectedScheduleUserIds([]);
+    setRecipientDropdownOpen(false);
     syncScheduleTime("08", "00", "AM");
   };
 
@@ -748,8 +942,13 @@ function ReportsPage() {
       setScheduleReportName(schedule.name);
       setScheduleFrequency(schedule.frequency);
       setScheduleWeekday(schedule.weekday);
+      setScheduleMonthDay(String(schedule.monthDay || "1"));
+      setScheduleSingleDate(schedule.singleDate || toInputDate(new Date()));
       setSendToMe(schedule.sendToMe);
-      setSendToCustomer(schedule.sendToCustomer);
+      const recipientIds = Array.isArray(schedule.recipientUserIds) ? schedule.recipientUserIds.map(String) : [];
+      setSendToOthers(typeof schedule.sendToOthers === "boolean" ? schedule.sendToOthers : recipientIds.length > 0);
+      setSelectedScheduleUserIds(recipientIds);
+      setRecipientDropdownOpen(false);
       syncScheduleTime(schedule.hour, schedule.minute, schedule.meridiem);
     } else {
       resetScheduleForm();
@@ -762,67 +961,273 @@ function ReportsPage() {
   const closeScheduleModal = () => {
     setScheduleOpen(false);
     setTimePickerOpen(false);
+    setRecipientDropdownOpen(false);
     setEditingScheduleId("");
   };
 
-  const handleSaveSchedule = () => {
+  const toggleScheduleRecipient = (userId) => {
+    setSelectedScheduleUserIds((current) =>
+      current.includes(userId)
+        ? current.filter((selectedId) => selectedId !== userId)
+        : [...current, userId]
+    );
+  };
+
+  const filterRowsByScheduleDate = (schedule, reportRows) => {
+    if (!schedule.dateFilterActive) return reportRows;
+
+    const scheduleStartDate = schedule.startDate ? new Date(schedule.startDate) : null;
+    const scheduleEndDate = schedule.endDate ? new Date(`${schedule.endDate}T23:59:59`) : null;
+
+    return reportRows.filter((row) => {
+      const rawDate = getRowDate(row);
+      if (!rawDate || (!scheduleStartDate && !scheduleEndDate)) return true;
+      const date = new Date(rawDate);
+      if (Number.isNaN(date.getTime())) return true;
+      if (scheduleStartDate && date < scheduleStartDate) return false;
+      if (scheduleEndDate && date > scheduleEndDate) return false;
+      return true;
+    });
+  };
+
+  const loadScheduleRows = async (schedule) => {
+    const scheduleSource = reportSources[schedule.department]?.[schedule.subDepartment]?.[schedule.reportType];
+    const reportFetcher =
+      scheduleSource?.fetcher ||
+      (scheduleSource?.endpoint ? fetchEndpointRows.bind(null, scheduleSource.endpoint) : null);
+
+    if (!reportFetcher) {
+      return filterRowsByScheduleDate(schedule, filteredRows);
+    }
+
+    const scheduleRows = await fetchAllReportRows(reportFetcher);
+    return filterRowsByScheduleDate(schedule, scheduleRows);
+  };
+
+  const buildScheduleMailPayload = (schedule, reportRows = filteredRows) => {
+    const reportFields = schedule.selectedFields?.length ? schedule.selectedFields : selectedFields;
+    const otherRecipientEmails = schedule.sendToOthers
+      ? (schedule.recipientUsers || []).map((user) => user.email).filter(Boolean)
+      : [];
+    const recipients = Array.from(
+      new Set([
+        ...(schedule.sendToMe ? [sendToMeEmail] : []),
+        ...otherRecipientEmails,
+      ])
+    );
+
+    return {
+      from: reportSenderEmail,
+      to: recipients,
+      sendToMeEmail,
+      receiverEmail: sendToMeEmail,
+      subject: `Scheduled Report: ${schedule.name}`,
+      schedule,
+      report: {
+        department: schedule.department,
+        subDepartment: schedule.subDepartment,
+        reportType: schedule.reportType,
+        dateRange: {
+          from: schedule.startDate || startDate,
+          to: schedule.endDate || endDate,
+        },
+        fields: reportFields,
+        rows: reportRows.slice(0, 500).map((row) =>
+          reportFields.reduce((record, field) => {
+            record[field.label] = getCellValue(row, field);
+            return record;
+          }, {})
+        ),
+        totalRows: reportRows.length,
+      },
+    };
+  };
+
+  const handleSaveSchedule = async () => {
     const schedule = {
       id: editingScheduleId || `${Date.now()}`,
       name: scheduleReportName.trim() || `${subDepartment} - ${reportType}`,
       department,
       subDepartment,
       reportType,
+      startDate,
+      endDate,
+      dateFilterActive,
       frequency: scheduleFrequency,
       weekday: scheduleWeekday,
+      monthDay: scheduleMonthDay,
+      singleDate: scheduleSingleDate,
       time: scheduleTime,
       hour: scheduleHour,
       minute: scheduleMinute,
       meridiem: scheduleMeridiem,
       sendToMe,
-      sendToCustomer,
+      sendToOthers,
+      recipientUserIds: selectedScheduleUserIds,
+      recipientUsers: selectedScheduleUsers.map((user) => ({
+        id: getUserId(user),
+        name: getUserName(user),
+        email: user?.email || "",
+      })),
       selectedFields,
-      active: true,
+      active: editingScheduleId
+        ? scheduledReports.find((scheduleItem) => scheduleItem.id === editingScheduleId)?.active ?? true
+        : true,
       createdAt: editingScheduleId
         ? scheduledReports.find((scheduleItem) => scheduleItem.id === editingScheduleId)?.createdAt || new Date().toISOString()
         : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    setScheduledReports((currentSchedules) =>
-      editingScheduleId
-        ? currentSchedules.map((scheduleItem) =>
-            scheduleItem.id === editingScheduleId ? { ...scheduleItem, ...schedule } : scheduleItem
+    try {
+      const scheduleRows = await loadScheduleRows(schedule);
+      const savedSchedule = await saveReportScheduleAPI({
+        schedule,
+        mailPayload: buildScheduleMailPayload(schedule, scheduleRows),
+        editing: Boolean(editingScheduleId),
+      });
+
+      setScheduledReports((currentSchedules) =>
+        editingScheduleId
+          ? currentSchedules.map((scheduleItem) =>
+              scheduleItem.id === editingScheduleId ? savedSchedule || schedule : scheduleItem
+            )
+          : [savedSchedule || schedule, ...currentSchedules]
+      );
+      setActiveReportTab("scheduled");
+      closeScheduleModal();
+      emitGlobalSuccessModal({ message: "Schedule saved", status: 200 });
+    } catch (saveError) {
+      emitGlobalFailureModal({
+        message: saveError?.response?.data?.message || saveError.message || "Schedule could not be saved.",
+      });
+    }
+  };
+
+  const handleSendScheduledReport = async (
+    schedule,
+    { automatic = false, occurrenceKey = "" } = {}
+  ) => {
+    if (!automatic && sendingScheduleId) return;
+
+    if (!schedule.active) {
+      if (!automatic) {
+        emitGlobalFailureModal({ message: "Activate the schedule before sending the report." });
+      }
+      return;
+    }
+
+    const shouldSendMail =
+      schedule.sendToMe ||
+      (schedule.sendToOthers && schedule.recipientUsers?.some((user) => user.email));
+
+    if (!shouldSendMail) {
+      if (!automatic) {
+        emitGlobalFailureModal({ message: "Select at least one report recipient before sending." });
+      }
+      return;
+    }
+
+    if (!automatic) {
+      setSendingScheduleId(schedule.id);
+    }
+
+    try {
+      const scheduleRows = await loadScheduleRows(schedule);
+      const sendResult = await sendStoredReportScheduleAPI(
+        schedule.id,
+        buildScheduleMailPayload(schedule, scheduleRows)
+      );
+
+      if (sendResult?.deleted || schedule.frequency === "Single Time") {
+        setScheduledReports((currentSchedules) =>
+          currentSchedules.filter((scheduleItem) => scheduleItem.id !== schedule.id)
+        );
+      } else if (sendResult?.schedule) {
+        setScheduledReports((currentSchedules) =>
+          currentSchedules.map((scheduleItem) =>
+            scheduleItem.id === schedule.id ? sendResult.schedule : scheduleItem
           )
-        : [schedule, ...currentSchedules]
-    );
-    setActiveReportTab("scheduled");
-    closeScheduleModal();
+        );
+      } else if (automatic && occurrenceKey) {
+        setScheduledReports((currentSchedules) =>
+          currentSchedules.map((scheduleItem) =>
+            scheduleItem.id === schedule.id
+              ? {
+                  ...scheduleItem,
+                  lastAutoSentKey: occurrenceKey,
+                  lastSentAt: new Date().toISOString(),
+                }
+              : scheduleItem
+          )
+        );
+      }
+
+      emitGlobalSuccessModal({
+        message: automatic
+          ? `Automatic report email sent to ${sendToMeEmail}`
+          : `Scheduled report email sent to ${sendToMeEmail}`,
+        status: 200,
+      });
+    } catch (mailError) {
+      emitGlobalFailureModal({
+        message: mailError.message || "Schedule email could not be sent.",
+      });
+    } finally {
+      if (!automatic) {
+        setSendingScheduleId("");
+      }
+    }
   };
 
-  const toggleScheduleStatus = (scheduleId) => {
-    setScheduledReports((currentSchedules) =>
-      currentSchedules.map((schedule) =>
-        schedule.id === scheduleId ? { ...schedule, active: !schedule.active } : schedule
-      )
-    );
+  const toggleScheduleStatus = async (scheduleId) => {
+    const currentSchedule = scheduledReports.find((schedule) => schedule.id === scheduleId);
+    if (!currentSchedule) return;
+
+    try {
+      const updatedSchedule = await toggleReportScheduleAPI(scheduleId, !currentSchedule.active);
+      setScheduledReports((currentSchedules) =>
+        currentSchedules.map((schedule) =>
+          schedule.id === scheduleId ? updatedSchedule || { ...schedule, active: !schedule.active } : schedule
+        )
+      );
+    } catch (toggleError) {
+      emitGlobalFailureModal({
+        message: toggleError?.response?.data?.message || toggleError.message || "Schedule status could not be updated.",
+      });
+    }
   };
 
-  const deleteSchedule = (scheduleId) => {
-    setScheduledReports((currentSchedules) =>
-      currentSchedules.filter((schedule) => schedule.id !== scheduleId)
-    );
+  const deleteSchedule = async (scheduleId) => {
+    try {
+      await deleteReportScheduleAPI(scheduleId);
+      setScheduledReports((currentSchedules) =>
+        currentSchedules.filter((schedule) => schedule.id !== scheduleId)
+      );
+    } catch (deleteError) {
+      emitGlobalFailureModal({
+        message: deleteError?.response?.data?.message || deleteError.message || "Schedule could not be deleted.",
+      });
+    }
   };
 
   const getScheduleTiming = (schedule) => {
+    if (schedule.frequency === "Single Time") return `Once on ${toDisplayDate(schedule.singleDate)} at ${schedule.time}`;
     if (schedule.frequency === "Daily") return `Daily at ${schedule.time}`;
-    if (schedule.frequency === "Monthly") return `Monthly on day 1 at ${schedule.time}`;
+    if (schedule.frequency === "Monthly") return `Monthly on day ${schedule.monthDay || 1} at ${schedule.time}`;
     return `Weekly on ${schedule.weekday} at ${schedule.time}`;
   };
 
   const getScheduleRecipient = (schedule) => {
-    if (schedule.sendToMe && schedule.sendToCustomer) return "Self, Customer contacts";
-    if (schedule.sendToCustomer) return "Customer contacts";
-    return "Self";
+    const recipientNames = Array.isArray(schedule.recipientUsers)
+      ? schedule.recipientUsers.map((user) => user?.name).filter(Boolean)
+      : [];
+    const recipients = [
+      ...(schedule.sendToMe ? ["Self"] : []),
+      ...recipientNames,
+    ];
+
+    return recipients.length ? recipients.join(", ") : "No recipients";
   };
 
   const exportRows = filteredRows;
@@ -927,14 +1332,7 @@ function ReportsPage() {
                 <select
                   value={department}
                   onChange={(event) => {
-                    const nextDepartment = event.target.value;
-                    const nextSubDepartment = Object.keys(reportSources[nextDepartment] || {})[0] || "";
-                    const nextReportType =
-                      Object.keys(reportSources[nextDepartment]?.[nextSubDepartment] || {})[0] || "";
-
-                    setDepartment(nextDepartment);
-                    setSubDepartment(nextSubDepartment);
-                    setReportType(nextReportType);
+                    setDepartment(event.target.value);
                   }}
                 >
                   {departments.map((option) => (
@@ -948,9 +1346,7 @@ function ReportsPage() {
                 <select
                   value={subDepartment}
                   onChange={(event) => {
-                    const nextSubDepartment = event.target.value;
-                    setSubDepartment(nextSubDepartment);
-                    setReportType(Object.keys(reportSources[department]?.[nextSubDepartment] || {})[0] || "");
+                    setSubDepartment(event.target.value);
                   }}
                 >
                   {subDepartments.map((option) => (
@@ -960,9 +1356,27 @@ function ReportsPage() {
                 <FiChevronDown />
               </label>
               <label className={styles.fieldGroup}>
-                <span>Type</span>
+                <span>Input Screen</span>
                 <select value={reportType} onChange={(event) => setReportType(event.target.value)}>
                   {reportTypes.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+                <FiChevronDown />
+              </label>
+              <label className={styles.fieldGroup}>
+                <span>Input Field</span>
+                <select value={inputField} onChange={(event) => setInputField(event.target.value)}>
+                  {builderOptions.input_fields.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
+                </select>
+                <FiChevronDown />
+              </label>
+              <label className={styles.fieldGroup}>
+                <span>Period</span>
+                <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+                  {(builderOptions.periods || ["1D", "1W", "1M", "1Y"]).map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </select>
@@ -1158,7 +1572,14 @@ function ReportsPage() {
                     </div>
                   </div>
                   <div className={styles.scheduledActions}>
-                    <button type="button" aria-label="Send report"><FiSend /></button>
+                    <button
+                      type="button"
+                      aria-label="Send report"
+                      disabled={!schedule.active || sendingScheduleId === schedule.id}
+                      onClick={() => handleSendScheduledReport(schedule)}
+                    >
+                      <FiSend />
+                    </button>
                     <button
                       type="button"
                       aria-label={schedule.active ? "Pause report" : "Activate report"}
@@ -1210,9 +1631,9 @@ function ReportsPage() {
               <span>Frequency</span>
               <div className={styles.modalSelectWrap}>
                 <select value={scheduleFrequency} onChange={(event) => setScheduleFrequency(event.target.value)}>
-                  <option>Weekly</option>
-                  <option>Daily</option>
-                  <option>Monthly</option>
+                  {frequencyOptions.map((option) => (
+                    <option key={option}>{option}</option>
+                  ))}
                 </select>
                 <FiChevronDown />
               </div>
@@ -1220,17 +1641,45 @@ function ReportsPage() {
 
             <div className={styles.modalTwoColumns}>
               <label className={styles.modalField}>
-                <span>Weekday</span>
-                <div className={styles.modalSelectWrap}>
-                  <select value={scheduleWeekday} onChange={(event) => setScheduleWeekday(event.target.value)}>
-                    <option>Monday</option>
-                    <option>Tuesday</option>
-                    <option>Wednesday</option>
-                    <option>Thursday</option>
-                    <option>Friday</option>
-                  </select>
-                  <FiChevronDown />
-                </div>
+                <span>
+                  {scheduleFrequency === "Monthly"
+                    ? "Date"
+                    : scheduleFrequency === "Single Time"
+                      ? "Date"
+                      : "Weekday"}
+                </span>
+                {scheduleFrequency === "Single Time" ? (
+                  <input
+                    type="date"
+                    value={scheduleSingleDate}
+                    onChange={(event) => setScheduleSingleDate(event.target.value)}
+                  />
+                ) : (
+                  <div className={styles.modalSelectWrap}>
+                    {scheduleFrequency === "Monthly" ? (
+                      <select value={scheduleMonthDay} onChange={(event) => setScheduleMonthDay(event.target.value)}>
+                        {monthDayOptions.map((day) => (
+                          <option key={day} value={day}>
+                            {day}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        value={scheduleFrequency === "Daily" ? "Every day" : scheduleWeekday}
+                        disabled={scheduleFrequency === "Daily"}
+                        onChange={(event) => setScheduleWeekday(event.target.value)}
+                      >
+                        {scheduleFrequency === "Daily" ? (
+                          <option>Every day</option>
+                        ) : (
+                          weekdayOptions.map((option) => <option key={option}>{option}</option>)
+                        )}
+                      </select>
+                    )}
+                    <FiChevronDown />
+                  </div>
+                )}
               </label>
 
               <label className={styles.modalField}>
@@ -1297,7 +1746,7 @@ function ReportsPage() {
             </div>
 
             <div className={styles.sendToBlock}>
-              <span>Send To</span>
+              <span className={styles.sendToLabel}>Sent To</span>
               <label>
                 <input
                   type="checkbox"
@@ -1306,21 +1755,60 @@ function ReportsPage() {
                 />
                 <span>Send to me</span>
               </label>
-              <label>
-                <input  
-                  type="checkbox"
-                  checked={sendToCustomer}
-                  onChange={(event) => setSendToCustomer(event.target.checked)}
-                />
-                <span>Send to others</span>
-              </label>
+              <div className={styles.sendToRecipientRow}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={sendToOthers}
+                    onChange={(event) => {
+                      setSendToOthers(event.target.checked);
+                    }}
+                  />
+                  <span>Send to</span>
+                </label>
+                <div className={styles.recipientDropdown} ref={recipientDropdownRef}>
+                  <button
+                    type="button"
+                    className={styles.recipientDropdownButton}
+                    onClick={() => setRecipientDropdownOpen((isOpen) => !isOpen)}
+                  >
+                    <span>{selectedRecipientLabel}</span>
+                    <FiChevronDown />
+                  </button>
+                  {recipientDropdownOpen ? (
+                    <div className={styles.recipientDropdownMenu}>
+                      {scheduleUsers.length ? (
+                        scheduleUsers.map((user) => {
+                          const userId = getUserId(user);
+                          return (
+                            <label key={userId}>
+                              <input
+                                type="checkbox"
+                                checked={selectedScheduleUserIds.includes(userId)}
+                                onChange={() => toggleScheduleRecipient(userId)}
+                              />
+                              <span>{getUserName(user)}</span>
+                            </label>
+                          );
+                        })
+                      ) : (
+                        <p>No users found</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <div className={styles.modalActions}>
               <button type="button" onClick={closeScheduleModal}>
                 Cancel
               </button>
-              <button type="button" className={styles.createScheduleButton} onClick={handleSaveSchedule}>
+              <button
+                type="button"
+                className={styles.createScheduleButton}
+                onClick={handleSaveSchedule}
+              >
                 {editingScheduleId ? "Update Schedule" : "Create Schedule"}
               </button>
             </div>

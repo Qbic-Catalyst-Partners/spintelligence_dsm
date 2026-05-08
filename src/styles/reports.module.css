@@ -245,6 +245,12 @@
   color: #ef1f1f;
 }
 
+.scheduledActions button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .filterCard {
   margin-bottom: 18px;
   overflow: visible;
@@ -699,7 +705,7 @@
 }
 
 .modalField span,
-.sendToBlock > span {
+.sendToLabel {
   color: #344054;
   font-size: 14px;
   line-height: 16px;
@@ -725,6 +731,11 @@
 .modalField select {
   appearance: none;
   padding: 0 38px 0 14px;
+}
+
+.modalField select:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
 }
 
 .modalSelectWrap,
@@ -837,6 +848,102 @@
   accent-color: #4056a8;
 }
 
+.sendToRecipientRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sendToRecipientRow .recipientDropdown {
+  width: 190px;
+}
+
+.sendToRecipientRow .recipientDropdownButton {
+  min-height: 22px;
+  padding: 0 9px 0 10px;
+}
+
+.recipientDropdown {
+  position: relative;
+}
+
+.recipientDropdownButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #dbe4ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #344054;
+  padding: 0 12px 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.recipientDropdownButton span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.recipientDropdownButton svg {
+  flex-shrink: 0;
+  color: #667085;
+}
+
+.recipientDropdownMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 130;
+  display: grid;
+  gap: 2px;
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+}
+
+.recipientDropdownMenu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.recipientDropdownMenu label:hover {
+  background: #f2f5fb;
+}
+
+.recipientDropdownMenu input {
+  width: 14px;
+  height: 14px;
+  accent-color: #4056a8;
+}
+
+.recipientDropdownMenu p {
+  margin: 0;
+  padding: 8px;
+  color: #667085;
+  font-size: 13px;
+}
+
 .modalActions {
   display: flex;
   justify-content: flex-end;
@@ -859,6 +966,11 @@
   border-color: #4056a8;
   background: #4056a8;
   color: #ffffff;
+}
+
+.modalActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
 }
 
 @media (max-width: 900px) {
