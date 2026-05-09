@@ -42,16 +42,26 @@ const builderVisualizationOptions = [
 const TICKET_TREND_SELECT_KEY = "tickets_trend";
 const TICKET_TREND_ID_PREFIX = "ticket-trend-";
 
+const parseWidgetEnabled = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) return true;
+    if (["false", "0", "off", "disabled", "no"].includes(normalized)) return false;
+    if (["true", "1", "on", "enabled", "yes"].includes(normalized)) return true;
+    return true;
+};
+
 function SettingsDashboardBuilder() {
     const [widgets, setWidgets] = useState(initialWidgets);
     const [metricOptions, setMetricOptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState("");
-    const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("quality-control");
-    const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("mixing");
-    const [selectedScreenName, setSelectedScreenName] = useState("Cotton HVI Data Entry");
-    const [selectedFieldName, setSelectedFieldName] = useState("SCI");
+    const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
+    const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
+    const [selectedScreenName, setSelectedScreenName] = useState("");
+    const [selectedFieldName, setSelectedFieldName] = useState("");
     const [selectedChartType, setSelectedChartType] = useState("value");
     const [selectedRole, setSelectedRole] = useState("Operator");
     const [selectedBuilderUser, setSelectedBuilderUser] = useState("John Doe");
@@ -86,9 +96,37 @@ function SettingsDashboardBuilder() {
     );
 
     const modalFieldOptions = useMemo(() => {
-        const fields = availableFields.length ? availableFields : ["SCI"];
-        return fields.includes(selectedFieldName) ? fields : [selectedFieldName, ...fields];
+        const fields = availableFields.length ? availableFields : [];
+        return selectedFieldName && !fields.includes(selectedFieldName) ? [selectedFieldName, ...fields] : fields;
     }, [availableFields, selectedFieldName]);
+
+    useEffect(() => {
+        if (!departmentDirectory.length) return;
+        if (!selectedDepartmentSlug || !departmentDirectory.some((department) => department.slug === selectedDepartmentSlug)) {
+            setSelectedDepartmentSlug(departmentDirectory[0].slug);
+        }
+    }, [selectedDepartmentSlug]);
+
+    useEffect(() => {
+        const nextSubDepartmentSlug = subDepartments[0]?.slug || "";
+        if (!selectedSubDepartmentSlug || !subDepartments.some((subDepartment) => subDepartment.slug === selectedSubDepartmentSlug)) {
+            setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
+        }
+    }, [subDepartments, selectedSubDepartmentSlug]);
+
+    useEffect(() => {
+        const nextScreenName = inputScreens[0] || "";
+        if (!selectedScreenName || !inputScreens.includes(selectedScreenName)) {
+            setSelectedScreenName(nextScreenName);
+        }
+    }, [inputScreens, selectedScreenName]);
+
+    useEffect(() => {
+        const nextFieldName = modalFieldOptions[0] || "";
+        if (!selectedFieldName || !modalFieldOptions.includes(selectedFieldName)) {
+            setSelectedFieldName(nextFieldName);
+        }
+    }, [modalFieldOptions, selectedFieldName]);
 
     const displayUserName =
         authUser?.full_name ||
@@ -101,15 +139,15 @@ function SettingsDashboardBuilder() {
         (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => ({
             id: widget?.id || `widget-${index + 1}`,
             name: widget?.name || "Input Submitted Today",
-            enabled: widget?.enabled !== false,
+            enabled: parseWidgetEnabled(widget?.enabled),
             order: Number.isInteger(widget?.order) ? widget.order : index + 1,
             metric_key: widget?.metric_key || "today_submissions",
             widget_type: widget?.widget_type || "metric",
-            chart_type: widget?.chart_type || "value",
-            department: widget?.department || "Quality Control",
-            sub_department: widget?.sub_department || "Mixing",
-            screen_name: widget?.screen_name || "Cotton HVI Data Entry",
-            field_name: widget?.field_name || "SCI",
+            chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
+            department: widget?.department || "",
+            sub_department: widget?.sub_department || "",
+            screen_name: widget?.screen_name || widget?.input_screen || "",
+            field_name: widget?.field_name || widget?.input_field || "",
             builder_section:
                 widget?.builder_section ||
                 (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance),
@@ -215,15 +253,15 @@ function SettingsDashboardBuilder() {
             ...current,
             {
                 id: `field-widget-${Date.now()}`,
-                name: selectedFieldName || "SCI",
+                name: selectedFieldName || "Widget",
                 enabled: true,
                 order: current.length + 1,
                 metric_key: "custom_field",
                 widget_type: FIELD_WIDGET_TYPE,
-                department: selectedDepartment?.name || "Quality Control",
-                sub_department: selectedSubDepartment?.name || "Mixing",
-                screen_name: selectedScreenName || "Cotton HVI Data Entry",
-                field_name: selectedFieldName || "SCI",
+                department: selectedDepartment?.name || "",
+                sub_department: selectedSubDepartment?.name || "",
+                screen_name: selectedScreenName || "",
+                field_name: selectedFieldName || "",
                 chart_type: selectedVisualization.key,
                 builder_section: selectedVisualization.section,
             },
@@ -395,11 +433,38 @@ function SettingsDashboardBuilder() {
 
         try {
             setSaving(true);
-            await apiConfig.put(`/api/dashboard/widgets?userId=${dashboardOwnerUserId}`, {
-                userId: dashboardOwnerUserId,
-                widgets: orderedWidgets,
-            });
-            writeStoredDashboardWidgets(dashboardOwnerUserId, orderedWidgets);
+            const payloadWidgets = orderedWidgets.map((widget) => ({
+                id: widget.id,
+                department: widget.department || "",
+                sub_department: widget.sub_department || "",
+                input_screen: widget.screen_name || "",
+                input_field: normalizeInputFieldKey(widget.field_name || ""),
+                visualization_type: chartTypeToVisualizationType(widget.chart_type),
+                enabled: widget.enabled !== false,
+                order: widget.order,
+            }));
+
+            const selectedUserId = Number(selectedBuilderUserId);
+            const effectiveUserId =
+                Number.isInteger(selectedUserId) && selectedUserId > 0
+                    ? selectedUserId
+                    : dashboardOwnerUserId;
+
+            const savePayload = {
+                user_id: effectiveUserId,
+                userId: effectiveUserId,
+                assigned_user_id: effectiveUserId,
+                assignedUserId: effectiveUserId,
+                owner_user_id: effectiveUserId,
+                ownerUserId: effectiveUserId,
+                widgets: payloadWidgets,
+            };
+            const isSavingForAnotherUser = effectiveUserId !== dashboardOwnerUserId;
+            const savePaths = isSavingForAnotherUser
+                ? [`widgets/${effectiveUserId}`, `assign/${effectiveUserId}`]
+                : [`widgets/${effectiveUserId}`, "my-widgets"];
+            await saveWithPathCandidates(savePaths, savePayload);
+            lastSavedSnapshotRef.current = JSON.stringify(orderedWidgets);
             setWidgets(orderedWidgets);
             if (successMessage) {
                 setSaveMessage(successMessage);
@@ -426,10 +491,10 @@ function SettingsDashboardBuilder() {
 
     const getBuilderRowText = (widget) =>
         [
-            widget.department || "Quality Control",
-            widget.sub_department || "Mixing",
-            widget.screen_name || "Cotton HVI Data Entry",
-            widget.field_name || widget.name || "SCI",
+            widget.department || "-",
+            widget.sub_department || "-",
+            widget.screen_name || "-",
+            widget.field_name || widget.name || "-",
         ].join(" | ");
 
     const builderRows = widgets.map((widget, index) => ({
@@ -526,16 +591,7 @@ function SettingsDashboardBuilder() {
                                     value={selectedDepartmentSlug}
                                     onChange={(event) => {
                                         const nextDepartmentSlug = event.target.value;
-                                        const nextDepartment = departmentDirectory.find((item) => item.slug === nextDepartmentSlug);
-                                        const nextSubDepartmentSlug = nextDepartment?.subDepartments?.[0]?.slug || "";
-                                        const nextScreens = getThresholdScreensForSubDepartment(nextDepartmentSlug, nextSubDepartmentSlug);
-                                        const nextScreenName = nextScreens[0] || "";
-                                        const nextFields = getThresholdFieldsForScreen(nextScreenName);
-
                                         setSelectedDepartmentSlug(nextDepartmentSlug);
-                                        setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
-                                        setSelectedScreenName(nextScreenName);
-                                        setSelectedFieldName(nextFields.includes("SCI") ? "SCI" : (nextFields[0] || "SCI"));
                                     }}
                                 >
                                     {departmentDirectory.map((department) => (
@@ -552,13 +608,7 @@ function SettingsDashboardBuilder() {
                                     value={selectedSubDepartmentSlug}
                                     onChange={(event) => {
                                         const nextSubDepartmentSlug = event.target.value;
-                                        const nextScreens = getThresholdScreensForSubDepartment(selectedDepartmentSlug, nextSubDepartmentSlug);
-                                        const nextScreenName = nextScreens[0] || "";
-                                        const nextFields = getThresholdFieldsForScreen(nextScreenName);
-
                                         setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
-                                        setSelectedScreenName(nextScreenName);
-                                        setSelectedFieldName(nextFields.includes("SCI") ? "SCI" : (nextFields[0] || "SCI"));
                                     }}
                                 >
                                     {subDepartments.map((subDepartment) => (
@@ -575,10 +625,7 @@ function SettingsDashboardBuilder() {
                                     value={selectedScreenName}
                                     onChange={(event) => {
                                         const nextScreenName = event.target.value;
-                                        const nextFields = getThresholdFieldsForScreen(nextScreenName);
-
                                         setSelectedScreenName(nextScreenName);
-                                        setSelectedFieldName(nextFields.includes("SCI") ? "SCI" : (nextFields[0] || "SCI"));
                                     }}
                                 >
                                     {inputScreens.map((screen) => (
