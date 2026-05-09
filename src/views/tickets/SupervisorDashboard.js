@@ -106,7 +106,7 @@ export default function SupervisorDashboard() {
   return (
     <div className={styles["sup-page"]}>
       <div className={styles["sup-content"]}>
-        <h1 className={styles["sup-title"]}>Team Tickets Dashboard</h1>
+        <h1 className={styles["sup-title"]}>L2 Ticketing Dashboard</h1>
 
         <div className={styles["sup-mobile-title-row"]}>
           <button

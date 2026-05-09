@@ -668,7 +668,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 min-w-0">
               <InspectionEntryIcon />
-              <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+              <span className="text-[18px] font-bold text-slate-900">Inspection</span>
             </div>
             <InputScreenUploadButton />
           </div>

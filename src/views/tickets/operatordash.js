@@ -133,7 +133,7 @@ export default function operatorboard() {
 
             {/* TITLE & FILTER BUTTON */}
             <div className={styles["mobile-title-row"]}>
-                <h1 className={styles.title}>Operator Ticketing Dashboard</h1>
+                <h1 className={styles.title}>L1 Ticketing Dashboard</h1>
                 <div className={styles["title-actions"]}>
                     <button
                         type="button"

@@ -177,38 +177,132 @@
     width: 100%;
 }
 
-.ruleLabels {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr)) 72px;
-    gap: 12px;
-    width: 100%;
-}
-
-.ruleLabels span {
-    color: #42516a;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.2;
-}
-
-.ruleActionHeader {
-    text-align: center;
+.ruleCard {
+    border: 1px solid #e5ebf2;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 14px 18px;
 }
 
 .ruleRow {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr)) 72px;
-    gap: 12px;
-    align-items: center;
     width: 100%;
+}
+
+.ruleFields {
+    display: grid;
+    gap: 12px;
+}
+
+.ruleTopGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ruleBottomGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.multiSelectWrap {
+    position: relative;
+    width: 100%;
+}
+
+.multiSelectDisabled {
+    opacity: 0.7;
+}
+
+.multiSelectButton {
+    width: 100%;
+    min-height: 34px;
+    border: 1px solid #dbe2ec;
+    border-radius: 8px;
+    background: #f8fbff;
+    padding: 0 10px;
+    color: #29374f;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.multiSelectButton:focus {
+    border-color: #5b74c7;
+    box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
+}
+
+.multiSelectValue {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.multiSelectChevron {
+    color: #6e7d93;
+    font-size: 12px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.multiSelectMenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid #dbe2ec;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+    padding: 8px;
+    display: grid;
+    gap: 4px;
+}
+
+.multiSelectOption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #2b3951;
+    font-size: 12px;
+}
+
+.multiSelectOption:hover {
+    background: #f5f7fb;
+}
+
+.multiSelectOption input {
+    margin: 0;
+}
+
+.multiSelectEmpty {
+    padding: 8px 6px;
+    color: #7b89a0;
+    font-size: 12px;
 }
 
 .ruleActions {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: flex-end;
+    justify-content: flex-end;
     gap: 8px;
-    min-width: 72px;
+    min-width: 0;
+    min-height: 100%;
+}
+
+.ruleBottomGrid > .ruleActions {
+    align-self: end;
 }
 
 .addIconButton,
@@ -251,6 +345,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .clearButton,
@@ -361,7 +457,7 @@
 
 .existingThresholdCard {
     padding: 10px 0 0;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .existingSummaryRow {
@@ -376,12 +472,15 @@
 }
 
 .tableWrap {
-    overflow-x: auto;
+    overflow: visible;
+    width: 100%;
 }
 
 .table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
+    table-layout: auto;
 }
 
 .table th {
@@ -421,6 +520,71 @@
     padding: 14px 12px;
     color: #111111;
     font-weight: 600;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+.expandableCell {
+    position: relative;
+}
+
+.expandableCell summary {
+    list-style: none;
+}
+
+.expandableCell summary::-webkit-details-marker {
+    display: none;
+}
+
+.expandableCellSummary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.expandableCellPrimary {
+    min-width: 0;
+}
+
+.expandableCellIcon {
+    flex-shrink: 0;
+    color: #657086;
+    transition: transform 0.2s ease;
+}
+
+.expandableCell[open] .expandableCellIcon {
+    transform: rotate(180deg);
+}
+
+.expandableCellDropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 180px;
+    max-width: 260px;
+    border: 1px solid #dbe2ec;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    z-index: 2;
+}
+
+.expandableCellItem {
+    padding: 6px 8px;
+    border-radius: 8px;
+    color: #2b3951;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.expandableCellItem:hover {
+    background: #f5f7fb;
 }
 
 .positiveValue {
@@ -632,16 +796,13 @@
         grid-template-columns: 1fr;
     }
 
-    .ruleLabels {
-        display: none;
-    }
-
     .ruleRow {
         grid-template-columns: 1fr;
-        padding: 12px;
-        border: 1px solid #e6ebf2;
-        border-radius: 10px;
-        background: #fafbfd;
+    }
+
+    .ruleTopGrid,
+    .ruleBottomGrid {
+        grid-template-columns: 1fr;
     }
 
     .ruleActions,

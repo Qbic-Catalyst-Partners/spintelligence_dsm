@@ -11,7 +11,7 @@ import { FiCircle } from "react-icons/fi";
 
 // REDUX
 import { useDispatch, useSelector } from "react-redux";
-import { fetchRoles, clearActionState } from "../../store/slices/userSlice";
+import { fetchRoles, fetchDepartments, clearActionState } from "../../store/slices/userSlice";
 
 // API
 import { updateUserAPI } from "../../apis/userApi";
@@ -23,7 +23,7 @@ export default function EditUser() {
   const { id } = router.query;
 
   const dispatch = useDispatch();
-  const { roles, actionLoading, error, actionSuccess } = useSelector(
+  const { roles, departments, actionLoading, error, actionSuccess } = useSelector(
     (state) => state.users
   );
 
@@ -37,11 +37,14 @@ export default function EditUser() {
     phone: "",
     employee_id: "",
     role: "",
+    department: "",
+    level: "",
   });
 
   // FETCH ROLES
   useEffect(() => {
     dispatch(fetchRoles());
+    dispatch(fetchDepartments());
   }, [dispatch]);
 
   // FETCH USER DATA
@@ -64,6 +67,8 @@ export default function EditUser() {
           phone: user.phone || "",
           employee_id: user.employee_id || "",
           role: user.role || "",
+          department: user.department || "",
+          level: user.level || "",
         });
       } catch (err) {
         console.error(err);
@@ -110,7 +115,9 @@ export default function EditUser() {
     if (
       !formData.email ||
       !formData.phone ||
-      !formData.role
+      !formData.role ||
+      !formData.department ||
+      !formData.level
     ) {
       setLocalError("All fields are required");
       return;
@@ -118,11 +125,10 @@ export default function EditUser() {
 
     try {
       const updatedData = {
-        full_name: `${formData.first_name} ${formData.last_name}`,
-        email: formData.email,
         phone: formData.phone,
         role: formData.role,
-        ...(password && { password }),
+        department: formData.department,
+        level: formData.level,
       };
 
       await updateUserAPI(id, updatedData);
@@ -207,6 +213,35 @@ export default function EditUser() {
                   {roles.map((r) => (
                     <option key={r.id}>{r.role_name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Department <span>*</span></label>
+                <select
+                  name="department"
+                  value={formData.department}
+                  onChange={handleChange}
+                >
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.name}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Level <span>*</span></label>
+                <select
+                  name="level"
+                  value={formData.level}
+                  onChange={handleChange}
+                >
+                  <option value="">Select level</option>
+                  <option value="L1">L1</option>
+                  <option value="L2">L2</option>
                 </select>
               </div>
             </div>

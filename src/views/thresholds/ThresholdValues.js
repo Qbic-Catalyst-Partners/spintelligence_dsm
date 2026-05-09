@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { FiChevronLeft, FiChevronRight, FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
+import {
+    FiChevronDown,
+    FiChevronLeft,
+    FiChevronRight,
+    FiMoreVertical,
+    FiPlus,
+    FiTrash2,
+    FiX,
+} from "react-icons/fi";
 
 import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateThresholdAPI, updateThresholdStatusAPI } from "@/apis/thresholdsApi";
 import { fetchUsers } from "@/store/slices/userSlice";
@@ -19,7 +27,8 @@ const createRule = () => ({
     positiveTolerance: "",
     negativeTolerance: "",
     criticality: "",
-    approvalL2: "",
+    approvalL1: [],
+    approvalL2: [],
 });
 
 const EXISTING_ROWS_PER_PAGE = 6;
@@ -70,16 +79,252 @@ const getCriticalityLabel = (item) => {
     return "Low";
 };
 
-const getApprovalLabel = (item, user) =>
-    item?.approval_l2 ||
-    item?.approved_by ||
-    item?.created_by ||
-    item?.updated_by ||
-    user?.full_name ||
-    user?.fullName ||
-    user?.name ||
-    user?.username ||
-    "-";
+const normalizeLookupValue = (value) => String(value ?? "").trim().toLowerCase();
+
+const normalizeNameList = (value) => {
+    if (Array.isArray(value)) {
+        return value.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+
+    if (typeof value === "string") {
+        return value
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    return [];
+};
+
+const getUserDisplayName = (user) =>
+    String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
+
+const resolveUserName = (users, value) => {
+    const normalizedValue = normalizeLookupValue(value);
+
+    if (!normalizedValue) {
+        return "";
+    }
+
+    const matchedUser = users.find((userItem) => {
+        const candidateValues = [
+            userItem?.id,
+            userItem?.employeeId,
+            userItem?.employee_id,
+            userItem?.name,
+            userItem?.full_name,
+            userItem?.fullName,
+            userItem?.username,
+            userItem?.email,
+        ];
+
+        return candidateValues.some(
+            (candidate) => normalizeLookupValue(candidate) === normalizedValue
+        );
+    });
+
+    return getUserDisplayName(matchedUser) || String(value ?? "").trim();
+};
+
+const resolveDisplayValues = (users, candidates) => {
+    for (const candidate of candidates) {
+        const labels = normalizeNameList(candidate)
+            .map((value) => resolveUserName(users, value))
+            .filter(Boolean);
+
+        if (labels.length) {
+            return labels;
+        }
+    }
+
+    return [];
+};
+
+const getApprovalValues = (item, users, level) => {
+    const l1Candidates = [
+        item?.approval_l1_names,
+        item?.approvalL1Names,
+        item?.approval_l1_name,
+        item?.approvalL1Name,
+        item?.approval_l1,
+        item?.approvalL1,
+    ];
+
+    const l2Candidates = [
+        item?.approval_l2_names,
+        item?.approvalL2Names,
+        item?.approval_l2_name,
+        item?.approvalL2Name,
+        item?.approved_by_name,
+        item?.approvedByName,
+        item?.approval_l2,
+        item?.approved_by,
+        item?.created_by_name,
+        item?.createdByName,
+        item?.updated_by_name,
+        item?.updatedByName,
+        item?.created_by,
+        item?.updated_by,
+    ];
+
+    return resolveDisplayValues(users, level === "l1" ? l1Candidates : l2Candidates);
+};
+
+function ExpandableCell({ values = [], fallback = "-" }) {
+    const normalizedValues = Array.from(
+        new Set(
+            normalizeNameList(values)
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+        )
+    );
+
+    if (!normalizedValues.length) {
+        return fallback;
+    }
+
+    if (normalizedValues.length === 1) {
+        return normalizedValues[0];
+    }
+
+    return (
+        <details className={styles.expandableCell}>
+            <summary className={styles.expandableCellSummary}>
+                <span className={styles.expandableCellPrimary}>{normalizedValues[0]}</span>
+                <FiChevronDown className={styles.expandableCellIcon} aria-hidden="true" />
+            </summary>
+            <div className={styles.expandableCellDropdown}>
+                {normalizedValues.map((value) => (
+                    <div key={value} className={styles.expandableCellItem}>
+                        {value}
+                    </div>
+                ))}
+            </div>
+        </details>
+    );
+}
+
+const buildUserOptions = (users, predicate) => {
+    const seenNames = new Set();
+
+    return users
+        .filter(predicate)
+        .filter((item) => {
+            const name = String(item?.name || "").trim();
+
+            if (!name || seenNames.has(name.toLowerCase())) {
+                return false;
+            }
+
+            seenNames.add(name.toLowerCase());
+            return true;
+        })
+        .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+const resolveSelectedUsers = (users, values) =>
+    normalizeNameList(values)
+        .map((value) => {
+            const normalizedValue = normalizeLookupValue(value);
+
+            return users.find((userItem) => {
+                const candidateValues = [
+                    userItem?.id,
+                    userItem?.employeeId,
+                    userItem?.employee_id,
+                    userItem?.name,
+                    userItem?.full_name,
+                    userItem?.fullName,
+                    userItem?.username,
+                    userItem?.email,
+                ];
+
+                return candidateValues.some(
+                    (candidate) => normalizeLookupValue(candidate) === normalizedValue
+                );
+            });
+        })
+        .filter(Boolean);
+
+function MultiSelectDropdown({
+    values = [],
+    options = [],
+    onChange,
+    placeholder = "Select",
+    disabled = false,
+    emptyLabel = "No users available",
+}) {
+    const containerRef = useRef(null);
+    const [isOpen, setIsOpen] = useState(false);
+
+    useEffect(() => {
+        const handleOutsideClick = (event) => {
+            if (!containerRef.current?.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+        };
+    }, []);
+
+    const selectedValues = Array.isArray(values) ? values : [];
+    const buttonLabel = selectedValues.length ? "Selected" : placeholder;
+
+    const toggleValue = (option) => {
+        if (disabled) {
+            return;
+        }
+
+        const nextValues = selectedValues.includes(option)
+            ? selectedValues.filter((item) => item !== option)
+            : [...selectedValues, option];
+
+        onChange?.(nextValues);
+    };
+
+    return (
+        <div
+            ref={containerRef}
+            className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
+        >
+            <button
+                type="button"
+                className={styles.multiSelectButton}
+                onClick={() => {
+                    if (!disabled) {
+                        setIsOpen((current) => !current);
+                    }
+                }}
+                disabled={disabled}
+            >
+                <span className={styles.multiSelectValue}>{buttonLabel}</span>
+                <span className={styles.multiSelectChevron}>{isOpen ? "˄" : "˅"}</span>
+            </button>
+
+            {isOpen ? (
+                <div className={styles.multiSelectMenu}>
+                    {options.length ? (
+                        options.map((option) => (
+                            <label key={option.id} className={styles.multiSelectOption}>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedValues.includes(option.name)}
+                                    onChange={() => toggleValue(option.name)}
+                                />
+                                <span>{option.name}</span>
+                            </label>
+                        ))
+                    ) : (
+                        <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+                    )}
+                </div>
+            ) : null}
+        </div>
+    );
+}
 
 export default function ThresholdValues() {
     const dispatch = useDispatch();
@@ -177,25 +422,21 @@ export default function ThresholdValues() {
         [selectedScreenName, thresholds]
     );
 
-    const supervisorOptions = useMemo(() => {
-        const seenNames = new Set();
+    const l1Options = useMemo(
+        () => buildUserOptions(users, (item) => normalizeLookupValue(item?.level) === "l1"),
+        [users]
+    );
 
-        return users
-            .filter((item) =>
-                String(item?.role || "").trim().toLowerCase().includes("supervisor")
-            )
-            .filter((item) => {
-                const name = String(item?.name || "").trim();
-
-                if (!name || seenNames.has(name.toLowerCase())) {
-                    return false;
-                }
-
-                seenNames.add(name.toLowerCase());
-                return true;
-            })
-            .sort((left, right) => left.name.localeCompare(right.name));
-    }, [users]);
+    const l2Options = useMemo(
+        () =>
+            buildUserOptions(
+                users,
+                (item) =>
+                    normalizeLookupValue(item?.level) === "l2" ||
+                    String(item?.role || "").trim().toLowerCase().includes("supervisor")
+            ),
+        [users]
+    );
 
     useEffect(() => {
         setExistingFilters((current) => {
@@ -365,7 +606,12 @@ export default function ThresholdValues() {
                 positiveTolerance: String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
                 negativeTolerance: String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
                 criticality: getCriticalityLabel(item),
-                approvalL2: String(item?.approval_l2 || item?.approved_by || ""),
+                approvalL1: normalizeNameList(
+                    item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
+                ),
+                approvalL2: normalizeNameList(
+                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
+                ),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
@@ -483,9 +729,29 @@ export default function ThresholdValues() {
             const rawPositiveTolerance = rule.positiveTolerance.trim();
             const rawNegativeTolerance = rule.negativeTolerance.trim();
             const criticality = String(rule.criticality || "").trim();
-            const approvalL2 = String(rule.approvalL2 || "").trim();
+            const approvalL1Names = normalizeNameList(rule.approvalL1);
+            const approvalL2Names = normalizeNameList(rule.approvalL2);
+            const approvalL1Users = resolveSelectedUsers(users, approvalL1Names);
+            const approvalL2Users = resolveSelectedUsers(users, approvalL2Names);
+            const approvalL1Ids = approvalL1Users
+                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
+                .filter(Boolean);
+            const approvalL2Ids = approvalL2Users
+                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
+                .filter(Boolean);
+            const primaryApprovalL1Name = approvalL1Names[0] || "";
+            const primaryApprovalL2Name = approvalL2Names[0] || "";
+            const primaryApprovalL1Id = approvalL1Ids[0] || "";
+            const primaryApprovalL2Id = approvalL2Ids[0] || "";
 
-            if (!fieldName || !rawActualValue || (!rawPositiveTolerance && !rawNegativeTolerance) || !criticality || !approvalL2) {
+            if (
+                !fieldName ||
+                !rawActualValue ||
+                (!rawPositiveTolerance && !rawNegativeTolerance) ||
+                !criticality ||
+                !approvalL1Names.length ||
+                !approvalL2Names.length
+            ) {
                 const missingFields = [];
 
                 if (!fieldName) {
@@ -504,7 +770,11 @@ export default function ThresholdValues() {
                     missingFields.push("criticality");
                 }
 
-                if (!approvalL2) {
+                if (!approvalL1Names.length) {
+                    missingFields.push("approval_l1");
+                }
+
+                if (!approvalL2Names.length) {
                     missingFields.push("approval_l2");
                 }
 
@@ -529,7 +799,16 @@ export default function ThresholdValues() {
                 criticality,
                 severity: criticality,
                 priority: criticality,
-                approval_l2: approvalL2,
+                approval_l1: primaryApprovalL1Id || primaryApprovalL1Name,
+                approval_l1_name: primaryApprovalL1Name,
+                approval_l1_user_id: primaryApprovalL1Id || null,
+                approval_l1_names: approvalL1Names,
+                approval_l1_ids: approvalL1Ids,
+                approval_l2: primaryApprovalL2Id || primaryApprovalL2Name,
+                approval_l2_name: primaryApprovalL2Name,
+                approval_l2_user_id: primaryApprovalL2Id || null,
+                approval_l2_names: approvalL2Names,
+                approval_l2_ids: approvalL2Ids,
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -744,118 +1023,129 @@ export default function ThresholdValues() {
                                 </div>
 
                                 <div className={styles.rulesTable}>
-                                    <div className={styles.ruleLabels}>
-                                        <span>Input Field Name</span>
-                                        <span>Actual Value</span>
-                                        <span>Plus (+)</span>
-                                        <span>Minus (-)</span>
-                                        <span>Criticality</span>
-                                        <span>Approval (L2)</span>
-                                        <span className={styles.ruleActionHeader}>Actions</span>
-                                    </div>
-
                                     {screenRules.map((rule, index) => (
-                                        <div key={rule.id} className={styles.ruleRow}>
-                                            <label className={styles.field}>
-                                                <select
-                                                    value={rule.fieldName}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "fieldName", event.target.value)
-                                                    }
-                                                >
-                                                    <option value="">Select Field</option>
-                                                    {fieldOptions.map((fieldOption) => (
-                                                        <option key={fieldOption} value={fieldOption}>
-                                                            {fieldOption}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
+                                        <div key={rule.id} className={styles.ruleCard}>
+                                            <div className={styles.ruleRow}>
+                                                <div className={styles.ruleFields}>
+                                                    <div className={styles.ruleTopGrid}>
+                                                        <label className={styles.field}>
+                                                            <span>Input Field Name</span>
+                                                            <select
+                                                                value={rule.fieldName}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "fieldName", event.target.value)
+                                                                }
+                                                            >
+                                                                <option value="">Select Field</option>
+                                                                {fieldOptions.map((fieldOption) => (
+                                                                    <option key={fieldOption} value={fieldOption}>
+                                                                        {fieldOption}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <input
-                                                    value={rule.actualValue}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "actualValue", event.target.value)
-                                                    }
-                                                    placeholder="Enter Actual value"
-                                                />
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>Criticality</span>
+                                                            <select
+                                                                value={rule.criticality}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "criticality", event.target.value)
+                                                                }
+                                                            >
+                                                                <option value="">Select Criticality</option>
+                                                                <option value="Low">Low</option>
+                                                                <option value="Medium">Medium</option>
+                                                                <option value="High">High</option>
+                                                            </select>
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <input
-                                                    value={rule.positiveTolerance}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "positiveTolerance", event.target.value)
-                                                    }
-                                                    placeholder="Enter + tolerance"
-                                                />
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>L1</span>
+                                                            <MultiSelectDropdown
+                                                                values={rule.approvalL1}
+                                                                options={l1Options}
+                                                                disabled={!l1Options.length}
+                                                                placeholder={l1Options.length ? "Select" : "No L1 users available"}
+                                                                onChange={(nextValues) =>
+                                                                    handleRuleChange(rule.id, "approvalL1", nextValues)
+                                                                }
+                                                            />
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <input
-                                                    value={rule.negativeTolerance}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "negativeTolerance", event.target.value)
-                                                    }
-                                                    placeholder="Enter - tolerance"
-                                                />
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>L2</span>
+                                                            <MultiSelectDropdown
+                                                                values={rule.approvalL2}
+                                                                options={l2Options}
+                                                                disabled={!l2Options.length}
+                                                                placeholder={l2Options.length ? "Select" : "No L2 users available"}
+                                                                onChange={(nextValues) =>
+                                                                    handleRuleChange(rule.id, "approvalL2", nextValues)
+                                                                }
+                                                                emptyLabel="No L2 users available"
+                                                            />
+                                                        </label>
+                                                    </div>
 
-                                            <label className={styles.field}>
-                                                <select
-                                                    value={rule.criticality}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "criticality", event.target.value)
-                                                    }
-                                                >
-                                                    <option value="">Select</option>
-                                                    <option value="Low">Low</option>
-                                                    <option value="Medium">Medium</option>
-                                                    <option value="High">High</option>
-                                                </select>
-                                            </label>
+                                                    <div className={styles.ruleBottomGrid}>
+                                                        <label className={styles.field}>
+                                                            <span>Actual Value</span>
+                                                            <input
+                                                                value={rule.actualValue}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "actualValue", event.target.value)
+                                                                }
+                                                                placeholder="Enter Actual value"
+                                                            />
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <select
-                                                    value={rule.approvalL2}
-                                                    disabled={!supervisorOptions.length}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "approvalL2", event.target.value)
-                                                    }
-                                                >
-                                                    <option value="">
-                                                        {supervisorOptions.length ? "Select" : "No supervisors available"}
-                                                    </option>
-                                                    {supervisorOptions.map((supervisor) => (
-                                                        <option key={supervisor.id} value={supervisor.name}>
-                                                            {supervisor.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>Plus (+)</span>
+                                                            <input
+                                                                value={rule.positiveTolerance}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "positiveTolerance", event.target.value)
+                                                                }
+                                                                placeholder="Enter + tolerance"
+                                                            />
+                                                        </label>
 
-                                            <div className={styles.ruleActions}>
-                                                {index === screenRules.length - 1 ? (
-                                                    <button
-                                                        type="button"
-                                                        className={styles.addIconButton}
-                                                        onClick={addRule}
-                                                        aria-label="Add threshold row"
-                                                    >
-                                                        <FiPlus />
-                                                    </button>
-                                                ) : (
-                                                    <span className={styles.actionSpacer} aria-hidden="true" />
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    className={styles.deleteIconButton}
-                                                    onClick={() => removeRule(rule.id)}
-                                                    aria-label="Delete threshold row"
-                                                >
-                                                    <FiTrash2 />
-                                                </button>
+                                                        <label className={styles.field}>
+                                                            <span>Minus (-)</span>
+                                                            <input
+                                                                value={rule.negativeTolerance}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "negativeTolerance", event.target.value)
+                                                                }
+                                                                placeholder="Enter - tolerance"
+                                                            />
+                                                        </label>
+
+                                                        <div className={styles.ruleActions}>
+                                                            {index === screenRules.length - 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.addIconButton}
+                                                                    onClick={addRule}
+                                                                    aria-label="Add threshold row"
+                                                                >
+                                                                    <FiPlus />
+                                                                </button>
+                                                            ) : (
+                                                                <span className={styles.actionSpacer} aria-hidden="true" />
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                className={styles.deleteIconButton}
+                                                                onClick={() => removeRule(rule.id)}
+                                                                aria-label="Delete threshold row"
+                                                            >
+                                                                <FiTrash2 />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -1019,7 +1309,9 @@ export default function ThresholdValues() {
                                             <tr>
                                                 <th>Sub Department</th>
                                                 <th>Input Field</th>
-                                                <th>Approval (L2)</th>
+                                                <th>Notebook Type</th>
+                                                <th>L1</th>
+                                                <th>L2</th>
                                                 <th>Criticality</th>
                                                 <th>Actual Value</th>
                                                 <th>Plus (+)</th>
@@ -1036,11 +1328,28 @@ export default function ThresholdValues() {
                                                 const isStatusUpdating = statusUpdatingRowKey === rowKey;
                                                 const isDeleting = deletingRowKey === rowKey;
                                                 const criticalityLabel = getCriticalityLabel(item);
+                                                const notebookTypes = normalizeNameList(
+                                                    item?.input_screen || item?.machine_name
+                                                );
+                                                const approvalL1Names = normalizeNameList(
+                                                    item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
+                                                );
+                                                const approvalL2Names = normalizeNameList(
+                                                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
+                                                );
                                                 return (
                                                 <tr key={rowKey}>
                                                     <td>{item.sub_department || item.erp_product_code || "-"}</td>
                                                     <td>{item.input_field || item.parameter_name || "-"}</td>
-                                                    <td>{getApprovalLabel(item, user)}</td>
+                                                    <td>
+                                                        <ExpandableCell values={notebookTypes} />
+                                                    </td>
+                                                    <td>
+                                                        <ExpandableCell values={approvalL1Names} />
+                                                    </td>
+                                                    <td>
+                                                        <ExpandableCell values={approvalL2Names} />
+                                                    </td>
                                                     <td>
                                                         <span
                                                             className={`${styles.criticalityBadge} ${
