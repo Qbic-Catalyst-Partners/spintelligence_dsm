@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { FiPieChart } from "react-icons/fi";
 
-import { getBuilderData, getMyDashboard, getMyPageData, getUserWidgets } from "@/apis/dashboardApi";
-import { fetchUsersAPI } from "@/apis/userApi";
-import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "@/styles/departmentDirectory.module.css";
+
+const metricCards = Array.from({ length: 8 }, (_, index) => ({
+    id: `sci-average-${index + 1}`,
+    title: "SCI",
+    meta: "QC | Mix | Cotton HVI",
+    baseValue: 8,
+}));
 
 const trendModes = ["1D", "1W", "1M", "1Y"];
 
@@ -327,156 +331,105 @@ function HomeDashboard() {
     );
 }
 
-  return (
-    <div className={styles.dashboardMain}>
-      <section className={styles.referenceDashboardHeader}>
-        <span>Welcome Back, {fullName}</span>
-        {canSelectUsers ? (
-          <div style={{ marginTop: 10 }}>
-            <select
-              value={selectedUserId || ""}
-              onChange={(e) => setSelectedUserId(Number(e.target.value) || ownUserId)}
-            >
-              {[{ id: ownUserId, name: "My Dashboard" }, ...users]
-                .filter((item, index, arr) => item?.id && arr.findIndex((x) => x.id === item.id) === index)
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-        ) : null}
-      </section>
+function PerformanceLineCard({ activeMode, setActiveMode }) {
+    const currentLinePoints = useMemo(
+        () => linePoints.map((point) => ({
+            ...point,
+            value: Math.min(100, Math.max(1, Math.round(point.value * (modeMultipliers[activeMode] || 1)))),
+        })),
+        [activeMode]
+    );
 
-      <section className={styles.referenceSection}>
-        <h1>Average Values</h1>
-        <div className={styles.referenceStatsGrid}>
-          {avgWidgets.map((widget) => (
-            <article key={widget.id} className={styles.referenceStatCard}>
-              <div className={styles.referenceStatHeader}>
+    const lineChartPoints = useMemo(() => {
+        const xPadding = 6;
+        const yPadding = 8;
+        const width = 100 - xPadding * 2;
+        const height = 100 - yPadding * 2;
+        const max = Math.max(...currentLinePoints.map((point) => point.value), 100);
+
+        return currentLinePoints.map((point, index) => {
+            const x = xPadding + (index / (currentLinePoints.length - 1)) * width;
+            const y = yPadding + height - (point.value / max) * height;
+
+            return {
+                ...point,
+                x,
+                y,
+            };
+        });
+    }, [currentLinePoints]);
+
+    const linePolyline = useMemo(
+        () => lineChartPoints.map((point) => `${point.x},${point.y}`).join(" "),
+        [lineChartPoints]
+    );
+
+    const lineArea = `${lineChartPoints[0]?.x || 0},100 ${linePolyline} ${lineChartPoints[lineChartPoints.length - 1]?.x || 100},100`;
+
+    return (
+        <article className={`${styles.referenceChartCard} ${styles.referenceLineCard}`}>
+            <div className={styles.referenceChartHeader}>
                 <div>
-                  <h2>{widget?.input_field || "SCI"}</h2>
-                  <span>{[widget?.department, widget?.sub_department, widget?.input_screen].filter(Boolean).join(" | ")}</span>
+                    <h2>SCI</h2>
+                    <span>QC | Mix | Cotton HVI</span>
                 </div>
-                <span className={styles.referenceStatIcon}>
-                  <FiPieChart />
-                </span>
-              </div>
-              <div className={styles.referenceStatBottom}>
-                <strong>{dataById.get(String(widget.id))?.average_value ?? "-"}</strong>
-                <div className={styles.referenceMiniToggle}>
-                  {trendModes.map((mode) => (
-                    <button
-                      key={`${widget.id}-${mode}`}
-                      type="button"
-                      className={period === mode ? styles.referenceMiniToggleActive : ""}
-                      onClick={() => setPeriod(mode)}
-                    >
-                      {mode}
-                    </button>
-                  ))}
+                <div className={styles.referenceLineHeaderRight}>
+                    <span className={styles.referenceLegend}>
+                        <i /> Trend
+                    </span>
+                    <ModeToggle activeMode={activeMode} setActiveMode={setActiveMode} />
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+            </div>
 
-      <section className={styles.referenceSection}>
-        <h1>Performance Trends</h1>
-        {trendWidgets.slice(0, 2).map((widget) => (
-          <PerformanceLineCard
-            key={widget.id}
-            widget={widget}
-            trend={dataById.get(String(widget.id))?.trend || []}
-            activeMode={period}
-            setActiveMode={setPeriod}
-          />
-        ))}
-      </section>
-    </div>
-  );
+            <div className={styles.referenceLineChart}>
+                <div className={styles.referenceYAxis}>
+                    <span>100%</span>
+                    <span>75%</span>
+                    <span>50%</span>
+                    <span>25%</span>
+                    <span>0%</span>
+                </div>
+                <div className={styles.referenceLinePlot}>
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                        <polygon points={lineArea} />
+                        <polyline points={linePolyline} />
+                    </svg>
+                    {lineChartPoints.map((point) => (
+                        <span
+                            key={point.label}
+                            className={styles.referenceLinePoint}
+                            style={{
+                                left: `${point.x}%`,
+                                top: `${point.y}%`,
+                            }}
+                        />
+                    ))}
+                </div>
+                <div className={styles.referenceXAxis}>
+                    {currentLinePoints.map((point) => (
+                        <span key={point.label}>{point.label}</span>
+                    ))}
+                </div>
+            </div>
+        </article>
+    );
 }
 
-function PerformanceLineCard({ widget, trend, activeMode, setActiveMode }) {
-  const lineChartPoints = useMemo(() => {
-    const points = Array.isArray(trend) && trend.length ? trend : [{ label: "No Data", value: 0 }];
-    const values = points.map((p) => Number(p?.value) || 0);
-    const xPadding = 6;
-    const yPadding = 8;
-    const width = 100 - xPadding * 2;
-    const height = 100 - yPadding * 2;
-    const max = Math.max(...values, 1);
-
-    return points.map((point, index) => {
-      const x = xPadding + ((points.length > 1 ? index / (points.length - 1) : 0)) * width;
-      const y = yPadding + height - ((Number(point?.value) || 0) / max) * height;
-      return { label: point?.label || `P${index + 1}`, x, y };
-    });
-  }, [trend]);
-
-  const linePolyline = useMemo(
-    () => lineChartPoints.map((point) => `${point.x},${point.y}`).join(" "),
-    [lineChartPoints]
-  );
-  const lineArea = `${lineChartPoints[0]?.x || 0},100 ${linePolyline} ${lineChartPoints[lineChartPoints.length - 1]?.x || 100},100`;
-
-  return (
-    <article className={`${styles.referenceChartCard} ${styles.referenceLineCard}`}>
-      <div className={styles.referenceChartHeader}>
-        <div>
-          <h2>{widget?.input_field || "SCI"}</h2>
-          <span>{[widget?.department, widget?.sub_department, widget?.input_screen].filter(Boolean).join(" | ")}</span>
-        </div>
-        <div className={styles.referenceLineHeaderRight}>
-          <span className={styles.referenceLegend}>
-            <i /> Trend
-          </span>
-          <div className={styles.referenceModeToggle}>
+function ModeToggle({ activeMode, setActiveMode }) {
+    return (
+        <div className={styles.referenceModeToggle}>
             {trendModes.map((mode) => (
-              <button
-                key={`${widget.id}-mode-${mode}`}
-                type="button"
-                className={activeMode === mode ? styles.referenceModeToggleActive : ""}
-                onClick={() => setActiveMode(mode)}
-              >
-                {mode}
-              </button>
+                <button
+                    key={mode}
+                    type="button"
+                    className={activeMode === mode ? styles.referenceModeToggleActive : ""}
+                    onClick={() => setActiveMode(mode)}
+                >
+                    {mode}
+                </button>
             ))}
-          </div>
         </div>
-      </div>
-
-      <div className={styles.referenceLineChart}>
-        <div className={styles.referenceYAxis}>
-          <span>100%</span>
-          <span>75%</span>
-          <span>50%</span>
-          <span>25%</span>
-          <span>0%</span>
-        </div>
-        <div className={styles.referenceLinePlot}>
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <polygon points={lineArea} />
-            <polyline points={linePolyline} />
-          </svg>
-          {lineChartPoints.map((point) => (
-            <span
-              key={`${widget.id}-${point.label}`}
-              className={styles.referenceLinePoint}
-              style={{ left: `${point.x}%`, top: `${point.y}%` }}
-            />
-          ))}
-        </div>
-        <div className={styles.referenceXAxis}>
-          {lineChartPoints.map((point) => (
-            <span key={`${widget.id}-x-${point.label}`}>{point.label}</span>
-          ))}
-        </div>
-      </div>
-    </article>
-  );
+    );
 }
 
 export default HomeDashboard;

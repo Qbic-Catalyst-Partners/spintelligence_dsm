@@ -207,12 +207,7 @@
 .multiSelectChevron {
   flex-shrink: 0;
   color: #7d8797;
-  font-size: 16px;
-  transition: transform 0.2s ease;
-}
-
-.multiSelectChevronOpen {
-  transform: rotate(180deg);
+  font-size: 11px;
 }
 
 .multiSelectMenu {

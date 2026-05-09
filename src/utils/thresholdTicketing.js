@@ -7,9 +7,7 @@ const getCurrentAuthUser = () => {
   }
 
   try {
-    const rawUser =
-      window.sessionStorage.getItem("authUser") ||
-      window.localStorage.getItem("authUser");
+    const rawUser = window.localStorage.getItem("authUser");
     return rawUser ? JSON.parse(rawUser) : null;
   } catch {
     return null;
@@ -18,18 +16,13 @@ const getCurrentAuthUser = () => {
 
 const getCurrentTicketUser = () => {
   const user = getCurrentAuthUser();
-  const storedUserId =
-    typeof window !== "undefined"
-      ? window.sessionStorage.getItem("authUserId") || window.localStorage.getItem("authUserId")
-      : null;
 
   if (!user || typeof user !== "object") {
-    return { userId: storedUserId || null, userName: null };
+    return { userId: null, userName: null };
   }
 
   return {
     userId:
-      storedUserId ||
       user.id ||
       user.user_id ||
       user.userId ||
@@ -40,9 +33,6 @@ const getCurrentTicketUser = () => {
       user.full_name ||
       user.fullName ||
       user.name ||
-      user.username ||
-      user.employee_id ||
-      user.employeeId ||
       null,
   };
 };
@@ -179,7 +169,6 @@ export const createThresholdViolationTickets = async ({
   values = [],
 }) => {
   const { userId, userName } = getCurrentTicketUser();
-  const safeUserName = String(userName || userId || "System User").trim();
   let thresholds = await fetchThresholdsAPI({
     department,
     sub_department: subDepartment,
@@ -291,7 +280,7 @@ export const createThresholdViolationTickets = async ({
   try {
     const createdTicket = await createOperatorTicket({
       user_id: userId,
-      user_name: safeUserName,
+      user_name: userName,
       department,
       management_field: department,
       sub_department: subDepartment,

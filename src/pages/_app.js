@@ -10,7 +10,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { subscribeToGlobalFailureModal } from "@/utils/globalFailureModal";
 import { subscribeToGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { hydrateAuthFromStorage } from "@/store/slices/authSlice";
-import { hasRouteAccess, isFullAccessUser, isSupervisorUser, routeDepartmentMap } from "@/utils/accessControl";
+import { hasRouteAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
 import { store } from '../store';
 import "../styles/globals.css";
 
@@ -52,7 +52,6 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");
   const canAccessManagementFlow = isFullAccessUser(user);
-  const canAccessSupervisorFlow = isSupervisorUser(user) || canAccessManagementFlow;
   const managementNavLinks = [
     { href: "/", label: "Home" },
     { href: "/usermanagement", label: "User Management" },
@@ -69,7 +68,6 @@ function AppShell({ Component, pageProps }) {
     ? [
         { href: "/", label: "Home" },
         { href: "/operator", label: "Ticketing System" },
-        ...(canAccessSupervisorFlow ? [{ href: "/supervisordashboard", label: "L2 Ticketing Dashboard" }] : []),
       ]
       : undefined;
 

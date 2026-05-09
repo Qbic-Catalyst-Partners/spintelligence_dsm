@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
-import { HiMiniChevronDown } from "react-icons/hi2";
 
 import {
   deleteSubmissionFrequencyConfigAPI,
@@ -213,9 +212,7 @@ function SingleSelectDropdown({
         disabled={disabled}
       >
         <span className={styles.multiSelectValue}>{selectedLabel}</span>
-        <HiMiniChevronDown
-          className={`${styles.multiSelectChevron} ${isOpen ? styles.multiSelectChevronOpen : ""}`}
-        />
+        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
       </button>
 
       {isOpen ? (

@@ -17,18 +17,6 @@ const isAnonymousDirectAccess = (accessByDepartment, user) =>
 export const isFullAccessUser = (user) =>
   Boolean(getEmployeeKey(user)) && FULL_ACCESS_EMPLOYEE_IDS.includes(getEmployeeKey(user));
 
-export const isSupervisorUser = (user) => {
-  const role = normalizeName(user?.role || user?.role_name || user?.roleName || "");
-  const level = normalizeName(user?.level || user?.user_level || user?.userLevel || "");
-  return (
-    role.includes("supervisor") ||
-    role === "l2" ||
-    role.includes("l2") ||
-    level === "l2" ||
-    level.includes("supervisor")
-  );
-};
-
 export const routeDepartmentMap = {
   "/mixing": "Mixing",
   "/blowroom": "Blow Room",
