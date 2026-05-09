@@ -70,8 +70,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
             await createThresholdViolationTickets({
                 department: "Quality Control",
                 subDepartment: "Mixing",
-                screenName: selectedTypeName || "Cotton HVI Data Entry",
-                machineName: selectedTypeName || "Cotton HVI Data Entry",
+                screenName: selectedTypeName || "Cotton HVI",
+                machineName: selectedTypeName || "Cotton HVI",
                 values: [
                     { label: "SCI", value: formData.sci },
                     { label: "Span Length (2.5%)", value: formData.spanLength },

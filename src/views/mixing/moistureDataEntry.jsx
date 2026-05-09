@@ -77,8 +77,8 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, selected
             await createThresholdViolationTickets({
                 department: "Quality Control",
                 subDepartment: "Mixing",
-                screenName: selectedTypeName || "Moisture Data Entry",
-                machineName: selectedTypeName || "Moisture Data Entry",
+                screenName: selectedTypeName || "Moisture",
+                machineName: selectedTypeName || "Moisture",
                 values: [
                     { label: "Value 1", value: moistureValues[0] },
                     { label: "Value 2", value: moistureValues[1] },

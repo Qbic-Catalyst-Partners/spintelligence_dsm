@@ -31,6 +31,8 @@ export const writeStoredDashboardWidgets = (userId, widgets) => {
 
 export const DASHBOARD_CHART_TYPES = [
   { key: "line", label: "Line Chart" },
+  { key: "bar", label: "Bar Chart" },
+  { key: "area", label: "Area Chart" },
   { key: "timeline", label: "Timeline Chart" },
   { key: "average", label: "Avg Chart" },
   { key: "value", label: "Value Card" },
@@ -245,15 +247,16 @@ const buildDaySeries = (rows, fieldName, startDate, endDate) => {
 };
 
 export const buildFieldWidgetData = (widget, rows, startDate, endDate) => {
+  const fieldName = widget?.input_field || widget?.field_name;
   const filteredRows = filterRowsByDateRange(rows, startDate, endDate);
   const numericValues = filteredRows
-    .map((row) => toNumber(getDashboardFieldValue(row, widget.field_name)))
+    .map((row) => toNumber(getDashboardFieldValue(row, fieldName)))
     .filter((value) => value !== null);
   const latestRow = [...filteredRows].reverse().find((row) => {
-    const value = getDashboardFieldValue(row, widget.field_name);
+    const value = getDashboardFieldValue(row, fieldName);
     return value !== null && typeof value !== "undefined" && value !== "";
   });
-  const latestValue = latestRow ? getDashboardFieldValue(latestRow, widget.field_name) : "-";
+  const latestValue = latestRow ? getDashboardFieldValue(latestRow, fieldName) : "-";
   const sum = numericValues.reduce((total, value) => total + value, 0);
   const average = numericValues.length ? Number((sum / numericValues.length).toFixed(2)) : 0;
   const max = numericValues.length ? Math.max(...numericValues) : 0;
@@ -265,14 +268,16 @@ export const buildFieldWidgetData = (widget, rows, startDate, endDate) => {
     max,
     min,
     count: filteredRows.length,
-    series: buildDaySeries(filteredRows, widget.field_name, startDate, endDate),
+    series: buildDaySeries(filteredRows, fieldName, startDate, endDate),
   };
 };
 
 export const fetchRowsForDashboardWidget = async (widget) => {
   const endpoint =
     widget?.endpoint ||
-    screenEndpoints?.[widget?.department]?.[widget?.sub_department]?.[widget?.screen_name];
+    screenEndpoints?.[widget?.department]?.[widget?.sub_department]?.[
+      widget?.input_screen || widget?.screen_name
+    ];
 
   if (!endpoint) return [];
 

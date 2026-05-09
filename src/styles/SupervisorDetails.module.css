@@ -110,6 +110,16 @@
   color: #374151;
 }
 
+.status.in-progress {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.status.submit {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 .severity {
   background: #fff4e5;
   color: #a56900;
@@ -601,6 +611,16 @@ background: #CA0000;
     color: #047857;
     padding: 3px 8px;
     border-radius: 12px;
+  }
+
+  .status.in-progress {
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+
+  .status.submit {
+    background: #ede9fe;
+    color: #6d28d9;
   }
 
   .severity {

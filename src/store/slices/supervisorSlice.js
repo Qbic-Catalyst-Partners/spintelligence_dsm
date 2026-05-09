@@ -144,12 +144,12 @@ const supervisorSlice = createSlice({
         state.actionLoading = false;
 
         if (state.ticket) {
-          state.ticket.status = "REJECTED";
+          state.ticket.status = "Reopened";
         }
 
         state.tickets = state.tickets.map((t) =>
           t.ticket_id === state.ticket?.ticket_id
-            ? { ...t, status: "REJECTED" }
+            ? { ...t, status: "Reopened" }
             : t
         );
       })

@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
-import { useSelector } from "react-redux";
-import { FiChevronLeft, FiChevronRight, FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
+import { useDispatch, useSelector } from "react-redux";
+import {
+    FiChevronDown,
+    FiChevronLeft,
+    FiChevronRight,
+    FiMoreVertical,
+    FiPlus,
+    FiTrash2,
+    FiX,
+} from "react-icons/fi";
 
 import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateThresholdAPI, updateThresholdStatusAPI } from "@/apis/thresholdsApi";
+import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
@@ -17,6 +26,9 @@ const createRule = () => ({
     actualValue: "",
     positiveTolerance: "",
     negativeTolerance: "",
+    criticality: "",
+    approvalL1: [],
+    approvalL2: [],
 });
 
 const EXISTING_ROWS_PER_PAGE = 6;
@@ -43,10 +55,283 @@ const getScreenFieldOptions = (screenName, thresholds) => {
     return Array.from(new Set(inferredFields)).sort();
 };
 
+const getCriticalityLabel = (item) => {
+    const directValue = String(
+        item?.criticality || item?.severity || item?.priority || ""
+    ).trim();
+
+    if (directValue) {
+        const normalized = directValue.toLowerCase();
+        if (normalized === "high" || normalized === "medium" || normalized === "low") {
+            return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+        }
+    }
+
+    const plusValue = Number(item?.plus_threshold ?? item?.positive_tolerance);
+    const minusValue = Number(item?.minus_threshold ?? item?.negative_tolerance);
+    const tolerance = Math.max(
+        Number.isFinite(plusValue) ? Math.abs(plusValue) : 0,
+        Number.isFinite(minusValue) ? Math.abs(minusValue) : 0
+    );
+
+    if (tolerance >= 2) return "High";
+    if (tolerance >= 1) return "Medium";
+    return "Low";
+};
+
+const normalizeLookupValue = (value) => String(value ?? "").trim().toLowerCase();
+
+const normalizeNameList = (value) => {
+    if (Array.isArray(value)) {
+        return value.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+
+    if (typeof value === "string") {
+        return value
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    return [];
+};
+
+const getUserDisplayName = (user) =>
+    String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
+
+const resolveUserName = (users, value) => {
+    const normalizedValue = normalizeLookupValue(value);
+
+    if (!normalizedValue) {
+        return "";
+    }
+
+    const matchedUser = users.find((userItem) => {
+        const candidateValues = [
+            userItem?.id,
+            userItem?.employeeId,
+            userItem?.employee_id,
+            userItem?.name,
+            userItem?.full_name,
+            userItem?.fullName,
+            userItem?.username,
+            userItem?.email,
+        ];
+
+        return candidateValues.some(
+            (candidate) => normalizeLookupValue(candidate) === normalizedValue
+        );
+    });
+
+    return getUserDisplayName(matchedUser) || String(value ?? "").trim();
+};
+
+const resolveDisplayValues = (users, candidates) => {
+    for (const candidate of candidates) {
+        const labels = normalizeNameList(candidate)
+            .map((value) => resolveUserName(users, value))
+            .filter(Boolean);
+
+        if (labels.length) {
+            return labels;
+        }
+    }
+
+    return [];
+};
+
+const getApprovalValues = (item, users, level) => {
+    const l1Candidates = [
+        item?.approval_l1_names,
+        item?.approvalL1Names,
+        item?.approval_l1_name,
+        item?.approvalL1Name,
+        item?.approval_l1,
+        item?.approvalL1,
+    ];
+
+    const l2Candidates = [
+        item?.approval_l2_names,
+        item?.approvalL2Names,
+        item?.approval_l2_name,
+        item?.approvalL2Name,
+        item?.approved_by_name,
+        item?.approvedByName,
+        item?.approval_l2,
+        item?.approved_by,
+        item?.created_by_name,
+        item?.createdByName,
+        item?.updated_by_name,
+        item?.updatedByName,
+        item?.created_by,
+        item?.updated_by,
+    ];
+
+    return resolveDisplayValues(users, level === "l1" ? l1Candidates : l2Candidates);
+};
+
+function ExpandableCell({ values = [], fallback = "-" }) {
+    const normalizedValues = Array.from(
+        new Set(
+            normalizeNameList(values)
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+        )
+    );
+
+    if (!normalizedValues.length) {
+        return fallback;
+    }
+
+    if (normalizedValues.length === 1) {
+        return normalizedValues[0];
+    }
+
+    return (
+        <details className={styles.expandableCell}>
+            <summary className={styles.expandableCellSummary}>
+                <span className={styles.expandableCellPrimary}>{normalizedValues[0]}</span>
+                <FiChevronDown className={styles.expandableCellIcon} aria-hidden="true" />
+            </summary>
+            <div className={styles.expandableCellDropdown}>
+                {normalizedValues.map((value) => (
+                    <div key={value} className={styles.expandableCellItem}>
+                        {value}
+                    </div>
+                ))}
+            </div>
+        </details>
+    );
+}
+
+const buildUserOptions = (users, predicate) => {
+    const seenNames = new Set();
+
+    return users
+        .filter(predicate)
+        .filter((item) => {
+            const name = String(item?.name || "").trim();
+
+            if (!name || seenNames.has(name.toLowerCase())) {
+                return false;
+            }
+
+            seenNames.add(name.toLowerCase());
+            return true;
+        })
+        .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+const resolveSelectedUsers = (users, values) =>
+    normalizeNameList(values)
+        .map((value) => {
+            const normalizedValue = normalizeLookupValue(value);
+
+            return users.find((userItem) => {
+                const candidateValues = [
+                    userItem?.id,
+                    userItem?.employeeId,
+                    userItem?.employee_id,
+                    userItem?.name,
+                    userItem?.full_name,
+                    userItem?.fullName,
+                    userItem?.username,
+                    userItem?.email,
+                ];
+
+                return candidateValues.some(
+                    (candidate) => normalizeLookupValue(candidate) === normalizedValue
+                );
+            });
+        })
+        .filter(Boolean);
+
+function MultiSelectDropdown({
+    values = [],
+    options = [],
+    onChange,
+    placeholder = "Select",
+    disabled = false,
+    emptyLabel = "No users available",
+}) {
+    const containerRef = useRef(null);
+    const [isOpen, setIsOpen] = useState(false);
+
+    useEffect(() => {
+        const handleOutsideClick = (event) => {
+            if (!containerRef.current?.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+        };
+    }, []);
+
+    const selectedValues = Array.isArray(values) ? values : [];
+    const buttonLabel = selectedValues.length ? "Selected" : placeholder;
+
+    const toggleValue = (option) => {
+        if (disabled) {
+            return;
+        }
+
+        const nextValues = selectedValues.includes(option)
+            ? selectedValues.filter((item) => item !== option)
+            : [...selectedValues, option];
+
+        onChange?.(nextValues);
+    };
+
+    return (
+        <div
+            ref={containerRef}
+            className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}
+        >
+            <button
+                type="button"
+                className={styles.multiSelectButton}
+                onClick={() => {
+                    if (!disabled) {
+                        setIsOpen((current) => !current);
+                    }
+                }}
+                disabled={disabled}
+            >
+                <span className={styles.multiSelectValue}>{buttonLabel}</span>
+                <span className={styles.multiSelectChevron}>{isOpen ? "˄" : "˅"}</span>
+            </button>
+
+            {isOpen ? (
+                <div className={styles.multiSelectMenu}>
+                    {options.length ? (
+                        options.map((option) => (
+                            <label key={option.id} className={styles.multiSelectOption}>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedValues.includes(option.name)}
+                                    onChange={() => toggleValue(option.name)}
+                                />
+                                <span>{option.name}</span>
+                            </label>
+                        ))
+                    ) : (
+                        <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+                    )}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 export default function ThresholdValues() {
+    const dispatch = useDispatch();
     const router = useRouter();
     const user = useSelector((state) => state.auth?.user);
     const isHydrated = useSelector((state) => state.auth?.isHydrated);
+    const users = useSelector((state) => state.users?.users || []);
     const canAccessPage = isFullAccessUser(user);
 
     const [activeTab, setActiveTab] = useState("new");
@@ -105,6 +390,12 @@ export default function ThresholdValues() {
     }, [canAccessPage, isHydrated, router]);
 
     useEffect(() => {
+        if (canAccessPage && isHydrated && !users.length) {
+            dispatch(fetchUsers());
+        }
+    }, [canAccessPage, dispatch, isHydrated, users.length]);
+
+    useEffect(() => {
         const handlePointerDown = (event) => {
             const actionMenu = event.target.closest("[data-threshold-menu]");
             if (!actionMenu) {
@@ -129,6 +420,22 @@ export default function ThresholdValues() {
     const fieldOptions = useMemo(
         () => getScreenFieldOptions(selectedScreenName, thresholds),
         [selectedScreenName, thresholds]
+    );
+
+    const l1Options = useMemo(
+        () => buildUserOptions(users, (item) => normalizeLookupValue(item?.level) === "l1"),
+        [users]
+    );
+
+    const l2Options = useMemo(
+        () =>
+            buildUserOptions(
+                users,
+                (item) =>
+                    normalizeLookupValue(item?.level) === "l2" ||
+                    String(item?.role || "").trim().toLowerCase().includes("supervisor")
+            ),
+        [users]
     );
 
     useEffect(() => {
@@ -298,6 +605,13 @@ export default function ThresholdValues() {
                 actualValue: String(item?.actual_value ?? ""),
                 positiveTolerance: String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
                 negativeTolerance: String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
+                criticality: getCriticalityLabel(item),
+                approvalL1: normalizeNameList(
+                    item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
+                ),
+                approvalL2: normalizeNameList(
+                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
+                ),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
@@ -414,8 +728,30 @@ export default function ThresholdValues() {
             const rawActualValue = rule.actualValue.trim();
             const rawPositiveTolerance = rule.positiveTolerance.trim();
             const rawNegativeTolerance = rule.negativeTolerance.trim();
+            const criticality = String(rule.criticality || "").trim();
+            const approvalL1Names = normalizeNameList(rule.approvalL1);
+            const approvalL2Names = normalizeNameList(rule.approvalL2);
+            const approvalL1Users = resolveSelectedUsers(users, approvalL1Names);
+            const approvalL2Users = resolveSelectedUsers(users, approvalL2Names);
+            const approvalL1Ids = approvalL1Users
+                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
+                .filter(Boolean);
+            const approvalL2Ids = approvalL2Users
+                .map((userItem) => String(userItem?.employeeId || userItem?.id || "").trim())
+                .filter(Boolean);
+            const primaryApprovalL1Name = approvalL1Names[0] || "";
+            const primaryApprovalL2Name = approvalL2Names[0] || "";
+            const primaryApprovalL1Id = approvalL1Ids[0] || "";
+            const primaryApprovalL2Id = approvalL2Ids[0] || "";
 
-            if (!fieldName || !rawActualValue || (!rawPositiveTolerance && !rawNegativeTolerance)) {
+            if (
+                !fieldName ||
+                !rawActualValue ||
+                (!rawPositiveTolerance && !rawNegativeTolerance) ||
+                !criticality ||
+                !approvalL1Names.length ||
+                !approvalL2Names.length
+            ) {
                 const missingFields = [];
 
                 if (!fieldName) {
@@ -428,6 +764,18 @@ export default function ThresholdValues() {
 
                 if (!rawPositiveTolerance && !rawNegativeTolerance) {
                     missingFields.push("plus_or_minus_value");
+                }
+
+                if (!criticality) {
+                    missingFields.push("criticality");
+                }
+
+                if (!approvalL1Names.length) {
+                    missingFields.push("approval_l1");
+                }
+
+                if (!approvalL2Names.length) {
+                    missingFields.push("approval_l2");
                 }
 
                 setFormError(`${missingFields.join(", ")} are required.`);
@@ -448,6 +796,19 @@ export default function ThresholdValues() {
                 erp_product_code: selectedSubDepartment.name,
                 machine_name: selectedScreenName,
                 parameter_name: fieldName,
+                criticality,
+                severity: criticality,
+                priority: criticality,
+                approval_l1: primaryApprovalL1Id || primaryApprovalL1Name,
+                approval_l1_name: primaryApprovalL1Name,
+                approval_l1_user_id: primaryApprovalL1Id || null,
+                approval_l1_names: approvalL1Names,
+                approval_l1_ids: approvalL1Ids,
+                approval_l2: primaryApprovalL2Id || primaryApprovalL2Name,
+                approval_l2_name: primaryApprovalL2Name,
+                approval_l2_user_id: primaryApprovalL2Id || null,
+                approval_l2_names: approvalL2Names,
+                approval_l2_ids: approvalL2Ids,
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -662,83 +1023,129 @@ export default function ThresholdValues() {
                                 </div>
 
                                 <div className={styles.rulesTable}>
-                                    <div className={styles.ruleLabels}>
-                                        <span>Input Field Name</span>
-                                        <span>Actual Value</span>
-                                        <span>Plus (+)</span>
-                                        <span>Minus (-)</span>
-                                        <span className={styles.ruleActionHeader}>Actions</span>
-                                    </div>
-
                                     {screenRules.map((rule, index) => (
-                                        <div key={rule.id} className={styles.ruleRow}>
-                                            <label className={styles.field}>
-                                                <select
-                                                    value={rule.fieldName}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "fieldName", event.target.value)
-                                                    }
-                                                >
-                                                    <option value="">Select Field</option>
-                                                    {fieldOptions.map((fieldOption) => (
-                                                        <option key={fieldOption} value={fieldOption}>
-                                                            {fieldOption}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
+                                        <div key={rule.id} className={styles.ruleCard}>
+                                            <div className={styles.ruleRow}>
+                                                <div className={styles.ruleFields}>
+                                                    <div className={styles.ruleTopGrid}>
+                                                        <label className={styles.field}>
+                                                            <span>Input Field Name</span>
+                                                            <select
+                                                                value={rule.fieldName}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "fieldName", event.target.value)
+                                                                }
+                                                            >
+                                                                <option value="">Select Field</option>
+                                                                {fieldOptions.map((fieldOption) => (
+                                                                    <option key={fieldOption} value={fieldOption}>
+                                                                        {fieldOption}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <input
-                                                    value={rule.actualValue}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "actualValue", event.target.value)
-                                                    }
-                                                    placeholder="Enter Actual value"
-                                                />
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>Criticality</span>
+                                                            <select
+                                                                value={rule.criticality}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "criticality", event.target.value)
+                                                                }
+                                                            >
+                                                                <option value="">Select Criticality</option>
+                                                                <option value="Low">Low</option>
+                                                                <option value="Medium">Medium</option>
+                                                                <option value="High">High</option>
+                                                            </select>
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <input
-                                                    value={rule.positiveTolerance}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "positiveTolerance", event.target.value)
-                                                    }
-                                                    placeholder="Enter + tolerance"
-                                                />
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>L1</span>
+                                                            <MultiSelectDropdown
+                                                                values={rule.approvalL1}
+                                                                options={l1Options}
+                                                                disabled={!l1Options.length}
+                                                                placeholder={l1Options.length ? "Select" : "No L1 users available"}
+                                                                onChange={(nextValues) =>
+                                                                    handleRuleChange(rule.id, "approvalL1", nextValues)
+                                                                }
+                                                            />
+                                                        </label>
 
-                                            <label className={styles.field}>
-                                                <input
-                                                    value={rule.negativeTolerance}
-                                                    onChange={(event) =>
-                                                        handleRuleChange(rule.id, "negativeTolerance", event.target.value)
-                                                    }
-                                                    placeholder="Enter - tolerance"
-                                                />
-                                            </label>
+                                                        <label className={styles.field}>
+                                                            <span>L2</span>
+                                                            <MultiSelectDropdown
+                                                                values={rule.approvalL2}
+                                                                options={l2Options}
+                                                                disabled={!l2Options.length}
+                                                                placeholder={l2Options.length ? "Select" : "No L2 users available"}
+                                                                onChange={(nextValues) =>
+                                                                    handleRuleChange(rule.id, "approvalL2", nextValues)
+                                                                }
+                                                                emptyLabel="No L2 users available"
+                                                            />
+                                                        </label>
+                                                    </div>
 
-                                            <div className={styles.ruleActions}>
-                                                {index === screenRules.length - 1 ? (
-                                                    <button
-                                                        type="button"
-                                                        className={styles.addIconButton}
-                                                        onClick={addRule}
-                                                        aria-label="Add threshold row"
-                                                    >
-                                                        <FiPlus />
-                                                    </button>
-                                                ) : (
-                                                    <span className={styles.actionSpacer} aria-hidden="true" />
-                                                )}
-                                                <button
-                                                    type="button"
-                                                    className={styles.deleteIconButton}
-                                                    onClick={() => removeRule(rule.id)}
-                                                    aria-label="Delete threshold row"
-                                                >
-                                                    <FiTrash2 />
-                                                </button>
+                                                    <div className={styles.ruleBottomGrid}>
+                                                        <label className={styles.field}>
+                                                            <span>Actual Value</span>
+                                                            <input
+                                                                value={rule.actualValue}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "actualValue", event.target.value)
+                                                                }
+                                                                placeholder="Enter Actual value"
+                                                            />
+                                                        </label>
+
+                                                        <label className={styles.field}>
+                                                            <span>Plus (+)</span>
+                                                            <input
+                                                                value={rule.positiveTolerance}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "positiveTolerance", event.target.value)
+                                                                }
+                                                                placeholder="Enter + tolerance"
+                                                            />
+                                                        </label>
+
+                                                        <label className={styles.field}>
+                                                            <span>Minus (-)</span>
+                                                            <input
+                                                                value={rule.negativeTolerance}
+                                                                onChange={(event) =>
+                                                                    handleRuleChange(rule.id, "negativeTolerance", event.target.value)
+                                                                }
+                                                                placeholder="Enter - tolerance"
+                                                            />
+                                                        </label>
+
+                                                        <div className={styles.ruleActions}>
+                                                            {index === screenRules.length - 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className={styles.addIconButton}
+                                                                    onClick={addRule}
+                                                                    aria-label="Add threshold row"
+                                                                >
+                                                                    <FiPlus />
+                                                                </button>
+                                                            ) : (
+                                                                <span className={styles.actionSpacer} aria-hidden="true" />
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                className={styles.deleteIconButton}
+                                                                onClick={() => removeRule(rule.id)}
+                                                                aria-label="Delete threshold row"
+                                                            >
+                                                                <FiTrash2 />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -771,7 +1178,7 @@ export default function ThresholdValues() {
                     </>
                 ) : (
                     <div className={styles.stack}>
-                        <section className={styles.filterPanel}>
+                        <section className={styles.existingFilterPanel}>
                             <label className={styles.field}>
                                 <span>Department</span>
                                 <select
@@ -871,9 +1278,9 @@ export default function ThresholdValues() {
                             </button>
                         </section>
 
-                        <section className={styles.card}>
-                            <div className={styles.summaryGrid}>
-                                <article className={styles.summaryCard}>
+                        <section className={`${styles.card} ${styles.existingThresholdCard}`}>
+                            <div className={styles.existingSummaryRow}>
+                                <article className={`${styles.summaryCard} ${styles.departmentSummaryCard}`}>
                                     <span>Department</span>
                                     <strong>{existingDepartment?.name || "-"}</strong>
                                 </article>
@@ -897,10 +1304,15 @@ export default function ThresholdValues() {
                                 <div className={styles.emptyState}>No threshold values found for the current filters.</div>
                             ) : (
                                 <div className={styles.tableWrap}>
-                                    <table className={styles.table}>
+                                    <table className={`${styles.table} ${styles.existingThresholdTable}`}>
                                         <thead>
                                             <tr>
+                                                <th>Sub Department</th>
                                                 <th>Input Field</th>
+                                                <th>Notebook Type</th>
+                                                <th>L1</th>
+                                                <th>L2</th>
+                                                <th>Criticality</th>
                                                 <th>Actual Value</th>
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
@@ -915,9 +1327,42 @@ export default function ThresholdValues() {
                                                 const isMenuOpen = openActionMenuId === rowKey;
                                                 const isStatusUpdating = statusUpdatingRowKey === rowKey;
                                                 const isDeleting = deletingRowKey === rowKey;
+                                                const criticalityLabel = getCriticalityLabel(item);
+                                                const notebookTypes = normalizeNameList(
+                                                    item?.input_screen || item?.machine_name
+                                                );
+                                                const approvalL1Names = normalizeNameList(
+                                                    item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
+                                                );
+                                                const approvalL2Names = normalizeNameList(
+                                                    item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
+                                                );
                                                 return (
                                                 <tr key={rowKey}>
+                                                    <td>{item.sub_department || item.erp_product_code || "-"}</td>
                                                     <td>{item.input_field || item.parameter_name || "-"}</td>
+                                                    <td>
+                                                        <ExpandableCell values={notebookTypes} />
+                                                    </td>
+                                                    <td>
+                                                        <ExpandableCell values={approvalL1Names} />
+                                                    </td>
+                                                    <td>
+                                                        <ExpandableCell values={approvalL2Names} />
+                                                    </td>
+                                                    <td>
+                                                        <span
+                                                            className={`${styles.criticalityBadge} ${
+                                                                criticalityLabel === "High"
+                                                                    ? styles.criticalityHigh
+                                                                    : criticalityLabel === "Medium"
+                                                                        ? styles.criticalityMedium
+                                                                        : styles.criticalityLow
+                                                            }`}
+                                                        >
+                                                            {criticalityLabel}
+                                                        </span>
+                                                    </td>
                                                     <td>{item.actual_value ?? "-"}</td>
                                                     <td className={styles.positiveValue}>
                                                         {item.plus_threshold ?? item.positive_tolerance ?? "-"}
@@ -993,11 +1438,6 @@ export default function ThresholdValues() {
 
                             {!loading && !loadError && filteredThresholds.length > 0 ? (
                                 <div className={styles.paginationBar}>
-                                    <div className={styles.paginationMeta}>
-                                        Showing {existingPageStart + 1} to{" "}
-                                        {Math.min(existingPageStart + EXISTING_ROWS_PER_PAGE, filteredThresholds.length)} of{" "}
-                                        {filteredThresholds.length}
-                                    </div>
                                     <div className={styles.paginationControls}>
                                         <button
                                             type="button"

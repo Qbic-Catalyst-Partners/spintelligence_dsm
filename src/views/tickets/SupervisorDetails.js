@@ -17,6 +17,11 @@ import {
   getTicketValueForParameter,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
+import {
+  applyStoredTicketStatus,
+  getSupervisorStatusLabel,
+  setStoredTicketStatus,
+} from "../../utils/ticketStatus";
 
 const formatDateTime = (dateString) => {
   if (!dateString) return "-";
@@ -66,6 +71,7 @@ export default function SupervisorDetails() {
   const [reason, setReason] = useState("");
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
+  const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
   const requestedTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
   const normalizedRequestedTicketId = normalizeTicketId(requestedTicketId);
 
@@ -82,7 +88,7 @@ export default function SupervisorDetails() {
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
     const source = detailMatches ? detailSource : dashboardTicket;
-    return source ? transformTicketWithDescription(source) : null;
+    return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
   }, [dashboardTicket, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
@@ -99,6 +105,7 @@ export default function SupervisorDetails() {
   const handleApprove = async () => {
     try {
       await dispatch(approveTicket(ticket.ticket_id)).unwrap();
+      setStoredTicketStatus(ticket.ticket_id, "APPROVED");
       router.push("/supervisordashboard");
     } catch (err) {
       alert(err);
@@ -116,6 +123,7 @@ export default function SupervisorDetails() {
       rejectTicket({ ticketId: ticket.ticket_id, reason })
       ).unwrap();
 
+      setStoredTicketStatus(ticket.ticket_id, "Reopened");
       setShowRejectModal(false);
       setReason("");
       router.push("/supervisordashboard");
@@ -131,6 +139,7 @@ export default function SupervisorDetails() {
   const parameterNames = getTicketParameterNames(ticket);
   const visibleParameterNames = expanded ? parameterNames : parameterNames.slice(0, 1);
   const displayTicketId = formatTicketIdForDisplay(ticket.ticket_id || requestedTicketId);
+  const statusClassName = styles[toClassKey(ticket.status)] || "";
 
   return (
     <div>
@@ -151,9 +160,9 @@ export default function SupervisorDetails() {
 
               <div className={styles.badges}>
                 <span
-                  className={`${styles.status} ${ticket.status?.toLowerCase() === "closed" ? styles.closed : ""}`}
+                  className={`${styles.status} ${statusClassName}`}
                 >
-                  {ticket.status}
+                  {getSupervisorStatusLabel(ticket.status)}
                 </span>
                 <span className={styles.severity}>
                   Severity: {ticket.severity}
@@ -333,7 +342,7 @@ export default function SupervisorDetails() {
 
             <div>
               <strong>{displayTicketId}</strong>
-              <span className={styles.status}>Status: {ticket.status}</span>
+              <span className={`${styles.status} ${statusClassName}`}>Status: {getSupervisorStatusLabel(ticket.status)}</span>
             </div>
           </div>
 

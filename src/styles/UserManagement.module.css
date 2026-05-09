@@ -136,7 +136,7 @@ background: #F6F7F8;
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   background: #ffffff;
   padding: 12px;
   border-radius: 10px;
@@ -157,12 +157,12 @@ background: #F6F7F8;
 
 /* SEARCH */
 .searchBox {
-  flex: 1;
+  flex: 1 1 260px;
   display: flex;
   align-items: center;
   padding: 0 12px;
   gap: 8px;
-  min-width: 280px;
+  min-width: 220px;
 }
 
 .searchBox svg {
@@ -180,12 +180,14 @@ background: #F6F7F8;
 /* SELECT WRAPPER */
 .inputWrapper {
   position: relative;
+  flex: 0 1 170px;
+  min-width: 0;
 }
 
 /* SELECT */
 .inputWithIcon {
+  width: 100%;
   padding: 0 38px 0 38px;
-  min-width: 150px;
   appearance: none;
   cursor: pointer;
   color: #0f172a;
@@ -231,6 +233,8 @@ background: #F6F7F8;
   padding: 0 14px;
   cursor: pointer;
   color: #334155;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* CLEAR ICON */

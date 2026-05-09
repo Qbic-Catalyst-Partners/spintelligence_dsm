@@ -50,6 +50,7 @@ export default function UserManagement() {
 
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedDept, setSelectedDept] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
@@ -121,7 +122,7 @@ export default function UserManagement() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, selectedRole, selectedDept, selectedStatus, sortConfig]);
+  }, [search, selectedRole, selectedDept, selectedLevel, selectedStatus, sortConfig]);
 
   const handleSort = (key) => {
     setSortConfig((current) => {
@@ -163,6 +164,7 @@ export default function UserManagement() {
       return (
         (!selectedRole || u.role === selectedRole) &&
         (!selectedDept || u.dept === selectedDept) &&
+        (!selectedLevel || u.level === selectedLevel) &&
         (!selectedStatus || u.status === selectedStatus) &&
         (!search ||
           u.name?.toLowerCase().includes(searchValue) ||
@@ -289,12 +291,27 @@ export default function UserManagement() {
             <HiMiniChevronDown className={styles.selectChevron} />
           </div>
 
+          <div className={styles.inputWrapper}>
+            <FiCheckCircle className={styles.filterSvgIcon} />
+            <select
+              className={styles.inputWithIcon}
+              value={selectedLevel}
+              onChange={(e) => setSelectedLevel(e.target.value)}
+            >
+              <option value="">Level: All</option>
+              <option value="L1">Level: L1</option>
+              <option value="L2">Level: L2</option>
+            </select>
+            <HiMiniChevronDown className={styles.selectChevron} />
+          </div>
+
           {/* CLEAR BUTTON */}
           <button
             className={styles.clearBtn}
             onClick={() => {
               setSelectedRole("");
               setSelectedDept("");
+              setSelectedLevel("");
               setSelectedStatus("");
               setSearch("");
             }}
@@ -362,6 +379,7 @@ export default function UserManagement() {
               </th>
               <th>CONTACT DETAILS</th>
               <th>ROLE</th>
+              <th>LEVEL</th>
               <th>DEPARTMENT</th>
               <th>STATUS</th>
               <th>ACTIONS</th>
@@ -389,6 +407,12 @@ export default function UserManagement() {
                 <td>
                   <span className={`${styles.badge} ${styles.roleBadge}`}>
                     {u.role}
+                  </span>
+                </td>
+
+                <td>
+                  <span className={`${styles.badge} ${styles.roleBadge}`}>
+                    {u.level || "-"}
                   </span>
                 </td>
 

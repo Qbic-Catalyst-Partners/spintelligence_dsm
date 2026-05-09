@@ -13,6 +13,7 @@ import {
   getTicketParameterNames,
   getTicketValueForParameter,
 } from "@/utils/ticketTransformer";
+import { applyStoredTicketStatus } from "@/utils/ticketStatus";
 
 import { IoClose, IoTimeSharp } from "react-icons/io5";
 import { FaRegCommentAlt } from "react-icons/fa";
@@ -58,7 +59,9 @@ export default function TicketDetails() {
     ) || null;
   }, [ticketId, tickets]);
 
-  const resolvedTicket = dashboardTicket || (ticketDetailMatches ? ticket : null);
+  const resolvedTicket = applyStoredTicketStatus(
+    dashboardTicket || (ticketDetailMatches ? ticket : null)
+  );
 
   useEffect(() => {
     if (
