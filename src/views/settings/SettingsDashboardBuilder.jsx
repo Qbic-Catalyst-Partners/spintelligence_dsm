@@ -56,6 +56,16 @@ const TICKET_TREND_ID_PREFIX = "ticket-trend-";
 const uniqueList = (values = []) =>
     Array.from(new Set((Array.isArray(values) ? values : []).map((v) => String(v || "").trim()).filter(Boolean)));
 
+const parseWidgetEnabled = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) return true;
+    if (["false", "0", "off", "disabled", "no"].includes(normalized)) return false;
+    if (["true", "1", "on", "enabled", "yes"].includes(normalized)) return true;
+    return true;
+};
+
 function SettingsDashboardBuilder() {
     const [widgets, setWidgets] = useState([]);
     const [metricOptions, setMetricOptions] = useState([]);
@@ -87,10 +97,60 @@ function SettingsDashboardBuilder() {
     );
     const loggedInUserId = Number(authUser?.id || authUser?.user_id || authUser?.userId) || null;
 
-    const departmentOptions = useMemo(() => uniqueList(dashboardOptions.departments || []), [dashboardOptions.departments]);
-    const subDepartmentOptions = useMemo(() => uniqueList(dashboardOptions.sub_departments || []), [dashboardOptions.sub_departments]);
-    const notebookOptions = useMemo(() => uniqueList(dashboardOptions.notebooks || []), [dashboardOptions.notebooks]);
-    const modalFieldOptions = useMemo(() => uniqueList(dashboardOptions.input_fields || []), [dashboardOptions.input_fields]);
+    const selectedDepartment = useMemo(
+        () => departmentDirectory.find((item) => item.slug === selectedDepartmentSlug),
+        [selectedDepartmentSlug]
+    );
+
+    const subDepartments = selectedDepartment?.subDepartments || [];
+
+    const selectedSubDepartment = useMemo(
+        () => subDepartments.find((item) => item.slug === selectedSubDepartmentSlug),
+        [selectedSubDepartmentSlug, subDepartments]
+    );
+
+    const inputScreens = useMemo(
+        () => getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug),
+        [selectedDepartmentSlug, selectedSubDepartmentSlug]
+    );
+
+    const availableFields = useMemo(
+        () => getThresholdFieldsForScreen(selectedScreenName),
+        [selectedScreenName]
+    );
+
+    const modalFieldOptions = useMemo(() => {
+        const fields = availableFields.length ? availableFields : [];
+        return selectedFieldName && !fields.includes(selectedFieldName) ? [selectedFieldName, ...fields] : fields;
+    }, [availableFields, selectedFieldName]);
+
+    useEffect(() => {
+        if (!departmentDirectory.length) return;
+        if (!selectedDepartmentSlug || !departmentDirectory.some((department) => department.slug === selectedDepartmentSlug)) {
+            setSelectedDepartmentSlug(departmentDirectory[0].slug);
+        }
+    }, [selectedDepartmentSlug]);
+
+    useEffect(() => {
+        const nextSubDepartmentSlug = subDepartments[0]?.slug || "";
+        if (!selectedSubDepartmentSlug || !subDepartments.some((subDepartment) => subDepartment.slug === selectedSubDepartmentSlug)) {
+            setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
+        }
+    }, [subDepartments, selectedSubDepartmentSlug]);
+
+    useEffect(() => {
+        const nextScreenName = inputScreens[0] || "";
+        if (!selectedScreenName || !inputScreens.includes(selectedScreenName)) {
+            setSelectedScreenName(nextScreenName);
+        }
+    }, [inputScreens, selectedScreenName]);
+
+    useEffect(() => {
+        const nextFieldName = modalFieldOptions[0] || "";
+        if (!selectedFieldName || !modalFieldOptions.includes(selectedFieldName)) {
+            setSelectedFieldName(nextFieldName);
+        }
+    }, [modalFieldOptions, selectedFieldName]);
 
     const displayUserName =
         authUser?.full_name ||
@@ -107,19 +167,16 @@ function SettingsDashboardBuilder() {
     const normalizeWidgets = (nextWidgets) =>
         (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => ({
             id: widget?.id || `widget-${index + 1}`,
-            name: widget?.name || "",
-            enabled: widget?.enabled !== false,
+            name: widget?.name || "Input Submitted Today",
+            enabled: parseWidgetEnabled(widget?.enabled),
             order: Number.isInteger(widget?.order) ? widget.order : index + 1,
             metric_key: widget?.metric_key || "",
             widget_type: widget?.widget_type || "metric",
-            chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type) || "value",
-            visualization_type: widget?.visualization_type || chartTypeToVisualizationType(widget?.chart_type),
+            chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
             department: widget?.department || "",
             sub_department: widget?.sub_department || "",
             screen_name: widget?.screen_name || widget?.input_screen || "",
             field_name: widget?.field_name || widget?.input_field || "",
-            input_screen: widget?.input_screen || widget?.screen_name || "",
-            input_field: widget?.input_field || widget?.field_name || "",
             builder_section:
                 widget?.builder_section ||
                 (index < 3 ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance),
@@ -353,17 +410,15 @@ function SettingsDashboardBuilder() {
             ...current,
             {
                 id: `field-widget-${Date.now()}`,
-                name: selectedFieldName || "SCI",
+                name: selectedFieldName || "Widget",
                 enabled: true,
                 order: current.length + 1,
                 metric_key: "custom_field",
                 widget_type: FIELD_WIDGET_TYPE,
-                department: selectedDepartmentSlug || "",
-                sub_department: selectedSubDepartmentSlug || "",
+                department: selectedDepartment?.name || "",
+                sub_department: selectedSubDepartment?.name || "",
                 screen_name: selectedScreenName || "",
                 field_name: selectedFieldName || "",
-                input_screen: selectedScreenName || "",
-                input_field: String(selectedFieldName || "").trim(),
                 chart_type: selectedVisualization.key,
                 builder_section: selectedVisualization.section,
             },
@@ -539,13 +594,39 @@ function SettingsDashboardBuilder() {
 
         try {
             setSaving(true);
-            const targetUserId = selectedBuilderUserId || loggedInUserId || ownId || dashboardOwnerUserId;
-            if (!targetUserId) {
-                setSaveMessage("Unable to determine target user for saving widgets.");
-                return false;
-            }
-            await assignDashboard(targetUserId, orderedWidgets);
-            setWidgets(normalizeWidgets(orderedWidgets));
+            const payloadWidgets = orderedWidgets.map((widget) => ({
+                id: widget.id,
+                department: widget.department || "",
+                sub_department: widget.sub_department || "",
+                input_screen: widget.screen_name || "",
+                input_field: normalizeInputFieldKey(widget.field_name || ""),
+                visualization_type: chartTypeToVisualizationType(widget.chart_type),
+                enabled: widget.enabled !== false,
+                order: widget.order,
+            }));
+
+            const selectedUserId = Number(selectedBuilderUserId);
+            const effectiveUserId =
+                Number.isInteger(selectedUserId) && selectedUserId > 0
+                    ? selectedUserId
+                    : dashboardOwnerUserId;
+
+            const savePayload = {
+                user_id: effectiveUserId,
+                userId: effectiveUserId,
+                assigned_user_id: effectiveUserId,
+                assignedUserId: effectiveUserId,
+                owner_user_id: effectiveUserId,
+                ownerUserId: effectiveUserId,
+                widgets: payloadWidgets,
+            };
+            const isSavingForAnotherUser = effectiveUserId !== dashboardOwnerUserId;
+            const savePaths = isSavingForAnotherUser
+                ? [`widgets/${effectiveUserId}`, `assign/${effectiveUserId}`]
+                : [`widgets/${effectiveUserId}`, "my-widgets"];
+            await saveWithPathCandidates(savePaths, savePayload);
+            lastSavedSnapshotRef.current = JSON.stringify(orderedWidgets);
+            setWidgets(orderedWidgets);
             if (successMessage) {
                 setSaveMessage(successMessage);
             } else {
@@ -571,10 +652,10 @@ function SettingsDashboardBuilder() {
 
     const getBuilderRowText = (widget) =>
         [
-            widget.department || "Quality Control",
-            widget.sub_department || "Mixing",
-            widget.screen_name || "Cotton HVI Data Entry",
-            widget.field_name || widget.name || "SCI",
+            widget.department || "-",
+            widget.sub_department || "-",
+            widget.screen_name || "-",
+            widget.field_name || widget.name || "-",
         ].join(" | ");
 
     const builderRows = widgets.map((widget, index) => ({
@@ -687,70 +768,53 @@ function SettingsDashboardBuilder() {
                         <div className={styles.builderAddModalGrid}>
                             <label>
                                 <span>Department</span>
-                                <div className={styles.builderSelectWrap}>
-                                    <select
-                                        value={selectedDepartmentSlug}
-                                        onChange={(event) => {
-                                            setSelectedDepartmentSlug(event.target.value);
-                                            setSelectedSubDepartmentSlug("");
-                                            setSelectedScreenName("");
-                                            setSelectedFieldName("");
-                                        }}
-                                    >
-                                        <option value="">Select department</option>
-                                        {departmentOptions.map((department) => (
-                                            <option key={department} value={department}>
-                                                {department}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
-                                </div>
+                                <select
+                                    value={selectedDepartmentSlug}
+                                    onChange={(event) => {
+                                        const nextDepartmentSlug = event.target.value;
+                                        setSelectedDepartmentSlug(nextDepartmentSlug);
+                                    }}
+                                >
+                                    {departmentDirectory.map((department) => (
+                                        <option key={department.slug} value={department.slug}>
+                                            {department.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </label>
 
                             <label>
                                 <span>Sub Department</span>
-                                <div className={styles.builderSelectWrap}>
-                                    <select
-                                        value={selectedSubDepartmentSlug}
-                                        disabled={!selectedDepartmentSlug}
-                                        onChange={(event) => {
-                                            setSelectedSubDepartmentSlug(event.target.value);
-                                            setSelectedScreenName("");
-                                            setSelectedFieldName("");
-                                        }}
-                                    >
-                                        <option value="">Select sub department</option>
-                                        {subDepartmentOptions.map((subDepartment) => (
-                                            <option key={subDepartment} value={subDepartment}>
-                                                {subDepartment}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
-                                </div>
+                                <select
+                                    value={selectedSubDepartmentSlug}
+                                    onChange={(event) => {
+                                        const nextSubDepartmentSlug = event.target.value;
+                                        setSelectedSubDepartmentSlug(nextSubDepartmentSlug);
+                                    }}
+                                >
+                                    {subDepartments.map((subDepartment) => (
+                                        <option key={subDepartment.slug} value={subDepartment.slug}>
+                                            {subDepartment.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </label>
 
                             <label>
                                 <span>Notebook Type</span>
-                                <div className={styles.builderSelectWrap}>
-                                    <select
-                                        value={selectedScreenName}
-                                        disabled={!selectedDepartmentSlug || !selectedSubDepartmentSlug}
-                                        onChange={(event) => {
-                                            setSelectedScreenName(String(event.target.value || ""));
-                                            setSelectedFieldName("");
-                                        }}
-                                    >
-                                        <option value="">Select notebook</option>
-                                        {notebookOptions.map((screen) => (
-                                            <option key={screen} value={screen}>
-                                                {screen}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
-                                </div>
+                                <select
+                                    value={selectedScreenName}
+                                    onChange={(event) => {
+                                        const nextScreenName = event.target.value;
+                                        setSelectedScreenName(nextScreenName);
+                                    }}
+                                >
+                                    {inputScreens.map((screen) => (
+                                        <option key={screen} value={screen}>
+                                            {screen}
+                                        </option>
+                                    ))}
+                                </select>
                             </label>
 
                             <label>

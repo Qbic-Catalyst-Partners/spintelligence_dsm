@@ -9,120 +9,323 @@ import styles from "@/styles/departmentDirectory.module.css";
 
 const trendModes = ["1D", "1W", "1M", "1Y"];
 
+const modeMultipliers = {
+    "1D": 0.72,
+    "1W": 0.9,
+    "1M": 1,
+    "1Y": 1.18,
+};
+
+const linePoints = [
+    { label: "Day 1", value: 82 },
+    { label: "Day 2", value: 64 },
+    { label: "Day 3", value: 96 },
+    { label: "Day 4", value: 76 },
+    { label: "Day 5", value: 44 },
+    { label: "Day 6", value: 88 },
+    { label: "Day 7", value: 71 },
+];
+
+const parseWidgetEnabled = (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) return true;
+    if (["false", "0", "off", "disabled", "no"].includes(normalized)) return false;
+    if (["true", "1", "on", "enabled", "yes"].includes(normalized)) return true;
+    return true;
+};
+
 function HomeDashboard() {
-  const user = useSelector((state) => state.auth?.user);
-  const fullName = user?.full_name || user?.fullName || user?.name || "Hency Belix";
-  const ownUserId = Number(user?.id || user?.user_id || user?.userId) || null;
-  const canSelectUsers = isFullAccessUser(user);
-  const [period, setPeriod] = useState("1M");
-  const [widgets, setWidgets] = useState([]);
-  const [data, setData] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState(ownUserId);
+    const user = useSelector((state) => state.auth?.user);
+    const fullName = user?.full_name || user?.fullName || user?.name || "Hency Belix";
+    const dashboardOwnerUserId = useMemo(() => getDashboardOwnerUserId(user), [user]);
+    const [widgets, setWidgets] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [errorMessage, setErrorMessage] = useState("");
+    const [cardModes, setCardModes] = useState({});
+    const [trendModesById, setTrendModesById] = useState({});
+    const [widgetData, setWidgetData] = useState({});
+    const widgetDataCacheRef = useRef(new Map());
+    const debounceTimerRef = useRef(null);
+    const inFlightControllersRef = useRef([]);
 
-  useEffect(() => {
-    setSelectedUserId(ownUserId);
-  }, [ownUserId]);
+    const getWithBuilderFallback = async (path, params = {}, options = {}) => {
+        try {
+            return await apiConfig.get(`/api/dashboard/builder/${path}`, params, {
+                skipGlobalErrorModal: true,
+                ...options,
+            });
+        } catch (error) {
+            if (error?.response?.status !== 404) throw error;
+            return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, {
+                skipGlobalErrorModal: true,
+                ...options,
+            });
+        }
+    };
 
-  useEffect(() => {
-    let mounted = true;
-    if (!canSelectUsers) return undefined;
+    const normalizedWidgets = useMemo(
+        () =>
+            (Array.isArray(widgets) ? widgets : []).map((widget, index) => ({
+                id: widget?.id || `widget-${index + 1}`,
+                enabled: parseWidgetEnabled(widget?.enabled),
+                order: Number.isInteger(widget?.order) ? widget.order : index + 1,
+                department: widget?.department || "Quality Control",
+                sub_department: widget?.sub_department || "Mixing",
+                input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
+                raw_input_field: String(widget?.input_field || widget?.field_name || "SCI"),
+                input_field: normalizeInputFieldKey(widget?.input_field || widget?.field_name || "SCI"),
+                visualization_type: widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
+                chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
+            })),
+        [widgets]
+    );
 
-    const loadUsers = async () => {
-      try {
-        const response = await fetchUsersAPI();
-        const rows = Array.isArray(response?.users)
-          ? response.users
-          : Array.isArray(response?.data)
-            ? response.data
-            : Array.isArray(response)
-              ? response
-              : [];
-        if (!mounted) return;
-        setUsers(
-          rows
-            .map((item) => ({
-              id: Number(item?.id || item?.user_id || item?.userId),
-              name: item?.username || item?.full_name || item?.name || `User ${item?.id || ""}`,
-            }))
-            .filter((item) => Number.isInteger(item.id) && item.id > 0)
+    const visibleWidgets = useMemo(
+        () => normalizedWidgets.filter((widget) => widget.enabled).sort((a, b) => a.order - b.order),
+        [normalizedWidgets]
+    );
+    const [trendLineMode, setTrendLineMode] = useState("1M");
+    const [lineMode, setLineMode] = useState("1M");
+
+    const averageWidgets = useMemo(
+        () => visibleWidgets.filter((widget) => widget.visualization_type === "average_value_card" || widget.chart_type === "value"),
+        [visibleWidgets]
+    );
+
+    const performanceWidgets = useMemo(
+        () => visibleWidgets.filter((widget) => !(widget.visualization_type === "average_value_card" || widget.chart_type === "value")),
+        [visibleWidgets]
+    );
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadWidgets = async () => {
+            if (!dashboardOwnerUserId) return;
+            try {
+                setLoading(true);
+                const response = await getWithBuilderFallback(`widgets/${dashboardOwnerUserId}`);
+                if (!isMounted) return;
+                const nextWidgets = Array.isArray(response?.data?.widgets) ? response.data.widgets : [];
+                setWidgets(nextWidgets);
+                setErrorMessage("");
+            } catch (error) {
+                if (!isMounted) return;
+                setWidgets([]);
+                setErrorMessage(error?.response?.data?.message || "Unable to load dashboard widgets.");
+            } finally {
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        loadWidgets();
+        return () => {
+            isMounted = false;
+        };
+    }, [dashboardOwnerUserId]);
+
+    useEffect(() => {
+        setCardModes((current) =>
+            averageWidgets.reduce((next, widget) => {
+                next[widget.id] = current[widget.id] || "1M";
+                return next;
+            }, {})
         );
-      } catch {
-        if (!mounted) return;
-        setUsers([]);
-      }
-    };
+        setTrendModesById((current) =>
+            performanceWidgets.reduce((next, widget) => {
+                next[widget.id] = current[widget.id] || "1M";
+                return next;
+            }, {})
+        );
+    }, [averageWidgets, performanceWidgets]);
 
-    loadUsers();
-    return () => {
-      mounted = false;
-    };
-  }, [canSelectUsers]);
+    useEffect(() => {
+        let isMounted = true;
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUserDashboardCards = async () => {
-      if (!selectedUserId) return;
+        const clearInFlightRequests = () => {
+            inFlightControllersRef.current.forEach((controller) => {
+                try {
+                    controller.abort();
+                } catch {
+                    // no-op
+                }
+            });
+            inFlightControllersRef.current = [];
+        };
 
-      try {
-        if (canSelectUsers && ownUserId && selectedUserId !== ownUserId) {
-          const response = await getUserWidgets(selectedUserId);
-          const selectedWidgets = Array.isArray(response?.data?.widgets)
-            ? response.data.widgets.filter((w) => w?.enabled !== false)
-            : [];
-          if (!mounted) return;
-          setWidgets(selectedWidgets);
-
-          const widgetData = await Promise.all(
-            selectedWidgets.map(async (widget) => {
-              const dataResponse = await getBuilderData({
-                department: widget?.department,
-                sub_department: widget?.sub_department,
-                input_screen: widget?.input_screen,
-                input_field: widget?.input_field,
+        const buildWidgetRequest = (widget) => {
+            const period =
+                widget.visualization_type === "average_value_card" || widget.chart_type === "value"
+                    ? (cardModes[widget.id] || "1M")
+                    : (trendModesById[widget.id] || "1M");
+            const requestKey = [
+                widget.department,
+                widget.sub_department,
+                widget.input_screen,
+                widget.input_field,
                 period,
-              });
-              return { widget_id: widget?.id, ...(dataResponse?.data || {}) };
-            })
-          );
-          if (!mounted) return;
-          setData(widgetData);
-          return;
+            ].join("::");
+
+            return { widget, period, requestKey };
+        };
+
+        const fetchWidgetData = async () => {
+            if (!visibleWidgets.length) {
+                if (isMounted) setWidgetData({});
+                return;
+            }
+
+            const widgetRequests = visibleWidgets.map(buildWidgetRequest);
+            const cachedByWidgetId = {};
+            const pendingRequests = [];
+
+            widgetRequests.forEach(({ widget, requestKey, period }) => {
+                const cached = widgetDataCacheRef.current.get(requestKey);
+                if (cached) {
+                    cachedByWidgetId[widget.id] = cached;
+                    return;
+                }
+
+                const controller = new AbortController();
+                inFlightControllersRef.current.push(controller);
+                pendingRequests.push(
+                    getWithBuilderFallback(
+                        "data",
+                        {
+                            department: widget.department,
+                            sub_department: widget.sub_department,
+                            input_screen: widget.input_screen,
+                            input_field: widget.input_field,
+                            period,
+                        },
+                        { signal: controller.signal }
+                    )
+                        .catch(async (error) => {
+                            const fallbackInputField = String(widget.raw_input_field || "").trim();
+                            if (!fallbackInputField || fallbackInputField === widget.input_field) {
+                                throw error;
+                            }
+                            return getWithBuilderFallback(
+                                "data",
+                                {
+                                    department: widget.department,
+                                    sub_department: widget.sub_department,
+                                    input_screen: widget.input_screen,
+                                    input_field: fallbackInputField,
+                                    period,
+                                },
+                                { signal: controller.signal }
+                            );
+                        })
+                        .then((response) => ({ widgetId: widget.id, requestKey, data: response?.data || null }))
+                        .catch((error) => ({ widgetId: widget.id, requestKey, error }))
+                );
+            });
+
+            if (Object.keys(cachedByWidgetId).length) {
+                setWidgetData((current) => ({ ...current, ...cachedByWidgetId }));
+            }
+
+            const results = await Promise.all(pendingRequests);
+            if (!isMounted) return;
+
+            setWidgetData((current) => {
+                const next = { ...current };
+                results.forEach((result) => {
+                    if (result?.error) return;
+                    next[result.widgetId] = result.data;
+                    widgetDataCacheRef.current.set(result.requestKey, result.data);
+                });
+                return next;
+            });
+        };
+
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
         }
 
-        const response = await getMyPageData("default", period);
-        if (!mounted) return;
-        const pageWidgets = Array.isArray(response?.data?.widgets) ? response.data.widgets : [];
-        const pageData = Array.isArray(response?.data?.data) ? response.data.data : [];
-        if (pageWidgets.length) {
-          setWidgets(pageWidgets);
-          setData(pageData);
-          return;
-        }
+        clearInFlightRequests();
+        debounceTimerRef.current = setTimeout(() => {
+            fetchWidgetData();
+        }, DASHBOARD_FETCH_DEBOUNCE_MS);
 
-        const fallback = await getMyDashboard(period);
-        if (!mounted) return;
-        setWidgets(Array.isArray(fallback?.data?.widgets) ? fallback.data.widgets : []);
-        setData(Array.isArray(fallback?.data?.data) ? fallback.data.data : []);
-      } catch {
-        if (!mounted) return;
-        setWidgets([]);
-        setData([]);
-      }
-    };
-    loadUserDashboardCards();
-    return () => {
-      mounted = false;
-    };
-  }, [canSelectUsers, ownUserId, period, selectedUserId]);
+        return () => {
+            if (debounceTimerRef.current) {
+                clearTimeout(debounceTimerRef.current);
+                debounceTimerRef.current = null;
+            }
+            clearInFlightRequests();
+            isMounted = false;
+        };
+    }, [visibleWidgets, cardModes, trendModesById]);
 
-  const dataById = useMemo(
-    () => new Map(data.map((entry) => [String(entry?.widget_id), entry])),
-    [data]
-  );
+    return (
+        <div className={styles.dashboardMain}>
+            <section className={styles.referenceDashboardHeader}>
+                <span>Welcome Back, {fullName}</span>
+            </section>
 
-  const avgWidgets = widgets.filter((w) => w?.visualization_type === "average_value_card");
-  const trendWidgets = widgets.filter((w) => w?.visualization_type !== "average_value_card");
+            <section className={styles.referenceSection}>
+                <h1>Average Values</h1>
+                <div className={styles.referenceStatsGrid}>
+                    {metricCards.map((card) => (
+                        <article key={card.id} className={styles.referenceStatCard}>
+                            <div className={styles.referenceStatHeader}>
+                                <div>
+                                    <h2>{card.title}</h2>
+                                    <span>{card.meta}</span>
+                                </div>
+                                <span className={styles.referenceStatIcon}>
+                                    <FiPieChart />
+                                </span>
+                            </div>
+                            <div className={styles.referenceStatBottom}>
+                                <strong>{getModeValue(card.baseValue, cardModes[card.id])}</strong>
+                                <div className={styles.referenceMiniToggle}>
+                                    {trendModes.map((mode) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
+                                            onClick={() =>
+                                                setCardModes((current) => ({
+                                                    ...current,
+                                                    [card.id]: mode,
+                                                }))
+                                            }
+                                        >
+                                            {mode}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </article>
+                    ))}
+                </div>
+            </section>
+
+            <section className={styles.referenceSection}>
+                <h1>Performance Trends</h1>
+                {performanceWidgets.map((widget) => (
+                    <PerformanceLineCard
+                        key={widget.id}
+                        widget={widget}
+                        data={widgetData?.[widget.id]}
+                        activeMode={trendModesById[widget.id] || "1M"}
+                        setActiveMode={(nextMode) =>
+                            setTrendModesById((current) => ({ ...current, [widget.id]: nextMode }))
+                        }
+                    />
+                ))}
+            </section>
+            {loading ? <p>Loading dashboard...</p> : null}
+            {!loading && !averageWidgets.length && !performanceWidgets.length ? <p>No dashboard widgets configured.</p> : null}
+            {errorMessage ? <p>{errorMessage}</p> : null}
+        </div>
+    );
+}
 
   return (
     <div className={styles.dashboardMain}>
