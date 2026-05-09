@@ -23,6 +23,29 @@ export const saveSubmissionFrequencyConfigAPI = async (payload) => {
   return response?.data;
 };
 
+export const updateSubmissionFrequencyConfigAPI = async (id, payload) => {
+  const response = await apiConfig.patch(
+    `/operator-tickets/submission-frequency/${encodeURIComponent(id)}`,
+    payload
+  );
+  return response?.data;
+};
+
+export const updateSubmissionFrequencyStatusAPI = async (id, is_active) => {
+  const response = await apiConfig.patch(
+    `/operator-tickets/submission-frequency/${encodeURIComponent(id)}/status`,
+    { is_active }
+  );
+  return response?.data;
+};
+
+export const deleteSubmissionFrequencyConfigAPI = async (id) => {
+  const response = await apiConfig.delete(
+    `/operator-tickets/submission-frequency/${encodeURIComponent(id)}`
+  );
+  return response?.data;
+};
+
 export const runSubmissionFrequencyCheckAPI = async () => {
   const response = await apiConfig.post(
     "/operator-tickets/submission-frequency/check",

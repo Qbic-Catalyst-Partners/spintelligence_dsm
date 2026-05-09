@@ -74,9 +74,10 @@ export default function SubmissionFrequency() {
   const availableSubDepartments = (selectedDepartment?.subDepartments || []).filter(
     (item) => item.enabled
   );
-  const availableScreens = selectedDepartmentSlug && selectedSubDepartmentSlug
-    ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
-    : [];
+  const availableScreens =
+    selectedDepartmentSlug && selectedSubDepartmentSlug
+      ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
+      : [];
 
   const onDepartmentSelect = (event) => {
     const nextDepartmentSlug = event.target.value;

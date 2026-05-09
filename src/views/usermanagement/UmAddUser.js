@@ -13,6 +13,7 @@ import { FiCircle } from "react-icons/fi";
 import { useDispatch, useSelector } from "react-redux";
 import {
   fetchRoles,
+  fetchDepartments,
   addUser,
   clearActionState,
 } from "../../store/slices/userSlice";
@@ -21,7 +22,7 @@ export default function UmAddUser() {
   const dispatch = useDispatch();
   const router = useRouter();
 
-  const { roles, actionLoading, error, actionSuccess } =
+  const { roles, departments, actionLoading, error, actionSuccess } =
     useSelector((state) => state.users);
 
   const [localError, setLocalError] = useState("");
@@ -36,11 +37,14 @@ export default function UmAddUser() {
     phone: "",
     employee_id: "",
     role: "",
+    department: "",
+    level: "",
   });
 
   // FETCH DROPDOWN DATA
   useEffect(() => {
     dispatch(fetchRoles());
+    dispatch(fetchDepartments());
   }, [dispatch]);
 
   // SUCCESS REDIRECT
@@ -87,6 +91,8 @@ export default function UmAddUser() {
       !formData.phone ||
       !formData.employee_id ||
       !formData.role ||
+      !formData.department ||
+      !formData.level ||
       !password
     ) {
       setLocalError("All fields are required");
@@ -156,11 +162,32 @@ export default function UmAddUser() {
             <div className={styles.grid}>
               <div className={styles.formGroup}>
                 <label>Role Selection <span>*</span></label>
-                <select name="role" onChange={handleChange}>
+                <select name="role" value={formData.role} onChange={handleChange}>
                   <option value="">Select user role</option>
                   {roles.map((r) => (
                     <option key={r.id}>{r.role_name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Department <span>*</span></label>
+                <select name="department" value={formData.department} onChange={handleChange}>
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.name}>
+                      {department.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Level <span>*</span></label>
+                <select name="level" value={formData.level} onChange={handleChange}>
+                  <option value="">Select level</option>
+                  <option value="L1">L1</option>
+                  <option value="L2">L2</option>
                 </select>
               </div>
             </div>

@@ -66,8 +66,8 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo, selectedT
             await createThresholdViolationTickets({
                 department: "Quality Control",
                 subDepartment: "Mixing",
-                screenName: selectedTypeName || "AFIS Data Entry",
-                machineName: selectedTypeName || "AFIS Data Entry",
+                screenName: selectedTypeName || "AFIS",
+                machineName: selectedTypeName || "AFIS",
                 values: [
                     { label: "UQL", value: formData.uql },
                     { label: "L5%", value: formData.l5 },

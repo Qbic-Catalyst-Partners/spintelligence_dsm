@@ -45,6 +45,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/umchangepassword") ||
     router.pathname === "/rolespermission" ||
     router.pathname === "/threshold-values" ||
+    router.pathname === "/submission-threshold" ||
     router.pathname === "/submission-frequency" ||
     router.pathname === "/reports" ||
     router.pathname === "/settings" ||
@@ -56,6 +57,7 @@ function AppShell({ Component, pageProps }) {
     { href: "/usermanagement", label: "User Management" },
     { href: "/rolespermission", label: "Roles & Permissions" },
     { href: "/threshold-values", label: "Threshold Values" },
+    { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/submission-frequency", label: "Submission Frequency" },
     { href: "/reports", label: "Reports" },
     { href: "/settings", label: "Settings" },

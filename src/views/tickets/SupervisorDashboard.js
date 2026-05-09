@@ -5,6 +5,13 @@ import Link from "next/link";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
 import { MdFilterList } from "react-icons/md";
+import {
+  applyStoredTicketStatuses,
+  getStatusClassKey,
+  getSupervisorStatusLabel,
+  isSupervisorVisibleTicket,
+  SUPERVISOR_VISIBLE_STATUS_OPTIONS,
+} from "../../utils/ticketStatus";
 
 const ITEMS_PER_PAGE = 6;
 
@@ -27,13 +34,13 @@ export default function SupervisorDashboard() {
   const { tickets, isLoading, error } =
     useSelector((state) => state.supervisor) || {};
 
-  const safeTickets = Array.isArray(tickets)
+  const safeTickets = applyStoredTicketStatuses(Array.isArray(tickets)
     ? tickets
     : Array.isArray(tickets?.tickets)
       ? tickets.tickets
       : Array.isArray(tickets?.data)
         ? tickets.data
-        : [];
+        : []).filter(isSupervisorVisibleTicket);
 
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
@@ -99,7 +106,7 @@ export default function SupervisorDashboard() {
   return (
     <div className={styles["sup-page"]}>
       <div className={styles["sup-content"]}>
-        <h1 className={styles["sup-title"]}>Team Tickets Dashboard</h1>
+        <h1 className={styles["sup-title"]}>L2 Ticketing Dashboard</h1>
 
         <div className={styles["sup-mobile-title-row"]}>
           <button
@@ -120,11 +127,9 @@ export default function SupervisorDashboard() {
               onChange={(e) => setStatus(e.target.value)}
             >
               <option value="">All</option>
-              <option>Pending Approval</option>
-              <option>Closed</option>
-              <option>Open</option>
-              <option>Reopened</option>
-              <option>Unresolved</option>
+              {SUPERVISOR_VISIBLE_STATUS_OPTIONS.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
             </select>
           </div>
 
@@ -240,12 +245,12 @@ export default function SupervisorDashboard() {
                       <td>
                         <span
                           className={`${styles["status-badge"]} ${
-                            styles[
-                              t.status?.toLowerCase()?.replace(/\s+/g, "_")
-                            ]
+                            styles[`status-${getStatusClassKey(t.status)}`] ||
+                            styles[getStatusClassKey(t.status).replace(/-/g, "_")] ||
+                            ""
                           }`}
                         >
-                          {t.status}
+                          {getSupervisorStatusLabel(t.status)}
                         </span>
                       </td>
                       <td>{formatDateTime(t.created_at)}</td>
@@ -360,11 +365,12 @@ export default function SupervisorDashboard() {
 
                 <div className={styles["sup-card-bottom"]}>
                   <div
-                    className={`${styles["status-badge"]} ${
-                      styles[t.status?.toLowerCase()?.replace(/\s+/g, "_")]
+                    className={`${styles["status-text"]} ${
+                      styles[getStatusClassKey(t.status).replace(/-/g, "_")]
                     }`}
                   >
-                    {t.status}
+                    <span className={styles["status-dot"]} />
+                    {getSupervisorStatusLabel(t.status)}
                   </div>
                   <div className={styles["details-link"]}>Details &gt;</div>
                 </div>
@@ -395,11 +401,9 @@ export default function SupervisorDashboard() {
                     onChange={(e) => setStatus(e.target.value)}
                   >
                     <option value="">All</option>
-                    <option>Pending Approval</option>
-                    <option>Closed</option>
-                    <option>Open</option>
-                    <option>Reopened</option>
-                    <option>Unresolved</option>
+                    {SUPERVISOR_VISIBLE_STATUS_OPTIONS.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
                 </div>
 
