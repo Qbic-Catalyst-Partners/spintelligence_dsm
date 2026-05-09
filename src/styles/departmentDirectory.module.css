@@ -1658,9 +1658,26 @@
     border-radius: 7px;
     background: #f8fafc;
     color: #344054;
-    padding: 0 16px;
+    padding: 0 36px 0 16px;
     font-size: 13px;
     font-weight: 500;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+
+.builderSelectWrap {
+    position: relative;
+}
+
+.builderSelectChevron {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    color: #94a3b8;
+    pointer-events: none;
 }
 
 .builderAddModalFooter {

@@ -20,7 +20,7 @@ import {
     FiUsers,
 } from "react-icons/fi";
 import { logout } from "../store/slices/authSlice";
-import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
+import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, isSupervisorUser, routeDepartmentMap } from "@/utils/accessControl";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -74,6 +74,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
+    const hasSupervisorAccess = isSupervisorUser(user) || hasFullAccess;
     const fullName = user?.full_name || user?.name || "User";
     const employeeId = user?.employee_id || user?.employeeId || "No ID";
     const initials = fullName
@@ -193,8 +194,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const handleTicketsClick = () => {
         setIsTicketsMenuOpen((isOpen) => {
             const nextIsOpen = !isOpen;
-            if (nextIsOpen && router.asPath?.split("?")[0] !== "/operator") {
-                router.push("/operator");
+            if (nextIsOpen) {
+                const defaultTicketRoute = hasSupervisorAccess ? "/supervisordashboard" : "/operator";
+                if (router.asPath?.split("?")[0] !== defaultTicketRoute) {
+                    router.push(defaultTicketRoute);
+                }
             }
             return nextIsOpen;
         });
@@ -372,7 +376,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             );
                         }
 
-                        if (link.section === "tickets" && hasFullAccess) {
+                        if (link.section === "tickets" && hasSupervisorAccess) {
                             return (
                                 <div key={link.href} className={styles["side-nav-group"]}>
                                     <button

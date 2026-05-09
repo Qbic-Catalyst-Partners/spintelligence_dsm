@@ -12,7 +12,16 @@ export const fetchSupervisorTickets = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const data = await fetchSupervisorTicketsApi();
-      return data;
+      if (Array.isArray(data)) {
+        return data;
+      }
+      if (Array.isArray(data?.tickets)) {
+        return data.tickets;
+      }
+      if (Array.isArray(data?.data)) {
+        return data.data;
+      }
+      return [];
     } catch (error) {
       return rejectWithValue(error.message);
     }
@@ -89,7 +98,7 @@ const supervisorSlice = createSlice({
       })
       .addCase(fetchSupervisorTickets.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.tickets = action.payload;
+        state.tickets = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(fetchSupervisorTickets.rejected, (state, action) => {
         state.isLoading = false;
@@ -124,7 +133,7 @@ const supervisorSlice = createSlice({
         }
 
         // update list page
-        state.tickets = state.tickets.map((t) =>
+        state.tickets = (Array.isArray(state.tickets) ? state.tickets : []).map((t) =>
           t.ticket_id === state.ticket?.ticket_id
             ? { ...t, status: "APPROVED" }
             : t
@@ -147,7 +156,7 @@ const supervisorSlice = createSlice({
           state.ticket.status = "Reopened";
         }
 
-        state.tickets = state.tickets.map((t) =>
+        state.tickets = (Array.isArray(state.tickets) ? state.tickets : []).map((t) =>
           t.ticket_id === state.ticket?.ticket_id
             ? { ...t, status: "Reopened" }
             : t

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { FiGrid, FiPlus, FiServer, FiTrash2 } from "react-icons/fi";
+import { HiMiniChevronDown } from "react-icons/hi2";
 
 import {
     assignDashboard,
@@ -686,88 +687,103 @@ function SettingsDashboardBuilder() {
                         <div className={styles.builderAddModalGrid}>
                             <label>
                                 <span>Department</span>
-                                <select
-                                    value={selectedDepartmentSlug}
-                                    onChange={(event) => {
-                                        setSelectedDepartmentSlug(event.target.value);
-                                        setSelectedSubDepartmentSlug("");
-                                        setSelectedScreenName("");
-                                        setSelectedFieldName("");
-                                    }}
-                                >
-                                    <option value="">Select department</option>
-                                    {departmentOptions.map((department) => (
-                                        <option key={department} value={department}>
-                                            {department}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className={styles.builderSelectWrap}>
+                                    <select
+                                        value={selectedDepartmentSlug}
+                                        onChange={(event) => {
+                                            setSelectedDepartmentSlug(event.target.value);
+                                            setSelectedSubDepartmentSlug("");
+                                            setSelectedScreenName("");
+                                            setSelectedFieldName("");
+                                        }}
+                                    >
+                                        <option value="">Select department</option>
+                                        {departmentOptions.map((department) => (
+                                            <option key={department} value={department}>
+                                                {department}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
+                                </div>
                             </label>
 
                             <label>
                                 <span>Sub Department</span>
-                                <select
-                                    value={selectedSubDepartmentSlug}
-                                    disabled={!selectedDepartmentSlug}
-                                    onChange={(event) => {
-                                        setSelectedSubDepartmentSlug(event.target.value);
-                                        setSelectedScreenName("");
-                                        setSelectedFieldName("");
-                                    }}
-                                >
-                                    <option value="">Select sub department</option>
-                                    {subDepartmentOptions.map((subDepartment) => (
-                                        <option key={subDepartment} value={subDepartment}>
-                                            {subDepartment}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className={styles.builderSelectWrap}>
+                                    <select
+                                        value={selectedSubDepartmentSlug}
+                                        disabled={!selectedDepartmentSlug}
+                                        onChange={(event) => {
+                                            setSelectedSubDepartmentSlug(event.target.value);
+                                            setSelectedScreenName("");
+                                            setSelectedFieldName("");
+                                        }}
+                                    >
+                                        <option value="">Select sub department</option>
+                                        {subDepartmentOptions.map((subDepartment) => (
+                                            <option key={subDepartment} value={subDepartment}>
+                                                {subDepartment}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
+                                </div>
                             </label>
 
                             <label>
                                 <span>Notebook Type</span>
-                                <select
-                                    value={selectedScreenName}
-                                    disabled={!selectedDepartmentSlug || !selectedSubDepartmentSlug}
-                                    onChange={(event) => {
-                                        setSelectedScreenName(String(event.target.value || ""));
-                                        setSelectedFieldName("");
-                                    }}
-                                >
-                                    <option value="">Select notebook</option>
-                                    {notebookOptions.map((screen) => (
-                                        <option key={screen} value={screen}>
-                                            {screen}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className={styles.builderSelectWrap}>
+                                    <select
+                                        value={selectedScreenName}
+                                        disabled={!selectedDepartmentSlug || !selectedSubDepartmentSlug}
+                                        onChange={(event) => {
+                                            setSelectedScreenName(String(event.target.value || ""));
+                                            setSelectedFieldName("");
+                                        }}
+                                    >
+                                        <option value="">Select notebook</option>
+                                        {notebookOptions.map((screen) => (
+                                            <option key={screen} value={screen}>
+                                                {screen}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
+                                </div>
                             </label>
 
                             <label>
                                 <span>Field</span>
-                                <select
-                                    value={selectedFieldName}
-                                    disabled={!selectedDepartmentSlug || !selectedSubDepartmentSlug || !selectedScreenName}
-                                    onChange={(event) => setSelectedFieldName(String(event.target.value || ""))}
-                                >
-                                    <option value="">Select field</option>
-                                    {modalFieldOptions.map((fieldName) => (
-                                        <option key={fieldName} value={fieldName}>
-                                            {fieldName}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className={styles.builderSelectWrap}>
+                                    <select
+                                        value={selectedFieldName}
+                                        disabled={!selectedDepartmentSlug || !selectedSubDepartmentSlug || !selectedScreenName}
+                                        onChange={(event) => setSelectedFieldName(String(event.target.value || ""))}
+                                    >
+                                        <option value="">Select field</option>
+                                        {modalFieldOptions.map((fieldName) => (
+                                            <option key={fieldName} value={fieldName}>
+                                                {fieldName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
+                                </div>
                             </label>
 
                             <label>
                                 <span>Visualization Type</span>
-                                <select value={selectedChartType} onChange={(event) => setSelectedChartType(event.target.value)}>
-                                    {builderVisualizationOptions.map((visualization) => (
-                                        <option key={visualization.key} value={visualization.key}>
-                                            {visualization.label}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className={styles.builderSelectWrap}>
+                                    <select value={selectedChartType} onChange={(event) => setSelectedChartType(event.target.value)}>
+                                        {builderVisualizationOptions.map((visualization) => (
+                                            <option key={visualization.key} value={visualization.key}>
+                                                {visualization.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <HiMiniChevronDown className={styles.builderSelectChevron} />
+                                </div>
                             </label>
                         </div>
 
