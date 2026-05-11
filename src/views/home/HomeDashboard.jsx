@@ -1,54 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { FiPieChart } from "react-icons/fi";
 
-import apiConfig from "@/apis/apiConfig";
-import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 import styles from "@/styles/departmentDirectory.module.css";
 
+const metricCards = Array.from({ length: 8 }, (_, index) => ({
+    id: `sci-average-${index + 1}`,
+    title: "SCI",
+    meta: "QC | Mix | Cotton HVI",
+    baseValue: 8,
+}));
+
 const trendModes = ["1D", "1W", "1M", "1Y"];
-const DASHBOARD_FETCH_DEBOUNCE_MS = 350;
-const ABBREVIATIONS = new Set(["qc", "hvi", "afis", "dfk", "uqc", "gtex", "sfi", "rd", "ur", "csp", "rsm", "sci"]);
 
-const toCamelDisplay = (value) =>
-    String(value || "")
-        .trim()
-        .replace(/\s+/g, " ")
-        .split(" ")
-        .filter(Boolean)
-        .map((word) => {
-            const normalized = word.replace(/[^a-zA-Z0-9]/g, "");
-            if (!normalized) return word;
-            if (ABBREVIATIONS.has(normalized.toLowerCase())) return normalized.toUpperCase();
-            return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
-        })
-        .join(" ");
-
-const formatWidgetSegment = (value) => {
-    const raw = String(value || "").replace(/\bData Entry\b/gi, "").trim();
-    if (!raw) return "";
-    if (raw.toLowerCase() === "quality control") return "QC";
-    return toCamelDisplay(raw);
+const modeMultipliers = {
+    "1D": 0.72,
+    "1W": 0.9,
+    "1M": 1,
+    "1Y": 1.18,
 };
 
-const formatWidgetContext = (widget) =>
-    [formatWidgetSegment(widget?.department), formatWidgetSegment(widget?.sub_department), formatWidgetSegment(widget?.input_screen)]
-        .filter(Boolean)
-        .join(" | ");
-const normalizeInputFieldKey = (value) =>
-    String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/[%()]/g, "")
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, "");
-
-const visualizationTypeToChartType = (visualizationType) => {
-    if (visualizationType === "average_value_card") return "value";
-    if (visualizationType === "area_chart") return "timeline";
-    if (visualizationType === "bar_chart") return "line";
-    return "line";
-};
+const linePoints = [
+    { label: "Day 1", value: 82 },
+    { label: "Day 2", value: 64 },
+    { label: "Day 3", value: 96 },
+    { label: "Day 4", value: 76 },
+    { label: "Day 5", value: 44 },
+    { label: "Day 6", value: 88 },
+    { label: "Day 7", value: 71 },
+];
 
 const parseWidgetEnabled = (value) => {
     if (typeof value === "boolean") return value;
@@ -110,6 +90,8 @@ function HomeDashboard() {
         () => normalizedWidgets.filter((widget) => widget.enabled).sort((a, b) => a.order - b.order),
         [normalizedWidgets]
     );
+    const [trendLineMode, setTrendLineMode] = useState("1M");
+    const [lineMode, setLineMode] = useState("1M");
 
     const averageWidgets = useMemo(
         () => visibleWidgets.filter((widget) => widget.visualization_type === "average_value_card" || widget.chart_type === "value"),
@@ -292,33 +274,33 @@ function HomeDashboard() {
             <section className={styles.referenceSection}>
                 <h1>Average Values</h1>
                 <div className={styles.referenceStatsGrid}>
-                    {averageWidgets.map((widget) => (
-                        <article key={widget.id} className={styles.referenceStatCard}>
+                    {metricCards.map((card) => (
+                        <article key={card.id} className={styles.referenceStatCard}>
                             <div className={styles.referenceStatHeader}>
                                 <div>
-                                    <h2>{formatWidgetSegment(widget.input_field || "")}</h2>
-                                    <span>{formatWidgetContext(widget)}</span>
+                                    <h2>{card.title}</h2>
+                                    <span>{card.meta}</span>
                                 </div>
                                 <span className={styles.referenceStatIcon}>
                                     <FiPieChart />
                                 </span>
                             </div>
                             <div className={styles.referenceStatBottom}>
-                                <strong>{widgetData?.[widget.id]?.average_value ?? "-"}</strong>
+                                <strong>{getModeValue(card.baseValue, cardModes[card.id])}</strong>
                                 <div className={styles.referenceMiniToggle}>
                                     {trendModes.map((mode) => (
                                         <button
                                             key={mode}
                                             type="button"
-                                            className={cardModes[widget.id] === mode ? styles.referenceMiniToggleActive : ""}
+                                            className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
                                             onClick={() =>
                                                 setCardModes((current) => ({
                                                     ...current,
-                                                    [widget.id]: mode,
+                                                    [card.id]: mode,
                                                 }))
                                             }
                                         >
-                                        {mode}
+                                            {mode}
                                         </button>
                                     ))}
                                 </div>
@@ -349,17 +331,13 @@ function HomeDashboard() {
     );
 }
 
-function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
-    const linePoints = Array.isArray(data?.trend)
-        ? data.trend.map((point, index) => ({
-            label: point?.label || `Point ${index + 1}`,
-            value: Number(point?.value) || 0,
-        }))
-        : [];
-
+function PerformanceLineCard({ activeMode, setActiveMode }) {
     const currentLinePoints = useMemo(
-        () => linePoints,
-        [linePoints]
+        () => linePoints.map((point) => ({
+            ...point,
+            value: Math.min(100, Math.max(1, Math.round(point.value * (modeMultipliers[activeMode] || 1)))),
+        })),
+        [activeMode]
     );
 
     const lineChartPoints = useMemo(() => {
@@ -369,10 +347,8 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
         const height = 100 - yPadding * 2;
         const max = Math.max(...currentLinePoints.map((point) => point.value), 100);
 
-        const denominator = Math.max(1, currentLinePoints.length - 1);
-
         return currentLinePoints.map((point, index) => {
-            const x = xPadding + (index / denominator) * width;
+            const x = xPadding + (index / (currentLinePoints.length - 1)) * width;
             const y = yPadding + height - (point.value / max) * height;
 
             return {
@@ -394,8 +370,8 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
         <article className={`${styles.referenceChartCard} ${styles.referenceLineCard}`}>
             <div className={styles.referenceChartHeader}>
                 <div>
-                    <h2>{formatWidgetSegment(widget?.input_field || "")}</h2>
-                    <span>{formatWidgetContext(widget)}</span>
+                    <h2>SCI</h2>
+                    <span>QC | Mix | Cotton HVI</span>
                 </div>
                 <div className={styles.referenceLineHeaderRight}>
                     <span className={styles.referenceLegend}>

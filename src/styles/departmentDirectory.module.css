@@ -1274,11 +1274,6 @@
 }
 
 .builderTopPanel {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 18px;
-    flex-wrap: wrap;
     margin-bottom: 24px;
 }
 
@@ -1340,11 +1335,6 @@
     display: flex;
     flex-direction: column;
     gap: 7px;
-    min-width: 220px;
-    padding: 8px 12px;
-    border: 1px solid #e3e8f3;
-    border-radius: 8px;
-    background: #ffffff;
 }
 
 .builderSelectedUser strong {
