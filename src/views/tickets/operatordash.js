@@ -120,7 +120,7 @@ export default function operatorboard() {
 
     return (
         <div className={styles.page}>
-            {/* NAVBAR */}
+            
            
 
             {/* MOBILE NAVBAR */}
