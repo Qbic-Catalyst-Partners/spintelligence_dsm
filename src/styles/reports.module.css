@@ -2,13 +2,12 @@
   min-height: calc(100vh - 72px);
   background: #f8f7f7;
   padding: var(--management-page-padding);
-  padding-top: 34px;
+  padding-top: 22px;
   padding-bottom: 18px;
   box-sizing: border-box;
   color: #16243b;
 }
 
-.heading,
 .reportTabs,
 .filterCard,
 .scheduledCard,
@@ -16,13 +15,6 @@
 .exportBar {
   width: min(1180px, 100%);
   margin: 0 auto;
-}
-
-.heading {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 34px;
 }
 
 .headingIcon {
@@ -38,19 +30,23 @@
   flex: 0 0 44px;
 }
 
-.heading h1 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 30px;
-  font-weight: 800;
-  color: #172033;
+.filterHeading {
+  padding: 20px 18px 24px;
 }
 
-.heading p {
-  margin: 4px 0 0;
-  color: #617189;
+.filterHeading h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 800;
+  color: #101828;
+}
+
+.filterHeading p {
+  margin: 2px 0 0;
+  color: #667085;
   font-size: 14px;
-  line-height: 16px;
+  line-height: 20px;
 }
 
 .reportTabs {
@@ -254,32 +250,33 @@
 .filterCard {
   margin-bottom: 18px;
   overflow: visible;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 .filterTitle {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 56px;
-  padding: 0 22px;
+  height: 47px;
+  padding: 0 18px;
   border-bottom: 1px solid #e2e8f0;
-  color: #172033;
-  font-size: 16px;
+  color: #111827;
+  font-size: 14px;
   font-weight: 800;
 }
 
 .filterGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 22px 18px;
-  padding: 22px;
+  gap: 20px 16px;
+  padding: 22px 18px;
 }
 
 .fieldGroup {
   position: relative;
   display: grid;
   gap: 8px;
-  color: #172033;
+  color: #344054;
   font-size: 14px;
   font-weight: 700;
 }
@@ -287,11 +284,11 @@
 .fieldGroup select,
 .fieldGroup input {
   width: 100%;
-  height: 46px;
+  height: 40px;
   border: 1px solid #dbe4ef;
   border-radius: 6px;
   background: #f8fafc;
-  color: #26364f;
+  color: #182230;
   font-size: 14px;
   font-weight: 400;
   outline: none;
@@ -299,13 +296,13 @@
 
 .fieldGroup select {
   appearance: none;
-  padding: 0 42px 0 16px;
+  padding: 0 42px 0 14px;
 }
 
 .fieldGroup > svg {
   position: absolute;
   right: 16px;
-  bottom: 15px;
+  bottom: 12px;
   color: #6d7e95;
   pointer-events: none;
 }
@@ -320,17 +317,17 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 46px;
+  height: 40px;
   border: 1px solid #dbe4ef;
   border-radius: 6px;
   background: #f8fafc;
-  padding: 0 12px;
+  padding: 0 12px 0 14px;
   text-align: left;
   cursor: pointer;
 }
 
 .dateDisplay {
-  color: #26364f;
+  color: #182230;
   font-size: 14px;
   line-height: 16px;
   font-weight: 400;

@@ -44,6 +44,11 @@ function HomeDashboard() {
     const user = useSelector((state) => state.auth?.user);
     const fullName = user?.full_name || user?.fullName || user?.name || "Hency Belix";
     const dashboardOwnerUserId = useMemo(() => getDashboardOwnerUserId(user), [user]);
+    const isDashboardAdmin = useMemo(() => isFullAccessUser(user), [user]);
+    const [dashboardRoles, setDashboardRoles] = useState([]);
+    const [dashboardUsers, setDashboardUsers] = useState([]);
+    const [selectedDashboardRole, setSelectedDashboardRole] = useState("");
+    const [selectedDashboardUserId, setSelectedDashboardUserId] = useState("");
     const [widgets, setWidgets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState("");
@@ -68,6 +73,39 @@ function HomeDashboard() {
             });
         }
     };
+
+    const toArray = (value) => {
+        if (Array.isArray(value)) return value;
+        if (Array.isArray(value?.roles)) return value.roles;
+        if (Array.isArray(value?.data)) return value.data;
+        if (Array.isArray(value?.rows)) return value.rows;
+        if (Array.isArray(value?.items)) return value.items;
+        return [];
+    };
+
+    const normalizeRoleName = (role) =>
+        String(role?.role_name || role?.name || role?.role || "").trim();
+
+    const normalizeUserName = (record) =>
+        String(record?.full_name || record?.name || record?.username || record?.user_name || "").trim();
+
+    const normalizeUserId = (record) => {
+        const id = Number(record?.id || record?.user_id || record?.userId);
+        return Number.isInteger(id) && id > 0 ? id : null;
+    };
+
+    const normalizeUserRole = (record) =>
+        String(record?.role_name || record?.role || record?.role_title || "").trim();
+
+    const selectedDashboardUserIdNumber = useMemo(() => {
+        const id = Number(selectedDashboardUserId);
+        return Number.isInteger(id) && id > 0 ? id : null;
+    }, [selectedDashboardUserId]);
+
+    const activeDashboardUserId =
+        isDashboardAdmin && selectedDashboardUserIdNumber
+            ? selectedDashboardUserIdNumber
+            : dashboardOwnerUserId;
 
     const normalizedWidgets = useMemo(
         () =>
@@ -103,13 +141,103 @@ function HomeDashboard() {
         [visibleWidgets]
     );
     useEffect(() => {
+        if (!isDashboardAdmin) {
+            setDashboardRoles([]);
+            setDashboardUsers([]);
+            setSelectedDashboardRole("");
+            setSelectedDashboardUserId("");
+            return;
+        }
+
+        let isMounted = true;
+
+        const loadDashboardUserOptions = async () => {
+            try {
+                const [rolesResponse, usersResponse] = await Promise.all([
+                    apiConfig.get("/roles", { page: 1, limit: 200 }, { skipGlobalErrorModal: true }),
+                    apiConfig.get("/users", {}, { skipGlobalErrorModal: true }),
+                ]);
+
+                if (!isMounted) return;
+
+                const roles = toArray(rolesResponse?.data)
+                    .map(normalizeRoleName)
+                    .filter(Boolean);
+                const allowedRoles = new Set(roles);
+                const users = toArray(usersResponse?.data)
+                    .map((record) => ({
+                        id: normalizeUserId(record),
+                        name: normalizeUserName(record),
+                        role: normalizeUserRole(record),
+                    }))
+                    .filter((record) => record.id && record.name && record.role && allowedRoles.has(record.role));
+
+                const dedupedRoles = Array.from(new Set(roles));
+                const dedupedUsers = users.filter(
+                    (record, index, list) => index === list.findIndex((entry) => entry.id === record.id)
+                );
+                const ownRole = normalizeUserRole(user);
+                const ownListRole = dedupedUsers.find((record) => record.id === dashboardOwnerUserId)?.role || "";
+                const defaultRole = ownListRole || ownRole;
+
+                setDashboardRoles(dedupedRoles);
+                setDashboardUsers(dedupedUsers);
+                setSelectedDashboardRole((current) =>
+                    current || (defaultRole && dedupedRoles.includes(defaultRole) ? defaultRole : dedupedRoles[0] || "")
+                );
+            } catch {
+                if (!isMounted) return;
+                setDashboardRoles([]);
+                setDashboardUsers([]);
+            }
+        };
+
+        loadDashboardUserOptions();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [dashboardOwnerUserId, isDashboardAdmin, user]);
+
+    const dashboardUsersForSelectedRole = useMemo(
+        () =>
+            selectedDashboardRole
+                ? dashboardUsers.filter((record) => !record.role || record.role === selectedDashboardRole)
+                : dashboardUsers,
+        [dashboardUsers, selectedDashboardRole]
+    );
+
+    useEffect(() => {
+        if (!isDashboardAdmin) return;
+
+        setSelectedDashboardUserId((current) => {
+            if (current && dashboardUsersForSelectedRole.some((record) => String(record.id) === String(current))) {
+                return current;
+            }
+            if (dashboardOwnerUserId && dashboardUsersForSelectedRole.some((record) => record.id === dashboardOwnerUserId)) {
+                return String(dashboardOwnerUserId);
+            }
+            return dashboardUsersForSelectedRole[0]?.id ? String(dashboardUsersForSelectedRole[0].id) : "";
+        });
+    }, [dashboardOwnerUserId, dashboardUsersForSelectedRole, isDashboardAdmin]);
+
+    const selectedDashboardUser = useMemo(
+        () => dashboardUsers.find((record) => String(record.id) === String(activeDashboardUserId)),
+        [activeDashboardUserId, dashboardUsers]
+    );
+
+    useEffect(() => {
         let isMounted = true;
 
         const loadWidgets = async () => {
-            if (!dashboardOwnerUserId) return;
+            if (!activeDashboardUserId) {
+                setLoading(false);
+                setErrorMessage("Unable to identify dashboard user.");
+                return;
+            }
             try {
                 setLoading(true);
-                const response = await getWithBuilderFallback(`widgets/${dashboardOwnerUserId}`);
+                const response = await getWithBuilderFallback(`widgets/${activeDashboardUserId}`);
                 if (!isMounted) return;
                 const nextWidgets = Array.isArray(response?.data?.widgets) ? response.data.widgets : [];
                 setWidgets(nextWidgets);
@@ -127,7 +255,7 @@ function HomeDashboard() {
         return () => {
             isMounted = false;
         };
-    }, [dashboardOwnerUserId]);
+    }, [activeDashboardUserId]);
 
     useEffect(() => {
         setCardModes((current) =>
@@ -268,7 +396,44 @@ function HomeDashboard() {
     return (
         <div className={styles.dashboardMain}>
             <section className={styles.referenceDashboardHeader}>
-                <span>Welcome Back, {fullName}</span>
+                <div>
+                    <span>Welcome Back, {fullName}</span>
+                    {isDashboardAdmin ? (
+                        <strong>
+                            Viewing: {selectedDashboardUser?.name || fullName}
+                        </strong>
+                    ) : null}
+                </div>
+                {isDashboardAdmin ? (
+                    <div className={styles.dashboardUserControls}>
+                        <label>
+                            <span>Role</span>
+                            <select
+                                value={selectedDashboardRole}
+                                onChange={(event) => setSelectedDashboardRole(event.target.value)}
+                            >
+                                {dashboardRoles.map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label>
+                            <span>Name</span>
+                            <select
+                                value={selectedDashboardUserId}
+                                onChange={(event) => setSelectedDashboardUserId(event.target.value)}
+                            >
+                                {dashboardUsersForSelectedRole.map((record) => (
+                                    <option key={record.id} value={record.id}>
+                                        {record.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+                ) : null}
             </section>
 
             <section className={styles.referenceSection}>

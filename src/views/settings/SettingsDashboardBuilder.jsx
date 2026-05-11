@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { FiGrid, FiPlus, FiServer, FiTrash2 } from "react-icons/fi";
 
 import apiConfig from "@/apis/apiConfig";
+import { isFullAccessUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
@@ -164,6 +165,11 @@ function SettingsDashboardBuilder() {
         let isMounted = true;
 
         const loadWidgets = async () => {
+            if (!canCustomizeDashboards) {
+                if (isMounted) setLoading(false);
+                return;
+            }
+
             if (!dashboardOwnerUserId) {
                 if (isMounted) {
                     setLoading(false);
@@ -222,7 +228,7 @@ function SettingsDashboardBuilder() {
         return () => {
             isMounted = false;
         };
-    }, []);
+    }, [canCustomizeDashboards, currentAuthRole, currentAuthUserId]);
 
     const handleToggle = (widgetIndex) => {
         setWidgets((current) =>
@@ -504,6 +510,17 @@ function SettingsDashboardBuilder() {
     }));
     const averageRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.average);
     const performanceRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.performance);
+
+    if (authUser && !canCustomizeDashboards) {
+        return (
+            <div className={styles.dashboardMain}>
+                <section className={styles.builderHeader}>
+                    <h1 className={styles.kicker}>Dashboard Builder</h1>
+                </section>
+                <p className={styles.builderUserMeta}>Only EMP001 can customize user dashboards.</p>
+            </div>
+        );
+    }
 
     return (
         <div className={styles.dashboardMain}>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSelector } from "react-redux";
 import {
   FiCalendar,
   FiChevronDown,
@@ -7,8 +8,8 @@ import {
   FiClock,
   FiDownload,
   FiEdit2,
-  FiFilter,
   FiFileText,
+  FiFilter,
   FiPause,
   FiPlus,
   FiSend,
@@ -21,6 +22,7 @@ import apiConfig from "@/apis/apiConfig";
 import {
   deleteReportScheduleAPI,
   fetchReportSchedulesAPI,
+  persistReportSchedulesAPI,
   saveReportScheduleAPI,
   sendStoredReportScheduleAPI,
   toggleReportScheduleAPI,
@@ -28,6 +30,9 @@ import {
 import { fetchUsersAPI } from "@/apis/userApi";
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
+import { departmentDirectory } from "@/views/departments/data";
+import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
+import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import {
   fetchAutoconerConeDensity,
   fetchAutoconerConePackingAudit,
@@ -153,6 +158,198 @@ const reportSources = {
   },
 };
 
+const optionNameKeys = [
+  "name",
+  "label",
+  "value",
+  "department",
+  "department_name",
+  "departmentName",
+  "sub_department",
+  "subDepartment",
+  "sub_department_name",
+  "subDepartmentName",
+  "input_screen",
+  "inputScreen",
+  "screen_name",
+  "screenName",
+  "field_name",
+  "fieldName",
+  "input_field",
+  "inputField",
+  "key",
+];
+
+const nestedOptionKeys = [
+  "data",
+  "result",
+  "items",
+  "rows",
+  "records",
+  "departments",
+  "department",
+  "sub_departments",
+  "subDepartments",
+  "sub_department",
+  "subDepartment",
+  "input_screens",
+  "inputScreens",
+  "input_screen",
+  "inputScreen",
+  "screen_names",
+  "screens",
+  "notebook_types",
+  "input_fields",
+  "inputFields",
+  "input_field",
+  "inputField",
+  "field_names",
+  "fields",
+];
+
+const toOptionText = (value) => {
+  const text = String(value ?? "").trim();
+  return text ? text : "";
+};
+
+const normalizeOptionList = (value) => {
+  if (Array.isArray(value)) {
+    return value.flatMap(normalizeOptionList);
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const option = toOptionText(value);
+    return option ? [option] : [];
+  }
+
+  if (!value || typeof value !== "object") return [];
+
+  for (const key of optionNameKeys) {
+    const option = toOptionText(value[key]);
+    if (option) return [option];
+  }
+
+  const nestedOptions = nestedOptionKeys.flatMap((key) => normalizeOptionList(value[key]));
+  if (nestedOptions.length) return nestedOptions;
+
+  return Object.keys(value)
+    .map(toOptionText)
+    .filter(Boolean);
+};
+
+const getFirstOptionList = (source, keys) => {
+  for (const key of keys) {
+    const options = normalizeOptionList(source?.[key]);
+    if (options.length) return options;
+  }
+  return [];
+};
+
+const uniqueOptions = (options) => Array.from(new Set(normalizeOptionList(options)));
+
+const catalogDepartments = departmentDirectory.map((item) => item.name);
+
+const normalizeLookupKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const matchesLookup = (left, right) =>
+  normalizeLookupKey(left) && normalizeLookupKey(left) === normalizeLookupKey(right);
+
+const findCatalogDepartment = (departmentName) =>
+  departmentDirectory.find((item) => matchesLookup(item.name, departmentName) || matchesLookup(item.slug, departmentName));
+
+const findCatalogSubDepartment = (departmentName, subDepartmentName) =>
+  findCatalogDepartment(departmentName)?.subDepartments?.find(
+    (item) => matchesLookup(item.name, subDepartmentName) || matchesLookup(item.slug, subDepartmentName)
+  );
+
+const getReportDepartmentKey = (departmentName) =>
+  Object.keys(reportSources).find((key) => matchesLookup(key, departmentName)) || departmentName;
+
+const getReportSubDepartmentKey = (departmentName, subDepartmentName) => {
+  const departmentKey = getReportDepartmentKey(departmentName);
+  return (
+    Object.keys(reportSources[departmentKey] || {}).find((key) => matchesLookup(key, subDepartmentName)) ||
+    findCatalogSubDepartment(departmentName, subDepartmentName)?.name ||
+    subDepartmentName
+  );
+};
+
+const getReportTypeKey = (departmentName, subDepartmentName, typeName) => {
+  const departmentKey = getReportDepartmentKey(departmentName);
+  const subDepartmentKey = getReportSubDepartmentKey(departmentName, subDepartmentName);
+  return Object.keys(reportSources[departmentKey]?.[subDepartmentKey] || {}).find((key) => matchesLookup(key, typeName)) || typeName;
+};
+
+const getReportSource = (departmentName, subDepartmentName, typeName) => {
+  const departmentKey = getReportDepartmentKey(departmentName);
+  const subDepartmentKey = getReportSubDepartmentKey(departmentName, subDepartmentName);
+  const typeKey = getReportTypeKey(departmentName, subDepartmentName, typeName);
+  return reportSources[departmentKey]?.[subDepartmentKey]?.[typeKey];
+};
+
+const getCatalogSubDepartments = (selectedDepartment) =>
+  findCatalogDepartment(selectedDepartment)?.subDepartments?.map((item) => item.name) || [];
+
+const getDepartmentSlugByName = (departmentName) =>
+  findCatalogDepartment(departmentName)?.slug || "";
+
+const getSubDepartmentSlugByName = (departmentName, subDepartmentName) =>
+  findCatalogSubDepartment(departmentName, subDepartmentName)?.slug || "";
+
+const getDepartmentOptions = (data) =>
+  uniqueOptions([
+    ...getFirstOptionList(data, ["departments", "department"]),
+    ...catalogDepartments,
+    ...Object.keys(reportSources),
+  ]);
+
+const getSubDepartmentOptions = (data, selectedDepartment) =>
+  uniqueOptions([
+    ...getFirstOptionList(data, [
+      "sub_departments",
+      "subDepartments",
+      "sub_department",
+      "subDepartment",
+      "sub_department_names",
+    ]),
+    ...getCatalogSubDepartments(selectedDepartment),
+    ...Object.keys(reportSources[selectedDepartment] || {}),
+  ]);
+
+const getInputScreenOptions = (data, selectedDepartment, selectedSubDepartment) =>
+  uniqueOptions([
+    ...getFirstOptionList(data, [
+      "input_screens",
+      "inputScreens",
+      "input_screen",
+      "inputScreen",
+      "screen_names",
+      "screens",
+      "notebook_types",
+    ]),
+    ...getThresholdScreensForSubDepartment(
+      getDepartmentSlugByName(selectedDepartment),
+      getSubDepartmentSlugByName(selectedDepartment, selectedSubDepartment)
+    ),
+    ...Object.keys(reportSources[getReportDepartmentKey(selectedDepartment)]?.[getReportSubDepartmentKey(selectedDepartment, selectedSubDepartment)] || {}),
+  ]);
+
+const getInputFieldOptions = (data) =>
+  uniqueOptions(
+    getFirstOptionList(data, [
+      "input_fields",
+      "inputFields",
+      "input_field",
+      "inputField",
+      "field_names",
+      "fields",
+    ])
+  );
+
 const defaultSelectedFields = [];
 const reportSenderEmail = "otpdemoin@gmail.com";
 const sendToMeEmail = "sivadharshini2807@gmail.com";
@@ -238,6 +435,51 @@ const formatDate = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString("en-GB").replace(/\//g, "-");
+};
+
+const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const getScheduleTimeMinutes = (schedule = {}) => {
+  const timeMatch = String(schedule.time || "").match(/^(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM)?$/i);
+  const rawHour = Number(schedule.hour || timeMatch?.[1]);
+  const minute = Number(schedule.minute || timeMatch?.[2] || 0);
+  const meridiem = String(schedule.meridiem || timeMatch?.[3] || "").toUpperCase();
+
+  if (!Number.isFinite(rawHour) || !Number.isFinite(minute)) return null;
+
+  let hour = rawHour % 12;
+  if (meridiem === "PM") hour += 12;
+  if (!meridiem && rawHour === 12) hour = 12;
+
+  return hour * 60 + minute;
+};
+
+const getScheduleOccurrenceKey = (schedule = {}, now = new Date()) => {
+  if (!schedule.active) return "";
+
+  const scheduleMinutes = getScheduleTimeMinutes(schedule);
+  if (scheduleMinutes === null) return "";
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  if (currentMinutes < scheduleMinutes) return "";
+
+  const todayKey = toInputDate(now);
+  const timeKey = schedule.time || `${schedule.hour || ""}:${schedule.minute || ""} ${schedule.meridiem || ""}`.trim();
+  const baseKey = `${schedule.id || schedule.name}:${todayKey}:${timeKey}`;
+
+  if (schedule.frequency === "Single Time") {
+    return schedule.singleDate === todayKey ? `${baseKey}:once` : "";
+  }
+
+  if (schedule.frequency === "Daily") {
+    return `${baseKey}:daily`;
+  }
+
+  if (schedule.frequency === "Monthly") {
+    return now.getDate() === Number(schedule.monthDay || 1) ? `${baseKey}:monthly` : "";
+  }
+
+  return schedule.weekday === weekdayNames[now.getDay()] ? `${baseKey}:weekly` : "";
 };
 
 const titleCase = (value) =>
@@ -448,6 +690,16 @@ const inferFields = (rows) => {
   return keys.map((key) => ({ key, label: titleCase(key) }));
 };
 
+const toReportField = (fieldName) => {
+  const label = String(fieldName || "").trim();
+  if (!label) return null;
+
+  return {
+    key: label,
+    label,
+  };
+};
+
 const getCellValue = (row, field) => {
   if (
     field.key === "inspection_date" ||
@@ -472,6 +724,148 @@ const downloadFile = (filename, content, type) => {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+};
+
+const escapePdfText = (value) =>
+  String(value ?? "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+
+const compactPdfText = (value, maxLength = 110) => {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text;
+};
+
+const toBase64Ascii = (value) => {
+  if (typeof window !== "undefined" && typeof window.btoa === "function") {
+    return window.btoa(value);
+  }
+  return "";
+};
+
+const getReportAttachmentName = (scheduleName) => {
+  const safeName = String(scheduleName || "scheduled-report")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${safeName || "scheduled-report"}.pdf`;
+};
+
+const getReportPdfColumns = (report) => {
+  const rows = Array.isArray(report?.rows) ? report.rows : [];
+  const fieldColumns = Array.isArray(report?.fields)
+    ? report.fields
+        .map((field) => String(field?.label || field?.key || field || "").trim())
+        .filter(Boolean)
+    : [];
+  const rowColumns = rows.length ? Object.keys(rows[0] || {}) : [];
+  return fieldColumns.length ? fieldColumns : rowColumns;
+};
+
+const shouldUseLandscapePdf = (columns, rows) => {
+  if (columns.length > 5) return true;
+  const longestLine = rows.slice(0, 25).reduce((longest, row) => {
+    const length = columns.reduce((total, column) => total + String(row?.[column] ?? "").length + 3, 0);
+    return Math.max(longest, length);
+  }, columns.join(" | ").length);
+  return longestLine > 95;
+};
+
+const padPdfCell = (value, width) => compactPdfText(value, width).padEnd(width, " ");
+
+const buildReportPdfBase64 = ({ schedule = {}, report = {} }) => {
+  const rows = Array.isArray(report.rows) ? report.rows : [];
+  const columns = getReportPdfColumns(report);
+  const landscape = shouldUseLandscapePdf(columns, rows);
+  const page = landscape
+    ? { width: 842, height: 595, fontSize: 7, lineHeight: 10 }
+    : { width: 612, height: 792, fontSize: 8, lineHeight: 12 };
+  const margin = 36;
+  const approximateCharsPerLine = Math.floor((page.width - margin * 2) / (page.fontSize * 0.55));
+  const columnWidth = Math.max(
+    8,
+    Math.floor((approximateCharsPerLine - Math.max(columns.length - 1, 0) * 3) / Math.max(columns.length, 1))
+  );
+  const lines = [
+    schedule.name || "Scheduled Report",
+    `Department: ${report.department || "-"}`,
+    `Sub Department: ${report.subDepartment || "-"}`,
+    `Type: ${report.reportType || "-"}`,
+    `Date Range: ${report.dateRange?.from || "-"} to ${report.dateRange?.to || "-"}`,
+    `Total Rows: ${report.totalRows ?? rows.length}`,
+    "",
+  ];
+
+  if (columns.length) {
+    lines.push(columns.map((column) => padPdfCell(column, columnWidth)).join(" | "));
+    lines.push(columns.map(() => "-".repeat(columnWidth)).join("-+-"));
+    if (rows.length) {
+      rows.slice(0, 500).forEach((row) => {
+        lines.push(columns.map((column) => padPdfCell(row?.[column] ?? "-", columnWidth)).join(" | "));
+      });
+    } else {
+      lines.push("No report rows found for the selected filters.");
+    }
+  } else {
+    lines.push("No report fields selected.");
+  }
+
+  if (rows.length > 500) {
+    lines.push("");
+    lines.push(`Showing first 500 rows of ${rows.length}.`);
+  }
+
+  const pageSize = Math.max(1, Math.floor((page.height - margin * 2) / page.lineHeight));
+  const pages = [];
+  for (let index = 0; index < lines.length; index += pageSize) {
+    pages.push(lines.slice(index, index + pageSize));
+  }
+  if (!pages.length) pages.push([]);
+
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  const pageRefs = [];
+
+  pages.forEach((pageLines) => {
+    const content = [
+      "BT",
+      `/F1 ${page.fontSize} Tf`,
+      `${margin} ${page.height - margin} Td`,
+      `${page.lineHeight} TL`,
+      ...pageLines.map((line) => `(${escapePdfText(line)}) Tj T*`),
+      "ET",
+    ].join("\n");
+    const contentObjectNumber = objects.length + 1;
+    objects.push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+
+    const pageObjectNumber = objects.length + 1;
+    pageRefs.push(`${pageObjectNumber} 0 R`);
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjectNumber} 0 R >>`
+    );
+  });
+
+  objects[1] = `<< /Type /Pages /Kids [${pageRefs.join(" ")}] /Count ${pageRefs.length} >>`;
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return toBase64Ascii(pdf);
 };
 
 function CalendarPanel({ month, onMonthChange, onDateClick, selectedValue, title }) {
@@ -527,6 +921,7 @@ function CalendarPanel({ month, onMonthChange, onDateClick, selectedValue, title
 }
 
 function ReportsPage() {
+  const authUser = useSelector((state) => state.auth?.user);
   const [department, setDepartment] = useState("Quality Control");
   const [subDepartment, setSubDepartment] = useState("Spinning");
   const [reportType, setReportType] = useState("Process Parameter");
@@ -563,6 +958,8 @@ function ReportsPage() {
   const requestIdRef = useRef(0);
   const timePickerRef = useRef(null);
   const recipientDropdownRef = useRef(null);
+  const autoSendingScheduleKeysRef = useRef(new Set());
+  const schedulesLoadedRef = useRef(false);
 
   const departments = Object.keys(reportSources);
   const subDepartments = Object.keys(reportSources[department] || {});
@@ -580,6 +977,16 @@ function ReportsPage() {
     user?.email ||
     getUserId(user);
 
+  const getUserEmail = (user) =>
+    String(user?.email || user?.mail || user?.user_email || user?.official_email || "").trim();
+
+  const selfRecipientName =
+    authUser?.full_name ||
+    authUser?.fullName ||
+    authUser?.name ||
+    authUser?.username ||
+    "there";
+
   const selectedScheduleUsers = useMemo(
     () => scheduleUsers.filter((user) => selectedScheduleUserIds.includes(getUserId(user))),
     [scheduleUsers, selectedScheduleUserIds]
@@ -591,9 +998,16 @@ function ReportsPage() {
 
   const availableFields = useMemo(() => {
     const fields = inferFields(rows);
+    const fallbackFields = uniqueOptions([
+      ...builderOptions.input_fields,
+      ...getThresholdFieldsForScreen(reportType),
+    ])
+      .map(toReportField)
+      .filter(Boolean);
+    const sourceFields = fields.length ? fields : fallbackFields;
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
-    return fields.filter((field) => !selectedKeys.has(field.key));
-  }, [rows, selectedFields]);
+    return sourceFields.filter((field) => !selectedKeys.has(field.key));
+  }, [builderOptions.input_fields, reportType, rows, selectedFields]);
 
   const filteredRows = useMemo(() => {
     if (!dateFilterActive) return rows;
@@ -613,14 +1027,126 @@ function ReportsPage() {
   }, [dateFilterActive, endDate, rows, startDate]);
 
   useEffect(() => {
+    let isMounted = true;
+    const loadDepartments = async () => {
+      try {
+        const response = await getDashboardWithFallback("options");
+        if (!isMounted) return;
+        const next = response?.data || {};
+        const nextDepartments = getDepartmentOptions(next);
+        const nextPeriods = Array.isArray(next.periods) && next.periods.length ? next.periods : ["1D", "1W", "1M", "1Y"];
+        const defaultDepartment = nextDepartments.includes(department) ? department : (nextDepartments[0] || "");
+        setBuilderOptions((current) => ({
+          ...current,
+          departments: nextDepartments,
+          periods: nextPeriods,
+        }));
+        setDepartment(defaultDepartment);
+      } catch {
+        if (!isMounted) return;
+        const fallbackDepartments = getDepartmentOptions({});
+        const defaultDepartment = fallbackDepartments.includes(department) ? department : (fallbackDepartments[0] || "");
+        setBuilderOptions((current) => ({
+          ...current,
+          departments: fallbackDepartments,
+          periods: ["1D", "1W", "1M", "1Y"],
+        }));
+        setDepartment(defaultDepartment);
+      }
+    };
+    loadDepartments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadSubDepartments = async () => {
+      if (!department) return;
+      try {
+        const response = await getDashboardWithFallback("options", { department });
+        if (!isMounted) return;
+        const nextSubDepartments = getSubDepartmentOptions(response?.data || {}, department);
+        const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
+        setBuilderOptions((current) => ({ ...current, sub_departments: nextSubDepartments, input_screens: [], input_fields: [] }));
+        setSubDepartment(nextSubDepartment);
+      } catch {
+        if (!isMounted) return;
+        const nextSubDepartments = getSubDepartmentOptions({}, department);
+        const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
+        setBuilderOptions((current) => ({ ...current, sub_departments: nextSubDepartments, input_screens: [], input_fields: [] }));
+        setSubDepartment(nextSubDepartment);
+      }
+    };
+    loadSubDepartments();
+    return () => {
+      isMounted = false;
+    };
+  }, [department]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadScreens = async () => {
+      if (!department || !subDepartment) return;
+      try {
+        const response = await getDashboardWithFallback("options", { department, sub_department: subDepartment });
+        if (!isMounted) return;
+        const nextScreens = getInputScreenOptions(response?.data || {}, department, subDepartment);
+        const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
+        setBuilderOptions((current) => ({ ...current, input_screens: nextScreens, input_fields: [] }));
+        setReportType(nextScreen);
+      } catch {
+        if (!isMounted) return;
+        const nextScreens = getInputScreenOptions({}, department, subDepartment);
+        const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
+        setBuilderOptions((current) => ({ ...current, input_screens: nextScreens, input_fields: [] }));
+        setReportType(nextScreen);
+      }
+    };
+    loadScreens();
+    return () => {
+      isMounted = false;
+    };
+  }, [department, subDepartment]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadFields = async () => {
+      if (!department || !subDepartment || !reportType) return;
+      const response = await getDashboardWithFallback("options", {
+        department,
+        sub_department: subDepartment,
+        input_screen: reportType,
+      });
+      if (!isMounted) return;
+      const nextFields = getInputFieldOptions(response?.data || {});
+      const nextField = nextFields.includes(inputField) ? inputField : (nextFields[0] || "");
+      setBuilderOptions((current) => ({ ...current, input_fields: nextFields }));
+      setInputField(nextField);
+    };
+    loadFields().catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [department, subDepartment, reportType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     let isActive = true;
 
     const loadSchedules = async () => {
       try {
         const schedules = await fetchReportSchedulesAPI();
-        if (isActive) setScheduledReports(schedules);
+        if (isActive) {
+          setScheduledReports(schedules);
+          schedulesLoadedRef.current = true;
+        }
       } catch {
-        if (isActive) setScheduledReports([]);
+        if (isActive) {
+          setScheduledReports([]);
+          schedulesLoadedRef.current = true;
+        }
       }
     };
 
@@ -630,6 +1156,11 @@ function ReportsPage() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!schedulesLoadedRef.current) return;
+    persistReportSchedulesAPI(scheduledReports);
+  }, [scheduledReports]);
 
   useEffect(() => {
     let isActive = true;
@@ -660,8 +1191,7 @@ function ReportsPage() {
     setSelectedFields([]);
     setError("");
 
-    const reportFetcher = fetcher || (endpoint ? fetchEndpointRows.bind(null, endpoint) : null);
-    if (!reportFetcher) {
+    if (!department || !subDepartment || !reportType) {
       setRows([]);
       setSelectedFields([]);
       setError("No report list API is configured for this selection.");
@@ -673,11 +1203,19 @@ function ReportsPage() {
     const loadReport = async () => {
       try {
         setLoading(true);
+        const reportSource = getReportSource(department, subDepartment, reportType);
+        const reportFetcher =
+          reportSource?.fetcher ||
+          (reportSource?.endpoint ? fetchEndpointRows.bind(null, reportSource.endpoint) : null);
+
+        if (!reportFetcher) {
+          throw new Error("No report API configured for the selected type.");
+        }
+
         const nextRows = await fetchAllReportRows(reportFetcher);
         if (isActive && requestIdRef.current === requestId) {
-          const nextFields = inferFields(nextRows);
           setRows(nextRows);
-          setSelectedFields(nextFields.slice(0, Math.min(5, nextFields.length)));
+          setSelectedFields([]);
           setError("");
         }
       } catch (requestError) {
@@ -873,7 +1411,7 @@ function ReportsPage() {
   };
 
   const loadScheduleRows = async (schedule) => {
-    const scheduleSource = reportSources[schedule.department]?.[schedule.subDepartment]?.[schedule.reportType];
+    const scheduleSource = getReportSource(schedule.department, schedule.subDepartment, schedule.reportType);
     const reportFetcher =
       scheduleSource?.fetcher ||
       (scheduleSource?.endpoint ? fetchEndpointRows.bind(null, scheduleSource.endpoint) : null);
@@ -888,9 +1426,19 @@ function ReportsPage() {
 
   const buildScheduleMailPayload = (schedule, reportRows = filteredRows) => {
     const reportFields = schedule.selectedFields?.length ? schedule.selectedFields : selectedFields;
-    const otherRecipientEmails = schedule.sendToOthers
-      ? (schedule.recipientUsers || []).map((user) => user.email).filter(Boolean)
+    const otherRecipientProfiles = schedule.sendToOthers
+      ? (schedule.recipientUsers || [])
+          .map((user) => ({
+            name: user?.name || "there",
+            email: getUserEmail(user),
+          }))
+          .filter((user) => user.email)
       : [];
+    const recipientProfiles = [
+      ...(schedule.sendToMe ? [{ name: selfRecipientName, email: sendToMeEmail, kind: "self" }] : []),
+      ...otherRecipientProfiles,
+    ].filter((recipient, index, list) => recipient.email && index === list.findIndex((item) => item.email === recipient.email));
+    const otherRecipientEmails = otherRecipientProfiles.map((user) => user.email);
     const recipients = Array.from(
       new Set([
         ...(schedule.sendToMe ? [sendToMeEmail] : []),
@@ -898,29 +1446,67 @@ function ReportsPage() {
       ])
     );
 
+    const report = {
+      department: schedule.department,
+      subDepartment: schedule.subDepartment,
+      reportType: schedule.reportType,
+      dateRange: {
+        from: schedule.startDate || startDate,
+        to: schedule.endDate || endDate,
+      },
+      fields: reportFields,
+      rows: reportRows.slice(0, 500).map((row) =>
+        reportFields.reduce((record, field) => {
+          record[field.label] = getCellValue(row, field);
+          return record;
+        }, {})
+      ),
+      totalRows: reportRows.length,
+    };
+    const pdfAttachment = {
+      filename: getReportAttachmentName(schedule.name),
+      contentType: "application/pdf",
+      content: buildReportPdfBase64({ schedule, report }),
+      encoding: "base64",
+    };
+
+    const greetingName = recipientProfiles.length === 1 ? recipientProfiles[0].name : "Team";
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.55;">
+        <p>Dear ${greetingName},</p>
+        <p>I hope you are doing well.</p>
+        <p>Please find attached the scheduled report <strong>${schedule.name}</strong> for your review.</p>
+        <p>
+          <strong>Department:</strong> ${schedule.department}<br />
+          <strong>Sub Department:</strong> ${schedule.subDepartment}<br />
+          <strong>Type:</strong> ${schedule.reportType}<br />
+          <strong>Date Range:</strong> ${report.dateRange.from} to ${report.dateRange.to}<br />
+          <strong>Total Rows:</strong> ${report.totalRows}
+        </p>
+        <p>The report PDF is attached to this email and can be downloaded for your records.</p>
+        <p>Warm regards,<br />Spintelligence Reports</p>
+      </div>
+    `;
+
     return {
-      from: reportSenderEmail,
-      to: recipients,
-      sendToMeEmail,
-      receiverEmail: sendToMeEmail,
-      subject: `Scheduled Report: ${schedule.name}`,
-      schedule,
-      report: {
-        department: schedule.department,
-        subDepartment: schedule.subDepartment,
-        reportType: schedule.reportType,
-        dateRange: {
-          from: schedule.startDate || startDate,
-          to: schedule.endDate || endDate,
-        },
-        fields: reportFields,
-        rows: reportRows.slice(0, 500).map((row) =>
-          reportFields.reduce((record, field) => {
-            record[field.label] = getCellValue(row, field);
-            return record;
-          }, {})
-        ),
-        totalRows: reportRows.length,
+      schedule: {
+        ...schedule,
+        active: typeof schedule.active === "boolean" ? schedule.active : true,
+      },
+      mailPayload: {
+        from: reportSenderEmail,
+        to: recipients,
+        subject: `Scheduled Report: ${schedule.name}`,
+        department: report.department,
+        subDepartment: report.subDepartment,
+        reportType: report.reportType,
+        dateRange: report.dateRange,
+        fields: report.fields,
+        rows: report.rows,
+        totalRows: report.totalRows,
+        html,
+        recipientProfiles,
+        attachments: [pdfAttachment],
       },
     };
   };
@@ -949,7 +1535,7 @@ function ReportsPage() {
       recipientUsers: selectedScheduleUsers.map((user) => ({
         id: getUserId(user),
         name: getUserName(user),
-        email: user?.email || "",
+        email: getUserEmail(user),
       })),
       selectedFields,
       active: editingScheduleId
@@ -963,9 +1549,10 @@ function ReportsPage() {
 
     try {
       const scheduleRows = await loadScheduleRows(schedule);
+      const scheduleMailRequest = buildScheduleMailPayload(schedule, scheduleRows);
       const savedSchedule = await saveReportScheduleAPI({
         schedule,
-        mailPayload: buildScheduleMailPayload(schedule, scheduleRows),
+        mailPayload: scheduleMailRequest.mailPayload,
         editing: Boolean(editingScheduleId),
       });
 
@@ -976,7 +1563,6 @@ function ReportsPage() {
             )
           : [savedSchedule || schedule, ...currentSchedules]
       );
-      setActiveReportTab("scheduled");
       closeScheduleModal();
       emitGlobalSuccessModal({ message: "Schedule saved", status: 200 });
     } catch (saveError) {
@@ -1061,6 +1647,31 @@ function ReportsPage() {
       }
     }
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const sendDueSchedules = () => {
+      const now = new Date();
+
+      scheduledReports.forEach((schedule) => {
+        const occurrenceKey = getScheduleOccurrenceKey(schedule, now);
+        if (!occurrenceKey) return;
+        if (schedule.lastAutoSentKey === occurrenceKey) return;
+        if (autoSendingScheduleKeysRef.current.has(occurrenceKey)) return;
+
+        autoSendingScheduleKeysRef.current.add(occurrenceKey);
+        Promise.resolve(handleSendScheduledReport(schedule, { automatic: true, occurrenceKey })).finally(() => {
+          autoSendingScheduleKeysRef.current.delete(occurrenceKey);
+        });
+      });
+    };
+
+    sendDueSchedules();
+    const intervalId = window.setInterval(sendDueSchedules, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [scheduledReports]);
 
   const toggleScheduleStatus = async (scheduleId) => {
     const currentSchedule = scheduledReports.find((schedule) => schedule.id === scheduleId);
@@ -1177,14 +1788,7 @@ function ReportsPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.heading}>
-        <div>
-          <h1>Reports</h1>
-          <p>Generate and schedule custom task reports</p>
-        </div>
-      </section>
-
-      <section className={styles.reportTabs} aria-label="Report sections">
+      <nav className={styles.reportTabs} aria-label="Report views">
         <button
           type="button"
           className={activeReportTab === "generate" ? styles.activeReportTab : ""}
@@ -1199,11 +1803,15 @@ function ReportsPage() {
         >
           <FiCalendar /> Scheduled ({scheduledReports.length})
         </button>
-      </section>
+      </nav>
 
       {activeReportTab === "generate" ? (
         <>
           <section className={styles.filterCard}>
+            <div className={styles.filterHeading}>
+              <h1>Reports</h1>
+              <p>Generate and schedule input task reports</p>
+            </div>
             <div className={styles.filterTitle}>
               <FiFilter />
               <span>Filter</span>
@@ -1249,9 +1857,13 @@ function ReportsPage() {
               <label className={styles.fieldGroup}>
                 <span>Type</span>
                 <select value={reportType} onChange={(event) => setReportType(event.target.value)}>
-                  {reportTypes.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
+                  {reportTypes.length ? (
+                    reportTypes.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))
+                  ) : (
+                    <option value="">No type available</option>
+                  )}
                 </select>
                 <FiChevronDown />
               </label>
@@ -1371,14 +1983,21 @@ function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row, rowIndex) => (
-                      <tr key={row?.id || row?.qc_id || row?.param_id || rowIndex}>
-                        {selectedFields.map((field) => (
-                          <td key={field.key}>{getCellValue(row, field)}</td>
-                        ))}
+                    {!loading && selectedFields.length === 0 ? (
+                      <tr>
+                        <td colSpan={1}>Drag fields from Available Fields to preview the report.</td>
                       </tr>
-                    ))}
-                    {!loading && filteredRows.length === 0 ? (
+                    ) : null}
+                    {selectedFields.length > 0
+                      ? filteredRows.map((row, rowIndex) => (
+                          <tr key={row?.id || row?.qc_id || row?.param_id || rowIndex}>
+                            {selectedFields.map((field) => (
+                              <td key={field.key}>{getCellValue(row, field)}</td>
+                            ))}
+                          </tr>
+                        ))
+                      : null}
+                    {!loading && selectedFields.length > 0 && filteredRows.length === 0 ? (
                       <tr>
                         <td colSpan={selectedFields.length || 1}>{error || "No report details found."}</td>
                       </tr>
