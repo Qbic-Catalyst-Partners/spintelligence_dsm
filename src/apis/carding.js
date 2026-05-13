@@ -1,5 +1,13 @@
 import apiConfig from "./apiConfig";
 
+const getCardingApiErrorMessage = (error, fallbackMessage) => {
+    const data = error.response?.data;
+    if (!data) return error.message || fallbackMessage;
+
+    const details = Array.isArray(data.details) ? data.details.join(", ") : data.details;
+    return data.message || data.error || details || fallbackMessage;
+};
+
 export const submitCardingProcessParameterEntry = async (payload) => {
     try {
         const response = await apiConfig.post(
@@ -141,6 +149,24 @@ export const submitCardingUqcEntry = async (payload) => {
             throw new Error(error.response.data.message || "Invalid payload data.");
         }
         throw new Error(error.message || "Server error occurred");
+    }
+};
+
+export const submitCardingChangeControlEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/carding/change-control", payload);
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Invalid payload data."));
+    }
+};
+
+export const fetchCardingChangeControlEntries = async ({ page = 1, limit = 10 } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/change-control", { page, limit });
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch entries."));
     }
 };
 

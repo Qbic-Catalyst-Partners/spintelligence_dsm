@@ -13,6 +13,7 @@ import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
 import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
+import CardingWheelChange from "./carding/WheelChange";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
@@ -27,6 +28,7 @@ const cardingDepartmentTypes = [
     { id: 4, name: "Nati Data Entry", aliases: ["Nati Data Entry"] },
     { id: 5, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U Percentage Data Entry", "U% Checking"] },
     { id: 6, name: "Card DFK Pressure Checking", aliases: ["Card DFK Pressure Checking", "DFK Pressure Checking", "Carding DFK Pressure"] },
+    { id: 7, name: "WheelChange", aliases: ["WheelChange", "Wheel Change"], component: CardingWheelChange },
 ];
 
 export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
@@ -72,6 +74,7 @@ function Carding() {
     const selectedOption = typeOptions.find((item) => item.id === checkingType) || null;
     const SelectedComponent = selectedOption?.component ?? null;
     const isProcessParameter = selectedType === "Process Parameter";
+    const isWheelChange = selectedType === "WheelChange";
 
     const openPreview = () => {
         const valid = childRef.current?.validate ? childRef.current.validate() : true;
@@ -103,7 +106,7 @@ function Carding() {
                 </div>
 
                 <div className={styles["card-shell"]}>
-                    {!isProcessParameter ? (
+                    {!isProcessParameter && !isWheelChange ? (
                         <div className={styles["card-form-title"]}>
                             <MdEditNote />
                             <h3>Inspection Data Entry</h3>
@@ -183,6 +186,14 @@ function Carding() {
                         <div className={styles["message-box"]}>
                             {validationMessage}
                         </div>
+                    ) : null}
+
+                    {isWheelChange && SelectedComponent ? (
+                        <SelectedComponent
+                            types={typeOptions}
+                            selectedType={selectedType}
+                            onTypeChange={handleTypeChange}
+                        />
                     ) : null}
 
                     {isProcessParameter ? (

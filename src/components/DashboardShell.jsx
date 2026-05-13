@@ -24,7 +24,7 @@ const dashboardLinks = [
     { label: "Departments", href: "/departments", icon: FiLayers },
     { label: "User Management", href: "/usermanagement", icon: FiUsers, adminOnly: true },
     { label: "Roles & Permissions", href: "/rolespermission", icon: FiShield, adminOnly: true },
-    { label: "Ticketing System", href: "/operator", icon: FiFileText },
+    { label: "L1 Ticketing System", href: "/operator", icon: FiFileText },
     { label: "Reports", href: "/reports", icon: FiBarChart2, adminOnly: true },
     { label: "Threshold", href: "/threshold-values", icon: FiSliders, adminOnly: true },
     { label: "Submission Frequency", href: "/submission-frequency", icon: FiClock, adminOnly: true },

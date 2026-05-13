@@ -53,8 +53,8 @@ const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
 ];
 const ticketingLinks = [
-    { href: "/operator", label: "Operator Ticket Dashboard" },
-    { href: "/supervisordashboard", label: "Supervisor Ticket Dashboard" },
+    { href: "/operator", label: "L1 Ticketing System" },
+    { href: "/supervisordashboard", label: "L2 Ticketing System" },
 ];
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },

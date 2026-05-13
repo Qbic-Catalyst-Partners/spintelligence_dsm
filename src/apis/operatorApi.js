@@ -101,6 +101,8 @@ const manualTicketInputScreenEndpoints = {
       "Nati Data Entry": "/carding/nati-data",
       "U% Data Entry": "/carding/uqc",
       "Card DFK Pressure Checking": "/carding/dfk-pressure",
+      WheelChange: "/carding/change-control",
+      "Wheel Change": "/carding/change-control",
     },
     comber: {
       "Ribbon Lap CV Data Entry": "/comber/lap-cv",
