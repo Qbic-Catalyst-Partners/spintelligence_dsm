@@ -1,0 +1,75 @@
+.page { padding: 18px; background: #f6f8fc; min-height: calc(100vh - 72px); }
+.titleBlock h1 { margin: 0; font-size: 24px; color: #1f2a44; display: inline-flex; align-items: center; gap: 10px; line-height: 1.1; }
+.titleIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #dbeafe;
+  color: #1f6feb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px #bfdbfe;
+}
+.titleBlock h1 svg { width: 18px; height: 18px; }
+.titleBlock p { margin: 6px 0 0 48px; color: #5d6b83; font-size: 14px; }
+.toolbar {
+  margin-top: 18px; background: #fff; border: 1px solid #d7dfea; border-radius: 16px;
+  padding: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  box-shadow: 0 4px 14px rgba(31, 42, 68, 0.05);
+}
+.leftControls, .rightControls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.leftControls button, .rightControls select, .segment button {
+  border: 1px solid #ccd6e5; background: #fff; border-radius: 10px; padding: 10px 12px; font-size: 14px;
+}
+.leftControls strong { font-size: 28px; color: #1f2a44; margin-left: 8px; }
+.segment { display: inline-flex; border: 1px solid #ccd6e5; border-radius: 10px; overflow: hidden; }
+.segment button { border: 0; border-right: 1px solid #ccd6e5; border-radius: 0; }
+.segment button:last-child { border-right: 0; }
+.segmentActive { background: #1f6feb !important; color: #fff; }
+.calendarCard { margin-top: 14px; border: 1px solid #d7dfea; border-radius: 14px; overflow: hidden; background: #fff; }
+.weekHeader { display: grid; grid-template-columns: repeat(7, 1fr); background: #f7f9fd; border-bottom: 1px solid #e0e6f0; }
+.weekHeader span { padding: 12px; text-align: center; font-weight: 700; color: #51607a; }
+.monthGrid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.weekGrid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.dayCell { border-right: 1px solid #e5ebf3; border-bottom: 1px solid #e5ebf3; min-height: 92px; padding: 6px; }
+.dayCell:nth-child(7n) { border-right: 0; }
+.dayNumber { font-size: 22px; color: #2e3a52; line-height: 1; margin-bottom: 6px; }
+.muted .dayNumber { color: #9aa7bc; }
+.events { display: grid; gap: 6px; }
+.event { border-radius: 6px; padding: 4px 6px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dailyPanel { margin-top: 14px; border: 1px solid #d7dfea; border-radius: 14px; background: #fff; padding: 14px; }
+.dailyPanel h3 { margin: 0 0 12px; color: #1f2a44; }
+.dailyList { display: grid; gap: 10px; }
+.dailyItem { border-radius: 10px; padding: 10px; display: grid; gap: 3px; color: #fff; }
+.Completed { background: #28b37d; color: #fff; }
+.InProgress { background: #f0b24f; color: #fff; }
+.Incomplete { background: #7ea7e8; color: #fff; }
+.legend { margin-top: 16px; border: 1px solid #d7dfea; border-radius: 14px; background: #fff; padding: 14px; display: flex; gap: 20px; flex-wrap: wrap; }
+.dot { width: 12px; height: 12px; border-radius: 999px; display: inline-block; margin-right: 6px; vertical-align: middle; }
+.analyticsWrap { margin-top: 18px; }
+.analyticsHead h2 { margin: 0; font-size: 26px; color: #1f2a44; }
+.analyticsHead p { margin: 6px 0 12px; color: #5d6b83; }
+.sectionTitle { margin: 10px 0 10px; color: #1f2a44; font-size: 18px; }
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card { border: 1px solid #d7dfea; border-radius: 14px; background: #fff; padding: 14px; }
+.card h4 { margin: 0; color: #51607a; font-weight: 600; }
+.card strong { display: block; margin-top: 8px; font-size: 36px; color: #1f2a44; }
+.tableWrap { margin-top: 14px; border: 1px solid #d7dfea; border-radius: 14px; overflow: auto; background: #fff; }
+.analyticsTable { width: 100%; border-collapse: collapse; }
+.analyticsTable th, .analyticsTable td { padding: 12px; border-bottom: 1px solid #e6ebf3; text-align: left; }
+.analyticsTable th { color: #50607a; font-weight: 700; background: #f7f9fd; }
+@media (max-width: 1200px) {
+  .leftControls strong { font-size: 24px; }
+  .dayNumber { font-size: 22px; }
+  .titleBlock h1 { font-size: 22px; }
+  .titleBlock p { font-size: 13px; }
+}
+@media (max-width: 900px) {
+  .monthGrid, .weekGrid, .weekHeader { grid-template-columns: repeat(2, 1fr); }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .monthGrid, .weekGrid, .weekHeader { grid-template-columns: 1fr; }
+  .cards { grid-template-columns: 1fr; }
+}
