@@ -54,12 +54,14 @@ function AppShell({ Component, pageProps }) {
   const canAccessManagementFlow = isFullAccessUser(user);
   const managementNavLinks = [
     { href: "/", label: "Home" },
+    { href: "/ticket-calendar", label: "Analytic" },
     { href: "/usermanagement", label: "User Management" },
     { href: "/rolespermission", label: "Roles & Permissions" },
     { href: "/threshold-values", label: "Threshold Values" },
     { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/submission-frequency", label: "Submission Frequency" },
     { href: "/reports", label: "Reports" },
+    { href: "/ticket-calendar", label: "Ticket Calendar" },
     { href: "/settings", label: "Settings" },
   ];
   const headerNavLinks = canAccessManagementFlow || isAdminFlow
@@ -68,6 +70,7 @@ function AppShell({ Component, pageProps }) {
     ? [
         { href: "/", label: "Home" },
         { href: "/operator", label: "L1 Ticketing System" },
+        { href: "/ticket-calendar", label: "Analytic" },
       ]
       : undefined;
 

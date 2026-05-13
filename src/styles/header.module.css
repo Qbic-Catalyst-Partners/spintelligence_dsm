@@ -1,3 +1,22 @@
+.side-subnav-group {
+    margin-bottom: 2px;
+}
+.side-subnav-heading {
+    font-size: 14px;
+    font-weight: 500;
+    color: #555a65;
+    margin: 4px 0 2px 0;
+    padding-left: 0;
+    letter-spacing: 0;
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    width: 100%;
+    cursor: pointer;
+    text-align: left;
+    text-transform: none;
+}
 /* Header styles */
 .sidebar {
     position: fixed;
@@ -167,15 +186,16 @@
     box-sizing: border-box;
     min-width: 0;
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 6px 18px 6px 18px;
     color: #626875;
     font-size: 14px;
     font-weight: 500;
-    line-height: 20px;
+    line-height: 18px;
     text-decoration: none;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    margin-left: 0;
 }
 
 .side-subnav-link:hover,

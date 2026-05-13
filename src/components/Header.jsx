@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiBell,
+    FiCalendar,
     FiChevronDown,
     FiChevronLeft,
     FiFileText,
@@ -32,6 +33,7 @@ const sidebarLinks = [
     { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
     { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
+    { href: "/ticket-calendar", label: "Insights & Analytics", icon: FiCalendar, section: "calendars" },
     { href: "/reports", label: "Reports", icon: FiFileText, admin: true },
     { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true, section: "thresholds" },
     { href: "/submission-frequency", label: "Submission Frequency", icon: FiRepeat, admin: true },
@@ -56,6 +58,24 @@ const ticketingLinks = [
     { href: "/operator", label: "L1 Ticketing System" },
     { href: "/supervisordashboard", label: "L2 Ticketing System" },
 ];
+const analyticsHubLinks = [
+    {
+        subheading: "Calendar",
+        key: "calendar",
+        children: [
+            { href: "/ticket-calendar", label: "L1 Calendar" },
+            { href: "/ticket-calendar-l2", label: "L2 Calendar" },
+        ],
+    },
+    {
+        subheading: "Analysis",
+        key: "analysis",
+        children: [
+            { href: "/l1-analysis", label: "L1 Analysis" },
+            { href: "/l2-analysis", label: "L2 Analysis" },
+        ],
+    },
+];
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
@@ -69,6 +89,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isDepartmentMenuOpen, setIsDepartmentMenuOpen] = useState(false);
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
+    const [isCalendarMenuOpen, setIsCalendarMenuOpen] = useState(false);
     const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const user = useSelector((state) => state.auth?.user);
@@ -102,6 +123,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         if (link.section === "tickets") {
             return hasFullAccess || visibleHrefSet.has("/operator");
+        }
+        if (link.section === "calendars") {
+            return hasFullAccess || visibleHrefSet.has("/ticket-calendar") || visibleHrefSet.has("/ticket-calendar-l2");
         }
 
         if (link.section === "settings") {
@@ -199,6 +223,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return nextIsOpen;
         });
     };
+    const handleCalendarClick = () => {
+        setIsCalendarMenuOpen((isOpen) => {
+            const nextIsOpen = !isOpen;
+            if (nextIsOpen && router.asPath?.split("?")[0] !== "/ticket-calendar") {
+                router.push("/ticket-calendar");
+            }
+            return nextIsOpen;
+        });
+    };
 
     useEffect(() => {
         const handlePointerDown = (event) => {
@@ -232,6 +265,12 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath.startsWith("/operatordetail") ||
             currentPath === "/supervisordashboard" ||
             currentPath === "/supervisordetails"
+        );
+        setIsCalendarMenuOpen(
+            currentPath === "/ticket-calendar" ||
+            currentPath === "/ticket-calendar-l2" ||
+            currentPath === "/l1-analysis" ||
+            currentPath === "/l2-analysis"
         );
         setIsThresholdMenuOpen(
             currentPath === "/threshold-values" ||
@@ -394,6 +433,65 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                             >
                                                 {ticketingLink.label}
                                             </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        }
+                        if (link.section === "calendars" && hasFullAccess) {
+                            // Two-level dropdown state
+                            const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
+                            const [openCalendar, setOpenCalendar] = useState(false);
+                            const [openAnalysis, setOpenAnalysis] = useState(false);
+                            // Keep open state in sync with route
+                            useEffect(() => {
+                                const currentPath = router.asPath?.split("?")[0] || router.pathname;
+                                setOpenAnalyticsHub(
+                                    ["/ticket-calendar", "/ticket-calendar-l2", "/l1-analysis", "/l2-analysis"].includes(currentPath)
+                                );
+                                setOpenCalendar(["/ticket-calendar", "/ticket-calendar-l2"].includes(currentPath));
+                                setOpenAnalysis(["/l1-analysis", "/l2-analysis"].includes(currentPath));
+                            }, [router.asPath, router.pathname]);
+                            return (
+                                <div key={link.href} className={styles["side-nav-group"]}>
+                                    <button
+                                        type="button"
+                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
+                                        aria-expanded={openAnalyticsHub}
+                                        title={isSidebarCollapsed ? "Analytics Hub" : undefined}
+                                        onClick={() => setOpenAnalyticsHub((v) => !v)}
+                                    >
+                                        <FiCalendar className={styles["side-nav-icon"]} />
+                                        <span className={styles["side-nav-label"]}>Analytics Hub</span>
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${openAnalyticsHub ? styles["department-chevron-open"] : ""}`} />
+                                    </button>
+                                    <div className={`${styles["side-subnav"]} ${openAnalyticsHub ? styles["side-subnav-open"] : ""}`}>
+                                        {analyticsHubLinks.map((group) => (
+                                            <div key={group.subheading} className={styles["side-subnav-group"]}>
+                                                <button
+                                                    type="button"
+                                                    className={styles["side-subnav-heading"]}
+                                                    aria-expanded={group.key === "calendar" ? openCalendar : openAnalysis}
+                                                    onClick={() => {
+                                                        if (group.key === "calendar") setOpenCalendar((v) => !v);
+                                                        if (group.key === "analysis") setOpenAnalysis((v) => !v);
+                                                    }}
+                                                >
+                                                    {group.subheading}
+                                                    <FiChevronDown className={`${styles["department-chevron"]} ${(group.key === "calendar" ? openCalendar : openAnalysis) ? styles["department-chevron-open"] : ""}`} style={{marginLeft: 6}} />
+                                                </button>
+                                                <div style={{ display: (group.key === "calendar" ? openCalendar : openAnalysis) ? 'block' : 'none', marginLeft: 8 }}>
+                                                    {group.children.map((item) => (
+                                                        <Link
+                                                            key={item.href}
+                                                            href={item.href}
+                                                            className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
+                                                        >
+                                                            {item.label}
+                                                        </Link>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
