@@ -67,7 +67,7 @@ function AppShell({ Component, pageProps }) {
     : isHomeFlow || isDepartmentFlow || isTicketingFlow
     ? [
         { href: "/", label: "Home" },
-        { href: "/operator", label: "Ticketing System" },
+        { href: "/operator", label: "L1 Ticketing System" },
       ]
       : undefined;
 

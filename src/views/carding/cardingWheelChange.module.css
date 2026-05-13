@@ -25,23 +25,33 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding-bottom: 10px;
+  gap: 14px;
+  padding-bottom: 0;
 }
 
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 
+.topRow {
+  margin: 0;
+}
+
+.twoColumnRow {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
 .field {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.field label {
+.field label,
+.remarksRow label {
   font-size: 14px;
   font-weight: 600;
   color: #334155;
@@ -93,11 +103,6 @@
   outline: none;
 }
 
-.input:disabled {
-  color: #64748b;
-  opacity: 1;
-}
-
 .errorInput,
 .errorInput:hover,
 .errorInput:focus,
@@ -106,22 +111,8 @@
   background: #fff1f2;
 }
 
-.darkInput {
-  background: #e3e9f0;
-  border-color: #d5dee9;
-}
-
-.darkInput:hover,
-.darkInput:focus,
-.darkInput:focus-visible {
-  background: #e3e9f0;
-  border-color: #d5dee9;
-  box-shadow: none;
-  outline: none;
-}
-
 .tableWrap {
-  margin-top: 18px;
+  margin-top: 6px;
   overflow-x: auto;
 }
 
@@ -162,13 +153,77 @@
   font-weight: 700;
 }
 
+.remarksRow {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.remarksRow textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid #d8e2f3;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #1e293b;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  transition: none;
+}
+
+.remarksRow textarea:hover,
+.remarksRow textarea:focus,
+.remarksRow textarea:focus-visible {
+  border-color: #d8e2f3;
+  background: #f8fafc;
+  box-shadow: none;
+  outline: none;
+}
+
+.messageError {
+  padding: 10px 12px;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.footerEdge {
+  margin: 6px -28px -20px;
+}
+
 @media (max-width: 767px) {
   .row {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .twoColumnRow {
+    grid-template-columns: 1fr;
   }
 
   .table {
     min-width: 640px;
+  }
+
+  .remarksRow {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .footerEdge {
+    margin: 6px -14px -14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .footerEdge {
+    margin: 6px -12px -12px;
   }
 }

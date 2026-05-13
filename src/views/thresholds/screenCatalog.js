@@ -22,6 +22,7 @@ export const thresholdScreenCatalog = {
             "Nati Data Entry",
             "U% Data Entry",
             "Card DFK Pressure Checking",
+            "WheelChange",
         ],
         comber: [
             "Ribbon Lap CV Data Entry",

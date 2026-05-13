@@ -50,6 +50,7 @@ import {
 import { fetchBlowroomProcessParametersApi } from "@/apis/blowroom";
 import {
   fetchCardingDfkPressureEntries,
+  fetchCardingChangeControlEntries,
   fetchCardingUqcEntries,
   getCardingProcessParameterEntries,
 } from "@/apis/carding";
@@ -124,6 +125,7 @@ const reportSources = {
       "Nati Data Entry": { endpoint: "/carding/nati-data" },
       "U% Data Entry": { fetcher: fetchCardingUqcEntries },
       "Card DFK Pressure Checking": { fetcher: fetchCardingDfkPressureEntries },
+      WheelChange: { fetcher: fetchCardingChangeControlEntries },
     },
     Comber: {
       "Ribbon Lap CV Data Entry": { endpoint: "/comber/lap-cv" },
