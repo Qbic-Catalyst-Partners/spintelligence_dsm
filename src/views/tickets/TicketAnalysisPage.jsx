@@ -1,6 +1,7 @@
 
 import React, { useMemo } from "react";
 import { useSelector } from "react-redux";
+import { FiList, FiCheckCircle, FiClock, FiAlertCircle } from "react-icons/fi";
 import styles from "@/styles/ticketCalendar.module.css";
 
 // Utility functions (copied from TicketCalendarPage)
@@ -133,10 +134,31 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
         </div>
         <h3 className={styles.sectionTitle}>Insights</h3>
         <div className={styles.cards}>
-          <article className={styles.card}><h4>Total Tasks</h4><strong>{analytics.total}</strong></article>
-          <article className={styles.card}><h4>Completed</h4><strong>{analytics.completed}</strong></article>
-          <article className={styles.card}><h4>Pending</h4><strong>{analytics.pending}</strong></article>
-          <article className={styles.card}><h4>Overdue (frequency)</h4><strong>{analytics.overdue}</strong></article>
+          <article className={`${styles.card} ${mode === "L2" ? styles.squareCard : ""}`}>
+            <h4>Total Tasks</h4>
+            <strong>{analytics.total}</strong>
+            <span className={styles.cardIconRight}><FiList /></span>
+          </article>
+          <article className={`${styles.card} ${mode === "L2" ? styles.squareCard : ""}`}>
+            <h4>Approved</h4>
+            <strong>{analytics.completed}</strong>
+            <span className={styles.cardIconRight}><FiCheckCircle /></span>
+          </article>
+          <article className={`${styles.card} ${mode === "L2" ? styles.squareCard : ""}`}>
+            <h4>Rejected</h4>
+            <strong>{analytics.pending}</strong>
+            <span className={styles.cardIconRight}><FiClock /></span>
+          </article>
+          <article className={`${styles.card} ${mode === "L2" ? styles.squareCard : ""}`}>
+            <h4>Pending</h4>
+            <strong>{analytics.inprogress}</strong>
+            <span className={styles.cardIconRight}><FiClock /></span>
+          </article>
+          <article className={`${styles.card} ${mode === "L2" ? styles.squareCard : ""}`}>
+            <h4>Overdue</h4>
+            <strong>{analytics.overdue}</strong>
+            <span className={styles.cardIconRight}><FiAlertCircle /></span>
+          </article>
         </div>
         <h3 className={styles.sectionTitle}>Analytics</h3>
         <div className={styles.tableWrap}>
