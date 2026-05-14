@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
+import { FiClock, FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
 
 import {
   deleteSubmissionFrequencyConfigAPI,
@@ -22,6 +22,8 @@ const createRule = () => ({
   screenName: "",
   approvalL1: "",
   approvalL2: "",
+  approvalL1Tat: "08:00 AM",
+  approvalL2Tat: "08:00 AM",
   frequencyLabel: "Daily",
   occurrences: "4",
   isActive: true,
@@ -37,6 +39,8 @@ const frequencyOptions = [
 ];
 
 const occurrenceOptions = Array.from({ length: 10 }, (_, index) => String(index + 1));
+const hourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
+const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
 
 const buildExistingFilters = () => ({
   department: "",
@@ -133,6 +137,48 @@ const normalizeNameList = (value) => {
   }
 
   return [];
+};
+
+const parseTatParts = (value) => {
+  const normalizedValue = String(value || "08:00 AM").trim().toUpperCase();
+  const match = normalizedValue.match(/^(\d{1,2})(?::(\d{1,2}))?\s*(A|P|AM|PM)?$/);
+
+  if (!match) {
+    return { hour: "08", minute: "00", meridiem: "AM" };
+  }
+
+  const parsedHour = Number(match[1]);
+  const parsedMinute = Number(match[2] || 0);
+  const hour = String(Math.min(Math.max(parsedHour || 8, 1), 12)).padStart(2, "0");
+  const minute = String(Math.min(Math.max(parsedMinute || 0, 0), 59)).padStart(2, "0");
+  const meridiem = match[3]?.startsWith("P") ? "PM" : "AM";
+
+  return { hour, minute, meridiem };
+};
+
+const formatTatValue = (hour, minute, meridiem) => `${hour}:${minute} ${meridiem}`;
+
+const formatTatHours = (value) => {
+  const hours = Number(value);
+  if (!Number.isInteger(hours) || hours <= 0) return "08:00 AM";
+
+  const normalizedHour = ((hours - 1) % 12) + 1;
+  const meridiem = hours > 12 ? "PM" : "AM";
+  return `${String(normalizedHour).padStart(2, "0")}:00 ${meridiem}`;
+};
+
+const tatValueToHours = (value) => {
+  const { hour, minute, meridiem } = parseTatParts(value);
+  const hourNumber = Number(hour);
+  const minuteNumber = Number(minute);
+  const hourValue = meridiem === "PM" && hourNumber < 12 ? hourNumber + 12 : hourNumber;
+  return Math.max(1, hourValue + (minuteNumber > 0 ? 1 : 0));
+};
+
+const formatTatHoursLabel = (value) => {
+  const hours = Number(value);
+  if (!Number.isInteger(hours) || hours <= 0) return "-";
+  return `${hours} Hr${hours === 1 ? "" : "s"}`;
 };
 
 function ExpandableCell({ values = [], fallback = "-" }) {
@@ -236,6 +282,86 @@ function SingleSelectDropdown({
           ) : (
             <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
           )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TatTimePicker({ value, onChange, label }) {
+  const containerRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const { hour, minute, meridiem } = parseTatParts(value);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  const syncTime = (nextHour, nextMinute, nextMeridiem) => {
+    onChange?.(formatTatValue(nextHour, nextMinute, nextMeridiem));
+  };
+
+  const handleTextChange = (nextValue) => {
+    const upperValue = nextValue.toUpperCase();
+    onChange?.(upperValue);
+  };
+
+  return (
+    <div className={styles.tatTimeWrap} ref={containerRef}>
+      <input
+        type="text"
+        value={value}
+        placeholder="08:00 AM"
+        onFocus={() => setIsOpen(true)}
+        onClick={() => setIsOpen(true)}
+        onChange={(event) => handleTextChange(event.target.value)}
+      />
+      <button
+        type="button"
+        className={styles.tatTimeButton}
+        onClick={() => setIsOpen((current) => !current)}
+        aria-label={`Select ${label} turn around time`}
+      >
+        <FiClock />
+      </button>
+      {isOpen ? (
+        <div className={styles.tatTimeMenu}>
+          <label>
+            <span>Hrs</span>
+            <select value={hour} onChange={(event) => syncTime(event.target.value, minute, meridiem)}>
+              {hourOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Mins</span>
+            <select value={minute} onChange={(event) => syncTime(hour, event.target.value, meridiem)}>
+              {minuteOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>AM/PM</span>
+            <select value={meridiem} onChange={(event) => syncTime(hour, minute, event.target.value)}>
+              <option value="AM">AM</option>
+              <option value="PM">PM</option>
+            </select>
+          </label>
         </div>
       ) : null}
     </div>
@@ -462,6 +588,8 @@ export default function SubmissionThreshold() {
         screenName: item?.screen_name || "",
         approvalL1: item?.approval_l1_name || item?.approval_l1 || "",
         approvalL2: item?.approval_l2_name || item?.approval_l2 || "",
+        approvalL1Tat: formatTatHours(item?.l1_tat_hours),
+        approvalL2Tat: formatTatHours(item?.l2_tat_hours),
         frequencyLabel: matchedFrequency,
         occurrences: String(item?.occurrences ?? "4"),
         isActive: Boolean(item?.is_active),
@@ -571,8 +699,10 @@ export default function SubmissionThreshold() {
           is_active: rule.isActive,
           approval_l1: l1User?.id || rule.approvalL1,
           approval_l1_name: getUserDisplayName(l1User) || rule.approvalL1,
+          l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
           approval_l2: l2User?.id || rule.approvalL2,
           approval_l2_name: getUserDisplayName(l2User) || rule.approvalL2,
+          l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
         };
       });
 
@@ -701,28 +831,6 @@ export default function SubmissionThreshold() {
                       </label>
 
                       <label className={styles.field}>
-                        <span>L1</span>
-                        <SingleSelectDropdown
-                          value={rule.approvalL1}
-                          options={l1Options}
-                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL1", nextValue)}
-                          placeholder={l1Options.length ? "Select" : "No L1 users available"}
-                          emptyLabel="No L1 users available"
-                        />
-                      </label>
-
-                      <label className={styles.field}>
-                        <span>L2</span>
-                        <SingleSelectDropdown
-                          value={rule.approvalL2}
-                          options={l2Options}
-                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL2", nextValue)}
-                          placeholder={l2Options.length ? "Select" : "No L2 users available"}
-                          emptyLabel="No L2 users available"
-                        />
-                      </label>
-
-                      <label className={styles.field}>
                         <span>Frequency</span>
                         <select
                           value={rule.frequencyLabel}
@@ -739,7 +847,7 @@ export default function SubmissionThreshold() {
                       </label>
 
                       <label className={styles.field}>
-                        <span>Number of Occurances</span>
+                        <span>Number of Occurrences</span>
                         <select
                           value={rule.occurrences}
                           onChange={(event) =>
@@ -752,6 +860,46 @@ export default function SubmissionThreshold() {
                             </option>
                           ))}
                         </select>
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>L1</span>
+                        <SingleSelectDropdown
+                          value={rule.approvalL1}
+                          options={l1Options}
+                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL1", nextValue)}
+                          placeholder={l1Options.length ? "Select" : "No L1 users available"}
+                          emptyLabel="No L1 users available"
+                        />
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>TAT</span>
+                        <TatTimePicker
+                          label="L1 TAT"
+                          value={rule.approvalL1Tat}
+                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL1Tat", nextValue)}
+                        />
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>L2</span>
+                        <SingleSelectDropdown
+                          value={rule.approvalL2}
+                          options={l2Options}
+                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL2", nextValue)}
+                          placeholder={l2Options.length ? "Select" : "No L2 users available"}
+                          emptyLabel="No L2 users available"
+                        />
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>TAT</span>
+                        <TatTimePicker
+                          label="L2 TAT"
+                          value={rule.approvalL2Tat}
+                          onChange={(nextValue) => handleRuleChange(rule.id, "approvalL2Tat", nextValue)}
+                        />
                       </label>
 
                       <div className={styles.ruleActions}>
@@ -897,9 +1045,11 @@ export default function SubmissionThreshold() {
                       <th>Sub-Deprt.</th>
                       <th>Notebook</th>
                       <th>L1</th>
+                      <th>L1 TAT</th>
                       <th>L2</th>
+                      <th>L2 TAT</th>
                       <th>Frequency</th>
-                      <th>No. Of Occurances</th>
+                      <th>No. Of Occurrences</th>
                       <th>Status</th>
                       <th>Created At</th>
                       <th>Action</th>
@@ -908,11 +1058,11 @@ export default function SubmissionThreshold() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={10}>Loading...</td>
+                        <td colSpan={12}>Loading...</td>
                       </tr>
                     ) : filteredConfigs.length === 0 ? (
                       <tr>
-                        <td colSpan={10}>No submission thresholds found.</td>
+                        <td colSpan={12}>No submission thresholds found.</td>
                       </tr>
                     ) : (
                       filteredConfigs.map((item, index) => {
@@ -934,9 +1084,11 @@ export default function SubmissionThreshold() {
                           <td>
                             <ExpandableCell values={item.approval_l1_name || item.approval_l1} />
                           </td>
+                          <td>{formatTatHoursLabel(item.l1_tat_hours)}</td>
                           <td>
                             <ExpandableCell values={item.approval_l2_name || item.approval_l2} />
                           </td>
+                          <td>{formatTatHoursLabel(item.l2_tat_hours)}</td>
                           <td>{getFrequencyLabel(item.frequency)}</td>
                           <td>{item.occurrences ?? "-"}</td>
                           <td>

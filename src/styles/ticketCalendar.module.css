@@ -52,6 +52,7 @@
 .analyticsHead p { margin: 6px 0 12px; color: #5d6b83; }
 .sectionTitle { margin: 10px 0 10px; color: #1f2a44; font-size: 18px; }
 .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.cards.l2Cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .card { border: 1px solid #d7dfea; border-radius: 14px; background: #fff; padding: 14px; }
 .card h4 { margin: 0; color: #51607a; font-weight: 600; }
 .card strong { display: block; margin-top: 8px; font-size: 36px; color: #1f2a44; }
@@ -68,8 +69,10 @@
 @media (max-width: 900px) {
   .monthGrid, .weekGrid, .weekHeader { grid-template-columns: repeat(2, 1fr); }
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cards.l2Cards { grid-template-columns: repeat(5, minmax(96px, 1fr)); overflow-x: auto; }
 }
 @media (max-width: 640px) {
   .monthGrid, .weekGrid, .weekHeader { grid-template-columns: 1fr; }
   .cards { grid-template-columns: 1fr; }
+  .cards.l2Cards { grid-template-columns: repeat(5, minmax(96px, 1fr)); overflow-x: auto; }
 }

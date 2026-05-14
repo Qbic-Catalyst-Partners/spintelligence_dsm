@@ -7,6 +7,8 @@ import styles from "@/styles/departmentDirectory.module.css";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 
+const DASHBOARD_SELECTION_STORAGE_KEY = "spintelligenceDashboardSelection";
+
 const trendModes = ["1D", "1W", "1M", "1Y"];
 const modeMultipliers = { "1D": 0.72, "1W": 0.9, "1M": 1, "1Y": 1.18 };
 const DASHBOARD_FETCH_DEBOUNCE_MS = 250;
@@ -53,6 +55,29 @@ function HomeDashboard() {
   const [dashboardUsers, setDashboardUsers] = useState([]);
   const [selectedDashboardRole, setSelectedDashboardRole] = useState("");
   const [selectedDashboardUserId, setSelectedDashboardUserId] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(DASHBOARD_SELECTION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.role) setSelectedDashboardRole(parsed.role);
+        if (parsed?.userId) setSelectedDashboardUserId(String(parsed.userId));
+      }
+    } catch {
+      // ignore invalid storage
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const payload = {
+      role: selectedDashboardRole || undefined,
+      userId: selectedDashboardUserId || undefined,
+    };
+    window.localStorage.setItem(DASHBOARD_SELECTION_STORAGE_KEY, JSON.stringify(payload));
+  }, [selectedDashboardRole, selectedDashboardUserId]);
 
   const [widgets, setWidgets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -111,13 +136,23 @@ function HomeDashboard() {
     [normalizedWidgets]
   );
 
+  const isTicketWidget = (widget) =>
+    String(widget?.input_field || "").trim().toLowerCase() === "ticket_values" ||
+    String(widget?.input_screen || "").trim().toLowerCase() === "ticket values" ||
+    String(widget?.raw_input_field || "").trim().toLowerCase() === "ticket values";
+
+  const ticketWidgets = useMemo(
+    () => visibleWidgets.filter((widget) => isTicketWidget(widget)),
+    [visibleWidgets]
+  );
+
   const averageWidgets = useMemo(
-    () => visibleWidgets.filter((widget) => widget.visualization_type === "average_value_card" || widget.chart_type === "value"),
+    () => visibleWidgets.filter((widget) => !isTicketWidget(widget) && (widget.visualization_type === "average_value_card" || widget.chart_type === "value")),
     [visibleWidgets]
   );
 
   const performanceWidgets = useMemo(
-    () => visibleWidgets.filter((widget) => !(widget.visualization_type === "average_value_card" || widget.chart_type === "value")),
+    () => visibleWidgets.filter((widget) => !isTicketWidget(widget) && !(widget.visualization_type === "average_value_card" || widget.chart_type === "value")),
     [visibleWidgets]
   );
 
@@ -160,7 +195,7 @@ function HomeDashboard() {
         const dedupedUsers = users.filter((u, i, arr) => i === arr.findIndex((x) => x.id === u.id));
         setDashboardRoles(dedupedRoles);
         setDashboardUsers(dedupedUsers);
-        setSelectedDashboardRole((cur) => cur || dedupedRoles[0] || "");
+        setSelectedDashboardRole((cur) => (cur && dedupedRoles.includes(cur) ? cur : dedupedRoles[0] || ""));
       } catch {
         if (!isMounted) return;
         setDashboardRoles([]);
@@ -175,7 +210,7 @@ function HomeDashboard() {
   }, [isDashboardAdmin]);
 
   const dashboardUsersForSelectedRole = useMemo(
-    () => (selectedDashboardRole ? dashboardUsers.filter((u) => !u.role || u.role === selectedDashboardRole) : dashboardUsers),
+    () => (selectedDashboardRole ? dashboardUsers.filter((u) => u.role === selectedDashboardRole) : dashboardUsers),
     [dashboardUsers, selectedDashboardRole]
   );
 
@@ -352,6 +387,40 @@ function HomeDashboard() {
           </div>
         ) : null}
       </section>
+
+      {ticketWidgets.length ? (
+        <section className={styles.referenceSection}>
+          <h1>Ticket Values</h1>
+          <div className={styles.referenceStatsGrid}>
+            {ticketWidgets.map((card) => (
+              <article key={card.id} className={styles.referenceStatCard}>
+                <div className={styles.referenceStatHeader}>
+                  <div>
+                    <h2>{card.raw_input_field || card.input_field || "Ticket Values"}</h2>
+                    <span>{`${card.department} | ${card.sub_department} | ${card.input_screen}`}</span>
+                  </div>
+                  <span className={styles.referenceStatIcon}><FiPieChart /></span>
+                </div>
+                <div className={styles.referenceStatBottom}>
+                  <strong>{formatValue(widgetData?.[card.id]?.average_value, cardModes[card.id])}</strong>
+                  <div className={styles.referenceMiniToggle}>
+                    {trendModes.map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
+                        onClick={() => setCardModes((current) => ({ ...current, [card.id]: mode }))}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className={styles.referenceSection}>
         <h1>Average Values</h1>

@@ -22,7 +22,7 @@ import {
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { logout, setAuthUser } from "../store/slices/authSlice";
-import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
+import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, isSupervisorNavUser, routeDepartmentMap } from "@/utils/accessControl";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -192,6 +192,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
+    const hasSupervisorNavAccess = isSupervisorNavUser(user);
+    const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess;
+    const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const fullName = user?.full_name || user?.name || "User";
     const employeeId = user?.employee_id || user?.employeeId || "No ID";
     const initials = fullName
@@ -219,10 +222,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         }
 
         if (link.section === "tickets") {
-            return hasFullAccess || visibleHrefSet.has("/operator");
+            return hasTicketingHubAccess || visibleHrefSet.has("/operator");
         }
         if (link.section === "calendars") {
-            return hasFullAccess || visibleHrefSet.has("/ticket-calendar") || visibleHrefSet.has("/ticket-calendar-l2");
+            return hasAnalyticsHubAccess || visibleHrefSet.has("/ticket-calendar") || visibleHrefSet.has("/ticket-calendar-l2");
         }
 
         if (link.section === "settings") {
@@ -534,7 +537,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             );
                         }
 
-                        if (link.section === "tickets" && hasFullAccess) {
+                        if (link.section === "tickets" && hasTicketingHubAccess) {
                             return (
                                 <div key={link.href} className={styles["side-nav-group"]}>
                                     <button
@@ -561,7 +564,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                 </div>
                             );
                         }
-                        if (link.section === "calendars" && hasFullAccess) {
+                        if (link.section === "calendars" && hasAnalyticsHubAccess) {
                             return (
                                 <AnalyticsHubNavItem
                                     key={link.href}

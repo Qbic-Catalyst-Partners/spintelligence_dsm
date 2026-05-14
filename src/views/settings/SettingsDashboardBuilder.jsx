@@ -6,6 +6,8 @@ import apiConfig from "@/apis/apiConfig";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 import { departmentDirectory } from "@/views/departments/data";
+
+const DASHBOARD_BUILDER_SELECTION_STORAGE_KEY = "spintelligenceDashboardBuilderSelection";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import styles from "@/styles/departmentDirectory.module.css";
@@ -45,12 +47,45 @@ function SettingsDashboardBuilder() {
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedBuilderUserId, setSelectedBuilderUserId] = useState("");
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem(DASHBOARD_BUILDER_SELECTION_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.role) setSelectedRole(parsed.role);
+        if (parsed?.userId) setSelectedBuilderUserId(String(parsed.userId));
+      }
+    } catch {
+      // invalid storage value
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const payload = {
+      role: selectedRole || undefined,
+      userId: selectedBuilderUserId || undefined,
+    };
+    window.localStorage.setItem(DASHBOARD_BUILDER_SELECTION_STORAGE_KEY, JSON.stringify(payload));
+  }, [selectedRole, selectedBuilderUserId]);
+
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
   const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
   const [selectedScreenName, setSelectedScreenName] = useState("");
   const [selectedFieldName, setSelectedFieldName] = useState("");
   const [selectedChartType, setSelectedChartType] = useState("value");
   const [isAddWidgetModalOpen, setIsAddWidgetModalOpen] = useState(false);
+  const [isAddTicketModalOpen, setIsAddTicketModalOpen] = useState(false);
+  const [selectedTicketTimeline, setSelectedTicketTimeline] = useState("Daily");
+  const [ticketOptions, setTicketOptions] = useState({
+    total: true,
+    open: true,
+    reopened: true,
+    closed: true,
+    pending: true,
+    overdue: true,
+  });
 
   const selectedDepartment = useMemo(
     () => departmentDirectory.find((item) => item.slug === selectedDepartmentSlug),
@@ -119,15 +154,21 @@ function SettingsDashboardBuilder() {
   }, [canCustomizeDashboards]);
 
   const filteredUsers = useMemo(
-    () => (selectedRole ? builderUsers.filter((u) => !u.role || u.role === selectedRole) : builderUsers),
+    () => (selectedRole ? builderUsers.filter((u) => u.role === selectedRole) : builderUsers),
     [builderUsers, selectedRole]
+  );
+  const ownBuilderUser = useMemo(
+    () => builderUsers.find((u) => Number(u.id) === dashboardOwnerUserId),
+    [builderUsers, dashboardOwnerUserId]
   );
 
   useEffect(() => {
-    if (builderRoles.length && (!selectedRole || !builderRoles.includes(selectedRole))) {
-      setSelectedRole(builderRoles[0]);
+    if (!builderRoles.length) return;
+    if (!selectedRole || !builderRoles.includes(selectedRole)) {
+      const ownUserRole = ownBuilderUser?.role;
+      setSelectedRole((ownUserRole && builderRoles.includes(ownUserRole)) ? ownUserRole : builderRoles[0]);
     }
-  }, [builderRoles, selectedRole]);
+  }, [builderRoles, ownBuilderUser, selectedRole]);
 
   useEffect(() => {
     if (!filteredUsers.length) {
@@ -140,7 +181,12 @@ function SettingsDashboardBuilder() {
     }
   }, [filteredUsers, selectedBuilderUserId, dashboardOwnerUserId]);
 
-  const activeUserId = Number(selectedBuilderUserId) || dashboardOwnerUserId;
+  const selectedBuilderUserIdNumber = useMemo(() => {
+    const id = Number(selectedBuilderUserId);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  }, [selectedBuilderUserId]);
+
+  const activeUserId = selectedBuilderUserIdNumber || dashboardOwnerUserId;
 
   const normalizeWidgets = (nextWidgets) =>
     (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => {
@@ -173,6 +219,17 @@ function SettingsDashboardBuilder() {
         setSaveMessage("");
       } catch (error) {
         if (!isMounted) return;
+        const deniedOwnConfig =
+          error?.response?.status === 403 &&
+          String(error?.response?.data?.message || "").toLowerCase().includes("own dashboard configuration");
+
+        if (deniedOwnConfig && dashboardOwnerUserId && activeUserId !== dashboardOwnerUserId) {
+          setSaveMessage(
+            "You do not have access to modify the selected user's dashboard. Please select a different role or user."
+          );
+          return;
+        }
+
         setWidgets([]);
         setSaveMessage(error?.response?.data?.message || "Unable to load dashboard widgets.");
       } finally {
@@ -183,7 +240,7 @@ function SettingsDashboardBuilder() {
     return () => {
       isMounted = false;
     };
-  }, [activeUserId, canCustomizeDashboards]);
+  }, [activeUserId, canCustomizeDashboards, dashboardOwnerUserId, ownBuilderUser, selectedRole]);
 
   const builderRows = widgets.map((widget, index) => ({
     widget,
@@ -196,7 +253,7 @@ function SettingsDashboardBuilder() {
   const handleToggle = (widgetIndex) => {
     setWidgets((current) => {
       const next = current.map((w, i) => (i === widgetIndex ? { ...w, enabled: !w.enabled } : w));
-      setTimeout(() => { handleSave(next); }, 0);
+      handleSave(next);
       return next;
     });
   };
@@ -204,9 +261,40 @@ function SettingsDashboardBuilder() {
   const handleDelete = (widgetIndex) => {
     setWidgets((current) => {
       const next = current.filter((_, i) => i !== widgetIndex).map((w, i) => ({ ...w, order: i + 1 }));
-      setTimeout(() => { handleSave(next); }, 0);
+      handleSave(next);
       return next;
     });
+  };
+
+  const handleToggleTicketOption = (optionKey) => {
+    setTicketOptions((current) => ({ ...current, [optionKey]: !current[optionKey] }));
+  };
+
+  const handleAddTicketCard = () => {
+    const ticketWidget = {
+      id: `ticket-${Date.now()}`,
+      enabled: true,
+      order: widgets.length + 1,
+      department: "Ticketing",
+      sub_department: selectedTicketTimeline,
+      screen_name: "Ticket Values",
+      field_name: "Ticket Values",
+      chart_type: "value",
+      builder_section: BUILDER_SECTIONS.average,
+      ticket_options: {
+        ...ticketOptions,
+        timeline: selectedTicketTimeline,
+      },
+    };
+
+    setWidgets((current) => {
+      const next = [...current, ticketWidget];
+      handleSave(next);
+      return next;
+    });
+
+    setIsAddTicketModalOpen(false);
+    setSaveMessage("Ticket card settings saved.");
   };
 
   const handleAddWidget = () => {
@@ -226,7 +314,7 @@ function SettingsDashboardBuilder() {
         builder_section: selectedVisualization.section,
         },
       ];
-      setTimeout(() => { handleSave(next); }, 0);
+      handleSave(next);
       return next;
     });
     setIsAddWidgetModalOpen(false);
@@ -255,13 +343,13 @@ function SettingsDashboardBuilder() {
     }
   };
 
-  const selectedUser = filteredUsers.find((u) => u.id === selectedBuilderUserId);
+  const selectedUser = builderUsers.find((u) => u.id === selectedBuilderUserId);
 
   if (authUser && !canCustomizeDashboards) {
     return (
       <div className={styles.dashboardMain}>
         <section className={styles.builderHeader}><h1 className={styles.kicker}>Dashboard Builder</h1></section>
-        <p className={styles.builderUserMeta}>Only Admin001 can customize user dashboards.</p>
+        <p className={styles.builderUserMeta}>Only administrators can customize user dashboards.</p>
       </div>
     );
   }
@@ -272,6 +360,7 @@ function SettingsDashboardBuilder() {
         <h1 className={styles.kicker}>Dashboard Builder</h1>
         <div className={styles.rowActions}>
           <button type="button" className={styles.addWidgetButton} onClick={() => setIsAddWidgetModalOpen(true)}><FiPlus /><span>Add Widget</span></button>
+          <button type="button" className={styles.addWidgetButton} onClick={() => setIsAddTicketModalOpen(true)}><FiPlus /><span>Add Ticket</span></button>
         </div>
       </section>
 
@@ -305,6 +394,57 @@ function SettingsDashboardBuilder() {
             <footer className={styles.builderAddModalFooter}>
               <button type="button" className={styles.builderModalCancel} onClick={() => setIsAddWidgetModalOpen(false)}>Cancel</button>
               <button type="button" className={styles.builderModalSubmit} onClick={handleAddWidget}>Add to Builder</button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
+
+      {isAddTicketModalOpen ? (
+        <div className={styles.builderModalOverlay}>
+          <div className={styles.builderAddModal} role="dialog" aria-modal="true" aria-labelledby="add-ticket-title">
+            <header className={styles.builderAddModalHeader}>
+              <h2 id="add-ticket-title">Ticket Values</h2>
+              <p>Select the ticket metrics you want to display in the Dashboard Builder</p>
+            </header>
+            <div className={styles.ticketTimelineGroup}>
+              <label>
+                <span>Timeline</span>
+                <select value={selectedTicketTimeline} onChange={(e) => setSelectedTicketTimeline(e.target.value)}>
+                  <option value="Daily">Daily</option>
+                  <option value="Weekly">Weekly</option>
+                  <option value="Monthly">Monthly</option>
+                </select>
+              </label>
+            </div>
+            <div className={styles.ticketOptionsGrid}>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Total Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.total ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("total")}><span className={styles.builderToggleThumb} /></button>
+              </div>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Open Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.open ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("open")}><span className={styles.builderToggleThumb} /></button>
+              </div>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Reopened Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.reopened ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("reopened")}><span className={styles.builderToggleThumb} /></button>
+              </div>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Closed Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.closed ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("closed")}><span className={styles.builderToggleThumb} /></button>
+              </div>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Pending Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.pending ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("pending")}><span className={styles.builderToggleThumb} /></button>
+              </div>
+              <div className={styles.ticketCardOptionRow}>
+                <span className={styles.ticketCardOptionName}>Overdue Tickets</span>
+                <button type="button" className={`${styles.builderToggle} ${ticketOptions.overdue ? styles.builderToggleOn : ""}`} onClick={() => handleToggleTicketOption("overdue")}><span className={styles.builderToggleThumb} /></button>
+              </div>
+            </div>
+            <footer className={styles.builderAddModalFooter}>
+              <button type="button" className={styles.builderModalCancel} onClick={() => setIsAddTicketModalOpen(false)}>Cancel</button>
+              <button type="button" className={styles.builderModalSubmit} onClick={handleAddTicketCard}>Add to Builder</button>
             </footer>
           </div>
         </div>
