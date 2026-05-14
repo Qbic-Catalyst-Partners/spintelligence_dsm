@@ -1706,6 +1706,80 @@
     font-weight: 500;
 }
 
+.ticketTimelineGroup {
+    grid-column: span 2;
+    margin-bottom: 16px;
+}
+
+.ticketTimelineGroup label {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: #344054;
+    font-size: 14px;
+    font-weight: 850;
+}
+
+.ticketOptionsGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.ticketCardOptionRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 1px solid #d9dbe4;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 4px 12px rgba(16, 24, 40, 0.04);
+}
+
+.ticketCardOptionName {
+    color: #111827;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.ticketCardOptionDescription {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ticketCardOptionRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 18px;
+    border: 1px solid #dadee8;
+    border-radius: 12px;
+    background: #f8fbff;
+}
+
+.ticketCardOptionInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ticketCardOptionName {
+    color: #111827;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.ticketCardOptionDescription {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .builderAddModalFooter {
     display: flex;
     justify-content: flex-end;

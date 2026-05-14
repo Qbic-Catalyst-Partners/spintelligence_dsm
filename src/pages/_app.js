@@ -37,7 +37,11 @@ function AppShell({ Component, pageProps }) {
     router.pathname === "/operatordash" ||
     router.pathname.startsWith("/operatordetail") ||
     router.pathname === "/supervisordashboard" ||
-    router.pathname === "/supervisordetails";
+    router.pathname === "/supervisordetails" ||
+    router.pathname === "/ticket-calendar" ||
+    router.pathname === "/ticket-calendar-l2" ||
+    router.pathname === "/l1-analysis" ||
+    router.pathname === "/l2-analysis";
   const isAdminFlow =
     router.pathname === "/usermanagement" ||
     router.pathname.startsWith("/umadduser") ||
