@@ -20,7 +20,8 @@ import {
     FiSliders,
     FiUsers,
 } from "react-icons/fi";
-import { logout } from "../store/slices/authSlice";
+import { fetchUsersAPI } from "@/apis/userApi";
+import { logout, setAuthUser } from "../store/slices/authSlice";
 import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
 import styles from "../styles/header.module.css";
 
@@ -80,6 +81,102 @@ const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
 ];
+
+const normalizeLookupValue = (value) => String(value ?? "").trim().toLowerCase();
+
+const normalizeUserRows = (response) => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.users)) return response.users;
+    if (Array.isArray(response?.data)) return response.data;
+    return [];
+};
+
+const getUserIdentityValues = (record) => [
+    record?.id,
+    record?.user_id,
+    record?.userId,
+    record?.employee_id,
+    record?.employeeId,
+    record?.email,
+].map(normalizeLookupValue).filter(Boolean);
+
+const findDatabaseUser = (users, currentUser) => {
+    const currentIds = getUserIdentityValues(currentUser);
+    if (!currentIds.length) return null;
+
+    return users.find((candidate) =>
+        getUserIdentityValues(candidate).some((value) => currentIds.includes(value))
+    ) || null;
+};
+
+const AnalyticsHubNavItem = ({ linkClassName, isSidebarCollapsed, isActiveLink }) => {
+    const router = useRouter();
+    const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
+    const [openCalendar, setOpenCalendar] = useState(false);
+    const [openAnalysis, setOpenAnalysis] = useState(false);
+
+    useEffect(() => {
+        const currentPath = router.asPath?.split("?")[0] || router.pathname;
+        setOpenAnalyticsHub(
+            ["/ticket-calendar", "/ticket-calendar-l2", "/l1-analysis", "/l2-analysis"].includes(currentPath)
+        );
+        setOpenCalendar(["/ticket-calendar", "/ticket-calendar-l2"].includes(currentPath));
+        setOpenAnalysis(["/l1-analysis", "/l2-analysis"].includes(currentPath));
+    }, [router.asPath, router.pathname]);
+
+    return (
+        <div className={styles["side-nav-group"]}>
+            <button
+                type="button"
+                className={`${linkClassName} ${styles["side-nav-button"]}`}
+                aria-expanded={openAnalyticsHub}
+                title={isSidebarCollapsed ? "Analytics Hub" : undefined}
+                onClick={() => setOpenAnalyticsHub((value) => !value)}
+            >
+                <FiCalendar className={styles["side-nav-icon"]} />
+                <span className={styles["side-nav-label"]}>Analytics Hub</span>
+                <FiChevronDown className={`${styles["department-chevron"]} ${openAnalyticsHub ? styles["department-chevron-open"] : ""}`} />
+            </button>
+            <div className={`${styles["side-subnav"]} ${openAnalyticsHub ? styles["side-subnav-open"] : ""}`}>
+                {analyticsHubLinks.map((group) => {
+                    const isOpen = group.key === "calendar" ? openCalendar : openAnalysis;
+                    const toggleGroup = () => {
+                        if (group.key === "calendar") setOpenCalendar((value) => !value);
+                        if (group.key === "analysis") setOpenAnalysis((value) => !value);
+                    };
+
+                    return (
+                        <div key={group.subheading} className={styles["side-subnav-group"]}>
+                            <button
+                                type="button"
+                                className={styles["side-subnav-heading"]}
+                                aria-expanded={isOpen}
+                                onClick={toggleGroup}
+                            >
+                                {group.subheading}
+                                <FiChevronDown
+                                    className={`${styles["department-chevron"]} ${isOpen ? styles["department-chevron-open"] : ""}`}
+                                    style={{ marginLeft: 6 }}
+                                />
+                            </button>
+                            <div style={{ display: isOpen ? "block" : "none", marginLeft: 8 }}>
+                                {group.children.map((item) => (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
+                                    >
+                                        {item.label}
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
@@ -243,6 +340,32 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         document.addEventListener("mousedown", handlePointerDown);
         return () => document.removeEventListener("mousedown", handlePointerDown);
     }, []);
+
+    useEffect(() => {
+        if (!user) return;
+
+        let cancelled = false;
+
+        const refreshUserFromDatabase = async () => {
+            try {
+                const response = await fetchUsersAPI();
+                if (cancelled) return;
+
+                const matchedUser = findDatabaseUser(normalizeUserRows(response), user);
+                if (matchedUser) {
+                    dispatch(setAuthUser(matchedUser));
+                }
+            } catch {
+                // Keep the hydrated auth user if the database is temporarily unavailable.
+            }
+        };
+
+        refreshUserFromDatabase();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [dispatch, user?.id, user?.user_id, user?.userId, user?.employee_id, user?.employeeId, user?.email]);
 
     useEffect(() => {
         document.documentElement.style.setProperty(
@@ -439,62 +562,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             );
                         }
                         if (link.section === "calendars" && hasFullAccess) {
-                            // Two-level dropdown state
-                            const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
-                            const [openCalendar, setOpenCalendar] = useState(false);
-                            const [openAnalysis, setOpenAnalysis] = useState(false);
-                            // Keep open state in sync with route
-                            useEffect(() => {
-                                const currentPath = router.asPath?.split("?")[0] || router.pathname;
-                                setOpenAnalyticsHub(
-                                    ["/ticket-calendar", "/ticket-calendar-l2", "/l1-analysis", "/l2-analysis"].includes(currentPath)
-                                );
-                                setOpenCalendar(["/ticket-calendar", "/ticket-calendar-l2"].includes(currentPath));
-                                setOpenAnalysis(["/l1-analysis", "/l2-analysis"].includes(currentPath));
-                            }, [router.asPath, router.pathname]);
                             return (
-                                <div key={link.href} className={styles["side-nav-group"]}>
-                                    <button
-                                        type="button"
-                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
-                                        aria-expanded={openAnalyticsHub}
-                                        title={isSidebarCollapsed ? "Analytics Hub" : undefined}
-                                        onClick={() => setOpenAnalyticsHub((v) => !v)}
-                                    >
-                                        <FiCalendar className={styles["side-nav-icon"]} />
-                                        <span className={styles["side-nav-label"]}>Analytics Hub</span>
-                                        <FiChevronDown className={`${styles["department-chevron"]} ${openAnalyticsHub ? styles["department-chevron-open"] : ""}`} />
-                                    </button>
-                                    <div className={`${styles["side-subnav"]} ${openAnalyticsHub ? styles["side-subnav-open"] : ""}`}>
-                                        {analyticsHubLinks.map((group) => (
-                                            <div key={group.subheading} className={styles["side-subnav-group"]}>
-                                                <button
-                                                    type="button"
-                                                    className={styles["side-subnav-heading"]}
-                                                    aria-expanded={group.key === "calendar" ? openCalendar : openAnalysis}
-                                                    onClick={() => {
-                                                        if (group.key === "calendar") setOpenCalendar((v) => !v);
-                                                        if (group.key === "analysis") setOpenAnalysis((v) => !v);
-                                                    }}
-                                                >
-                                                    {group.subheading}
-                                                    <FiChevronDown className={`${styles["department-chevron"]} ${(group.key === "calendar" ? openCalendar : openAnalysis) ? styles["department-chevron-open"] : ""}`} style={{marginLeft: 6}} />
-                                                </button>
-                                                <div style={{ display: (group.key === "calendar" ? openCalendar : openAnalysis) ? 'block' : 'none', marginLeft: 8 }}>
-                                                    {group.children.map((item) => (
-                                                        <Link
-                                                            key={item.href}
-                                                            href={item.href}
-                                                            className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
-                                                        >
-                                                            {item.label}
-                                                        </Link>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                <AnalyticsHubNavItem
+                                    key={link.href}
+                                    linkClassName={linkClassName}
+                                    isSidebarCollapsed={isSidebarCollapsed}
+                                    isActiveLink={isActiveLink}
+                                />
                             );
                         }
 

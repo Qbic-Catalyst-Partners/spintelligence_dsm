@@ -204,6 +204,18 @@ const authSlice = createSlice({
             clearLegacyStoredAuth();
             state.isHydrated = true;
         },
+        setAuthUser: (state, action) => {
+            const nextUser = normalizeUser({
+                ...(state.user || {}),
+                ...(action.payload || {}),
+            });
+            state.user = nextUser;
+
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(nextUser));
+                sessionStorage.setItem(AUTH_USER_ID_STORAGE_KEY, String(getUserStorageId(nextUser) || ''));
+            }
+        },
         clearError: (state) => {
             state.error = null;
         }
@@ -237,5 +249,5 @@ const authSlice = createSlice({
     },
 });
 
-export const { logout, hydrateAuthFromStorage, clearError } = authSlice.actions;
+export const { logout, hydrateAuthFromStorage, setAuthUser, clearError } = authSlice.actions;
 export default authSlice.reducer;

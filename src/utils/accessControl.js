@@ -6,7 +6,7 @@ const normalizeName = (value) =>
     .replace(/\s+/g, " ")
     .replace(/-/g, " ");
 
-const FULL_ACCESS_EMPLOYEE_IDS = ["EMP001"].map((value) => normalizeName(value));
+const FULL_ACCESS_EMPLOYEE_IDS = ["Admin001"].map((value) => normalizeName(value));
 
 const getEmployeeKey = (user) =>
   normalizeName(user?.employee_id || user?.employeeId || user?.emp_id || "");

@@ -261,7 +261,7 @@ function SettingsDashboardBuilder() {
     return (
       <div className={styles.dashboardMain}>
         <section className={styles.builderHeader}><h1 className={styles.kicker}>Dashboard Builder</h1></section>
-        <p className={styles.builderUserMeta}>Only EMP001 can customize user dashboards.</p>
+        <p className={styles.builderUserMeta}>Only Admin001 can customize user dashboards.</p>
       </div>
     );
   }
