@@ -4,7 +4,7 @@ import { FiPieChart } from "react-icons/fi";
 
 import apiConfig from "@/apis/apiConfig";
 import styles from "@/styles/departmentDirectory.module.css";
-import { isFullAccessUser } from "@/utils/accessControl";
+import { isDashboardManagerUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 
 const DASHBOARD_SELECTION_STORAGE_KEY = "spintelligenceDashboardSelection";
@@ -12,6 +12,17 @@ const DASHBOARD_SELECTION_STORAGE_KEY = "spintelligenceDashboardSelection";
 const trendModes = ["1D", "1W", "1M", "1Y"];
 const modeMultipliers = { "1D": 0.72, "1W": 0.9, "1M": 1, "1Y": 1.18 };
 const DASHBOARD_FETCH_DEBOUNCE_MS = 250;
+const timelineToPeriod = {
+  daily: "1D",
+  weekly: "1W",
+  monthly: "1M",
+};
+const normalizeRoleKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+const isExcludedRole = (role) => normalizeRoleKey(role).includes("somplex");
 
 const parseWidgetEnabled = (value) => {
   if (typeof value === "boolean") return value;
@@ -49,7 +60,7 @@ function HomeDashboard() {
   const user = useSelector((state) => state.auth?.user);
   const fullName = user?.full_name || user?.fullName || user?.name || "User";
   const dashboardOwnerUserId = useMemo(() => getDashboardOwnerUserId(user), [user]);
-  const isDashboardAdmin = useMemo(() => isFullAccessUser(user), [user]);
+  const isDashboardAdmin = useMemo(() => isDashboardManagerUser(user), [user]);
 
   const [dashboardRoles, setDashboardRoles] = useState([]);
   const [dashboardUsers, setDashboardUsers] = useState([]);
@@ -105,6 +116,15 @@ function HomeDashboard() {
     }
   };
 
+  const fetchMyDashboardWidgets = async () => {
+    try {
+      return await apiConfig.get("/api/dashboard/my-widgets", {}, { skipGlobalErrorModal: true });
+    } catch (error) {
+      if (error?.response?.status !== 404) throw error;
+      return apiConfig.get("/api/dashboard/dashbuilder/my-widgets", {}, { skipGlobalErrorModal: true });
+    }
+  };
+
   const selectedDashboardUserIdNumber = useMemo(() => {
     const id = Number(selectedDashboardUserId);
     return Number.isInteger(id) && id > 0 ? id : null;
@@ -112,22 +132,55 @@ function HomeDashboard() {
 
   const activeDashboardUserId =
     isDashboardAdmin && selectedDashboardUserIdNumber ? selectedDashboardUserIdNumber : dashboardOwnerUserId;
+  const isViewingOwnDashboard = !activeDashboardUserId || activeDashboardUserId === dashboardOwnerUserId;
 
   const normalizedWidgets = useMemo(
     () =>
-      (Array.isArray(widgets) ? widgets : []).map((widget, index) => ({
-        id: widget?.id || `widget-${index + 1}`,
-        enabled: parseWidgetEnabled(widget?.enabled),
-        order: Number.isInteger(widget?.order) ? widget.order : index + 1,
-        department: widget?.department || "Quality Control",
-        sub_department: widget?.sub_department || "Mixing",
-        input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
-        raw_input_field: String(widget?.input_field || widget?.field_name || "SCI"),
-        input_field: normalizeInputFieldKey(widget?.input_field || widget?.field_name || "SCI"),
-        visualization_type:
-          widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
-        chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
-      })),
+      (Array.isArray(widgets) ? widgets : []).flatMap((widget, index) => {
+        const rawInputField = String(widget?.input_field || widget?.field_name || "SCI");
+        const normalizedRaw = rawInputField.toLowerCase();
+        const isTicketValuesWidget =
+          String(widget?.department || "").trim().toLowerCase() === "ticketing" &&
+          String(widget?.screen_name || widget?.input_screen || "").trim().toLowerCase() === "ticket values";
+
+        if (isTicketValuesWidget && (normalizedRaw.includes("_|_") || normalizedRaw.includes("|"))) {
+          const parts = rawInputField
+            .split("_|_")
+            .flatMap((part) => part.split("|"))
+            .map((part) => String(part || "").trim())
+            .filter(Boolean);
+
+          if (parts.length > 1) {
+            return parts.map((part, partIndex) => ({
+              id: `${widget?.id || `widget-${index + 1}`}-${partIndex + 1}`,
+              enabled: parseWidgetEnabled(widget?.enabled),
+              order: Number.isInteger(widget?.order) ? widget.order + partIndex : index + 1 + partIndex,
+              department: widget?.department || "Quality Control",
+              sub_department: widget?.sub_department || "Mixing",
+              input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
+              raw_input_field: part,
+              input_field: normalizeInputFieldKey(part),
+              visualization_type:
+                widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
+              chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
+            }));
+          }
+        }
+
+        return [{
+          id: widget?.id || `widget-${index + 1}`,
+          enabled: parseWidgetEnabled(widget?.enabled),
+          order: Number.isInteger(widget?.order) ? widget.order : index + 1,
+          department: widget?.department || "Quality Control",
+          sub_department: widget?.sub_department || "Mixing",
+          input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
+          raw_input_field: rawInputField,
+          input_field: normalizeInputFieldKey(rawInputField),
+          visualization_type:
+            widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
+          chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
+        }];
+      }),
     [widgets]
   );
 
@@ -177,7 +230,7 @@ function HomeDashboard() {
 
         const roles = (Array.isArray(rolesResponse?.data?.roles) ? rolesResponse.data.roles : Array.isArray(rolesResponse?.data) ? rolesResponse.data : [])
           .map((r) => String(r?.role_name || r?.name || r?.role || "").trim())
-          .filter(Boolean);
+          .filter((role) => role && !isExcludedRole(role));
 
         const allowed = new Set(roles);
         const users = (Array.isArray(usersResponse?.data?.users) ? usersResponse.data.users : Array.isArray(usersResponse?.data) ? usersResponse.data : [])
@@ -209,10 +262,11 @@ function HomeDashboard() {
     };
   }, [isDashboardAdmin]);
 
-  const dashboardUsersForSelectedRole = useMemo(
-    () => (selectedDashboardRole ? dashboardUsers.filter((u) => u.role === selectedDashboardRole) : dashboardUsers),
-    [dashboardUsers, selectedDashboardRole]
-  );
+  const dashboardUsersForSelectedRole = useMemo(() => {
+    if (!selectedDashboardRole) return dashboardUsers;
+    const roleMatchedUsers = dashboardUsers.filter((u) => u.role === selectedDashboardRole);
+    return roleMatchedUsers.length ? roleMatchedUsers : dashboardUsers;
+  }, [dashboardUsers, selectedDashboardRole]);
 
   useEffect(() => {
     if (!isDashboardAdmin) return;
@@ -239,7 +293,9 @@ function HomeDashboard() {
       }
       try {
         setLoading(true);
-        const response = await getWithBuilderFallback(`widgets/${activeDashboardUserId}`);
+        const response = isViewingOwnDashboard
+          ? await fetchMyDashboardWidgets()
+          : await getWithBuilderFallback(`widgets/${activeDashboardUserId}`);
         if (!isMounted) return;
         setWidgets(Array.isArray(response?.data?.widgets) ? response.data.widgets : []);
         setWidgetData({});
@@ -247,6 +303,24 @@ function HomeDashboard() {
         setErrorMessage("");
       } catch (error) {
         if (!isMounted) return;
+        const deniedOwnConfig =
+          error?.response?.status === 403 &&
+          String(error?.response?.data?.message || "").toLowerCase().includes("own dashboard configuration");
+
+        if (deniedOwnConfig && isDashboardAdmin) {
+          try {
+            const fallbackResponse = await fetchMyDashboardWidgets();
+            if (!isMounted) return;
+            setWidgets(Array.isArray(fallbackResponse?.data?.widgets) ? fallbackResponse.data.widgets : []);
+            setWidgetData({});
+            widgetDataCacheRef.current.clear();
+            setErrorMessage("Selected user dashboard endpoint is restricted by API. Showing admin baseline dashboard.");
+            return;
+          } catch {
+            // fall through to generic error message below
+          }
+        }
+
         setWidgets([]);
         setErrorMessage(error?.response?.data?.message || "Unable to load dashboard widgets.");
       } finally {
@@ -258,7 +332,7 @@ function HomeDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [activeDashboardUserId]);
+  }, [activeDashboardUserId, isDashboardAdmin, isViewingOwnDashboard]);
 
   useEffect(() => {
     setCardModes((current) => averageWidgets.reduce((next, w) => ({ ...next, [w.id]: current[w.id] || "1M" }), {}));
@@ -286,9 +360,12 @@ function HomeDashboard() {
       }
 
       const pendingRequests = visibleWidgets.map((widget) => {
-        const period = widget.visualization_type === "average_value_card" || widget.chart_type === "value"
-          ? cardModes[widget.id] || "1M"
-          : trendModesById[widget.id] || "1M";
+        const isTicket = isTicketWidget(widget);
+        const period = isTicket
+          ? (timelineToPeriod[String(widget.sub_department || "").trim().toLowerCase()] || "1M")
+          : widget.visualization_type === "average_value_card" || widget.chart_type === "value"
+            ? cardModes[widget.id] || "1M"
+            : trendModesById[widget.id] || "1M";
 
         const key = [widget.department, widget.sub_department, widget.input_screen, widget.input_field, period].join("::");
         const cached = widgetDataCacheRef.current.get(key);
@@ -401,20 +478,8 @@ function HomeDashboard() {
                   </div>
                   <span className={styles.referenceStatIcon}><FiPieChart /></span>
                 </div>
-                <div className={styles.referenceStatBottom}>
-                  <strong>{formatValue(widgetData?.[card.id]?.average_value, cardModes[card.id])}</strong>
-                  <div className={styles.referenceMiniToggle}>
-                    {trendModes.map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
-                        onClick={() => setCardModes((current) => ({ ...current, [card.id]: mode }))}
-                      >
-                        {mode}
-                      </button>
-                    ))}
-                  </div>
+              <div className={styles.referenceStatBottom}>
+                  <strong>{formatValue(widgetData?.[card.id]?.average_value, "1M")}</strong>
                 </div>
               </article>
             ))}
@@ -468,7 +533,7 @@ function HomeDashboard() {
       </section>
 
       {loading ? <p>Loading dashboard...</p> : null}
-      {!loading && !averageWidgets.length && !performanceWidgets.length ? <p>No dashboard widgets configured.</p> : null}
+      {!loading && !averageWidgets.length && !performanceWidgets.length && !ticketWidgets.length ? <p>No dashboard widgets configured.</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
     </div>
   );

@@ -1,6 +1,7 @@
 
 import React, { useMemo } from "react";
 import { useSelector } from "react-redux";
+import { FiList, FiCheckCircle, FiClock, FiAlertCircle } from "react-icons/fi";
 import styles from "@/styles/ticketCalendar.module.css";
 import { applyStoredTicketStatuses } from "@/utils/ticketStatus";
 
@@ -175,12 +176,11 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           <p>Track team performance and ticket progress</p>
         </div>
         <h3 className={styles.sectionTitle}>Insights</h3>
-        <div className={`${styles.cards} ${isL2 ? styles.l2Cards : ""}`}>
+        <div className={styles.cards}>
           <article className={styles.card}><h4>Total Tasks</h4><strong>{analytics.total}</strong></article>
-          <article className={styles.card}><h4>{isL2 ? "Approved" : "Completed"}</h4><strong>{isL2 ? analytics.approved : analytics.completed}</strong></article>
-          {isL2 ? <article className={styles.card}><h4>Rejected</h4><strong>{analytics.rejected}</strong></article> : null}
+          <article className={styles.card}><h4>Completed</h4><strong>{analytics.completed}</strong></article>
           <article className={styles.card}><h4>Pending</h4><strong>{analytics.pending}</strong></article>
-          <article className={styles.card}><h4>Overdue{isL2 ? "" : " (frequency)"}</h4><strong>{analytics.overdue}</strong></article>
+          <article className={styles.card}><h4>Overdue (frequency)</h4><strong>{analytics.overdue}</strong></article>
         </div>
         <h3 className={styles.sectionTitle}>Analytics</h3>
         <div className={styles.tableWrap}>
