@@ -46,6 +46,11 @@ const normalizeStatus = (status) => {
   if (value === "submit" || value === "approved" || value === "closed") return "Completed";
   return "Not Submitted";
 };
+const STATUS_PRIORITY = {
+  "Not Submitted": 1,
+  Scheduled: 2,
+  Completed: 3,
+};
 const getScheduleStatusByDate = (eventDate, rawStatus) => {
   const explicitStatus = normalizeStatus(rawStatus);
   if (explicitStatus === "Completed") return "Completed";
@@ -90,6 +95,20 @@ const normalizeNameList = (value) => {
   if (typeof value === "string") return value.split(",").map((item) => item.trim()).filter(Boolean);
   return [];
 };
+const getTaskNameFromRecord = (item) => {
+  const candidates = [
+    item?.task_name,
+    item?.task_title,
+    item?.input_field_name,
+    item?.input_field,
+    item?.field_name,
+    item?.notebook_name,
+    item?.screen_name,
+    item?.input_screen,
+  ];
+  const found = candidates.find((value) => String(value || "").trim());
+  return String(found || "Task").trim();
+};
 
 export default function TicketCalendarPage({ mode = "L1" }) {
   const dispatch = useDispatch();
@@ -101,6 +120,8 @@ export default function TicketCalendarPage({ mode = "L1" }) {
   const [eventType, setEventType] = useState("Ticket");
   const [cursorDate, setCursorDate] = useState(new Date());
   const [employee, setEmployee] = useState(EMPLOYEE_DEFAULT);
+  const [hoveredEvent, setHoveredEvent] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
 
   useEffect(() => {
     dispatch(fetchUsers());
@@ -152,7 +173,7 @@ export default function TicketCalendarPage({ mode = "L1" }) {
       const startDate = Number.isNaN(baseDate.getTime()) ? new Date() : baseDate;
       const frequencyDays = toPositiveInt(item?.frequency, 1);
       const occurrences = toPositiveInt(item?.occurrences, 1);
-      const notebook = String(item?.screen_name || item?.input_screen || "Notebook").trim();
+      const taskName = getTaskNameFromRecord(item);
       const subDepartment = String(item?.sub_department || item?.subDepartment || "Sub-Department").trim();
       const department = String(item?.department || "Department").trim();
 
@@ -173,10 +194,10 @@ export default function TicketCalendarPage({ mode = "L1" }) {
             status: getScheduleStatusByDate(safeEventDate, rawStatus),
             user_name: employeeName,
             employee_id: employeeId,
-            title: `${subDepartment} - ${notebook}`,
+            title: taskName,
             department,
             sub_department: subDepartment,
-            notebook,
+            notebook: taskName,
           });
         }
       });
@@ -241,6 +262,8 @@ export default function TicketCalendarPage({ mode = "L1" }) {
     },
     [employee, modeTickets, userIdByName]
   );
+  const selectedEmployee = useMemo(() => parseEmployeeSelection(employee), [employee]);
+  const selectedEmployeeName = String(selectedEmployee?.name || "").trim().toLowerCase();
 
   const ticketMap = useMemo(() => {
     const map = new Map();
@@ -251,8 +274,12 @@ export default function TicketCalendarPage({ mode = "L1" }) {
       const existing = map.get(key) || [];
       existing.push({
         id: t.ticket_id,
+        title: String(t?.title || t?.input_screen || t?.screen_name || "Ticket").trim(),
         employee: t.user_name || "-",
         status: normalizeStatus(t.status),
+        department: t.department || "-",
+        sub_department: t.sub_department || "-",
+        date: key,
       });
       map.set(key, existing);
     });
@@ -266,10 +293,11 @@ export default function TicketCalendarPage({ mode = "L1" }) {
       if (Number.isNaN(date.getTime())) return;
       const dayKey = ymd(date);
       const employeeName = String(t.user_name || "-").trim() || "-";
-      const groupingKey = `${dayKey}::${employeeName}`;
+      const taskTitle = String(t.title || t.notebook || t.input_screen || t.screen_name || "Task").trim();
+      const groupingKey = `${dayKey}::${employeeName}::${taskTitle}`;
       const grouped = map.get(groupingKey) || {
-        id: `TASK-${dayKey}-${employeeName}`,
-        title: "Daily Task",
+        id: `TASK-${dayKey}-${employeeName}-${taskTitle}`,
+        title: taskTitle,
         employee: employeeName,
         status: "Scheduled",
         total: 0,
@@ -294,6 +322,7 @@ export default function TicketCalendarPage({ mode = "L1" }) {
           title: `${task.title} (${i + 1}/${task.total})`,
           employee: task.employee,
           status: task.status,
+          date: dayKey,
         });
       }
       byDay.set(dayKey, existing);
@@ -336,8 +365,31 @@ export default function TicketCalendarPage({ mode = "L1" }) {
     });
   }, [cursorDate]);
 
-  const activeMap = eventType === "Daily Task" ? dailyTaskMap : ticketMap;
+  const activeMap = useMemo(() => {
+    const source = eventType === "Daily Task" ? dailyTaskMap : ticketMap;
+    const sorted = new Map();
+
+    source.forEach((events, key) => {
+      const next = [...(Array.isArray(events) ? events : [])].sort((a, b) => {
+        const aName = String(a?.employee || "").trim().toLowerCase();
+        const bName = String(b?.employee || "").trim().toLowerCase();
+        const aPriority = STATUS_PRIORITY[String(a?.status || "").trim()] || 99;
+        const bPriority = STATUS_PRIORITY[String(b?.status || "").trim()] || 99;
+
+        const aSelected = selectedEmployeeName && aName === selectedEmployeeName ? 0 : 1;
+        const bSelected = selectedEmployeeName && bName === selectedEmployeeName ? 0 : 1;
+        if (aSelected !== bSelected) return aSelected - bSelected;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return String(a?.title || "").localeCompare(String(b?.title || ""));
+      });
+
+      sorted.set(key, next);
+    });
+
+    return sorted;
+  }, [dailyTaskMap, eventType, selectedEmployeeName, ticketMap]);
   const currentDayEvents = activeMap.get(ymd(cursorDate)) || [];
+  const detailEvent = selectedEvent || hoveredEvent;
   const analytics = useMemo(() => {
     const now = Date.now();
     const rowsMap = new Map();
@@ -447,12 +499,17 @@ export default function TicketCalendarPage({ mode = "L1" }) {
           <h3>{cursorDate.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</h3>
           <div className={styles.dailyList}>
             {currentDayEvents.length === 0 ? <p>No tasks for this employee/day.</p> : null}
-            {currentDayEvents.map((e) => (
-              <article key={`${e.id}-${e.status}`} className={`${styles.dailyItem} ${styles[e.status.replace(/\s+/g, "")]}`}>
+            {currentDayEvents.map((e, idx) => (
+              <article
+                key={`${ymd(cursorDate)}-${e.id}-${e.status}-${idx}`}
+                className={`${styles.dailyItem} ${styles[e.status.replace(/\s+/g, "")]}`}
+                onMouseEnter={() => setHoveredEvent({ ...e, date: ymd(cursorDate) })}
+                onMouseLeave={() => setHoveredEvent(null)}
+                onClick={() => setSelectedEvent({ ...e, date: ymd(cursorDate) })}
+              >
                 <strong>{e.title || "Task"}</strong>
-                {e.title ? <span>{e.title}</span> : null}
                 <span>{e.employee}</span>
-                <span>{e.status}</span>
+                <span className={styles.dailyStatusText}>{e.status}</span>
               </article>
             ))}
           </div>
@@ -480,15 +537,33 @@ export default function TicketCalendarPage({ mode = "L1" }) {
                 >
                   <div className={styles.dayNumber}>{date.getDate()}</div>
                   <div className={styles.events}>
-                    {events.slice(0, view === "Weekly" ? 6 : 3).map((e) => (
+                    {events.slice(0, view === "Weekly" ? 6 : 3).map((e, idx) => (
                       <div
-                        key={`${e.id}-${e.status}`}
-                        className={`${styles.event} ${styles[e.status.replace(/\s+/g, "")]}`}
+                        key={`${key}-${e.id}-${e.status}-${idx}`}
+                        className={`${styles.event} ${styles[e.status.replace(/\s+/g, "")]} ${
+                          selectedEvent?.id === e.id ? styles.eventSelected : ""
+                        }`}
                         title={`${e.title || "Task"} - ${e.employee}`}
+                        onMouseEnter={() => setHoveredEvent({ ...e, date: key })}
+                        onMouseLeave={() => setHoveredEvent(null)}
+                        onClick={() => setSelectedEvent({ ...e, date: key })}
                       >
-                        {e.title || "Task"} - {e.employee}
+                        <span className={styles.eventTitle}>{e.title || "Task"}</span>
+                        <span className={styles.eventMeta}>{e.employee}</span>
                       </div>
                     ))}
+                    {events.length > (view === "Weekly" ? 6 : 3) ? (
+                      <button
+                        type="button"
+                        className={styles.moreEventsButton}
+                        onClick={() => {
+                          setCursorDate(date);
+                          setView("Daily");
+                        }}
+                      >
+                        +{events.length - (view === "Weekly" ? 6 : 3)} more
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -496,6 +571,23 @@ export default function TicketCalendarPage({ mode = "L1" }) {
           </div>
         </div>
       )}
+
+      {detailEvent ? (
+        <div className={styles.hoverDetailCard}>
+          <div className={styles.hoverDetailHead}>
+            <h4>{detailEvent.title || "Task Detail"}</h4>
+            {selectedEvent ? (
+              <button type="button" onClick={() => setSelectedEvent(null)}>Close</button>
+            ) : null}
+          </div>
+          <p><strong>ID:</strong> {detailEvent.id || "-"}</p>
+          <p><strong>Employee:</strong> {detailEvent.employee || "-"}</p>
+          <p><strong>Status:</strong> {detailEvent.status || "-"}</p>
+          <p><strong>Date:</strong> {detailEvent.date || "-"}</p>
+          <p><strong>Department:</strong> {detailEvent.department || "-"}</p>
+          <p><strong>Sub-Department:</strong> {detailEvent.sub_department || "-"}</p>
+        </div>
+      ) : null}
 
       <div className={styles.legend}>
         <span><i className={`${styles.dot} ${styles.Completed}`}></i>Completed</span>
