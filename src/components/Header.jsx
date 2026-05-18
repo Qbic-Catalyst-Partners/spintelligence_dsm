@@ -22,7 +22,7 @@ import {
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { logout, setAuthUser } from "../store/slices/authSlice";
-import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
+import { hasAnyQualityControlAccess, hasSubDepartmentAccess, isFullAccessUser, isSupervisorNavUser, routeDepartmentMap } from "@/utils/accessControl";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -93,6 +93,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isCalendarMenuOpen, setIsCalendarMenuOpen] = useState(false);
     const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+    const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
+    const [openCalendar, setOpenCalendar] = useState(true);
+    const [openAnalysis, setOpenAnalysis] = useState(false);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
@@ -273,6 +276,20 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         setIsCalendarMenuOpen(
             currentPath === "/ticket-calendar" ||
             currentPath === "/ticket-calendar-l2" ||
+            currentPath === "/l1-analysis" ||
+            currentPath === "/l2-analysis"
+        );
+        setOpenAnalyticsHub(
+            currentPath === "/ticket-calendar" ||
+            currentPath === "/ticket-calendar-l2" ||
+            currentPath === "/l1-analysis" ||
+            currentPath === "/l2-analysis"
+        );
+        setOpenCalendar(
+            currentPath === "/ticket-calendar" ||
+            currentPath === "/ticket-calendar-l2"
+        );
+        setOpenAnalysis(
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );

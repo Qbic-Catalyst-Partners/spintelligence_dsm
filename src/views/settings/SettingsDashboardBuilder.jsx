@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { FiGrid, FiPlus, FiServer, FiTrash2 } from "react-icons/fi";
 
-import apiConfig from "@/apis/apiConfig";
-import { isFullAccessUser } from "@/utils/accessControl";
+import { fetchBuilderOptions, fetchMyWidgets, fetchUserWidgets, saveMyWidgets, saveUserWidgets } from "@/apis/dashboardBuilderApi";
+import { isDashboardManagerUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
+import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { departmentDirectory } from "@/views/departments/data";
 
 const DASHBOARD_BUILDER_SELECTION_STORAGE_KEY = "spintelligenceDashboardBuilderSelection";
@@ -12,7 +13,7 @@ import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import styles from "@/styles/departmentDirectory.module.css";
 
-const BUILDER_SECTIONS = { average: "average", performance: "performance" };
+const BUILDER_SECTIONS = { average: "average", performance: "performance", ticketing: "ticketing" };
 const builderVisualizationOptions = [
   { key: "value", label: "Average Value Card", section: BUILDER_SECTIONS.average },
   { key: "line", label: "Performance Trends", section: BUILDER_SECTIONS.performance },
@@ -31,10 +32,24 @@ const normalizeInputFieldKey = (value) => String(value || "").trim().toLowerCase
 const visualizationTypeToChartType = (visualizationType) =>
   String(visualizationType || "").toLowerCase().includes("average") ? "value" : "line";
 const chartTypeToVisualizationType = (chartType) => (chartType === "value" ? "average_value_card" : "line_chart");
+const TICKET_OPTION_LABELS = {
+  total: "Total Tickets",
+  open: "Open Tickets",
+  reopened: "Reopened Tickets",
+  closed: "Closed Tickets",
+  pending: "Pending Tickets",
+  overdue: "Overdue Tickets",
+};
+const normalizeRoleKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+const isExcludedRole = (role) => normalizeRoleKey(role).includes("somplex");
 
 function SettingsDashboardBuilder() {
   const authUser = useSelector((state) => state.auth?.user);
-  const canCustomizeDashboards = useMemo(() => isFullAccessUser(authUser), [authUser]);
+  const canCustomizeDashboards = useMemo(() => isDashboardManagerUser(authUser), [authUser]);
   const dashboardOwnerUserId = useMemo(() => getDashboardOwnerUserId(authUser), [authUser]);
 
   const [widgets, setWidgets] = useState([]);
@@ -131,11 +146,14 @@ function SettingsDashboardBuilder() {
     const loadOptions = async () => {
       if (!canCustomizeDashboards) return;
       try {
-        const response = await apiConfig.get("/api/dashboard/builder/options", {}, { skipGlobalErrorModal: true });
+        const response = await fetchBuilderOptions();
         if (!isMounted) return;
-        const roles = Array.isArray(response?.data?.roles) ? response.data.roles : [];
+        const roles = (Array.isArray(response?.data?.roles) ? response.data.roles : [])
+          .map((role) => String(role || "").trim())
+          .filter((role) => role && !isExcludedRole(role));
         const users = Array.isArray(response?.data?.users) ? response.data.users : [];
-        setBuilderRoles(roles);
+        const dedupedRoles = Array.from(new Set(roles));
+        setBuilderRoles(dedupedRoles);
         setBuilderUsers(
           users
             .map((u) => ({ id: String(u?.user_id || u?.id || ""), name: u?.user_name || u?.full_name || "", role: u?.role || "" }))
@@ -153,10 +171,11 @@ function SettingsDashboardBuilder() {
     };
   }, [canCustomizeDashboards]);
 
-  const filteredUsers = useMemo(
-    () => (selectedRole ? builderUsers.filter((u) => u.role === selectedRole) : builderUsers),
-    [builderUsers, selectedRole]
-  );
+  const filteredUsers = useMemo(() => {
+    if (!selectedRole) return builderUsers;
+    const roleMatchedUsers = builderUsers.filter((u) => u.role === selectedRole);
+    return roleMatchedUsers.length ? roleMatchedUsers : builderUsers;
+  }, [builderUsers, selectedRole]);
   const ownBuilderUser = useMemo(
     () => builderUsers.find((u) => Number(u.id) === dashboardOwnerUserId),
     [builderUsers, dashboardOwnerUserId]
@@ -187,6 +206,7 @@ function SettingsDashboardBuilder() {
   }, [selectedBuilderUserId]);
 
   const activeUserId = selectedBuilderUserIdNumber || dashboardOwnerUserId;
+  const isEditingOwnDashboard = !activeUserId || activeUserId === dashboardOwnerUserId;
 
   const normalizeWidgets = (nextWidgets) =>
     (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => {
@@ -200,7 +220,12 @@ function SettingsDashboardBuilder() {
         screen_name: widget?.screen_name || widget?.input_screen || "",
         field_name: widget?.field_name || widget?.input_field || "",
         chart_type: chartType,
-        builder_section: chartType === "value" ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance,
+        builder_section:
+          widget?.department === "Ticketing"
+            ? BUILDER_SECTIONS.ticketing
+            : chartType === "value"
+              ? BUILDER_SECTIONS.average
+              : BUILDER_SECTIONS.performance,
       };
     });
 
@@ -213,7 +238,9 @@ function SettingsDashboardBuilder() {
       }
       try {
         setLoading(true);
-        const response = await apiConfig.get(`/api/dashboard/builder/widgets/${activeUserId}`);
+        const response = isEditingOwnDashboard
+          ? await fetchMyWidgets()
+          : await fetchUserWidgets(activeUserId);
         if (!isMounted) return;
         setWidgets(normalizeWidgets(response?.data?.widgets));
         setSaveMessage("");
@@ -223,10 +250,11 @@ function SettingsDashboardBuilder() {
           error?.response?.status === 403 &&
           String(error?.response?.data?.message || "").toLowerCase().includes("own dashboard configuration");
 
-        if (deniedOwnConfig && dashboardOwnerUserId && activeUserId !== dashboardOwnerUserId) {
-          setSaveMessage(
-            "You do not have access to modify the selected user's dashboard. Please select a different role or user."
-          );
+        if (deniedOwnConfig && canCustomizeDashboards && !isEditingOwnDashboard) {
+          const fallback = await fetchMyWidgets();
+          if (!isMounted) return;
+          setWidgets(normalizeWidgets(fallback?.data?.widgets));
+          setSaveMessage("Selected user dashboard endpoint is restricted by API. Showing editable admin baseline config.");
           return;
         }
 
@@ -240,14 +268,21 @@ function SettingsDashboardBuilder() {
     return () => {
       isMounted = false;
     };
-  }, [activeUserId, canCustomizeDashboards, dashboardOwnerUserId, ownBuilderUser, selectedRole]);
+  }, [activeUserId, canCustomizeDashboards, dashboardOwnerUserId, isEditingOwnDashboard, ownBuilderUser, selectedRole]);
 
   const builderRows = widgets.map((widget, index) => ({
     widget,
     index,
-    section: widget.builder_section || (widget.chart_type === "value" ? BUILDER_SECTIONS.average : BUILDER_SECTIONS.performance),
+    section:
+      widget.builder_section ||
+      (widget.department === "Ticketing"
+        ? BUILDER_SECTIONS.ticketing
+        : widget.chart_type === "value"
+          ? BUILDER_SECTIONS.average
+          : BUILDER_SECTIONS.performance),
   }));
   const averageRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.average);
+  const ticketingRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.ticketing);
   const performanceRows = builderRows.filter(({ section }) => section === BUILDER_SECTIONS.performance);
 
   const handleToggle = (widgetIndex) => {
@@ -271,6 +306,12 @@ function SettingsDashboardBuilder() {
   };
 
   const handleAddTicketCard = () => {
+    const enabledTicketLabels = Object.entries(ticketOptions)
+      .filter(([, isEnabled]) => isEnabled)
+      .map(([key]) => TICKET_OPTION_LABELS[key])
+      .filter(Boolean);
+    const ticketValuesLabel = enabledTicketLabels.length ? enabledTicketLabels.join("_|_") : "Ticketing Values";
+
     const ticketWidget = {
       id: `ticket-${Date.now()}`,
       enabled: true,
@@ -278,9 +319,9 @@ function SettingsDashboardBuilder() {
       department: "Ticketing",
       sub_department: selectedTicketTimeline,
       screen_name: "Ticket Values",
-      field_name: "Ticket Values",
+      field_name: ticketValuesLabel,
       chart_type: "value",
-      builder_section: BUILDER_SECTIONS.average,
+      builder_section: BUILDER_SECTIONS.ticketing,
       ticket_options: {
         ...ticketOptions,
         timeline: selectedTicketTimeline,
@@ -294,7 +335,8 @@ function SettingsDashboardBuilder() {
     });
 
     setIsAddTicketModalOpen(false);
-    setSaveMessage("Ticket card settings saved.");
+    emitGlobalSuccessModal({ message: "Data Submitted" });
+    setSaveMessage("Data submitted successfully.");
   };
 
   const handleAddWidget = () => {
@@ -334,8 +376,27 @@ function SettingsDashboardBuilder() {
         enabled: widget.enabled !== false,
         order: index + 1,
       }));
-      await apiConfig.post(`/api/dashboard/builder/widgets/${activeUserId}`, { widgets: payloadWidgets });
-      setSaveMessage("Dashboard widgets saved successfully.");
+      if (isEditingOwnDashboard) {
+        await saveMyWidgets(payloadWidgets);
+      } else {
+        try {
+          await saveUserWidgets(activeUserId, payloadWidgets);
+        } catch (error) {
+          const deniedOwnConfig =
+            error?.response?.status === 403 &&
+            String(error?.response?.data?.message || "").toLowerCase().includes("own dashboard configuration");
+
+          if (!deniedOwnConfig || !canCustomizeDashboards) {
+            throw error;
+          }
+
+          await saveMyWidgets(payloadWidgets);
+          setSaveMessage("Selected user save endpoint is restricted by API. Saved as admin baseline config.");
+          return;
+        }
+      }
+      emitGlobalSuccessModal({ message: "Data Submitted" });
+      setSaveMessage("Data submitted successfully.");
     } catch (error) {
       setSaveMessage(error?.response?.data?.message || "Failed to save dashboard widgets.");
     } finally {
@@ -349,7 +410,7 @@ function SettingsDashboardBuilder() {
     return (
       <div className={styles.dashboardMain}>
         <section className={styles.builderHeader}><h1 className={styles.kicker}>Dashboard Builder</h1></section>
-        <p className={styles.builderUserMeta}>Only Admin001 can customize user dashboards.</p>
+        <p className={styles.builderUserMeta}>Only Admin users can customize user dashboards.</p>
       </div>
     );
   }
@@ -374,6 +435,7 @@ function SettingsDashboardBuilder() {
 
       <section className={styles.builderList}>
         <BuilderGroup title="Average Values Card" section={BUILDER_SECTIONS.average} rows={averageRows} handleToggle={handleToggle} handleDelete={handleDelete} />
+        <BuilderGroup title="Ticketing Values" section={BUILDER_SECTIONS.ticketing} rows={ticketingRows} handleToggle={handleToggle} handleDelete={handleDelete} />
         <BuilderGroup title="Performance Trends" section={BUILDER_SECTIONS.performance} rows={performanceRows} handleToggle={handleToggle} handleDelete={handleDelete} />
       </section>
 
