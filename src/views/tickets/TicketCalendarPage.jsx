@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { FiCalendar } from "react-icons/fi";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchOperatorTickets } from "@/store/slices/operatorSlice";
-import { fetchSupervisorTickets } from "@/store/slices/supervisorSlice";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { applyStoredTicketStatuses } from "@/utils/ticketStatus";
+import { fetchSubmissionFrequencyConfigsAPI } from "@/apis/submissionFrequencyApi";
 import styles from "@/styles/ticketCalendar.module.css";
 
 const VIEWS = ["Daily", "Weekly", "Monthly"];
+const EVENT_TYPES = ["Ticket", "Daily Task"];
 const WEEK_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const EMPLOYEE_DEFAULT = "Employee";
 
@@ -46,6 +46,21 @@ const normalizeStatus = (status) => {
   if (value === "submit" || value === "approved" || value === "closed") return "Completed";
   return "Not Submitted";
 };
+const getScheduleStatusByDate = (eventDate, rawStatus) => {
+  const explicitStatus = normalizeStatus(rawStatus);
+  if (explicitStatus === "Completed") return "Completed";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(eventDate);
+  target.setHours(0, 0, 0, 0);
+
+  if (Number.isNaN(target.getTime())) return "Scheduled";
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (target.getTime() === yesterday.getTime()) return "Not Submitted";
+  return "Scheduled";
+};
 
 const ymd = (date) => {
   const y = date.getFullYear();
@@ -59,49 +74,60 @@ const weekStart = (date) => {
   d.setHours(0, 0, 0, 0);
   return d;
 };
+
+const toPositiveInt = (value, fallback = 1) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+};
 const resolveTicketEmpId = (ticket, userIdByName) => {
   const direct = String(getEmpId(ticket) || "").trim().toUpperCase();
   if (direct) return direct;
   const name = String(ticket?.user_name || "").trim().toLowerCase();
   return String(userIdByName.get(name) || "").trim().toUpperCase();
 };
+const normalizeNameList = (value) => {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(",").map((item) => item.trim()).filter(Boolean);
+  return [];
+};
 
 export default function TicketCalendarPage({ mode = "L1" }) {
   const dispatch = useDispatch();
-  const { tickets, loading, error } = useSelector((state) => state.operator) || {};
-  const { tickets: supervisorTickets } = useSelector((state) => state.supervisor) || {};
   const { users } = useSelector((state) => state.users) || {};
+  const [thresholdRecords, setThresholdRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [view, setView] = useState("Monthly");
+  const [eventType, setEventType] = useState("Ticket");
   const [cursorDate, setCursorDate] = useState(new Date());
   const [employee, setEmployee] = useState(EMPLOYEE_DEFAULT);
 
   useEffect(() => {
-    dispatch(fetchOperatorTickets());
-    dispatch(fetchSupervisorTickets());
     dispatch(fetchUsers());
   }, [dispatch]);
 
-
-  const allTickets = useMemo(
-    () => applyStoredTicketStatuses(Array.isArray(tickets) ? tickets : []),
-    [tickets]
-  );
-
-  const supervisorTicketList = useMemo(() => {
-    const raw = Array.isArray(supervisorTickets)
-      ? supervisorTickets
-      : Array.isArray(supervisorTickets?.tickets)
-        ? supervisorTickets.tickets
-        : Array.isArray(supervisorTickets?.data)
-          ? supervisorTickets.data
-          : [];
-    return applyStoredTicketStatuses(raw);
-  }, [supervisorTickets]);
-
-  const combinedTickets = useMemo(
-    () => [...allTickets, ...supervisorTicketList],
-    [allTickets, supervisorTicketList]
-  );
+  useEffect(() => {
+    let mounted = true;
+    const loadThresholds = async () => {
+      setLoading(true);
+      try {
+        const data = await fetchSubmissionFrequencyConfigsAPI();
+        if (!mounted) return;
+        setThresholdRecords(Array.isArray(data) ? data : []);
+        setError("");
+      } catch (err) {
+        if (!mounted) return;
+        setThresholdRecords([]);
+        setError(err?.message || "Unable to load existing threshold data.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    loadThresholds();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const userIdByName = useMemo(
     () =>
       new Map(
@@ -112,12 +138,62 @@ export default function TicketCalendarPage({ mode = "L1" }) {
       ),
     [users]
   );
+  const thresholdTickets = useMemo(() => {
+    const normalized = [];
+
+    thresholdRecords.forEach((item, index) => {
+      const baseId = item?.ticket_id || item?.id || item?._id || `TH-${index + 1}`;
+      const rawStatus = item?.status || (item?.is_active ? "Scheduled" : "Not Submitted");
+      const approvalL1Users = normalizeNameList(item?.approval_l1_name || item?.approval_l1);
+      const approvalL2Users = normalizeNameList(item?.approval_l2_name || item?.approval_l2);
+      const assignedUsers = mode === "L2" ? approvalL2Users : approvalL1Users;
+      const baseDateRaw = item?.created_at || item?.updated_at || item?.date || item?.submitted_at;
+      const baseDate = baseDateRaw ? new Date(baseDateRaw) : new Date();
+      const startDate = Number.isNaN(baseDate.getTime()) ? new Date() : baseDate;
+      const frequencyDays = toPositiveInt(item?.frequency, 1);
+      const occurrences = toPositiveInt(item?.occurrences, 1);
+      const notebook = String(item?.screen_name || item?.input_screen || "Notebook").trim();
+      const subDepartment = String(item?.sub_department || item?.subDepartment || "Sub-Department").trim();
+      const department = String(item?.department || "Department").trim();
+
+      const usersForEvents = assignedUsers.length
+        ? assignedUsers
+        : [String(item?.user_name || item?.employee_name || item?.assigned_to || "-").trim() || "-"];
+
+      usersForEvents.forEach((employeeName, userIndex) => {
+        const employeeId = String(userIdByName.get(String(employeeName).toLowerCase()) || "").trim();
+        for (let occurrence = 0; occurrence < occurrences; occurrence += 1) {
+          const eventDate = new Date(startDate);
+          eventDate.setDate(startDate.getDate() + occurrence * frequencyDays);
+          const safeEventDate = new Date(eventDate);
+          safeEventDate.setHours(12, 0, 0, 0);
+          normalized.push({
+            ticket_id: `${baseId}-${userIndex + 1}-${occurrence + 1}`,
+            created_at: safeEventDate.toISOString(),
+            status: getScheduleStatusByDate(safeEventDate, rawStatus),
+            user_name: employeeName,
+            employee_id: employeeId,
+            title: `${subDepartment} - ${notebook}`,
+            department,
+            sub_department: subDepartment,
+            notebook,
+          });
+        }
+      });
+    });
+
+    return applyStoredTicketStatuses(normalized);
+  }, [thresholdRecords, mode, userIdByName]);
   const modeTickets = useMemo(
     () =>
-      combinedTickets.filter((t) =>
-        isIdByMode(resolveTicketEmpId(t, userIdByName), mode)
-      ),
-    [combinedTickets, mode, userIdByName]
+      thresholdTickets.filter((t) => {
+        const resolvedEmpId = resolveTicketEmpId(t, userIdByName);
+        if (!resolvedEmpId) {
+          return true;
+        }
+        return isIdByMode(resolvedEmpId, mode);
+      }),
+    [thresholdTickets, mode, userIdByName]
   );
 
   const employees = useMemo(() => {
@@ -183,6 +259,49 @@ export default function TicketCalendarPage({ mode = "L1" }) {
     return map;
   }, [filtered]);
 
+  const dailyTaskMap = useMemo(() => {
+    const map = new Map();
+    filtered.forEach((t) => {
+      const date = new Date(t.created_at);
+      if (Number.isNaN(date.getTime())) return;
+      const dayKey = ymd(date);
+      const employeeName = String(t.user_name || "-").trim() || "-";
+      const groupingKey = `${dayKey}::${employeeName}`;
+      const grouped = map.get(groupingKey) || {
+        id: `TASK-${dayKey}-${employeeName}`,
+        title: "Daily Task",
+        employee: employeeName,
+        status: "Scheduled",
+        total: 0,
+      };
+
+      grouped.total += 1;
+      if (normalizeStatus(t.status) === "Not Submitted") {
+        grouped.status = "Not Submitted";
+      } else if (normalizeStatus(t.status) === "Completed" && grouped.status !== "Not Submitted") {
+        grouped.status = "Completed";
+      }
+      map.set(groupingKey, grouped);
+    });
+
+    const byDay = new Map();
+    map.forEach((task, key) => {
+      const [dayKey] = key.split("::");
+      const existing = byDay.get(dayKey) || [];
+      for (let i = 0; i < task.total; i += 1) {
+        existing.push({
+          id: `${task.id}-${i + 1}`,
+          title: `${task.title} (${i + 1}/${task.total})`,
+          employee: task.employee,
+          status: task.status,
+        });
+      }
+      byDay.set(dayKey, existing);
+    });
+
+    return byDay;
+  }, [filtered]);
+
 
   const monthLabel = useMemo(
     () => cursorDate.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
@@ -217,7 +336,7 @@ export default function TicketCalendarPage({ mode = "L1" }) {
     });
   }, [cursorDate]);
 
-  const activeMap = ticketMap;
+  const activeMap = eventType === "Daily Task" ? dailyTaskMap : ticketMap;
   const currentDayEvents = activeMap.get(ymd(cursorDate)) || [];
   const analytics = useMemo(() => {
     const now = Date.now();
@@ -290,6 +409,18 @@ export default function TicketCalendarPage({ mode = "L1" }) {
           <strong>{monthLabel}</strong>
         </div>
         <div className={styles.rightControls}>
+          <div className={styles.segment}>
+            {EVENT_TYPES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={eventType === item ? styles.segmentActive : ""}
+                onClick={() => setEventType(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
           <select value={employee} onChange={(e) => setEmployee(e.target.value)}>
             {employees.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
@@ -318,7 +449,7 @@ export default function TicketCalendarPage({ mode = "L1" }) {
             {currentDayEvents.length === 0 ? <p>No tasks for this employee/day.</p> : null}
             {currentDayEvents.map((e) => (
               <article key={`${e.id}-${e.status}`} className={`${styles.dailyItem} ${styles[e.status.replace(/\s+/g, "")]}`}>
-                <strong>{e.id}</strong>
+                <strong>{e.title || "Task"}</strong>
                 {e.title ? <span>{e.title}</span> : null}
                 <span>{e.employee}</span>
                 <span>{e.status}</span>
@@ -336,17 +467,26 @@ export default function TicketCalendarPage({ mode = "L1" }) {
               const key = ymd(date);
               const events = activeMap.get(key) || [];
               const outOfMonth = date.getMonth() !== cursorDate.getMonth();
+              const dayTooltip = events.length
+                ? events
+                    .map((e) => `${e.title || "Task"} - ${e.employee} - ${e.status}`)
+                    .join("\n")
+                : "No tasks";
               return (
-                <div key={key} className={`${styles.dayCell} ${outOfMonth && view === "Monthly" ? styles.muted : ""}`}>
+                <div
+                  key={key}
+                  className={`${styles.dayCell} ${outOfMonth && view === "Monthly" ? styles.muted : ""}`}
+                  title={dayTooltip}
+                >
                   <div className={styles.dayNumber}>{date.getDate()}</div>
                   <div className={styles.events}>
                     {events.slice(0, view === "Weekly" ? 6 : 3).map((e) => (
                       <div
                         key={`${e.id}-${e.status}`}
                         className={`${styles.event} ${styles[e.status.replace(/\s+/g, "")]}`}
-                        title={`${e.title ? `${e.title} - ` : ""}${e.id} - ${e.employee}`}
+                        title={`${e.title || "Task"} - ${e.employee}`}
                       >
-                        {e.title ? `${e.title} - ` : ""}{e.id} - {e.employee}
+                        {e.title || "Task"} - {e.employee}
                       </div>
                     ))}
                   </div>

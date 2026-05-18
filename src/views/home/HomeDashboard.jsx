@@ -685,6 +685,26 @@ function HomeDashboard() {
 
 function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
   const xAxisTicks = useMemo(() => getXAxisTicks(activeMode), [activeMode]);
+  const baseTrendPoints = useMemo(() => {
+    const source = Array.isArray(data?.trend_points)
+      ? data.trend_points
+      : Array.isArray(data?.trend)
+        ? data.trend
+        : Array.isArray(data?.points)
+          ? data.points
+          : [];
+
+    return source
+      .map((point, index) => {
+        const rawValue = Number(point?.value ?? point?.y ?? point?.average ?? point?.avg);
+        return {
+          label: String(point?.label ?? point?.date ?? point?.x ?? `P${index + 1}`),
+          value: Number.isFinite(rawValue) ? rawValue : 0,
+        };
+      })
+      .filter((point) => point.label);
+  }, [data]);
+
   const currentLinePoints = useMemo(() => {
     const multiplier = modeMultipliers[activeMode] || 1;
     const fallbackValue = Number.isFinite(Number(data?.average_value)) ? Number(data.average_value) : 0;
