@@ -313,24 +313,43 @@
   border-radius: 10px;
   background: #ffffff;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
-  overflow: hidden;
+  max-height: 170px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
 }
 
 .singleSelectOption {
   width: 100%;
   border: none;
   background: #ffffff;
-  padding: 10px 12px;
+  padding: 4px 8px;
   color: #29374f;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
+  border-radius: 6px;
+  line-height: 1.2;
 }
 
 .singleSelectOption:hover,
 .singleSelectOptionActive {
   background: #eef3ff;
 }
+
+.multiSelectOptionRow {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+}
+
+.multiSelectOptionRow input {
+  width: 13px;
+  height: 34px;
+  margin: 0;
+}
+
 
 .multiSelectEmpty {
   padding: 10px 12px;

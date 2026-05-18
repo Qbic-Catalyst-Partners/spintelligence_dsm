@@ -20,8 +20,8 @@ const createRule = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   subDepartmentSlug: "",
   screenName: "",
-  approvalL1: "",
-  approvalL2: "",
+  approvalL1: [],
+  approvalL2: [],
   approvalL1Tat: "08:00 AM",
   approvalL2Tat: "08:00 AM",
   frequencyLabel: "Daily",
@@ -175,6 +175,11 @@ const tatValueToHours = (value) => {
   return Math.max(1, hourValue + (minuteNumber > 0 ? 1 : 0));
 };
 
+const resolveUsers = (users, values) =>
+  normalizeNameList(values)
+    .map((value) => resolveUser(users, value))
+    .filter(Boolean);
+
 const formatTatHoursLabel = (value) => {
   const hours = Number(value);
   if (!Number.isInteger(hours) || hours <= 0) return "-";
@@ -216,7 +221,7 @@ function ExpandableCell({ values = [], fallback = "-" }) {
 }
 
 function SingleSelectDropdown({
-  value = "",
+  value = [],
   options = [],
   onChange,
   placeholder = "Select",
@@ -239,8 +244,14 @@ function SingleSelectDropdown({
     };
   }, []);
 
+  const selectedValues = Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : normalizeNameList(value);
+  const selectedSet = new Set(selectedValues.map((item) => item.toLowerCase()));
   const selectedLabel =
-    options.find((option) => option.name === value)?.name || (value ? String(value) : placeholder);
+    selectedValues.length > 1
+      ? `${selectedValues.length} selected`
+      : selectedValues[0] || placeholder;
 
   return (
     <div
@@ -269,14 +280,32 @@ function SingleSelectDropdown({
                 key={option.id}
                 type="button"
                 className={`${styles.singleSelectOption} ${
-                  value === option.name ? styles.singleSelectOptionActive : ""
+                  selectedSet.has(String(option.name || "").trim().toLowerCase())
+                    ? styles.singleSelectOptionActive
+                    : ""
                 }`}
                 onClick={() => {
-                  onChange?.(option.name);
-                  setIsOpen(false);
+                  const optionName = String(option.name || "").trim();
+                  if (!optionName) return;
+
+                  const hasValue = selectedSet.has(optionName.toLowerCase());
+                  const nextValue = hasValue
+                    ? selectedValues.filter(
+                        (item) => item.toLowerCase() !== optionName.toLowerCase()
+                      )
+                    : [...selectedValues, optionName];
+                  onChange?.(nextValue);
                 }}
               >
-                {option.name}
+                <span className={styles.multiSelectOptionRow}>
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(String(option.name || "").trim().toLowerCase())}
+                    readOnly
+                    tabIndex={-1}
+                  />
+                  <span>{option.name}</span>
+                </span>
               </button>
             ))
           ) : (
@@ -586,8 +615,8 @@ export default function SubmissionThreshold() {
         id: `${Date.now()}-edit`,
         subDepartmentSlug,
         screenName: item?.screen_name || "",
-        approvalL1: item?.approval_l1_name || item?.approval_l1 || "",
-        approvalL2: item?.approval_l2_name || item?.approval_l2 || "",
+        approvalL1: normalizeNameList(item?.approval_l1_name || item?.approval_l1),
+        approvalL2: normalizeNameList(item?.approval_l2_name || item?.approval_l2),
         approvalL1Tat: formatTatHours(item?.l1_tat_hours),
         approvalL2Tat: formatTatHours(item?.l2_tat_hours),
         frequencyLabel: matchedFrequency,
@@ -671,8 +700,10 @@ export default function SubmissionThreshold() {
         const subDepartmentName = subDepartmentNameBySlug[rule.subDepartmentSlug] || "";
         const matchedFrequency =
           frequencyOptions.find((item) => item.label === rule.frequencyLabel)?.days || 1;
-        const l1User = resolveUser(users, rule.approvalL1);
-        const l2User = resolveUser(users, rule.approvalL2);
+        const selectedL1 = normalizeNameList(rule.approvalL1);
+        const selectedL2 = normalizeNameList(rule.approvalL2);
+        const l1Users = resolveUsers(users, selectedL1);
+        const l2Users = resolveUsers(users, selectedL2);
 
         if (!rule.subDepartmentSlug || !subDepartmentName) {
           throw new Error("Please select a sub-department for each row.");
@@ -682,13 +713,18 @@ export default function SubmissionThreshold() {
           throw new Error("Please select a notebook type for each row.");
         }
 
-        if (!rule.approvalL1) {
+        if (!selectedL1.length) {
           throw new Error("Please select an L1 user for each row.");
         }
 
-        if (!rule.approvalL2) {
+        if (!selectedL2.length) {
           throw new Error("Please select an L2 user for each row.");
         }
+
+        const l1Ids = l1Users.map((item) => item.id).filter(Boolean);
+        const l2Ids = l2Users.map((item) => item.id).filter(Boolean);
+        const l1Names = l1Users.map((item) => getUserDisplayName(item)).filter(Boolean);
+        const l2Names = l2Users.map((item) => getUserDisplayName(item)).filter(Boolean);
 
         return {
           screen_name: rule.screenName,
@@ -697,11 +733,11 @@ export default function SubmissionThreshold() {
           frequency: Number(matchedFrequency),
           occurrences: Number(rule.occurrences),
           is_active: rule.isActive,
-          approval_l1: l1User?.id || rule.approvalL1,
-          approval_l1_name: getUserDisplayName(l1User) || rule.approvalL1,
+          approval_l1: l1Ids.length ? l1Ids.join(", ") : selectedL1.join(", "),
+          approval_l1_name: l1Names.length ? l1Names.join(", ") : selectedL1.join(", "),
           l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
-          approval_l2: l2User?.id || rule.approvalL2,
-          approval_l2_name: getUserDisplayName(l2User) || rule.approvalL2,
+          approval_l2: l2Ids.length ? l2Ids.join(", ") : selectedL2.join(", "),
+          approval_l2_name: l2Names.length ? l2Names.join(", ") : selectedL2.join(", "),
           l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
         };
       });
