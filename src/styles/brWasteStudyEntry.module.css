@@ -1,0 +1,179 @@
+/* ================= BR WASTE STUDY ENTRY STYLES ================= */
+
+/* form rows */
+.mixx-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.mixx-empty {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* form group and inputs */
+.mixx-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mixx-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.mixx-input {
+    height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    font-size: 14px;
+}
+
+.mixx-error {
+    border-color: #ef4444 !important;
+    background: #fff1f2 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
+/* apply button */
+.mixx-btn-primary {
+    height: 38px;
+    padding: 8px 20px;
+    border-radius: 8px;
+    background: #3d539f;
+    color: white;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 14px;
+    align-self: flex-end;
+}
+
+/* waste apply row: input + button side by side */
+.waste-apply-row {
+    grid-template-columns: 2fr 1fr;
+    align-items: end;
+}
+
+/* ===== Type 3 table (desktop) ===== */
+.desktop-view {
+    display: block;
+}
+
+.type3-table {
+    margin-top: 20px;
+    overflow-x: auto;
+}
+
+.type3-header,
+.type3-row {
+    display: grid;
+    grid-template-columns: 40px repeat(9, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.type3-header span {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.type3-number {
+    font-weight: 600;
+    font-size: 14px;
+    color: #334155;
+}
+
+/* ===== Type 3 mobile cards ===== */
+.type3-mobile {
+    display: none;
+}
+
+.type3-entry {
+    margin-top: 20px;
+}
+
+.type3-card {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 6px;
+}
+
+.type3-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 1024px) {
+    .mixx-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .waste-apply-row {
+        grid-template-columns: 2fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .mixx-row {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .waste-apply-row {
+        grid-template-columns: 2fr 1fr;
+        align-items: end;
+        gap: 10px;
+    }
+
+    .mixx-group {
+        width: 100%;
+    }
+
+    .mixx-group label {
+        font-size: 10px;
+        font-weight: 500;
+        color: #3D539F;
+    }
+
+    .mixx-input {
+        height: 36px;
+        font-size: 14px;
+    }
+
+    .mixx-btn-primary {
+        height: 35px;
+        width: 140px;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+
+    /* hide desktop table, show mobile cards */
+    .desktop-view {
+        display: none;
+    }
+
+    .type3-mobile {
+        display: block;
+    }
+
+    .type3-mobile .mixx-group label {
+        color: #3D539F;
+    }
+
+    .type3-number {
+        margin-bottom: 6px;
+    }
+}

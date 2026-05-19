@@ -39,6 +39,11 @@
     gap: 30px;
 }
 
+.navLeft img {
+    height: 40px;
+    width: auto;
+}
+
 .navLinks a {
     text-decoration: none;
     font-size: 14px;
@@ -65,10 +70,7 @@
 /* Logo image */
 .logo img {
     width: 110px;
-    height: 110px;
-
-    width: auto;
-
+    height: auto;
     object-fit: contain;
     margin-top: 15px;
 }
@@ -117,6 +119,8 @@
     background: #f8fafc;
     min-height: 100vh;
     font-family: Inter, sans-serif;
+    padding: var(--management-page-padding);
+    box-sizing: border-box;
 }
 
 
@@ -166,19 +170,22 @@
 
 
 .edit-content-wrapper {
-    padding: 24px;
-    padding-left: 250px;
+    width: min(976px, 100%);
+    margin: 0 auto;
+    padding: 0 0 24px;
     display: flex;
     flex-direction: column;
     gap: 20px;
+    box-sizing: border-box;
 }
 
 .edit-card-box {
   background: #fff;
   border: 1px solid #e5e7eb;
-  width: 976px;
+  width: 100%;
   border-radius: 12px;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 .edit-card-header {
@@ -348,11 +355,12 @@
 .edit-footer-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
 
-    padding: 14px 40px;
+    padding: 14px clamp(18px, 3vw, 40px);
     border-top: 1px solid #e5e7eb;
     background: #ffffff;
+    box-sizing: border-box;
 }
 
 .edit-warning-text {
@@ -362,9 +370,7 @@
 
 .edit-footer-buttons {
     display: flex;
-    padding-left: 450px;
     gap: 12px;
-    transform: translateX(-200px);
 }
 
 .edit-btn-cancel {
@@ -394,7 +400,7 @@
     height: 45px;
     border-bottom: 1px solid #ccc;
     /* optional */
-    padding: 12px 128px;
+    padding: 12px clamp(18px, 3vw, 40px);
     background: rgba(25, 127, 230, 0.05);
     /* light transparent background */
     display: flex;
@@ -405,6 +411,7 @@
     opacity: 1;
     gap: 4px;
     /* small gap between texts */
+    box-sizing: border-box;
 }
 
 .edit-small-footer-sp {
@@ -431,7 +438,7 @@
 
     /* PAGE */
     .edit-page-container {
-        padding: 0;
+        padding: var(--management-page-padding);
     }
 
     /* HEADER */
@@ -450,14 +457,13 @@
 
     /* CONTENT WRAPPER */
     .edit-content-wrapper {
-        padding: 24px 32px;
+        width: min(960px, 100%);
+        padding: 0 0 24px;
     }
 
     /* CARDS */
     .edit-card-box {
-        width: 960px;
-        /* SAME as desktop */
-        max-width: 100%;
+        width: 100%;
         margin: 0 auto;
     }
 
@@ -478,7 +484,7 @@
 
     /* FOOTER BUTTONS */
     .edit-footer-buttons {
-        transform: translateX(-100px);
+        transform: none;
     }
 
     .edit-btn-cancel,

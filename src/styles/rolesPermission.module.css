@@ -18,6 +18,7 @@
   align-items: center;
   gap: 48px;
 }
+
 .topNavbar {
   height: 70px;
   background: #ffffff;
@@ -60,10 +61,7 @@
 /* Logo image */
 .logo img {
   width: 110px;
-  height: 110px;
-
-  width: auto;
-
+  height: auto;
   object-fit: contain;
   margin-top: 15px;
 }
@@ -109,8 +107,11 @@
 }
 
 .roles-page {
-  padding: 24px 40px;
+  padding: var(--management-page-padding);
   background: #fafafa;
+  min-height: 100vh;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* OVERLAY */
@@ -222,6 +223,7 @@
   gap: 6px;
   font-size: 14px;
 }
+
 /* HEADER */
 .page-header {
   display: flex;
@@ -285,7 +287,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 24px;
-
+  border: 1px solid rgb(250, 250, 250);
 
   opacity: 1;
   top: 137px;
@@ -298,6 +300,7 @@
 .stat-card {
 
   flex: 1;
+  min-width: 0;
 
   background: white;
   border-radius: 12px;
@@ -306,7 +309,6 @@
   align-items: center;
   gap: 16px;
   border: 1px solid #e5e7eb;
-  width: 468px;
   height: 98px;
 
   opacity: 1;
@@ -366,6 +368,8 @@
   margin-top: 10px;
   display: flex;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   background: white;
   padding: 12px;
   border-radius: 10px;
@@ -383,7 +387,9 @@
   border: 1px solid #E5E7EB;
   border-radius: 8px;
 
-  width: 560px;
+  flex: 1 1 320px;
+  max-width: 560px;
+  min-width: 240px;
   height: 40px;
 }
 
@@ -477,7 +483,7 @@
   background: #ffffff;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
-  overflow: visible;
+  overflow-x: auto;
 
 }
 
@@ -581,6 +587,7 @@
   position: relative;
 
 }
+
 .table-footer {
   display: flex;
   justify-content: space-between;
@@ -655,6 +662,7 @@
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   background: #1e40af;
+  color: white;
   cursor: pointer;
 }
 
@@ -797,7 +805,7 @@
 @media (max-width: 1024px) {
 
   .roles-page {
-    padding: 20px;
+    padding: var(--management-page-padding);
   }
 
   /* Stats stack 2 per row */

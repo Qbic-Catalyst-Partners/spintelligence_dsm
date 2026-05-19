@@ -8,9 +8,10 @@ import {
 } from "react-icons/md";
 import { IoMdSearch } from "react-icons/io";
 import { FaTrash } from "react-icons/fa";
+import { FiCheckCircle, FiX } from "react-icons/fi";
+import { HiMiniChevronDown } from "react-icons/hi2";
 
 import { useRouter } from "next/router";
-import Link from "next/link";
 
 // REDUX
 import { useDispatch, useSelector } from "react-redux";
@@ -23,6 +24,7 @@ import {
 import {
   deleteUserAPI,
   updateStatusAPI,
+  bulkUploadUsersAPI,
 } from "../../apis/userApi";
 
 export default function UserManagement() {
@@ -43,12 +45,20 @@ export default function UserManagement() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadError, setUploadError] = useState(false);
 
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedDept, setSelectedDept] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState("");
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [page, setPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState({
+    key: "employeeId",
+    direction: "asc",
+  });
   const rowsPerPage = 10;
 
   // FETCH DATA
@@ -85,19 +95,100 @@ export default function UserManagement() {
     dispatch(fetchUsers());
   };
 
-  // SEARCH + FILTER
-  const filteredUsers = users.filter((u) => {
-    const searchValue = search.toLowerCase();
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files?.[0];
 
-    return (
-      (!selectedRole || u.role === selectedRole) &&
-      (!selectedDept || u.dept === selectedDept) &&
-      (!search ||
-        u.name?.toLowerCase().includes(searchValue) ||
-        u.email?.toLowerCase().includes(searchValue) ||
-        u.employeeId?.toLowerCase().includes(searchValue))
-    );
-  });
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadMessage("");
+    setUploadError(false);
+
+    try {
+      const response = await bulkUploadUsersAPI(file);
+      setUploadMessage(response?.message || "Bulk upload completed successfully.");
+      setUploadError(false);
+      dispatch(fetchUsers());
+    } catch (error) {
+      setUploadMessage(error.message || "Bulk upload failed.");
+      setUploadError(true);
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedRole, selectedDept, selectedLevel, selectedStatus, sortConfig]);
+
+  const handleSort = (key) => {
+    setSortConfig((current) => {
+      if (current.key === key) {
+        return {
+          key,
+          direction: current.direction === "asc" ? "desc" : "asc",
+        };
+      }
+
+      return {
+        key,
+        direction: "asc",
+      };
+    });
+  };
+
+  const getSortArrowClass = (key, direction) => {
+    if (sortConfig.key !== key || sortConfig.direction !== direction) {
+      return styles.sortArrowMuted;
+    }
+
+    if (key === "employeeId" && direction === "desc") {
+      return styles.sortArrowRed;
+    }
+
+    if (key === "fullName" && direction === "asc") {
+      return styles.sortArrowGreen;
+    }
+
+    return styles.sortArrowActive;
+  };
+
+  // SEARCH + FILTER
+  const filteredUsers = users
+    .filter((u) => {
+      const searchValue = search.toLowerCase();
+
+      return (
+        (!selectedRole || u.role === selectedRole) &&
+        (!selectedDept || u.dept === selectedDept) &&
+        (!selectedLevel || u.level === selectedLevel) &&
+        (!selectedStatus || u.status === selectedStatus) &&
+        (!search ||
+          u.name?.toLowerCase().includes(searchValue) ||
+          u.email?.toLowerCase().includes(searchValue) ||
+          u.employeeId?.toLowerCase().includes(searchValue))
+      );
+    })
+    .sort((left, right) => {
+      const leftValue =
+        sortConfig.key === "employeeId"
+          ? left.employeeId || ""
+          : left.name || "";
+      const rightValue =
+        sortConfig.key === "employeeId"
+          ? right.employeeId || ""
+          : right.name || "";
+
+      const result = leftValue.localeCompare(rightValue, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+
+      return sortConfig.direction === "asc" ? result : -result;
+    });
 
   // PAGINATION
   const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
@@ -106,21 +197,6 @@ export default function UserManagement() {
 
   return (
     <div className={styles.container}>
-      {/* NAVBAR */}
-      <header className={styles.topNavbar}>
-        <div className={styles.navLeft}>
-          <img src="/spintel.svg" alt="logo" className={styles.spintelLogo} />
-
-          <nav className={styles.navLinks}>
-            <Link href="/">Home</Link>
-            <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermission">Roles & Permissions</Link>
-          </nav>
-        </div>
-
-        <img src="/logo.png" alt="logo" className={styles.mainLogo} />
-      </header>
-
       <div className={styles.wrapper}>
         {/* HEADER */}
         <div className={styles.header}>
@@ -140,7 +216,12 @@ export default function UserManagement() {
             <label className={styles.btnOutline}>
               <MdOutlineFileUpload />
               {uploading ? "Uploading..." : "Bulk Upload"}
-              <input type="file" hidden />
+              <input
+                type="file"
+                hidden
+                accept=".xlsx,.xls,.csv"
+                onChange={handleBulkUpload}
+              />
             </label>
 
             <button
@@ -158,13 +239,29 @@ export default function UserManagement() {
             <IoMdSearch />
             <input
               placeholder="Search by Name / Emp ID "
+              value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
+          <div className={styles.inputWrapper}>
+            <FiCheckCircle className={styles.filterSvgIcon} />
+            <select
+              className={styles.inputWithIcon}
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+            >
+              <option value="">Status: All</option>
+              <option value="Active">Status: Active</option>
+              <option value="Inactive">Status: Inactive</option>
+              <option value="Locked">Status: Locked</option>
+            </select>
+            <HiMiniChevronDown className={styles.selectChevron} />
+          </div>
 
           {/* ROLE SELECT */}
           <div className={styles.inputWrapper}>
+            <img src="/role.png" className={styles.selectIcon} alt="role icon" />
             <select
               className={styles.inputWithIcon}
               value={selectedRole}
@@ -175,11 +272,12 @@ export default function UserManagement() {
                 <option key={r.id}>{r.role_name}</option>
               ))}
             </select>
-            <img src="/role.png" className={styles.selectIcon} alt="role icon" />
+            <HiMiniChevronDown className={styles.selectChevron} />
           </div>
 
           {/* DEPARTMENT SELECT */}
           <div className={styles.inputWrapper}>
+            <img src="/dept.png" className={styles.selectIcon} alt="department icon" />
             <select
               className={styles.inputWithIcon}
               value={selectedDept}
@@ -190,7 +288,21 @@ export default function UserManagement() {
                 <option key={d.id}>{d.name}</option>
               ))}
             </select>
-            <img src="/dept.png" className={styles.selectIcon} alt="department icon" />
+            <HiMiniChevronDown className={styles.selectChevron} />
+          </div>
+
+          <div className={styles.inputWrapper}>
+            <FiCheckCircle className={styles.filterSvgIcon} />
+            <select
+              className={styles.inputWithIcon}
+              value={selectedLevel}
+              onChange={(e) => setSelectedLevel(e.target.value)}
+            >
+              <option value="">Level: All</option>
+              <option value="L1">Level: L1</option>
+              <option value="L2">Level: L2</option>
+            </select>
+            <HiMiniChevronDown className={styles.selectChevron} />
           </div>
 
           {/* CLEAR BUTTON */}
@@ -199,22 +311,75 @@ export default function UserManagement() {
             onClick={() => {
               setSelectedRole("");
               setSelectedDept("");
+              setSelectedLevel("");
+              setSelectedStatus("");
               setSearch("");
             }}
           >
-            <img src="/clear.png" className={styles.clearIcon} alt="clear icon" />
+            <FiX className={styles.clearSvgIcon} />
             Clear
           </button>
         </div>
+
+        {uploadMessage ? (
+          <div
+            style={{
+              marginBottom: "16px",
+              padding: "12px 14px",
+              borderRadius: "10px",
+              fontSize: "14px",
+              fontWeight: 500,
+              background: uploadError ? "#fef2f2" : "#ecfdf5",
+              color: uploadError ? "#b91c1c" : "#166534",
+              border: uploadError ? "1px solid #fecaca" : "1px solid #bbf7d0",
+            }}
+          >
+            {uploadMessage}
+          </div>
+        ) : null}
+
         {/* TABLE */}
         <table className={styles.table}>
           <thead>
             <tr>
               <th>SR NO</th>
-              <th>EMP ID</th>
-              <th>FULL NAME</th>
+              <th>
+                <button
+                  type="button"
+                  className={styles.sortButton}
+                  onClick={() => handleSort("employeeId")}
+                >
+                  <span>EMP ID</span>
+                  <span className={styles.sortArrows}>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("employeeId", "asc")}`}>
+                      ▲
+                    </span>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("employeeId", "desc")}`}>
+                      ▼
+                    </span>
+                  </span>
+                </button>
+              </th>
+              <th>
+                <button
+                  type="button"
+                  className={styles.sortButton}
+                  onClick={() => handleSort("fullName")}
+                >
+                  <span>FULL NAME</span>
+                  <span className={styles.sortArrows}>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("fullName", "asc")}`}>
+                      ▲
+                    </span>
+                    <span className={`${styles.sortArrow} ${getSortArrowClass("fullName", "desc")}`}>
+                      ▼
+                    </span>
+                  </span>
+                </button>
+              </th>
               <th>CONTACT DETAILS</th>
               <th>ROLE</th>
+              <th>LEVEL</th>
               <th>DEPARTMENT</th>
               <th>STATUS</th>
               <th>ACTIONS</th>
@@ -242,6 +407,12 @@ export default function UserManagement() {
                 <td>
                   <span className={`${styles.badge} ${styles.roleBadge}`}>
                     {u.role}
+                  </span>
+                </td>
+
+                <td>
+                  <span className={`${styles.badge} ${styles.roleBadge}`}>
+                    {u.level || "-"}
                   </span>
                 </td>
 

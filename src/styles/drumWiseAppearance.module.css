@@ -1,0 +1,276 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+
+
+.footerWrap {
+  margin-top: -24px;
+}
+
+.formTitle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+  color: #21314d;
+}
+
+.formTitle svg {
+  color: #5b73cb;
+  font-size: 14px;
+}
+
+.formTitle h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5d6a7d;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  height: 38px;
+  border: 1px solid #e1e7f0;
+  border-radius: 8px;
+  background: #f1f5f9 !important;
+  padding: 0 12px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.doubleField {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.hiddenLabel {
+  visibility: hidden;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-top: 18px;
+}
+
+.actionGroup {
+  display: flex;
+  gap: 10px;
+}
+
+.backBtn,
+.clearBtn,
+.saveBtn {
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.backBtn,
+.clearBtn {
+  border: 1px solid #dce3ee;
+  background: #ffffff;
+  color: #4c5c74;
+}
+
+.saveBtn {
+  border: none;
+  background: #4258b7;
+  color: #ffffff;
+}
+
+.appearanceSection {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+  width: calc(100% - 88px);
+  margin: 10px auto 0;
+}
+
+.appearanceTable {
+  width: 100%;
+  padding-top: 8px;
+}
+
+.appearanceHeader,
+.appearanceRow {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+}
+
+.appearanceHeader {
+  margin-bottom: 10px;
+  color: #7c8799;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.appearanceHeader span:last-child {
+  padding-left: 30px;
+}
+
+.appearanceRow {
+  min-height: 42px;
+  margin-bottom: 10px;
+}
+
+.drumNo {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.toggleGroup {
+  display: flex;
+  gap: 6px;
+}
+
+.toggleBtn {
+  min-width: 72px;
+  height: 34px;
+  border: 1px solid #dbe3ee;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #7a8395;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.active {
+  background: #4258b7;
+  color: #ffffff;
+  border-color: #4258b7;
+}
+
+.remarksBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.remarksBlock label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5d6a7d;
+}
+
+.remarksBlock textarea {
+  width: 100%;
+  min-height: 138px;
+  border: 1px solid #e1e7f0;
+  border-radius: 8px;
+  background: #f1f5f9 !important;
+  padding: 12px;
+  font-size: 14px;
+  color: #4b5565;
+  resize: none;
+}
+
+.summaryCard {
+  width: min(100%, 760px);
+  background: #ffffff;
+  border: 1px solid #e4eaf2;
+  border-radius: 12px;
+  padding: 18px 22px 12px;
+  margin: 18px auto 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.summaryCard h4 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2d48;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #e7ecf3;
+  text-align: left;
+  font-size: 14px;
+  color: #334155;
+}
+.table td {
+  font-size: 12px;
+}
+
+.table th {
+  color: #7c8799;
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding-top: 0;
+}
+
+.summaryRow td {
+  font-weight: 700;
+  color: #172033;
+  border-bottom: none;
+}
+
+@media (max-width: 900px) {
+  .formGrid,
+  .appearanceSection {
+    grid-template-columns: 1fr;
+  }
+
+  .appearanceSection {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .formGrid,
+  .doubleField,
+  .actions,
+  .actionGroup {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .entryCard,
+  .summaryCard {
+    padding: 16px;
+  }
+}

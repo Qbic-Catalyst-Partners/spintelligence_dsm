@@ -34,6 +34,11 @@
   gap: 30px;
 }
 
+.navLeft img {
+  height: 40px;
+  width: auto;
+}
+
 .navLinks a {
   text-decoration: none;
   font-size: 14px;
@@ -60,10 +65,7 @@
 /* Logo image */
 .logo img {
   width: 110px;
-  height: 110px;
-
-  width: auto;
-
+  height: auto;
   object-fit: contain;
   margin-top: 15px;
 }
@@ -112,8 +114,9 @@
 .rolepage-wrapper {
   background: #f8fafc;
   min-height: 100vh;
-  padding: 20px 40px;
+  padding: var(--management-page-padding);
   font-family: Inter, sans-serif;
+  box-sizing: border-box;
 }
 
 /* HEADER */
@@ -129,7 +132,7 @@
 }
 
 .rolepage-breadcrumb {
-  font-size: 12px;
+  font-size: 12zpx;
   color: #64748b;
   margin-left: 90px;
 }
@@ -156,15 +159,19 @@
   flex-direction: column;
   gap: 16px;
   align-items: center;
+  width: min(976px, 100%);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* CARD 1 */
 .rolepage-cardinfo {
   background: #fff;
   border: 1px solid #e5e7eb;
-  width: 976px;
+  width: 100%;
   border-radius: 12px;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 .rolepage-cardtitle {
@@ -217,9 +224,10 @@
 .rolepage-cardscreen {
   background: #fff;
   border: 1px solid #e5e7eb;
-  width: 976px;
+  width: 100%;
   border-radius: 12px;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 .rolepage-screenheader {
@@ -255,7 +263,7 @@
 /* CHECKBOX GRID */
 .rolepage-checkboxgrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -276,9 +284,10 @@
 .rolepage-carddept {
   background: #fff;
   border: 1px solid #e5e7eb;
-  width: 976px;
+  width: 100%;
   border-radius: 12px;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 .rolepage-depttitle {
@@ -356,15 +365,14 @@
 /* FOOTER */
 .rolepage-footer {
   margin-top: 30px;
-  margin-left: -40px;
-  margin-right: -40px;
-  width: calc(100% + 80px);
+  width: 100%;
   background: #fff;
   border-top: 1px solid #e5e7eb;
-  padding: 16px 40px;
+  padding: 16px clamp(18px, 3vw, 40px);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+  box-sizing: border-box;
 }
 
 .rolepage-btncancel {
@@ -440,24 +448,21 @@
 @media (max-width:1024px) {
 
   .rolepage-wrapper {
-    padding: 16px 20px;
+    padding: var(--management-page-padding);
   }
 
   .rolepage-cardinfo,
   .rolepage-cardscreen,
   .rolepage-carddept {
     width: 100%;
-    max-width: 976px;
   }
 
   .rolepage-checkboxgrid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
   .rolepage-footer {
-    margin-left: -20px;
-    margin-right: -20px;
-    width: calc(100% + 40px);
+    width: 100%;
   }
 
 }

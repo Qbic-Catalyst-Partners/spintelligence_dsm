@@ -1,0 +1,832 @@
+.page {
+    min-height: 100vh;
+    background: #f8f7f7;
+    padding: var(--management-page-padding);
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.shell {
+    max-width: 1240px;
+    margin: 0 auto;
+}
+
+.dashboardShellContent {
+    max-width: 1240px;
+    padding: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.intro {
+    margin-bottom: 18px;
+}
+
+.intro h1 {
+    margin: 0;
+    color: #1f2a44;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.intro p {
+    margin: 6px 0 0;
+    color: #7f8ca3;
+    font-size: 14px;
+}
+
+.tabBar {
+    width: 360px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 14px;
+    border-radius: 8px;
+    background: #d9d9db;
+}
+
+.tabButton {
+    min-height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #6a7891;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.tabButtonActive {
+    background: #ffffff;
+    color: #5d5d63;
+    box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08);
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.statCard {
+    min-height: 128px;
+    padding: 22px 20px;
+    border: 1px solid #d9dfe8;
+    border-radius: 10px;
+    background: #ffffff;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.statCard span {
+    display: block;
+    color: #848b99;
+    font-size: 13px;
+}
+
+.statCard strong {
+    display: block;
+    margin-top: 8px;
+    color: #24324b;
+    font-size: 26px;
+    font-weight: 700;
+}
+
+.stack {
+    display: grid;
+    gap: 16px;
+}
+
+.card,
+.filterPanel {
+    border: 1px solid #e1e6ef;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
+}
+
+.card {
+    padding: 22px 24px 18px;
+}
+
+.cardHeader {
+    display: grid;
+    justify-items: start;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.cardHeader h2 {
+    margin: 0;
+    color: #2b3951;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.cardHeader p {
+    margin: 0;
+    color: #7b89a0;
+    font-size: 14px;
+}
+
+.formGrid,
+.filterPanel {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.field {
+    display: grid;
+    gap: 8px;
+}
+
+.field span {
+    color: #42516a;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.field select,
+.field input,
+.statusField select {
+    min-height: 34px;
+    border: 1px solid #dbe2ec;
+    border-radius: 8px;
+    background: #f8fbff;
+    padding: 0 8px;
+    color: #29374f;
+    font-size: 12px;
+    outline: none;
+}
+
+.field select:focus,
+.field input:focus,
+.statusField select:focus {
+    border-color: #5b74c7;
+    box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
+}
+
+.rulesTable {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+}
+
+.ruleCard {
+    border: 1px solid #e5ebf2;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 14px 18px;
+}
+
+.ruleRow {
+    width: 100%;
+}
+
+.ruleFields {
+    display: grid;
+    gap: 12px;
+}
+
+.ruleTopGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.ruleBottomGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.multiSelectWrap {
+    position: relative;
+    width: 100%;
+}
+
+.multiSelectDisabled {
+    opacity: 0.7;
+}
+
+.multiSelectButton {
+    width: 100%;
+    min-height: 34px;
+    border: 1px solid #dbe2ec;
+    border-radius: 8px;
+    background: #f8fbff;
+    padding: 0 10px;
+    color: #29374f;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.multiSelectButton:focus {
+    border-color: #5b74c7;
+    box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
+}
+
+.multiSelectValue {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.multiSelectChevron {
+    color: #6e7d93;
+    font-size: 12px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.multiSelectMenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 180px;
+    overflow-y: auto;
+    border: 1px solid #dbe2ec;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+    padding: 8px;
+    display: grid;
+    gap: 4px;
+}
+
+.multiSelectOption {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #2b3951;
+    font-size: 12px;
+}
+
+.multiSelectOption:hover {
+    background: #f5f7fb;
+}
+
+.multiSelectOption input {
+    margin: 0;
+}
+
+.multiSelectEmpty {
+    padding: 8px 6px;
+    color: #7b89a0;
+    font-size: 12px;
+}
+
+.ruleActions {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+    min-height: 100%;
+}
+
+.ruleBottomGrid > .ruleActions {
+    align-self: end;
+}
+
+.addIconButton,
+.deleteIconButton {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.addIconButton {
+    border: none;
+    background: #4f63b6;
+    color: #ffffff;
+}
+
+.deleteIconButton {
+    border: 1px solid #ffcecf;
+    background: #fff4f4;
+    color: #f04f56;
+}
+
+.actionSpacer {
+    width: 28px;
+    height: 28px;
+}
+
+.formFooter {
+    margin-top: 18px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 16px;
+}
+
+.actionButtons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.clearButton,
+.saveButton,
+.clearFilterButton {
+    min-height: 36px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.clearButton {
+    border: 1px solid #8d9098;
+    background: #ffffff;
+    color: #4a505e;
+    padding: 0 14px;
+}
+
+.saveButton {
+    border: none;
+    background: #4f63b6;
+    color: #ffffff;
+    padding: 0 16px;
+}
+
+.clearFilterButton {
+    align-self: end;
+    border: 1px solid #dbe2ec;
+    background: #f8fafc;
+    color: #5e6574;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.clearButton:disabled,
+.saveButton:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.successMessage,
+.errorMessage {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.successMessage {
+    background: #eef8f1;
+    border: 1px solid #c7ebd0;
+    color: #20633f;
+}
+
+.errorMessage {
+    background: #fff1f1;
+    border: 1px solid #ffd1d1;
+    color: #c73c3c;
+}
+
+.filterPanel {
+    grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr auto;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.existingFilterPanel {
+    display: grid;
+    grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.summaryGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.summaryCard {
+    border-radius: 8px;
+    background: #efefef;
+    padding: 10px 14px;
+}
+
+.summaryCard span {
+    display: block;
+    color: #73839a;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.summaryCard strong {
+    display: block;
+    margin-top: 6px;
+    color: #2b3951;
+    font-size: 14px;
+}
+
+.existingThresholdCard {
+    padding: 10px 0 0;
+    overflow: visible;
+}
+
+.existingSummaryRow {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 4px 16px 18px;
+}
+
+.departmentSummaryCard {
+    background: #ededee;
+}
+
+.tableWrap {
+    overflow: visible;
+    width: 100%;
+}
+
+.table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+}
+
+.table th {
+    padding: 14px 12px;
+    border-bottom: 1px solid #c9d0db;
+    color: #7b8596;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.table td {
+    padding: 12px;
+    border-bottom: 1px solid #e6ebf2;
+    color: #222b39;
+    font-size: 13px;
+}
+
+.existingThresholdTable thead th {
+    background: #d2d2d5;
+    border-bottom: none;
+    color: #111111;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.existingThresholdTable thead th:first-child {
+    border-top-left-radius: 8px;
+}
+
+.existingThresholdTable thead th:last-child {
+    border-top-right-radius: 8px;
+}
+
+.existingThresholdTable tbody td {
+    padding: 14px 12px;
+    color: #111111;
+    font-weight: 600;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+.expandableCell {
+    position: relative;
+}
+
+.expandableCell summary {
+    list-style: none;
+}
+
+.expandableCell summary::-webkit-details-marker {
+    display: none;
+}
+
+.expandableCellSummary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.expandableCellPrimary {
+    min-width: 0;
+}
+
+.expandableCellIcon {
+    flex-shrink: 0;
+    color: #657086;
+    transition: transform 0.2s ease;
+}
+
+.expandableCell[open] .expandableCellIcon {
+    transform: rotate(180deg);
+}
+
+.expandableCellDropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 180px;
+    max-width: 260px;
+    border: 1px solid #dbe2ec;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    z-index: 2;
+}
+
+.expandableCellItem {
+    padding: 6px 8px;
+    border-radius: 8px;
+    color: #2b3951;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.expandableCellItem:hover {
+    background: #f5f7fb;
+}
+
+.positiveValue {
+    color: #20834d;
+    font-weight: 600;
+}
+
+.negativeValue {
+    color: #d82128;
+    font-weight: 600;
+}
+
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 78px;
+    min-height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.activeStatus {
+    background: #e7f5eb;
+    color: #2d7a44;
+}
+
+.inactiveStatus {
+    background: #efefef;
+    color: #6b7280;
+}
+
+.criticalityBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 56px;
+    min-height: 22px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.criticalityHigh {
+    background: #ffdede;
+    color: #ff3b30;
+}
+
+.criticalityMedium {
+    background: #fff0bf;
+    color: #d2a100;
+}
+
+.criticalityLow {
+    background: #deefe9;
+    color: #66a58d;
+}
+
+.actionMenuWrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+
+.actionMenuButton {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #5f6674;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.actionMenuButton:hover {
+    background: #f3f5f8;
+}
+
+.actionMenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 128px;
+    border: 1px solid #e0e6ef;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+    padding: 6px;
+    display: grid;
+    gap: 4px;
+    z-index: 3;
+}
+
+.actionMenuItem {
+    min-height: 34px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #2b3951;
+    text-align: left;
+    padding: 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.actionMenuItem:hover {
+    background: #f5f7fb;
+}
+
+.actionMenuDelete {
+    color: #d82128;
+}
+
+.paginationBar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 16px 14px;
+}
+
+.paginationControls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.paginationButton,
+.paginationNumber {
+    min-width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: #edf0f4;
+    color: #4a5568;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.paginationNumber {
+    background: #d9e8fb;
+    color: #385b8c;
+}
+
+.paginationNumberActive {
+    background: #4f63b6;
+    color: #ffffff;
+}
+
+.paginationButton:disabled,
+.paginationNumber:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.doubleChevron {
+    margin-left: -7px;
+}
+
+.emptyState {
+    padding: 28px 12px 12px;
+    color: #6f7d92;
+    text-align: center;
+    font-size: 14px;
+}
+
+@media (max-width: 900px) {
+    .page {
+        padding: var(--management-page-padding);
+        padding-bottom: 28px;
+    }
+
+    .shell {
+        max-width: 100%;
+    }
+
+    .dashboardShellContent {
+        max-width: 100%;
+    }
+
+    .tabBar {
+        width: 100%;
+    }
+
+    .statsGrid,
+    .formGrid,
+    .summaryGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .filterPanel {
+        grid-template-columns: 1fr;
+    }
+
+    .existingFilterPanel,
+    .existingSummaryRow {
+        grid-template-columns: 1fr;
+    }
+
+    .ruleRow {
+        grid-template-columns: 1fr;
+    }
+
+    .ruleTopGrid,
+    .ruleBottomGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .ruleActions,
+    .formFooter {
+        justify-content: flex-start;
+    }
+
+    .formFooter {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .actionButtons {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .paginationBar {
+        flex-direction: column;
+        align-items: flex-end;
+    }
+
+    .paginationControls {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}

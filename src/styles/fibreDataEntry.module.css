@@ -46,7 +46,7 @@
 }
 
 .mixx-group label {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
     color: #334155;
 }
@@ -57,7 +57,13 @@
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #f1f5f9;
-    font-size: 13px;
+    font-size: 14px;
+}
+
+.mixx-error {
+    border-color: #ef4444 !important;
+    background: #fff1f2 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
 }
 
 .mixxinput {
@@ -66,7 +72,7 @@
     border-radius: 8px;
     border: 1px solid #e2e8f0;
     background: #ffffff;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 /* ================= MOBILE ================= */
@@ -81,7 +87,7 @@
         border-radius: 8px;
         border: 1px solid #e2e8f0;
         background: #ffffff;
-        font-size: 13px;
+        font-size: 14px;
     }
 
     .mixx-form {

@@ -1,0 +1,388 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+.bwc-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  background: #f5f7fb;
+  color: #18233a;
+  font-family: "Inter", sans-serif;
+}
+
+.bwc-container {
+  width: min(1120px, calc(100% - 32px));
+  padding: 12px 0 28px;
+}
+
+.bwc-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #7e8798;
+  margin-bottom: 10px;
+}
+
+.bwc-breadcrumbs strong {
+  color: #18233a;
+  font-weight: 600;
+}
+
+.bwc-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1a2438;
+}
+
+.bwc-header p {
+  margin: 4px 0 18px;
+  font-size: 11px;
+  color: #7e8798;
+}
+
+.bwc-shell {
+  background: #ffffff;
+  border: 1px solid #e3e9f4;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  overflow: hidden;
+  min-height: 760px;
+}
+
+.bwc-entry-stage {
+  min-height: 640px;
+}
+
+.bwc-form-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 26px;
+  border-bottom: 1px solid #eef2f8;
+}
+
+.bwc-form-title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2a44;
+}
+
+.bwc-form-title svg {
+  font-size: 14px;
+  color: #4d5fb3;
+}
+
+.bwc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 26px 24px;
+}
+
+.bwc-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.bwc-form-top-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-bottom: 1px solid #e8edf5;
+  padding-bottom: 18px;
+}
+
+.bwc-type-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bwc-type-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bwc-type-meta .bwc-form-group {
+  margin-top: 0;
+}
+
+.bwc-form-body {
+  padding-top: 24px;
+}
+
+.bwc-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.bwc-form-group,
+.bwc-entry-field,
+.bwc-calculation-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bwc-form-group label,
+.bwc-entry-field label,
+.bwc-calculation-field label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #49556e;
+}
+
+.bwc-form-group input,
+.bwc-form-group select,
+.bwc-entry-field input,
+.bwc-calculation-field input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  background: #F8FAFC;
+  padding: 0 11px;
+  font-size: 14px;
+  color: #1f2937;
+  font-family: "Inter", sans-serif;
+}
+
+.bwc-form-group input:focus,
+.bwc-form-group select:focus,
+.bwc-entry-field input:focus {
+  outline: none;
+  border-color: #6878bf;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(104, 120, 191, 0.12);
+}
+
+.bwc-entry-field-white{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bwc-entry-field-white label{
+  font-size: 14px;
+  font-weight: 600;
+  color: #49556e;
+}
+
+.bwc-entry-field-white input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  background: #ffffff;
+  padding: 0 11px;
+  font-size: 14px;
+  color: #1f2937;
+  font-family: "Inter", sans-serif;
+}
+
+.bwc-entry-field-white input:focus {
+  outline: none;
+  border-color: #6878bf;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(104, 120, 191, 0.12);
+}
+
+.bwc-input-icon-wrap {
+  position: relative;
+}
+
+.bwc-input-icon-wrap input {
+  padding-right: 34px;
+}
+
+.bwc-input-icon {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #9aa5b6;
+  pointer-events: none;
+}
+
+.bwc-inline-control {
+  display: flex;
+  gap: 8px;
+}
+
+.bwc-inline-control input {
+  flex: 1;
+}
+
+.bwc-generate {
+  border-radius: 5px;
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.bwc-generate {
+  background: #4957ae;
+  color: #ffffff;
+  border: 1px solid #4957ae;
+}
+
+.bwc-generate {
+  min-width: 74px;
+  padding: 0 12px;
+}
+
+.bwc-generate:hover {
+  transform: translateY(-1px);
+}
+
+.bwc-entry-panel {
+  border: 1px solid #cfdaf0;
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 18px;
+}
+
+.bwc-entry-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.bwc-entry-row+.bwc-entry-row {
+  margin-top: 10px;
+}
+
+.bwc-entry-index {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  background: #4957ae;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.bwc-calculation-section h4 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1f2a44;
+}
+
+.bwc-calculation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.bwc-footer {
+  margin: 20px -28px -20px;
+}
+
+.bwc-message-box {
+  margin: 14px 26px 20px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.bwc-message-success {
+  background: #ecfdf5;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.bwc-message-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.bwc-error-field {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
+@media (max-width: 900px) {
+  .bwc-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bwc-form-top-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bwc-row,
+  .bwc-calculation-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+
+  .bwc-shell,
+  .bwc-entry-stage {
+    min-height: auto;
+  }
+
+  .bwc-container {
+    width: calc(100% - 20px);
+  }
+
+  .bwc-breadcrumbs {
+    display: none;
+  }
+
+  .bwc-header h1 {
+    font-size: 20px;
+  }
+
+  .bwc-header p {
+    font-size: 12px;
+  }
+
+  .bwc-form-title,
+  .bwc-form,
+  .bwc-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .bwc-row,
+  .bwc-calculation-grid,
+  .bwc-entry-row {
+    grid-template-columns: 1fr;
+  }
+
+  .bwc-entry-index {
+    margin-top: 0;
+  }
+
+  .bwc-inline-control,
+  .bwc-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bwc-footer {
+    margin: 16px -14px -14px;
+  }
+
+  .bwc-message-box {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+}

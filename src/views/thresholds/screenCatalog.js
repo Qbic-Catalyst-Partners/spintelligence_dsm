@@ -1,0 +1,86 @@
+export const thresholdScreenCatalog = {
+    "quality-control": {
+        mixing: [
+            "Process Parameter",
+            "Cotton HVI Data Entry",
+            "Fibre Data Entry",
+            "AFIS Data Entry",
+            "Moisture Data Entry",
+            "Openness Data Entry",
+        ],
+        "blow-room": [
+            "Blow Room Sync",
+            "Process Parameter",
+            "BR Waste Study Entry",
+            "Drop Test Data Entry",
+        ],
+        carding: [
+            "Process Parameter",
+            "Between & Within Card Data Entry",
+            "Card Thick Place Entry",
+            "Trials Data Entry Form",
+            "Nati Data Entry",
+            "U% Data Entry",
+            "Card DFK Pressure Checking",
+            "WheelChange",
+        ],
+        comber: [
+            "Ribbon Lap CV Data Entry",
+            "Nati Data Entry",
+            "U% Data Entry",
+        ],
+        "draw-frame": [
+            "Yarn CV% Calculation Form",
+            "Draw Frame Cots Data Entry",
+            "U% Data Entry",
+            "PP - Breaker Drawing",
+            "PP - Finisher Drawing",
+        ],
+        simplex: [
+            "Process Parameter",
+            "SMXCots Change Data Entry",
+            "SMX Breaks Study Report",
+            "U% Data Entry",
+        ],
+        spinning: [
+            "Process Parameter",
+            "COTS Checking",
+            "Count Change",
+            "Ring Frame Log Book",
+            "Speed Checking",
+            "Lycra Missing",
+            "Bottom Apron Checking",
+            "Lycra Centering",
+            "RSM & Lycrasensor Checking Online",
+            "RSM & Lycrasensor Checking Offline",
+            "Wheel Change",
+        ],
+        autoconer: [
+            "Process Parameter",
+            "PP - Autoconer Q2",
+            "PP - Autoconer Q3",
+            "Rewinding Study",
+            "Cone Density",
+            "Cone Packing Audit",
+            "Lycra Checking",
+            "Count Wise Cuts Record",
+            "Splice Strength",
+            "Drum wise Appearance",
+            "CSP Parameter Entries",
+            "U% Parameter Entries",
+        ],
+    },
+    electrical: {
+        maintenance: [],
+        panels: [],
+        utilities: [],
+    },
+    mechanical: {
+        maintenance: [],
+        machining: [],
+        inspection: [],
+    },
+};
+
+export const getThresholdScreensForSubDepartment = (departmentSlug, subDepartmentSlug) =>
+    thresholdScreenCatalog?.[departmentSlug]?.[subDepartmentSlug] || [];

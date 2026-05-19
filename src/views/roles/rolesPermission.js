@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Link from "next/link";
+import { useDispatch, useSelector } from "react-redux";
 import styles from "../../styles/rolesPermission.module.css";
 
 import { IoMdSearch, IoMdLock } from "react-icons/io";
@@ -10,17 +11,17 @@ import { MdAdd } from "react-icons/md";
 import { FaIdCard, FaExclamationTriangle } from "react-icons/fa";
 import { FaIdCardClip } from "react-icons/fa6";
 import { BsExclamationCircle } from "react-icons/bs";
-import api from "../../apis/apiConfig";
+import { updateRoleAPI } from "../../apis/rolesPermission";
+import { fetchRoles, deleteRole } from "../../store/slices/rolesSlice";
 
 export default function RolesPermissions() {
     const router = useRouter();
+    const dispatch = useDispatch();
 
-    const [rolesData, setRolesData] = useState([]);
+    const { roles: rolesData, loading, error } = useSelector(state => state.roles);
+
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-
     const [activeRow, setActiveRow] = useState(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [selectedRole, setSelectedRole] = useState(null);
@@ -30,26 +31,18 @@ export default function RolesPermissions() {
 
     // FETCH ROLES
     useEffect(() => {
-        const fetchRoles = async () => {
-            try {
-                const res = await api.get("/roles", { params: { page: 1, limit: 100 } });
-                const CreatedRoles = res.data.roles.map((role) => ({
-                    ...role,
-                    status: typeof role.status === "boolean" ? (role.status ? "Active" : "Inactive") : role.status,
-                    screen_count: role.screen_count ?? "0/0",
-                }));
-                setRolesData(CreatedRoles);
-                setLoading(false);
-            } catch {
-                setError("Unable to load roles");
-                setLoading(false);
-            }
-        };
-        fetchRoles();
-    }, []);
+        dispatch(fetchRoles({ page: 1, limit: 100 }));
+    }, [dispatch]);
+
+    // Transform roles data
+    const transformedRolesData = rolesData.map((role) => ({
+        ...role,
+        status: typeof role.status === "boolean" ? (role.status ? "Active" : "Inactive") : role.status,
+        screen_count: role.screen_count ?? "0/0",
+    }));
 
     // FILTER
-    const filteredRoles = rolesData.filter((role) => {
+    const filteredRoles = transformedRolesData.filter((role) => {
         const name = role.role_name || role.name || "";
         const matchesSearch =
             name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -85,21 +78,13 @@ export default function RolesPermissions() {
 
             const newStatus = !currentStatus;
 
-            await api.patch(`/roles/${role.id}`, {
-                status: newStatus,
-            });
-
-            // ✅ update UI
-            setRolesData((prev) =>
-                prev.map((r) =>
-                    r.id === role.id
-                        ? { ...r, status: newStatus ? "Active" : "Inactive" }
-                        : r
-                )
-            );
+            setActiveRow(null);
+            await updateRoleAPI(role.id, { status: newStatus });
+            dispatch(fetchRoles({ page: 1, limit: 100 }));
 
         } catch (err) {
             console.error("Error updating status", err);
+            alert(err?.message || "Unable to update role status");
         }
     };
 
@@ -112,11 +97,10 @@ export default function RolesPermissions() {
 
     const handleConfirmDelete = async () => {
         try {
-            await api.delete(`/roles/${selectedRole.id}`);
-            setRolesData((prev) => prev.filter((r) => r.id !== selectedRole.id));
+            await dispatch(deleteRole(selectedRole.id)).unwrap();
             setShowDeleteModal(false);
             setSelectedRole(null);
-        } catch {
+        } catch (error) {
             alert("Unable to delete role");
         }
     };
@@ -137,22 +121,6 @@ export default function RolesPermissions() {
 
     return (
         <>
-            {/* NAVBAR */}
-            <header className={styles.topNavbar}>
-                <div className={styles.navLeft}>
-                    <img src="/spintel.svg" alt="spintel" />
-
-                    <nav className={styles.navLinks}>
-                        <Link href="/">Home</Link>
-                        <Link href="/usermanagement">User Management</Link>
-                        <Link href="/rolespermission">Roles & Permissions</Link>
-                    </nav>
-                </div>
-
-                <img src="/logo.png" alt="logo" className={styles["logo"]} />
-
-            </header>
-
             {/* PAGE */}
             <div className={styles["roles-page"]}>
                 {/* HEADER */}
@@ -277,7 +245,7 @@ export default function RolesPermissions() {
 
                                                     <div
                                                         className={styles["menu-item"]}
-                                                        onClick={() => RoleStatus(role)}
+                                                        onClick={() => toggleRoleStatus (role)}
                                                     >
                                                         {role.status.toLowerCase() === "active"
                                                             ? "Inactive"

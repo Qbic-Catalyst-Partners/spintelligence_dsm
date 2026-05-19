@@ -6,7 +6,7 @@ import styles from "../styles/login.module.css";
 import { FaUserTie, FaLock, FaEye, FaEyeSlash, FaExclamationCircle } from "react-icons/fa";
 
 const Login = () => {
-    const [employee_id, setemployee_id] = useState("");
+    const [loginId, setLoginId] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [localError, setLocalError] = useState("");
@@ -20,7 +20,7 @@ const Login = () => {
 
     useEffect(() => {
         if (token) {
-            router.push("/dashboard");
+            router.push("/");
         }
     }, [token, router]);
 
@@ -33,11 +33,11 @@ const Login = () => {
         setLocalError("");
         dispatch(clearError());
 
-        if (!employee_id || !password) {
-            setLocalError("Please enter both Employee ID and password.");
+        if (!loginId || !password) {
+            setLocalError("Please enter both mail ID and password.");
             return;
         }
-        dispatch(loginUser({ employee_id, password }));
+        dispatch(loginUser({ employee_id: loginId, password, authMode: "auto" }));
     };
 
     return (
@@ -63,14 +63,14 @@ const Login = () => {
                 <form className={styles['login-form']} onSubmit={handleLogin}>
                     <div className={styles.form}>
                         <label>Employee ID</label>
-                        <div className={styles['i-wrapper']}>
+                                <div className={styles['i-wrapper']}>
                             <FaUserTie className={`${styles['input-icon']} ${styles.left}`} />
                             <input
                                 type="text"
                                 placeholder="Enter Employee ID"
-                                value={employee_id}
+                                value={loginId}
                                 onChange={(e) => {
-                                    setemployee_id(e.target.value);
+                                    setLoginId(e.target.value);
                                     if (localError) setLocalError("");
                                     if (error) dispatch(clearError());
                                 }}
@@ -109,7 +109,7 @@ const Login = () => {
                     </div>
 
                     <button type="submit" className={styles['login-btn']} disabled={isLoading}>
-                        {isLoading ? "Logging in..." : "Login to Dashboard"}
+                        {isLoading ? "Logging in..." : "Login to Quality Control"}
                     </button>
 
                 </form>

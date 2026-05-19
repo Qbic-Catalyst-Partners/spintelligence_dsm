@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import styles from "../../styles/UmAddUser.module.css";
 import { useRouter } from "next/router";
-import Link from "next/link";
 
 // ICONS
 import { IoPersonSharp } from "react-icons/io5";
@@ -39,9 +38,10 @@ export default function EditUser() {
     employee_id: "",
     role: "",
     department: "",
+    level: "",
   });
 
-  // FETCH ROLES + DEPARTMENTS
+  // FETCH ROLES
   useEffect(() => {
     dispatch(fetchRoles());
     dispatch(fetchDepartments());
@@ -68,6 +68,7 @@ export default function EditUser() {
           employee_id: user.employee_id || "",
           role: user.role || "",
           department: user.department || "",
+          level: user.level || "",
         });
       } catch (err) {
         console.error(err);
@@ -80,11 +81,10 @@ export default function EditUser() {
   // REDIRECT ON SUCCESS
   useEffect(() => {
     if (actionSuccess) {
-      alert("User updated successfully!");
       dispatch(clearActionState());
       router.push("/usermanagement");
     }
-  }, [actionSuccess]);
+  }, [actionSuccess, dispatch, router]);
 
   useEffect(() => {
     if (error) alert(error);
@@ -116,7 +116,8 @@ export default function EditUser() {
       !formData.email ||
       !formData.phone ||
       !formData.role ||
-      !formData.department
+      !formData.department ||
+      !formData.level
     ) {
       setLocalError("All fields are required");
       return;
@@ -124,16 +125,13 @@ export default function EditUser() {
 
     try {
       const updatedData = {
-        full_name: `${formData.first_name} ${formData.last_name}`,
-        email: formData.email,
         phone: formData.phone,
         role: formData.role,
         department: formData.department,
-        ...(password && { password }),
+        level: formData.level,
       };
 
       await updateUserAPI(id, updatedData);
-      alert("User updated successfully!");
       router.push("/usermanagement");
     } catch (err) {
       console.error(err);
@@ -143,19 +141,6 @@ export default function EditUser() {
 
   return (
     <div className={styles.container}>
-      {/* NAVBAR */}
-      <header className={styles.topNavbar}>
-        <div className={styles.navLeft}>
-          <img src="/spintel.svg" className={styles.spintelLogo} />
-          <nav className={styles.navLinks}>
-            <Link href="/">Home</Link>
-            <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermission">Roles & Permissions</Link>
-          </nav>
-        </div>
-        <img src="/logo.png" className={styles.mainLogo} />
-      </header>
-
       <div className={styles.wrapper}>
         {/* HEADER */}
         <div className={styles.content}>
@@ -238,10 +223,25 @@ export default function EditUser() {
                   value={formData.department}
                   onChange={handleChange}
                 >
-                  <option value="">Select Department</option>
-                  {departments.map((d) => (
-                    <option key={d.id}>{d.name}</option>
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.name}>
+                      {department.name}
+                    </option>
                   ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Level <span>*</span></label>
+                <select
+                  name="level"
+                  value={formData.level}
+                  onChange={handleChange}
+                >
+                  <option value="">Select level</option>
+                  <option value="L1">L1</option>
+                  <option value="L2">L2</option>
                 </select>
               </div>
             </div>

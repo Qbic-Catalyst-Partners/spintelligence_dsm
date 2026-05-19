@@ -1,0 +1,108 @@
+/* ================= MOISTURE DATA ENTRY STYLES ================= */
+
+/* section title */
+.mixx-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.mixx-title-icon {
+    font-size: 22px;
+    color: #3d539f;
+}
+
+.mixx-section-title {
+    font-size: 15px;
+    font-weight: 700;
+}
+
+/* form rows */
+.mixx-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.five-columns {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+}
+
+.mixx-empty {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* form group and inputs */
+.mixx-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.mixx-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.mixx-input {
+    height: 38px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    font-size: 14px;
+}
+
+.mixx-error {
+    border-color: #ef4444 !important;
+    background: #fff1f2 !important;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
+.mixx-input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 1024px) {
+    .five-columns {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .mixx-row {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .five-columns {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+    }
+
+    .mixx-group {
+        width: 100%;
+    }
+
+    .mixx-group label {
+        font-size: 10px;
+        font-weight: 500;
+        color: #3D539F;
+    }
+
+    .mixx-input {
+        height: 36px;
+        font-size: 12px;
+    }
+
+    .mixx-section-title {
+        font-size: 14px;
+    }
+}

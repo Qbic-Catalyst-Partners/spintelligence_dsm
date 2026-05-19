@@ -1,0 +1,1011 @@
+.page {
+  min-height: calc(100vh - 72px);
+  background: #f8f7f7;
+  padding: var(--management-page-padding);
+  padding-top: 22px;
+  padding-bottom: 18px;
+  box-sizing: border-box;
+  color: #16243b;
+}
+
+.reportTabs,
+.filterCard,
+.scheduledCard,
+.contentGrid,
+.exportBar {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.headingIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #e7f1ff;
+  color: #087bff;
+  font-size: 22px;
+  flex: 0 0 44px;
+}
+
+.filterHeading {
+  padding: 20px 18px 24px;
+}
+
+.filterHeading h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 800;
+  color: #101828;
+}
+
+.filterHeading p {
+  margin: 2px 0 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.reportTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(455px, 100%);
+  margin: 0 auto 26px max(0px, calc((100% - 1180px) / 2));
+  border-radius: 10px;
+  background: #eef1f4;
+  padding: 5px;
+}
+
+.reportTabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #5f6d80;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reportTabs .activeReportTab {
+  background: #ffffff;
+  color: #172033;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
+}
+
+.filterCard,
+.availableCard,
+.previewCard,
+.exportBar,
+.scheduledCard {
+  background: #ffffff;
+  border: 1px solid #d8e0eb;
+  border-radius: 8px;
+}
+
+.scheduledCard {
+  padding: 26px 24px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.scheduledHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.scheduledHeader h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 800;
+}
+
+.scheduledHeader p {
+  margin: 2px 0 0;
+  color: #5f6d80;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.scheduledHeader button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 162px;
+  height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: #4056a8;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.scheduledItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid #d8e0eb;
+  border-radius: 10px;
+  padding: 22px 20px;
+}
+
+.scheduledList {
+  display: grid;
+  gap: 14px;
+}
+
+.scheduledEmpty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 34px 20px;
+  text-align: center;
+}
+
+.scheduledEmpty h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 800;
+}
+
+.scheduledEmpty p {
+  margin: 8px 0 0;
+  color: #617189;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.scheduledTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.scheduledTitleRow h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 800;
+}
+
+.scheduledTitleRow span {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border-radius: 8px;
+  background: #4056A8;
+  color: #ffffff;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scheduledTitleRow .pausedScheduledStatus {
+  background: #e5e7eb;
+  color: #4b5563;
+}
+
+.scheduledMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: #617189;
+  font-size: 14px;
+}
+
+.scheduledMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scheduledActions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.scheduledActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.scheduledActions .deleteScheduledButton {
+  color: #ef1f1f;
+}
+
+.scheduledActions button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.filterCard {
+  margin-bottom: 18px;
+  overflow: visible;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.filterTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 47px;
+  padding: 0 18px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 16px;
+  padding: 22px 18px;
+}
+
+.fieldGroup {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.fieldGroup select,
+.fieldGroup input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #dbe4ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #182230;
+  font-size: 14px;
+  font-weight: 400;
+  outline: none;
+}
+
+.fieldGroup select {
+  appearance: none;
+  padding: 0 42px 0 14px;
+}
+
+.fieldGroup > svg {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  color: #6d7e95;
+  pointer-events: none;
+}
+
+.dateGroup {
+  grid-column: span 1;
+}
+
+.dateInputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  border: 1px solid #dbe4ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 0 12px 0 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dateDisplay {
+  color: #182230;
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dateInputs svg {
+  color: #6d7e95;
+}
+
+.datePickerPopover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  gap: 16px;
+  width: 340px;
+  padding: 16px;
+  border: 1px solid #d8e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+}
+
+.calendarPanel {
+  display: grid;
+  gap: 10px;
+}
+
+.calendarPanelTitle {
+  display: grid;
+  gap: 4px;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.calendarPanelTitle small {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.calendarHeader {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendarHeader span {
+  color: #26364f;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.calendarHeader button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #dbe4ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #4056a8;
+  cursor: pointer;
+}
+
+.weekdayGrid,
+.dayGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.weekdayGrid span {
+  color: #7a8aa0;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.dayGrid button,
+.dayGrid span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dayGrid button {
+  cursor: pointer;
+}
+
+.dayGrid button:hover {
+  background: #eef3ff;
+  color: #4056a8;
+}
+
+.dayGrid .selectedDay {
+  background: #4056a8;
+  color: #ffffff;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 370px) minmax(0, 1fr);
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.availableCard,
+.previewCard {
+  min-height: 530px;
+  padding: 22px;
+  min-width: 0;
+}
+
+.availableCard h2,
+.previewCard h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 20px;
+  font-weight: 700;
+  color: #172033;
+}
+
+.availableCard h3 {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 600;
+  color: #172033;
+}
+
+.availableCard p,
+.previewCard p {
+  margin: 6px 0 18px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.fieldList {
+  display: grid;
+  gap: 8px;
+}
+
+.fieldList button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: #e8e8e8;
+  color: #59667a;
+  font-size: 14px;
+  padding: 0 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sixDotGrip {
+  display: grid;
+  grid-template-columns: repeat(2, 3px);
+  grid-template-rows: repeat(3, 3px);
+  gap: 3px;
+  width: 9px;
+  flex: 0 0 9px;
+}
+
+.sixDotGrip span {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.65;
+}
+
+.selectedFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 100px;
+  border: 1px dashed #a8b2c3;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 34px;
+}
+
+.selectedField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  border-radius: 999px;
+  background: #dbe4fb;
+  color: #234b9b;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: grab;
+}
+
+.selectedField:active {
+  cursor: grabbing;
+}
+
+.selectedField button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tableWrap {
+  border: 1px solid #dce3ed;
+  border-radius: 10px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-width: 100%;
+  max-height: 520px;
+}
+
+.tableWrap table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  font-size: 14px;
+  table-layout: auto;
+}
+
+.tableWrap th,
+.tableWrap td {
+  padding: 12px 18px;
+  text-align: left;
+  border-bottom: 1px solid #e7edf4;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.tableWrap th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.tableWrap tr:last-child td {
+  border-bottom: 0;
+}
+
+.exportBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 78px;
+  padding: 16px 24px;
+}
+
+.exportBar p {
+  margin: 0;
+  color: #8a8f98;
+  font-size: 14px;
+  line-height: 24px;
+  font-weight: 400;
+}
+
+.exportBar p strong {
+  color: #6b7280;
+  font-weight: 800;
+}
+
+
+.exportActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 24px;
+}
+
+.exportActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 136px;
+  height: 42px;
+  border: 1px solid #dbe4ef;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #27364f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.exportActions button:first-child {
+  min-width: 168px;
+}
+
+.exportActions .primaryExport {
+  border-color: #4056a8;
+  background: #4056a8;
+  color: #ffffff;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.62);
+  padding: 24px;
+}
+
+.scheduleModal {
+  width: min(486px, 100%);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 34px 32px 28px;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.26);
+  overflow: visible;
+}
+
+.scheduleModal h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 800;
+}
+
+.scheduleModal > p {
+  margin: 4px 0 24px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.modalField {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  overflow: visible;
+}
+
+.modalField span,
+.sendToLabel {
+  color: #344054;
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.modalField input,
+.modalField select {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #dbe4ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #344054;
+  font-size: 14px;
+  outline: none;
+}
+
+.modalField input {
+  padding: 0 14px;
+}
+
+.modalField select {
+  appearance: none;
+  padding: 0 38px 0 14px;
+}
+
+.modalField select:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
+.modalSelectWrap,
+.modalTimeWrap {
+  position: relative;
+  overflow: visible;
+}
+
+.modalSelectWrap svg,
+.modalTimeWrap svg {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  color: #667085;
+  pointer-events: none;
+}
+
+.timeIconButton {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #667085;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.modalTimeWrap .timeIconButton svg {
+  position: static;
+  transform: none;
+  pointer-events: auto;
+}
+
+.timePickerMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  bottom: auto;
+  left: 0;
+  right: auto;
+  z-index: 120;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 210px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+}
+
+.timePickerMenu label {
+  display: grid;
+  gap: 6px;
+}
+
+.timePickerMenu label span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.timePickerMenu select {
+  width: 100%;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #344054;
+  font-size: 12px;
+  text-align: center;
+  padding: 0 8px;
+  outline: 1px solid #dbe4ef;
+  cursor: pointer;
+}
+
+.modalTwoColumns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  overflow: visible;
+}
+
+.sendToBlock {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 28px;
+}
+
+.sendToBlock label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #667085;
+  font-size: 14px;
+  line-height: 16px;
+}
+
+.sendToBlock input {
+  width: 14px;
+  height: 14px;
+  accent-color: #4056a8;
+}
+
+.sendToRecipientRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sendToRecipientRow .recipientDropdown {
+  width: 190px;
+}
+
+.sendToRecipientRow .recipientDropdownButton {
+  min-height: 22px;
+  padding: 0 9px 0 10px;
+}
+
+.recipientDropdown {
+  position: relative;
+}
+
+.recipientDropdownButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #dbe4ef;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #344054;
+  padding: 0 12px 0 14px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.recipientDropdownButton span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.recipientDropdownButton svg {
+  flex-shrink: 0;
+  color: #667085;
+}
+
+.recipientDropdownMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 130;
+  display: grid;
+  gap: 2px;
+  max-height: 190px;
+  overflow-y: auto;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+}
+
+.recipientDropdownMenu label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: #344054;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.recipientDropdownMenu label:hover {
+  background: #f2f5fb;
+}
+
+.recipientDropdownMenu input {
+  width: 14px;
+  height: 14px;
+  accent-color: #4056a8;
+}
+
+.recipientDropdownMenu p {
+  margin: 0;
+  padding: 8px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modalActions button {
+  height: 36px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344054;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modalActions .createScheduleButton {
+  border-color: #4056a8;
+  background: #4056a8;
+  color: #ffffff;
+}
+
+.modalActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+@media (max-width: 900px) {
+  .filterGrid,
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .datePickerPopover {
+    width: min(340px, calc(100vw - 72px));
+  }
+
+  .exportBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .exportActions {
+    flex-direction: column;
+  }
+
+  .scheduledHeader,
+  .scheduledItem {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scheduledActions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 560px) {
+  .modalTwoColumns {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduleModal {
+    padding: 28px 22px 22px;
+  }
+}

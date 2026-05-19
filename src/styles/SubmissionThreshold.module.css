@@ -1,0 +1,770 @@
+.page {
+  min-height: 100vh;
+  background: #f8f7f7;
+  padding: var(--management-page-padding);
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+.shell {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.intro {
+  margin-bottom: 18px;
+}
+
+.intro h1 {
+  margin: 0;
+  color: #1f2a44;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.intro p {
+  margin: 6px 0 0;
+  color: #7f8ca3;
+  font-size: 14px;
+}
+
+.tabBar {
+  width: 360px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background: #d9d9db;
+}
+
+.tabButton {
+  min-height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6a7891;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabButtonActive {
+  background: #ffffff;
+  color: #5d5d63;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08);
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.statCard {
+  min-height: 108px;
+  padding: 20px;
+  border: 1px solid #d9dfe8;
+  border-radius: 10px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.statCard span {
+  display: block;
+  color: #848b99;
+  font-size: 13px;
+}
+
+.statCard strong {
+  display: block;
+  margin-top: 8px;
+  color: #24324b;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.sectionPlain {
+  display: grid;
+  gap: 16px;
+}
+
+.sectionHeader,
+.cardHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.sectionHeader h2,
+.cardHeader h2 {
+  margin: 0;
+  color: #2b3951;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cardHeader p {
+  margin: 0;
+  color: #7b89a0;
+  font-size: 14px;
+}
+
+.departmentRow {
+  max-width: 300px;
+}
+
+.rulesTable {
+  display: grid;
+  gap: 14px;
+}
+
+.ruleCard,
+.card {
+  border: 1px solid #e1e6ef;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
+}
+
+.ruleCard {
+  padding: 18px 20px;
+}
+
+.card {
+  padding: 22px 24px 18px;
+}
+
+.ruleGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 14px 12px;
+  align-items: end;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ruleGrid > .field:nth-of-type(5) {
+  grid-column: 1 / 2;
+  grid-row: 2;
+}
+
+.ruleGrid > .field:nth-of-type(6) {
+  grid-column: 2 / 3;
+  grid-row: 2;
+}
+
+.ruleGrid > .field:nth-of-type(7) {
+  grid-column: 3 / 4;
+  grid-row: 2;
+}
+
+.ruleGrid > .field:nth-of-type(8) {
+  grid-column: 4 / 5;
+  grid-row: 2;
+}
+
+.field span {
+  color: #42516a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field select,
+.field input,
+.multiSelectButton {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 0 12px;
+  color: #29374f;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.tatTimeWrap {
+  position: relative;
+  overflow: visible;
+}
+
+.tatTimeWrap input {
+  padding-right: 46px;
+}
+
+.tatTimeButton {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #42516a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.tatTimeButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tatTimeMenu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 245px;
+  border: 1px solid #dbe2ec;
+  border-radius: 9px;
+  background: #ffffff;
+  padding: 10px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.14);
+}
+
+.tatTimeMenu label {
+  display: grid;
+  gap: 6px;
+}
+
+.tatTimeMenu label span {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tatTimeMenu select {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  border: 1px solid #dbe2ec;
+  border-radius: 7px;
+  background: #f8fbff;
+  color: #344054;
+  font-size: 13px;
+  text-align: center;
+  padding: 0 8px;
+  outline: none;
+  cursor: pointer;
+}
+
+.field select:focus,
+.field input:focus,
+.multiSelectButton:focus {
+  border-color: #5b74c7;
+  box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
+}
+
+.multiSelectWrap {
+  position: relative;
+}
+
+.multiSelectDisabled {
+  opacity: 0.65;
+}
+
+.multiSelectButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.multiSelectValue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiSelectChevron {
+  flex-shrink: 0;
+  color: #7d8797;
+  font-size: 11px;
+}
+
+.multiSelectMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  border: 1px solid #dbe2ec;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  max-height: 170px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px;
+}
+
+.singleSelectOption {
+  width: 100%;
+  border: none;
+  background: #ffffff;
+  padding: 4px 8px;
+  color: #29374f;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+
+.singleSelectOption:hover,
+.singleSelectOptionActive {
+  background: #eef3ff;
+}
+
+.multiSelectOptionRow {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+}
+
+.multiSelectOptionRow input {
+  width: 13px;
+  height: 34px;
+  margin: 0;
+}
+
+
+.multiSelectEmpty {
+  padding: 10px 12px;
+  color: #7d8797;
+  font-size: 12px;
+}
+
+.ruleActions {
+  grid-column: 5 / 6;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  align-self: end;
+}
+
+.addIconButton,
+.deleteIconButton {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.addIconButton {
+  border: none;
+  background: #4f63b6;
+  color: #ffffff;
+}
+
+.deleteIconButton {
+  border: 1px solid #ffcecf;
+  background: #fff4f4;
+  color: #f04f56;
+}
+
+.actionSpacer {
+  width: 28px;
+  height: 28px;
+}
+
+.formFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clearButton,
+.saveButton {
+  min-height: 36px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clearButton {
+  border: 1px solid #8d9098;
+  background: #ffffff;
+  color: #4a505e;
+  padding: 0 14px;
+}
+
+.saveButton {
+  border: none;
+  background: #4f63b6;
+  color: #ffffff;
+  padding: 0 16px;
+}
+
+.clearButton:disabled,
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.successMessage,
+.errorMessage {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.successMessage {
+  background: #eef8f1;
+  border: 1px solid #c7ebd0;
+  color: #20633f;
+}
+
+.errorMessage {
+  background: #fff1f1;
+  border: 1px solid #ffd1d1;
+  color: #c73c3c;
+}
+
+.tableWrap {
+  overflow: visible;
+  margin-top: 14px;
+  width: 100%;
+}
+
+.table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.table th {
+  padding: 14px 12px;
+  border-bottom: 1px solid #c9d0db;
+  text-align: left;
+  color: #42516a;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f8fbff;
+}
+
+.table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid #e4e9f2;
+  color: #2b3951;
+  font-size: 13px;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 76px;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statusActive {
+  background: #eef8f1;
+  color: #20633f;
+}
+
+.statusInactive {
+  background: #fff1f1;
+  color: #c73c3c;
+}
+
+.existingFilterPanel {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.summaryCard {
+  border-radius: 8px;
+  background: #efefef;
+  padding: 10px 14px;
+}
+
+.summaryCard span {
+  display: block;
+  color: #73839a;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.summaryCard strong {
+  display: block;
+  margin-top: 6px;
+  color: #2b3951;
+  font-size: 14px;
+}
+
+.existingThresholdCard {
+  padding: 10px 0 0;
+  overflow: visible;
+}
+
+.existingSummaryRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 4px 16px 18px;
+}
+
+.departmentSummaryCard {
+  background: #ededee;
+}
+
+.clearFilterButton {
+  min-height: 38px;
+  border: 1px solid #dbe2ec;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6f7786;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.existingThresholdTable {
+  min-width: 100%;
+}
+
+.existingThresholdTable thead th {
+  background: #d2d2d5;
+  border-bottom: none;
+  color: #111111;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.existingThresholdTable thead th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.existingThresholdTable thead th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.existingThresholdTable tbody td {
+  padding: 14px 12px;
+  color: #111111;
+  font-weight: 600;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.notebookCell {
+  font-weight: 700;
+}
+
+.expandableCell {
+  position: relative;
+}
+
+.expandableCell summary {
+  list-style: none;
+}
+
+.expandableCell summary::-webkit-details-marker {
+  display: none;
+}
+
+.expandableCellSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.expandableCellPrimary {
+  min-width: 0;
+}
+
+.expandableCellIcon {
+  flex-shrink: 0;
+  color: #657086;
+  transition: transform 0.2s ease;
+}
+
+.expandableCell[open] .expandableCellIcon {
+  transform: rotate(180deg);
+}
+
+.expandableCellDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  max-width: 260px;
+  border: 1px solid #dbe2ec;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  z-index: 2;
+}
+
+.expandableCellItem {
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: #2b3951;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.expandableCellItem:hover {
+  background: #f5f7fb;
+}
+
+.actionMenuWrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.actionMenuButton {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #5f6674;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.actionMenuButton:hover {
+  background: #f3f5f8;
+}
+
+.actionMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 128px;
+  border: 1px solid #e0e6ef;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  z-index: 5;
+}
+
+.actionMenuItem {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #2b3951;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.actionMenuItem:hover {
+  background: #f4f6fb;
+}
+
+.actionMenuDelete {
+  color: #d82128;
+}
+
+@media (max-width: 900px) {
+  .tabBar {
+    width: 100%;
+  }
+
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .departmentRow {
+    max-width: none;
+  }
+
+  .ruleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .existingFilterPanel,
+  .existingSummaryRow {
+    grid-template-columns: 1fr;
+  }
+
+  .ruleActions {
+    grid-column: auto;
+    grid-row: auto;
+    justify-content: flex-start;
+  }
+
+  .ruleGrid > .field:nth-of-type(5),
+  .ruleGrid > .field:nth-of-type(6),
+  .ruleGrid > .field:nth-of-type(7),
+  .ruleGrid > .field:nth-of-type(8) {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .formFooter {
+    justify-content: flex-start;
+  }
+
+  .actionButtons {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

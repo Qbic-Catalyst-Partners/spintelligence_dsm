@@ -1,0 +1,61 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.field,
+.metricField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label,
+.metricField label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5d6a7d;
+}
+
+.field input,
+.field select,
+.metricField input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid #e1e7f0;
+  border-radius: 6px;
+  background: #f1f5f9 !important;
+  padding: 0 12px;
+  font-size: 14px;
+  color: #4b5565;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px 12px;
+}
+
+@media (max-width: 900px) {
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metricGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .formGrid,
+  .metricGrid {
+    grid-template-columns: 1fr;
+  }
+}

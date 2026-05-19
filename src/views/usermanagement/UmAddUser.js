@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import styles from "../../styles/UmAddUser.module.css";
 import { useRouter } from "next/router";
-import Link from "next/link";
 
 // ICONS
 import { IoPersonSharp } from "react-icons/io5";
@@ -39,6 +38,7 @@ export default function UmAddUser() {
     employee_id: "",
     role: "",
     department: "",
+    level: "",
   });
 
   // FETCH DROPDOWN DATA
@@ -50,12 +50,10 @@ export default function UmAddUser() {
   // SUCCESS REDIRECT
   useEffect(() => {
     if (actionSuccess) {
-      alert("User created successfully!");
-
       dispatch(clearActionState());
       router.push("/usermanagement");
     }
-  }, [actionSuccess]);
+  }, [actionSuccess, dispatch, router]);
 
   useEffect(() => {
     if (error) {
@@ -94,6 +92,7 @@ export default function UmAddUser() {
       !formData.employee_id ||
       !formData.role ||
       !formData.department ||
+      !formData.level ||
       !password
     ) {
       setLocalError("All fields are required");
@@ -105,21 +104,6 @@ export default function UmAddUser() {
 
   return (
     <div className={styles.container}>
-      {/* NAVBAR */}
-      <header className={styles.topNavbar}>
-        <div className={styles.navLeft}>
-          <img src="/spintel.svg" className={styles.spintelLogo} />
-
-          <nav className={styles.navLinks}>
-            <Link href="/">Home</Link>
-            <Link href="/usermanagement">User Management</Link>
-            <Link href="/rolespermission">Roles & Permissions</Link>
-          </nav>
-        </div>
-
-        <img src="/logo.png" className={styles.mainLogo} />
-      </header>
-
       <div className={styles.wrapper}>
         {/* HEADER */}
         <div className={styles.content}>
@@ -178,7 +162,7 @@ export default function UmAddUser() {
             <div className={styles.grid}>
               <div className={styles.formGroup}>
                 <label>Role Selection <span>*</span></label>
-                <select name="role" onChange={handleChange}>
+                <select name="role" value={formData.role} onChange={handleChange}>
                   <option value="">Select user role</option>
                   {roles.map((r) => (
                     <option key={r.id}>{r.role_name}</option>
@@ -188,11 +172,22 @@ export default function UmAddUser() {
 
               <div className={styles.formGroup}>
                 <label>Department <span>*</span></label>
-                <select name="department" onChange={handleChange}>
-                  <option value="">Select Department</option>
-                  {departments.map((d) => (
-                    <option key={d.id}>{d.name}</option>
+                <select name="department" value={formData.department} onChange={handleChange}>
+                  <option value="">Select department</option>
+                  {departments.map((department) => (
+                    <option key={department.id} value={department.name}>
+                      {department.name}
+                    </option>
                   ))}
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label>Level <span>*</span></label>
+                <select name="level" value={formData.level} onChange={handleChange}>
+                  <option value="">Select level</option>
+                  <option value="L1">L1</option>
+                  <option value="L2">L2</option>
                 </select>
               </div>
             </div>

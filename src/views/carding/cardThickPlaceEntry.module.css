@@ -1,0 +1,475 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* ================= BASE ================= */
+
+.card-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f8f6f6;
+  font-family: "Inter", sans-serif;
+  min-height: 100vh;
+}
+
+.card-container {
+  width: 100%;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  box-sizing: border-box;
+}
+
+/* ================= HEADER ================= */
+
+.card-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 10px;
+}
+
+.card-breadcrumb-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.card-breadcrumb-link:hover {
+  color: #3d539f;
+}
+
+.card-breadcrumb-active {
+  font-weight: 600;
+  color: #4965b7;
+}
+
+.card-header h1 {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.card-header p {
+  font-size: 14px;
+  color: #64748b;
+  margin-bottom: 20px;
+}
+
+/* ================= CARD ================= */
+
+.card-shell {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 24px 28px 20px;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* ================= FORM ================= */
+
+.card-form-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.card-form-title h3 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.card-form-title svg {
+  font-size: 18px;
+  color: #49556e;
+}
+
+.card-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px 26px 24px;
+}
+
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.card-form-group {
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-form-group label,
+.card-machine-box label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #49556e;
+  margin: 8px 0px 6px;
+}
+
+
+/* ================= INPUTS ================= */
+
+.card-form-group input,
+.card-form-group select,
+.card-machine-box input {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #F8FAFC;
+}
+
+
+
+
+.card-form-group input:focus,
+.card-form-group select:focus,
+.card-machine-box input:focus {
+  outline: none;
+  border-color: #3d539f;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(61, 83, 159, 0.15);
+}
+
+.card-thick-group {
+  flex: 1 1 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-thick-group label,
+.card-machine-box label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #49556e;
+  margin: 8px 0px 6px;
+}
+
+
+.card-thick-group input,
+.card-thick-group select,
+.card-machine-box input {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 6px 10px;
+  font-size: 14px;
+  background: #F8FAFC;
+}
+
+.card-thick-group input:focus,
+.card-thick-group select:focus,
+.card-machine-box input:focus {
+  outline: none;
+  border-color: #3d539f;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(61, 83, 159, 0.15);
+}
+
+/* ================= MACHINE SECTION ================= */
+
+.card-machine-section {
+  margin-top: 10px;
+}
+
+.card-machine-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+}
+
+.card-machine-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin: 6px 0 14px;
+}
+
+.card-machine-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  /* responsive */
+  gap: 14px;
+}
+
+.card-machine-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+}
+
+.card-machine-box input {
+  background: #F8FAFC;
+   width: 100%;
+}
+
+.card-machine-box label {
+  font-size: 11px;
+}
+
+/* ================= BUTTONS ================= */
+
+.card-primary {
+  background: #3d539f;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+
+
+.card-back {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* .card-machine-header .card-secondary {
+  background: #3d539f;
+  color: #fff;
+  border: none;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+} */
+
+.card-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ================= FOOTER ================= */
+
+.card-footer {
+  margin: 20px -28px -20px;
+}
+
+/* ================= MESSAGE ================= */
+
+.message-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.message-success {
+  background: #ecfdf5;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.message-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.field-error {
+  border-color: #ef4444 !important;
+  background: #fff1f2 !important;
+}
+
+.mobile-navbar {
+  display: none;
+}
+
+/* ================= MOBILE VIEW ================= */
+
+@media (max-width: 768px) {
+
+  /* NAVBAR (optional if you use it) */
+  .mobile-navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 50px;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid #D0E2F4;
+    z-index: 1000;
+  }
+
+  .mobile-navbar img {
+    height: 100px;
+  }
+
+  .hamburger {
+    position: absolute;
+    left: 14px;
+    font-size: 20px;
+  }
+
+  /* CONTAINER */
+  .card-container {
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 56px 12px 0;
+  }
+
+  /* HEADER */
+  .card-breadcrumbs {
+    display: none;
+  }
+
+  .card-header h1 {
+    font-size: 24px;
+  }
+
+  .card-header p {
+    font-size: 14px;
+  }
+
+  /* CARD */
+  .card-shell {
+    padding: 14px;
+    border-radius: 8px;
+  }
+
+  /* FORM → GRID */
+  .card-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    /* single column default */
+    gap: 12px;
+  }
+
+  .card-form-group label {
+    font-size: 11px;
+  }
+
+  .card-form-group input,
+  .card-form-group select {
+    height: 34px;
+    font-size: 12px;
+  }
+
+  /* MACHINE SECTION */
+  .card-machine-section {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  .card-machine-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .card-machine-box label {
+    font-size: 11px;
+  }
+
+  .card-machine-box input {
+    height: 32px;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 12px;
+    gap: 6px;
+  }
+
+  /* BUTTONS */
+  .card-primary,
+  .card-secondary {
+    font-size: 12px;
+    padding: 7px;
+  }
+
+  .card-back {
+    display: none;
+  }
+
+  /* FOOTER */
+  .card-footer {
+    margin: 16px -14px -14px;
+  }
+}
+
+
+/* ================= SMALL MOBILE (iPhone SE) ================= */
+
+@media (max-width: 480px) {
+
+  .card-container {
+    max-width: 360px;
+    padding: 52px 10px 0;
+  }
+
+  .card-header h1 {
+    font-size: 24px;
+  }
+
+  .card-header p {
+    font-size: 14px;
+  }
+
+  .card-shell {
+    padding: 12px;
+  }
+
+  /* AUTO GRID (best for small screens) */
+  .card-row {
+    grid-template-columns: 1fr;
+    /* force single column */
+    gap: 10px;
+  }
+
+  .card-form-group input,
+  .card-form-group select {
+    height: 30px;
+    font-size: 11px;
+    padding: 8px 12px;
+  }
+
+  .card-machine-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .card-machine-box input {
+    height: 28px;
+    font-size: 10.5px;
+  }
+
+  .card-primary,
+  .card-secondary {
+    font-size: 11px;
+    padding: 6px;
+  }
+
+  .card-footer {
+    margin: 12px -12px -12px;
+  }
+}
