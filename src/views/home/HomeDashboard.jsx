@@ -6,6 +6,7 @@ import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
 import { AiOutlineFolderOpen } from "react-icons/ai";
 
 import apiConfig from "@/apis/apiConfig";
+import { fetchBuilderData, fetchMyDashboard, fetchMyWidgets, fetchUserWidgets } from "@/apis/dashboardBuilderApi";
 import styles from "@/styles/departmentDirectory.module.css";
 import { isDashboardManagerUser } from "@/utils/accessControl";
 import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
@@ -13,6 +14,7 @@ import { getDashboardOwnerUserId } from "@/utils/dashboardOwner";
 const DASHBOARD_SELECTION_STORAGE_KEY = "spintelligenceDashboardSelection";
 
 const trendModes = ["1D", "1W", "1M", "1Y"];
+const TICKET_VISUALIZATION_TYPES = new Set(["ticket_status_card", "individual_ticket_count", "add_ticket_count"]);
 const modeMultipliers = { "1D": 0.72, "1W": 0.9, "1M": 1, "1Y": 1.18 };
 const DASHBOARD_FETCH_DEBOUNCE_MS = 250;
 const LINE_CHART_X_PADDING = 6;
@@ -59,10 +61,10 @@ const formatValue = (value, mode) => {
   if (!Number.isFinite(n)) return "--";
   return (n * (modeMultipliers[mode] || 1)).toFixed(2);
 };
-const formatIntegerValue = (value, mode) => {
+const formatIntegerValue = (value) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return "--";
-  return String(Math.round(n * (modeMultipliers[mode] || 1)));
+  return String(Math.round(n));
 };
 const formatDayLabel = (date) => {
   const d = String(date.getDate()).padStart(2, "0");
@@ -78,6 +80,7 @@ const getTicketCardLabel = (value) => {
   if (key === "reopened" || key === "reopenedtickets") return "Reopened";
   if (key === "closed" || key === "closedtickets") return "Closed";
   if (key === "pending" || key === "pendingtickets") return "Pending";
+  if (key === "overdue" || key === "overduetickets") return "Overdue";
   return "Ticket Dashboard";
 };
 const getTicketCardIcon = (label) => {
@@ -87,6 +90,90 @@ const getTicketCardIcon = (label) => {
   if (label === "Closed") return IoCheckmarkDoneCircleOutline;
   if (label === "Pending") return MdOutlinePendingActions;
   return FiPieChart;
+};
+const ticketMetricCandidates = {
+  total: ["total_tickets", "totaltickets", "total", "ticket_count", "tickets", "count"],
+  open: ["open_tickets", "opentickets", "open", "open_count", "ticket_count"],
+  reopened: ["reopened_tickets", "reopenedtickets", "reopened", "reopened_count", "ticket_count"],
+  closed: ["closed_tickets", "closedtickets", "closed", "closed_count", "ticket_count"],
+  pending: ["pending_tickets", "pendingtickets", "pending", "pending_count", "ticket_count"],
+  overdue: ["overdue_tickets", "overduetickets", "overdue", "overdue_count", "ticket_count"],
+};
+
+const normalizeMetricKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const resolveTicketMetricGroup = (value, fallback = "total") => {
+  const key = normalizeMetricKey(value);
+  if (["totaltickets", "total"].includes(key)) return "total";
+  if (["open", "opentickets"].includes(key)) return "open";
+  if (["reopened", "reopenedtickets"].includes(key)) return "reopened";
+  if (["closed", "closedtickets"].includes(key)) return "closed";
+  if (["pending", "pendingtickets"].includes(key)) return "pending";
+  if (["overdue", "overduetickets"].includes(key)) return "overdue";
+  return fallback;
+};
+const getTicketMetricGroup = (value) => resolveTicketMetricGroup(value, "total");
+const getKnownTicketMetricGroup = (value) => resolveTicketMetricGroup(value, null);
+
+const getNumberOrNull = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const pickMetricValueFromRecord = (record, candidates) => {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return null;
+
+  for (const key of candidates) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) {
+      const value = getNumberOrNull(record[key]);
+      if (value !== null) return value;
+    }
+  }
+
+  const entries = Object.entries(record);
+  for (const key of candidates) {
+    const normalizedTarget = normalizeMetricKey(key);
+    const matched = entries.find(([entryKey]) => normalizeMetricKey(entryKey) === normalizedTarget);
+    if (matched) {
+      const value = getNumberOrNull(matched[1]);
+      if (value !== null) return value;
+    }
+  }
+
+  return null;
+};
+
+const isTicketDashboardRow = (record) => {
+  if (!record || typeof record !== "object" || Array.isArray(record)) return false;
+
+  const visualizationType = String(record?.visualization_type || "").trim().toLowerCase();
+  if (TICKET_VISUALIZATION_TYPES.has(visualizationType)) return true;
+  if (getNumberOrNull(record?.ticket_count) !== null) return true;
+  if (record?.status_breakdown && typeof record.status_breakdown === "object") return true;
+
+  const inputScreen = String(record?.input_screen || record?.screen_name || "").trim().toLowerCase();
+  if (["ticket values", "ticket dashboard"].includes(inputScreen)) return true;
+
+  return getKnownTicketMetricGroup(record?.metric_key || record?.widget_name) !== null;
+};
+
+const getTicketMetricValue = (payload, metricField) => {
+  if (!isTicketDashboardRow(payload)) return null;
+
+  const group = getTicketMetricGroup(metricField);
+  const candidates = ticketMetricCandidates[group] || ticketMetricCandidates.total;
+  const sources = [payload, payload?.data, payload?.summary, payload?.metrics, payload?.ticket_summary].filter(Boolean);
+
+  for (const source of sources) {
+    const value = pickMetricValueFromRecord(source, candidates);
+    if (value !== null) return value;
+  }
+
+  return null;
 };
 const formatCardContextLabel = (department, subDepartment, inputScreen) => {
   const isMixing = String(subDepartment || "").trim().toLowerCase() === "mixing";
@@ -260,30 +347,6 @@ function HomeDashboard() {
   const debounceTimerRef = useRef(null);
   const inFlightControllersRef = useRef([]);
 
-  const getWithBuilderFallback = async (path, params = {}, options = {}) => {
-    try {
-      return await apiConfig.get(`/api/dashboard/builder/${path}`, params, {
-        skipGlobalErrorModal: true,
-        ...options,
-      });
-    } catch (error) {
-      if (error?.response?.status !== 404) throw error;
-      return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, {
-        skipGlobalErrorModal: true,
-        ...options,
-      });
-    }
-  };
-
-  const fetchMyDashboardWidgets = async () => {
-    try {
-      return await apiConfig.get("/api/dashboard/my-widgets", {}, { skipGlobalErrorModal: true });
-    } catch (error) {
-      if (error?.response?.status !== 404) throw error;
-      return apiConfig.get("/api/dashboard/dashbuilder/my-widgets", {}, { skipGlobalErrorModal: true });
-    }
-  };
-
   const selectedDashboardUserIdNumber = useMemo(() => {
     const id = Number(selectedDashboardUserId);
     return Number.isInteger(id) && id > 0 ? id : null;
@@ -296,7 +359,32 @@ function HomeDashboard() {
   const normalizedWidgets = useMemo(
     () =>
       (Array.isArray(widgets) ? widgets : []).flatMap((widget, index) => {
+        const sourceWidgetId = widget?.id || `widget-${index + 1}`;
         const rawInputField = String(widget?.input_field || widget?.field_name || "SCI");
+        const visualizationType = String(
+          widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart")
+        ).trim().toLowerCase();
+        const ticketMetricField = normalizeInputFieldKey(
+          widget?.metric_key || widget?.ticket_metric || widget?.input_field || rawInputField
+        );
+
+        if (TICKET_VISUALIZATION_TYPES.has(visualizationType)) {
+          return [{
+            id: sourceWidgetId,
+            source_widget_id: sourceWidgetId,
+            enabled: parseWidgetEnabled(widget?.enabled),
+            order: Number.isInteger(widget?.order) ? widget.order : index + 1,
+            department: widget?.department || "Ticketing",
+            sub_department: widget?.sub_department || "",
+            input_screen: widget?.input_screen || widget?.screen_name || "Ticket Dashboard",
+            raw_input_field: widget?.widget_name || widget?.input_field || ticketMetricField,
+            input_field: ticketMetricField,
+            ticket_metric_field: ticketMetricField,
+            visualization_type: visualizationType,
+            chart_type: "value",
+          }];
+        }
+
         const normalizedRaw = rawInputField.toLowerCase();
         const isTicketValuesWidget =
           String(widget?.department || "").trim().toLowerCase() === "ticketing" &&
@@ -311,23 +399,25 @@ function HomeDashboard() {
 
           if (parts.length > 1) {
             return parts.map((part, partIndex) => ({
-              id: `${widget?.id || `widget-${index + 1}`}-${partIndex + 1}`,
+              id: `${sourceWidgetId}-${partIndex + 1}`,
+              source_widget_id: sourceWidgetId,
               enabled: parseWidgetEnabled(widget?.enabled),
               order: Number.isInteger(widget?.order) ? widget.order + partIndex : index + 1 + partIndex,
               department: widget?.department || "Quality Control",
               sub_department: widget?.sub_department || "Mixing",
               input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
               raw_input_field: part,
-              input_field: normalizeInputFieldKey(part),
-              visualization_type:
-                widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
+              input_field: normalizeInputFieldKey(rawInputField),
+              ticket_metric_field: normalizeInputFieldKey(part),
+              visualization_type: visualizationType,
               chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
             }));
           }
         }
 
         return [{
-          id: widget?.id || `widget-${index + 1}`,
+          id: sourceWidgetId,
+          source_widget_id: sourceWidgetId,
           enabled: parseWidgetEnabled(widget?.enabled),
           order: Number.isInteger(widget?.order) ? widget.order : index + 1,
           department: widget?.department || "Quality Control",
@@ -335,8 +425,8 @@ function HomeDashboard() {
           input_screen: widget?.input_screen || widget?.screen_name || "Cotton HVI Data Entry",
           raw_input_field: rawInputField,
           input_field: normalizeInputFieldKey(rawInputField),
-          visualization_type:
-            widget?.visualization_type || (widget?.chart_type === "value" ? "average_value_card" : "line_chart"),
+          ticket_metric_field: normalizeInputFieldKey(rawInputField),
+          visualization_type: visualizationType,
           chart_type: widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type),
         }];
       }),
@@ -348,10 +438,15 @@ function HomeDashboard() {
     [normalizedWidgets]
   );
 
-  const isTicketWidget = (widget) =>
-    String(widget?.input_field || "").trim().toLowerCase() === "ticket_values" ||
-    ["ticket values", "ticket dashboard"].includes(String(widget?.input_screen || "").trim().toLowerCase()) ||
-    ["ticket values", "ticket dashboard"].includes(String(widget?.raw_input_field || "").trim().toLowerCase());
+  const isTicketWidget = (widget) => {
+    const visualizationType = String(widget?.visualization_type || "").trim().toLowerCase();
+    if (TICKET_VISUALIZATION_TYPES.has(visualizationType)) return true;
+    return (
+      String(widget?.input_field || "").trim().toLowerCase() === "ticket_values" ||
+      ["ticket values", "ticket dashboard"].includes(String(widget?.input_screen || "").trim().toLowerCase()) ||
+      ["ticket values", "ticket dashboard"].includes(String(widget?.raw_input_field || "").trim().toLowerCase())
+    );
+  };
 
   const ticketWidgets = useMemo(
     () => visibleWidgets.filter((widget) => isTicketWidget(widget)),
@@ -453,8 +548,8 @@ function HomeDashboard() {
       try {
         setLoading(true);
         const response = isViewingOwnDashboard
-          ? await fetchMyDashboardWidgets()
-          : await getWithBuilderFallback(`widgets/${activeDashboardUserId}`);
+          ? await fetchMyWidgets({ skipGlobalErrorModal: true })
+          : await fetchUserWidgets(activeDashboardUserId, { skipGlobalErrorModal: true });
         if (!isMounted) return;
         setWidgets(Array.isArray(response?.data?.widgets) ? response.data.widgets : []);
         setWidgetData({});
@@ -468,7 +563,7 @@ function HomeDashboard() {
 
         if (deniedOwnConfig && isDashboardAdmin) {
           try {
-            const fallbackResponse = await fetchMyDashboardWidgets();
+            const fallbackResponse = await fetchMyWidgets({ skipGlobalErrorModal: true });
             if (!isMounted) return;
             setWidgets(Array.isArray(fallbackResponse?.data?.widgets) ? fallbackResponse.data.widgets : []);
             setWidgetData({});
@@ -518,35 +613,83 @@ function HomeDashboard() {
         return;
       }
 
+      const ticketDashboardByPeriod = new Map();
+
       const pendingRequests = visibleWidgets.map((widget) => {
         const isTicket = isTicketWidget(widget);
         const period = isTicket || widget.visualization_type === "average_value_card" || widget.chart_type === "value"
           ? cardModes[widget.id] || "1M"
           : trendModesById[widget.id] || "1M";
+        const requestInputField = String(
+          isTicket ? (widget.ticket_metric_field || widget.input_field) : widget.input_field
+        ).trim();
 
-        const key = [widget.department, widget.sub_department, widget.input_screen, widget.input_field, period].join("::");
+        const key = [widget.department, widget.sub_department, widget.input_screen, requestInputField, period].join("::");
         const cached = widgetDataCacheRef.current.get(key);
         if (cached) return Promise.resolve({ widgetId: widget.id, key, data: cached, cached: true });
+
+        if (isTicket) {
+          if (!isViewingOwnDashboard) {
+            return Promise.resolve({ widgetId: widget.id, key, data: null });
+          }
+
+          const ticketPeriodKey = `ticket::${period}`;
+          if (!ticketDashboardByPeriod.has(ticketPeriodKey)) {
+            const controller = new AbortController();
+            inFlightControllersRef.current.push(controller);
+            ticketDashboardByPeriod.set(
+              ticketPeriodKey,
+              fetchMyDashboard(
+                { period },
+                { signal: controller.signal, skipGlobalErrorModal: true }
+              )
+                .then((response) => (Array.isArray(response?.data?.data) ? response.data.data : []))
+                .catch(() => [])
+            );
+          }
+
+          return ticketDashboardByPeriod.get(ticketPeriodKey).then((rows) => {
+            const sourceWidgetId = String(widget.source_widget_id || widget.id || "");
+            const byId = rows.find((item) => String(item?.widget_id || "") === sourceWidgetId);
+            const metricKey = getKnownTicketMetricGroup(
+              widget.ticket_metric_field || widget.raw_input_field || widget.input_field
+            );
+            const byMetric = metricKey
+              ? rows.find(
+                (item) =>
+                  isTicketDashboardRow(item) &&
+                  getKnownTicketMetricGroup(item?.metric_key || item?.input_field || item?.widget_name) === metricKey
+              )
+              : null;
+            return {
+              widgetId: widget.id,
+              key,
+              data: byId || byMetric || null,
+            };
+          });
+        }
 
         const controller = new AbortController();
         inFlightControllersRef.current.push(controller);
 
-        return getWithBuilderFallback(
-          "data",
+        return fetchBuilderData(
           {
             department: widget.department,
             sub_department: widget.sub_department,
             input_screen: widget.input_screen,
-            input_field: widget.input_field,
+            input_field: requestInputField,
             period,
           },
-          { signal: controller.signal }
+          { signal: controller.signal, skipGlobalErrorModal: true }
         )
           .catch(async (error) => {
-            const fallbackInputField = String(widget.raw_input_field || "").trim();
-            if (!fallbackInputField || fallbackInputField === widget.input_field) throw error;
-            return getWithBuilderFallback(
-              "data",
+            const fallbackInputField = String(
+              isTicket
+                ? (widget.input_field || widget.raw_input_field || "")
+                : (widget.raw_input_field || "")
+            ).trim();
+            if (!fallbackInputField || fallbackInputField === requestInputField) throw error;
+            return fetchBuilderData(
               {
                 department: widget.department,
                 sub_department: widget.sub_department,
@@ -554,7 +697,7 @@ function HomeDashboard() {
                 input_field: fallbackInputField,
                 period,
               },
-              { signal: controller.signal }
+              { signal: controller.signal, skipGlobalErrorModal: true }
             );
           })
           .then((response) => ({ widgetId: widget.id, key, data: response?.data || null }))
@@ -591,7 +734,7 @@ function HomeDashboard() {
       clearInFlightRequests();
       isMounted = false;
     };
-  }, [visibleWidgets, cardModes, trendModesById]);
+  }, [visibleWidgets, cardModes, trendModesById, isViewingOwnDashboard]);
 
   return (
     <div className={styles.dashboardMain}>
@@ -634,32 +777,38 @@ function HomeDashboard() {
             {ticketWidgets.map((card) => (
               <article key={card.id} className={styles.referenceStatCard}>
                 {(() => {
-                  const ticketLabel = getTicketCardLabel(card.raw_input_field || card.input_field);
+                  const ticketLabel = getTicketCardLabel(card.raw_input_field || card.ticket_metric_field || card.input_field);
                   const TicketIcon = getTicketCardIcon(ticketLabel);
+                  const ticketValue = getTicketMetricValue(
+                    widgetData?.[card.id],
+                    card.ticket_metric_field || card.raw_input_field || ticketLabel
+                  );
                   return (
-                    <div className={styles.referenceStatHeader}>
-                      <div>
-                        <h2>{ticketLabel}</h2>
+                    <>
+                      <div className={styles.referenceStatHeader}>
+                        <div>
+                          <h2>{ticketLabel}</h2>
+                        </div>
+                        <span className={styles.referenceStatIcon}><TicketIcon /></span>
                       </div>
-                      <span className={styles.referenceStatIcon}><TicketIcon /></span>
-                    </div>
+                      <div className={styles.referenceStatBottom}>
+                        <strong>{formatIntegerValue(ticketValue)}</strong>
+                        <div className={styles.referenceMiniToggle}>
+                          {trendModes.map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
+                              onClick={() => setCardModes((current) => ({ ...current, [card.id]: mode }))}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
                   );
                 })()}
-              <div className={styles.referenceStatBottom}>
-                  <strong>{formatIntegerValue(widgetData?.[card.id]?.average_value, cardModes[card.id])}</strong>
-                  <div className={styles.referenceMiniToggle}>
-                    {trendModes.map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={cardModes[card.id] === mode ? styles.referenceMiniToggleActive : ""}
-                        onClick={() => setCardModes((current) => ({ ...current, [card.id]: mode }))}
-                      >
-                        {mode}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </article>
             ))}
           </div>

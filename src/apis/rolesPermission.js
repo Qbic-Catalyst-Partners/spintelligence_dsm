@@ -55,7 +55,7 @@ export const getDepartmentsAPI = async () => {
 /* ================== GET ALL ROLES ================== */
 export const getAllRolesAPI = async (params = {}) => {
   try {
-    const response = await apiConfig.get("/roles", { params });
+    const response = await apiConfig.get("/roles", params);
     return response.data;
   } catch (error) {
     if (error.response && error.response.data) {

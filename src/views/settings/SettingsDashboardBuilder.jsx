@@ -40,6 +40,22 @@ const TICKET_OPTION_LABELS = {
   pending: "Pending Tickets",
   overdue: "Overdue Tickets",
 };
+const normalizeTicketMetricKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const getTicketMetricKey = (value) => {
+  const key = normalizeTicketMetricKey(value);
+  if (["total", "totaltickets"].includes(key)) return "total";
+  if (["open", "opentickets"].includes(key)) return "open";
+  if (["reopened", "reopenedtickets"].includes(key)) return "reopened";
+  if (["closed", "closedtickets"].includes(key)) return "closed";
+  if (["pending", "pendingtickets"].includes(key)) return "pending";
+  if (["overdue", "overduetickets"].includes(key)) return "overdue";
+  return "total";
+};
 const normalizeRoleKey = (value) =>
   String(value || "")
     .trim()
@@ -209,18 +225,31 @@ function SettingsDashboardBuilder() {
 
   const normalizeWidgets = (nextWidgets) =>
     (Array.isArray(nextWidgets) ? nextWidgets : []).map((widget, index) => {
-      const chartType = widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type);
+      const visualizationType = String(widget?.visualization_type || "").trim().toLowerCase();
+      const isTicketVisualization = ["ticket_status_card", "individual_ticket_count", "add_ticket_count"].includes(visualizationType);
+      const ticketMetricKey = getTicketMetricKey(widget?.metric_key || widget?.ticket_metric || widget?.input_field || widget?.field_name);
+      const chartType = isTicketVisualization
+        ? "value"
+        : widget?.chart_type || visualizationTypeToChartType(widget?.visualization_type);
+      const ticketFieldLabel =
+        TICKET_OPTION_LABELS[ticketMetricKey] ||
+        widget?.field_name ||
+        widget?.input_field ||
+        "Total Tickets";
+
       return {
         id: widget?.id || `widget-${index + 1}`,
         enabled: parseWidgetEnabled(widget?.enabled),
         order: Number.isInteger(widget?.order) ? widget.order : index + 1,
-        department: widget?.department || "",
-        sub_department: widget?.sub_department || "",
-        screen_name: widget?.screen_name || widget?.input_screen || "",
-        field_name: widget?.field_name || widget?.input_field || "",
+        department: isTicketVisualization ? "Ticketing" : (widget?.department || ""),
+        sub_department: isTicketVisualization ? "" : (widget?.sub_department || ""),
+        screen_name: isTicketVisualization ? "Ticket Dashboard" : (widget?.screen_name || widget?.input_screen || ""),
+        field_name: isTicketVisualization ? ticketFieldLabel : (widget?.field_name || widget?.input_field || ""),
         chart_type: chartType,
+        visualization_type: visualizationType || undefined,
+        ticket_metric_key: isTicketVisualization ? ticketMetricKey : undefined,
         builder_section:
-          widget?.department === "Ticketing"
+          isTicketVisualization || widget?.department === "Ticketing"
             ? BUILDER_SECTIONS.ticketing
             : chartType === "value"
               ? BUILDER_SECTIONS.average
@@ -305,27 +334,30 @@ function SettingsDashboardBuilder() {
   };
 
   const handleAddTicketCard = () => {
-    const enabledTicketLabels = Object.entries(ticketOptions)
+    const selectedMetrics = Object.entries(ticketOptions)
       .filter(([, isEnabled]) => isEnabled)
-      .map(([key]) => TICKET_OPTION_LABELS[key])
-      .filter(Boolean);
-    const ticketValuesLabel = enabledTicketLabels.length ? enabledTicketLabels.join("_|_") : "Ticketing Values";
+      .map(([key]) => key);
 
-    const ticketWidget = {
-      id: `ticket-${Date.now()}`,
-      enabled: true,
-      order: widgets.length + 1,
-      department: "Ticketing",
-      sub_department: "",
-      screen_name: "Ticket Dashboard",
-      field_name: ticketValuesLabel,
-      chart_type: "value",
-      builder_section: BUILDER_SECTIONS.ticketing,
-      ticket_options: { ...ticketOptions },
-    };
+    const metricsToAdd = selectedMetrics.length ? selectedMetrics : ["total"];
 
     setWidgets((current) => {
-      const next = [...current, ticketWidget];
+      const next = [
+        ...current,
+        ...metricsToAdd.map((metricKey, index) => ({
+          id: `ticket-${metricKey}-${Date.now()}-${index + 1}`,
+          enabled: true,
+          order: current.length + index + 1,
+          department: "Ticketing",
+          sub_department: "",
+          screen_name: "Ticket Dashboard",
+          field_name: TICKET_OPTION_LABELS[metricKey] || "Total Tickets",
+          chart_type: "value",
+          builder_section: BUILDER_SECTIONS.ticketing,
+          visualization_type: "ticket_status_card",
+          ticket_metric_key: metricKey,
+          ticket_options: { ...ticketOptions },
+        })),
+      ];
       handleSave(next);
       return next;
     });
@@ -362,16 +394,44 @@ function SettingsDashboardBuilder() {
     if (!activeUserId) return;
     try {
       setSaving(true);
-      const payloadWidgets = widgetsToSave.map((widget, index) => ({
-        id: widget.id,
-        department: widget.department || "",
-        sub_department: widget.sub_department || "",
-        input_screen: widget.screen_name || "",
-        input_field: normalizeInputFieldKey(widget.field_name || ""),
-        visualization_type: chartTypeToVisualizationType(widget.chart_type),
-        enabled: widget.enabled !== false,
-        order: index + 1,
-      }));
+      const payloadWidgets = widgetsToSave.map((widget, index) =>
+        (() => {
+          const isTicketWidget =
+            widget.builder_section === BUILDER_SECTIONS.ticketing ||
+            ["ticket_status_card", "individual_ticket_count", "add_ticket_count"].includes(
+              String(widget.visualization_type || "").trim().toLowerCase()
+            );
+
+          if (isTicketWidget) {
+            const metricKey = getTicketMetricKey(
+              widget.ticket_metric_key || widget.field_name || widget.input_field || "total"
+            );
+            return {
+              id: widget.id,
+              department: "Ticketing",
+              sub_department: "",
+              input_screen: "Ticket Dashboard",
+              input_field: metricKey,
+              visualization_type: "ticket_status_card",
+              metric_key: metricKey,
+              widget_name: TICKET_OPTION_LABELS[metricKey] || "Total Tickets",
+              enabled: widget.enabled !== false,
+              order: index + 1,
+            };
+          }
+
+          return {
+            id: widget.id,
+            department: widget.department || "",
+            sub_department: widget.sub_department || "",
+            input_screen: widget.screen_name || "",
+            input_field: normalizeInputFieldKey(widget.field_name || ""),
+            visualization_type: chartTypeToVisualizationType(widget.chart_type),
+            enabled: widget.enabled !== false,
+            order: index + 1,
+          };
+        })()
+      );
       if (isEditingOwnDashboard) {
         await saveMyWidgets(payloadWidgets);
       } else {
