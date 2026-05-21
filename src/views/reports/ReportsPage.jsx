@@ -18,6 +18,7 @@ import {
 } from "react-icons/fi";
 
 import apiConfig from "@/apis/apiConfig";
+import { fetchBuilderOptions } from "@/apis/dashboardBuilderApi";
 import {
   deleteReportScheduleAPI,
   fetchReportSchedulesAPI,
@@ -83,21 +84,6 @@ const fetchEndpointRows = async (endpoint, params = {}) => {
     { skipGlobalErrorModal: true }
   );
   return response.data;
-};
-
-const getDashboardWithFallback = async (path, params = {}, options = {}) => {
-  try {
-    return await apiConfig.get(`/api/dashboard/builder/${path}`, params, {
-      skipGlobalErrorModal: true,
-      ...options,
-    });
-  } catch (error) {
-    if (error?.response?.status !== 404) throw error;
-    return apiConfig.get(`/api/dashboard/dashbuilder/${path}`, params, {
-      skipGlobalErrorModal: true,
-      ...options,
-    });
-  }
 };
 
 const reportSources = {
@@ -1089,7 +1075,7 @@ function ReportsPage() {
     let isMounted = true;
     const loadDepartments = async () => {
       try {
-        const response = await getDashboardWithFallback("options");
+        const response = await fetchBuilderOptions();
         if (!isMounted) return;
         const next = response?.data || {};
         const nextDepartments = getDepartmentOptions(next);
@@ -1124,7 +1110,7 @@ function ReportsPage() {
     const loadSubDepartments = async () => {
       if (!department) return;
       try {
-        const response = await getDashboardWithFallback("options", { department });
+        const response = await fetchBuilderOptions({ department });
         if (!isMounted) return;
         const nextSubDepartments = getSubDepartmentOptions(response?.data || {}, department);
         const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
@@ -1149,7 +1135,7 @@ function ReportsPage() {
     const loadScreens = async () => {
       if (!department || !subDepartment) return;
       try {
-        const response = await getDashboardWithFallback("options", { department, sub_department: subDepartment });
+        const response = await fetchBuilderOptions({ department, sub_department: subDepartment });
         if (!isMounted) return;
         const nextScreens = getInputScreenOptions(response?.data || {}, department, subDepartment);
         const nextScreen = nextScreens.includes(reportType) ? reportType : (nextScreens[0] || "");
@@ -1173,7 +1159,7 @@ function ReportsPage() {
     let isMounted = true;
     const loadFields = async () => {
       if (!department || !subDepartment || !reportType) return;
-      const response = await getDashboardWithFallback("options", {
+      const response = await fetchBuilderOptions({
         department,
         sub_department: subDepartment,
         input_screen: reportType,
