@@ -289,3 +289,65 @@ select.topControlInput::-ms-expand {
     grid-column: auto;
   }
 }
+
+:global(:root[data-theme="dark"]) :local(.metricField) label,
+:global(:root[data-theme="dark"]) :local(.pendingHeader) h3,
+:global(:root[data-theme="dark"]) :local(.pendingMetaItem span),
+:global(:root[data-theme="dark"]) :local(.pendingMetaItem strong) {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) :local(.formCard),
+:global(:root[data-theme="dark"]) :local(.pendingCard),
+:global(:root[data-theme="dark"]) :local(.pendingMetaItem),
+:global(:root[data-theme="dark"]) :local(.emptyState) {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) :local(.input),
+:global(:root[data-theme="dark"]) :local(.topControlInput),
+:global(:root[data-theme="dark"]) :local(.topControlDisabled),
+:global(:root[data-theme="dark"]) :local(.topControlDisabled:disabled) {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.topControlInput) option {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) :local(.errorField) {
+  background: #381a1a !important;
+  border-color: #f87171 !important;
+  color: #fee2e2 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.formCard),
+:global(:root[data-theme="dark"]) :local(.pendingCard),
+:global(:root[data-theme="dark"]) :local(.pendingMetaItem),
+:global(:root[data-theme="dark"]) :local(.emptyState),
+:global(:root[data-theme="dark"]) :local(.input),
+:global(:root[data-theme="dark"]) :local(.topControlInput),
+:global(:root[data-theme="dark"]) :local(.topControlDisabled),
+:global(:root[data-theme="dark"]) :local(.topControlDisabled:disabled) {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.metricField) label,
+:global(:root[data-theme="dark"]) :local(.pendingHeader) h3,
+:global(:root[data-theme="dark"]) :local(.pendingMetaItem) span,
+:global(:root[data-theme="dark"]) :local(.pendingMetaItem) strong {
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.topControlInput) option {
+  background: #3b3b3b !important;
+  color: #ffffff !important;
+}

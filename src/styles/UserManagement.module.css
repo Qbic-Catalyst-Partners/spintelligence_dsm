@@ -307,6 +307,11 @@ background: #F6F7F8;
   color: #0284c7;
 }
 
+.levelBadge {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 /* STATUS */
 .status {
   display: inline-flex;
@@ -676,4 +681,159 @@ border-radius: 15px;
   .inputWithIcon {
     width: 100%;
   }
+}
+
+:global(:root[data-theme="dark"]) .container {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .topNavbar,
+:global(:root[data-theme="dark"]) .filters,
+:global(:root[data-theme="dark"]) .table,
+:global(:root[data-theme="dark"]) .table thead,
+:global(:root[data-theme="dark"]) .table tr,
+:global(:root[data-theme="dark"]) .userMenu,
+:global(:root[data-theme="dark"]) .menu,
+:global(:root[data-theme="dark"]) .pageBtn,
+:global(:root[data-theme="dark"]) .navBtn,
+:global(:root[data-theme="dark"]) .searchBox,
+:global(:root[data-theme="dark"]) .inputWithIcon,
+:global(:root[data-theme="dark"]) .clearBtn {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .header h1,
+:global(:root[data-theme="dark"]) .table td,
+:global(:root[data-theme="dark"]) .employeeIdCell,
+:global(:root[data-theme="dark"]) .bold,
+:global(:root[data-theme="dark"]) .userMenu p,
+:global(:root[data-theme="dark"]) .menu p,
+:global(:root[data-theme="dark"]) .dots {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .header p,
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .phone,
+:global(:root[data-theme="dark"]) .umPagination,
+:global(:root[data-theme="dark"]) .pageInfo,
+:global(:root[data-theme="dark"]) .searchBox svg,
+:global(:root[data-theme="dark"]) .filterSvgIcon,
+:global(:root[data-theme="dark"]) .selectChevron,
+:global(:root[data-theme="dark"]) .clearSvgIcon {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .searchBox input,
+:global(:root[data-theme="dark"]) .inputWithIcon,
+:global(:root[data-theme="dark"]) .inputWithIcon option {
+  background: transparent;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .table td {
+  border-color: #5f5f5f;
+}
+
+:global(:root[data-theme="dark"]) .userMenu p:hover,
+:global(:root[data-theme="dark"]) .menu p:hover,
+:global(:root[data-theme="dark"]) .pageBtn:hover,
+:global(:root[data-theme="dark"]) .navBtn:hover:not(:disabled),
+:global(:root[data-theme="dark"]) .btnOutline:hover {
+  background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .btnOutline {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .modalOverlay {
+  background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .modal {
+  background: #181818;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .modalHeader h2,
+:global(:root[data-theme="dark"]) .modalText {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .cancelBtn {
+  background: #242424;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .filters,
+:global(:root[data-theme="dark"]) .searchBox,
+:global(:root[data-theme="dark"]) .inputWrapper,
+:global(:root[data-theme="dark"]) .inputWithIcon,
+:global(:root[data-theme="dark"]) .inputWithIcon option,
+:global(:root[data-theme="dark"]) .clearBtn,
+:global(:root[data-theme="dark"]) .btnOutline,
+:global(:root[data-theme="dark"]) .pageBtn,
+:global(:root[data-theme="dark"]) .navBtn {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .inputWrapper {
+  border-radius: 8px;
+}
+
+:global(:root[data-theme="dark"]) .inputWrapper .inputWithIcon {
+  border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .searchBox input {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .roleBadge {
+  background: #1d4f91 !important;
+  background-color: #1d4f91 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .levelBadge {
+  background: #5b21b6 !important;
+  background-color: #5b21b6 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .status.active {
+  background: #1f7a3d !important;
+  background-color: #1f7a3d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .status.inactive,
+:global(:root[data-theme="dark"]) .status.locked {
+  background: #9f2f2f !important;
+  background-color: #9f2f2f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: transparent !important;
 }

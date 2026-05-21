@@ -426,7 +426,7 @@ export default function UserManagement() {
                 </td>
 
                 <td>
-                  <span className={`${styles.badge} ${styles.roleBadge}`}>
+                  <span className={`${styles.badge} ${styles.levelBadge}`}>
                     {u.level || "-"}
                   </span>
                 </td>

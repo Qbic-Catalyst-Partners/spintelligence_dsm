@@ -369,6 +369,130 @@ tbody tr:hover .sup-ticket-link {
   font-size: 11px;
 }
 
+:global(:root[data-theme="dark"]) .sup-page,
+:global(:root[data-theme="dark"]) .sup-content {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .sup-title,
+:global(:root[data-theme="dark"]) .sup-filter label,
+:global(:root[data-theme="dark"]) .sup-mobile-title,
+:global(:root[data-theme="dark"]) .sup-card-title,
+:global(:root[data-theme="dark"]) .sup-small-label,
+:global(:root[data-theme="dark"]) .sup-param-name,
+:global(:root[data-theme="dark"]) .sup-actual-value {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .top-navbar,
+:global(:root[data-theme="dark"]) .sup-table-wrapper,
+:global(:root[data-theme="dark"]) .sup-mobile-card,
+:global(:root[data-theme="dark"]) .sup-param-box,
+:global(:root[data-theme="dark"]) .sup-filter-drawer {
+  border-color: #5f5f5f;
+  background: #3b3b3b;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sup-select,
+:global(:root[data-theme="dark"]) .status-select,
+:global(:root[data-theme="dark"]) .mobile-status-select,
+:global(:root[data-theme="dark"]) .sup-filter-group select {
+  border-color: #5f5f5f;
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .supTable th {
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .supTable td {
+  border-bottom-color: #4a4a4a;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sup-ticket-link,
+:global(:root[data-theme="dark"]) .details-link {
+  color: #8fb9ff;
+}
+
+:global(:root[data-theme="dark"]) .sup-table-footer,
+:global(:root[data-theme="dark"]) .sup-card-date {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .sup-pagination button,
+:global(:root[data-theme="dark"]) .mobile-filter-btn,
+:global(:root[data-theme="dark"]) .sup-filter-drawer-header button {
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sup-pagination .active {
+  background: #4056a8;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .high {
+  background: #b42318;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .medium {
+  background: #8a6500;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .low {
+  background: #1d4f91;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-open,
+:global(:root[data-theme="dark"]) .status-text.open {
+  background: #1d4f91;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-closed,
+:global(:root[data-theme="dark"]) .status-text.closed {
+  background: #1f7a3d;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-pending,
+:global(:root[data-theme="dark"]) .status-text.pending_approval {
+  background: #8a6500;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-in-progress,
+:global(:root[data-theme="dark"]) .status-text.in_progress {
+  background: #036083;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-submit,
+:global(:root[data-theme="dark"]) .status-text.submit {
+  background: #5b21b6;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-reopened,
+:global(:root[data-theme="dark"]) .status-text.reopened {
+  background: #9a4d00;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status-unresolved,
+:global(:root[data-theme="dark"]) .status-text.unresolved {
+  background: #9f2f2f;
+  color: #ffffff;
+}
+
 /* ===== MOBILE NAVBAR ===== */
 .mobile-navbar {
   display: none;

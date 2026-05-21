@@ -17,11 +17,13 @@ import {
     FiSettings,
     FiShield,
     FiSliders,
+    FiSun,
     FiUsers,
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { logout, setAuthUser } from "../store/slices/authSlice";
 import { hasAnyQualityControlAccess, hasReportAccess, hasSubDepartmentAccess, isFullAccessUser, isSupervisorNavUser, routeDepartmentMap } from "@/utils/accessControl";
+import { useThemeMode } from "@/utils/useThemeMode";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -94,6 +96,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
     const [openCalendar, setOpenCalendar] = useState(true);
     const [openAnalysis, setOpenAnalysis] = useState(false);
+    const { isDarkMode, toggleTheme } = useThemeMode();
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
@@ -533,8 +536,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     <span className={styles["notification-badge"]}>4</span>
                 </button>
 
-                <button type="button" className={styles["icon-button"]} aria-label="Dark mode">
-                    <FiMoon />
+                <button
+                    type="button"
+                    className={styles["icon-button"]}
+                    aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+                    title={isDarkMode ? "Light mode" : "Dark mode"}
+                    aria-pressed={isDarkMode}
+                    onClick={toggleTheme}
+                >
+                    {isDarkMode ? <FiSun /> : <FiMoon />}
                 </button>
 
                 <div className={styles["profile-menu"]} ref={profileMenuRef}>

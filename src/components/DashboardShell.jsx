@@ -12,10 +12,12 @@ import {
     FiSettings,
     FiShield,
     FiSliders,
+    FiSun,
     FiUsers,
 } from "react-icons/fi";
 
 import { hasReportAccess, isFullAccessUser } from "@/utils/accessControl";
+import { useThemeMode } from "@/utils/useThemeMode";
 import styles from "@/styles/departmentDirectory.module.css";
 
 const dashboardLinks = [
@@ -32,6 +34,7 @@ const dashboardLinks = [
 function DashboardShell({ children }) {
     const router = useRouter();
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const { isDarkMode, toggleTheme } = useThemeMode();
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const fullName = user?.full_name || user?.name || "User";
@@ -67,8 +70,15 @@ function DashboardShell({ children }) {
                             <FiBell />
                             <span className={styles.notificationBadge}>4</span>
                         </button>
-                        <button type="button" className={styles.topbarIconButton} aria-label="Theme">
-                            <FiMoon />
+                        <button
+                            type="button"
+                            className={styles.topbarIconButton}
+                            aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+                            title={isDarkMode ? "Light mode" : "Dark mode"}
+                            aria-pressed={isDarkMode}
+                            onClick={toggleTheme}
+                        >
+                            {isDarkMode ? <FiSun /> : <FiMoon />}
                         </button>
                         <div className={styles.profileBadge}>{initials}</div>
                     </div>

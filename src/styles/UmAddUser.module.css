@@ -286,3 +286,49 @@
 .security {
   width: min(467px, calc(100% - 48px));
 }
+
+:global(:root[data-theme="dark"]) .container {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .topNavbar,
+:global(:root[data-theme="dark"]) .card,
+:global(:root[data-theme="dark"]) .cardHeader,
+:global(:root[data-theme="dark"]) .security,
+:global(:root[data-theme="dark"]) .footer {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .header h1,
+:global(:root[data-theme="dark"]) .cardHeader,
+:global(:root[data-theme="dark"]) .formGroup label {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .header p,
+:global(:root[data-theme="dark"]) .securityList li {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .grid input,
+:global(:root[data-theme="dark"]) .grid select,
+:global(:root[data-theme="dark"]) .passwordField input {
+  background: #242424;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .grid input:disabled {
+  color: #cbd5e1;
+  opacity: 1;
+}
+
+:global(:root[data-theme="dark"]) .footer button:first-child {
+  background: #242424;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}

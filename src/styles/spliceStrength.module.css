@@ -239,3 +239,51 @@
     padding: 16px;
   }
 }
+
+:global(:root[data-theme="dark"]) :local(.entryCard),
+:global(:root[data-theme="dark"]) :local(.field) label,
+:global(:root[data-theme="dark"]) :local(.field) input,
+:global(:root[data-theme="dark"]) :local(.field) select,
+:global(:root[data-theme="dark"]) :local(.generateField) input,
+:global(:root[data-theme="dark"]) :local(.backBtn),
+:global(:root[data-theme="dark"]) :local(.clearBtn),
+:global(:root[data-theme="dark"]) :local(.tableCard),
+:global(:root[data-theme="dark"]) :local(.table),
+:global(:root[data-theme="dark"]) :local(.table th),
+:global(:root[data-theme="dark"]) :local(.table td),
+:global(:root[data-theme="dark"]) :local(.tableSection) .table td input,
+:global(:root[data-theme="dark"]) :local(.summaryRow) td {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.entryCard),
+:global(:root[data-theme="dark"]) :local(.field) input,
+:global(:root[data-theme="dark"]) :local(.field) select,
+:global(:root[data-theme="dark"]) :local(.generateField) input,
+:global(:root[data-theme="dark"]) :local(.generateField) select,
+:global(:root[data-theme="dark"]) :local(.backBtn),
+:global(:root[data-theme="dark"]) :local(.clearBtn),
+:global(:root[data-theme="dark"]) :local(.tableCard),
+:global(:root[data-theme="dark"]) :local(.table),
+:global(:root[data-theme="dark"]) :local(.table th),
+:global(:root[data-theme="dark"]) :local(.table td),
+:global(:root[data-theme="dark"]) :local(.tableSection) .table td input,
+:global(:root[data-theme="dark"]) :local(.summaryRow) td {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) label,
+:global(:root[data-theme="dark"]) :local(.generateField) label,
+:global(:root[data-theme="dark"]) :local(.formTitle),
+:global(:root[data-theme="dark"]) :local(.tableCard) h4 {
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.tableCard h4) {
+  color: #f8fafc;
+}

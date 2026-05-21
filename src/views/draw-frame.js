@@ -20,6 +20,7 @@ import styles from "@/styles/draw-frame.module.css";
 import uPercentStyles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { useThemeMode } from "@/utils/useThemeMode";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -94,6 +95,22 @@ function DrawFrame() {
         error: null,
       }
   );
+
+  const { isDarkMode } = useThemeMode();
+
+  const entryTableTheme = {
+    surface: isDarkMode ? "#050505" : "#ffffff",
+    header: isDarkMode ? "#1f2937" : "#f3f4f6",
+    rowEven: isDarkMode ? "#111827" : "#ffffff",
+    rowOdd: isDarkMode ? "#0f172a" : "#f9fafb",
+    border: isDarkMode ? "#374151" : "#e0e0e0",
+    cellBorder: isDarkMode ? "#374151" : "#eef1f6",
+    title: isDarkMode ? "#f8fafc" : "#16233b",
+    headText: isDarkMode ? "#e2e8f0" : "#6b7280",
+    text: isDarkMode ? "#f8fafc" : "#374151",
+    muted: isDarkMode ? "#9ca3af" : "#6b7280",
+    accent: isDarkMode ? "#60a5fa" : "#1d4ed8",
+  };
 
   const [form, setForm] = useState({
     type: typeOptions[0]?.name || "",
@@ -1096,11 +1113,31 @@ function DrawFrame() {
           </div>
         )}
         {form.type === "U% Data Entry" && (
-  <div className={uPercentStyles.tableSection}>
-    <h3>Last 10 Entries</h3>
+  <div
+    className={uPercentStyles.tableSection}
+    style={{
+      background: entryTableTheme.surface,
+      padding: "16px",
+      borderRadius: "12px",
+      boxShadow: isDarkMode ? "0 0 0 rgba(0,0,0,0)" : "0 2px 8px rgba(0,0,0,0.06)",
+    }}
+  >
+    <h3
+      style={{
+        color: entryTableTheme.title,
+      }}
+    >
+      Last 10 Entries
+    </h3>
 
-    <table>
-      <thead>
+    <table
+      style={{
+        width: "100%",
+        borderCollapse: "collapse",
+        fontSize: "14px",
+      }}
+    >
+      <thead style={{ backgroundColor: entryTableTheme.header }}>
         <tr>
           {[
             "Date",
@@ -1114,7 +1151,19 @@ function DrawFrame() {
             "3mCVM",
             "Remarks",
           ].map((head) => (
-            <th key={head}>{head}</th>
+            <th
+              key={head}
+              style={{
+                padding: "12px 10px",
+                textAlign: "left",
+                fontWeight: "600",
+                color: entryTableTheme.headText,
+                borderBottom: `2px solid ${entryTableTheme.border}`,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {head}
+            </th>
           ))}
         </tr>
       </thead>
@@ -1122,10 +1171,17 @@ function DrawFrame() {
       <tbody>
         {listLoading ? (
           <tr>
-            <td colSpan={10}>Loading entries...</td>
+            <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted, backgroundColor: entryTableTheme.rowEven }}>
+              Loading entries...
+            </td>
           </tr>
         ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
-          <tr key={entry.id || i}>
+          <tr
+            key={entry.id || i}
+            style={{
+              backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
+            }}
+          >
             {[
               entry.entry_date
                 ? new Date(entry.entry_date).toLocaleDateString("en-GB")
@@ -1140,12 +1196,25 @@ function DrawFrame() {
               entry.cvm_3m || "-",
               entry.remarks || "-",
             ].map((cell, idx) => (
-              <td key={idx}>{cell}</td>
+              <td
+                key={idx}
+                style={{
+                  padding: "10px",
+                  borderBottom: `1px solid ${entryTableTheme.cellBorder}`,
+                  color: idx === 5 ? entryTableTheme.accent : entryTableTheme.text,
+                  fontWeight: idx === 5 ? "600" : "400",
+                  backgroundColor: "transparent",
+                }}
+              >
+                {cell}
+              </td>
             ))}
           </tr>
         )) : (
           <tr>
-            <td colSpan={10}>No entries found.</td>
+            <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted, backgroundColor: entryTableTheme.rowEven }}>
+              No entries found.
+            </td>
           </tr>
         )}
       </tbody>

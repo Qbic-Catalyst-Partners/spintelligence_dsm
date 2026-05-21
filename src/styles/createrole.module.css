@@ -491,3 +491,59 @@
   }
 
 }
+
+:global(:root[data-theme="dark"]) .rolepage-wrapper {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .topNavbar,
+:global(:root[data-theme="dark"]) .rolepage-header,
+:global(:root[data-theme="dark"]) .rolepage-cardinfo,
+:global(:root[data-theme="dark"]) .rolepage-cardscreen,
+:global(:root[data-theme="dark"]) .rolepage-carddept,
+:global(:root[data-theme="dark"]) .rolepage-cardtitle,
+:global(:root[data-theme="dark"]) .rolepage-screenheader,
+:global(:root[data-theme="dark"]) .rolepage-depttitle,
+:global(:root[data-theme="dark"]) .rolepage-checkboxcard,
+:global(:root[data-theme="dark"]) .rolepage-dropdownlist,
+:global(:root[data-theme="dark"]) .rolepage-footer {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .rolepage-header h1,
+:global(:root[data-theme="dark"]) .rolepage-cardtitle,
+:global(:root[data-theme="dark"]) .rolepage-screentitle,
+:global(:root[data-theme="dark"]) .rolepage-depttitle,
+:global(:root[data-theme="dark"]) .rolepage-field label,
+:global(:root[data-theme="dark"]) .rolepage-sublabel,
+:global(:root[data-theme="dark"]) .rolepage-checkboxcard,
+:global(:root[data-theme="dark"]) .rolepage-selectallrow span,
+:global(:root[data-theme="dark"]) .rolepage-dropdownitem {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .rolepage-breadcrumb,
+:global(:root[data-theme="dark"]) .rolepage-selectalltext {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .rolepage-field input,
+:global(:root[data-theme="dark"]) .rolepage-searchinput {
+  background: #242424;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .rolepage-dropdownitem:hover {
+  background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .rolepage-btncancel {
+  background: #242424;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}

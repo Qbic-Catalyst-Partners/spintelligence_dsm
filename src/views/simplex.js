@@ -17,6 +17,7 @@ import {
   getSimplexUqcEntries,
 } from "@/store/slices/simplex";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { useThemeMode } from "@/utils/useThemeMode";
 const simplexTypes = [
   { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
   { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
@@ -30,6 +31,7 @@ function Simplex() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
+  const { isDarkMode } = useThemeMode();
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const typeOptions = useMemo(
@@ -56,6 +58,19 @@ function Simplex() {
     [selectedTypeName, typeOptions]
   );
   const SelectedComponent = selectedType?.component ?? null;
+  const entryTableTheme = {
+    surface: isDarkMode ? "#050505" : "#fff",
+    header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
+    rowEven: isDarkMode ? "#3b3b3b" : "#fff",
+    rowOdd: isDarkMode ? "#333333" : "#fafafa",
+    border: isDarkMode ? "#3b3b3b" : "#e0e0e0",
+    cellBorder: isDarkMode ? "#3b3b3b" : "#eaeaea",
+    title: isDarkMode ? "#ffffff" : "#333",
+    headText: isDarkMode ? "#ffffff" : "#444",
+    text: isDarkMode ? "#ffffff" : "#555",
+    muted: isDarkMode ? "#ffffff" : "#64748b",
+    accent: isDarkMode ? "#93c5fd" : "#1976d2",
+  };
 
   useEffect(() => {
     if (!typeOptions.some((item) => item.name === selectedTypeName)) {
@@ -173,7 +188,7 @@ function Simplex() {
           <div
             style={{
               marginTop: "20px",
-              background: "#fff",
+              background: entryTableTheme.surface,
               borderRadius: "10px",
               padding: "16px",
               boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
@@ -185,7 +200,7 @@ function Simplex() {
                 marginBottom: "12px",
                 fontSize: "18px",
                 fontWeight: "600",
-                color: "#333",
+                color: entryTableTheme.title,
               }}
             >
               Last 10 Entries
@@ -199,7 +214,7 @@ function Simplex() {
                 minWidth: "900px",
               }}
             >
-              <thead style={{ backgroundColor: "#f4f6f8" }}>
+              <thead style={{ backgroundColor: entryTableTheme.header }}>
                 <tr>
                   {[
                     "Date",
@@ -219,8 +234,8 @@ function Simplex() {
                         padding: "12px 10px",
                         textAlign: "left",
                         fontWeight: "600",
-                        color: "#444",
-                        borderBottom: "2px solid #e0e0e0",
+                        color: entryTableTheme.headText,
+                        borderBottom: `2px solid ${entryTableTheme.border}`,
                         whiteSpace: "nowrap",
                       }}
                     >
@@ -235,7 +250,7 @@ function Simplex() {
                   <tr>
                     <td
                       colSpan={10}
-                      style={{ padding: "16px", textAlign: "center", color: "#64748b" }}
+                      style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       Loading entries...
                     </td>
@@ -244,7 +259,7 @@ function Simplex() {
                   <tr
                     key={entry.id || i}
                     style={{
-                      backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+                      backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
                     }}
                   >
                     {[
@@ -265,8 +280,8 @@ function Simplex() {
                         key={idx}
                         style={{
                           padding: "10px",
-                          borderBottom: "1px solid #eaeaea",
-                          color: idx === 5 ? "#1976d2" : "#555",
+                          borderBottom: `1px solid ${entryTableTheme.cellBorder}`,
+                          color: idx === 5 ? entryTableTheme.accent : entryTableTheme.text,
                           fontWeight: idx === 5 ? "600" : "400",
                         }}
                       >
@@ -278,7 +293,7 @@ function Simplex() {
                   <tr>
                     <td
                       colSpan={10}
-                      style={{ padding: "16px", textAlign: "center", color: "#64748b" }}
+                      style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       No entries found.
                     </td>
@@ -293,7 +308,7 @@ function Simplex() {
           <div
             style={{
               marginTop: "20px",
-              background: "#fff",
+              background: entryTableTheme.surface,
               borderRadius: "10px",
               padding: "16px",
               boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
@@ -305,7 +320,7 @@ function Simplex() {
                 marginBottom: "12px",
                 fontSize: "18px",
                 fontWeight: "600",
-                color: "#333",
+                color: entryTableTheme.title,
               }}
             >
               Last 10 Entries
@@ -319,7 +334,7 @@ function Simplex() {
                 minWidth: "700px",
               }}
             >
-              <thead style={{ backgroundColor: "#f4f6f8" }}>
+              <thead style={{ backgroundColor: entryTableTheme.header }}>
                 <tr>
                   {["Type", "S. No.", "Date", "MC Name", "Created At"].map((head) => (
                     <th
@@ -328,8 +343,8 @@ function Simplex() {
                         padding: "12px 10px",
                         textAlign: "left",
                         fontWeight: "600",
-                        color: "#444",
-                        borderBottom: "2px solid #e0e0e0",
+                        color: entryTableTheme.headText,
+                        borderBottom: `2px solid ${entryTableTheme.border}`,
                         whiteSpace: "nowrap",
                       }}
                     >
@@ -344,7 +359,7 @@ function Simplex() {
                   <tr>
                     <td
                       colSpan={5}
-                      style={{ padding: "16px", textAlign: "center", color: "#64748b" }}
+                      style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       Loading entries...
                     </td>
@@ -354,7 +369,7 @@ function Simplex() {
                     <tr
                       key={entry.id || i}
                       style={{
-                        backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+                        backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
                       }}
                     >
                       {[
@@ -372,8 +387,8 @@ function Simplex() {
                           key={idx}
                           style={{
                             padding: "10px",
-                            borderBottom: "1px solid #eaeaea",
-                            color: "#555",
+                            borderBottom: `1px solid ${entryTableTheme.cellBorder}`,
+                            color: entryTableTheme.text,
                           }}
                         >
                           {cell}
@@ -385,7 +400,7 @@ function Simplex() {
                   <tr>
                     <td
                       colSpan={5}
-                      style={{ padding: "16px", textAlign: "center", color: "#64748b" }}
+                      style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       No entries found.
                     </td>

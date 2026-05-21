@@ -17,6 +17,7 @@ import CardingWheelChange from "./carding/WheelChange";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { useThemeMode } from "@/utils/useThemeMode";
 
 import styles from "./carding/cardThickPlaceEntry.module.css";
 
@@ -37,6 +38,7 @@ function Carding() {
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
+    const { isDarkMode } = useThemeMode();
     const { uqcEntries = [], listLoading } = useSelector((state) => state.carding ?? {});
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -75,6 +77,19 @@ function Carding() {
     const SelectedComponent = selectedOption?.component ?? null;
     const isProcessParameter = selectedType === "Process Parameter";
     const isWheelChange = selectedType === "WheelChange";
+    const entryTableTheme = {
+        surface: isDarkMode ? "#050505" : "#fff",
+        header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
+        rowEven: isDarkMode ? "#3b3b3b" : "#fff",
+        rowOdd: isDarkMode ? "#333333" : "#fafafa",
+        border: isDarkMode ? "#3b3b3b" : "#e0e0e0",
+        cellBorder: isDarkMode ? "#3b3b3b" : "#eaeaea",
+        title: isDarkMode ? "#ffffff" : "#333",
+        headText: isDarkMode ? "#ffffff" : "#444",
+        text: isDarkMode ? "#ffffff" : "#555",
+        muted: isDarkMode ? "#ffffff" : "#666",
+        accent: isDarkMode ? "#93c5fd" : "#1976d2",
+    };
 
     const openPreview = () => {
         const valid = childRef.current?.validate ? childRef.current.validate() : true;
@@ -220,7 +235,7 @@ function Carding() {
                         style={{
                             margin: "20px auto 0",
                             maxWidth: "1120px",
-                            background: "#fff",
+                            background: entryTableTheme.surface,
                             borderRadius: "10px",
                             padding: "16px",
                             boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
@@ -232,7 +247,7 @@ function Carding() {
                                 marginBottom: "12px",
                                 fontSize: "18px",
                                 fontWeight: "600",
-                                color: "#333",
+                                color: entryTableTheme.title,
                             }}
                         >
                             Last 10 Entries
@@ -246,7 +261,7 @@ function Carding() {
                                 minWidth: "900px",
                             }}
                         >
-                            <thead style={{ backgroundColor: "#f4f6f8" }}>
+                            <thead style={{ backgroundColor: entryTableTheme.header }}>
                                 <tr>
                                     {[
                                         "Date",
@@ -266,8 +281,8 @@ function Carding() {
                                                 padding: "12px 10px",
                                                 textAlign: "left",
                                                 fontWeight: "600",
-                                                color: "#444",
-                                                borderBottom: "2px solid #e0e0e0",
+                                                color: entryTableTheme.headText,
+                                                borderBottom: `2px solid ${entryTableTheme.border}`,
                                                 whiteSpace: "nowrap",
                                             }}
                                         >
@@ -280,7 +295,7 @@ function Carding() {
                             <tbody>
                                 {listLoading ? (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                                        <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted }}>
                                             Loading...
                                         </td>
                                     </tr>
@@ -288,7 +303,7 @@ function Carding() {
                                     <tr
                                         key={entry.id}
                                         style={{
-                                            backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+                                            backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
                                         }}
                                     >
                                         {[
@@ -307,8 +322,8 @@ function Carding() {
                                                 key={idx}
                                                 style={{
                                                     padding: "10px",
-                                                    borderBottom: "1px solid #eaeaea",
-                                                    color: idx === 5 ? "#1976d2" : "#555",
+                                                    borderBottom: `1px solid ${entryTableTheme.cellBorder}`,
+                                                    color: idx === 5 ? entryTableTheme.accent : entryTableTheme.text,
                                                     fontWeight: idx === 5 ? "600" : "400",
                                                 }}
                                             >
@@ -318,7 +333,7 @@ function Carding() {
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                                        <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted }}>
                                             No entries found.
                                         </td>
                                     </tr>

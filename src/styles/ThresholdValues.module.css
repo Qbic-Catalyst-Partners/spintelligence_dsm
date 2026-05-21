@@ -143,6 +143,7 @@
 .field {
     display: grid;
     gap: 8px;
+    min-width: 0;
 }
 
 .field span {
@@ -154,6 +155,8 @@
 .field select,
 .field input,
 .statusField select {
+    width: 100%;
+    box-sizing: border-box;
     min-height: 34px;
     border: 1px solid #dbe2ec;
     border-radius: 8px;
@@ -375,6 +378,7 @@
 
 .clearFilterButton {
     align-self: end;
+    min-width: 0;
     border: 1px solid #dbe2ec;
     background: #f8fafc;
     color: #5e6574;
@@ -422,9 +426,12 @@
 
 .existingFilterPanel {
     display: grid;
-    grid-template-columns: 1.1fr 1.1fr 1.1fr 1fr auto;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(118px, 0.7fr);
     gap: 10px;
     align-items: end;
+    width: calc(100% - 72px);
+    justify-self: start;
+    box-sizing: border-box;
 }
 
 .summaryGrid {
@@ -458,6 +465,19 @@
 .existingThresholdCard {
     padding: 10px 0 0;
     overflow: visible;
+    width: calc(100% - 72px);
+    justify-self: start;
+    box-sizing: border-box;
+}
+
+.existingThresholdCard .tableWrap {
+    overflow: hidden;
+}
+
+.existingThresholdTable {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
 }
 
 .existingSummaryRow {
@@ -521,7 +541,14 @@
     color: #111111;
     font-weight: 600;
     vertical-align: top;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.existingThresholdTable thead th {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
 }
 
 .expandableCell {
@@ -763,6 +790,173 @@
     font-size: 14px;
 }
 
+:global(:root[data-theme="dark"]) .page {
+    background: #181818;
+}
+
+:global(:root[data-theme="dark"]) .intro h1,
+:global(:root[data-theme="dark"]) .cardHeader h2,
+:global(:root[data-theme="dark"]) .sectionHeader h2 {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .intro p,
+:global(:root[data-theme="dark"]) .cardHeader p,
+:global(:root[data-theme="dark"]) .field span,
+:global(:root[data-theme="dark"]) .summaryCard span,
+:global(:root[data-theme="dark"]) .statCard span,
+:global(:root[data-theme="dark"]) .emptyState {
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .tabBar {
+    background: #2a2a2a;
+}
+
+:global(:root[data-theme="dark"]) .tabButton {
+    color: #d1d5db;
+}
+
+:global(:root[data-theme="dark"]) .tabButtonActive,
+:global(:root[data-theme="dark"]) .statCard,
+:global(:root[data-theme="dark"]) .card,
+:global(:root[data-theme="dark"]) .ruleCard,
+:global(:root[data-theme="dark"]) .summaryCard {
+    border-color: #5f5f5f;
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .tabButtonActive {
+    box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .statCard strong,
+:global(:root[data-theme="dark"]) .summaryCard strong {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .field select,
+:global(:root[data-theme="dark"]) .field input,
+:global(:root[data-theme="dark"]) .statusField select,
+:global(:root[data-theme="dark"]) .multiSelectButton {
+    border-color: #5f5f5f;
+    background: #242424;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .field select:disabled,
+:global(:root[data-theme="dark"]) .field input:disabled,
+:global(:root[data-theme="dark"]) .multiSelectButton:disabled {
+    background: #2f2f2f;
+    color: #aeb6c2;
+}
+
+:global(:root[data-theme="dark"]) .multiSelectChevron,
+:global(:root[data-theme="dark"]) .expandableCellIcon {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .multiSelectMenu,
+:global(:root[data-theme="dark"]) .expandableCellDropdown,
+:global(:root[data-theme="dark"]) .actionMenu {
+    border-color: #5f5f5f;
+    background: #242424;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
+}
+
+:global(:root[data-theme="dark"]) .multiSelectOption,
+:global(:root[data-theme="dark"]) .multiSelectEmpty,
+:global(:root[data-theme="dark"]) .expandableCellItem,
+:global(:root[data-theme="dark"]) .actionMenuItem {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .multiSelectOption:hover,
+:global(:root[data-theme="dark"]) .expandableCellItem:hover,
+:global(:root[data-theme="dark"]) .actionMenuItem:hover {
+    background: #3b3b3b;
+}
+
+:global(:root[data-theme="dark"]) .addIconButton,
+:global(:root[data-theme="dark"]) .saveButton,
+:global(:root[data-theme="dark"]) .paginationNumberActive {
+    border: 1px solid #3b3b3b;
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .deleteIconButton,
+:global(:root[data-theme="dark"]) .clearButton,
+:global(:root[data-theme="dark"]) .clearFilterButton,
+:global(:root[data-theme="dark"]) .paginationButton,
+:global(:root[data-theme="dark"]) .paginationNumber,
+:global(:root[data-theme="dark"]) .actionMenuButton {
+    border: 1px solid #5f5f5f;
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .actionMenuButton:hover,
+:global(:root[data-theme="dark"]) .clearFilterButton:hover,
+:global(:root[data-theme="dark"]) .paginationButton:hover,
+:global(:root[data-theme="dark"]) .paginationNumber:hover {
+    background: #4a4a4a;
+}
+
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .existingThresholdTable thead th {
+    border-bottom-color: #5f5f5f;
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .table td,
+:global(:root[data-theme="dark"]) .existingThresholdTable tbody td {
+    border-bottom-color: #4a4a4a;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdTable .statusBadge,
+:global(:root[data-theme="dark"]) .existingThresholdTable .criticalityBadge {
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdTable .activeStatus {
+    background: #1f7a3d;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdTable .inactiveStatus {
+    background: #9f2f2f;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdTable .criticalityHigh {
+    background: #b42318;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdTable .criticalityMedium {
+    background: #8a6500;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .existingThresholdTable .criticalityLow {
+    background: #247456;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .positiveValue,
+:global(:root[data-theme="dark"]) .negativeValue {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .actionMenuDelete {
+    color: #ff8a8a;
+}
+
 @media (max-width: 900px) {
     .page {
         padding: var(--management-page-padding);
@@ -794,6 +988,11 @@
     .existingFilterPanel,
     .existingSummaryRow {
         grid-template-columns: 1fr;
+    }
+
+    .existingFilterPanel,
+    .existingThresholdCard {
+        width: 100%;
     }
 
     .ruleRow {
