@@ -197,16 +197,45 @@
     margin-bottom: 20px;
     color: #343a46;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
-.referenceDashboardHeader strong {
-    display: block;
-    margin-top: 5px;
-    color: #111827;
-    font-size: 18px;
-    line-height: 24px;
-    font-weight: 850;
+.dashboardWelcomeBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dashboardWelcomeBlock > span {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    font-weight: 800;
+    color: #1f2937;
+}
+
+.dashboardViewingPill {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    border: 1px solid #dbe2ee;
+    background: #f8faff;
+    border-radius: 999px;
+    padding: 6px 12px;
+    color: #334155;
+    font-size: 13px;
+    line-height: 1.2;
+}
+
+.dashboardViewingPill b {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.dashboardViewingPill span {
+    color: #0f172a;
+    font-weight: 700;
 }
 
 .dashboardUserControls {
@@ -223,7 +252,7 @@
     min-width: 166px;
     color: #2f3747;
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardUserControls select {
@@ -249,7 +278,7 @@
     color: #111827;
     font-size: 20px;
     line-height: 26px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .referenceStatsGrid {
@@ -259,11 +288,12 @@
 }
 
 .referenceStatCard {
-    min-height: 98px;
-    border: 1px solid #d8dde7;
-    border-radius: 7px;
+    min-height: 164px;
+    border: 1px solid #cfd5de;
+    border-radius: 14px;
     background: #ffffff;
-    padding: 13px 12px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+    padding: 20px 22px;
     box-sizing: border-box;
 }
 
@@ -276,18 +306,20 @@
 
 .referenceStatHeader h2 {
     margin: 0;
-    color: #111827;
-    font-size: 15px;
-    line-height: 19px;
-    font-weight: 850;
+    color: #5f6f85;
+    font-size: 16px;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
 }
 
 .referenceStatHeader span {
     display: block;
-    margin-top: 2px;
+    margin-top: 6px;
     color: #4f5b70;
     font-size: 12px;
-    line-height: 15px;
+    line-height: 1.25;
     font-weight: 500;
 }
 
@@ -295,12 +327,12 @@
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 8px;
-    background: #eef3ff;
-    color: #3f5ca9 !important;
-    font-size: 16px !important;
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    background: #e9efff;
+    color: #2f5fbf !important;
+    font-size: 28px !important;
     margin-top: 0 !important;
 }
 
@@ -309,14 +341,14 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 10px;
-    margin-top: 13px;
+    margin-top: 18px;
 }
 
 .referenceStatBottom strong {
-    color: #111827;
-    font-size: 22px;
-    line-height: 1;
-    font-weight: 850;
+    color: #1f2937;
+    font-size: 30px;
+    line-height: 1.05;
+    font-weight: 600;
 }
 
 .referenceMiniToggle,
@@ -329,13 +361,17 @@
     padding: 4px;
 }
 
+.referenceMiniToggle {
+    margin-top: 8px;
+}
+
 .referenceMiniToggle button,
 .referenceModeToggle button {
     border: none;
     border-radius: 4px;
     background: transparent;
     color: #667085;
-    font-weight: 850;
+    font-weight: 700;
     cursor: pointer;
 }
 
@@ -384,7 +420,7 @@
     color: #111827;
     font-size: 15px;
     line-height: 19px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .referenceChartHeader span {
@@ -453,7 +489,7 @@
 .referenceBarWeek small {
     color: #344054;
     font-size: 10px;
-    font-weight: 850;
+    font-weight: 700;
     text-align: center;
 }
 
@@ -558,7 +594,7 @@
     padding-top: 17px;
     color: #344054;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .referenceXAxis span {
@@ -582,7 +618,7 @@
     color: #111827;
     font-size: 24px;
     line-height: 30px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockHeader span {
@@ -626,7 +662,7 @@
     color: #111827;
     font-size: 28px;
     line-height: 1;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockStatIcon {
@@ -671,7 +707,7 @@
     color: #111827;
     font-size: 16px;
     line-height: 22px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockModeToggle {
@@ -691,7 +727,7 @@
     background: transparent;
     color: #667085;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 700;
     cursor: pointer;
 }
 
@@ -758,7 +794,7 @@
 .dashboardMockWeekGroup small {
     color: #344054;
     font-size: 10px;
-    font-weight: 850;
+    font-weight: 700;
     text-align: center;
 }
 
@@ -783,13 +819,13 @@
 .dashboardMockAverageItem strong {
     color: #111827;
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockAverageItem span {
     color: #455da9;
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockProgressTrack {
@@ -828,7 +864,7 @@
     gap: 18px;
     color: #667085;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 .dashboardMockLegend span {
@@ -856,7 +892,7 @@
     padding: 0 0 14px;
     color: #344054;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockTimelineRows {
@@ -881,7 +917,7 @@
     display: block;
     color: #111827;
     font-size: 14px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardMockTimelineProject span {
@@ -922,7 +958,7 @@
 .dashboardMockTimelineActive em {
     font-size: 9px;
     font-style: normal;
-    font-weight: 850;
+    font-weight: 700;
     text-transform: uppercase;
 }
 
@@ -1016,7 +1052,7 @@
 .dashboardCalendarHeader strong {
     color: #182235;
     font-size: 14px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardCalendarHeader button,
@@ -1031,7 +1067,7 @@
     border-radius: 7px;
     background: #eef3ff;
     color: #4965b7;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardCalendarWeekdays,
@@ -1052,7 +1088,7 @@
     height: 24px;
     color: #667085;
     font-size: 11px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardCalendarGrid button {
@@ -1061,7 +1097,7 @@
     background: transparent;
     color: #273043;
     font-size: 12px;
-    font-weight: 750;
+    font-weight: 700;
 }
 
 .dashboardCalendarGrid button:hover {
@@ -1145,7 +1181,7 @@
     color: #182235;
     font-size: 20px;
     line-height: 26px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .analyticsHeader p {
@@ -1185,7 +1221,7 @@
     color: #182235;
     font-size: 20px;
     line-height: 1;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .analyticsChartShell {
@@ -1238,7 +1274,7 @@
     margin: 0;
     color: #182235;
     font-size: 18px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .dashboardRecentHeader span {
@@ -1342,7 +1378,7 @@
     background: #ffffff;
     color: #4a5262;
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 700;
     cursor: pointer;
 }
 
@@ -1366,7 +1402,7 @@
     min-width: 178px;
     color: #2f3747;
     font-size: 14px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .builderUserControls select {
@@ -1391,7 +1427,7 @@
     color: #232936;
     font-size: 20px;
     line-height: 24px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .builderSelectedUser span {
@@ -1473,7 +1509,7 @@
     color: #111827;
     font-size: 16px;
     line-height: 22px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .builderRow {
@@ -1676,7 +1712,7 @@
     color: #111827;
     font-size: 19px;
     line-height: 24px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .builderAddModalHeader p {
@@ -1698,7 +1734,7 @@
     gap: 9px;
     color: #344054;
     font-size: 14px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .builderAddModalGrid select {
@@ -1724,7 +1760,7 @@
     gap: 8px;
     color: #344054;
     font-size: 14px;
-    font-weight: 850;
+    font-weight: 700;
 }
 
 .ticketOptionsGrid {
@@ -1808,7 +1844,7 @@
     border-radius: 8px;
     padding: 0 18px;
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 700;
     cursor: pointer;
 }
 

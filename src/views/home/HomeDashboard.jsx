@@ -88,6 +88,16 @@ const getTicketCardIcon = (label) => {
   if (label === "Pending") return MdOutlinePendingActions;
   return FiPieChart;
 };
+const formatCardContextLabel = (department, subDepartment, inputScreen) => {
+  const isMixing = String(subDepartment || "").trim().toLowerCase() === "mixing";
+  const cleanedInputScreen = isMixing
+    ? String(inputScreen || "").replace(/\bdata\s*entry\b/gi, "").trim()
+    : String(inputScreen || "").trim();
+
+  return `${formatDepartmentLabel(department)} | ${subDepartment} | ${cleanedInputScreen}`.replace(/\s+\|\s*$/, "");
+};
+const formatDepartmentLabel = (value) =>
+  String(value || "").trim().toLowerCase() === "quality control" ? "QC" : String(value || "");
 
 const padDatePart = (value) => String(value).padStart(2, "0");
 
@@ -586,9 +596,14 @@ function HomeDashboard() {
   return (
     <div className={styles.dashboardMain}>
       <section className={styles.referenceDashboardHeader}>
-        <div>
+        <div className={styles.dashboardWelcomeBlock}>
           <span>Welcome Back, {fullName}</span>
-          {isDashboardAdmin ? <strong>Viewing: {selectedDashboardUser?.name || fullName}</strong> : null}
+          {isDashboardAdmin ? (
+            <p className={styles.dashboardViewingPill}>
+              <b>Viewing:</b>
+              <span>{selectedDashboardUser?.name || fullName}</span>
+            </p>
+          ) : null}
         </div>
         {isDashboardAdmin ? (
           <div className={styles.dashboardUserControls}>
@@ -625,7 +640,6 @@ function HomeDashboard() {
                     <div className={styles.referenceStatHeader}>
                       <div>
                         <h2>{ticketLabel}</h2>
-                    <span>{`${card.department} | ${card.sub_department} | ${card.input_screen}`}</span>
                       </div>
                       <span className={styles.referenceStatIcon}><TicketIcon /></span>
                     </div>
@@ -660,7 +674,7 @@ function HomeDashboard() {
               <div className={styles.referenceStatHeader}>
                 <div>
                   <h2>{card.raw_input_field || card.input_field || "Metric"}</h2>
-                  <span>{`${card.department} | ${card.sub_department} | ${card.input_screen}`}</span>
+                  <span>{formatCardContextLabel(card.department, card.sub_department, card.input_screen)}</span>
                 </div>
                 <span className={styles.referenceStatIcon}><FiPieChart /></span>
               </div>
@@ -810,7 +824,7 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
       <div className={styles.referenceChartHeader}>
         <div>
           <h2>{widget?.raw_input_field || widget?.input_field || "Metric"}</h2>
-          <span>{`${widget?.department || ""} | ${widget?.sub_department || ""} | ${widget?.input_screen || ""}`}</span>
+          <span>{`${formatDepartmentLabel(widget?.department)} | ${widget?.sub_department || ""} | ${widget?.input_screen || ""}`}</span>
         </div>
         <div className={styles.referenceLineHeaderRight}>
           <span className={styles.referenceLegend}><i /> Trend</span>

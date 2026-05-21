@@ -126,6 +126,38 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo, selectedT
         getPreviewData,
         getPayload: buildPayload,
         validate,
+        applyOcrData: (raw) => {
+            const list =
+                raw?.json_output ||
+                raw?.data ||
+                raw?.result?.json_output ||
+                raw?.result?.data ||
+                [];
+            const source = Array.isArray(list) ? (list[0] || {}) : (raw?.result || raw || {});
+            const pick = (...keys) => {
+                for (const key of keys) {
+                    const v = source?.[key];
+                    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v);
+                }
+                return "";
+            };
+
+            setFormData((prev) => ({
+                ...prev,
+                variety: pick("variety", "Variety"),
+                invoiceNo: pick("invoice_no", "invoiceNo", "Invoice No"),
+                invoiceDate: pick("invoice_date", "invoiceDate", "Invoice Date"),
+                uql: pick("uql", "UQL"),
+                l5: pick("l5", "L5%"),
+                sfcN: pick("sfc_n", "sfcN", "SFC(N)"),
+                ifc: pick("ifc", "IFC %"),
+                fibreNepsGms: pick("fibre_neps_gms", "fibreNepsGms", "Fibre Neps Gms"),
+                sfcW: pick("sfc_w", "sfcW", "SFC(W)"),
+                maturity: pick("maturity", "Maturity"),
+                fineness: pick("fineness", "Fineness"),
+                scnGms: pick("scn_gms", "scnGms", "SCN (gms)"),
+            }));
+        },
     }));
 
     return (

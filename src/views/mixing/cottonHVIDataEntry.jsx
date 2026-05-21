@@ -11,11 +11,11 @@ const initialForm = {
     sci: '', spanLength: '', mic: '',
     gtex: '', maturity: '', ur: '',
     sfi: '', elongation: '', yellowB: '',
-    trash: '', rd: '', colourGrade: '',
+    trCnt: '', trAr: '', trID: '', invisibleLossPercent: '', trashContentPercent: '', rd: '', colourGrade: '',
 };
 
 const NUMERIC_FIELDS = new Set([
-    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trash', 'rd', 'colourGrade',
+    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd', 'colourGrade',
 ]);
 
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo, selectedTypeName }, ref) {
@@ -58,7 +58,11 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
         sfi:             Number(formData.sfi)         || 0,
         elongation:      Number(formData.elongation)  || 0,
         yellow_b:        Number(formData.yellowB)     || 0,
-        trash:           Number(formData.trash)       || 0,
+        trcnt:           Number(formData.trCnt)       || 0,
+        trar:            Number(formData.trAr)        || 0,
+        trid:            Number(formData.trID)        || 0,
+        invisible_loss_percentage: Number(formData.invisibleLossPercent) || 0,
+        trash_content_percentage: Number(formData.trashContentPercent) || 0,
         rd:              Number(formData.rd)          || 0,
         colour_grade:    Number(formData.colourGrade) || 0,
     });
@@ -82,7 +86,11 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
                     { label: "SFI", value: formData.sfi },
                     { label: "Elongation", value: formData.elongation },
                     { label: "Yellow + B", value: formData.yellowB },
-                    { label: "Trash", value: formData.trash },
+                    { label: "TrCnt", value: formData.trCnt },
+                    { label: "TrAr", value: formData.trAr },
+                    { label: "TrID", value: formData.trID },
+                    { label: "Invisible Loss %", value: formData.invisibleLossPercent },
+                    { label: "Trash Content %", value: formData.trashContentPercent },
                     { label: "RD", value: formData.rd },
                     { label: "Colour Grade", value: formData.colourGrade },
                 ],
@@ -113,7 +121,11 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
         { label: "SFI", value: formData.sfi },
         { label: "Elongation", value: formData.elongation },
         { label: "Yellow + B", value: formData.yellowB },
-        { label: "Trash", value: formData.trash },
+        { label: "TrCnt", value: formData.trCnt },
+        { label: "TrAr", value: formData.trAr },
+        { label: "TrID", value: formData.trID },
+        { label: "Invisible Loss %", value: formData.invisibleLossPercent },
+        { label: "Trash Content %", value: formData.trashContentPercent },
         { label: "RD", value: formData.rd },
         { label: "Colour Grade", value: formData.colourGrade },
     ]);
@@ -121,7 +133,7 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
     const validate = () => {
         const required = [
             "variety","invoiceNo","invoiceDate","sci","spanLength","mic","gtex","maturity",
-            "ur","sfi","elongation","yellowB","trash","rd","colourGrade"
+            "ur","sfi","elongation","yellowB","trCnt","trAr","trID","invisibleLossPercent","trashContentPercent","rd","colourGrade"
         ];
         const nextErrors = required.reduce((acc, key) => {
             if (String(formData[key] || "").trim() === "") acc[key] = true;
@@ -137,6 +149,45 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
         getPreviewData,
         getPayload: buildPayload,
         validate,
+        applyOcrData: (raw) => {
+            const list =
+                raw?.json_output ||
+                raw?.data ||
+                raw?.result?.json_output ||
+                raw?.result?.data ||
+                [];
+            const source = Array.isArray(list) ? (list[0] || {}) : (raw?.result || raw || {});
+            const pick = (...keys) => {
+                for (const key of keys) {
+                    const v = source?.[key];
+                    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v);
+                }
+                return "";
+            };
+
+            setFormData((prev) => ({
+                ...prev,
+                variety: pick("variety", "Variety"),
+                invoiceNo: pick("invoice_no", "invoiceNo", "Invoice No"),
+                invoiceDate: pick("invoice_date", "invoiceDate", "Invoice Date"),
+                sci: pick("sci", "SCI"),
+                spanLength: pick("span_length", "spanLength", "Span Length (2.5%)"),
+                mic: pick("mic", "Mic"),
+                gtex: pick("gtex", "GTEX"),
+                maturity: pick("maturity", "Maturity"),
+                ur: pick("ur", "UR"),
+                sfi: pick("sfi", "SFI"),
+                elongation: pick("elongation", "Elongation"),
+                yellowB: pick("yellow_b", "yellowB", "Yellow + B"),
+                trCnt: pick("trcnt", "trCnt", "TrCnt"),
+                trAr: pick("trar", "trAr", "TrAr"),
+                trID: pick("trid", "trID", "TrID"),
+                invisibleLossPercent: pick("invisible_loss_percentage", "invisibleLossPercent", "Invisible Loss %"),
+                trashContentPercent: pick("trash_content_percentage", "trashContentPercent", "Trash Content %"),
+                rd: pick("rd", "RD"),
+                colourGrade: pick("colour_grade", "colourGrade", "Colour Grade"),
+            }));
+        },
     }));
 
     return (
@@ -191,10 +242,24 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, lotNo,
             </div>
 
             <div className={styles['mixx-row']}>
-                <CustomInput label="Trash" placeholder="Enter Trash"
-                    value={formData.trash} onChange={v => handleChange('trash', v)} error={errors.trash} />
+                <CustomInput label="TrCnt" placeholder="Enter TrCnt"
+                    value={formData.trCnt} onChange={v => handleChange('trCnt', v)} error={errors.trCnt} />
+                <CustomInput label="TrAr" placeholder="Enter TrAr"
+                    value={formData.trAr} onChange={v => handleChange('trAr', v)} error={errors.trAr} />
+                <CustomInput label="TrID" placeholder="Enter TrID"
+                    value={formData.trID} onChange={v => handleChange('trID', v)} error={errors.trID} />
+            </div>
+
+            <div className={styles['mixx-row']}>
+                <CustomInput label="Invisible Loss %" placeholder="Enter Invisible Loss %"
+                    value={formData.invisibleLossPercent} onChange={v => handleChange('invisibleLossPercent', v)} error={errors.invisibleLossPercent} />
+                <CustomInput label="Trash Content %" placeholder="Enter Trash Content %"
+                    value={formData.trashContentPercent} onChange={v => handleChange('trashContentPercent', v)} error={errors.trashContentPercent} />
                 <CustomInput label="RD" placeholder="Enter RD"
                     value={formData.rd} onChange={v => handleChange('rd', v)} error={errors.rd} />
+            </div>
+
+            <div className={styles['mixx-row']}>
                 <CustomInput label="Colour Grade" placeholder="Enter Colour Grade"
                     value={formData.colourGrade} onChange={v => handleChange('colourGrade', v)} error={errors.colourGrade} />
             </div>

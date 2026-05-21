@@ -1,6 +1,14 @@
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const getBrowserToken = () =>
+  typeof window !== "undefined"
+    ? window.sessionStorage.getItem("token") || window.localStorage.getItem("token") || ""
+    : "";
+const getAuthHeaders = () => {
+  const token = getBrowserToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 const emitFetchSuccess = () => {
   emitGlobalSuccessModal({
@@ -24,7 +32,12 @@ export const fetchDepartmentsAPI = async () => {
 };
 
 export const deleteUserAPI = async (id) => {
-  const res = await fetch(`${BASE_URL}/users/${id}`, { method: "DELETE" });
+  const res = await fetch(`${BASE_URL}/users/${id}`, {
+    method: "DELETE",
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
   if (res.ok) emitFetchSuccess();
   return res;
 };
@@ -32,7 +45,10 @@ export const deleteUserAPI = async (id) => {
 export const updateStatusAPI = async (id, status) => {
   const res = await fetch(`${BASE_URL}/users/${id}/account-status`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
     body: JSON.stringify({ account_status: status }),
   });
   if (res.ok) emitFetchSuccess();
@@ -45,6 +61,7 @@ export const addUserAPI = async (data) => {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(data),
   });
@@ -82,11 +99,15 @@ export const exportUsersAPI = async () => {
 };
 
 export const bulkUploadUsersAPI = async (file) => {
+  const token = getBrowserToken();
   const formData = new FormData();
   formData.append("file", file);
 
   const res = await fetch(`${BASE_URL}/users/bulk-upload`, {
     method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: formData,
   });
 
@@ -109,15 +130,23 @@ export const bulkUploadUsersAPI = async (file) => {
 };
 //  UPDATE USER
 export const updateUserAPI = async (id, data) => {
-  const res = await fetch(`${BASE_URL}/users/${id}`, {
+  const requestConfig = {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(data),
-  });
+  };
 
-  const responseData = await res.json();
+  let res = await fetch(`${BASE_URL}/users/${id}`, requestConfig);
+
+  // Compatibility fallback for backends exposing legacy update routes.
+  if (res.status === 404) {
+    res = await fetch(`${BASE_URL}/users/update-user/${id}`, requestConfig);
+  }
+
+  const responseData = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     console.error(responseData);
@@ -135,6 +164,7 @@ export const changePasswordAPI = async (id, data) => {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(data),
   });

@@ -14,9 +14,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchRoles, fetchDepartments, clearActionState } from "../../store/slices/userSlice";
 
 // API
-import { updateUserAPI } from "../../apis/userApi";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+import { fetchUsersAPI, updateUserAPI } from "../../apis/userApi";
 
 export default function EditUser() {
   const router = useRouter();
@@ -53,19 +51,19 @@ export default function EditUser() {
 
     const fetchUser = async () => {
       try {
-        const res = await fetch(`${BASE_URL}/users`);
-        const users = await res.json();
+        const users = await fetchUsersAPI();
         const user = users.find((u) => u.id === Number(id));
         if (!user) return;
 
-        const [first, ...rest] = user.full_name.split(" ");
+        const fullName = user.full_name || user.name || "";
+        const [first, ...rest] = fullName.split(" ");
 
         setFormData({
           first_name: first || "",
           last_name: rest.join(" ") || "",
           email: user.email || "",
           phone: user.phone || "",
-          employee_id: user.employee_id || "",
+          employee_id: user.employee_id || user.employeeId || "",
           role: user.role || "",
           department: user.department || "",
           level: user.level || "",

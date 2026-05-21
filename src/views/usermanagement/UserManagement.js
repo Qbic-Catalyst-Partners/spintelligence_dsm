@@ -31,6 +31,7 @@ export default function UserManagement() {
   const dispatch = useDispatch();
   const router = useRouter();
   const menuRef = useRef(null);
+  const uploadInputRef = useRef(null);
 
   const {
     users = [],
@@ -118,6 +119,14 @@ export default function UserManagement() {
       setUploading(false);
       event.target.value = "";
     }
+  };
+
+  const openBulkUploadPicker = () => {
+    if (uploading) {
+      return;
+    }
+
+    uploadInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -213,16 +222,22 @@ export default function UserManagement() {
               <MdOutlineFileDownload /> Export
             </button>
 
-            <label className={styles.btnOutline}>
+            <button
+              type="button"
+              className={styles.btnOutline}
+              onClick={openBulkUploadPicker}
+              disabled={uploading}
+            >
               <MdOutlineFileUpload />
               {uploading ? "Uploading..." : "Bulk Upload"}
-              <input
-                type="file"
-                hidden
-                accept=".xlsx,.xls,.csv"
-                onChange={handleBulkUpload}
-              />
-            </label>
+            </button>
+            <input
+              ref={uploadInputRef}
+              type="file"
+              hidden
+              accept=".xlsx,.xls,.csv"
+              onChange={handleBulkUpload}
+            />
 
             <button
               className={styles.btnPrimary}
@@ -448,7 +463,7 @@ export default function UserManagement() {
                       className={`${styles.userMenu} ${i >= pageData.length - 2 ? styles.menuUp : ""
                         }`}
                     >
-                      <p onClick={() => router.push(`/umedit/${u.id}`)}>
+                      <p onClick={() => router.push(`/umedit?id=${u.id}`)}>
                         Edit
                       </p>
 

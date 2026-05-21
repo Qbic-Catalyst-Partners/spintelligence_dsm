@@ -7,7 +7,9 @@ const getCurrentAuthUser = () => {
   }
 
   try {
-    const rawUser = window.localStorage.getItem("authUser");
+    const rawUser =
+      window.sessionStorage.getItem("authUser") ||
+      window.localStorage.getItem("authUser");
     return rawUser ? JSON.parse(rawUser) : null;
   } catch {
     return null;
@@ -32,7 +34,11 @@ const getCurrentTicketUser = () => {
     userName:
       user.full_name ||
       user.fullName ||
+      user.user_name ||
+      user.username ||
       user.name ||
+      user.employee_id ||
+      user.employeeId ||
       null,
   };
 };

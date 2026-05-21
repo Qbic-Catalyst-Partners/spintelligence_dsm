@@ -47,3 +47,8 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# local large/back-end artifacts
+backend_bundle.zip
+_backend_tmp/
+

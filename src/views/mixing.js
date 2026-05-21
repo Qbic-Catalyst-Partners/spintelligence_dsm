@@ -51,6 +51,8 @@ function Mixing() {
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
+    const [ocrBusy, setOcrBusy] = useState(false);
+    const [pendingOcrValues, setPendingOcrValues] = useState(null);
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -156,6 +158,40 @@ function Mixing() {
         setShowSuccess(true);
     };
 
+    useEffect(() => {
+        const raw = typeof window !== "undefined" ? window.localStorage.getItem("ocr_prefill") : "";
+        if (!raw) return;
+        try {
+            const payload = JSON.parse(raw);
+            if (payload?.screen === "mixing" && payload?.docType && (payload?.result || payload?.values)) {
+                setSelectedTypeName(payload.docType === "afis" ? "AFIS Data Entry" : "Cotton HVI Data Entry");
+                setPendingOcrValues(payload.result || payload.values);
+            }
+        } catch {}
+    }, []);
+
+    useEffect(() => {
+        if (!pendingOcrValues) return;
+        let attempts = 0;
+        const maxAttempts = 30;
+        const timer = setInterval(() => {
+            attempts += 1;
+            if (childRef.current?.applyOcrData) {
+                childRef.current.applyOcrData(pendingOcrValues);
+                setPendingOcrValues(null);
+                if (typeof window !== "undefined") {
+                    window.localStorage.removeItem("ocr_prefill");
+                }
+                clearInterval(timer);
+                return;
+            }
+            if (attempts >= maxAttempts) {
+                clearInterval(timer);
+            }
+        }, 100);
+        return () => clearInterval(timer);
+    }, [pendingOcrValues, selectedTypeName]);
+
     return (
         <div className="min-h-screen bg-slate-50 flex justify-center">
             <div className="w-full max-w-7xl pt-8 px-4 pb-8">
@@ -176,7 +212,7 @@ function Mixing() {
                                     <span className="text-[#3d539f] text-xl leading-none">&#8801;&#9998;</span>
                                     <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
                                 </div>
-                                <InputScreenUploadButton />
+                                <InputScreenUploadButton disabled={ocrBusy} returnTo="/mixing" docType={selectedTypeName === "AFIS Data Entry" ? "afis" : "hvi"} />
                             </div>
 
                             <div className="flex flex-col gap-4">
