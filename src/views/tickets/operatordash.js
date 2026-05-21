@@ -3,7 +3,7 @@ import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/router";
 import Image from "next/image";
 import { FiPlus } from "react-icons/fi";
-import { getOperatorTickets } from "../../apis/operatorApi";
+import { getOperatorTickets, getSubmissionTickets } from "../../apis/operatorApi";
 import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
     formatThresholdValue,
@@ -20,6 +20,7 @@ import {
 
 export default function operatorboard() {
     const [ticketData, setTicketData] = useState([]);
+    const [submissionTicketData, setSubmissionTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
@@ -27,9 +28,10 @@ export default function operatorboard() {
 
     const [status, setStatus] = useState("All");
     const [severity, setSeverity] = useState("All");
-    const [machine, setMachine] = useState("All");
+    const [notebookType, setNotebookType] = useState("All");
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
+    const [activeTicketingView, setActiveTicketingView] = useState("threshold");
 
     const router = useRouter();
 
@@ -38,6 +40,7 @@ export default function operatorboard() {
 
     useEffect(() => {
         fetchTickets();
+        fetchSubmissionTickets();
     }, []);
 
     const fetchTickets = async () => {
@@ -55,6 +58,11 @@ export default function operatorboard() {
                 return {
                     id: ticket.ticket_id,
                     machine: ticket.machine_name,
+                    notebookType:
+                        ticket.notebook_type ||
+                        ticket.notebookType ||
+                        ticket.notebook ||
+                        "Unknown",
                     parameter: ticket.parameter_name?.[0] || "-",
                     actual: getTicketValueForParameter(
                         ticket.actual_value,
@@ -72,6 +80,8 @@ export default function operatorboard() {
                             ticket.parameter_name?.[0]
                         )
                     ),
+                    frequency: ticket.frequency || ticket.submission_frequency || ticket.check_frequency || "-",
+                    occurrences: ticket.occurrences || ticket.occurrence_count || ticket.count || "-",
                     severity: ticket.severity,
                     status: ticket.status,
                     rawCreatedAt: createdDate,
@@ -94,10 +104,50 @@ export default function operatorboard() {
         }
     };
 
+    const fetchSubmissionTickets = async () => {
+        try {
+            const response = await getSubmissionTickets({ page: 1, limit: 200 });
+            const ticketsArray = Array.isArray(response)
+                ? response
+                : response?.data || response?.tickets || [];
+
+            const formattedData = ticketsArray.map((ticket) => {
+                const createdDate = new Date(ticket.created_at);
+                return {
+                    id: ticket.ticket_id,
+                    machine: ticket.notebook || ticket.machine_name || "Unknown",
+                    notebookType: ticket.notebook || "Submission",
+                    parameter: ticket.parameter || ticket.parameter_name?.[0] || "submission_frequency",
+                    actual: "-",
+                    standard: "-",
+                    threshold: "-",
+                    frequency: ticket.frequency || "-",
+                    occurrences: ticket.occurrences ?? ticket.configured_occurrences ?? "-",
+                    severity: ticket.severity || "High",
+                    status: ticket.status || "Open",
+                    rawCreatedAt: createdDate,
+                    createdAt: createdDate.toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                    }),
+                };
+            });
+
+            setSubmissionTicketData(formattedData);
+        } catch (submissionError) {
+            console.error("Error fetching submission tickets:", submissionError);
+        }
+    };
+
     if (loading) return <p>Loading tickets...</p>;
     if (error) return <p>{error}</p>;
 
-    const filteredTickets = ticketData.filter((t) => {
+    const activeDataSource = activeTicketingView === "submission" ? submissionTicketData : ticketData;
+
+    const filteredTickets = activeDataSource.filter((t) => {
         const created = new Date(t.rawCreatedAt);
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
@@ -107,16 +157,22 @@ export default function operatorboard() {
         return (
             (status === "All" || t.status === status) &&
             (severity === "All" || t.severity === severity) &&
-            (machine === "All" || t.machine === machine) &&
+            (notebookType === "All" || t.notebookType === notebookType) &&
             (!start || created >= start) &&
             (!end || created <= end)
         );
     });
 
-    const totalPages = Math.ceil(filteredTickets.length / ITEMS_PER_PAGE);
+    const displayTickets = filteredTickets;
+
+    const totalPages = Math.ceil(displayTickets.length / ITEMS_PER_PAGE);
     const indexOfLast = currentPage * ITEMS_PER_PAGE;
     const indexOfFirst = indexOfLast - ITEMS_PER_PAGE;
-    const currentTickets = filteredTickets.slice(indexOfFirst, indexOfLast);
+    const currentTickets = displayTickets.slice(indexOfFirst, indexOfLast);
+    const uniqueNotebookTypes = [
+        "All",
+        ...new Set(activeDataSource.map((t) => t.notebookType).filter(Boolean)),
+    ];
 
     return (
         <div className={styles.page}>
@@ -152,6 +208,29 @@ export default function operatorboard() {
                 </div>
             </div>
 
+            <div className={styles["ticketing-toggle"]}>
+                <button
+                    type="button"
+                    className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "threshold" ? styles["ticketing-toggle-btn-active"] : ""}`}
+                    onClick={() => {
+                        setActiveTicketingView("threshold");
+                        setCurrentPage(1);
+                    }}
+                >
+                    Threshold Ticket
+                </button>
+                <button
+                    type="button"
+                    className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "submission" ? styles["ticketing-toggle-btn-active"] : ""}`}
+                    onClick={() => {
+                        setActiveTicketingView("submission");
+                        setCurrentPage(1);
+                    }}
+                >
+                    Submission Ticket
+                </button>
+            </div>
+
             {/* DESKTOP FILTERS */}
             <div className={styles.filtrs}>
                 <Filter
@@ -169,15 +248,10 @@ export default function operatorboard() {
                 />
 
                 <Filter
-                    label="Machine"
-                    value={machine}
-                    onChange={setMachine}
-                    options={[
-                        "All", "Dyeing Vat 2", "Spinner C-14", "Winder W-12", "Drawframe D-02",
-                        "Dyeing Vat 1", "Spinner C-15", "Draw Frame D-05", "Central Compressor",
-                        "Sizing Range S-2", "Wash Range W-1", "Carding Unit 3", "Knitting Machine K-04",
-                        "Auto-Coner A-1", "Winder W-11", "Auto-Coner AC-05"
-                    ]}
+                    label="Notebook Type"
+                    value={notebookType}
+                    onChange={setNotebookType}
+                    options={uniqueNotebookTypes}
                 />
 
                 {/* Start & End Dates */}
@@ -210,11 +284,20 @@ export default function operatorboard() {
                     <thead>
                         <tr>
                             <th>TICKET ID</th>
-                            <th>MACHINE</th>
+                            <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
                             <th>PARAMETER</th>
-                            <th>ACTUAL</th>
-                            <th>STANDARD</th>
-                            <th>THRESHOLD</th>
+                            {activeTicketingView === "submission" ? (
+                                <>
+                                    <th>FREQUENCY</th>
+                                    <th>OCCURRENCES</th>
+                                </>
+                            ) : (
+                                <>
+                                    <th>ACTUAL</th>
+                                    <th>STANDARD</th>
+                                    <th>THRESHOLD</th>
+                                </>
+                            )}
                             <th>SEVERITY</th>
                             <th>STATUS</th>
                             <th>CREATED AT</th>
@@ -231,9 +314,18 @@ export default function operatorboard() {
                                 <td className={styles["ticket-link"]}>{t.id}</td>
                                 <td>{t.machine}</td>
                                 <td>{t.parameter}</td>
-                                <td>{t.actual}</td>
-                                <td>{t.standard}</td>
-                                <td>{t.threshold}</td>
+                                {activeTicketingView === "submission" ? (
+                                    <>
+                                        <td>{t.frequency || "-"}</td>
+                                        <td>{t.occurrences || "-"}</td>
+                                    </>
+                                ) : (
+                                    <>
+                                        <td>{t.actual}</td>
+                                        <td>{t.standard}</td>
+                                        <td>{t.threshold}</td>
+                                    </>
+                                )}
                                 <td>
                                     <span className={`${styles.badge} ${styles[t.severity?.toLowerCase()]}`}>
                                         {t.severity}
@@ -264,6 +356,13 @@ export default function operatorboard() {
                                 <td>{t.createdAt}</td>
                             </tr>
                         ))}
+                        {currentTickets.length === 0 && (
+                            <tr>
+                                <td colSpan={9} style={{ textAlign: "center", color: "#667085" }}>
+                                    No tickets found for the selected filters.
+                                </td>
+                            </tr>
+                        )}
 
                     </tbody>
                 </table>
@@ -271,7 +370,7 @@ export default function operatorboard() {
                 {/* TABLE FOOTER */}
                 <div className={styles["table-footer"]}>
                     <span>
-                        Showing {indexOfFirst + 1}–{Math.min(indexOfLast, filteredTickets.length)} of {filteredTickets.length}
+                        Showing {displayTickets.length ? indexOfFirst + 1 : 0}–{Math.min(indexOfLast, displayTickets.length)} of {displayTickets.length}
                     </span>
 
                     <div className={styles.pagination}>
@@ -309,10 +408,12 @@ export default function operatorboard() {
                                     <option>All</option><option>High</option><option>Medium</option><option>Low</option>
                                 </select>
 
-                                <label>Machine</label>
-                                <select value={machine} onChange={(e) => setMachine(e.target.value)}>
+                                <label>Notebook Type</label>
+                                <select value={notebookType} onChange={(e) => setNotebookType(e.target.value)}>
                                     <option>All</option>
-                                    {[...new Set(ticketData.map(t => t.machine))].map(m => <option key={m}>{m}</option>)}
+                                    {[...new Set(activeDataSource.map((t) => t.notebookType).filter(Boolean))].map((type) => (
+                                        <option key={type}>{type}</option>
+                                    ))}
                                 </select>
 
                                 <label>Date Range</label>
@@ -324,7 +425,7 @@ export default function operatorboard() {
 
                             <div className={styles["filter-footer"]}>
                                 <button className={styles["reset-btn"]} onClick={() => {
-                                    setStatus("All"); setSeverity("All"); setMachine("All"); setStartDate(""); setEndDate("");
+                                    setStatus("All"); setSeverity("All"); setNotebookType("All"); setStartDate(""); setEndDate("");
                                 }}>Reset</button>
                                 <button className={styles["apply-btn"]} onClick={() => setShowMobileFilter(false)}>Apply Filter</button>
                             </div>
@@ -332,7 +433,7 @@ export default function operatorboard() {
                     </>
                 )}
 
-                {filteredTickets.map((t) => (
+                {displayTickets.map((t) => (
                     <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operator/${t.id.replace("#", "")}`)}>
                         <div className={styles["card-top"]}>
                             <div className={styles["left-section"]}>

@@ -44,6 +44,7 @@ export default function UserManagement() {
 
   const [activeRow, setActiveRow] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
@@ -127,6 +128,31 @@ export default function UserManagement() {
     }
 
     uploadInputRef.current?.click();
+  };
+
+  const downloadBulkUploadTemplate = () => {
+    const headers = [
+      "employeeId",
+      "name",
+      "email",
+      "phone",
+      "role",
+      "level",
+      "dept",
+      "status",
+    ];
+    const excelTable = `<!DOCTYPE html><html><head><meta charset="UTF-8" /></head><body><table><tr>${headers
+      .map((header) => `<th>${header}</th>`)
+      .join("")}</tr></table></body></html>`;
+    const blob = new Blob([excelTable], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "usermanagement_template.xls");
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -225,7 +251,7 @@ export default function UserManagement() {
             <button
               type="button"
               className={styles.btnOutline}
-              onClick={openBulkUploadPicker}
+              onClick={() => setShowBulkUploadModal(true)}
               disabled={uploading}
             >
               <MdOutlineFileUpload />
@@ -567,6 +593,49 @@ export default function UserManagement() {
                   onClick={confirmDelete}
                 >
                   Delete Account
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showBulkUploadModal && (
+          <div className={styles.modalOverlay}>
+            <div className={styles.modal}>
+              <button
+                type="button"
+                className={styles.modalCloseBtn}
+                onClick={() => setShowBulkUploadModal(false)}
+                aria-label="Close bulk upload modal"
+              >
+                <FiX />
+              </button>
+              <div className={styles.modalHeader}>
+                <MdOutlineFileUpload className={styles.trashIcon} />
+                <h2>Bulk Upload Users</h2>
+              </div>
+              <p className={styles.modalText}>
+                Download the template with only title row, fill user data, then upload.
+              </p>
+
+              <div className={styles.modalActions}>
+                <button
+                  className={styles.btnOutline}
+                  type="button"
+                  onClick={downloadBulkUploadTemplate}
+                >
+                  <MdOutlineFileDownload /> Download Template
+                </button>
+                <button
+                  className={styles.btnPrimary}
+                  type="button"
+                  onClick={() => {
+                    setShowBulkUploadModal(false);
+                    openBulkUploadPicker();
+                  }}
+                  disabled={uploading}
+                >
+                  <MdOutlineFileUpload /> {uploading ? "Uploading..." : "Choose File"}
                 </button>
               </div>
             </div>

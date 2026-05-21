@@ -94,6 +94,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
     const [openCalendar, setOpenCalendar] = useState(true);
     const [openAnalysis, setOpenAnalysis] = useState(false);
+    const currentPath = router.asPath?.split("?")[0] || router.pathname;
+    const backTargetByPrefix = [
+        { prefix: "/Createrole", target: "/rolespermission" },
+        { prefix: "/editrole", target: "/rolespermission" },
+        { prefix: "/umadduser", target: "/usermanagement" },
+        { prefix: "/umedit", target: "/usermanagement" },
+        { prefix: "/umchangepassword", target: "/usermanagement" },
+    ];
+    const backTarget = backTargetByPrefix.find((item) => currentPath.startsWith(item.prefix))?.target || null;
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
@@ -326,6 +335,17 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                 >
                     <FiChevronLeft />
                 </button>
+                {backTarget ? (
+                    <button
+                        type="button"
+                        className={styles["sidebar-back"]}
+                        aria-label="Back"
+                        onClick={() => router.push(backTarget)}
+                    >
+                        <FiChevronLeft />
+                        <span>Back</span>
+                    </button>
+                ) : null}
 
                 <nav className={styles["side-nav"]} aria-label="Primary navigation">
                     {visibleSidebarLinks.map((link) => {

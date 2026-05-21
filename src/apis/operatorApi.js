@@ -31,6 +31,24 @@ export const getOperatorTickets = async (params = {}) => {
   }
 };
 
+// GET Submission Ticketing table
+export const getSubmissionTickets = async (params = {}) => {
+  try {
+    const response = await apiConfig.get("/operator-tickets/submission-ticketing", params);
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(error.response.data.message || "Failed to fetch submission tickets.");
+    }
+    if (error.request) {
+      throw new Error(
+        `Network Error: unable to reach ${resolvedBaseUrl}/operator-tickets/submission-ticketing. Check NEXT_PUBLIC_API_URL and backend availability.`
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
 // GET single ticket details
 export const getOperatorTicketById = async (ticketId) => {
   const candidates = getTicketIdCandidates(ticketId);

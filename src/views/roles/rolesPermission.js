@@ -11,6 +11,7 @@ import { MdAdd } from "react-icons/md";
 import { FaIdCard, FaExclamationTriangle } from "react-icons/fa";
 import { FaIdCardClip } from "react-icons/fa6";
 import { BsExclamationCircle } from "react-icons/bs";
+import { FiX } from "react-icons/fi";
 import { updateRoleAPI } from "../../apis/rolesPermission";
 import { fetchRoles, deleteRole } from "../../store/slices/rolesSlice";
 
@@ -21,6 +22,7 @@ export default function RolesPermissions() {
     const { roles: rolesData, loading, error } = useSelector(state => state.roles);
 
     const [searchTerm, setSearchTerm] = useState("");
+    const [selectedRoleFilter, setSelectedRoleFilter] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("");
     const [activeRow, setActiveRow] = useState(null);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -40,6 +42,19 @@ export default function RolesPermissions() {
         status: typeof role.status === "boolean" ? (role.status ? "Active" : "Inactive") : role.status,
         screen_count: role.screen_count ?? "0/0",
     }));
+    const roleFilterOptions = Array.from(
+        new Set(
+            transformedRolesData
+                .map((role) => role.role_name || role.name || "")
+                .filter(Boolean)
+        )
+    );
+    const activeRolesCount = transformedRolesData.filter(
+        (role) => String(role.status || "").toLowerCase() === "active"
+    ).length;
+    const inactiveRolesCount = transformedRolesData.filter(
+        (role) => String(role.status || "").toLowerCase() === "inactive"
+    ).length;
 
     // FILTER
     const filteredRoles = transformedRolesData.filter((role) => {
@@ -49,7 +64,9 @@ export default function RolesPermissions() {
             role.description?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus =
             selectedStatus === "" || role.status.toLowerCase() === selectedStatus.toLowerCase();
-        return matchesSearch && matchesStatus;
+        const matchesRole =
+            selectedRoleFilter === "" || name.toLowerCase() === selectedRoleFilter.toLowerCase();
+        return matchesSearch && matchesStatus && matchesRole;
     });
 
     // PAGINATION
@@ -60,6 +77,7 @@ export default function RolesPermissions() {
     // CLEAR FILTERS
     const handleClearFilters = () => {
         setSearchTerm("");
+        setSelectedRoleFilter("");
         setSelectedStatus("");
     };
 
@@ -108,7 +126,7 @@ export default function RolesPermissions() {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, selectedStatus]);
+    }, [searchTerm, selectedStatus, selectedRoleFilter]);
 
     useEffect(() => {
         const closeMenu = () => setActiveRow(null);
@@ -155,12 +173,32 @@ export default function RolesPermissions() {
                             <h3>{rolesData.reduce((sum, r) => sum + Number(r.users ?? 0), 0)}</h3>
                         </div>
                     </div>
+
+                    <div className={styles["stat-card"]}>
+                        <div className={`${styles["stat-icon"]} ${styles.activeTone}`}>
+                            <FaIdCard />
+                        </div>
+                        <div>
+                            <p>ACTIVE ROLES</p>
+                            <h3>{activeRolesCount}</h3>
+                        </div>
+                    </div>
+
+                    <div className={styles["stat-card"]}>
+                        <div className={`${styles["stat-icon"]} ${styles.inactiveTone}`}>
+                            <IoMdLock />
+                        </div>
+                        <div>
+                            <p>INACTIVE ROLES</p>
+                            <h3>{inactiveRolesCount}</h3>
+                        </div>
+                    </div>
                 </div>
 
                 {/* FILTER BAR */}
                 <div className={styles["Filter-bar"]}>
                     <div className={styles["Search-box"]}>
-                        <IoMdSearch className="search-icon" />
+                        <IoMdSearch className={styles["search-icon"]} />
                         <input
                             placeholder="Search roles..."
                             value={searchTerm}
@@ -169,6 +207,12 @@ export default function RolesPermissions() {
                     </div>
 
                     <div className={styles["filter-right"]}>
+                        <select value={selectedRoleFilter} onChange={(e) => setSelectedRoleFilter(e.target.value)}>
+                            <option value="">Role</option>
+                            {roleFilterOptions.map((roleName) => (
+                                <option key={roleName} value={roleName}>{roleName}</option>
+                            ))}
+                        </select>
                         <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
                             <option value="">Status</option>
                             <option value="active">Active</option>
@@ -176,7 +220,8 @@ export default function RolesPermissions() {
                         </select>
                         <button
                             className={styles["clear-Btn"]} onClick={handleClearFilters}>
-                            <img src="/clear.png" alt="clear" className={styles["clear"]} />
+                            <FiX className={styles["clearSvgIcon"]} />
+                            Clear
                         </button>
                     </div>
                 </div>

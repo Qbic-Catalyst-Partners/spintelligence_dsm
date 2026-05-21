@@ -140,6 +140,15 @@ export default function SupervisorDetails() {
   const visibleParameterNames = expanded ? parameterNames : parameterNames.slice(0, 1);
   const displayTicketId = formatTicketIdForDisplay(ticket.ticket_id || requestedTicketId);
   const statusClassName = styles[toClassKey(ticket.status)] || "";
+  const isSubmissionTicket =
+    String(parameterNames?.[0] || "").toLowerCase().includes("submission_frequency") ||
+    String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const submissionFrequency = ticket?.frequency || ticket?.threshold_value?.expected_frequency || "-";
+  const submissionOccurrences =
+    ticket?.occurrences ??
+    ticket?.violation_details?.checks?.expected_occurrences ??
+    ticket?.violation_details?.checks?.actual_occurrences ??
+    "-";
 
   return (
     <div>
@@ -202,11 +211,11 @@ export default function SupervisorDetails() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>MACHINE ID</th>
+                <th>NOTEBOOK TYPE</th>
                 <th>PARAMETER</th>
-                <th>ACTUAL VALUE</th>
-                <th>STANDARD VALUE</th>
-                <th>THRESHOLD VALUE</th>
+                <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
+                <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
+                <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
                 <th>CREATED AT</th>
               </tr>
             </thead>
@@ -214,18 +223,18 @@ export default function SupervisorDetails() {
             <tbody>
               {visibleParameterNames.map((key, i) => (
                 <tr key={i}>
-                  <td>{ticket.machine_name}</td>
+                  <td>{ticket.machine_name || ticket.notebook || "-"}</td>
                   <td>{key.toUpperCase()}</td>
                   <td style={{ color: "#CA0000" }}>
-                    {getTicketValueForParameter(ticket?.actual_value, key)}
+                    {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
                   </td>
                   <td>
-                    {formatStandardValue(
+                    {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
                       getTicketValueForParameter(ticket?.threshold_value, key)
                     )}
                   </td>
                   <td>
-                    {formatThresholdValue(
+                    {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
                       getTicketValueForParameter(ticket?.threshold_value, key)
                     )}
                   </td>
@@ -359,8 +368,8 @@ export default function SupervisorDetails() {
         <div className={styles.card}>
           <div className={styles.row}>
             <div>
-              <span>MACHINE</span>
-              <p>{ticket.machine_name}</p>
+              <span>NOTEBOOK TYPE</span>
+              <p>{ticket.machine_name || ticket.notebook || "-"}</p>
             </div>
 
             <div>
@@ -371,24 +380,24 @@ export default function SupervisorDetails() {
 
           <div className={styles.tableHeader}>
             <span>PARAMETER</span>
-            <span>ACTUAL</span>
-            <span>STANDARD</span>
-            <span>THRESHOLD</span>
+            <span>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL"}</span>
+            <span>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD"}</span>
+            <span>{isSubmissionTicket ? "STATUS" : "THRESHOLD"}</span>
           </div>
 
           {visibleParameterNames.map((key, i) => (
             <div className={styles.tableRow} key={i}>
               <span>{key.replace("_", " ")}</span>
               <span className={styles.actual}>
-                {getTicketValueForParameter(ticket.actual_value, key)}
+                {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket.actual_value, key)}
               </span>
               <span>
-                {formatStandardValue(
+                {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
                   getTicketValueForParameter(ticket.threshold_value, key)
                 )}
               </span>
               <span>
-                {formatThresholdValue(
+                {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
                   getTicketValueForParameter(ticket.threshold_value, key)
                 )}
               </span>

@@ -346,16 +346,25 @@
 .popup-modal h2 {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   margin: 0;
   font-size: 16px;
   font-weight: 700;
+  text-align: left;
+  width: 100%;
 }
 
 .popup-head-icon {
   width: 16px;
   height: 16px;
   object-fit: contain;
+}
+
+.popup-head-icon-svg {
+  width: 16px;
+  height: 16px;
+  color: #3d539f;
 }
 
 .popup-close-btn {

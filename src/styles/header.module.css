@@ -264,6 +264,39 @@
     min-width: 0;
 }
 
+.sidebar-back {
+    position: fixed;
+    top: 84px;
+    left: calc(var(--app-sidebar-width, 250px) + clamp(18px, 3vw, 40px));
+    z-index: 24;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: auto;
+    height: 40px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 6px;
+    background: #3D539F;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(61, 83, 159, 0.35);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.sidebar-back svg {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5;
+}
+
+.sidebar-back span {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+}
+
 .nav-left > span {
     font-size: 2rem;
     font-weight: 800;

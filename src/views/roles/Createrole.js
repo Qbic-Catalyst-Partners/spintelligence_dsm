@@ -56,6 +56,14 @@ export default function CreateRole() {
     }
   };
 
+  const toTitleCase = (value = "") =>
+    value
+      .toLowerCase()
+      .split(" ")
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
   return (
     <div className={styles["role"]}>
       <div className={styles["rolepage-wrapper"]}>
@@ -111,7 +119,7 @@ export default function CreateRole() {
                     checked={selectedScreens.includes(screen.id)}
                     onChange={() => handleScreenChange(screen.id)}
                   />
-                  {screen.name}
+                  {toTitleCase(screen.name)}
                 </label>
               ))}
             </div>

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { FiClock, FiMoreVertical, FiPlus, FiTrash2, FiX } from "react-icons/fi";
+import { FiCheckCircle, FiClock, FiMoreVertical, FiPlus, FiSlash, FiTrash2, FiX } from "react-icons/fi";
+import { FaIdCard } from "react-icons/fa6";
 
 import {
   deleteSubmissionFrequencyConfigAPI,
@@ -791,16 +792,31 @@ export default function SubmissionThreshold() {
         {activeTab === "new" ? (
           <div className={styles.statsGrid}>
             <article className={styles.statCard}>
-              <span>Total Thresholds</span>
-              <strong>{totalThresholds}</strong>
+              <div className={`${styles.statIcon} ${styles.blue}`}>
+                <FaIdCard />
+              </div>
+              <div>
+                <span>Total Thresholds</span>
+                <strong>{totalThresholds}</strong>
+              </div>
             </article>
             <article className={styles.statCard}>
-              <span>Active Thresholds</span>
-              <strong>{activeThresholds}</strong>
+              <div className={`${styles.statIcon} ${styles.activeTone}`}>
+                <FiCheckCircle />
+              </div>
+              <div>
+                <span>Active Thresholds</span>
+                <strong>{activeThresholds}</strong>
+              </div>
             </article>
             <article className={styles.statCard}>
-              <span>Inactive Thresholds</span>
-              <strong>{inactiveThresholds}</strong>
+              <div className={`${styles.statIcon} ${styles.inactiveTone}`}>
+                <FiSlash />
+              </div>
+              <div>
+                <span>Inactive Thresholds</span>
+                <strong>{inactiveThresholds}</strong>
+              </div>
             </article>
           </div>
         ) : null}

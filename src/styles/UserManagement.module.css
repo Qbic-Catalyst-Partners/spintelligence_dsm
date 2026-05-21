@@ -283,6 +283,21 @@ background: #F6F7F8;
   cursor: pointer;
 }
 
+.table tbody tr:hover {
+  background: #f1f5f9;
+}
+
+.table tbody tr:hover td {
+  color: #0f172a;
+}
+
+.table tbody tr:hover .employeeIdCell,
+.table tbody tr:hover .bold,
+.table tbody tr:hover .phone,
+.table tbody tr:hover .dots {
+  color: #0f172a;
+}
+
 .employeeIdCell {
 
   font-weight: 600;
@@ -577,10 +592,30 @@ background: #F6F7F8;
 .modal {
   background: #fff;
   border-radius: 8px;
-  width: 400px;
+  width: min(560px, 92vw);
   padding: 24px;
   text-align: center;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.modalCloseBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 18px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.modalCloseBtn:hover {
+  color: #0f172a;
 }
 
 /* Header */
