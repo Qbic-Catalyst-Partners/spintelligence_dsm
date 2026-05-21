@@ -43,18 +43,19 @@ const qualityControlDepartmentNames = {
     autoconer: "Autoconer",
 };
 
-function SubDepartmentDirectory() {
+function SubDepartmentDirectory({ initialDepartment } = {}) {
     const router = useRouter();
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const department =
         typeof router.query.department === "string"
             ? router.query.department
-            : router.pathname === "/departments/quality-control"
+            : initialDepartment ||
+              (router.pathname === "/departments/quality-control"
                 ? "quality-control"
-                : undefined;
+                : undefined);
 
-    const departmentData = router.isReady ? getDepartmentBySlug(department) : null;
+    const departmentData = getDepartmentBySlug(department);
     const hasQualityControlAccess = hasAnyQualityControlAccess(accessByDepartment, user);
 
     useEffect(() => {

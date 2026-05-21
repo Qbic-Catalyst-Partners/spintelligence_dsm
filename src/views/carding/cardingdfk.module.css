@@ -34,6 +34,29 @@
   background: #f8fafc;
 }
 
+.dfkTypeSelect {
+  background: #f8fafc;
+  color: #334155;
+  background-image: var(--dfk-type-select-arrow);
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+  background-size: 18px 18px;
+  padding-right: 38px;
+}
+
+:global(:root[data-theme="dark"]) .dfkFormGroup label {
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .dfkFormGroup select,
+:global(:root[data-theme="dark"]) .dfkFormGroup select option {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
 .dfkFormGroup input:focus,
 .dfkFormGroup select:focus,
 .dfkTableInput:focus {
@@ -41,6 +64,48 @@
   border-color: #3d539f;
   background: #fff;
   box-shadow: 0 0 0 2px rgba(61, 83, 159, 0.15);
+}
+
+:global(:root[data-theme="dark"]) .dfkFormGroup select:focus {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkFormGroup select,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkFormGroup select:focus,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkFormGroup select:hover,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkFormGroup select option {
+  appearance: none;
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  background-image: var(--dfk-type-select-arrow) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 18px 18px !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkTypeSelect,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkTypeSelect:focus,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkTypeSelect:hover,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm .dfkTypeSelect option {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  background-image: var(--dfk-type-select-arrow) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 18px 18px !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .dfkTableCard {
@@ -226,4 +291,48 @@
   background: #fef2f2;
   color: #b91c1c;
   border: 1px solid #fecaca;
+}
+
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkRow,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkAccordionList,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkSection,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTableCard,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTableWrap {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"] .app-shell-content) .dfkSectionToggle,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable thead,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable thead th,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable tbody,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable tbody tr,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable tbody tr:nth-child(even) td,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTable tbody td,
+:global(:root[data-theme="dark"] .app-shell-content) .machineCell {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"] .app-shell-content) .dfkChevron,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkFormGroup label {
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm input,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkForm input:focus,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTableInput,
+:global(:root[data-theme="dark"] .app-shell-content) .dfkTableInput:focus {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  border-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
 }

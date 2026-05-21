@@ -528,6 +528,7 @@
   min-height: 100px;
   border: 1px dashed #a8b2c3;
   border-radius: 8px;
+  background: #f8fafc;
   padding: 16px 20px;
   margin-bottom: 34px;
 }
@@ -666,7 +667,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.62);
+  background: rgba(15, 23, 42, 0.18);
   padding: 24px;
 }
 
@@ -968,6 +969,216 @@
 .modalActions button:disabled {
   cursor: not-allowed;
   opacity: 0.68;
+}
+
+:global(:root[data-theme="dark"]) .page {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .modalOverlay {
+  background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .reportTabs {
+  background: #2a2a2a;
+}
+
+:global(:root[data-theme="dark"]) .reportTabs button {
+  color: #d1d5db;
+}
+
+:global(:root[data-theme="dark"]) .reportTabs .activeReportTab,
+:global(:root[data-theme="dark"]) .filterCard,
+:global(:root[data-theme="dark"]) .availableCard,
+:global(:root[data-theme="dark"]) .previewCard,
+:global(:root[data-theme="dark"]) .exportBar,
+:global(:root[data-theme="dark"]) .scheduledCard {
+  border-color: #5f5f5f;
+  background: #3b3b3b;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .scheduleModal {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #181818;
+  color: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .headingIcon {
+  background: #242424;
+  color: #8fb9ff;
+}
+
+:global(:root[data-theme="dark"]) .filterHeading h1,
+:global(:root[data-theme="dark"]) .filterTitle,
+:global(:root[data-theme="dark"]) .availableCard h2,
+:global(:root[data-theme="dark"]) .availableCard h3,
+:global(:root[data-theme="dark"]) .previewCard h2,
+:global(:root[data-theme="dark"]) .scheduledHeader h2,
+:global(:root[data-theme="dark"]) .scheduledTitleRow h3,
+:global(:root[data-theme="dark"]) .scheduledEmpty h3,
+:global(:root[data-theme="dark"]) .scheduleModal h2 {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .filterHeading p,
+:global(:root[data-theme="dark"]) .availableCard p,
+:global(:root[data-theme="dark"]) .previewCard p,
+:global(:root[data-theme="dark"]) .scheduledHeader p,
+:global(:root[data-theme="dark"]) .scheduledMeta,
+:global(:root[data-theme="dark"]) .scheduledEmpty p,
+:global(:root[data-theme="dark"]) .scheduleModal > p,
+:global(:root[data-theme="dark"]) .exportBar p,
+:global(:root[data-theme="dark"]) .calendarPanelTitle small,
+:global(:root[data-theme="dark"]) .weekdayGrid span,
+:global(:root[data-theme="dark"]) .recipientDropdownMenu p {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .filterTitle,
+:global(:root[data-theme="dark"]) .tableWrap,
+:global(:root[data-theme="dark"]) .selectedFields,
+:global(:root[data-theme="dark"]) .scheduledItem,
+:global(:root[data-theme="dark"]) .scheduledEmpty {
+  border-color: #5f5f5f;
+}
+
+:global(:root[data-theme="dark"]) .fieldGroup,
+:global(:root[data-theme="dark"]) .modalField span,
+:global(:root[data-theme="dark"]) .sendToLabel,
+:global(:root[data-theme="dark"]) .sendToBlock label,
+:global(:root[data-theme="dark"]) .calendarPanelTitle,
+:global(:root[data-theme="dark"]) .calendarHeader span,
+:global(:root[data-theme="dark"]) .exportBar p strong {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .fieldGroup select,
+:global(:root[data-theme="dark"]) .fieldGroup input,
+:global(:root[data-theme="dark"]) .dateInputs,
+:global(:root[data-theme="dark"]) .modalField input,
+:global(:root[data-theme="dark"]) .modalField select,
+:global(:root[data-theme="dark"]) .recipientDropdownButton,
+:global(:root[data-theme="dark"]) .timePickerMenu select {
+  border-color: #4a4a4a;
+  background: #242424;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .fieldGroup select:disabled,
+:global(:root[data-theme="dark"]) .modalField select:disabled {
+  background: #2f2f2f;
+  color: #aeb6c2;
+}
+
+:global(:root[data-theme="dark"]) .fieldGroup > svg,
+:global(:root[data-theme="dark"]) .dateInputs svg,
+:global(:root[data-theme="dark"]) .modalSelectWrap svg,
+:global(:root[data-theme="dark"]) .modalTimeWrap svg,
+:global(:root[data-theme="dark"]) .timeIconButton,
+:global(:root[data-theme="dark"]) .recipientDropdownButton svg {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .dateDisplay {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .datePickerPopover,
+:global(:root[data-theme="dark"]) .timePickerMenu,
+:global(:root[data-theme="dark"]) .recipientDropdownMenu {
+  border-color: #4a4a4a;
+  background: #242424;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+}
+
+:global(:root[data-theme="dark"]) .calendarHeader button,
+:global(:root[data-theme="dark"]) .exportActions button,
+:global(:root[data-theme="dark"]) .modalActions button {
+  border-color: #5f5f5f;
+  background: #3b3b3b;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .modalActions button {
+  border-color: #5d6570;
+  background: #242424;
+  color: #f3f4f6;
+}
+
+:global(:root[data-theme="dark"]) .dayGrid button,
+:global(:root[data-theme="dark"]) .dayGrid span,
+:global(:root[data-theme="dark"]) .recipientDropdownMenu label {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .dayGrid button:hover,
+:global(:root[data-theme="dark"]) .recipientDropdownMenu label:hover {
+  background: #3b3b3b;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .dayGrid .selectedDay,
+:global(:root[data-theme="dark"]) .exportActions .primaryExport,
+:global(:root[data-theme="dark"]) .modalActions .createScheduleButton,
+:global(:root[data-theme="dark"]) .scheduledTitleRow span {
+  border-color: #4056a8;
+  background: #4056a8;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .modalActions .createScheduleButton {
+  border-color: #3b3b3b;
+  background: #3b3b3b;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .fieldList button {
+  background: #3b3b3b;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .previewCard .selectedField {
+  background: #3b3b3b;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .selectedFields {
+  background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .tableWrap th {
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .tableWrap td {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .tableWrap th,
+:global(:root[data-theme="dark"]) .tableWrap td {
+  border-bottom-color: #4a4a4a;
+}
+
+:global(:root[data-theme="dark"]) .scheduledTitleRow .pausedScheduledStatus {
+  background: #5f5f5f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .scheduledActions button {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .scheduledActions .deleteScheduledButton {
+  color: #ff8a8a;
+}
+
+:global(:root[data-theme="dark"]) .scheduledActions button:disabled {
+  color: #aeb6c2;
 }
 
 @media (max-width: 900px) {

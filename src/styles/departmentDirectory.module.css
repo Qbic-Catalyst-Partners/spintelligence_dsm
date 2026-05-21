@@ -288,12 +288,12 @@
 }
 
 .referenceStatCard {
-    min-height: 164px;
+    min-height: 136px;
     border: 1px solid #cfd5de;
     border-radius: 14px;
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-    padding: 20px 22px;
+    padding: 16px 18px 12px;
     box-sizing: border-box;
 }
 
@@ -327,12 +327,12 @@
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    width: 60px;
-    height: 60px;
-    border-radius: 14px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     background: #e9efff;
     color: #2f5fbf !important;
-    font-size: 28px !important;
+    font-size: 20px !important;
     margin-top: 0 !important;
 }
 
@@ -341,7 +341,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 10px;
-    margin-top: 18px;
+    margin-top: 12px;
 }
 
 .referenceStatBottom strong {
@@ -398,7 +398,7 @@
     border: 1px solid #e0e4ec;
     border-radius: 7px;
     background: #ffffff;
-    padding: 20px 24px 22px;
+    padding: 20px 24px 16px;
     box-shadow: 0 8px 22px rgba(16, 24, 40, 0.04);
     box-sizing: border-box;
 }
@@ -603,6 +603,77 @@
     transform: translateX(-50%);
     white-space: nowrap;
     text-align: center;
+}
+
+:global(:root[data-theme="dark"]) .dashboardViewingPill,
+:global(:root[data-theme="dark"]) .dashboardViewingPill b,
+:global(:root[data-theme="dark"]) .dashboardViewingPill span {
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .dashboardViewingPill {
+    background: #3b3b3b !important;
+    border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceStatCard,
+:global(:root[data-theme="dark"]) .referenceChartCard {
+    background: #3b3b3b !important;
+    border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceStatIcon {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceMiniToggle,
+:global(:root[data-theme="dark"]) .referenceModeToggle {
+    background: #3b3b3b !important;
+    border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceMiniToggle button,
+:global(:root[data-theme="dark"]) .referenceModeToggle button,
+:global(:root[data-theme="dark"]) .referenceMiniToggleActive,
+:global(:root[data-theme="dark"]) .referenceModeToggleActive {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceMiniToggleActive,
+:global(:root[data-theme="dark"]) .referenceModeToggleActive {
+    box-shadow: inset 0 0 0 1px #71717a;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot polygon {
+    fill: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot {
+    background: transparent !important;
+    border-color: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot::before {
+    background: none !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot svg {
+    background: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot polyline {
+    stroke: #3b73d9 !important;
+    stroke-width: 2;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePoint {
+    display: none;
+}
+
+:global(:root[data-theme="dark"]) .referenceLegend i {
+    background: #3b73d9 !important;
 }
 
 .dashboardMockHeader {
@@ -1749,6 +1820,11 @@
     font-weight: 500;
 }
 
+.builderAddModalGrid select:focus {
+    outline: none;
+    border-color: #4965b7;
+}
+
 .ticketTimelineGroup {
     grid-column: span 2;
     margin-bottom: 16px;
@@ -1858,6 +1934,65 @@
     min-width: 136px;
     border: 1px solid #425ba8;
     background: #425ba8;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .addWidgetButton {
+    border-color: #3b3b3b;
+    background: #3b3b3b;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+:global(:root[data-theme="dark"]) .builderModalOverlay {
+    background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .builderAddModal {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #181818;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalHeader h2,
+:global(:root[data-theme="dark"]) .ticketCardOptionName {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalHeader p,
+:global(:root[data-theme="dark"]) .ticketCardOptionDescription {
+    color: #b9c0cc;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalGrid label {
+    color: #e5e7eb;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalGrid select {
+    border-color: #4a4a4a;
+    background: #2a2a2a;
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalGrid select:focus {
+    border-color: #7b8798;
+}
+
+:global(:root[data-theme="dark"]) .ticketCardOptionRow {
+    border-color: #4a4a4a;
+    background: #242424;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+:global(:root[data-theme="dark"]) .builderModalCancel {
+    border-color: #5d6570;
+    background: #242424;
+    color: #f3f4f6;
+}
+
+:global(:root[data-theme="dark"]) .builderModalSubmit {
+    border-color: #3b3b3b;
+    background: #3b3b3b;
     color: #ffffff;
 }
 
@@ -2522,9 +2657,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     flex-shrink: 0;
 }
 
@@ -2544,7 +2679,7 @@
 }
 
 .icon {
-    font-size: 11px;
+    font-size: 20px;
 }
 
 .cardContent {
@@ -2581,13 +2716,41 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     background: #eef2ff;
     color: #4965b7;
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: 20px;
+}
+
+.subCardEnabled .subCardArrow,
+.subCardEnabled:hover .subCardArrow {
+    background: #eef2ff;
+    color: #4965b7;
+}
+
+:global(:root[data-theme="dark"]) .iconWrap,
+:global(:root[data-theme="dark"]) .subCardArrow,
+:global(:root[data-theme="dark"]) .subCard .subCardArrow,
+:global(:root[data-theme="dark"]) .subCardEnabled .subCardArrow,
+:global(:root[data-theme="dark"]) .subCardEnabled:hover .subCardArrow,
+:global(:root[data-theme="dark"]) .disabledCard.subCard .subCardArrow,
+:global(:root[data-theme="dark"]) .quality-control,
+:global(:root[data-theme="dark"]) .electrical,
+:global(:root[data-theme="dark"]) .mechanical,
+:global(:root[data-theme="dark"]) .activeCard:hover .iconWrap,
+:global(:root[data-theme="dark"]) .disabledCard .iconWrap {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .iconWrap svg,
+:global(:root[data-theme="dark"]) .subCardArrow svg {
+    color: #ffffff !important;
+    fill: currentColor;
+    stroke: currentColor;
 }
 
 .subCardTop {
@@ -2654,8 +2817,13 @@
 }
 
 .disabledCard.subCard .subCardArrow {
-    background: rgba(148, 163, 184, 0.16);
-    color: #8a98aa;
+    background: #eef2ff;
+    color: #4965b7;
+}
+
+:global(:root[data-theme="dark"]) .disabledCard.subCard .subCardArrow {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
 }
 
 .subCardEnabled .subCardLabel {

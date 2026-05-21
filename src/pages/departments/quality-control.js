@@ -1,5 +1,5 @@
 import SubDepartmentDirectory from "@/views/departments/SubDepartmentDirectory";
 
 export default function QualityControlDepartmentPage() {
-    return <SubDepartmentDirectory />;
+    return <SubDepartmentDirectory initialDepartment="quality-control" />;
 }

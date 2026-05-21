@@ -153,3 +153,55 @@
     padding: 16px 0 0;
   }
 }
+
+:global(:root[data-theme="dark"]) :local(.page) {
+  background: #050505;
+}
+
+:global(:root[data-theme="dark"]) :local(.shell) {
+  background: #0f172a;
+  border-color: #334155;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+:global(:root[data-theme="dark"]) :local(.formBody),
+:global(:root[data-theme="dark"]) :local(.processFooterWrap),
+:global(:root[data-theme="dark"]) :local(.postFooterSlot) {
+  background: transparent;
+}
+
+:global(:root[data-theme="dark"]) :local(.formTitle) {
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) :local(.validationMessage) {
+  background: #581c1c;
+  border-color: #7f1d1d;
+  color: #fee2e2;
+}
+
+:global(:root[data-theme="dark"]) :local(.header) h1 {
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) :local(.header) p {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) :local(.formTitle) svg {
+  color: #93c5fd;
+}
+
+:global(:root[data-theme="dark"]) :local(.topbar),
+:global(:root[data-theme="dark"]) :local(.shell) {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.formTitle),
+:global(:root[data-theme="dark"]) :local(.processFooterWrap) {
+  border-color: #5f5f5f !important;
+}

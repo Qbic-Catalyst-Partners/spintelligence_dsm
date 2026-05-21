@@ -487,3 +487,62 @@
         padding: 8px 14px;
     }
 }
+
+:global(:root[data-theme="dark"]) .edit-page-container {
+    background: #181818;
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .topNavbar,
+:global(:root[data-theme="dark"]) .edit-topbar,
+:global(:root[data-theme="dark"]) .edit-card-box,
+:global(:root[data-theme="dark"]) .edit-card-header,
+:global(:root[data-theme="dark"]) .edit-module-item,
+:global(:root[data-theme="dark"]) .edit-dept-selector,
+:global(:root[data-theme="dark"]) .edit-footer-bar,
+:global(:root[data-theme="dark"]) .edit-small-footer,
+:global(:root[data-theme="dark"]) .edit-last-modified {
+    background: #3b3b3b;
+    border-color: #5f5f5f;
+    color: #ffffff;
+    box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .edit-main-title,
+:global(:root[data-theme="dark"]) .edit-screentitle,
+:global(:root[data-theme="dark"]) .edit-input-group label,
+:global(:root[data-theme="dark"]) .edit-dept-label,
+:global(:root[data-theme="dark"]) .edit-module-item,
+:global(:root[data-theme="dark"]) .edit-small-footer-sp,
+:global(:root[data-theme="dark"]) .edit-small-footer-text {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .edit-breadcrumb-text,
+:global(:root[data-theme="dark"]) .edit-sub-text {
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .edit-text-input,
+:global(:root[data-theme="dark"]) .edit-textarea,
+:global(:root[data-theme="dark"]) .edit-dept-input {
+    background: #242424;
+    border-color: #5f5f5f;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .read-only-field {
+    background: #2a2a2a;
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .active-module {
+    background: rgba(25, 127, 230, 0.16);
+    border-color: #197fe6;
+}
+
+:global(:root[data-theme="dark"]) .edit-btn-cancel {
+    background: #242424;
+    border-color: #5f5f5f;
+    color: #ffffff;
+}

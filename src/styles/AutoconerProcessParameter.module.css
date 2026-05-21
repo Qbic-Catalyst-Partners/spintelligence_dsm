@@ -228,3 +228,81 @@
     grid-column: span 1;
   }
 }
+
+:global(:root[data-theme="dark"]) :local(.fieldGroup) label {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) {
+  background: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) :local(.field):focus {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35);
+}
+
+:global(:root[data-theme="dark"]) :local(.versionCard),
+:global(:root[data-theme="dark"]) :local(.savedFieldCard),
+:global(:root[data-theme="dark"]) :local(.versionHeader),
+:global(:root[data-theme="dark"]) :local(.versionCell),
+:global(:root[data-theme="dark"]) :local(.versionBody),
+:global(:root[data-theme="dark"]) :local(.infoBox),
+:global(:root[data-theme="dark"]) :local(.loadingMessage),
+:global(:root[data-theme="dark"]) :local(.errorMessage) {
+  background: #111827;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) :local(.versionHeaderActive) {
+  background: #111827;
+}
+
+:global(:root[data-theme="dark"]) :local(.versionCell) {
+  background: #0f172a;
+}
+
+:global(:root[data-theme="dark"]) :local(.versionBody) {
+  border-top-color: #334155;
+}
+
+:global(:root[data-theme="dark"]) :local(.cellLabel),
+:global(:root[data-theme="dark"]) :local(.cellValue) {
+  color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) :local(.errorMessage) {
+  background: #4c1d1d;
+  border-color: #fca5a5;
+  color: #fee2e2;
+}
+
+:global(:root[data-theme="dark"]) :local(.field),
+:global(:root[data-theme="dark"]) :local(.versionCard),
+:global(:root[data-theme="dark"]) :local(.savedFieldCard),
+:global(:root[data-theme="dark"]) :local(.versionHeader),
+:global(:root[data-theme="dark"]) :local(.versionHeaderActive),
+:global(:root[data-theme="dark"]) :local(.versionCell),
+:global(:root[data-theme="dark"]) :local(.versionBody),
+:global(:root[data-theme="dark"]) :local(.infoBox),
+:global(:root[data-theme="dark"]) :local(.loadingMessage) {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.versionBody) {
+  border-top-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.fieldGroup) label,
+:global(:root[data-theme="dark"]) :local(.cellLabel),
+:global(:root[data-theme="dark"]) :local(.cellValue),
+:global(:root[data-theme="dark"]) :local(.savedValue),
+:global(:root[data-theme="dark"]) :local(.versionDate),
+:global(:root[data-theme="dark"]) :local(.statusCell),
+:global(:root[data-theme="dark"]) :local(.expandButton) {
+  color: #ffffff !important;
+}

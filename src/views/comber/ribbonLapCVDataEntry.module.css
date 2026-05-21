@@ -239,10 +239,19 @@
   border-radius: 10px;
 }
 
+:global(:root[data-theme="dark"]) .cb-stats {
+  background: #000000 !important;
+  border-color: #3b3b3b !important;
+}
+
 .cb-stats h4 {
   font-size: 14px;
   font-weight: 700;
   margin-bottom: 14px;
+}
+
+:global(:root[data-theme="dark"]) .cb-stats h4 {
+  color: #ffffff !important;
 }
 
 

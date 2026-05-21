@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { IoTime, IoChevronBackSharp } from "react-icons/io5";
+import { IoTimeSharp, IoChevronBackSharp } from "react-icons/io5";
 import styles from "../../styles/SupervisorDetails.module.css";
 import Link from "next/link";
 import { useDispatch, useSelector } from "react-redux";
@@ -299,7 +299,7 @@ export default function SupervisorDetails() {
         <div className={styles.bottom}>
           <div className={styles.timeline}>
             <div className={styles.timelineHeader}>
-              <IoTime />
+              <IoTimeSharp />
               <h3>Activity Timeline</h3>
             </div>
 
@@ -416,7 +416,7 @@ export default function SupervisorDetails() {
 
         <div className={styles.timelineCard}>
           <div className={styles.timelineHeader}>
-            <IoTime />
+            <IoTimeSharp />
             <h3>Activity Timeline</h3>
           </div>
 

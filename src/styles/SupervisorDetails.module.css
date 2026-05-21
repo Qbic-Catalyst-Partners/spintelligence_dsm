@@ -234,7 +234,7 @@ font-weight: 700;
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
-  padding: 20px 30px 30px;
+  padding: 18px 0 30px;
 }
 
 /* TIMELINE */
@@ -243,34 +243,36 @@ font-weight: 700;
   min-height: 300px;
   min-width: 360px;
   background: #ffffff;
-  padding: 18px 22px;
-  border-radius: 12px;
-  box-shadow: 0 0 14px rgba(15, 23, 42, 0.06);
+  padding: 16px 20px 22px;
+  border: 1px solid #ebebeb;
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
 }
+
 .timelineHeader {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 18px;
+  margin-bottom: 22px;
 }
+
 .timelineHeader svg {
   font-size: 18px;
 }
 
 .timeline h3 {
-  margin-top: 0;
-  margin-bottom: 0;
-  font-size: 20px;
+  margin: 0;
+  font-size: 18px;
   font-weight: 700;
   color: #111827;
 }
 
 .item {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 72px minmax(0, 1fr);
   gap: 14px;
   align-items: start;
-  margin-bottom: 18px;
+  margin-bottom: 8px;
 }
 
 .item:last-child {
@@ -280,35 +282,39 @@ font-weight: 700;
 .itemTime {
   width: auto;
   text-align: left;
-  font-size: 13px;
+  padding-top: 2px;
+  font-size: 14px;
   font-weight: 400;
-  color: #555555;
+  color: #6b7280;
 }
 
 .itemContent {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding-bottom: 18px;
+  gap: 14px;
+  min-height: 76px;
+  padding-bottom: 0;
 }
 
 .timelineIcon {
   width: 18px;
   height: 18px;
-  margin-top: 2px;
+  margin-top: 0;
   z-index: 1;
   background: #ffffff;
+  object-fit: contain;
 }
 
 .itemContent::before {
   content: "";
   position: absolute;
   left: 8px;
-  top: 28px;
-  bottom: -10px;
-  width: 1.5px;
- border: 1px solid #555555
+  top: 24px;
+  bottom: 0;
+  width: 2px;
+  border: none;
+  background: #7d8597;
 }
 .mobileLogo,
 .mobileHeader{
@@ -323,7 +329,7 @@ font-weight: 700;
 }
 
 .itemContent div p:first-child {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
   font-size: 15px;
   font-weight: 700;
 }
@@ -331,8 +337,9 @@ font-weight: 700;
 .itemContent div p:last-child {
   margin: 0;
   font-size: 14px;
-  font-weight: 500;
-  color: #4b5563;
+  font-weight: 400;
+  color: #667085;
+  line-height: 1.5;
 }
 
 .item p {
@@ -554,6 +561,131 @@ background: #CA0000;
   display: none;
 }
 
+:global(:root[data-theme="dark"]) .page,
+:global(:root[data-theme="dark"]) .mobileContainer {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .navbar,
+:global(:root[data-theme="dark"]) .card,
+:global(:root[data-theme="dark"]) .timeline,
+:global(:root[data-theme="dark"]) .timelineCard,
+:global(:root[data-theme="dark"]) .resolution,
+:global(:root[data-theme="dark"]) .resolutionCard,
+:global(:root[data-theme="dark"]) .modalBox,
+:global(:root[data-theme="dark"]) .mobileHeader {
+  border-color: #5f5f5f;
+  background: #3b3b3b;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .cardTop h2,
+:global(:root[data-theme="dark"]) .current,
+:global(:root[data-theme="dark"]) .right strong,
+:global(:root[data-theme="dark"]) .timeline h3,
+:global(:root[data-theme="dark"]) .resolution h3,
+:global(:root[data-theme="dark"]) .item p b,
+:global(:root[data-theme="dark"]) .modalBox h3,
+:global(:root[data-theme="dark"]) .modalTitle,
+:global(:root[data-theme="dark"]) .modalLabel,
+:global(:root[data-theme="dark"]) .mobileTitle {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .breadcrumb,
+:global(:root[data-theme="dark"]) .breadcrumb a,
+:global(:root[data-theme="dark"]) .desc,
+:global(:root[data-theme="dark"]) .right span,
+:global(:root[data-theme="dark"]) .itemTime,
+:global(:root[data-theme="dark"]) .time,
+:global(:root[data-theme="dark"]) .itemContent div p:last-child,
+:global(:root[data-theme="dark"]) .item p,
+:global(:root[data-theme="dark"]) .content p,
+:global(:root[data-theme="dark"]) .resolution label,
+:global(:root[data-theme="dark"]) .commentLabel,
+:global(:root[data-theme="dark"]) .comment,
+:global(:root[data-theme="dark"]) .commentBox,
+:global(:root[data-theme="dark"]) .modalDesc,
+:global(:root[data-theme="dark"]) .modalFooterText {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .timelineHeader h3,
+:global(:root[data-theme="dark"]) .content b,
+:global(:root[data-theme="dark"]) .resolutionCard h4 {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .table td {
+  border-color: #4a4a4a;
+}
+
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .table td {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .comment,
+:global(:root[data-theme="dark"]) .commentBox,
+:global(:root[data-theme="dark"]) .modalBox textarea {
+  border-color: #5f5f5f;
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .line,
+:global(:root[data-theme="dark"]) .itemContent::before {
+  background: #7d8597;
+  border-color: transparent;
+}
+
+:global(:root[data-theme="dark"]) .timelineIcon {
+  background: #3b3b3b;
+}
+
+:global(:root[data-theme="dark"]) .modalOverlay {
+  background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .modalActions button:first-child {
+  border-color: #5f5f5f;
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status {
+  background: #1d4f91;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status.closed {
+  background: #1f7a3d;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status.in-progress {
+  background: #036083;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status.submit {
+  background: #5b21b6;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .severity {
+  background: #8a6500;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .red,
+:global(:root[data-theme="dark"]) .warningIcon {
+  color: #ff8a8a;
+}
+
 /* ================= MOBILE ================= */
 @media (max-width: 767px) {
   /* Hide desktop */
@@ -714,21 +846,24 @@ background: #CA0000;
 
 .timelineCard {
   background: #ffffff;
-  padding: 14px;
+  padding: 12px;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #dbe3ef;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
   margin-bottom: 12px;
+  box-sizing: border-box;
 }
 
 .timelineHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .timelineHeader h3 {
-  font-size: 16px;
+  margin: 0;
+  font-size: 12px;
   font-weight: 700;
   color: #000000;
 }
@@ -741,11 +876,11 @@ background: #CA0000;
 /* ================= TIMELINE ITEM ================= */
 
 .timelineItem {
-  display: flex;
-  align-items: stretch;     
-  gap: 10px;
- 
-  min-height: 50px;          
+  display: grid;
+  grid-template-columns: 46px 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 54px;
 }
 
 /* ================= ICON COLUMN ================= */
@@ -754,15 +889,16 @@ background: #CA0000;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 30px;
+  width: 16px;
+  min-height: 54px;
 }
 
 /* icon */
 .iconCol img {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   object-fit: contain;
-  margin-top: 3px;
+  margin-top: 0;
   z-index: 2;
 }
 
@@ -771,7 +907,7 @@ background: #CA0000;
 .line {
   width: 2px;
   flex-grow: 1;              
-  background: #d1d5db;
+  background: #7d8597;
   margin-top: 4px;
 }
 
@@ -782,21 +918,24 @@ background: #CA0000;
 }
 
 .content b {
-  font-size: 13px;
+  font-size: 10px;
   color: #111827;
 }
 
 .content p {
-  font-size: 12px;
-  color: #4b5563;
-  margin-top: 2px;
+  font-size: 8px;
+  line-height: 1.45;
+  color: #667085;
+  margin: 3px 0 0;
 }
 
 /* ================= TIME ================= */
 
 .time {
-  font-size: 11px;
+  padding-top: 1px;
+  font-size: 8px;
   color: #6b7280;
+  text-align: right;
   white-space: nowrap;
 }
   /* RESOLUTION */
@@ -885,13 +1024,13 @@ background: #CA0000;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 30px;
+  width: 16px;
 }
 
 .line {
   width: 2px;
   flex: 1;
-  background: #d1d5db;
+  background: #7d8597;
   margin-top: 4px;
 }
 

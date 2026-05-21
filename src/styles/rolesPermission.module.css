@@ -484,12 +484,16 @@
 }
 
 .filter-right select {
-  padding: 8px 12px;
+  width: 170px;
+  height: 40px;
+  padding: 0 38px 0 14px;
   border-radius: 8px;
   background: #f8fafc;
   color: #8e8e8e;
-  font-size: small;
+  font-size: 14px;
+  font-weight: 600;
   border: 1px solid #e5e7eb;
+  cursor: pointer;
 }
 
 
@@ -933,4 +937,129 @@
   }
 
 
+}
+
+:global(:root[data-theme="dark"]) .roles-page {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .topNavbar,
+:global(:root[data-theme="dark"]) .stat-card,
+:global(:root[data-theme="dark"]) .Filter-bar,
+:global(:root[data-theme="dark"]) .Search-box,
+:global(:root[data-theme="dark"]) .clear-Btn,
+:global(:root[data-theme="dark"]) .filter-right select,
+:global(:root[data-theme="dark"]) .table-card,
+:global(:root[data-theme="dark"]) .roles-table thead th,
+:global(:root[data-theme="dark"]) .roles-table tbody td,
+:global(:root[data-theme="dark"]) .table-footer,
+:global(:root[data-theme="dark"]) .action-menu,
+:global(:root[data-theme="dark"]) .page-btn,
+:global(:root[data-theme="dark"]) .pagination button {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .page-header h1,
+:global(:root[data-theme="dark"]) .stat-card h3,
+:global(:root[data-theme="dark"]) .users,
+:global(:root[data-theme="dark"]) .action-dot,
+:global(:root[data-theme="dark"]) .action-menu p {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .page-header p,
+:global(:root[data-theme="dark"]) .stat-card p,
+:global(:root[data-theme="dark"]) .roles-table thead th,
+:global(:root[data-theme="dark"]) .desc,
+:global(:root[data-theme="dark"]) .footer-left,
+:global(:root[data-theme="dark"]) .Search-box .search-icon {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .Search-box input,
+:global(:root[data-theme="dark"]) .filter-right select option {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .Search-box,
+:global(:root[data-theme="dark"]) .filter-right select,
+:global(:root[data-theme="dark"]) .clear-Btn {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .filter-right select {
+  width: 170px !important;
+  height: 40px !important;
+  padding: 0 38px 0 14px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+:global(:root[data-theme="dark"]) .Search-box input {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .Search-box :global(.search-icon) {
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .screen-pill {
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .status.active {
+  background: #1f7a3d !important;
+  background-color: #1f7a3d !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .status.inactive {
+  background: #9f2f2f !important;
+  background-color: #9f2f2f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .action-menu p:hover {
+  background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .delete-overlay {
+  background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .delete-modal {
+  background: #181818;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .delete-title,
+:global(:root[data-theme="dark"]) .delete-subtext {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .delete-warning-box {
+  background: rgba(202, 0, 0, 0.14);
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+:global(:root[data-theme="dark"]) .delete-cancel-btn {
+  background: #242424;
+  color: #ffffff;
+  border: 1px solid #5f5f5f;
 }
