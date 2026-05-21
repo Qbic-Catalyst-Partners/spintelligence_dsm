@@ -57,6 +57,14 @@ export default function EditRole() {
         }
     };
 
+    const toTitleCase = (value = "") =>
+        value
+            .toLowerCase()
+            .split(" ")
+            .filter(Boolean)
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ");
+
     return (
         <div className={styles["edit-page-container"]}>
             <div className={styles["edit-content-wrapper"]}>
@@ -122,22 +130,20 @@ export default function EditRole() {
                                         }
                                     }}
                                 />
-                                {screen.name}
+                                {toTitleCase(screen.name)}
                             </label>
                         ))}
                     </div>
                 </div>
             </div>
 
-            <div className={styles["edit-small-footer"]}>
-                <div className={styles["edit-small-footer-sp"]}>Change to this role will affect :</div>
-
-                <span className={styles["edit-small-footer-highlight"]}>
-                    {usersCount} users
-                </span>
-            </div>
-
             <div className={styles["edit-footer-bar"]}>
+                <div className={styles["edit-small-footer"]}>
+                    <div className={styles["edit-small-footer-sp"]}>Change to this role will affect :</div>
+                    <span className={styles["edit-small-footer-highlight"]}>
+                        {usersCount} users
+                    </span>
+                </div>
                 <div className={styles["edit-footer-buttons"]}>
                     <button
                         className={styles["edit-btn-cancel"]}

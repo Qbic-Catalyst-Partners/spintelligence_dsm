@@ -119,6 +119,15 @@ export default function TicketDetails() {
   const statusClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.status)] || "" : "";
   const severityClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.severity)] || "" : "";
   const displayTicketId = formatTicketIdForDisplay(resolvedTicket?.ticket_id || ticketId);
+  const isSubmissionTicket =
+    String(parameterMap?.[0]?.name || "").toLowerCase().includes("submission_frequency") ||
+    String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const submissionFrequency = resolvedTicket?.frequency || resolvedTicket?.threshold_value?.expected_frequency || "-";
+  const submissionOccurrences =
+    resolvedTicket?.occurrences ??
+    resolvedTicket?.violation_details?.checks?.expected_occurrences ??
+    resolvedTicket?.violation_details?.checks?.actual_occurrences ??
+    "-";
 
   const timelineItems = [
     {
@@ -200,8 +209,8 @@ export default function TicketDetails() {
 
           <div className={styles["mobile-meta-grid"]}>
             <div>
-              <span className={styles["mobile-meta-label"]}>Machine</span>
-              <p className={styles["mobile-meta-value"]}>{resolvedTicket.machine_name}</p>
+              <span className={styles["mobile-meta-label"]}>Notebook Type</span>
+              <p className={styles["mobile-meta-value"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</p>
             </div>
             <div>
               <span className={styles["mobile-meta-label"]}>Created At</span>
@@ -214,19 +223,19 @@ export default function TicketDetails() {
           <div className={styles["mobile-parameter-table"]}>
             <div className={styles["mobile-parameter-head"]}>
               <span>Parameter</span>
-              <span>Actual</span>
-              <span>Standard</span>
-              <span>Threshold</span>
+              <span>{isSubmissionTicket ? "Frequency" : "Actual"}</span>
+              <span>{isSubmissionTicket ? "Occurrences" : "Standard"}</span>
+              <span>{isSubmissionTicket ? "Status" : "Threshold"}</span>
             </div>
 
             {mobileParameterRows.map((item) => (
               <div className={styles["mobile-parameter-row"]} key={`mobile-${item.name}`}>
                 <span className={styles["mobile-parameter-name"]}>{item.name}</span>
                 <span className={`${styles["mobile-parameter-value"]} ${styles.danger}`}>
-                  {item.actual}
+                  {isSubmissionTicket ? submissionFrequency : item.actual}
                 </span>
-                <span className={styles["mobile-parameter-value"]}>{item.standard}</span>
-                <span className={styles["mobile-parameter-value"]}>{item.threshold}</span>
+                <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
+                <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? resolvedTicket.status : item.threshold}</span>
               </div>
             ))}
 
@@ -271,21 +280,21 @@ export default function TicketDetails() {
 
           <div className={styles["table-shell"]}>
             <div className={styles["table-head"]}>
-              <span>Machine</span>
+              <span>Notebook Type</span>
               <span>Parameter</span>
-              <span>Actual Value</span>
-              <span>Standard Value</span>
-              <span>Threshold Value</span>
+              <span>{isSubmissionTicket ? "Frequency" : "Actual Value"}</span>
+              <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
+              <span>{isSubmissionTicket ? "Status" : "Threshold Value"}</span>
               <span>Created At</span>
             </div>
 
             {visibleRows.map((item) => (
               <div className={styles["table-row"]} key={item.name}>
-                <span className={styles["value-strong"]}>{resolvedTicket.machine_name}</span>
+                <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
                 <span className={styles["value-strong"]}>{item.name}</span>
-                <span className={`${styles["value-strong"]} ${styles.danger}`}>{item.actual}</span>
-                <span className={styles["value-strong"]}>{item.standard}</span>
-                <span className={styles["value-strong"]}>{item.threshold}</span>
+                <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
+                <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
+                <span className={styles["value-strong"]}>{isSubmissionTicket ? resolvedTicket.status : item.threshold}</span>
                 <span className={styles["value-strong"]}>
                   {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
                 </span>
@@ -354,7 +363,7 @@ export default function TicketDetails() {
           <div className={styles["popup-modal"]}>
             <div className={styles["popup-head"]}>
               <h2>
-                <img src={fixImgSrc} alt="" aria-hidden="true" className={styles["popup-head-icon"]} />
+                <FaRegCommentAlt className={styles["popup-head-icon-svg"]} />
                 <span>Fix & Resubmit</span>
               </h2>
               <button

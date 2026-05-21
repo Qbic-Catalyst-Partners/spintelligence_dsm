@@ -190,8 +190,9 @@
 
 .edit-card-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 10px;
   background: #F8FAFC;
   height: 61px;
   margin: -20px -20px 16px -20px;
@@ -355,12 +356,14 @@
 .edit-footer-bar {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
+    gap: 16px;
 
     padding: 14px clamp(18px, 3vw, 40px);
-    border-top: 1px solid #e5e7eb;
-    background: #ffffff;
+    border-top: 1px solid #ccc;
+    background: rgba(25, 127, 230, 0.05);
     box-sizing: border-box;
+    width: 100%;
 }
 
 .edit-warning-text {
@@ -374,12 +377,14 @@
 }
 
 .edit-btn-cancel {
-    padding: 8px 16px;
+    height: 40px;
+    padding: 0 14px;
     border: 1px solid #a4aab4;
     background: rgb(255, 255, 255);
     border-radius: 6px;
     color: black;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
 }
 
@@ -395,23 +400,12 @@
 }
 
 .edit-small-footer {
-    width: 100%;
-    /* full width */
-    height: 45px;
-    border-bottom: 1px solid #ccc;
-    /* optional */
-    padding: 12px clamp(18px, 3vw, 40px);
-    background: rgba(25, 127, 230, 0.05);
-    /* light transparent background */
+    width: auto;
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    /* moves text to right */
     font-size: 14px;
-    opacity: 1;
     gap: 4px;
-    /* small gap between texts */
-    box-sizing: border-box;
 }
 
 .edit-small-footer-sp {

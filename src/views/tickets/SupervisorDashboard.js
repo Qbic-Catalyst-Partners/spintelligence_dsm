@@ -34,23 +34,26 @@ export default function SupervisorDashboard() {
   const { tickets, isLoading, error } =
     useSelector((state) => state.supervisor) || {};
 
-  const safeTickets = applyStoredTicketStatuses(Array.isArray(tickets)
+  const sourceTickets = Array.isArray(tickets)
     ? tickets
     : Array.isArray(tickets?.tickets)
       ? tickets.tickets
       : Array.isArray(tickets?.data)
         ? tickets.data
-        : []).filter(isSupervisorVisibleTicket);
+        : [];
+
+  const safeTickets = applyStoredTicketStatuses(sourceTickets).filter(isSupervisorVisibleTicket);
 
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
   const [operator, setOperator] = useState("");
-  const [machine, setMachine] = useState("");
+  const [notebookType, setNotebookType] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
+  const [activeTicketingView, setActiveTicketingView] = useState("threshold");
 
   useEffect(() => {
     dispatch(fetchSupervisorTickets());
@@ -73,7 +76,8 @@ export default function SupervisorDashboard() {
       (!status || t.status === status) &&
       (!severity || t.severity === severity) &&
       (!operator || t.user_name === operator) &&
-      (!machine || t.machine_name === machine) &&
+      (!notebookType ||
+        (t.notebook_type || t.notebookType || t.notebook || "") === notebookType) &&
       (!search ||
         t.ticket_id?.toLowerCase().includes(search.toLowerCase()) ||
         t.user_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -84,16 +88,36 @@ export default function SupervisorDashboard() {
   const uniqueOperators = [
     ...new Set(safeTickets.map((t) => t.user_name).filter(Boolean)),
   ];
-  const uniqueMachines = [
-    ...new Set(safeTickets.map((t) => t.machine_name).filter(Boolean)),
+  const uniqueNotebookTypes = [
+    ...new Set(
+      sourceTickets
+        .map((t) => t.notebook_type || t.notebookType || t.notebook)
+        .filter(Boolean)
+    ),
   ];
+
+  const thresholdTickets = filteredTickets.filter((ticket) =>
+    String(ticket.notebook_type || ticket.notebookType || ticket.notebook || "")
+      .toLowerCase()
+      .includes("threshold")
+  );
+  const submissionTickets = filteredTickets.filter(
+    (ticket) =>
+      !String(ticket.notebook_type || ticket.notebookType || ticket.notebook || "")
+        .toLowerCase()
+        .includes("threshold")
+  );
+  const displayTickets =
+    activeTicketingView === "threshold"
+      ? (thresholdTickets.length ? thresholdTickets : filteredTickets)
+      : (submissionTickets.length ? submissionTickets : filteredTickets);
 
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredTickets.length / ITEMS_PER_PAGE)
+    Math.ceil(displayTickets.length / ITEMS_PER_PAGE)
   );
   const start = (page - 1) * ITEMS_PER_PAGE;
-  const pageData = filteredTickets.slice(start, start + ITEMS_PER_PAGE);
+  const pageData = displayTickets.slice(start, start + ITEMS_PER_PAGE);
 
   const handleTicketClick = (ticketId) => {
     const id = ticketId?.startsWith("#") ? ticketId : `#${ticketId}`;
@@ -107,6 +131,28 @@ export default function SupervisorDashboard() {
     <div className={styles["sup-page"]}>
       <div className={styles["sup-content"]}>
         <h1 className={styles["sup-title"]}>L2 Ticketing Dashboard</h1>
+        <div className={styles["ticketing-toggle"]}>
+          <button
+            type="button"
+            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "threshold" ? styles["ticketing-toggle-btn-active"] : ""}`}
+            onClick={() => {
+              setActiveTicketingView("threshold");
+              setPage(1);
+            }}
+          >
+            Threshold Ticket
+          </button>
+          <button
+            type="button"
+            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "submission" ? styles["ticketing-toggle-btn-active"] : ""}`}
+            onClick={() => {
+              setActiveTicketingView("submission");
+              setPage(1);
+            }}
+          >
+            Submission Ticket
+          </button>
+        </div>
 
         <div className={styles["sup-mobile-title-row"]}>
           <button
@@ -164,16 +210,16 @@ export default function SupervisorDashboard() {
           </div>
 
           <div className={styles["sup-filter"]}>
-            <label>Machine</label>
+            <label>Notebook Type</label>
             <select
               className={styles["sup-select"]}
-              value={machine}
-              onChange={(e) => setMachine(e.target.value)}
+              value={notebookType}
+              onChange={(e) => setNotebookType(e.target.value)}
             >
               <option value="">All</option>
-              {uniqueMachines.map((machineName, i) => (
-                <option key={i} value={machineName}>
-                  {machineName}
+              {uniqueNotebookTypes.map((type, i) => (
+                <option key={i} value={type}>
+                  {type}
                 </option>
               ))}
             </select>
@@ -207,8 +253,14 @@ export default function SupervisorDashboard() {
               <tr>
                 <th>TICKET ID</th>
                 <th>OPERATOR</th>
-                <th>MACHINE</th>
+                <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
                 <th>PARAMETER</th>
+                {activeTicketingView === "submission" && (
+                  <>
+                    <th>FREQUENCY</th>
+                    <th>OCCURRENCES</th>
+                  </>
+                )}
                 <th>SEVERITY</th>
                 <th>STATUS</th>
                 <th>CREATED AT</th>
@@ -233,6 +285,12 @@ export default function SupervisorDashboard() {
                       <td>{t.user_name}</td>
                       <td>{t.machine_name}</td>
                       <td>{primaryParam}</td>
+                      {activeTicketingView === "submission" && (
+                        <>
+                          <td>{t.frequency || t.submission_frequency || t.check_frequency || "-"}</td>
+                          <td>{t.occurrences || t.occurrence_count || t.count || "-"}</td>
+                        </>
+                      )}
                       <td>
                         <span
                           className={`${styles["sup-badge"]} ${
@@ -260,7 +318,7 @@ export default function SupervisorDashboard() {
               ) : (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan={activeTicketingView === "submission" ? "9" : "7"}
                     style={{ textAlign: "center", padding: "24px" }}
                   >
                     No tickets found
@@ -272,9 +330,9 @@ export default function SupervisorDashboard() {
 
           <div className={styles["sup-table-footer"]}>
             <div>
-              Showing {filteredTickets.length === 0 ? 0 : start + 1}-
-              {Math.min(start + ITEMS_PER_PAGE, filteredTickets.length)} of{" "}
-              {filteredTickets.length}
+              Showing {displayTickets.length === 0 ? 0 : start + 1}-
+              {Math.min(start + ITEMS_PER_PAGE, displayTickets.length)} of{" "}
+              {displayTickets.length}
             </div>
             <div className={styles["sup-pagination"]}>
               <button
@@ -421,15 +479,15 @@ export default function SupervisorDashboard() {
                 </div>
 
                 <div className={styles["sup-filter-group"]}>
-                  <label>Machine</label>
+                  <label>Notebook Type</label>
                   <select
-                    value={machine}
-                    onChange={(e) => setMachine(e.target.value)}
+                    value={notebookType}
+                    onChange={(e) => setNotebookType(e.target.value)}
                   >
                     <option value="">All</option>
-                    {uniqueMachines.map((machineName, i) => (
-                      <option key={i} value={machineName}>
-                        {machineName}
+                    {uniqueNotebookTypes.map((type, i) => (
+                      <option key={i} value={type}>
+                        {type}
                       </option>
                     ))}
                   </select>
@@ -471,7 +529,7 @@ export default function SupervisorDashboard() {
                       setStatus("");
                       setSeverity("");
                       setOperator("");
-                      setMachine("");
+                      setNotebookType("");
                       setStartDate("");
                       setEndDate("");
                       setSearch("");

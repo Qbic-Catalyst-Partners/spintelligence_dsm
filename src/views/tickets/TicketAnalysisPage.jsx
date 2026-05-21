@@ -1,5 +1,5 @@
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { FiList, FiCheckCircle, FiClock, FiAlertCircle } from "react-icons/fi";
 import styles from "@/styles/ticketCalendar.module.css";
@@ -32,6 +32,7 @@ const resolveTicketEmpId = (ticket, userIdByName) => {
 };
 
 export default function TicketAnalysisPage({ mode = "L1" }) {
+  const [activeSystem, setActiveSystem] = useState("threshold");
   const { tickets } = useSelector((state) => state.operator) || {};
   const { tickets: supervisorTickets } = useSelector((state) => state.supervisor) || {};
   const { users } = useSelector((state) => state.users) || {};
@@ -160,6 +161,17 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   }, [modeTickets, mode, userIdByName]);
 
   const isL2 = mode === "L2";
+  const visibleRows = useMemo(() => {
+    if (mode !== "L1") return analytics.rows;
+    const thresholdRows = analytics.rows.filter((row) =>
+      String(row.employee || "").toLowerCase().includes("threshold")
+    );
+    const submissionRows = analytics.rows.filter(
+      (row) => !String(row.employee || "").toLowerCase().includes("threshold")
+    );
+    if (activeSystem === "threshold") return thresholdRows.length ? thresholdRows : analytics.rows;
+    return submissionRows.length ? submissionRows : analytics.rows;
+  }, [activeSystem, analytics.rows, mode]);
 
   return (
     <section className={styles.page}>
@@ -171,6 +183,42 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
         <p>Insights & Analytics for {mode} tickets</p>
       </div>
       <section className={styles.analyticsWrap}>
+        {mode === "L1" && (
+          <div style={{ margin: "8px 0 14px", display: "inline-flex", gap: 4, background: "#d7d7d7", padding: 3, borderRadius: 7 }}>
+            <button
+              type="button"
+              onClick={() => setActiveSystem("threshold")}
+              style={{
+                height: 30,
+                border: "none",
+                borderRadius: 6,
+                padding: "0 16px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+                background: activeSystem === "threshold" ? "#fff" : "transparent",
+              }}
+            >
+              Threshold Ticketing Sys.
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSystem("submission")}
+              style={{
+                height: 30,
+                border: "none",
+                borderRadius: 6,
+                padding: "0 16px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 600,
+                background: activeSystem === "submission" ? "#fff" : "transparent",
+              }}
+            >
+              Submission Ticketing Sys.
+            </button>
+          </div>
+        )}
         <div className={styles.analyticsHead}>
           <h2>Insights & Analytics</h2>
           <p>Track team performance and ticket progress</p>
@@ -208,7 +256,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
               </tr>
             </thead>
             <tbody>
-              {analytics.rows.map((row, idx) => (
+              {visibleRows.map((row, idx) => (
                 <tr key={`${row.employee}-${idx}`}>
                   <td>{idx + 1}</td>
                   <td>{row.employee}</td>

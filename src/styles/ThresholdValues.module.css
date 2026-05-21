@@ -72,27 +72,54 @@
 }
 
 .statCard {
-    min-height: 128px;
-    padding: 22px 20px;
-    border: 1px solid #d9dfe8;
-    border-radius: 10px;
+    min-height: 98px;
+    padding: 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
     background: #ffffff;
-    text-align: center;
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
 .statCard span {
-    display: block;
-    color: #848b99;
-    font-size: 13px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
 }
 
 .statCard strong {
     display: block;
     margin-top: 8px;
-    color: #24324b;
-    font-size: 26px;
+    color: #1e293b;
+    font-size: 24px;
     font-weight: 700;
+}
+
+.statIcon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.statIcon.blue {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.statIcon.activeTone {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.statIcon.inactiveTone {
+    background: #e5e7eb;
+    color: #475569;
 }
 
 .stack {
@@ -435,24 +462,32 @@
 }
 
 .summaryCard {
-    border-radius: 8px;
-    background: #efefef;
-    padding: 10px 14px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    padding: 20px;
+    min-height: 98px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
 }
 
 .summaryCard span {
     display: block;
-    color: #73839a;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: none;
 }
 
 .summaryCard strong {
     display: block;
-    margin-top: 6px;
-    color: #2b3951;
-    font-size: 14px;
+    margin-top: 8px;
+    color: #1e293b;
+    font-size: 40px;
+    font-weight: 700;
 }
 
 .existingThresholdCard {

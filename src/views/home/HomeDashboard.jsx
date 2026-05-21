@@ -72,13 +72,18 @@ const formatDayLabel = (date) => {
 const formatMonthLabel = (date) =>
   date.toLocaleString("en-US", { month: "short" });
 const getTicketCardLabel = (value) => {
+  const toSentenceCase = (text) => {
+    const normalized = String(text || "").trim();
+    if (!normalized) return "";
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  };
   const key = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (key === "totaltickets") return "Total Tickets";
-  if (key === "open" || key === "opentickets") return "Open";
-  if (key === "reopened" || key === "reopenedtickets") return "Reopened";
-  if (key === "closed" || key === "closedtickets") return "Closed";
-  if (key === "pending" || key === "pendingtickets") return "Pending";
-  return "Ticket Dashboard";
+  if (key === "totaltickets") return toSentenceCase("total tickets");
+  if (key === "open" || key === "opentickets") return toSentenceCase("open");
+  if (key === "reopened" || key === "reopenedtickets") return toSentenceCase("reopened");
+  if (key === "closed" || key === "closedtickets") return toSentenceCase("closed");
+  if (key === "pending" || key === "pendingtickets") return toSentenceCase("pending");
+  return toSentenceCase("ticket dashboard");
 };
 const getTicketCardIcon = (label) => {
   if (label === "Total Tickets") return MdOutlineConfirmationNumber;
