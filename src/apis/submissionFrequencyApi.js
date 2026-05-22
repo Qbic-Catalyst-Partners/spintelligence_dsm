@@ -54,3 +54,11 @@ export const runSubmissionFrequencyCheckAPI = async () => {
   return response?.data;
 };
 
+export const runSubmissionFrequencyTatCheckAPI = async () => {
+  const response = await apiConfig.post(
+    "/operator-tickets/submission-frequency/tat/check",
+    {}
+  );
+  return response?.data;
+};
+

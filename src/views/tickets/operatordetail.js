@@ -6,6 +6,7 @@ import {
   fetchOperatorTicketById,
   submitTicketFix,
 } from "@/store/slices/operatorSlice";
+import { getOperatorTicketTimeline } from "@/apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -13,7 +14,7 @@ import {
   getTicketParameterNames,
   getTicketValueForParameter,
 } from "@/utils/ticketTransformer";
-import { applyStoredTicketStatus } from "@/utils/ticketStatus";
+import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketStatus";
 
 import { IoClose, IoTimeSharp } from "react-icons/io5";
 import { FaRegCommentAlt } from "react-icons/fa";
@@ -42,6 +43,7 @@ export default function TicketDetails() {
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const [timelineItems, setTimelineItems] = useState([]);
   const commentLimit = 500;
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
@@ -73,18 +75,37 @@ export default function TicketDetails() {
     }
   }, [dashboardTicket, dispatch, ticketDetailMatches, ticketId]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!comment.trim()) return alert("Enter comment");
+    const submitTicketId = resolvedTicket?.ticket_id || ticketId;
+    const currentStatus = String(resolvedTicket?.status || "").trim();
 
-    dispatch(
-      submitTicketFix({
-        ticketId: resolvedTicket.ticket_id,
-        comment,
-      })
-    );
+    if (!submitTicketId) {
+      alert("Ticket ID is missing. Please refresh and try again.");
+      return;
+    }
 
-    setIsPopupOpen(false);
-    setComment("");
+    if (!["Open", "Reopened"].includes(currentStatus)) {
+      alert(`Only Open or Reopened tickets can be submitted. Current status: ${currentStatus || "Unknown"}`);
+      return;
+    }
+
+    try {
+      await dispatch(
+        submitTicketFix({
+          ticketId: submitTicketId,
+          comment,
+        })
+      ).unwrap();
+
+      setIsPopupOpen(false);
+      setComment("");
+      dispatch(fetchOperatorTicketById(submitTicketId));
+    } catch (error) {
+      const errorMessage =
+        typeof error === "string" ? error : error?.message || "Failed to submit ticket.";
+      alert(errorMessage);
+    }
   };
 
   const formatCompactDateTime = (dateString) => {
@@ -119,9 +140,15 @@ export default function TicketDetails() {
   const statusClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.status)] || "" : "";
   const severityClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.severity)] || "" : "";
   const displayTicketId = formatTicketIdForDisplay(resolvedTicket?.ticket_id || ticketId);
+  const machineName = resolvedTicket?.machine_name || resolvedTicket?.notebook || "Unknown machine";
   const isSubmissionTicket =
     String(parameterMap?.[0]?.name || "").toLowerCase().includes("submission_frequency") ||
     String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const machineDetailText =
+    resolvedTicket?.description ||
+    (isSubmissionTicket
+      ? `Submission alert for ${machineName}. Please complete and resubmit the required entry.`
+      : `Alert generated for machine ${machineName}. Please review and complete the fix before resubmitting.`);
   const submissionFrequency = resolvedTicket?.frequency || resolvedTicket?.threshold_value?.expected_frequency || "-";
   const submissionOccurrences =
     resolvedTicket?.occurrences ??
@@ -129,27 +156,41 @@ export default function TicketDetails() {
     resolvedTicket?.violation_details?.checks?.actual_occurrences ??
     "-";
 
-  const timelineItems = [
-    {
-      time: "10:30 AM",
-      title: "Ticket Created",
-      icon: createdImgSrc,
-      description: "Automated system alert triggered by vibration sensor RF-04-S2",
-    },
-    {
-      time: "11:25 AM",
-      title: "Assigned to maintenance",
-      icon: maintenanceImgSrc,
-      description: "Ticket assigned to Maintenance Team A (Technician : Surya Prakash)",
-    },
-    {
-      time: "12:45 PM",
-      title: "Supervisor Comment",
-      iconType: "comment",
-      description:
-        '"Check the lubricant levels. It seems the main bearing is overheating. Need to replace the grease and re-test the vibration levels. proceed with caution."',
-    },
-  ];
+  const getTimelineIcon = (title) => {
+    const normalized = String(title || "").toLowerCase();
+    if (normalized.includes("created")) return { icon: createdImgSrc, iconType: null };
+    if (normalized.includes("assign")) return { icon: maintenanceImgSrc, iconType: null };
+    if (normalized.includes("comment")) return { icon: null, iconType: "comment" };
+    return { icon: createdImgSrc, iconType: null };
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const loadTimeline = async () => {
+      if (!ticketId) return;
+      try {
+        const response = await getOperatorTicketTimeline(ticketId);
+        const events = Array.isArray(response?.timeline) ? response.timeline : [];
+        const mapped = events.map((event) => {
+          const iconMeta = getTimelineIcon(event?.title || event?.action);
+          return {
+            time: formatCompactDateTime(event?.at),
+            title: event?.title || "Updated",
+            description: event?.detail || event?.action || "-",
+            icon: iconMeta.icon,
+            iconType: iconMeta.iconType,
+          };
+        });
+        if (mounted) setTimelineItems(mapped);
+      } catch {
+        if (mounted) setTimelineItems([]);
+      }
+    };
+    loadTimeline();
+    return () => {
+      mounted = false;
+    };
+  }, [ticketId]);
 
   if (loading && !resolvedTicket) return <p>Loading...</p>;
   if (!resolvedTicket) return <p>No ticket found</p>;
@@ -197,7 +238,7 @@ export default function TicketDetails() {
 
           <div className={styles["mobile-status-row"]}>
             <span className={`${styles["status-badge"]} ${statusClassName}`}>
-              {resolvedTicket.status}
+              {getOperatorStatusLabel(resolvedTicket.status)}
             </span>
           </div>
         </section>
@@ -232,7 +273,7 @@ export default function TicketDetails() {
                   {isSubmissionTicket ? submissionFrequency : item.actual}
                 </span>
                 <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
-                <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? resolvedTicket.status : item.threshold}</span>
+                <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
               </div>
             ))}
 
@@ -255,14 +296,14 @@ export default function TicketDetails() {
               <div className={styles["ticket-heading-row"]}>
                 <h1 className={styles["ticket-id"]}>{displayTicketId}</h1>
                 <span className={`${styles["status-badge"]} ${statusClassName}`}>
-                  {resolvedTicket.status}
+                  {getOperatorStatusLabel(resolvedTicket.status)}
                 </span>
                 <span className={`${styles["severity-badge"]} ${severityClassName}`}>
                   {resolvedTicket.severity}
                 </span>
               </div>
               <p className={styles.subtitle}>
-                {resolvedTicket.description || "Industrial sensor alert: Mechanical stress detected on main spindle."}
+                {machineDetailText}
               </p>
             </div>
 
@@ -291,7 +332,7 @@ export default function TicketDetails() {
                 <span className={styles["value-strong"]}>{item.name}</span>
                 <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
                 <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
-                <span className={styles["value-strong"]}>{isSubmissionTicket ? resolvedTicket.status : item.threshold}</span>
+                <span className={styles["value-strong"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
                 <span className={styles["value-strong"]}>
                   {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
                 </span>
@@ -317,7 +358,12 @@ export default function TicketDetails() {
           </h3>
 
           <div className={styles["timeline-list"]}>
-            {timelineItems.map((item, index) => (
+            {(timelineItems.length ? timelineItems : [{
+              time: formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt),
+              title: "Ticket Created",
+              icon: createdImgSrc,
+              description: `Automated system alert triggered by ${resolvedTicket.machine_name || "system"}`,
+            }]).map((item, index) => (
               <div className={styles["timeline-item"]} key={`${item.time}-${item.title}`}>
                 <div className={styles["timeline-time"]}>{item.time}</div>
                 <div className={styles["timeline-rail"]}>

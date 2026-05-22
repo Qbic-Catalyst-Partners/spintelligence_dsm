@@ -19,6 +19,18 @@ const allowedDevOrigins = (() => {
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins,
+  async rewrites() {
+    return [
+      {
+        source: "/operator/:ticketId",
+        destination: "/operatordetail?ticketId=:ticketId",
+      },
+      {
+        source: "/operatordetail/:ticketId",
+        destination: "/operatordetail?ticketId=:ticketId",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

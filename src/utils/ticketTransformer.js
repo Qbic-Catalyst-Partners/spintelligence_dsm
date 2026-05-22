@@ -1,6 +1,9 @@
 export const getTicketParameterKey = (parameterName) =>
   String(parameterName || "").toLowerCase().trim();
 
+export const isSubmissionFrequencyParameterName = (parameterName) =>
+  getTicketParameterKey(parameterName) === "submission_frequency";
+
 export const formatTicketIdForDisplay = (ticketId) => {
   const rawId = String(ticketId || "").trim();
   if (!rawId) return "-";
@@ -45,6 +48,23 @@ export const getTicketParameterNames = (ticket) => {
   });
 };
 
+export const isSubmissionTicketRecord = (ticket) => {
+  const notebookType = String(
+    ticket?.notebook_type ||
+    ticket?.notebookType ||
+    ticket?.notebook ||
+    ticket?.machine_name ||
+    ticket?.machine ||
+    ""
+  ).toLowerCase();
+
+  if (notebookType.includes("submission")) {
+    return true;
+  }
+
+  return getTicketParameterNames(ticket).some(isSubmissionFrequencyParameterName);
+};
+
 export const getTicketValueForParameter = (source, parameterName) => {
   if (!source || !parameterName) return "-";
 
@@ -74,8 +94,18 @@ export const formatThresholdValue = (value) => {
     return value;
   }
 
-  const plusThreshold = value.plus_threshold ?? "-";
-  const minusThreshold = value.minus_threshold ?? "-";
+  const plusThreshold =
+    value.plus_threshold ??
+    value.positive_tolerance ??
+    value.upper_threshold ??
+    value.max_tolerance ??
+    "-";
+  const minusThreshold =
+    value.minus_threshold ??
+    value.negative_tolerance ??
+    value.lower_threshold ??
+    value.min_tolerance ??
+    "-";
 
   return `+:${plusThreshold}/-:${minusThreshold}`;
 };
@@ -89,7 +119,12 @@ export const formatStandardValue = (value) => {
     return value;
   }
 
-  const actualValue = value.actual_value ?? "-";
+  const actualValue =
+    value.actual_value ??
+    value.standard_value ??
+    value.target_value ??
+    value.nominal_value ??
+    "-";
   return actualValue;
 };
 
@@ -101,6 +136,13 @@ export const transformTicket = (ticket) => {
   const thresholdSource = getTicketValueForParameter(ticket.threshold_value, parameter);
   const threshold = formatThresholdValue(thresholdSource);
   const standard = formatStandardValue(thresholdSource);
+
+  const resolvedStatus =
+    ticket?.status ??
+    ticket?.ticket_status ??
+    ticket?.current_status ??
+    ticket?.state ??
+    "";
 
   return {
     ...ticket,
@@ -122,7 +164,7 @@ export const transformTicket = (ticket) => {
     threshold_value: ticket.threshold_value,
 
     severity: ticket.severity,
-    status: ticket.status,
+    status: resolvedStatus,
 
     description: ticket.description || "",
 

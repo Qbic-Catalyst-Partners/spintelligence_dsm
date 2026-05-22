@@ -10,7 +10,14 @@ import SuccessModal from "@/components/SuccessModal";
 import { subscribeToGlobalFailureModal } from "@/utils/globalFailureModal";
 import { subscribeToGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { hydrateAuthFromStorage } from "@/store/slices/authSlice";
-import { hasReportAccess, hasRouteAccess, isFullAccessUser, routeDepartmentMap } from "@/utils/accessControl";
+import {
+  getDefaultTicketingLabel,
+  getDefaultTicketingRoute,
+  hasReportAccess,
+  hasRouteAccess,
+  isFullAccessUser,
+  routeDepartmentMap,
+} from "@/utils/accessControl";
 import { store } from '../store';
 import "../styles/globals.css";
 
@@ -57,6 +64,8 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/editrole");
   const isReportsFlow = router.pathname === "/reports";
   const canAccessManagementFlow = isFullAccessUser(user);
+  const defaultTicketingRoute = getDefaultTicketingRoute(user);
+  const defaultTicketingLabel = getDefaultTicketingLabel(user);
   const managementNavLinks = [
     { href: "/", label: "Home" },
     { href: "/ticket-calendar", label: "Analytic" },
@@ -73,7 +82,7 @@ function AppShell({ Component, pageProps }) {
     : isHomeFlow || isDepartmentFlow || isTicketingFlow || Boolean(token)
     ? [
         { href: "/", label: "Home" },
-        { href: "/operator", label: "L1 Ticketing System" },
+        { href: defaultTicketingRoute, label: defaultTicketingLabel },
         { href: "/ticket-calendar", label: "Analytic" },
       ]
       : undefined;

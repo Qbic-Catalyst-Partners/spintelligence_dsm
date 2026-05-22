@@ -367,7 +367,7 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
       const createdTicketId = normalizeTicketIdForRoute(resolveCreatedTicketId(response));
 
       if (createdTicketId) {
-        router.push(`/operator/${createdTicketId}`);
+        router.push(`/operatordetail?ticketId=${encodeURIComponent(createdTicketId)}`);
         return;
       }
 

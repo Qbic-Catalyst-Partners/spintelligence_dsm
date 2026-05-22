@@ -9,10 +9,7 @@ const normalizeSubmittedTicket = (ticket, fallbackTicketId) => {
     ticket_id: ticket?.ticket_id || fallbackTicketId,
   });
 
-  return {
-    ...transformedTicket,
-    status: "Pending Approval",
-  };
+  return transformedTicket;
 };
 // Fetch all tickets
 export const fetchOperatorTickets = createAsyncThunk(
@@ -57,7 +54,8 @@ export const submitTicketFix = createAsyncThunk(
   async ({ ticketId, comment }, { rejectWithValue }) => {
     try {
       const response = await submitOperatorTicket(ticketId, {
-        resolution_comment: comment,
+        operator_comment: comment,
+        comment,
       });
 
       return normalizeSubmittedTicket(response.ticket || response.data || response, ticketId);
@@ -114,9 +112,10 @@ const operatorSlice = createSlice({
 .addCase(submitTicketFix.fulfilled, (state, action) => {
   state.ticketDetailLoading = false;
   state.ticketDetail = action.payload;
-  state.tickets = state.tickets.map((ticket) =>
+  const currentTickets = Array.isArray(state.tickets) ? state.tickets : [];
+  state.tickets = currentTickets.map((ticket) =>
     ticket.ticket_id === action.payload.ticket_id
-      ? { ...ticket, ...action.payload, status: "Pending Approval" }
+      ? { ...ticket, ...action.payload }
       : ticket
   );
 })

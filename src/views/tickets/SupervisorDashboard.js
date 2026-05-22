@@ -71,9 +71,17 @@ export default function SupervisorDashboard() {
           (!start || ticketDate >= start) &&
           (!end || ticketDate <= end);
 
+    const normalizedTicketStatus = String(t.status || "").trim().toLowerCase();
+    const normalizedFilterStatus = String(status || "").trim().toLowerCase();
+    const statusMatch =
+      !status ||
+      normalizedTicketStatus === normalizedFilterStatus ||
+      (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
+      (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
+
     return (
       dateMatch &&
-      (!status || t.status === status) &&
+      statusMatch &&
       (!severity || t.severity === severity) &&
       (!operator || t.user_name === operator) &&
       (!notebookType ||
@@ -174,7 +182,7 @@ export default function SupervisorDashboard() {
             >
               <option value="">All</option>
               {SUPERVISOR_VISIBLE_STATUS_OPTIONS.map((option) => (
-                <option key={option}>{option}</option>
+                <option key={option} value={option}>{getSupervisorStatusLabel(option)}</option>
               ))}
             </select>
           </div>
@@ -382,7 +390,7 @@ export default function SupervisorDashboard() {
               <div
                 key={t.ticket_id || i}
                 className={`${styles["sup-mobile-card"]} ${
-                  t.status === "Closed" ? styles["sup-muted"] : ""
+                  getSupervisorStatusLabel(t.status) === "Closed" ? styles["sup-muted"] : ""
                 }`}
                 onClick={() => handleTicketClick(t.ticket_id)}
               >
@@ -460,7 +468,7 @@ export default function SupervisorDashboard() {
                   >
                     <option value="">All</option>
                     {SUPERVISOR_VISIBLE_STATUS_OPTIONS.map((option) => (
-                      <option key={option}>{option}</option>
+                      <option key={option} value={option}>{getSupervisorStatusLabel(option)}</option>
                     ))}
                   </select>
                 </div>

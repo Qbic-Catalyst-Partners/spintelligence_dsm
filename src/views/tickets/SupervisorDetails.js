@@ -8,6 +8,7 @@ import {
   fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
+import { fetchTicketTimelineApi } from "../../apis/supervisorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -34,29 +35,13 @@ const formatDateTime = (dateString) => {
   });
 };
 
-const timelineItems = [
-  {
-    time: "10:30 AM",
-    title: "Ticket Created",
-    description: "System generated alert : RPM Threshold Exceeded",
-    icon: "/created.png",
-    alt: "Created",
-  },
-  {
-    time: "11:25 AM",
-    title: "Maintenance Started",
-    description: "Operator John Doe took ownership",
-    icon: "/maintenance.png",
-    alt: "Maintenance Started",
-  },
-  {
-    time: "12:45 PM",
-    title: "Awaiting Approval",
-    description: "Resolution submitted by John Doe",
-    icon: "/awaiting.png",
-    alt: "Awaiting Approval",
-  },
-];
+const buildTimelineIcon = (title) => {
+  const normalized = String(title || "").toLowerCase();
+  if (normalized.includes("created")) return { icon: "/created.png", alt: "Created" };
+  if (normalized.includes("approved") || normalized.includes("closed")) return { icon: "/awaiting.png", alt: "Approved" };
+  if (normalized.includes("reject") || normalized.includes("reopen")) return { icon: "/maintenance.png", alt: "Rejected" };
+  return { icon: "/awaiting.png", alt: "Updated" };
+};
 
 export default function SupervisorDetails() {
   const router = useRouter();
@@ -68,6 +53,7 @@ export default function SupervisorDetails() {
   const [expanded, setExpanded] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
+  const [timelineItems, setTimelineItems] = useState([]);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
@@ -100,6 +86,34 @@ export default function SupervisorDetails() {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
   }, [dashboardTicket, dispatch, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadTimeline = async () => {
+      if (!requestedTicketId) return;
+      try {
+        const response = await fetchTicketTimelineApi(requestedTicketId);
+        const events = Array.isArray(response?.timeline) ? response.timeline : [];
+        const mapped = events.map((event) => {
+          const iconMeta = buildTimelineIcon(event?.title || event?.action);
+          return {
+            time: formatDateTime(event?.at),
+            title: event?.title || "Updated",
+            description: event?.detail || event?.action || "-",
+            icon: iconMeta.icon,
+            alt: iconMeta.alt,
+          };
+        });
+        if (mounted) setTimelineItems(mapped);
+      } catch {
+        if (mounted) setTimelineItems([]);
+      }
+    };
+    loadTimeline();
+    return () => {
+      mounted = false;
+    };
+  }, [requestedTicketId]);
 
   const handleApprove = async () => {
     try {
@@ -148,6 +162,74 @@ export default function SupervisorDetails() {
     ticket?.violation_details?.checks?.expected_occurrences ??
     ticket?.violation_details?.checks?.actual_occurrences ??
     "-";
+  const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
+  const machineName = ticket.machine_name || ticket.notebook || "Unknown machine";
+  const machineDetailText =
+    ticket.description ||
+    (isSubmissionTicket
+      ? `Submission alert for ${machineName}. Please review the submitted frequency details and operator response.`
+      : `Alert generated for machine ${machineName}. Please review the submission and operator resolution.`);
+  const l2Comment =
+    ticket?.violation_details?.l2_comment ||
+    ticket?.violation_details?.l2_remarks ||
+    ticket?.violation_details?.supervisor_comment ||
+    ticket?.violation_details?.rejection_reason ||
+    ticket?.violation_details?.reject_reason ||
+    ticket?.violation_details?.approver_comment ||
+    ticket?.rejection_reason ||
+    ticket?.comments ||
+    null;
+  const operatorComment =
+    ticket?.violation_details?.operator_comment ||
+    ticket?.violation_details?.comment ||
+    ticket?.violation_details?.remarks ||
+    null;
+  const resolutionCommentLabel =
+    ticket?.violation_details?.comment_label ||
+    ticket?.violation_details?.comment_heading ||
+    ticket?.violation_details?.operator_comment_label ||
+    (l2Comment ? "L2 COMMENT" : "OPERATOR'S COMMENT");
+  const resolutionComment =
+    l2Comment ||
+    operatorComment ||
+    "No comment submitted during fix and resubmit.";
+  const timelineWithL2Comment = (() => {
+    const baseTimeline = Array.isArray(timelineItems) ? [...timelineItems] : [];
+    if (!l2Comment) return baseTimeline;
+
+    const alreadyExists = baseTimeline.some((item) =>
+      String(item?.title || "").trim().toUpperCase() === "L2 COMMENT"
+    );
+    if (alreadyExists) return baseTimeline;
+
+    const l2CommentEvent = {
+      time: formatDateTime(ticket?.updated_at || ticket?.created_at),
+      title: "L2 COMMENT",
+      description: l2Comment,
+      icon: "/maintenance.png",
+      alt: "L2 Comment",
+    };
+
+    const l1CommentIndex = baseTimeline.findIndex((item) =>
+      String(item?.title || "").toLowerCase().includes("l1 comment")
+    );
+
+    if (l1CommentIndex >= 0) {
+      baseTimeline.splice(l1CommentIndex + 1, 0, l2CommentEvent);
+      return baseTimeline;
+    }
+
+    const genericCommentIndex = baseTimeline.findIndex((item) =>
+      String(item?.title || "").toLowerCase().includes("comment")
+    );
+    if (genericCommentIndex >= 0) {
+      baseTimeline.splice(genericCommentIndex + 1, 0, l2CommentEvent);
+      return baseTimeline;
+    }
+
+    baseTimeline.push(l2CommentEvent);
+    return baseTimeline;
+  })();
 
   return (
     <div>
@@ -185,7 +267,7 @@ export default function SupervisorDetails() {
               </div>
 
               <p className={styles.desc}>
-                Industrial sensor alert: Mechanical stress detected on main spindle
+                {machineDetailText}
               </p>
             </div>
 
@@ -199,6 +281,7 @@ export default function SupervisorDetails() {
                 <button
                   className={styles.reject}
                   onClick={() => setShowRejectModal(true)}
+                  disabled={isClosedTicket || actionLoading}
                 >
                   Reject
                 </button>
@@ -206,7 +289,7 @@ export default function SupervisorDetails() {
                 <button
                   className={styles.accept}
                   onClick={handleApprove}
-                  disabled={actionLoading}
+                  disabled={isClosedTicket || actionLoading}
                 >
                   Accept
                 </button>
@@ -309,7 +392,13 @@ export default function SupervisorDetails() {
               <h3>Activity Timeline</h3>
             </div>
 
-            {timelineItems.map((item, index) => (
+            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
+              time: formatDateTime(ticket.created_at),
+              title: "Created",
+              description: `Ticket created for ${ticket.user_name || "Operator"}`,
+              icon: "/created.png",
+              alt: "Created",
+            }]).map((item, index) => (
               <div className={styles.item} key={item.title}>
                 <span className={styles.itemTime}>{item.time}</span>
                 <div className={styles.itemContent}>
@@ -326,11 +415,9 @@ export default function SupervisorDetails() {
           <div className={styles.resolution}>
             <h3>Resolution Submission</h3>
 
-            <label>OPERATOR'S COMMENT</label>
+            <label>{resolutionCommentLabel}</label>
             <div className={styles.comment}>
-              "Check the lubricant levels. It seems the main bearing is overheating.
-              Need to replace the grease and re-test the vibration levels. Proceed
-              with caution."
+              {resolutionComment}
             </div>
 
             <button className={styles.review}>
@@ -420,7 +507,13 @@ export default function SupervisorDetails() {
           </div>
 
           <div className={styles.timelineWrap}>
-            {timelineItems.map((item) => (
+            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
+              time: formatDateTime(ticket.created_at),
+              title: "Created",
+              description: `Ticket created for ${ticket.user_name || "Operator"}`,
+              icon: "/created.png",
+              alt: "Created",
+            }]).map((item) => (
               <div className={styles.timelineItem} key={item.title}>
                 <span className={styles.time}>{item.time}</span>
                 <div className={styles.iconCol}>
@@ -440,13 +533,11 @@ export default function SupervisorDetails() {
           <h4>Resolution Submission</h4>
 
           <span className={styles.commentLabel}>
-            OPERATOR'S COMMENT
+            {resolutionCommentLabel}
           </span>
 
           <div className={styles.commentBox}>
-            "Check the lubricant levels. It seems the main bearing is overheating.
-            Need to replace the grease and re-test the vibration levels. Proceed
-            with caution."
+            {resolutionComment}
           </div>
         </div>
 
@@ -454,6 +545,7 @@ export default function SupervisorDetails() {
           <button
             className={styles.reject}
             onClick={() => setShowRejectModal(true)}
+            disabled={isClosedTicket || actionLoading}
           >
             Reject
           </button>
@@ -461,6 +553,7 @@ export default function SupervisorDetails() {
           <button
             className={styles.accept}
             onClick={handleApprove}
+            disabled={isClosedTicket || actionLoading}
           >
             Accept
           </button>

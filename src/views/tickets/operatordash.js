@@ -3,29 +3,31 @@ import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/router";
 import Image from "next/image";
 import { FiPlus } from "react-icons/fi";
-import { MdFilterList } from "react-icons/md";
-import { getOperatorTickets, getSubmissionTickets } from "../../apis/operatorApi";
+import { useSelector } from "react-redux";
+import { getOperatorTickets, getSubmissionTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
 import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
-    formatThresholdValue,
-    formatStandardValue,
-    getTicketValueForParameter,
+    isSubmissionTicketRecord,
+    transformTicket,
 } from "../../utils/ticketTransformer";
+import { isSupervisorNavUser } from "../../utils/accessControl";
 import {
     applyStoredTicketStatuses,
     getStatusClassKey,
     getOperatorStatusOptions,
-    setStoredTicketStatus,
+    getOperatorStatusLabel,
     TICKET_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
 
 export default function operatorboard() {
+    const authUser = useSelector((state) => state.auth?.user);
     const [ticketData, setTicketData] = useState([]);
     const [submissionTicketData, setSubmissionTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
     const [showManualTicket, setShowManualTicket] = useState(false);
+    const [statusUpdatingId, setStatusUpdatingId] = useState("");
 
     const [status, setStatus] = useState("All");
     const [severity, setSeverity] = useState("All");
@@ -35,66 +37,58 @@ export default function operatorboard() {
     const [activeTicketingView, setActiveTicketingView] = useState("threshold");
 
     const router = useRouter();
+    const shouldUseSupervisorDashboard = isSupervisorNavUser(authUser);
 
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 6;
 
     useEffect(() => {
+        if (shouldUseSupervisorDashboard) {
+            router.replace("/supervisordashboard");
+            return;
+        }
         fetchTickets();
         fetchSubmissionTickets();
-    }, []);
+    }, [shouldUseSupervisorDashboard]);
+
+    if (shouldUseSupervisorDashboard) {
+        return null;
+    }
 
     const fetchTickets = async () => {
         try {
             setError("");
-            const response = await getOperatorTickets();
+            const response = await getOperatorTickets({ _ts: Date.now() });
 
             const ticketsArray = Array.isArray(response)
                 ? response
                 : response?.data || response?.tickets || [];
 
-            const formattedData = applyStoredTicketStatuses(ticketsArray).map((ticket) => {
-                const createdDate = new Date(ticket.created_at);
+            const formattedData = applyStoredTicketStatuses(ticketsArray)
+                .filter((ticket) => !isSubmissionTicketRecord(ticket))
+                .map((ticket) => {
+                    const transformedTicket = transformTicket(ticket);
 
-                return {
-                    id: ticket.ticket_id,
-                    machine: ticket.machine_name,
-                    notebookType:
-                        ticket.notebook_type ||
-                        ticket.notebookType ||
-                        ticket.notebook ||
-                        "Unknown",
-                    parameter: ticket.parameter_name?.[0] || "-",
-                    actual: getTicketValueForParameter(
-                        ticket.actual_value,
-                        ticket.parameter_name?.[0]
-                    ),
-                    standard: formatStandardValue(
-                        getTicketValueForParameter(
-                            ticket.threshold_value,
-                            ticket.parameter_name?.[0]
-                        )
-                    ),
-                    threshold: formatThresholdValue(
-                        getTicketValueForParameter(
-                            ticket.threshold_value,
-                            ticket.parameter_name?.[0]
-                        )
-                    ),
-                    frequency: ticket.frequency || ticket.submission_frequency || ticket.check_frequency || "-",
-                    occurrences: ticket.occurrences || ticket.occurrence_count || ticket.count || "-",
-                    severity: ticket.severity,
-                    status: ticket.status,
-                    rawCreatedAt: createdDate,
-                    createdAt: createdDate.toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true,
-                    }),
-                };
-            });
+                    return {
+                        id: transformedTicket.ticket_id,
+                        machine: transformedTicket.machine_name,
+                        notebookType:
+                            transformedTicket.notebook_type ||
+                            transformedTicket.notebookType ||
+                            transformedTicket.notebook ||
+                            "Unknown",
+                        parameter: transformedTicket.parameter,
+                        actual: transformedTicket.actual,
+                        standard: transformedTicket.standard,
+                        threshold: transformedTicket.threshold,
+                        frequency: transformedTicket.frequency || transformedTicket.submission_frequency || transformedTicket.check_frequency || "-",
+                        occurrences: transformedTicket.occurrences || transformedTicket.occurrence_count || transformedTicket.count || "-",
+                        severity: transformedTicket.severity,
+                        status: transformedTicket.status,
+                        rawCreatedAt: transformedTicket.rawCreatedAt,
+                        createdAt: transformedTicket.createdAt,
+                    };
+                });
 
             setTicketData(formattedData);
         } catch (error) {
@@ -107,7 +101,7 @@ export default function operatorboard() {
 
     const fetchSubmissionTickets = async () => {
         try {
-            const response = await getSubmissionTickets({ page: 1, limit: 200 });
+            const response = await getSubmissionTickets({ page: 1, limit: 200, _ts: Date.now() });
             const ticketsArray = Array.isArray(response)
                 ? response
                 : response?.data || response?.tickets || [];
@@ -125,7 +119,12 @@ export default function operatorboard() {
                     frequency: ticket.frequency || "-",
                     occurrences: ticket.occurrences ?? ticket.configured_occurrences ?? "-",
                     severity: ticket.severity || "High",
-                    status: ticket.status || "Open",
+                    status:
+                        ticket.status ??
+                        ticket.ticket_status ??
+                        ticket.current_status ??
+                        ticket.state ??
+                        "",
                     rawCreatedAt: createdDate,
                     createdAt: createdDate.toLocaleString("en-US", {
                         month: "short",
@@ -143,6 +142,53 @@ export default function operatorboard() {
         }
     };
 
+    const handleStatusChange = async (ticketId, nextStatus) => {
+        if (!ticketId || !nextStatus) return;
+
+        try {
+            setStatusUpdatingId(ticketId);
+            await updateOperatorTicketStatus(ticketId, nextStatus);
+            await fetchTickets();
+        } catch (updateError) {
+            setError(updateError.message || "Failed to update ticket status.");
+        } finally {
+            setStatusUpdatingId("");
+        }
+    };
+
+    const getDisplayUniqueStatusOptions = (currentStatus) => {
+        const options = getOperatorStatusOptions(currentStatus);
+        const seenLabels = new Set();
+        return options.filter((option) => {
+            const label = getOperatorStatusLabel(option);
+            if (seenLabels.has(label)) return false;
+            seenLabels.add(label);
+            return true;
+        });
+    };
+
+    useEffect(() => {
+        if (shouldUseSupervisorDashboard || typeof window === "undefined") return;
+
+        const refreshFromServer = () => {
+            fetchTickets();
+            fetchSubmissionTickets();
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                refreshFromServer();
+            }
+        };
+
+        window.addEventListener("focus", refreshFromServer);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener("focus", refreshFromServer);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [shouldUseSupervisorDashboard]);
+
     if (loading) return <p>Loading tickets...</p>;
     if (error) return <p>{error}</p>;
 
@@ -152,11 +198,18 @@ export default function operatorboard() {
         const created = new Date(t.rawCreatedAt);
         const start = startDate ? new Date(startDate) : null;
         const end = endDate ? new Date(endDate) : null;
+        const normalizedTicketStatus = String(t.status || "").trim().toLowerCase();
+        const normalizedFilterStatus = String(status || "").trim().toLowerCase();
+        const statusMatch =
+            status === "All" ||
+            normalizedTicketStatus === normalizedFilterStatus ||
+            (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
+            (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
 
         if (end) end.setHours(23, 59, 59, 999);
 
         return (
-            (status === "All" || t.status === status) &&
+            statusMatch &&
             (severity === "All" || t.severity === severity) &&
             (notebookType === "All" || t.notebookType === notebookType) &&
             (!start || created >= start) &&
@@ -310,7 +363,7 @@ export default function operatorboard() {
                             <tr
                                 key={t.id} // Use 't.id', not 'ticket.id'
                                 style={{ cursor: "pointer" }}
-                                onClick={() => router.push(`/operator/${t.id.replace("#", "")}`)}
+                                onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}`)}
                             >
                                 <td className={styles["ticket-link"]}>{t.id}</td>
                                 <td>{t.machine}</td>
@@ -336,20 +389,13 @@ export default function operatorboard() {
                                     <select
                                         className={styles["status-select"]}
                                         value={t.status}
+                                        disabled={statusUpdatingId === t.id}
                                         onClick={(event) => event.stopPropagation()}
-                                        onChange={(event) => {
-                                            const nextStatus = event.target.value;
-                                            setStoredTicketStatus(t.id, nextStatus);
-                                            setTicketData((current) =>
-                                                current.map((ticket) =>
-                                                    ticket.id === t.id ? { ...ticket, status: nextStatus } : ticket
-                                                )
-                                            );
-                                        }}
+                                        onChange={(event) => handleStatusChange(t.id, event.target.value)}
                                     >
-                                        {getOperatorStatusOptions(t.status).map((option) => (
+                                        {getDisplayUniqueStatusOptions(t.status).map((option) => (
                                             <option key={option} value={option}>
-                                                {option}
+                                                {getOperatorStatusLabel(option)}
                                             </option>
                                         ))}
                                     </select>
@@ -401,7 +447,9 @@ export default function operatorboard() {
                                 <label>Status</label>
                                 <select value={status} onChange={(e) => setStatus(e.target.value)}>
                                     <option>All</option>
-                                    {TICKET_STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                                    {TICKET_STATUS_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>{getOperatorStatusLabel(option)}</option>
+                                    ))}
                                 </select>
 
                                 <label>Severity</label>
@@ -435,7 +483,7 @@ export default function operatorboard() {
                 )}
 
                 {displayTickets.map((t) => (
-                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operator/${t.id.replace("#", "")}`)}>
+                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}`)}>
                         <div className={styles["card-top"]}>
                             <div className={styles["left-section"]}>
                                 <div className={styles["card-id-machine"]}>{t.id} | {t.machine}</div>
@@ -463,19 +511,12 @@ export default function operatorboard() {
                                 <select
                                     className={styles["mobile-status-select"]}
                                     value={t.status}
-                                    onChange={(event) => {
-                                        const nextStatus = event.target.value;
-                                        setStoredTicketStatus(t.id, nextStatus);
-                                        setTicketData((current) =>
-                                            current.map((ticket) =>
-                                                ticket.id === t.id ? { ...ticket, status: nextStatus } : ticket
-                                            )
-                                        );
-                                    }}
+                                    disabled={statusUpdatingId === t.id}
+                                    onChange={(event) => handleStatusChange(t.id, event.target.value)}
                                 >
-                                    {getOperatorStatusOptions(t.status).map((option) => (
+                                    {getDisplayUniqueStatusOptions(t.status).map((option) => (
                                         <option key={option} value={option}>
-                                            {option}
+                                            {getOperatorStatusLabel(option)}
                                         </option>
                                     ))}
                                 </select>

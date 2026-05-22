@@ -89,7 +89,11 @@ const supervisorSlice = createSlice({
       })
       .addCase(fetchSupervisorTickets.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.tickets = action.payload;
+        const payload = action.payload;
+        const normalizedTickets = Array.isArray(payload)
+          ? payload
+          : payload?.data || payload?.tickets || [];
+        state.tickets = Array.isArray(normalizedTickets) ? normalizedTickets : [];
       })
       .addCase(fetchSupervisorTickets.rejected, (state, action) => {
         state.isLoading = false;
@@ -124,7 +128,8 @@ const supervisorSlice = createSlice({
         }
 
         // update list page
-        state.tickets = state.tickets.map((t) =>
+        const currentTickets = Array.isArray(state.tickets) ? state.tickets : [];
+        state.tickets = currentTickets.map((t) =>
           t.ticket_id === state.ticket?.ticket_id
             ? { ...t, status: "APPROVED" }
             : t
@@ -147,7 +152,8 @@ const supervisorSlice = createSlice({
           state.ticket.status = "Reopened";
         }
 
-        state.tickets = state.tickets.map((t) =>
+        const currentTickets = Array.isArray(state.tickets) ? state.tickets : [];
+        state.tickets = currentTickets.map((t) =>
           t.ticket_id === state.ticket?.ticket_id
             ? { ...t, status: "Reopened" }
             : t

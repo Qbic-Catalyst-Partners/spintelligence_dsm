@@ -208,10 +208,24 @@ const apiConfig = {
      * @param {object} customHeaders - Optional custom headers
      */
     delete: (url, params = {}, customHeaders = {}) => {
-        return axiosInstance.delete(url, {
-            params,
-            ...buildRequestConfig(customHeaders),
-        });
+        const hasExplicitConfigShape =
+            params &&
+            typeof params === "object" &&
+            !Array.isArray(params) &&
+            (Object.prototype.hasOwnProperty.call(params, "params") ||
+                Object.prototype.hasOwnProperty.call(params, "data"));
+
+        const requestConfig = hasExplicitConfigShape
+            ? {
+                ...params,
+                ...buildRequestConfig(customHeaders),
+            }
+            : {
+                params,
+                ...buildRequestConfig(customHeaders),
+            };
+
+        return axiosInstance.delete(url, requestConfig);
     },
 };
 

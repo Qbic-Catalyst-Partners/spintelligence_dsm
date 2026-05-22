@@ -37,6 +37,15 @@ export const getSubmissionTickets = async (params = {}) => {
     const response = await apiConfig.get("/operator-tickets/submission-ticketing", params);
     return response.data;
   } catch (error) {
+    const status = error?.response?.status;
+    const backendMessage =
+      error?.response?.data?.message || error?.response?.data?.error || "";
+    if (
+      status === 404 &&
+      /ticket not found/i.test(String(backendMessage))
+    ) {
+      return [];
+    }
     if (error.response && error.response.data) {
       throw new Error(error.response.data.message || "Failed to fetch submission tickets.");
     }
@@ -198,20 +207,212 @@ export const submitManualTicketInputScreen = async ({
 
 // Submit ticket fix
 export const submitOperatorTicket = async (ticketId, payload) => {
-  try {
-    const formattedId = ticketId.startsWith("#")
-      ? ticketId
-      : `#${ticketId}`;
-
-    const response = await apiConfig.put(
-      `/operator-tickets/submit/${encodeURIComponent(formattedId)}`,
-      payload
-    );
-
-    return response.data;
-  } catch (error) {
-    throw new Error(
-      error.response?.data?.message || "Failed to submit ticket."
-    );
+  const candidates = getTicketIdCandidates(ticketId);
+  let lastError = null;
+  for (const candidate of candidates) {
+    try {
+      const response = await apiConfig.put(
+        `/operator-tickets/submit/${encodeURIComponent(candidate)}`,
+        {
+          resolution_comment: payload?.resolution_comment ?? payload?.comment ?? "",
+          operator_comment:
+            payload?.operator_comment ?? payload?.resolution_comment ?? payload?.comment ?? "",
+          comment: payload?.comment ?? payload?.resolution_comment ?? "",
+        }
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!error?.response || ![400, 404].includes(error.response.status)) {
+        break;
+      }
+    }
   }
+
+  throw new Error(lastError?.response?.data?.message || "Failed to submit ticket.");
+};
+
+export const updateOperatorTicketStatus = async (ticketId, status) => {
+  const formattedId = String(ticketId || "").startsWith("#")
+    ? String(ticketId)
+    : `#${ticketId}`;
+  const encodedId = encodeURIComponent(formattedId);
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+
+  // Primary path for this backend: submit endpoint drives Open/Reopened -> In Progress.
+  if (
+    normalizedStatus === "in progress" ||
+    normalizedStatus === "submit" ||
+    normalizedStatus === "closed"
+  ) {
+    try {
+      const submitted = await submitOperatorTicket(formattedId, {
+        operator_comment: "Submitted from dashboard status update.",
+        comment: "Submitted from dashboard status update.",
+      });
+      return submitted;
+    } catch (_) {
+      // Fall through to legacy endpoint attempts below.
+    }
+  }
+
+  const requests = [
+    {
+      method: "put",
+      url: `/operator-tickets/submit/${encodedId}`,
+      data: {
+        operator_comment: "Submitted from dashboard status update.",
+        comment: "Submitted from dashboard status update.",
+      },
+    },
+    {
+      method: "patch",
+      url: `/operator-tickets/status/${encodedId}`,
+      data: { status },
+    },
+    {
+      method: "put",
+      url: `/operator-tickets/status/${encodedId}`,
+      data: { status },
+    },
+    {
+      method: "patch",
+      url: `/operator-tickets/${encodedId}/status`,
+      data: { status },
+    },
+    {
+      method: "put",
+      url: `/operator-tickets/${encodedId}/status`,
+      data: { status },
+    },
+    {
+      method: "patch",
+      url: `/operator-tickets/${encodedId}`,
+      data: { status },
+    },
+    {
+      method: "put",
+      url: `/operator-tickets/${encodedId}`,
+      data: { status },
+    },
+    {
+      method: "patch",
+      url: `/operator-tickets/update-status`,
+      data: { ticket_id: formattedId, status },
+    },
+    {
+      method: "put",
+      url: `/operator-tickets/update-status`,
+      data: { ticket_id: formattedId, status },
+    },
+    {
+      method: "post",
+      url: `/operator-tickets/update-status`,
+      data: { ticket_id: formattedId, status },
+    },
+    {
+      method: "patch",
+      url: `/operator-tickets/status`,
+      data: { ticket_id: formattedId, status },
+    },
+    {
+      method: "put",
+      url: `/operator-tickets/status`,
+      data: { ticket_id: formattedId, status },
+    },
+    {
+      method: "post",
+      url: `/operator-tickets/status`,
+      data: { ticket_id: formattedId, status },
+    },
+  ];
+
+  let lastError = null;
+  for (const request of requests) {
+    try {
+      const method = String(request.method || "patch").toLowerCase();
+      const response = await apiConfig[method](request.url, request.data, {
+        skipGlobalErrorModal: true,
+      });
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (error?.response?.status !== 404) {
+        throw new Error(
+          error?.response?.data?.message || "Failed to update ticket status."
+        );
+      }
+    }
+  }
+
+  throw new Error(
+    lastError?.response?.data?.message ||
+      lastError?.response?.data?.error ||
+      "Failed to update ticket status."
+  );
+};
+
+export const getOperatorTicketTimeline = async (ticketId) => {
+  const candidates = getTicketIdCandidates(ticketId);
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    try {
+      const response = await apiConfig.get(
+        `/operator-tickets/${encodeURIComponent(candidate)}/timeline`,
+        {},
+        { skipGlobalErrorModal: true }
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!error.response || ![400, 404].includes(error.response.status)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(getApiErrorMessage(lastError, "Failed to fetch ticket timeline."));
+};
+
+export const assignOperatorTicket = async (ticketId, userId) => {
+  const formattedId = String(ticketId || "").trim();
+  const response = await apiConfig.put(
+    `/operator-tickets/${encodeURIComponent(formattedId)}/assign`,
+    { user_id: userId }
+  );
+  return response?.data;
+};
+
+export const getOperatorWorkflowGuide = async () => {
+  const response = await apiConfig.get("/operator-tickets/workflow/guide");
+  return response?.data;
+};
+
+export const fetchThresholdApproverOptions = async () => {
+  const response = await apiConfig.get(
+    "/operator-tickets/thresholds/approver-options",
+    {},
+    { skipGlobalSuccessModal: true }
+  );
+  return response?.data || { l1_users: [], l2_users: [] };
+};
+
+export const saveThresholdsBulk = async (payload) => {
+  const response = await apiConfig.post("/operator-tickets/thresholds/bulk", payload || {});
+  return response?.data;
+};
+
+export const uploadThresholdCsv = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiConfig.post("/operator-tickets/thresholds/upload-csv", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response?.data;
+};
+
+export const runSubmissionFrequencyTatCheck = async () => {
+  const response = await apiConfig.post("/operator-tickets/submission-frequency/tat/check", {});
+  return response?.data;
 };

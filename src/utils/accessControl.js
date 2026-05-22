@@ -9,11 +9,12 @@ const normalizeName = (value) =>
 const FULL_ACCESS_EMPLOYEE_IDS = ["ADMIN001"].map((value) => normalizeName(value));
 const FULL_ACCESS_ROLE_NAMES = ["admin"].map((value) => normalizeName(value));
 const FULL_ACCESS_USER_NAMES = ["fazal"].map((value) => normalizeName(value));
-const SUPERVISOR_NAV_EMPLOYEE_IDS = [].map((value) => normalizeName(value));
 const DASHBOARD_MANAGER_EMPLOYEE_IDS = ["ADMIN001"].map((value) => normalizeName(value));
 
 const getEmployeeKey = (user) =>
   normalizeName(user?.employee_id || user?.employeeId || user?.emp_id || "");
+
+const isSupervisorEmployeeKey = (employeeKey) => /^sup\s*0*\d+$/.test(employeeKey);
 
 const getRoleKeys = (user) =>
   [
@@ -42,10 +43,16 @@ export const isFullAccessUser = (user) =>
   getNameKeys(user).some((name) => FULL_ACCESS_USER_NAMES.includes(name));
 
 export const isSupervisorNavUser = (user) =>
-  Boolean(getEmployeeKey(user)) && SUPERVISOR_NAV_EMPLOYEE_IDS.includes(getEmployeeKey(user));
+  isSupervisorEmployeeKey(getEmployeeKey(user));
 
 export const isDashboardManagerUser = (user) =>
   Boolean(getEmployeeKey(user)) && DASHBOARD_MANAGER_EMPLOYEE_IDS.includes(getEmployeeKey(user));
+
+export const getDefaultTicketingRoute = (user) =>
+  isSupervisorNavUser(user) ? "/supervisordashboard" : "/operator";
+
+export const getDefaultTicketingLabel = (user) =>
+  isSupervisorNavUser(user) ? "L2 Ticketing System" : "L1 Ticketing System";
 
 export const routeDepartmentMap = {
   "/mixing": "Mixing",
