@@ -44,7 +44,7 @@ const createDefaultForm = () => ({
 });
 
 const topFieldClass =
-  "w-full h-[38px] px-3 py-2 border border-[#dbe4f0] rounded-lg !bg-[#F8FAFC] text-[14px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors";
+  "w-full h-[38px] px-3 py-2 border border-[#dbe4f0] rounded-lg bg-[#F8FAFC] text-[14px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors";
 
 const fieldDefs = [
   { key: "machineNo", label: "Machine No." },
@@ -176,7 +176,7 @@ const SavedVersionsSection = ({
   loading,
   errorMessage,
 }) => (
-  <div>
+  <div className="process-parameter-history">
     {loading ? (
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
         Loading saved versions...
@@ -200,15 +200,15 @@ const SavedVersionsSection = ({
         const isActive = version.id === form.versionId;
 
         return (
-          <div key={version.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div key={version.id} className="process-version-card overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div
-              className={`grid w-full grid-cols-1 gap-3 px-4 py-3 transition-colors md:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_auto_auto] ${
+              className={`process-version-header grid w-full grid-cols-1 gap-3 px-4 py-3 transition-colors md:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_auto_auto] ${
                 isActive ? "bg-[#f8fbff]" : "bg-white hover:bg-slate-50"
               }`}
             >
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+                className="process-version-cell rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
                 onClick={() => onVersionSelect(version)}
               >
                 <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -221,7 +221,7 @@ const SavedVersionsSection = ({
 
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+                className="process-version-cell rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
                 onClick={() => onVersionSelect(version)}
               >
                 <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -234,7 +234,7 @@ const SavedVersionsSection = ({
 
               <button
                 type="button"
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+                className="process-version-cell rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
                 onClick={() => onVersionSelect(version)}
               >
                 <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -260,12 +260,12 @@ const SavedVersionsSection = ({
             </div>
 
             {isExpanded ? (
-              <div className="border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
+              <div className="process-version-body border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {fieldDefs.map((field) => (
                     <div
                       key={`${version.id}-${field.key}`}
-                      className="rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                      className="process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
                     >
                       <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                         {field.label}
@@ -532,7 +532,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
 
   return (
     <>
-      <div className="p-0">
+      <div className="process-parameter-form p-0">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2 min-w-0">
             <InspectionEntryIcon />

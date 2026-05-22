@@ -184,36 +184,18 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       </div>
       <section className={styles.analyticsWrap}>
         {mode === "L1" && (
-          <div style={{ margin: "8px 0 14px", display: "inline-flex", gap: 4, background: "#d7d7d7", padding: 3, borderRadius: 7 }}>
+          <div className={styles.analysisToggle}>
             <button
               type="button"
               onClick={() => setActiveSystem("threshold")}
-              style={{
-                height: 30,
-                border: "none",
-                borderRadius: 6,
-                padding: "0 16px",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-                background: activeSystem === "threshold" ? "#fff" : "transparent",
-              }}
+              className={`${styles.analysisToggleBtn} ${activeSystem === "threshold" ? styles.analysisToggleBtnActive : ""}`}
             >
               Threshold Ticketing Sys.
             </button>
             <button
               type="button"
               onClick={() => setActiveSystem("submission")}
-              style={{
-                height: 30,
-                border: "none",
-                borderRadius: 6,
-                padding: "0 16px",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-                background: activeSystem === "submission" ? "#fff" : "transparent",
-              }}
+              className={`${styles.analysisToggleBtn} ${activeSystem === "submission" ? styles.analysisToggleBtnActive : ""}`}
             >
               Submission Ticketing Sys.
             </button>

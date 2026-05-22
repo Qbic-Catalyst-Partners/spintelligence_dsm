@@ -12,6 +12,7 @@ import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
 import { clearComberState, submitComberUqc } from "@/store/slices/comber";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { useThemeMode } from "@/utils/useThemeMode";
 
 const comberDepartmentTypes = [
     {
@@ -36,6 +37,7 @@ function Comber() {
     const router = useRouter();
     const dispatch = useDispatch();
     const { data, isLoading, listLoading, uqcEntries = [] } = useSelector((state) => state.comber ?? {});
+    const { isDarkMode } = useThemeMode();
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const typeOptions = filterOptionsByDepartmentAccess(
@@ -44,6 +46,22 @@ function Comber() {
         user,
         "Comber"
     );
+
+    const entryTableTheme = {
+        surface: isDarkMode ? "#050505" : "#ffffff",
+        header: isDarkMode ? "#1f2937" : "#f4f6f8",
+        rowEven: isDarkMode ? "#111827" : "#ffffff",
+        rowOdd: isDarkMode ? "#0f172a" : "#fafafa",
+        border: isDarkMode ? "#374151" : "#e0e0e0",
+        cellBorder: isDarkMode ? "#374151" : "#eaeaea",
+        title: isDarkMode ? "#f8fafc" : "#333333",
+        headText: isDarkMode ? "#f8fafc" : "#444444",
+        text: isDarkMode ? "#f8fafc" : "#555555",
+        muted: isDarkMode ? "#9ca3af" : "#666666",
+        accent: isDarkMode ? "#60a5fa" : "#1976d2",
+    };
+
+
     const childRef = useRef(null);
     const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
     const [showSuccess, setShowSuccess] = useState(false);
@@ -205,10 +223,10 @@ function Comber() {
     <div
         style={{
             marginTop: "20px",
-            background: "#fff",
+            background: entryTableTheme.surface,
             borderRadius: "10px",
             padding: "16px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+            boxShadow: isDarkMode ? "0 0 0 rgba(0,0,0,0)" : "0 2px 8px rgba(0,0,0,0.06)",
             overflowX: "auto",
         }}
     >
@@ -217,7 +235,7 @@ function Comber() {
                 marginBottom: "12px",
                 fontSize: "18px",
                 fontWeight: "600",
-                color: "#333",
+                color: entryTableTheme.title,
             }}
         >
             Last 10 Entries
@@ -231,7 +249,7 @@ function Comber() {
                 minWidth: "900px",
             }}
         >
-            <thead style={{ backgroundColor: "#f4f6f8" }}>
+            <thead style={{ backgroundColor: entryTableTheme.header }}>
                 <tr>
                     {[
                         "Date",
@@ -251,8 +269,8 @@ function Comber() {
                                 padding: "12px 10px",
                                 textAlign: "left",
                                 fontWeight: "600",
-                                color: "#444",
-                                borderBottom: "2px solid #e0e0e0",
+                                color: entryTableTheme.headText,
+                                borderBottom: `2px solid ${entryTableTheme.border}`,
                                 whiteSpace: "nowrap",
                             }}
                         >
@@ -265,7 +283,7 @@ function Comber() {
             <tbody>
                 {listLoading ? (
                     <tr>
-                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                        <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted }}>
                             Loading...
                         </td>
                     </tr>
@@ -273,7 +291,7 @@ function Comber() {
                     <tr
                         key={entry.id}
                         style={{
-                            backgroundColor: i % 2 === 0 ? "#fff" : "#fafafa",
+                            backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
                         }}
                     >
                         {[
@@ -292,8 +310,8 @@ function Comber() {
                                 key={idx}
                                 style={{
                                     padding: "10px",
-                                    borderBottom: "1px solid #eaeaea",
-                                    color: idx === 5 ? "#1976d2" : "#555",
+                                    borderBottom: `1px solid ${entryTableTheme.cellBorder}`,
+                                    color: idx === 5 ? entryTableTheme.accent : entryTableTheme.text,
                                     fontWeight: idx === 5 ? "600" : "400",
                                 }}
                             >
@@ -303,7 +321,7 @@ function Comber() {
                     </tr>
                 )) : (
                     <tr>
-                        <td colSpan={10} style={{ padding: "14px", color: "#666" }}>
+                        <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted }}>
                             No entries found.
                         </td>
                     </tr>

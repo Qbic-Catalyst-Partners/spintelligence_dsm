@@ -458,6 +458,108 @@
   color: #ffffff;
 }
 
+:global(:root[data-theme="dark"]) .page {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .ticket-card,
+:global(:root[data-theme="dark"]) .timeline-card-wrap,
+:global(:root[data-theme="dark"]) .mobile-ticket-card,
+:global(:root[data-theme="dark"]) .popup-modal {
+  border-color: #5f5f5f;
+  background: #3b3b3b;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .ticket-id,
+:global(:root[data-theme="dark"]) .timeline-title,
+:global(:root[data-theme="dark"]) .timeline-content h4,
+:global(:root[data-theme="dark"]) .popup-modal h2,
+:global(:root[data-theme="dark"]) .popup-label,
+:global(:root[data-theme="dark"]) .breadcrumb-current {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .subtitle,
+:global(:root[data-theme="dark"]) .breadcrumb,
+:global(:root[data-theme="dark"]) .timeline-time,
+:global(:root[data-theme="dark"]) .timeline-content p,
+:global(:root[data-theme="dark"]) .popup-counter {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .table-shell,
+:global(:root[data-theme="dark"]) .table-row {
+  border-color: #4a4a4a;
+}
+
+:global(:root[data-theme="dark"]) .table-head,
+:global(:root[data-theme="dark"]) .table-row,
+:global(:root[data-theme="dark"]) .value-strong,
+:global(:root[data-theme="dark"]) .mobile-parameter-value {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .popup-overlay {
+  background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .popup-modal textarea {
+  border-color: #5f5f5f;
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .popup-close-btn,
+:global(:root[data-theme="dark"]) .cancel-btn {
+  border-color: #5f5f5f;
+  background: #242424;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .closed {
+  background: #1f7a3d;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .open {
+  background: #1d4f91;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .pending-approval,
+:global(:root[data-theme="dark"]) .reopened {
+  background: #8a6500;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .in-progress {
+  background: #036083;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .submit {
+  background: #5b21b6;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .unresolved,
+:global(:root[data-theme="dark"]) .high {
+  background: #b42318;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .medium {
+  background: #8a6500;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .low {
+  background: #1d4f91;
+  color: #ffffff;
+}
 
 @media (max-width: 900px) {
   .top-links,

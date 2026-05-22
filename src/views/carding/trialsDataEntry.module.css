@@ -162,6 +162,10 @@
   margin: 12px;
 }
 
+:global(:root[data-theme="dark"]) .cutsTitle {
+  color: #ffffff !important;
+}
+
 .cutsTop {
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
@@ -171,6 +175,14 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 20px;
+}
+
+:global(:root[data-theme="dark"]) .cutsTop,
+:global(:root[data-theme="dark"]) .cutsGrid,
+:global(:root[data-theme="dark"]) .parameterCard,
+:global(:root[data-theme="dark"]) .cardBox {
+  background: #000000 !important;
+  border-color: #3b3b3b !important;
 }
 
 .cutsTop input {

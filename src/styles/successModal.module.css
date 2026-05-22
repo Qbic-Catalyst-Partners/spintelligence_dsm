@@ -80,3 +80,24 @@
 .button:hover {
   background: #2f4084;
 }
+
+:global(:root[data-theme="dark"]) .overlay {
+  background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .modal {
+  background: #181818;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .message {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .typePill,
+:global(:root[data-theme="dark"]) .button {
+  background: #3d539f;
+  color: #ffffff;
+}

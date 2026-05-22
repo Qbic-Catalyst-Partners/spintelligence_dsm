@@ -10,12 +10,12 @@ import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidat
 const today = new Date().toISOString().split("T")[0];
 
 const topFieldClass =
-  "w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
+  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
 
 const compactSelectClass = "";
 
 const tableInputClass =
-  "w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
+  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
 
 const countNameOptions = [
   "10 GRC POLY 40D SPX 8/2 YARN CONES",
@@ -357,7 +357,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
       </button>
 
       {openDropdown === field ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-[10px] border border-slate-200 bg-white py-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
+        <div className="autoconer-menu absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-[10px] border border-slate-200 bg-white py-1 shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
           <button
             type="button"
             className="block w-full px-3 py-2 text-left text-[14px] text-slate-400 hover:bg-slate-50"

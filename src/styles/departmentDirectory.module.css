@@ -177,6 +177,55 @@
     font-size: 16px;
 }
 
+:global(:root[data-theme="dark"]) .homeTopbar {
+    border-bottom-color: #5f5f5f;
+    background: #181818;
+}
+
+:global(:root[data-theme="dark"]) .homeBrand {
+    border-right-color: #5f5f5f;
+    background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .homeWelcome {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .topbarIconButton {
+    background: transparent !important;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .topbarIconButton svg {
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sidebar {
+    border-right-color: #5f5f5f;
+    background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .sidebarToggle {
+    border-color: #5f5f5f;
+    background: #242424;
+    color: #ffffff;
+    box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .sidebarLink {
+    color: #d1d5db;
+}
+
+:global(:root[data-theme="dark"]) .sidebarLinkActive {
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .sidebarIcon {
+    color: #ffffff;
+    background: transparent !important;
+}
+
 .dashboardMain {
     width: 100%;
     max-width: 100%;
@@ -288,12 +337,12 @@
 }
 
 .referenceStatCard {
-    min-height: 164px;
+    min-height: 136px;
     border: 1px solid #cfd5de;
     border-radius: 14px;
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-    padding: 20px 22px;
+    padding: 16px 18px 12px;
     box-sizing: border-box;
 }
 
@@ -327,12 +376,12 @@
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    width: 60px;
-    height: 60px;
-    border-radius: 14px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     background: #e9efff;
     color: #2f5fbf !important;
-    font-size: 28px !important;
+    font-size: 20px !important;
     margin-top: 0 !important;
 }
 
@@ -341,7 +390,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 10px;
-    margin-top: 18px;
+    margin-top: 12px;
 }
 
 .referenceStatBottom strong {
@@ -357,8 +406,8 @@
     align-items: center;
     gap: 2px;
     border-radius: 8px;
-    background: #edf0f5;
-    padding: 4px;
+    background: #edf0f6;
+    padding: 4px 5px;
 }
 
 .referenceMiniToggle {
@@ -382,24 +431,24 @@
 }
 
 .referenceModeToggle button {
-    min-width: 44px;
-    height: 26px;
+    min-width: 46px;
+    height: 28px;
     font-size: 11px;
 }
 
 .referenceMiniToggleActive,
 .referenceModeToggleActive {
-    background: #425ba8 !important;
+    background: #2563eb !important;
     color: #ffffff !important;
 }
 
 .referenceChartCard {
     width: 100%;
-    border: 1px solid #e0e4ec;
-    border-radius: 7px;
+    border: 1px solid #d8e0ec;
+    border-radius: 12px;
     background: #ffffff;
-    padding: 20px 24px 22px;
-    box-shadow: 0 8px 22px rgba(16, 24, 40, 0.04);
+    padding: 16px 18px 14px;
+    box-shadow: 0 8px 22px rgba(31, 42, 68, 0.08);
     box-sizing: border-box;
 }
 
@@ -417,15 +466,15 @@
 
 .referenceChartHeader h2 {
     margin: 0;
-    color: #111827;
-    font-size: 15px;
+    color: #1f2a44;
+    font-size: 16px;
     line-height: 19px;
     font-weight: 700;
 }
 
 .referenceChartHeader span {
     display: block;
-    color: #4f5b70;
+    color: #5d6b83;
     font-size: 12px;
     line-height: 16px;
     font-weight: 500;
@@ -532,15 +581,15 @@
     flex-direction: column;
     justify-content: space-between;
     padding-bottom: 4px;
-    color: #344054;
+    color: #a8b7cd;
     font-size: 12px;
     font-weight: 800;
 }
 
 .referenceLinePlot {
     position: relative;
-    border-left: 1px solid #e3e7ef;
-    border-bottom: 1px solid #e3e7ef;
+    border-left: 1px solid #d7dfea;
+    border-bottom: 1px solid #d7dfea;
 }
 
 .referenceLinePlot::before {
@@ -551,7 +600,7 @@
         to bottom,
         transparent,
         transparent 78px,
-        #e8ebf2 79px
+        rgba(154, 170, 192, 0.24) 79px
     );
 }
 
@@ -569,7 +618,7 @@
 
 .referenceLinePlot polyline {
     fill: none;
-    stroke: #425ba8;
+    stroke: #3b73d9;
     stroke-width: 3.5;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -580,7 +629,7 @@
     position: absolute;
     width: 11px;
     height: 11px;
-    border: 3px solid #425ba8;
+    border: 3px solid #3b73d9;
     border-radius: 999px;
     background: #ffffff;
     transform: translate(-50%, -50%);
@@ -592,7 +641,7 @@
     position: relative;
     min-height: 20px;
     padding-top: 17px;
-    color: #344054;
+    color: #a8b7cd;
     font-size: 11px;
     font-weight: 700;
 }
@@ -603,6 +652,77 @@
     transform: translateX(-50%);
     white-space: nowrap;
     text-align: center;
+}
+
+:global(:root[data-theme="dark"]) .dashboardViewingPill,
+:global(:root[data-theme="dark"]) .dashboardViewingPill b,
+:global(:root[data-theme="dark"]) .dashboardViewingPill span {
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .dashboardViewingPill {
+    background: #3b3b3b !important;
+    border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceStatCard,
+:global(:root[data-theme="dark"]) .referenceChartCard {
+    background: #3b3b3b !important;
+    border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceStatIcon {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceMiniToggle,
+:global(:root[data-theme="dark"]) .referenceModeToggle {
+    background: #3b3b3b !important;
+    border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceMiniToggle button,
+:global(:root[data-theme="dark"]) .referenceModeToggle button,
+:global(:root[data-theme="dark"]) .referenceMiniToggleActive,
+:global(:root[data-theme="dark"]) .referenceModeToggleActive {
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceMiniToggleActive,
+:global(:root[data-theme="dark"]) .referenceModeToggleActive {
+    background: #2563eb !important;
+    box-shadow: inset 0 0 0 1px #3b82f6;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot polygon {
+    fill: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot {
+    background: transparent !important;
+    border-color: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot::before {
+    background: none !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot svg {
+    background: transparent !important;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePlot polyline {
+    stroke: #3b73d9 !important;
+    stroke-width: 2;
+}
+
+:global(:root[data-theme="dark"]) .referenceLinePoint {
+    display: none;
+}
+
+:global(:root[data-theme="dark"]) .referenceLegend i {
+    background: #3b73d9 !important;
 }
 
 .dashboardMockHeader {
@@ -1749,6 +1869,11 @@
     font-weight: 500;
 }
 
+.builderAddModalGrid select:focus {
+    outline: none;
+    border-color: #4965b7;
+}
+
 .ticketTimelineGroup {
     grid-column: span 2;
     margin-bottom: 16px;
@@ -1858,6 +1983,65 @@
     min-width: 136px;
     border: 1px solid #425ba8;
     background: #425ba8;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .addWidgetButton {
+    border-color: #3b3b3b;
+    background: #3b3b3b;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+:global(:root[data-theme="dark"]) .builderModalOverlay {
+    background: rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .builderAddModal {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #181818;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.46);
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalHeader h2,
+:global(:root[data-theme="dark"]) .ticketCardOptionName {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalHeader p,
+:global(:root[data-theme="dark"]) .ticketCardOptionDescription {
+    color: #b9c0cc;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalGrid label {
+    color: #e5e7eb;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalGrid select {
+    border-color: #4a4a4a;
+    background: #2a2a2a;
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .builderAddModalGrid select:focus {
+    border-color: #7b8798;
+}
+
+:global(:root[data-theme="dark"]) .ticketCardOptionRow {
+    border-color: #4a4a4a;
+    background: #242424;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+:global(:root[data-theme="dark"]) .builderModalCancel {
+    border-color: #5d6570;
+    background: #242424;
+    color: #f3f4f6;
+}
+
+:global(:root[data-theme="dark"]) .builderModalSubmit {
+    border-color: #3b3b3b;
+    background: #3b3b3b;
     color: #ffffff;
 }
 
@@ -2479,8 +2663,8 @@
 }
 
 .activeCard:hover {
-    border-color: #b9d6f5;
-    background: #fbfdff;
+    border-color: #dbe7f4 !important;
+    background: #ffffff !important;
 }
 
 .activeCard:hover .cardLabel,
@@ -2489,11 +2673,25 @@
 }
 
 .activeCard:hover .iconWrap {
-    background: #eef2ff;
+    background: transparent;
     color: #4965b7;
 }
 
 .activeCard:hover::after {
+    background: linear-gradient(90deg, rgba(25, 127, 230, 0.18) 0%, #197fe6 50%, rgba(25, 127, 230, 0.18) 100%);
+}
+
+.noHoverCard:hover {
+    border-color: #dbe7f4 !important;
+    background: #ffffff !important;
+}
+
+.noHoverCard:hover .cardLabel,
+.noHoverCard:hover .cardMeta {
+    color: inherit;
+}
+
+.noHoverCard:hover::after {
     background: linear-gradient(90deg, rgba(25, 127, 230, 0.18) 0%, #197fe6 50%, rgba(25, 127, 230, 0.18) 100%);
 }
 
@@ -2522,29 +2720,29 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     flex-shrink: 0;
 }
 
 .quality-control {
-    background: #eef2ff;
+    background: transparent;
     color: #4965b7;
 }
 
 .electrical {
-    background: #edf2ff;
-    color: #9eb2db;
+    background: transparent;
+    color: #5a6f98;
 }
 
 .mechanical {
-    background: #edf2ff;
-    color: #9eb2db;
+    background: transparent;
+    color: #5a6f98;
 }
 
 .icon {
-    font-size: 11px;
+    font-size: 20px;
 }
 
 .cardContent {
@@ -2581,13 +2779,45 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 25px;
-    height: 25px;
-    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     background: #eef2ff;
     color: #4965b7;
     flex-shrink: 0;
-    font-size: 11px;
+    font-size: 20px;
+}
+
+.subCardEnabled .subCardArrow,
+.subCardEnabled:hover .subCardArrow {
+    background: #eef2ff;
+    color: #4965b7;
+}
+
+:global(:root[data-theme="dark"]) .iconWrap,
+:global(:root[data-theme="dark"]) .quality-control,
+:global(:root[data-theme="dark"]) .electrical,
+:global(:root[data-theme="dark"]) .mechanical,
+:global(:root[data-theme="dark"]) .activeCard:hover .iconWrap,
+:global(:root[data-theme="dark"]) .disabledCard .iconWrap {
+    background: transparent !important;
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .subCardArrow,
+:global(:root[data-theme="dark"]) .subCard .subCardArrow,
+:global(:root[data-theme="dark"]) .subCardEnabled .subCardArrow,
+:global(:root[data-theme="dark"]) .subCardEnabled:hover .subCardArrow,
+:global(:root[data-theme="dark"]) .disabledCard.subCard .subCardArrow {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .iconWrap svg,
+:global(:root[data-theme="dark"]) .subCardArrow svg {
+    color: #ffffff !important;
+    fill: currentColor;
+    stroke: currentColor;
 }
 
 .subCardTop {
@@ -2628,8 +2858,8 @@
 
 .subCardEnabled:hover {
     transform: none;
-    border-color: #b9d6f5;
-    background: #fbfdff;
+    border-color: #e2e8f0 !important;
+    background: #ffffff !important;
 }
 
 .subCardEnabled:hover .subCardLabel,
@@ -2637,6 +2867,16 @@
 .subCardEnabled:hover .subCardStats strong,
 .subCardEnabled:hover .subCardStats span {
     color: inherit;
+}
+
+/* Force-remove department card hover visual changes */
+.card:hover,
+.subCard:hover,
+.activeCard:hover,
+.subCardEnabled:hover {
+    box-shadow: none !important;
+    transform: none !important;
+    filter: none !important;
 }
 
 .disabledCard.subCard {
@@ -2654,8 +2894,13 @@
 }
 
 .disabledCard.subCard .subCardArrow {
-    background: rgba(148, 163, 184, 0.16);
-    color: #8a98aa;
+    background: #eef2ff;
+    color: #4965b7;
+}
+
+:global(:root[data-theme="dark"]) .disabledCard.subCard .subCardArrow {
+    background: #3b3b3b !important;
+    color: #ffffff !important;
 }
 
 .subCardEnabled .subCardLabel {

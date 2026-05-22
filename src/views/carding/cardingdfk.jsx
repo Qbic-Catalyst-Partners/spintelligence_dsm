@@ -178,6 +178,21 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
       }))
     ),
   ];
+  const typeSelectStyle = {
+    background: "#f1f5f9",
+    backgroundColor: "#f1f5f9",
+    backgroundImage: "var(--dfk-type-select-arrow)",
+    backgroundClip: "padding-box",
+    backgroundPosition: "right 12px center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "18px 18px",
+    borderColor: "#e2e8f0",
+    color: "#334155",
+    WebkitTextFillColor: "#334155",
+    boxShadow: "none",
+    paddingRight: "38px",
+  };
+
   return (
     <>
       <div className={styles.dfkForm}>
@@ -187,11 +202,12 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
             <select
               value={selectedType || DFK_TYPE}
               onChange={(event) => handleTypeSelect(event.target.value)}
-              className={errors.selectedType ? styles.fieldError : ""}
+              className={`dfk-type-select ${styles.dfkTypeSelect}${errors.selectedType ? ` ${styles.fieldError}` : ""}`}
+              style={typeSelectStyle}
             >
-              <option value="">Select Type</option>
+              <option value="" style={typeSelectStyle}>Select Type</option>
               {types.map((item) => (
-                <option key={item.id} value={item.name}>
+                <option key={item.id} value={item.name} style={typeSelectStyle}>
                   {item.displayName ?? item.name}
                 </option>
               ))}

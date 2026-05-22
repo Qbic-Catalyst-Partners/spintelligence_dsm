@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { IoTime, IoChevronBackSharp } from "react-icons/io5";
+import { IoTimeSharp } from "react-icons/io5";
 import styles from "../../styles/SupervisorDetails.module.css";
-import Link from "next/link";
 import { useDispatch, useSelector } from "react-redux";
 import {
   approveTicket,
@@ -238,7 +237,14 @@ export default function SupervisorDetails() {
         
 
         <div className={styles.breadcrumb}>
-          <Link href="/supervisordashboard">Tickets</Link> &gt;{" "}
+          <button
+            type="button"
+            onClick={() => router.back()}
+            style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", color: "inherit", font: "inherit" }}
+          >
+            Tickets
+          </button>{" "}
+          &gt;{" "}
           <span className={styles.current}>
             Review Ticket {displayTicketId}
           </span>
@@ -382,7 +388,7 @@ export default function SupervisorDetails() {
         <div className={styles.bottom}>
           <div className={styles.timeline}>
             <div className={styles.timelineHeader}>
-              <IoTime />
+              <IoTimeSharp />
               <h3>Activity Timeline</h3>
             </div>
 
@@ -429,13 +435,6 @@ export default function SupervisorDetails() {
       <div className={styles.mobileContainer}>
         <div className={styles.ticketTop}>
           <div className={styles.left}>
-            <span
-              className={styles.back}
-              onClick={() => router.push("/supervisordashboard")}
-            >
-              <IoChevronBackSharp />
-            </span>
-
             <div>
               <strong>{displayTicketId}</strong>
               <span className={`${styles.status} ${statusClassName}`}>Status: {getSupervisorStatusLabel(ticket.status)}</span>
@@ -503,7 +502,7 @@ export default function SupervisorDetails() {
 
         <div className={styles.timelineCard}>
           <div className={styles.timelineHeader}>
-            <IoTime />
+            <IoTimeSharp />
             <h3>Activity Timeline</h3>
           </div>
 

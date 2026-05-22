@@ -74,13 +74,29 @@
 }
 
 .primary-btn {
-  background: #3f5db6;
-  color: #ffffff;
-  border-color: #3f5db6;
+  background: #3D539F !important;
+  color: #ffffff !important;
+  border-color: #3D539F !important;
 }
 
 .primary-btn:hover {
-  background: #3550a4;
+  background: #2F4180 !important;
+  color: #ffffff !important;
+  border-color: #2F4180 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.primary-btn),
+:global(html[data-theme="dark"]) :local(.primary-btn),
+:global(body[data-theme="dark"]) :local(.primary-btn),
+:global(:root[data-theme="dark"]) :local(.primary-btn:hover),
+:global(html[data-theme="dark"]) :local(.primary-btn:hover),
+:global(body[data-theme="dark"]) :local(.primary-btn:hover),
+:global(:root[data-theme="dark"]) :local(.primary-btn:focus),
+:global(html[data-theme="dark"]) :local(.primary-btn:focus),
+:global(body[data-theme="dark"]) :local(.primary-btn:focus) {
+  background: #3D539F !important;
+  color: #ffffff !important;
+  border-color: #3D539F !important;
 }
 
 .secondary-btn:hover,

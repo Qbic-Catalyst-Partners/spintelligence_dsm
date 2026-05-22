@@ -257,7 +257,7 @@ export default function operatorboard() {
                         className={styles["mobile-filter-btn"]}
                         onClick={() => setShowMobileFilter(true)}
                     >
-                        <img src="/filter.png" alt="filter" className={styles["filter-icon-img"]} />Filter
+                        <MdFilterList className={styles["filter-icon-img"]} />Filter
                     </button>
                 </div>
             </div>

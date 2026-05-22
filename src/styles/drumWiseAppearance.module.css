@@ -259,6 +259,65 @@
   }
 }
 
+:global(:root[data-theme="dark"]) :local(.field) label,
+:global(:root[data-theme="dark"]) :local(.remarksBlock) label,
+:global(:root[data-theme="dark"]) :local(.drumNo) {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) input,
+:global(:root[data-theme="dark"]) :local(.field) select,
+:global(:root[data-theme="dark"]) :local(.remarksBlock) textarea,
+:global(:root[data-theme="dark"]) :local(.table),
+:global(:root[data-theme="dark"]) :local(.table th),
+:global(:root[data-theme="dark"]) :local(.table td),
+:global(:root[data-theme="dark"]) :local(.summaryCard),
+:global(:root[data-theme="dark"]) :local(.toggleBtn),
+:global(:root[data-theme="dark"]) :local(.backBtn),
+:global(:root[data-theme="dark"]) :local(.clearBtn) {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.active) {
+  background: #2c5282 !important;
+  color: #f8fafc !important;
+  border-color: #2c5282 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.tableCard) {
+  background: #0f172a;
+}
+
+:global(:root[data-theme="dark"]) :local(.tableCard) h4 {
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) input,
+:global(:root[data-theme="dark"]) :local(.field) select,
+:global(:root[data-theme="dark"]) :local(.remarksBlock) textarea,
+:global(:root[data-theme="dark"]) :local(.table),
+:global(:root[data-theme="dark"]) :local(.table th),
+:global(:root[data-theme="dark"]) :local(.table td),
+:global(:root[data-theme="dark"]) :local(.summaryCard),
+:global(:root[data-theme="dark"]) :local(.toggleBtn),
+:global(:root[data-theme="dark"]) :local(.backBtn),
+:global(:root[data-theme="dark"]) :local(.clearBtn) {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.field) label,
+:global(:root[data-theme="dark"]) :local(.remarksBlock) label,
+:global(:root[data-theme="dark"]) :local(.drumNo),
+:global(:root[data-theme="dark"]) :local(.appearanceHeader),
+:global(:root[data-theme="dark"]) :local(.summaryCard) h4 {
+  color: #ffffff !important;
+}
+
 @media (max-width: 640px) {
   .formGrid,
   .doubleField,
