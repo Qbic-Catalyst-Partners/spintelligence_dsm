@@ -154,13 +154,28 @@
 }
 
 .confirm {
-  background: #3d539f;
+  background: #2563eb;
   color: #fff;
-  border: 1px solid #d0e2f4;
+  border: 1px solid #2563eb;
 }
 
 .confirm:hover {
-  background: #2f4084;
+  background: #1d4ed8;
+}
+
+:global(:root[data-theme="dark"]) .confirm,
+:global(html[data-theme="dark"]) .confirm,
+:global(body[data-theme="dark"]) .confirm {
+  background: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .confirm:hover,
+:global(html[data-theme="dark"]) .confirm:hover,
+:global(body[data-theme="dark"]) .confirm:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
 }
 
 @media (max-width: 768px) {

@@ -23,7 +23,7 @@ export default function InputScreenUploadButton({
       type="button"
       disabled={disabled}
       onClick={handleClick}
-      className={`inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#3f5db6] bg-[#3f5db6] px-3 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-[#3550a4] disabled:cursor-not-allowed disabled:opacity-60 ${className}`.trim()}
+      className={`upload-btn inline-flex h-9 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#3D539F] bg-[#3D539F] px-3 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-[#2F4180] dark:border-[#3D539F] dark:bg-[#3D539F] dark:text-white dark:hover:bg-[#2F4180] disabled:cursor-not-allowed disabled:opacity-60 ${className}`.trim()}
     >
       <FiUpload aria-hidden="true" />
       Upload

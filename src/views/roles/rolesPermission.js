@@ -207,17 +207,21 @@ export default function RolesPermissions() {
                     </div>
 
                     <div className={styles["filter-right"]}>
-                        <select value={selectedRoleFilter} onChange={(e) => setSelectedRoleFilter(e.target.value)}>
-                            <option value="">Role</option>
-                            {roleFilterOptions.map((roleName) => (
-                                <option key={roleName} value={roleName}>{roleName}</option>
-                            ))}
-                        </select>
-                        <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
-                            <option value="">Status</option>
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
-                        </select>
+                        <div className={styles["filter-select-wrapper"]}>
+                            <select value={selectedRoleFilter} onChange={(e) => setSelectedRoleFilter(e.target.value)}>
+                                <option value="">Role</option>
+                                {roleFilterOptions.map((roleName) => (
+                                    <option key={roleName} value={roleName}>{roleName}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className={styles["filter-select-wrapper"]}>
+                            <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                                <option value="">Status</option>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
                         <button
                             className={styles["clear-Btn"]} onClick={handleClearFilters}>
                             <FiX className={styles["clearSvgIcon"]} />

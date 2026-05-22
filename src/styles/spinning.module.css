@@ -620,6 +620,27 @@
   margin-top: 4px;
 }
 
+:global(:root[data-theme="dark"]) :local(.segmentedControl) {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.segmentButton) {
+  background: transparent !important;
+  color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.segmentButtonActive) {
+  background: #4965b7 !important;
+  color: #ffffff !important;
+  border: 1px solid #4965b7 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.segmented-error) {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.28) !important;
+}
+
 
 
 /* ================= TABLET VIEW FIX ================= */

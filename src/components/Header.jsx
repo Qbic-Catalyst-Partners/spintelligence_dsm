@@ -137,11 +137,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         }
 
         if (link.section === "settings") {
-            return hasFullAccess || visibleHrefSet.has("/settings");
+            return hasFullAccess;
         }
 
         if (link.section === "thresholds") {
-            return hasFullAccess || visibleHrefSet.has("/threshold-values");
+            return hasFullAccess;
         }
 
         if (link.section === "reports") {
@@ -153,13 +153,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
+    const currentPath = router.asPath?.split("?")[0] || router.pathname;
+    const backTarget = null;
 
     const isActiveLink = (href) => {
         if (!href) {
             return false;
         }
-
-        const currentPath = router.asPath?.split("?")[0] || router.pathname;
 
         if (href === "/departments") {
             return currentPath === "/departments";
@@ -199,13 +199,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     };
 
     const handleDepartmentsClick = () => {
-        setIsDepartmentMenuOpen((isOpen) => {
-            const nextIsOpen = !isOpen;
-            if (nextIsOpen && router.asPath?.split("?")[0] !== "/departments/quality-control") {
-                router.push("/departments/quality-control");
-            }
-            return nextIsOpen;
-        });
+        setIsDepartmentMenuOpen((isOpen) => !isOpen);
     };
 
     const handleSettingsClick = () => {

@@ -384,7 +384,7 @@
   background: white;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #cfe0ff;
   margin-bottom: 16px;
 }
 
@@ -394,8 +394,8 @@
   display: flex;
   align-items: center;
 
-  background: #F8FAFC;
-  border: 1px solid #E5E7EB;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
 
   flex: 1 1 320px;
@@ -436,7 +436,7 @@
   height: 40px;
   padding: 0 14px;
 
-  border: 1px solid #E5E7EB;
+  border: 1px solid #e2e8f0;
 
   border-radius: 8px;
 
@@ -463,6 +463,13 @@
 
 }
 
+.filter-select-wrapper {
+  width: 170px;
+  position: relative;
+  flex: 0 1 170px;
+  min-width: 0;
+}
+
 .status {
   padding: 4px 12px;
   border-radius: 999px;
@@ -484,15 +491,16 @@
 }
 
 .filter-right select {
-  width: 170px;
+  width: 100%;
   height: 40px;
   padding: 0 38px 0 14px;
   border-radius: 8px;
-  background: #f8fafc;
-  color: #8e8e8e;
+  background: #ffffff;
+  color: #0f172a;
   font-size: 14px;
   font-weight: 600;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
+  appearance: none;
   cursor: pointer;
 }
 
@@ -502,7 +510,7 @@
 .table-card {
   background: #ffffff;
   border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #cfe0ff;
   overflow-x: auto;
 
 }
@@ -517,27 +525,27 @@
 /* TABLE HEADER */
 .roles-table thead th {
   text-align: left;
-  padding: 14px 16px;
-  font-size: 12px;
+  padding: 14px 20px;
+  font-size: 14px;
   font-weight: 700;
-  height: 60px;
-  color: #64748b;
-  background: #f8fafc;
-  border-bottom: 1px solid #e5e7eb;
+  height: 56px;
+  color: #2f3b52;
+  background: #d0e2f4;
+  border-bottom: 1px solid #cfe0ff;
 }
 
 /* TABLE BODY */
 .roles-table tbody td {
   cursor: pointer;
-  padding: 18px 16px;
+  padding: 18px 20px;
   font-size: 14px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #e0ecff;
   vertical-align: middle;
   background: #ffffff;
 }
 
 .roles-table tbody tr:hover td {
-  background: #f1f5f9;
+  background: #f8fbff;
   color: #0f172a;
 }
 
@@ -921,7 +929,7 @@
     gap: 10px;
   }
 
-  .filter-right select {
+  .filter-select-wrapper {
     width: 100%;
   }
 
@@ -948,6 +956,7 @@
 :global(:root[data-theme="dark"]) .stat-card,
 :global(:root[data-theme="dark"]) .Filter-bar,
 :global(:root[data-theme="dark"]) .Search-box,
+:global(:root[data-theme="dark"]) .filter-select-wrapper,
 :global(:root[data-theme="dark"]) .clear-Btn,
 :global(:root[data-theme="dark"]) .filter-right select,
 :global(:root[data-theme="dark"]) .table-card,
@@ -986,20 +995,28 @@
 }
 
 :global(:root[data-theme="dark"]) .Search-box,
+:global(:root[data-theme="dark"]) .filter-select-wrapper,
 :global(:root[data-theme="dark"]) .filter-right select,
 :global(:root[data-theme="dark"]) .clear-Btn {
   background: #3b3b3b !important;
   background-color: #3b3b3b !important;
+  border: 1px solid #5f5f5f !important;
   border-color: #5f5f5f !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
 }
 
+:global(:root[data-theme="dark"]) .filter-select-wrapper {
+  border-radius: 8px;
+}
+
 :global(:root[data-theme="dark"]) .filter-right select {
-  width: 170px !important;
+  width: 100% !important;
   height: 40px !important;
   padding: 0 38px 0 14px !important;
   border-radius: 8px !important;
+  border: 1px solid #5f5f5f !important;
+  background: #3b3b3b !important;
   box-shadow: none !important;
 }
 
@@ -1035,6 +1052,16 @@
 
 :global(:root[data-theme="dark"]) .action-menu p:hover {
   background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .table-card,
+:global(:root[data-theme="dark"]) .roles-table,
+:global(:root[data-theme="dark"]) .roles-table tbody tr,
+:global(:root[data-theme="dark"]) .roles-table thead th,
+:global(:root[data-theme="dark"]) .roles-table tbody td,
+:global(:root[data-theme="dark"]) .table-footer {
+  background: #000000 !important;
+  background-color: #000000 !important;
 }
 
 :global(:root[data-theme="dark"]) .delete-overlay {

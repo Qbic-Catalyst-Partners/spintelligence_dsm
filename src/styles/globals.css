@@ -450,7 +450,6 @@ body {
   [class*="timeIconButton" i]
 ) :is(svg, svg *) {
   color: #ffffff !important;
-  fill: currentColor;
   stroke: currentColor;
 }
 
@@ -676,4 +675,127 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
 :root[data-theme="dark"] .app-shell-content .autoconer-menu button:hover {
   background: #242424 !important;
   background-color: #242424 !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content,
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content > :is(div, section, article),
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content :is(
+  [class*="page" i],
+  [class*="container" i],
+  [class*="wrapper" i],
+  [class*="content" i],
+  [class*="main" i],
+  .bg-white,
+  .bg-slate-50,
+  .bg-slate-100,
+  [class*="card" i],
+  [class*="panel" i],
+  [class*="table" i],
+  [class*="form" i],
+  [class*="section" i]
+) {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  border-color: #2b2b2b !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content :is(
+  input,
+  select,
+  textarea,
+  option,
+  [role="combobox"],
+  [role="listbox"],
+  [role="option"],
+  [class*="select" i],
+  [class*="dropdown" i],
+  [class*="picker" i]
+) {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Final hard overrides for consistent dark mode across all department input screens. */
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content :is(
+  [role="switch"],
+  [aria-pressed="true"],
+  [aria-pressed="false"],
+  [class*="toggle" i],
+  [class*="switch" i],
+  [class*="slider" i],
+  .toggleBtn,
+  .backBtn,
+  .clearBtn
+) {
+  background: #000000 !important;
+  background-color: #000000 !important;
+  border-color: #000000 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content :is(
+  label,
+  p,
+  span,
+  th,
+  td,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  [class*="text-" i],
+  [class*="label" i],
+  [class*="title" i],
+  [class*="heading" i],
+  [class*="value" i]
+) {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content :is(
+  input,
+  select,
+  textarea
+)[style*="background" i],
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content :is(
+  input,
+  select,
+  textarea
+)[style*="background-color" i] {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+/* Keep OCR upload button blue across all screens/themes. */
+.upload-btn,
+.upload-btn:hover,
+.upload-btn:focus {
+  background: #3D539F !important;
+  background-color: #3D539F !important;
+  border-color: #3D539F !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .upload-btn,
+:root[data-theme="dark"] .upload-btn:hover,
+:root[data-theme="dark"] .upload-btn:focus,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .upload-btn,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .upload-btn:hover,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .upload-btn:focus {
+  background: #3D539F !important;
+  background-color: #3D539F !important;
+  border-color: #3D539F !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }

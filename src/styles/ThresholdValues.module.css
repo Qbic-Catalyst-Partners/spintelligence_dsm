@@ -114,12 +114,12 @@
 
 .statIcon.activeTone {
     background: #dcfce7;
-    color: #15803d;
+    color: #16a34a;
 }
 
 .statIcon.inactiveTone {
-    background: #e5e7eb;
-    color: #475569;
+    background: #fee2e2;
+    color: #dc2626;
 }
 
 .stack {
@@ -398,7 +398,7 @@
 
 .saveButton {
     border: none;
-    background: #4f63b6;
+    background: #3d539f;
     color: #ffffff;
     padding: 0 16px;
 }
@@ -477,8 +477,8 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: center;
-    text-align: center;
+    align-items: flex-start;
+    text-align: left;
 }
 
 .summaryCard span {
@@ -493,7 +493,7 @@
     display: block;
     margin-top: 8px;
     color: #1e293b;
-    font-size: 40px;
+    font-size: 18px;
     font-weight: 700;
 }
 
@@ -871,6 +871,25 @@
     color: #ffffff;
 }
 
+:global(:root[data-theme="dark"]) .statIcon.activeTone,
+:global(body[data-theme="dark"]) .statIcon.activeTone {
+    background: #14532d;
+    color: #86efac;
+}
+
+:global(:root[data-theme="dark"]) .statIcon.inactiveTone,
+:global(body[data-theme="dark"]) .statIcon.inactiveTone {
+    background: #7f1d1d;
+    color: #fecaca;
+}
+
+:global(:root[data-theme="dark"]) .statIcon.blue,
+:global(body[data-theme="dark"]) .statIcon.blue,
+:global([data-theme="dark"]) .statIcon.blue {
+    background: #1e3a8a;
+    color: #bfdbfe;
+}
+
 :global(:root[data-theme="dark"]) .field select,
 :global(:root[data-theme="dark"]) .field input,
 :global(:root[data-theme="dark"]) .statusField select,
@@ -914,10 +933,16 @@
 }
 
 :global(:root[data-theme="dark"]) .addIconButton,
-:global(:root[data-theme="dark"]) .saveButton,
 :global(:root[data-theme="dark"]) .paginationNumberActive {
     border: 1px solid #3b3b3b;
     background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .saveButton,
+:global(body[data-theme="dark"]) .saveButton {
+    border: 1px solid #334a93;
+    background: #3d539f;
     color: #ffffff;
 }
 

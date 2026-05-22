@@ -142,6 +142,16 @@ export default function EditUser() {
       <div className={styles.wrapper}>
         {/* HEADER */}
         <div className={styles.content}>
+          <button
+            type="button"
+            className={styles.backBtn}
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push("/usermanagement");
+            }}
+          >
+            ← Back
+          </button>
           <div className={styles.header}>
             <div>
               <h1>Edit Employee Account</h1>

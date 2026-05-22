@@ -14,6 +14,8 @@ import { hasReportAccess, hasRouteAccess, isFullAccessUser, routeDepartmentMap }
 import { store } from '../store';
 import "../styles/globals.css";
 
+const THEME_STORAGE_KEY = "spintelligence-theme";
+
 function AppShell({ Component, pageProps }) {
   const router = useRouter();
   const dispatch = useDispatch();
@@ -25,12 +27,12 @@ function AppShell({ Component, pageProps }) {
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
   const isInputScreen = Boolean(routeDepartmentMap[router.pathname]);
   const isHomeFlow = router.pathname === "/";
-  const isLoginScreen = isHomeFlow && !token;
-  const showHeader = !isLoginScreen;
   const isDepartmentFlow =
     router.pathname === "/departments/quality-control" ||
-    router.pathname.startsWith("/departments") ||
-    isInputScreen;
+    router.pathname === "/departments/[department]" ||
+    router.pathname === "/departments/[department]/[subDepartment]";
+  const isLoginScreen = isHomeFlow && !token;
+  const showHeader = !isLoginScreen;
   const isTicketingFlow =
     router.pathname === "/operator" ||
     router.pathname.startsWith("/operator/") ||
@@ -66,9 +68,9 @@ function AppShell({ Component, pageProps }) {
     { href: "/ticket-calendar", label: "Ticket Calendar" },
     { href: "/settings", label: "Settings" },
   ];
-  const headerNavLinks = canAccessManagementFlow || isAdminFlow || isReportsFlow
+  const headerNavLinks = canAccessManagementFlow
     ? managementNavLinks
-    : isHomeFlow || isDepartmentFlow || isTicketingFlow
+    : isHomeFlow || isDepartmentFlow || isTicketingFlow || Boolean(token)
     ? [
         { href: "/", label: "Home" },
         { href: "/operator", label: "L1 Ticketing System" },
@@ -104,6 +106,28 @@ function AppShell({ Component, pageProps }) {
       });
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const inputDepartment = routeDepartmentMap[router.pathname];
+    document.documentElement.dataset.inputScreen = isInputScreen ? "true" : "false";
+    document.documentElement.dataset.inputDepartment =
+      isInputScreen && inputDepartment
+        ? String(inputDepartment).trim().toLowerCase().replace(/\s+/g, "-")
+        : "";
+
+    if (isLoginScreen) {
+      document.documentElement.dataset.theme = "light";
+      return;
+    }
+
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    document.documentElement.dataset.theme =
+      savedTheme === "dark" || savedTheme === "light" ? savedTheme : "light";
+  }, [isInputScreen, isLoginScreen, router.pathname]);
 
   useEffect(() => {
     if (!router.isReady || !isHydrated) {

@@ -67,6 +67,19 @@ export default function CreateRole() {
   return (
     <div className={styles["role"]}>
       <div className={styles["rolepage-wrapper"]}>
+        <div className={styles["rolepage-header"]}>
+          <button
+            type="button"
+            className={styles["rolepage-backbtn"]}
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push("/rolespermission");
+            }}
+          >
+            ← Back
+          </button>
+          <h1>Create Role</h1>
+        </div>
         <div className={styles["rolepage-cardswrap"]}>
           <div className={styles["rolepage-cardinfo"]}>
             <div className={styles["rolepage-cardtitle"]}>
