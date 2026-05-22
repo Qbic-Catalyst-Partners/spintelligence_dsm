@@ -43,7 +43,16 @@ const parseEmployeeSelection = (value) => {
 const normalizeStatus = (status) => {
   const value = String(status || "").trim().toLowerCase();
   if (value === "in progress" || value === "scheduled" || value === "schedule") return "Scheduled";
-  if (value === "submit" || value === "approved" || value === "closed") return "Completed";
+  if (
+    value === "submit" ||
+    value === "submitted" ||
+    value === "approved" ||
+    value === "closed" ||
+    value === "completed" ||
+    value === "complete"
+  ) {
+    return "Completed";
+  }
   return "Not Submitted";
 };
 const STATUS_PRIORITY = {
@@ -61,9 +70,7 @@ const getScheduleStatusByDate = (eventDate, rawStatus) => {
   target.setHours(0, 0, 0, 0);
 
   if (Number.isNaN(target.getTime())) return "Scheduled";
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (target.getTime() === yesterday.getTime()) return "Not Submitted";
+  if (target.getTime() < today.getTime()) return "Not Submitted";
   return "Scheduled";
 };
 

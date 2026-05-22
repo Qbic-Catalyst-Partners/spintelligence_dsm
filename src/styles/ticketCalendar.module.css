@@ -111,7 +111,7 @@
 .dailyItem { border-radius: 10px; padding: 10px; display: grid; gap: 2px; color: #fff; }
 .dailyStatusText { font-size: 12px; font-weight: 700; opacity: 0.95; }
 .Completed { background: #28b37d; color: #fff; }
-.Scheduled { background: #f0b24f; color: #fff; }
+.Scheduled { background: #facc15; color: #1f2a44; }
 .NotSubmitted { background: #e5484d; color: #fff; }
 .legend { margin-top: 16px; border: 1px solid #d7dfea; border-radius: 14px; background: #fff; padding: 14px; display: flex; gap: 20px; flex-wrap: wrap; }
 .hoverDetailCard {
