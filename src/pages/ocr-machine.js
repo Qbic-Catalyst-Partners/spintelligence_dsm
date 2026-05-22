@@ -19,6 +19,21 @@ export default function OcrMachinePage() {
   const [saved, setSaved] = useState(false);
   const returnTo = typeof router.query.returnTo === "string" ? router.query.returnTo : "";
   const requestedDocType = typeof router.query.docType === "string" ? router.query.docType.toLowerCase() : "";
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const readTheme = () => {
+      const rootTheme = document.documentElement.getAttribute("data-theme");
+      const bodyTheme = document.body?.getAttribute("data-theme");
+      setIsDark(rootTheme === "dark" || bodyTheme === "dark");
+    };
+    readTheme();
+    const observer = new MutationObserver(readTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    observer.observe(document.body, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (requestedDocType === "afis" || requestedDocType === "hvi") setDocType(requestedDocType);
@@ -73,24 +88,45 @@ export default function OcrMachinePage() {
     }
   };
 
-  const saveResult = async () => {
-    if (!Object.keys(formValues).length) return;
-    const payload = { filename: file?.name || "", doc_type: docType, ocr_json: rows, manual_json: [formValues] };
-    const res = await fetch(`${API_BASE}/ocr-machine/api/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    setSaved(true);
-  };
-
   const stepColor = (idx) => (step === idx ? "#3f56a9" : "#cfd4dd");
   const stepTextColor = (idx) => (step === idx ? "#3f56a9" : "#94a3b8");
+  const colors = isDark
+    ? {
+        pageBg: "#0b1220",
+        cardBg: "#111827",
+        cardBorder: "#374151",
+        heading: "#f8fafc",
+        muted: "#94a3b8",
+        panelBg: "#0f172a",
+        panelBorder: "#475569",
+        fieldBg: "#1f2937",
+        fieldBorder: "#4b5563",
+        fieldText: "#f8fafc",
+        cancelBg: "#111827",
+        cancelBorder: "#6b7280",
+        cancelText: "#f3f4f6",
+        success: "#22c55e",
+      }
+    : {
+        pageBg: "rgba(100, 116, 139, 0.65)",
+        cardBg: "#ffffff",
+        cardBorder: "#e2e8f0",
+        heading: "#0f172a",
+        muted: "#94a3b8",
+        panelBg: "transparent",
+        panelBorder: "#94a3b8",
+        fieldBg: "#f8fafc",
+        fieldBorder: "#d1d5db",
+        fieldText: "#0f172a",
+        cancelBg: "#ffffff",
+        cancelBorder: "#9ca3af",
+        cancelText: "#111827",
+        success: "#166534",
+      };
 
   return (
-    <div style={{ minHeight: "100vh", background: "rgba(100, 116, 139, 0.65)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 16, fontFamily: "Segoe UI, sans-serif" }}>
-      <div style={{ width: "min(680px, calc(100vw - 24px))", background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", padding: "22px 24px" }}>
+    <div style={{ minHeight: "100vh", background: colors.pageBg, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, paddingTop: 0, fontFamily: "Segoe UI, sans-serif" }}>
+      <div style={{ width: "min(680px, calc(100vw - 24px))", background: colors.cardBg, borderRadius: 10, border: `1px solid ${colors.cardBorder}`, padding: "22px 24px", transform: "translateY(-36px)" }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 14, marginBottom: 22 }}>
           {["Upload", "Extract", "Review"].map((label, i) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -114,77 +150,83 @@ export default function OcrMachinePage() {
           ))}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 36/2.2, fontWeight: 700, color: "#0f172a" }}>{rows.length > 0 ? "Review & Edit" : "Upload Report PDF"}</h2>
-          <div style={{ width: 238, borderRadius: 6, background: "#445bb2", color: "#fff", padding: "10px 14px" }}>
-            <div style={{ fontSize: 9, opacity: 0.8, textTransform: "uppercase", letterSpacing: 0.6 }}>Type</div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>{DOC_TYPES.find((d) => d.value === docType)?.label || "HVI Data Entry"}</div>
+        <div style={{ marginBottom: 16 }}>
+          <h2 style={{ margin: 0, fontSize: 36 / 2.2, fontWeight: 700, color: colors.heading }}>{rows.length > 0 ? "Review & Edit" : "Upload Report PDF"}</h2>
+          <div style={{ marginTop: 2, fontWeight: 700, fontSize: 18, color: colors.heading }}>
+            {DOC_TYPES.find((d) => d.value === docType)?.label || "HVI Data Entry"}
           </div>
         </div>
 
-        <div style={{ border: "1px dashed #94a3b8", borderRadius: 10, minHeight: rows.length > 0 ? 270 : 220, padding: 20 }}>
+        <div style={{ background: colors.panelBg, border: `1px dashed ${colors.panelBorder}`, borderRadius: 10, minHeight: rows.length > 0 ? 270 : 220, padding: 20 }}>
           {!file ? (
             <label style={{ display: "grid", placeItems: "center", textAlign: "center", cursor: "pointer", minHeight: 175 }}>
-              <div style={{ fontSize: 56, lineHeight: 1, color: "#9aa5b5", marginBottom: 4 }}>⤓</div>
-              <div style={{ fontSize: 38/2.2, fontWeight: 700, color: "#0f172a" }}>Drop or Select the PDF from Computer</div>
-              <div style={{ color: "#94a3b8", marginTop: 8, marginBottom: 14, fontSize: 16 }}>max 20 MB</div>
+              <div style={{ marginBottom: 8, color: "#9aa5b5" }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 16V4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                  <path d="M7 11L12 16L17 11" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M5 19H19" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div style={{ fontSize: 38 / 2.2, fontWeight: 700, color: colors.heading }}>Drop or Select the PDF from Computer</div>
               <span style={{ background: "#445bb2", color: "#fff", borderRadius: 8, padding: "10px 22px", display: "inline-block", fontWeight: 700, fontSize: 14 }}>Browse File</span>
               <input hidden type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             </label>
           ) : rows.length === 0 ? (
             <div style={{ textAlign: "center", minHeight: 175, display: "grid", alignContent: "center" }}>
-              <div style={{ fontSize: 50, lineHeight: 1, color: "#9aa5b5" }}>⤓</div>
+              <div style={{ color: "#9aa5b5", display: "grid", placeItems: "center" }}>
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 16V4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                  <path d="M7 11L12 16L17 11" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M5 19H19" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                </svg>
+              </div>
               <div style={{ fontWeight: 700, marginTop: 8 }}>{file.name}</div>
               <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 16 }}>
-                <button onClick={() => { setFile(null); setLogs([]); }} style={{ border: "1px solid #9ca3af", background: "#fff", borderRadius: 8, padding: "8px 20px", fontWeight: 600 }}>Cancel</button>
+                <button onClick={() => { setFile(null); setLogs([]); }} style={{ border: `1px solid ${colors.cancelBorder}`, background: colors.cancelBg, color: colors.cancelText, borderRadius: 8, padding: "8px 20px", fontWeight: 600 }}>Cancel</button>
                 <button onClick={runOcr} disabled={loading} style={{ border: "none", background: "#445bb2", color: "#fff", borderRadius: 8, padding: "8px 22px", fontWeight: 700 }}>
                   {loading ? "Running..." : "Run OCR"}
                 </button>
               </div>
-              {logs.length > 0 ? <div style={{ marginTop: 10, fontSize: 12, color: "#64748b" }}>{logs[logs.length - 1]}</div> : null}
+              {logs.length > 0 ? <div style={{ marginTop: 10, fontSize: 12, color: colors.muted }}>{logs[logs.length - 1]}</div> : null}
             </div>
           ) : (
             <div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
                 {Object.keys(formValues).map((key) => (
                   <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 11, color: "#334155", fontWeight: 600 }}>{key}</span>
+                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>{key}</span>
                     <input
                       value={formValues[key] ?? ""}
                       onChange={(e) => setFormValues((prev) => ({ ...prev, [key]: e.target.value }))}
-                      style={{ height: 32, borderRadius: 6, border: "1px solid #d1d5db", background: "#f8fafc", padding: "0 8px", fontSize: 12 }}
+                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
                     />
                   </label>
                 ))}
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
-                <button onClick={() => { setRows([]); setFormValues({}); }} style={{ border: "1px solid #9ca3af", background: "#fff", borderRadius: 8, padding: "8px 20px", fontWeight: 600 }}>Cancel</button>
-                {returnTo ? (
-                  <button
-                    onClick={() => {
-                      const normalizedScreen = returnTo.replace(/^\/+/, "").toLowerCase();
-                      window.localStorage.setItem(
-                        "ocr_prefill",
-                        JSON.stringify({
-                          screen: normalizedScreen,
-                          docType,
-                          values: formValues,
-                          result: { json_output: rows },
-                        })
-                      );
-                      router.push(returnTo);
-                    }}
-                    style={{ border: "none", background: "#445bb2", color: "#fff", borderRadius: 8, padding: "8px 18px", fontWeight: 700 }}
-                  >
-                    Use as Input Screen
-                  </button>
-                ) : (
-                  <button onClick={saveResult} style={{ border: "none", background: "#445bb2", color: "#fff", borderRadius: 8, padding: "8px 18px", fontWeight: 700 }}>
-                    Save to Database
-                  </button>
-                )}
+                <button onClick={() => { setRows([]); setFormValues({}); }} style={{ border: `1px solid ${colors.cancelBorder}`, background: colors.cancelBg, color: colors.cancelText, borderRadius: 8, padding: "8px 20px", fontWeight: 600 }}>Cancel</button>
+                <button
+                  onClick={() => {
+                    const fallbackTarget = docType === "afis" ? "/mixing?type=AFIS%20Data%20Entry" : "/mixing?type=Cotton%20HVI%20Data%20Entry";
+                    const target = returnTo || fallbackTarget;
+                    const normalizedScreen = target.replace(/^\/+/, "").toLowerCase();
+                    window.localStorage.setItem(
+                      "ocr_prefill",
+                      JSON.stringify({
+                        screen: normalizedScreen,
+                        docType,
+                        values: formValues,
+                        result: { json_output: rows },
+                      })
+                    );
+                    router.push(target);
+                  }}
+                  style={{ border: "none", background: "#445bb2", color: "#fff", borderRadius: 8, padding: "8px 18px", fontWeight: 700 }}
+                >
+                  Use as Input Screen
+                </button>
               </div>
-              {saved ? <div style={{ marginTop: 8, color: "#166534", fontWeight: 600, fontSize: 12 }}>Saved successfully.</div> : null}
+              {saved ? <div style={{ marginTop: 8, color: colors.success, fontWeight: 600, fontSize: 12 }}>Saved successfully.</div> : null}
             </div>
           )}
         </div>
@@ -192,3 +234,4 @@ export default function OcrMachinePage() {
     </div>
   );
 }
+

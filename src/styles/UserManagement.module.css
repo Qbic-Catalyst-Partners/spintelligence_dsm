@@ -255,7 +255,7 @@ background: #F6F7F8;
   background: #ffffff;
   border-radius: 10px;
   overflow: visible;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cfe0ff;
 }
 
 .wrapper {
@@ -263,28 +263,28 @@ background: #F6F7F8;
 }
 
 .table thead {
-  background: #f8fafc;
+  background: #d0e2f4;
 }
 
 .table th {
-  font-size: 12px;
-  color: #64748b;
+  font-size: 14px;
+  color: #2f3b52;
   text-align: left;
-  padding: 12px;
-  height: 65px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 14px 20px;
+  height: 56px;
+  border-bottom: 1px solid #cfe0ff;
   letter-spacing: 0.03em;
 }
 
 .table td {
-  padding: 14px 12px;
-  font-size: 13px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 18px 20px;
+  font-size: 14px;
+  border-bottom: 1px solid #e0ecff;
   cursor: pointer;
 }
 
 .table tbody tr:hover {
-  background: #f1f5f9;
+  background: #f8fbff;
 }
 
 .table tbody tr:hover td {
@@ -773,6 +773,15 @@ border-radius: 15px;
 :global(:root[data-theme="dark"]) .table th,
 :global(:root[data-theme="dark"]) .table td {
   border-color: #5f5f5f;
+}
+
+:global(:root[data-theme="dark"]) .table,
+:global(:root[data-theme="dark"]) .table thead,
+:global(:root[data-theme="dark"]) .table tbody tr,
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .table td {
+  background: #000000 !important;
+  background-color: #000000 !important;
 }
 
 :global(:root[data-theme="dark"]) .userMenu p:hover,

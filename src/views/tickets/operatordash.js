@@ -3,6 +3,7 @@ import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/router";
 import Image from "next/image";
 import { FiPlus } from "react-icons/fi";
+import { MdFilterList } from "react-icons/md";
 import { getOperatorTickets, getSubmissionTickets } from "../../apis/operatorApi";
 import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
@@ -203,7 +204,7 @@ export default function operatorboard() {
                         className={styles["mobile-filter-btn"]}
                         onClick={() => setShowMobileFilter(true)}
                     >
-                        <img src="/filter.png" alt="filter" className={styles["filter-icon-img"]} />Filter
+                        <MdFilterList className={styles["filter-icon-img"]} />Filter
                     </button>
                 </div>
             </div>

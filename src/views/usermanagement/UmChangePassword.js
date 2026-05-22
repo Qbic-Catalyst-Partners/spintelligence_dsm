@@ -80,6 +80,16 @@ export default function UmChangePassword() {
 
   return (
     <div className={styles.container}>
+      <button
+        type="button"
+        className={styles.backBtn}
+        onClick={() => {
+          if (window.history.length > 1) router.back();
+          else router.push("/usermanagement");
+        }}
+      >
+        ← Back
+      </button>
       <div className={styles.wrapper}>
         <div className={styles.header}>
           <h1>Change User Password</h1>

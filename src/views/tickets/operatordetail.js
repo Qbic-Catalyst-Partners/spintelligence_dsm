@@ -170,12 +170,17 @@ export default function TicketDetails() {
 
       <main className={styles.container}>
         <div className={styles.breadcrumb}>
-          <span
+          <button
+            type="button"
             className={styles["breadcrumb-link"]}
-            onClick={() => router.push("/operator")}
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push("/operatordashboard");
+            }}
+            style={{ background: "none", border: "none", padding: 0, margin: 0, cursor: "pointer", font: "inherit" }}
           >
             Tickets
-          </span>
+          </button>
           <span className={styles["breadcrumb-separator"]}>&gt;</span>
           <span className={styles["breadcrumb-current"]}>{displayTicketId}</span>
         </div>
@@ -183,14 +188,6 @@ export default function TicketDetails() {
         <section className={styles["mobile-ticket-summary"]}>
           <div className={styles["mobile-ticket-head"]}>
             <div className={styles["mobile-ticket-id-wrap"]}>
-              <button
-                type="button"
-                className={styles["mobile-back-btn"]}
-                onClick={() => router.push("/operator")}
-                aria-label="Back to tickets"
-              >
-                <HiChevronLeft />
-              </button>
               <h1 className={styles["mobile-ticket-id"]}>{displayTicketId}</h1>
             </div>
             <span className={`${styles["severity-badge"]} ${severityClassName}`}>

@@ -67,6 +67,16 @@ export default function EditRole() {
 
     return (
         <div className={styles["edit-page-container"]}>
+            <button
+                type="button"
+                className={styles["pageBackBtn"]}
+                onClick={() => {
+                    if (window.history.length > 1) router.back();
+                    else router.push("/rolespermission");
+                }}
+            >
+                ← Back
+            </button>
             <div className={styles["edit-content-wrapper"]}>
                 <div className={styles["edit-last-modified"]}>
                     Last modified:{" "}

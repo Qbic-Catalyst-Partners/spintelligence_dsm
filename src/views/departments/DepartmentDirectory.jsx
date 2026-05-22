@@ -53,7 +53,7 @@ function DepartmentDirectory() {
                             <button
                                 key={department.slug}
                                 type="button"
-                                className={`${styles.card} ${isEnabled ? styles.activeCard : styles.disabledCard}`}
+                                className={`${styles.card} ${isEnabled ? styles.activeCard : styles.disabledCard} ${department.slug === "quality-control" ? styles.noHoverCard : ""}`}
                                 onClick={() => isEnabled && router.push(
                                     department.slug === "quality-control"
                                         ? "/departments/quality-control"

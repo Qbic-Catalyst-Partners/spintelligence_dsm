@@ -295,6 +295,7 @@
     gap: 8px;
 
     font-size: 14px;
+    font-weight: 400;
     color: #334155;
     cursor: pointer;
     background: #ffffff;
@@ -385,6 +386,22 @@
     color: black;
     font-size: 13px;
     font-weight: 600;
+    cursor: pointer;
+}
+
+.pageBackBtn {
+    position: fixed;
+    top: 96px;
+    left: 280px;
+    z-index: 40;
+    border: 1px solid #cfe0ff;
+    background: #ffffff;
+    color: #344054;
+    border-radius: 7px;
+    height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 700;
     cursor: pointer;
 }
 
@@ -542,6 +559,12 @@
 }
 
 :global(:root[data-theme="dark"]) .edit-btn-cancel {
+    background: #242424;
+    border-color: #5f5f5f;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .pageBackBtn {
     background: #242424;
     border-color: #5f5f5f;
     color: #ffffff;
