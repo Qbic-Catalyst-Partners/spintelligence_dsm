@@ -31,7 +31,6 @@ import {
     isSupervisorNavUser,
     routeDepartmentMap,
 } from "@/utils/accessControl";
-import { hasAnyQualityControlAccess, hasReportAccess, hasSubDepartmentAccess, isFullAccessUser, isSupervisorNavUser, routeDepartmentMap } from "@/utils/accessControl";
 import { useThemeMode } from "@/utils/useThemeMode";
 import styles from "../styles/header.module.css";
 
