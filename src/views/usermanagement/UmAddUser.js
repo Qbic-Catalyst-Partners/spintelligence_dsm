@@ -175,7 +175,9 @@ export default function UmAddUser() {
                 <select name="role" value={formData.role} onChange={handleChange}>
                   <option value="">Select user role</option>
                   {roles.map((r) => (
-                    <option key={r.id}>{r.role_name}</option>
+                    <option key={r.id} value={r.role_name || r.name || ""}>
+                      {r.role_name || r.name || "-"}
+                    </option>
                   ))}
                 </select>
               </div>

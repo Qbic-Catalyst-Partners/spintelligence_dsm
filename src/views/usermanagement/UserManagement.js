@@ -110,7 +110,11 @@ export default function UserManagement() {
 
     try {
       const response = await bulkUploadUsersAPI(file);
-      setUploadMessage(response?.message || "Bulk upload completed successfully.");
+      const summary =
+        typeof response?.processed === "number"
+          ? ` Processed: ${response.processed}, Inserted: ${response.inserted || 0}, Skipped: ${response.skipped || 0}.`
+          : "";
+      setUploadMessage(`${response?.message || "Bulk upload completed successfully."}${summary}`);
       setUploadError(false);
       dispatch(fetchUsers());
     } catch (error) {
@@ -430,7 +434,9 @@ export default function UserManagement() {
             >
               <option value="">Role: All</option>
               {roles.map((r) => (
-                <option key={r.id}>{r.role_name}</option>
+                <option key={r.id} value={r.role_name || r.name || ""}>
+                  {r.role_name || r.name || "-"}
+                </option>
               ))}
             </select>
             <HiMiniChevronDown className={styles.selectChevron} />
