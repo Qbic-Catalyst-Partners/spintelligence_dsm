@@ -69,10 +69,6 @@ const ticketingLinks = [
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
-const calendarLinks = [
-    { href: "/ticket-calendar", label: "L1 Calendar" },
-    { href: "/ticket-calendar-l2", label: "L2 Calendar" },
-];
 const analyticsHubLinks = [
     { href: "/l1-analysis", label: "Statistics Analytics" },
     { href: "/l2-analysis", label: "Team Performance" },
@@ -162,9 +158,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             link.href === "/supervisordashboard" || link.href === "/ticket-calendar-l2"
         )
         : ticketingLinks;
-    const visibleCalendarLinks = hasSupervisorNavAccess
-        ? calendarLinks.filter((link) => link.href === "/ticket-calendar-l2")
-        : calendarLinks;
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -283,10 +276,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/supervisordetails" ||
             currentPath === "/ticket-calendar" ||
             currentPath === "/ticket-calendar-l2"
-        );
-        setIsCalendarMenuOpen(
-            currentPath === "/l1-analysis" ||
-            currentPath === "/l2-analysis"
         );
         setOpenAnalyticsHub(
             currentPath === "/l1-analysis" ||
@@ -480,30 +469,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 {ticketingLink.label}
                                             </Link>
                                         ))}
-                                        {visibleCalendarLinks.length ? (
-                                            <div className={styles["side-subnav-group"]}>
-                                                <button
-                                                    type="button"
-                                                    className={styles["side-subnav-heading"]}
-                                                    aria-expanded={openCalendar}
-                                                    onClick={() => setOpenCalendar((v) => !v)}
-                                                >
-                                                    Calendar
-                                                    <FiChevronDown className={`${styles["department-chevron"]} ${openCalendar ? styles["department-chevron-open"] : ""}`} style={{ marginLeft: 6 }} />
-                                                </button>
-                                                <div style={{ display: openCalendar ? "block" : "none", marginLeft: 8 }}>
-                                                    {visibleCalendarLinks.map((calendarLink) => (
-                                                        <Link
-                                                            key={calendarLink.href}
-                                                            href={calendarLink.href}
-                                                            className={`${styles["side-subnav-link"]} ${isActiveLink(calendarLink.href) ? styles["side-subnav-active"] : ""}`}
-                                                        >
-                                                            {calendarLink.label}
-                                                        </Link>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ) : null}
                                     </div>
                                 </div>
                             );
