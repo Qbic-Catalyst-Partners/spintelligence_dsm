@@ -92,9 +92,20 @@ const formatAnalysisPercent = (value) => `${Number(value || 0).toFixed(2).replac
 const getAnalysisDateParams = (params = {}) => {
   const startDate = params.start_date || params.startDate;
   const endDate = params.end_date || params.endDate;
-  return startDate || endDate
+  const department = params.department || params.department_name || null;
+  const subDepartment =
+    params.sub_department ||
+    params.subDepartment ||
+    params.sub_department_name ||
+    null;
+  const base = startDate || endDate
     ? { period: "custom", start_date: startDate, end_date: endDate }
     : { period: "month" };
+  return {
+    ...base,
+    ...(department ? { department } : {}),
+    ...(subDepartment ? { sub_department: subDepartment } : {}),
+  };
 };
 
 const fetchTeamPerformanceAnalysisRows = async (params = {}) => {
