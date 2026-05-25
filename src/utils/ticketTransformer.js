@@ -1,6 +1,20 @@
 export const getTicketParameterKey = (parameterName) =>
   String(parameterName || "").toLowerCase().trim();
 
+const tryParseJsonObject = (value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+};
+
 export const isSubmissionFrequencyParameterName = (parameterName) =>
   getTicketParameterKey(parameterName) === "submission_frequency";
 
@@ -30,15 +44,21 @@ const toParameterList = (value) => {
   return [];
 };
 
+const getObjectKeys = (value) => {
+  const normalized = tryParseJsonObject(value);
+  if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
+    return [];
+  }
+  return Object.keys(normalized);
+};
+
 export const getTicketParameterNames = (ticket) => {
   const fromParameterName = toParameterList(ticket?.parameter_name);
-  const fromActualValue =
-    ticket?.actual_value && typeof ticket.actual_value === "object" && !Array.isArray(ticket.actual_value)
-      ? Object.keys(ticket.actual_value)
-      : [];
+  const fromActualValue = getObjectKeys(ticket?.actual_value);
+  const fromThresholdValue = getObjectKeys(ticket?.threshold_value);
 
   const seen = new Set();
-  return [...fromParameterName, ...fromActualValue].filter((name) => {
+  return [...fromParameterName, ...fromActualValue, ...fromThresholdValue].filter((name) => {
     const normalized = getTicketParameterKey(name);
     if (!normalized || seen.has(normalized)) {
       return false;
@@ -67,44 +87,46 @@ export const isSubmissionTicketRecord = (ticket) => {
 
 export const getTicketValueForParameter = (source, parameterName) => {
   if (!source || !parameterName) return "-";
+  const normalizedSource = tryParseJsonObject(source);
 
-  if (typeof source !== "object" || Array.isArray(source)) {
-    return source;
+  if (typeof normalizedSource !== "object" || Array.isArray(normalizedSource)) {
+    return normalizedSource;
   }
 
-  const directMatch = source[parameterName];
+  const directMatch = normalizedSource[parameterName];
   if (directMatch !== undefined && directMatch !== null) {
     return directMatch;
   }
 
   const normalizedParameter = getTicketParameterKey(parameterName);
-  const matchedKey = Object.keys(source).find(
+  const matchedKey = Object.keys(normalizedSource).find(
     (key) => getTicketParameterKey(key) === normalizedParameter
   );
 
-  return matchedKey ? source[matchedKey] : "-";
+  return matchedKey ? normalizedSource[matchedKey] : "-";
 };
 
 export const formatThresholdValue = (value) => {
   if (value === null || typeof value === "undefined") {
     return "-";
   }
+  const normalizedValue = tryParseJsonObject(value);
 
-  if (typeof value !== "object" || Array.isArray(value)) {
-    return value;
+  if (typeof normalizedValue !== "object" || Array.isArray(normalizedValue)) {
+    return normalizedValue;
   }
 
   const plusThreshold =
-    value.plus_threshold ??
-    value.positive_tolerance ??
-    value.upper_threshold ??
-    value.max_tolerance ??
+    normalizedValue.plus_threshold ??
+    normalizedValue.positive_tolerance ??
+    normalizedValue.upper_threshold ??
+    normalizedValue.max_tolerance ??
     "-";
   const minusThreshold =
-    value.minus_threshold ??
-    value.negative_tolerance ??
-    value.lower_threshold ??
-    value.min_tolerance ??
+    normalizedValue.minus_threshold ??
+    normalizedValue.negative_tolerance ??
+    normalizedValue.lower_threshold ??
+    normalizedValue.min_tolerance ??
     "-";
 
   return `+:${plusThreshold}/-:${minusThreshold}`;
@@ -114,16 +136,17 @@ export const formatStandardValue = (value) => {
   if (value === null || typeof value === "undefined") {
     return "-";
   }
+  const normalizedValue = tryParseJsonObject(value);
 
-  if (typeof value !== "object" || Array.isArray(value)) {
-    return value;
+  if (typeof normalizedValue !== "object" || Array.isArray(normalizedValue)) {
+    return normalizedValue;
   }
 
   const actualValue =
-    value.actual_value ??
-    value.standard_value ??
-    value.target_value ??
-    value.nominal_value ??
+    normalizedValue.standard_value ??
+    normalizedValue.actual_value ??
+    normalizedValue.target_value ??
+    normalizedValue.nominal_value ??
     "-";
   return actualValue;
 };

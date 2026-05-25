@@ -448,6 +448,88 @@
     text-align: center;
 }
 
+.notification-menu {
+    position: relative;
+}
+
+.notification-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(360px, calc(100vw - 24px));
+    border: 1px solid #d9e5f5;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+    padding: 10px;
+    z-index: 30;
+}
+
+.notification-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 4px 10px;
+}
+
+.notification-header strong {
+    font-size: 13px;
+    color: #0f172a;
+}
+
+.notification-header button {
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #475569;
+    cursor: pointer;
+}
+
+.notification-list {
+    display: grid;
+    gap: 6px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+.notification-item {
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 10px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.notification-read {
+    opacity: 0.72;
+}
+
+.notification-title {
+    display: block;
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.notification-body {
+    display: block;
+    color: #475569;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.notification-empty {
+    margin: 8px 4px;
+    color: #64748b;
+    font-size: 12px;
+}
+
 .profile-menu {
     position: relative;
 }
@@ -582,6 +664,33 @@
 :global(:root[data-theme="dark"]) .logout-button:hover {
     color: #bfdbfe;
     background: #1e293b;
+}
+
+:global(:root[data-theme="dark"]) .notification-dropdown {
+    border-color: #334155;
+    background: #111827;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+}
+
+:global(:root[data-theme="dark"]) .notification-header strong,
+:global(:root[data-theme="dark"]) .notification-title {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .notification-header button {
+    border-color: #475569;
+    background: #1f2937;
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .notification-item {
+    border-color: #334155;
+    background: #1f2937;
+}
+
+:global(:root[data-theme="dark"]) .notification-body,
+:global(:root[data-theme="dark"]) .notification-empty {
+    color: #94a3b8;
 }
 
 .dropdown-item svg {

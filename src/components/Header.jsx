@@ -32,6 +32,12 @@ import {
     routeDepartmentMap,
 } from "@/utils/accessControl";
 import { useThemeMode } from "@/utils/useThemeMode";
+import {
+    fetchAnalysisNotificationsApi,
+    fetchAnalysisSubscriptionsApi,
+    markAnalysisNotificationReadApi,
+    saveAnalysisSubscriptionApi,
+} from "@/apis/analysisApi";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -89,6 +95,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [analysisNotifications, setAnalysisNotifications] = useState([]);
+    const [analysisSubscribed, setAnalysisSubscribed] = useState(true);
+    const [notificationsLoading, setNotificationsLoading] = useState(false);
+    const notificationMenuRef = useRef(null);
     const { isDarkMode, toggleTheme } = useThemeMode();
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -247,11 +258,71 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             if (!profileMenuRef.current?.contains(event.target)) {
                 setIsProfileMenuOpen(false);
             }
+            if (!notificationMenuRef.current?.contains(event.target)) {
+                setIsNotificationsOpen(false);
+            }
         };
 
         document.addEventListener("mousedown", handlePointerDown);
         return () => document.removeEventListener("mousedown", handlePointerDown);
     }, []);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        let mounted = true;
+        setNotificationsLoading(true);
+
+        Promise.all([fetchAnalysisNotificationsApi(), fetchAnalysisSubscriptionsApi()])
+            .then(([notificationsRes, subscriptionsRes]) => {
+                if (!mounted) return;
+                const rows = Array.isArray(notificationsRes?.notifications) ? notificationsRes.notifications : [];
+                const subscriptions = Array.isArray(subscriptionsRes?.subscriptions) ? subscriptionsRes.subscriptions : [];
+                const activeSubscription = subscriptions.find(
+                    (item) => String(item?.channel || "").toLowerCase() === "app_push" && item?.is_active !== false
+                );
+                setAnalysisNotifications(rows);
+                setAnalysisSubscribed(Boolean(activeSubscription));
+            })
+            .catch(() => {
+                if (!mounted) return;
+                setAnalysisNotifications([]);
+            })
+            .finally(() => {
+                if (mounted) setNotificationsLoading(false);
+            });
+
+        return () => {
+            mounted = false;
+        };
+    }, [user?.id]);
+
+    const unreadCount = analysisNotifications.filter((item) => !item?.is_read).length;
+
+    const handleMarkNotificationRead = async (notificationId) => {
+        if (!notificationId) return;
+        try {
+            await markAnalysisNotificationReadApi(notificationId);
+            setAnalysisNotifications((current) =>
+                current.map((item) => (item.id === notificationId ? { ...item, is_read: true } : item))
+            );
+        } catch {
+            // no-op for non-blocking UX
+        }
+    };
+
+    const handleToggleAnalysisSubscription = async () => {
+        const nextValue = !analysisSubscribed;
+        try {
+            await saveAnalysisSubscriptionApi({
+                channel: "app_push",
+                target_level: "ALL",
+                is_active: nextValue,
+            });
+            setAnalysisSubscribed(nextValue);
+        } catch {
+            // no-op for non-blocking UX
+        }
+    };
 
     useEffect(() => {
         document.documentElement.style.setProperty(
@@ -522,10 +593,51 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                 </div>
 
                 <div className={styles["nav-right"]}>
-                <button type="button" className={styles["icon-button"]} aria-label="Notifications">
-                    <FiBell />
-                    <span className={styles["notification-badge"]}>4</span>
-                </button>
+                <div className={styles["notification-menu"]} ref={notificationMenuRef}>
+                    <button
+                        type="button"
+                        className={styles["icon-button"]}
+                        aria-label="Notifications"
+                        aria-expanded={isNotificationsOpen}
+                        onClick={() => setIsNotificationsOpen((value) => !value)}
+                    >
+                        <FiBell />
+                        {unreadCount > 0 && (
+                            <span className={styles["notification-badge"]}>
+                                {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                        )}
+                    </button>
+                    {isNotificationsOpen && (
+                        <div className={styles["notification-dropdown"]}>
+                            <div className={styles["notification-header"]}>
+                                <strong>Analysis Notifications</strong>
+                                <button type="button" onClick={handleToggleAnalysisSubscription}>
+                                    {analysisSubscribed ? "Mute" : "Unmute"}
+                                </button>
+                            </div>
+                            {notificationsLoading ? (
+                                <p className={styles["notification-empty"]}>Loading...</p>
+                            ) : analysisNotifications.length ? (
+                                <div className={styles["notification-list"]}>
+                                    {analysisNotifications.slice(0, 12).map((item) => (
+                                        <button
+                                            type="button"
+                                            key={item.id}
+                                            className={`${styles["notification-item"]} ${item?.is_read ? styles["notification-read"] : ""}`}
+                                            onClick={() => handleMarkNotificationRead(item.id)}
+                                        >
+                                            <span className={styles["notification-title"]}>{item?.title || "Notification"}</span>
+                                            <span className={styles["notification-body"]}>{item?.body || "-"}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className={styles["notification-empty"]}>No notifications</p>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 <button
                     type="button"

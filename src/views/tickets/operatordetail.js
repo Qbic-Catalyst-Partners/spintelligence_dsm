@@ -18,7 +18,7 @@ import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketS
 
 import { IoClose, IoTimeSharp } from "react-icons/io5";
 import { FaRegCommentAlt } from "react-icons/fa";
-import { BsThreeDots } from "react-icons/bs";
+import { BsThreeDots, BsThreeDotsVertical } from "react-icons/bs";
 import { HiBars3, HiChevronLeft } from "react-icons/hi2";
 
 import styles from "../../styles/operatordetails.module.css";
@@ -44,6 +44,7 @@ export default function TicketDetails() {
   const [comment, setComment] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [timelineItems, setTimelineItems] = useState([]);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const commentLimit = 500;
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
@@ -192,6 +193,49 @@ export default function TicketDetails() {
     };
   }, [ticketId]);
 
+  useEffect(() => {
+    if (!showMoreMenu) return undefined;
+    const closeMenu = () => setShowMoreMenu(false);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [showMoreMenu]);
+
+  const handleCopyTicketId = async () => {
+    try {
+      await navigator.clipboard.writeText(displayTicketId);
+      alert("Ticket ID copied.");
+    } catch {
+      alert("Unable to copy ticket ID.");
+    }
+    setShowMoreMenu(false);
+  };
+
+  const handleCopySummary = async () => {
+    const summary = [
+      `Ticket: ${displayTicketId}`,
+      `Status: ${getOperatorStatusLabel(resolvedTicket?.status)}`,
+      `Severity: ${resolvedTicket?.severity || "-"}`,
+      `Machine: ${resolvedTicket?.machine_name || resolvedTicket?.notebook || "-"}`,
+      `Created At: ${formatCompactDateTime(resolvedTicket?.created_at || resolvedTicket?.rawCreatedAt)}`,
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(summary);
+      alert("Ticket summary copied.");
+    } catch {
+      alert("Unable to copy ticket summary.");
+    }
+    setShowMoreMenu(false);
+  };
+
+  const handleRefreshTicket = () => {
+    const targetTicketId = resolvedTicket?.ticket_id || ticketId;
+    if (targetTicketId) {
+      dispatch(fetchOperatorTicketById(targetTicketId));
+    }
+    setShowMoreMenu(false);
+  };
+
   if (loading && !resolvedTicket) return <p>Loading...</p>;
   if (!resolvedTicket) return <p>No ticket found</p>;
 
@@ -231,6 +275,26 @@ export default function TicketDetails() {
             <div className={styles["mobile-ticket-id-wrap"]}>
               <h1 className={styles["mobile-ticket-id"]}>{displayTicketId}</h1>
             </div>
+            <div className={styles["more-menu-wrap"]}>
+              <button
+                type="button"
+                className={styles["more-menu-btn"]}
+                aria-label="More options"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMoreMenu((value) => !value);
+                }}
+              >
+                <BsThreeDotsVertical />
+              </button>
+              {showMoreMenu && (
+                <div className={styles["more-menu-panel"]} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={handleCopyTicketId}>Copy Ticket ID</button>
+                  <button type="button" onClick={handleCopySummary}>Copy Summary</button>
+                  <button type="button" onClick={handleRefreshTicket}>Refresh Details</button>
+                </div>
+              )}
+            </div>
             <span className={`${styles["severity-badge"]} ${severityClassName}`}>
               Severity: {resolvedTicket.severity}
             </span>
@@ -266,8 +330,8 @@ export default function TicketDetails() {
               <span>{isSubmissionTicket ? "Status" : "Threshold"}</span>
             </div>
 
-            {mobileParameterRows.map((item) => (
-              <div className={styles["mobile-parameter-row"]} key={`mobile-${item.name}`}>
+            {mobileParameterRows.map((item, index) => (
+              <div className={styles["mobile-parameter-row"]} key={`mobile-${item.name}-${index}`}>
                 <span className={styles["mobile-parameter-name"]}>{item.name}</span>
                 <span className={`${styles["mobile-parameter-value"]} ${styles.danger}`}>
                   {isSubmissionTicket ? submissionFrequency : item.actual}
@@ -282,7 +346,8 @@ export default function TicketDetails() {
                 type="button"
                 className={styles["expand-dots"]}
                 onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? "Show fewer values" : "Show all values"}
+                aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+                title={expanded ? "Show less" : "Show all"}
               >
                 <BsThreeDots />
               </button>
@@ -307,13 +372,35 @@ export default function TicketDetails() {
               </p>
             </div>
 
-            <button
-              className={styles["fix-btn"]}
-              onClick={() => setIsPopupOpen(true)}
-            >
-              <img src={fixImgSrc} alt="" aria-hidden="true" />
-              Fix & Resubmit
-            </button>
+            <div className={styles["header-actions"]}>
+              <div className={styles["more-menu-wrap"]}>
+                <button
+                  type="button"
+                  className={styles["more-menu-btn"]}
+                  aria-label="More options"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMoreMenu((value) => !value);
+                  }}
+                >
+                  <BsThreeDotsVertical />
+                </button>
+                {showMoreMenu && (
+                  <div className={styles["more-menu-panel"]} onClick={(e) => e.stopPropagation()}>
+                    <button type="button" onClick={handleCopyTicketId}>Copy Ticket ID</button>
+                    <button type="button" onClick={handleCopySummary}>Copy Summary</button>
+                    <button type="button" onClick={handleRefreshTicket}>Refresh Details</button>
+                  </div>
+                )}
+              </div>
+              <button
+                className={styles["fix-btn"]}
+                onClick={() => setIsPopupOpen(true)}
+              >
+                <img src={fixImgSrc} alt="" aria-hidden="true" />
+                Fix & Resubmit
+              </button>
+            </div>
           </div>
 
           <div className={styles["table-shell"]}>
@@ -326,8 +413,8 @@ export default function TicketDetails() {
               <span>Created At</span>
             </div>
 
-            {visibleRows.map((item) => (
-              <div className={styles["table-row"]} key={item.name}>
+            {visibleRows.map((item, index) => (
+              <div className={styles["table-row"]} key={`${item.name}-${index}`}>
                 <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
                 <span className={styles["value-strong"]}>{item.name}</span>
                 <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
@@ -344,7 +431,8 @@ export default function TicketDetails() {
                 type="button"
                 className={styles["expand-dots"]}
                 onClick={() => setExpanded((value) => !value)}
-                aria-label={expanded ? "Show fewer values" : "Show all values"}
+                aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+                title={expanded ? "Show less" : "Show all"}
               >
                 <BsThreeDots />
               </button>
