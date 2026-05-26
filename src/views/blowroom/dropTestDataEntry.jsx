@@ -17,7 +17,7 @@ const emptyTuft = () => ({
 const initialForm = { variety: '', blend: '' };
 
 const DropTestDataEntry = forwardRef(function DropTestDataEntry(
-    { date, lotNo, selectedTypeName, onTypeChange, onDateChange, onLotNoChange, typeOptions = [] },
+    { date, entryId, lotNo, selectedTypeName, onTypeChange, onDateChange, onLotNoChange, typeOptions = [] },
     ref
 ) {
     const dispatch = useDispatch();
@@ -91,14 +91,14 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
             const header = [
                 { label: "Type", value: selectedTypeName || "Drop Test Data Entry" },
                 { label: "Drop ID", value: lotNo },
-                { label: "Date", value: date },
+                { label: "Entry ID", value: entryId || "-" },
                 { label: "Variety", value: formData.variety },
                 { label: "Blend", value: formData.blend },
                 { label: "No. of Tufts", value: numTufts },
             ];
             const entries = tufts.map((t, idx)=>({
                 label: `Tuft ${idx+1}`,
-                value: `Var:${t.tuftVariety} | ActDisp:${t.actDisplay} | DispWt:${t.displayWt} | ActWt:${t.actWt} | Diff:${t.diff} | Ratio:${t.ratio}`
+                value: `Var:${t.tuftVariety} | ActualWt:${t.actWt} | DisplayWt:${t.displayWt} | AverageWt:${t.actDisplay} | Diff:${t.diff} | Ratio:${t.ratio}`
             }));
             return [...header, ...entries];
         },
@@ -140,14 +140,22 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         const updated = [...tufts];
         updated[index][field] = field === 'tuftVariety'
             ? value
-            : sanitizeNumericInput(value, { precision: 8, scale: 3 });
+            : sanitizeNumericInput(value, { precision: 8, scale: 4 });
 
-        const actDisplay = Number(updated[index].actDisplay) || 0;
-        const displayWt  = Number(updated[index].displayWt)  || 0;
-        const actWt      = Number(updated[index].actWt)      || 0;
+        const totalAverageWt = updated.reduce(
+            (sum, tuft) => sum + (Number(tuft.actDisplay) || 0),
+            0
+        );
 
-        updated[index].diff  = displayWt - actDisplay;
-        updated[index].ratio = displayWt ? (actWt / displayWt).toFixed(2) : '';
+        updated.forEach((tuft) => {
+            const displayWt = Number(tuft.displayWt) || 0;
+            const actualWt = Number(tuft.actWt) || 0;
+            const averageWt = Number(tuft.actDisplay) || 0;
+            const hasDiffInput = String(tuft.displayWt || '').trim() || String(tuft.actWt || '').trim();
+
+            tuft.diff = hasDiffInput ? (actualWt - displayWt).toFixed(4) : '';
+            tuft.ratio = totalAverageWt ? ((averageWt / totalAverageWt) * 100).toFixed(4) : '';
+        });
 
         setTufts(updated);
         setErrors((prev) => {
@@ -186,12 +194,13 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 </div>
 
                 <div className={styles['mixx-group']}>
-                    <label>Date</label>
+                    <label>Entry ID</label>
                     <input
-                        type="date"
-                        className={`${styles['mixx-input']} ${errors.date ? styles['mixx-error'] : ''}`}
-                        value={date}
-                        onChange={e => onDateChange?.(e.target.value)}
+                        type="text"
+                        className={styles['mixx-input']}
+                        value={entryId || ""}
+                        readOnly
+                        disabled
                     />
                 </div>
             </div>
@@ -255,29 +264,16 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                             <div className={styles['mixxx-row']}>
                                 <div className={styles['mixx-group']}>
                                     <label>Tuft Variety</label>
-                                    <select
+                                    <input
                                         className={`${styles['mixx-input']} ${errors[`tuft-${i}-tuftVariety`] ? styles['mixx-error'] : ''}`}
+                                        placeholder="Enter tuft variety"
                                         value={tuft.tuftVariety}
                                         onChange={e => handleTuftFieldChange(i, 'tuftVariety', e.target.value)}
-                                    >
-                                        <option value="">Select</option>
-                                        <option>B AIR</option>
-                                        <option>MCU5</option>
-                                    </select>
+                                    />
                                 </div>
                             </div>
 
                             <div className={styles['mixxx-row']}>
-                                <div className={styles['mixx-group']}>
-                                    <label>Act Display</label>
-                                    <input
-                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-actDisplay`] ? styles['mixx-error'] : ''}`}
-                                        placeholder="0.00"
-                                        value={tuft.actDisplay}
-                                        onChange={e => handleTuftFieldChange(i, 'actDisplay', e.target.value)}
-                                    />
-                                </div>
-
                                 <div className={styles['mixx-group']}>
                                     <label>Display Wt.</label>
                                     <input
@@ -289,7 +285,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 </div>
 
                                 <div className={styles['mixx-group']}>
-                                    <label>Act Wt.</label>
+                                    <label>Actual Wt.</label>
                                     <input
                                         className={`${styles['mixx-input']} ${errors[`tuft-${i}-actWt`] ? styles['mixx-error'] : ''}`}
                                         placeholder="0.00"
@@ -297,11 +293,21 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                         onChange={e => handleTuftFieldChange(i, 'actWt', e.target.value)}
                                     />
                                 </div>
+
+                                <div className={styles['mixx-group']}>
+                                    <label>Average Wt.</label>
+                                    <input
+                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-actDisplay`] ? styles['mixx-error'] : ''}`}
+                                        placeholder="0.00"
+                                        value={tuft.actDisplay}
+                                        onChange={e => handleTuftFieldChange(i, 'actDisplay', e.target.value)}
+                                    />
+                                </div>
                             </div>
 
                             <div className={styles['mixxx-row']}>
                                 <div className={styles['mixx-group']}>
-                                    <label>Diff (Disp. Wt - Act Display)</label>
+                                    <label>Diff (Display Wt. - Actual Wt.)</label>
                                     <input
                                         className={styles['mixx-input']}
                                         value={tuft.diff}
@@ -311,7 +317,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 </div>
 
                                 <div className={styles['mixx-group']}>
-                                    <label>Ratio (Act Wt / Tuft) * 100</label>
+                                    <label>Ratio (Average Wt. / Total) * 100</label>
                                     <input
                                         className={styles['mixx-input']}
                                         value={tuft.ratio}
@@ -330,3 +336,4 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
 });
 
 export default DropTestDataEntry;
+

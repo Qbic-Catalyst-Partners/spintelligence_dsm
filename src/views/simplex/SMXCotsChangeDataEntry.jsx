@@ -32,7 +32,7 @@ const createDetailRows = () =>
   }));
 
 const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
-  { selectedTypeName = "SMXCots Change Data Entry", onTypeChange, typeOptions = [] },
+  { selectedTypeName = "SMXCots Change Data Entry", onTypeChange, typeOptions = [], entryId = "" },
   ref
 ) {
   const dispatch = useDispatch();
@@ -144,7 +144,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     const items = [
       { label: "Type", value: form.type },
       { label: "S. No.", value: form.serialNo },
-      { label: "Date", value: form.date },
+      { label: "Entry ID", value: entryId || "-" },
       { label: "MC Name", value: form.mcName },
     ];
 
@@ -198,16 +198,13 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Date</label>
+          <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
           <input
-            type="date"
-            className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-              errors.form?.date ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
-            }`}
-            style={getFieldStyle(errors.form?.date)}
-            value={form.date}
-            onChange={(e) => handleFormChange("date", e.target.value)}
+            type="text"
+            className="w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
+            value={entryId}
             disabled
+            readOnly
           />
         </div>
 

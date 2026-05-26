@@ -41,6 +41,18 @@ const primaryTypeOptions = [
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
+const DRAW_FRAME_ENTRY_SEQ_KEY = "drawframe_entry_sequence";
+const DRAW_FRAME_ENTRY_PREFIX = {
+  "Yarn CV% Calculation Form": "YAR",
+  "Draw Frame Cots Data Entry": "DRC",
+  "U% Data Entry": "DUP",
+  "PP - Breaker Drawing": "DRB",
+  "PP - Finisher Drawing": "DRF",
+};
+const getDrawFrameUniqueId = (seq, type = "") => {
+  const prefix = DRAW_FRAME_ENTRY_PREFIX[type] || "DRAW";
+  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
 
 const processTypeOptions = ["Breaker", "Finisher"];
 const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
@@ -74,6 +86,7 @@ const emptyMetric = () => ({
 });
 
 function DrawFrame() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
@@ -132,6 +145,7 @@ function DrawFrame() {
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
+  const [entrySeq, setEntrySeq] = useState(1);
   const [showSuccess, setShowSuccess] = useState(false);
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
@@ -148,6 +162,12 @@ function DrawFrame() {
   const isUPercentEntry = form.type === "U% Data Entry";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = Number(window.localStorage.getItem(DRAW_FRAME_ENTRY_SEQ_KEY) || "1");
+    setEntrySeq(Number.isFinite(stored) && stored > 0 ? stored : 1);
+  }, []);
 
   useEffect(() => {
     if (!typeOptions.some((option) => option.name === form.type)) {
@@ -575,11 +595,12 @@ function DrawFrame() {
       <div className={styles.container}>
         <div className={styles.header}>
           <h1 className={styles.title}>Quality Control - Draw Frame Notebook</h1>
-          <p className={styles.description}>Record and manage industrial machine quality inspections.</p>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
 
         {isHeaderEntry ? (
           <DrawFrameHeaderEntry
+            entryId={getDrawFrameUniqueId(entrySeq, form.type)}
             typeOptions={typeOptions}
             selectedType={form.type}
             onTypeChange={(value) => handleFormChange("type", value)}
@@ -614,13 +635,8 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>Date</label>
-                  <input
-                    type="date"
-                    value={uPercentForm.date}
-                    onChange={(e) => handleUPercentChange("date", e.target.value)}
-                    className={errors.header?.date ? uPercentStyles.errorField : ""}
-                  />
+                  <label>Unique</label>
+                  <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={errors.header?.date ? uPercentStyles.errorField : ""} />
                 </div>
 
                 <div className={uPercentStyles.field}>
@@ -753,13 +769,8 @@ function DrawFrame() {
               {form.type === "Draw Frame Cots Data Entry" ? (
                 <>
                   <div className={styles.field}>
-                    <label className={styles.label}>Date</label>
-                    <input
-                      type="date"
-                      value={form.date}
-                      onChange={(e) => handleFormChange("date", e.target.value)}
-                      className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
-                    />
+                    <label className={styles.label}>Unique</label>
+                    <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
                   <div className={styles.field}>
@@ -804,13 +815,8 @@ function DrawFrame() {
                   </div>
 
                   <div className={styles.field}>
-                    <label className={styles.label}>Date</label>
-                    <input
-                      type="date"
-                      value={form.date}
-                      onChange={(e) => handleFormChange("date", e.target.value)}
-                      className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`}
-                    />
+                    <label className={styles.label}>Unique</label>
+                    <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
                   <div className={styles.field}>

@@ -25,7 +25,7 @@ const emptyComberState = {
 };
 
 const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
-    { types, selectedType, onTypeChange, showForm, onPreview },
+    { types, selectedType, onTypeChange, showForm, onPreview, entryId = "" },
     ref
 ) {
     const router = useRouter();
@@ -216,7 +216,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const getPreviewData = () => {
         const base = [
             { label: "Type", value: selectedType || "Ribbon Lap CV Data Entry" },
-            { label: "Record Date", value: date },
+            { label: "Entry ID", value: entryId || "-" },
             { label: "Machine Name", value: machine },
             { label: "Variety", value: variety },
         ];
@@ -296,11 +296,11 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                             </div>
 
                             <div className={styles["cb-form-group"]}>
-                                <label>Record Date</label>
+                                <label>Entry ID</label>
                                 <input
-                                    type="date"
-                                    value={date}
-                                    onChange={(e) => setDate(e.target.value)}
+                                    type="text"
+                                    value={entryId || ""}
+                                    readOnly disabled
                                     readOnly
                                 />
                             </div>
@@ -464,3 +464,4 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 });
 
 export default RibbonLapCVDataEntry;
+

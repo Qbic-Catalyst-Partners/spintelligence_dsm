@@ -50,7 +50,7 @@ const TYPE_CONFIG = {
         placeholder: "Select Consignee Name",
         required: true,
       },
-      { key: "creationDate", label: "Creation Date", control: "date-display", required: true },
+      { key: "creationDate", label: "Unique", control: "entry-id-display", required: true },
     ],
     middleRow: [
       { key: "make", label: "Make", required: true },
@@ -124,7 +124,7 @@ const TYPE_CONFIG = {
         placeholder: "Select Consignee Name",
         required: true,
       },
-      { key: "creationDate", label: "Creation Date", control: "date-display", required: true },
+      { key: "creationDate", label: "Unique", control: "entry-id-display", required: true },
     ],
     middleRow: [
       { key: "make", label: "Make", required: true },
@@ -320,7 +320,7 @@ function getEntrySortValue(entry) {
   return Number.isFinite(numericId) ? numericId : 0;
 }
 
-function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
+function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeChange }) {
   const router = useRouter();
   const activeType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
   const activeConfig = TYPE_CONFIG[activeType];
@@ -616,17 +616,16 @@ function DrawFrameHeaderEntry({ typeOptions, selectedType, onTypeChange }) {
       );
     }
 
-    if (field.control === "date-display") {
+    if (field.control === "entry-id-display") {
       return (
-        <div key={field.key} className={`${styles.field} ${styles.headerEntryDateField}`}>
+        <div key={field.key} className={styles.field}>
           <label className={styles.label}>{field.label}</label>
-          <input type="text" readOnly value={formatDisplayDate(form.creationDate)} className={controlClass} />
           <input
-            type="date"
-            value={form.creationDate}
-            onChange={(event) => handleFieldChange(field.key, event.target.value)}
-            className={styles.headerEntryDateNative}
-            aria-label={field.label}
+            type="text"
+            value={entryId || ""}
+            readOnly
+            disabled
+            className={`${styles.input} ${hasError ? styles.inputError : ""}`}
           />
         </div>
       );

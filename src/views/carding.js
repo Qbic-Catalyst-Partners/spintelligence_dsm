@@ -33,8 +33,35 @@ const cardingDepartmentTypes = [
 ];
 
 export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
+const CARDING_ENTRY_SEQ_KEY = "carding_entry_sequence";
+const CARDING_ENTRY_ID_CONFIG = {
+    "Process Parameter": { prefix: "CPP", storageKey: "carding_entry_sequence_process_parameter" },
+    "Between & Within Card Data Entry": { prefix: "BWC", storageKey: "carding_entry_sequence_between_within" },
+    "Card Thick Place Entry": { prefix: "CTP", storageKey: "carding_entry_sequence_card_thick_place" },
+    "Trials Data Entry Form": { prefix: "TRI", storageKey: "carding_entry_sequence_trials" },
+    "Nati Data Entry": { prefix: "NAT", storageKey: "carding_entry_sequence_nati" },
+    "U% Data Entry": { prefix: "CAU", storageKey: "carding_entry_sequence_u_percent" },
+    "Card DFK Pressure Checking": { prefix: "DFK", storageKey: "carding_entry_sequence_dfk" },
+    WheelChange: { prefix: "WHL", storageKey: "carding_entry_sequence_wheelchange" },
+};
+
+const getCardingEntryConfig = (typeName) =>
+    CARDING_ENTRY_ID_CONFIG[typeName] || { prefix: "CAR", storageKey: CARDING_ENTRY_SEQ_KEY };
+
+const getCardingEntryId = (seq, typeName) => {
+    const { prefix } = getCardingEntryConfig(typeName);
+    return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readCardingEntrySequence = (typeName) => {
+    if (typeof window === "undefined") return 1;
+    const { storageKey } = getCardingEntryConfig(typeName);
+    const stored = Number(window.localStorage.getItem(storageKey) || "1");
+    return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 function Carding() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
@@ -53,6 +80,13 @@ function Carding() {
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
+    const [entrySeq, setEntrySeq] = useState(1);
+
+    useEffect(() => {
+        const typeName = typeOptions.find((item) => item.id === checkingType)?.name;
+        if (!typeName) return;
+        setEntrySeq(readCardingEntrySequence(typeName));
+    }, [checkingType, typeOptions]);
 
     useEffect(() => {
         if (!typeOptions.some((item) => item.id === checkingType)) {
@@ -117,7 +151,7 @@ function Carding() {
             <div className={styles["card-container"]}>
                 <div className={styles["card-header"]}>
                     <h1>Quality Control - Carding Notebook</h1>
-                    <p>Record and manage industrial machine quality inspections.</p>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
                 </div>
 
                 <div className={styles["card-shell"]}>
@@ -138,6 +172,7 @@ function Carding() {
                     {isProcessParameter && SelectedComponent ? (
                         <SelectedComponent
                             ref={childRef}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
@@ -151,6 +186,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -160,6 +196,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -169,6 +206,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -178,6 +216,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm={selectedType === "Card Thick Place Entry"}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     ) : null}
 
@@ -186,6 +225,7 @@ function Carding() {
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -194,6 +234,7 @@ function Carding() {
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -205,6 +246,7 @@ function Carding() {
 
                     {isWheelChange && SelectedComponent ? (
                         <SelectedComponent
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
@@ -355,19 +397,29 @@ function Carding() {
                 confirmLabel="Submit"
             />
 
-            <SuccessModal
-                open={showSuccess}
-                message="Data Submitted"
-                typeValue={selectedType}
-                onClose={() => {
-                    setShowSuccess(false);
-                    setValidationMessage("");
-                    childRef.current?.clear?.();
-                    dispatch(clearCardingState());
-                }}
+                <SuccessModal
+                    open={showSuccess}
+                    message="Data Submitted"
+                    typeValue={selectedType}
+                    onClose={() => {
+                        const nextSeq = entrySeq + 1;
+                        setEntrySeq(nextSeq);
+                        if (typeof window !== "undefined") {
+                            const { storageKey } = getCardingEntryConfig(selectedType);
+                            window.localStorage.setItem(storageKey, String(nextSeq));
+                        }
+                        setShowSuccess(false);
+                        setValidationMessage("");
+                        childRef.current?.clear?.();
+                        dispatch(clearCardingState());
+                    }}
             />
         </div>
     );
 }
 
 export default Carding;
+
+
+
+

@@ -12,7 +12,7 @@ const machines = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 
 
 const createMachineValues = () =>
     machines.reduce((accumulator, machine) => {
-        accumulator[machine] = "";
+        accumulator[machine] = { cv1: "", cv2: "" };
         return accumulator;
     }, {});
 
@@ -20,6 +20,7 @@ function CardThickPlaceEntry({
     types,
     selectedType,
     onTypeChange,
+    entryId = "",
     showForm,
     hideTypeField = false,
 }) {
@@ -93,16 +94,19 @@ function CardThickPlaceEntry({
         setIsError(false);
     };
 
-    const handleChange = (machine, value) => {
+    const handleChange = (machine, field, value) => {
         setMachineValues((currentValues) => ({
             ...currentValues,
-            [machine]: value,
+            [machine]: {
+                ...currentValues[machine],
+                [field]: value,
+            },
         }));
         setFormMessage("");
         setIsError(false);
         setErrors((current) => {
             const next = { ...current };
-            delete next[machine];
+            delete next[`${machine}-${field}`];
             return next;
         });
     };
@@ -129,8 +133,11 @@ function CardThickPlaceEntry({
         if (!selectedType) nextErrors.selectedType = true;
         if (!String(idNo || "").trim()) nextErrors.idNo = true;
         machines.forEach((machine) => {
-            if (String(machineValues[machine] || "").trim() === "") {
-                nextErrors[machine] = true;
+            if (String(machineValues[machine]?.cv1 || "").trim() === "") {
+                nextErrors[`${machine}-cv1`] = true;
+            }
+            if (String(machineValues[machine]?.cv2 || "").trim() === "") {
+                nextErrors[`${machine}-cv2`] = true;
             }
         });
 
@@ -148,7 +155,10 @@ function CardThickPlaceEntry({
     };
 
     const handleSubmit = async () => {
-        const entries = machines.filter((machine) => machineValues[machine] !== "");
+        const entries = machines.filter((machine) =>
+            String(machineValues[machine]?.cv1 || "").trim() !== "" ||
+            String(machineValues[machine]?.cv2 || "").trim() !== ""
+        );
 
         try {
             for (const machine of entries) {
@@ -158,7 +168,8 @@ function CardThickPlaceEntry({
                         entry_date: date,
                         entry_time: time,
                         machine,
-                        cv_value: parseFloat(machineValues[machine]),
+                        cv_value: parseFloat(machineValues[machine]?.cv1),
+                        cv_value_2: parseFloat(machineValues[machine]?.cv2),
                         unit: "5m CV",
                     })
                 ).unwrap();
@@ -178,12 +189,12 @@ function CardThickPlaceEntry({
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "ID No.", value: idNo },
-        { label: "Date", value: date },
+        { label: "Entry ID", value: entryId || "-" },
         { label: "Time", value: time },
-        ...machines.map((machine) => ({
-            label: machine,
-            value: machineValues[machine],
-        })),
+        ...machines.flatMap((machine) => ([
+            { label: `${machine} (5m CV 1)`, value: machineValues[machine]?.cv1 || "-" },
+            { label: `${machine} (5m CV 2)`, value: machineValues[machine]?.cv2 || "-" },
+        ])),
     ];
 
     return (
@@ -233,8 +244,8 @@ function CardThickPlaceEntry({
                     <>
                         <div className={styles["card-row"]}>
                             <div className={styles["card-form-group"]}>
-                                <label>Date</label>
-                                <input type="date" value={date} readOnly />
+                                <label>Entry ID</label>
+                                <input type="text" value={entryId || ""} readOnly />
                             </div>
 
                             <div className={styles["card-form-group"]}>
@@ -264,10 +275,20 @@ function CardThickPlaceEntry({
                                         <input
                                             type="number"
                                             step="any"
-                                            value={machineValues[machine]}
-                                            onChange={(e) => handleChange(machine, e.target.value)}
+                                            value={machineValues[machine]?.cv1 || ""}
+                                            onChange={(e) => handleChange(machine, "cv1", e.target.value)}
                                             onWheel={(e) => e.currentTarget.blur()}
-                                            className={errors[machine] ? styles["field-error"] : ""}
+                                            placeholder="Card Thick Place Value"
+                                            className={errors[`${machine}-cv1`] ? styles["field-error"] : ""}
+                                        />
+                                        <input
+                                            type="number"
+                                            step="any"
+                                            value={machineValues[machine]?.cv2 || ""}
+                                            onChange={(e) => handleChange(machine, "cv2", e.target.value)}
+                                            onWheel={(e) => e.currentTarget.blur()}
+                                            placeholder="5m CV"
+                                            className={errors[`${machine}-cv2`] ? styles["field-error"] : ""}
                                         />
                                     </div>
                                 ))}
@@ -326,3 +347,4 @@ function CardThickPlaceEntry({
 }
 
 export default CardThickPlaceEntry;
+

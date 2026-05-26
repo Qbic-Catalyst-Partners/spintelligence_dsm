@@ -52,7 +52,7 @@ const calculateStats = (values) => {
     };
 };
 
-function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, hideTypeField = false }) {
+function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, hideTypeField = false, entryId = "" }) {
     const router = useRouter();
     const dispatch = useDispatch();
     const { isLoading, data, error } = useSelector((state) => state.carding ?? {
@@ -61,7 +61,6 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         error: null,
     });
 
-    const [entryId, setEntryId] = useState("");
     const [inspectionDate, setInspectionDate] = useState("");
     const [inspectionTime, setInspectionTime] = useState("");
     const [mcName, setMcName] = useState("CDG-05");
@@ -84,12 +83,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         setInspectionTime(
             [String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0"), String(now.getSeconds()).padStart(2, "0")].join(":")
         );
-        setEntryId(`BW-${Date.now()}`);
     }, []);
-
-    useEffect(() => {
-        if (data?.inspection_id) setEntryId(data.inspection_id);
-    }, [data]);
 
     useEffect(() => {
         if (error) {
@@ -225,7 +219,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "ID", value: entryId },
-        { label: "Inspection Date", value: inspectionDate },
+        { label: "Entry ID", value: entryId || "-" },
         { label: "MC Name", value: mcName },
         { label: "Inspection Type", value: inspectionType },
         { label: "Number of Entries", value: entryCount },
@@ -260,14 +254,9 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                     )}
 
                     <div className="bwc-form-group">
-                        <label>ID</label>
-                        <input value={entryId} readOnly />
-                    </div>
-
-                    <div className="bwc-form-group">
-                        <label>Date</label>
+                        <label>Entry ID</label>
                         <div className="bwc-input-icon-wrap">
-                            <input type="date" value={inspectionDate} readOnly className={errors.inspectionDate ? "bwc-error-field" : ""} />
+                            <input type="text" value={entryId || ""} readOnly disabled className={errors.inspectionDate ? "bwc-error-field" : ""} />
                         </div>
                     </div>
                 </div>
@@ -430,3 +419,4 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
 }
 
 export default BetweenWithinCardEntry;
+

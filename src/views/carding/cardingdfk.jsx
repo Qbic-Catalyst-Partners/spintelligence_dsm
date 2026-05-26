@@ -6,7 +6,6 @@ import CustomInput from "@/components/CustomInput";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
-import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import styles from "./cardingdfk.module.css";
 
@@ -45,7 +44,7 @@ const MACHINE_GROUPS = MACHINE_NAMES.reduce((groups, machineName, index) => {
   return groups;
 }, []);
 
-function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
+function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" }) {
   const router = useRouter();
   const dispatch = useDispatch();
   const { isLoading } = useSelector((state) => state.carding ?? {
@@ -77,7 +76,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
   );
 
   const handleValueChange = (machineName, key, value) => {
-    const nextValue = sanitizeNumericInput(value, { precision: 5, scale: 2 });
+    const nextValue = value;
     setRows((currentRows) => ({
       ...currentRows,
       [machineName]: {
@@ -170,7 +169,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
 
   const previewItems = [
     { label: "Type", value: selectedType || DFK_TYPE },
-    { label: "Entry Date", value: date },
+    { label: "Entry ID", value: entryId || "-" },
     ...MACHINE_NAMES.flatMap((machineName) =>
       TABLE_COLUMNS.map((column) => ({
         label: `${machineName} ${column.label}`,
@@ -216,10 +215,10 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
 
           <div className={styles.dfkFormGroup}>
             <CustomInput
-              label="Entry Date"
-              type="date"
-              value={date}
-              onChange={setDate}
+              label="Entry ID"
+              type="text"
+              value={entryId || ""}
+              onChange={() => {}}
               disabled
               error={errors.date}
             />
@@ -266,11 +265,10 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
                               {TABLE_COLUMNS.map((column) => (
                                 <td key={`${machineName}-${column.key}`}>
                                   <CustomInput
-                                    type="number"
-                                    placeholder="0.00"
+                                    type="text"
+                                    placeholder="60/100"
                                     value={rows[machineName][column.key]}
                                     onChange={(value) => handleValueChange(machineName, column.key, value)}
-                                    step="0.01"
                                     onWheel={(event) => event.currentTarget.blur()}
                                     className={styles.dfkTableInput}
                                     error={errors[`${machineName}-${column.key}`]}
@@ -331,3 +329,4 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange }) {
 }
 
 export default CardingDfk;
+
