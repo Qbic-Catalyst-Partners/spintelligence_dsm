@@ -10,12 +10,12 @@ import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidat
 const today = new Date().toISOString().split("T")[0];
 
 const topFieldClass =
-  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const compactSelectClass = "";
 
 const tableInputClass =
-  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const countNameOptions = [
   "10 GRC POLY 40D SPX 8/2 YARN CONES",

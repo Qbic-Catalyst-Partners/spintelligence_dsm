@@ -44,7 +44,7 @@
   padding: 8px 12px;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
-  background: #f8fafc;
+  background: #f1f5f9 !important;
   color: #334155;
   font-size: 14px;
   outline: none;
@@ -277,6 +277,13 @@
   background: #4c1d1d;
   border-color: #fca5a5;
   color: #fee2e2;
+}
+
+:global(:root[data-theme="dark"]) .field {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 :global(:root[data-theme="dark"]) :local(.field),

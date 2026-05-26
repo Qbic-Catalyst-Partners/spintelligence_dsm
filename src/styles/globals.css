@@ -654,8 +654,8 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
 :root[data-theme="dark"] .app-shell-content .autoconer-input:focus,
 :root[data-theme="dark"] .app-shell-content .autoconer-input:disabled,
 :root[data-theme="dark"] .app-shell-content .autoconer-input:read-only {
-  background: #3b3b3b !important;
-  background-color: #3b3b3b !important;
+  background: #000000 !important;
+  background-color: #000000 !important;
   border-color: #5f5f5f !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
@@ -665,8 +665,8 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
 :root[data-theme="dark"] .app-shell-content .autoconer-input option,
 :root[data-theme="dark"] .app-shell-content .autoconer-menu,
 :root[data-theme="dark"] .app-shell-content .autoconer-menu button {
-  background: #3b3b3b !important;
-  background-color: #3b3b3b !important;
+  background: #000000 !important;
+  background-color: #000000 !important;
   border-color: #5f5f5f !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
@@ -785,6 +785,11 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
   border-color: #3D539F !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
+}
+
+.upload-btn svg {
+  color: #ffffff !important;
+  stroke: currentColor !important;
 }
 
 :root[data-theme="dark"] .upload-btn,

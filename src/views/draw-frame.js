@@ -515,9 +515,9 @@ function DrawFrame() {
       items.push({ label: "Department", value: uPercentForm.department });
       items.push({ label: "MC No.", value: uPercentForm.mcNo });
       items.push({ label: "U%", value: uPercentForm.uPercent });
-      items.push({ label: "CVM", value: uPercentForm.cvm });
-      items.push({ label: "1m CVM", value: uPercentForm.oneMeterCvm });
-      items.push({ label: "3m CVM", value: uPercentForm.threeMeterCvm });
+      items.push({ label: "CV in Metres", value: uPercentForm.cvm });
+      items.push({ label: "1m CV in Metres", value: uPercentForm.oneMeterCvm });
+      items.push({ label: "3m CV in Metres", value: uPercentForm.threeMeterCvm });
       items.push({ label: "Remarks", value: uPercentForm.remarks });
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
@@ -682,7 +682,7 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>Unique</label>
+                  <label>Entry ID</label>
                   <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={errors.header?.date ? uPercentStyles.errorField : ""} />
                 </div>
 
@@ -755,7 +755,7 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>CVM</label>
+                  <label>CV in Metres</label>
                   <input
                     value={uPercentForm.cvm}
                     onChange={(e) => handleUPercentChange("cvm", e.target.value)}
@@ -764,21 +764,16 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>1m CVM</label>
-                  <select
+                  <label>1m CV in Metres</label>
+                  <input
                     value={uPercentForm.oneMeterCvm}
                     onChange={(e) => handleUPercentChange("oneMeterCvm", e.target.value)}
                     className={errors.uPercent?.oneMeterCvm ? uPercentStyles.errorField : ""}
-                  >
-                    <option value="">Select</option>
-                    <option value="0.32">0.32</option>
-                    <option value="0.45">0.45</option>
-                    <option value="0.58">0.58</option>
-                  </select>
+                  />
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>3m CVM</label>
+                  <label>3m CV in Metres</label>
                   <input
                     value={uPercentForm.threeMeterCvm}
                     onChange={(e) => handleUPercentChange("threeMeterCvm", e.target.value)}
