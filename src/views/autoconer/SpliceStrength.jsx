@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { MdEditNote } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
-import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import {
   getAutoconerSpliceStrength,
   saveAutoconerSpliceStrength,
@@ -339,12 +337,6 @@ function SpliceStrength({
   return (
     <div className={styles.wrapper}>
       <div className={styles.entryCard}>
-        <div className={styles.formTitle}>
-          <MdEditNote />
-          <h3>Inspection Data Entry</h3>
-          <InputScreenUploadButton className="ml-auto" />
-        </div>
-
         <div className={styles.formGrid}>
           <div className={styles.field}>
             <label>Type</label>

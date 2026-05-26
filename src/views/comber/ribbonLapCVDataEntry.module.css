@@ -132,7 +132,7 @@
   border: 1px solid #E2E8F0;
   border-radius: 8px;
   padding: 8px 12px;
-  background: #F8FAFC;
+  background: #F1F5F9 !important;
   font-size: 13px;
 }
 
@@ -149,9 +149,18 @@
   border: 1px solid #E2E8F0;
   border-radius: 8px;
   padding: 8px 12px;
-  background: #ffffff;
+  background: #F1F5F9 !important;
   font-size: 13px;
   height: 36px;
+}
+
+:global(:root[data-theme="dark"]) .cb-form-group input,
+:global(:root[data-theme="dark"]) .cb-form-group select,
+:global(:root[data-theme="dark"]) .cb-form-group-field input {
+  background: #3b3b3b !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 .input-error {
