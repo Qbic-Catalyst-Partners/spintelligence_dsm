@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { IoTimeSharp } from "react-icons/io5";
+import { BsThreeDotsVertical } from "react-icons/bs";
 import styles from "../../styles/SupervisorDetails.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -54,6 +55,7 @@ export default function SupervisorDetails() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
@@ -115,6 +117,13 @@ export default function SupervisorDetails() {
     };
   }, [requestedTicketId]);
 
+  useEffect(() => {
+    if (!showMoreMenu) return undefined;
+    const closeMenu = () => setShowMoreMenu(false);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [showMoreMenu]);
+
   const handleApprove = async () => {
     try {
       await dispatch(approveTicket(ticket.ticket_id)).unwrap();
@@ -143,6 +152,42 @@ export default function SupervisorDetails() {
     } catch (err) {
       alert(err);
     }
+  };
+
+  const handleCopyTicketId = async () => {
+    try {
+      await navigator.clipboard.writeText(displayTicketId);
+      alert("Ticket ID copied.");
+    } catch {
+      alert("Unable to copy ticket ID.");
+    }
+    setShowMoreMenu(false);
+  };
+
+  const handleCopySummary = async () => {
+    const summary = [
+      `Ticket: ${displayTicketId}`,
+      `Status: ${getSupervisorStatusLabel(ticket?.status)}`,
+      `Severity: ${ticket?.severity || "-"}`,
+      `Operator: ${ticket?.user_name || "-"}`,
+      `Machine: ${ticket?.machine_name || ticket?.notebook || "-"}`,
+      `Created At: ${formatDateTime(ticket?.created_at)}`,
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(summary);
+      alert("Ticket summary copied.");
+    } catch {
+      alert("Unable to copy ticket summary.");
+    }
+    setShowMoreMenu(false);
+  };
+
+  const handleRefreshTicket = () => {
+    if (requestedTicketId) {
+      dispatch(fetchTicketDetails(requestedTicketId));
+    }
+    setShowMoreMenu(false);
   };
 
   if (isLoading && !ticket) return <p className={styles.loading}>Loading...</p>;
@@ -272,6 +317,26 @@ export default function SupervisorDetails() {
             </div>
 
             <div className={styles.right}>
+              <div className={styles.moreMenuWrap}>
+                <button
+                  type="button"
+                  className={styles.moreMenuBtn}
+                  aria-label="More options"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMoreMenu((value) => !value);
+                  }}
+                >
+                  <BsThreeDotsVertical />
+                </button>
+                {showMoreMenu && (
+                  <div className={styles.moreMenuPanel} onClick={(e) => e.stopPropagation()}>
+                    <button type="button" onClick={handleCopyTicketId}>Copy Ticket ID</button>
+                    <button type="button" onClick={handleCopySummary}>Copy Summary</button>
+                    <button type="button" onClick={handleRefreshTicket}>Refresh Details</button>
+                  </div>
+                )}
+              </div>
               <div>
                 <span>OPERATOR</span>
                 <strong>{ticket.user_name}</strong>
@@ -334,12 +399,15 @@ export default function SupervisorDetails() {
           </table>
 
           {parameterNames.length > 1 && (
-            <div
+            <button
+              type="button"
               className={styles.dots}
               onClick={() => setExpanded(!expanded)}
+              aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+              title={expanded ? "Show less" : "Show all"}
             >
               ...
-            </div>
+            </button>
           )}
         </div>
 
@@ -440,6 +508,26 @@ export default function SupervisorDetails() {
               <span className={`${styles.status} ${statusClassName}`}>Status: {getSupervisorStatusLabel(ticket.status)}</span>
             </div>
           </div>
+          <div className={styles.moreMenuWrap}>
+            <button
+              type="button"
+              className={styles.moreMenuBtn}
+              aria-label="More options"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMoreMenu((value) => !value);
+              }}
+            >
+              <BsThreeDotsVertical />
+            </button>
+            {showMoreMenu && (
+              <div className={styles.moreMenuPanel} onClick={(e) => e.stopPropagation()}>
+                <button type="button" onClick={handleCopyTicketId}>Copy Ticket ID</button>
+                <button type="button" onClick={handleCopySummary}>Copy Summary</button>
+                <button type="button" onClick={handleRefreshTicket}>Refresh Details</button>
+              </div>
+            )}
+          </div>
 
           <span className={styles.severity}>
             Severity: {ticket.severity}
@@ -491,12 +579,15 @@ export default function SupervisorDetails() {
           ))}
 
           {parameterNames.length > 1 && (
-            <div
+            <button
+              type="button"
               className={styles.dots}
               onClick={() => setExpanded(!expanded)}
+              aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+              title={expanded ? "Show less" : "Show all"}
             >
               ...
-            </div>
+            </button>
           )}
         </div>
 

@@ -1,6 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useRouter } from "next/router";
 import {
   FiAward,
   FiCalendar,
@@ -11,7 +12,12 @@ import {
   FiTarget,
   FiTrendingUp,
 } from "react-icons/fi";
-import { fetchAnalysisRankingApi, fetchL1AnalysisApi, fetchL2AnalysisApi } from "@/apis/analysisApi";
+import {
+  fetchAnalysisRankingApi,
+  fetchL1AnalysisApi,
+  fetchL2AnalysisApi,
+  fetchStatisticsAnalyticsApi,
+} from "@/apis/analysisApi";
 import { getSubmissionTickets } from "@/apis/operatorApi";
 import styles from "@/styles/ticketCalendar.module.css";
 import { fetchOperatorTickets } from "@/store/slices/operatorSlice";
@@ -456,8 +462,15 @@ function MetricCard({ label, value }) {
 }
 
 export default function TicketAnalysisPage({ mode = "L1" }) {
+  const router = useRouter();
   const dispatch = useDispatch();
   const [activeSystem, setActiveSystem] = useState("threshold");
+  const [statisticsApiData, setStatisticsApiData] = useState({
+    cards: null,
+    loading: false,
+    error: "",
+    filter: null,
+  });
   const [activePeriod, setActivePeriod] = useState("1M");
   const [performanceFilterMode, setPerformanceFilterMode] = useState("current");
   const [fromDate, setFromDate] = useState(toInputDate(addDays(new Date(), -25)));
@@ -591,6 +604,60 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       isMounted = false;
     };
   }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, toDate]);
+
+  useEffect(() => {
+    if (mode !== "L1") return undefined;
+
+    const department = String(router.query?.department || process.env.NEXT_PUBLIC_STATS_DEPARTMENT || "").trim();
+    const subDepartment = String(
+      router.query?.sub_department || process.env.NEXT_PUBLIC_STATS_SUB_DEPARTMENT || ""
+    ).trim();
+    const inputScreen = String(router.query?.input_screen || process.env.NEXT_PUBLIC_STATS_INPUT_SCREEN || "").trim();
+    const inputField = String(router.query?.input_field || process.env.NEXT_PUBLIC_STATS_INPUT_FIELD || "").trim();
+    const canFetchFromApi = department && subDepartment && inputScreen && inputField;
+
+    if (!canFetchFromApi) {
+      setStatisticsApiData((current) => ({
+        ...current,
+        loading: false,
+        error: "",
+      }));
+      return undefined;
+    }
+
+    let mounted = true;
+    setStatisticsApiData((current) => ({ ...current, loading: true, error: "" }));
+
+    fetchStatisticsAnalyticsApi({
+      department,
+      sub_department: subDepartment,
+      input_screen: inputScreen,
+      input_field: inputField,
+      period: activePeriod,
+    })
+      .then((response) => {
+        if (!mounted) return;
+        setStatisticsApiData({
+          cards: response?.cards || null,
+          loading: false,
+          error: "",
+          filter: response?.filter || null,
+        });
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setStatisticsApiData({
+          cards: null,
+          loading: false,
+          error: error?.response?.data?.message || error.message || "Failed to fetch statistics analytics.",
+          filter: null,
+        });
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activePeriod, mode, router.query?.department, router.query?.input_field, router.query?.input_screen, router.query?.sub_department]);
 
   const allTickets = useMemo(
     () => Array.isArray(tickets) ? tickets : [],
@@ -776,6 +843,26 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     });
   }, [combinedTickets, fromDate, matchesDepartmentFilters, toDate]);
   const statisticsSeries = useMemo(() => {
+    const cards = statisticsApiData.cards;
+    if (cards && typeof cards === "object") {
+      const chartConfigs = [
+        { title: "Mean", key: "mean" },
+        { title: "Median", key: "median" },
+        { title: "Standard Deviation", key: "standard_deviation" },
+        { title: "Average", key: "average" },
+      ];
+      const apiSeries = chartConfigs.map(({ title, key }) => {
+        const points = Array.isArray(cards?.[key]) ? cards[key] : [];
+        const labels = points.map((point) => String(point?.label || "-"));
+        const rawValues = points.map((point) => Number(point?.value ?? 0));
+        return { title, labels, values: scaleSeries(rawValues) };
+      });
+
+      if (apiSeries.some((series) => series.labels.length > 0)) {
+        return apiSeries;
+      }
+    }
+
     const buckets = buildPeriodBuckets(activePeriod, toDate);
     const bucketCounts = buckets.map((bucket) => {
       return filteredFetchedTickets.filter((ticket) => {
@@ -819,7 +906,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       { title: "Outlier", labels, values: scaleSeries(outlierScores) },
       { title: "Min & Max", labels, values: scaleSeries(minMaxSpread) },
     ];
-  }, [activePeriod, filteredFetchedTickets, toDate]);
+  }, [activePeriod, filteredFetchedTickets, statisticsApiData.cards, toDate]);
   const performanceMetrics = useMemo(() => {
     const l1ApiMetrics = performanceApiData.l1?.metrics;
     const l2ApiMetrics = performanceApiData.l2?.metrics;
@@ -961,6 +1048,8 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setToDate={setToDate}
         />
         {fetchError && <p className={styles.statisticsError}>{fetchError}</p>}
+        {statisticsApiData.loading && <p className={styles.statisticsError}>Fetching statistics analytics...</p>}
+        {statisticsApiData.error && <p className={styles.statisticsError}>{statisticsApiData.error}</p>}
         <section className={styles.statisticsGrid}>
           {statisticsSeries.map((chart) => (
             <MiniAreaChart
