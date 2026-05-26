@@ -20,7 +20,7 @@ const initialForm = () => ({
 });
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
-  { types = [], selectedType = "", onTypeChange = () => {} },
+  { types = [], selectedType = "", onTypeChange = () => {}, entryId = "" },
   ref
 ) {
   const dispatch = useDispatch();
@@ -90,7 +90,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   };
 
   const getPreviewData = () => [
-    { label: "Date", value: form.date },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Shift", value: form.shift },
     { label: "Variety", value: form.variety },
     { label: "Department", value: form.department },
@@ -148,11 +148,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
-          <label>Date</label>
+          <label>Entry ID</label>
           <input
-            type="date"
-            value={form.date}
-            onChange={(e) => handleChange("date", e.target.value)}
+            type="text"
+            value={entryId || ""}
+            readOnly disabled
             className={errors.date ? styles.errorField : ""}
           />
         </div>
@@ -275,3 +275,4 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 });
 
 export default UPercentDataEntry;
+

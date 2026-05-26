@@ -26,8 +26,31 @@ const simplexTypes = [
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
+const SIMPLEX_ENTRY_SEQ_KEY = "simplex_entry_sequence";
+const SIMPLEX_ENTRY_ID_CONFIG = {
+  "Process Parameter": { prefix: "SPP", storageKey: "simplex_entry_sequence_process_parameter" },
+  "SMXCots Change Data Entry": { prefix: "SCC", storageKey: "simplex_entry_sequence_smx_cots_change" },
+  "SMX Breaks Study Report": { prefix: "SBS", storageKey: "simplex_entry_sequence_breaks_study" },
+  "U% Data Entry": { prefix: "SUP", storageKey: "simplex_entry_sequence_u_percent" },
+};
+
+const getSimplexEntryConfig = (typeName) =>
+  SIMPLEX_ENTRY_ID_CONFIG[typeName] || { prefix: "SIM", storageKey: SIMPLEX_ENTRY_SEQ_KEY };
+
+const getSimplexEntryId = (seq, typeName) => {
+  const { prefix } = getSimplexEntryConfig(typeName);
+  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readSimplexEntrySequence = (typeName) => {
+  if (typeof window === "undefined") return 1;
+  const { storageKey } = getSimplexEntryConfig(typeName);
+  const stored = Number(window.localStorage.getItem(storageKey) || "1");
+  return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 function Simplex() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
@@ -49,6 +72,7 @@ function Simplex() {
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
+  const [entrySeq, setEntrySeq] = useState(1);
   const { uqcEntries = [], cotsChangeEntries = [], listLoading } = useSelector(
     (state) => state.simplex ?? {}
   );
@@ -71,6 +95,11 @@ function Simplex() {
     muted: isDarkMode ? "#ffffff" : "#64748b",
     accent: isDarkMode ? "#93c5fd" : "#1976d2",
   };
+
+  useEffect(() => {
+    if (!selectedTypeName) return;
+    setEntrySeq(readSimplexEntrySequence(selectedTypeName));
+  }, [selectedTypeName]);
 
   useEffect(() => {
     if (!typeOptions.some((item) => item.name === selectedTypeName)) {
@@ -117,8 +146,10 @@ function Simplex() {
           <h1 className="text-[24px] font-extrabold text-slate-900 m-0">
             Quality Control - Simplex Notebook
           </h1>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">
+            Current Date: {currentDateLabel}
+          </div>
           <p className="text-[14px] text-slate-500 mt-1.5 mb-0">
-            Record and manage industrial machine quality inspections.
           </p>
         </div>
 
@@ -154,6 +185,7 @@ function Simplex() {
                 selectedTypeName={selectedTypeName}
                 onTypeChange={setSelectedTypeName}
                 typeOptions={typeOptions.map((type) => type.name)}
+                entryId={getSimplexEntryId(entrySeq, selectedTypeName)}
                 tablePortalTargetId="simplex-report-table-slot"
               />
             ) : (
@@ -428,6 +460,12 @@ function Simplex() {
         message="Data Submitted"
         typeValue={selectedTypeName}
         onClose={() => {
+          const nextSeq = entrySeq + 1;
+          setEntrySeq(nextSeq);
+          if (typeof window !== "undefined") {
+            const { storageKey } = getSimplexEntryConfig(selectedTypeName);
+            window.localStorage.setItem(storageKey, String(nextSeq));
+          }
           setShowSuccess(false);
           setValidationMessage("");
           childRef.current?.clear?.();

@@ -136,6 +136,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     typeOptions = [],
     tablePortalTargetId,
     postFooterPortalTargetId,
+    entryId = "",
   },
   ref
 ) {
@@ -229,8 +230,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
 
   const getPreviewData = () => [
     ...Object.entries(form).map(([label, value]) => ({
-      label,
-      value: value || "-",
+      label: label === "date" ? "Entry ID" : label,
+      value: label === "date" ? entryId || "-" : value || "-",
     })),
     ...readingRows.map((row, index) => ({
       label: `Reading ${index + 1}`,
@@ -389,7 +390,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
-    { label: "Date", field: "date", type: "date", placeholder: "Enter date" },
+    { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameOptions, placeholder: "Enter count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoConerOptions, placeholder: "Enter auto coner no." },
     { label: "Drum From/To", field: "drumRange", type: "pair" },

@@ -20,7 +20,7 @@ const createEmptyEntries = (count) =>
     }));
 
 const NatiDataEntry = forwardRef(function NatiDataEntry(
-    { types, selectedType, onTypeChange, showForm },
+    { types, selectedType, onTypeChange, showForm, entryId = "" },
     ref
 ) {
     const router = useRouter();
@@ -146,7 +146,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
         const base = [
             { label: "Type", value: selectedType || "Nati Data Entry" },
             { label: "Nati ID", value: natiId },
-            { label: "Entry Date", value: entryDate },
+            { label: "Entry ID", value: entryId || "-" },
             { label: "Variety", value: variety },
         ];
 
@@ -208,11 +208,11 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                             </div>
 
                             <div className={styles["cb-form-group"]}>
-                                <label>Entry Date</label>
+                                <label>Entry ID</label>
                                 <input
-                                    type="date"
-                                    value={entryDate}
-                                    onChange={(e) => setEntryDate(e.target.value)}
+                                    type="text"
+                                    value={entryId || ""}
+                                    readOnly disabled
                                     readOnly
                                 />
                             </div>
@@ -325,3 +325,4 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
 });
 
 export default NatiDataEntry;
+

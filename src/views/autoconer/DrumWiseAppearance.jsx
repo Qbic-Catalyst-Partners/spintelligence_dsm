@@ -8,6 +8,7 @@ import {
 import styles from "@/styles/drumWiseAppearance.module.css";
 import { sanitizeIntegerInput } from "@/utils/inputValidation";
 
+
 const getTodayDate = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -64,6 +65,7 @@ function DrumWiseAppearance({
   onRegisterActions,
   tablePortalTargetId,
   postFooterPortalTargetId,
+  entryId = "",
 }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
@@ -137,7 +139,7 @@ function DrumWiseAppearance({
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
     { label: "Test No.", value: testNo || "-" },
-    { label: "Entry Date", value: entryDate || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Count Name", value: countName || "-" },
     { label: "Auto Coner No.", value: autoconerNo || "-" },
     { label: "Drum From", value: drumFrom || "-" },
@@ -332,8 +334,8 @@ function DrumWiseAppearance({
           </div>
 
           <div className={styles.field}>
-            <label>Entry Date</label>
-            <input type="date" value={entryDate} disabled style={errorStyle(errors.entryDate)} />
+            <label>Entry ID</label>
+            <input type="text" value={entryId} readOnly disabled />
           </div>
 
           <div className={styles.field}>

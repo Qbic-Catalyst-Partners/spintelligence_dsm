@@ -39,8 +39,42 @@ const autoconerTypes = [
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
+const AUTOCONER_ENTRY_SEQ_KEY = "autoconer_entry_sequence";
+const AUTOCONER_ENTRY_ID_CONFIG = {
+  "Process Parameter": { prefix: "APP", storageKey: "autoconer_entry_sequence_process_parameter" },
+  "PP - Autoconer Q2": { prefix: "AQ2", storageKey: "autoconer_entry_sequence_q2" },
+  "PP - Autoconer Q3": { prefix: "AQ3", storageKey: "autoconer_entry_sequence_q3" },
+  "Rewinding Study": { prefix: "ARW", storageKey: "autoconer_entry_sequence_rewinding" },
+  "Cone Density": { prefix: "ACD", storageKey: "autoconer_entry_sequence_cone_density" },
+  "Cone Packing Audit": { prefix: "ACP", storageKey: "autoconer_entry_sequence_cone_packing" },
+  "Lycra Checking": { prefix: "ALC", storageKey: "autoconer_entry_sequence_lycra_checking" },
+  "Count Wise Cuts Record": { prefix: "ACC", storageKey: "autoconer_entry_sequence_count_wise_cuts" },
+  "Splice Strength": { prefix: "ASS", storageKey: "autoconer_entry_sequence_splice_strength" },
+  "Drum wise Appearance": { prefix: "ADA", storageKey: "autoconer_entry_sequence_drum_appearance" },
+  "CSP Parameter Entries": { prefix: "ACS", storageKey: "autoconer_entry_sequence_csp_entries" },
+  "U% Parameter Entries": { prefix: "AUP", storageKey: "autoconer_entry_sequence_u_percent_entries" },
+};
+
+const getAutoconerEntryConfig = (typeName) =>
+  AUTOCONER_ENTRY_ID_CONFIG[typeName] || {
+    prefix: "ACR",
+    storageKey: AUTOCONER_ENTRY_SEQ_KEY,
+  };
+
+const getAutoconerEntryId = (seq, typeName) => {
+  const { prefix } = getAutoconerEntryConfig(typeName);
+  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readAutoconerEntrySequence = (typeName) => {
+  if (typeof window === "undefined") return 1;
+  const { storageKey } = getAutoconerEntryConfig(typeName);
+  const stored = Number(window.localStorage.getItem(storageKey) || "1");
+  return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 function Autoconer() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
@@ -62,6 +96,7 @@ function Autoconer() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
+  const [entrySeq, setEntrySeq] = useState(1);
   const selectedType = useMemo(
     () => typeOptions.find((item) => item.name === checkingType)?.name || "",
     [checkingType, typeOptions]
@@ -128,14 +163,21 @@ function Autoconer() {
     }
   }, [checkingType, typeOptions]);
 
+  useEffect(() => {
+    if (!selectedType) {
+      setEntrySeq(1);
+      return;
+    }
+    setEntrySeq(readAutoconerEntrySequence(selectedType));
+  }, [selectedType]);
+
   return (
     <div className={styles.page}>
       <div className={styles.container}>
         <div className={styles.header}>
           <h1>Quality Control - Autoconer Notebook</h1>
-          <p>Record and manage industrial machine quality inspections.</p>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
-
         <div className={styles.shell}>
           <div className={styles.formBody}>
             <div className={styles.formTitle}>
@@ -152,6 +194,7 @@ function Autoconer() {
                 onTypeChange={handleTypeChange}
                 types={typeOptions}
                 typeOptions={typeOptions.map((type) => type.name)}
+                entryId={getAutoconerEntryId(entrySeq, selectedType)}
                 tablePortalTargetId="autoconer-table-slot"
                 savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}
                 postFooterPortalTargetId="autoconer-post-footer-slot"
@@ -223,6 +266,12 @@ function Autoconer() {
         message="Data Submitted"
         typeValue={selectedType}
         onClose={() => {
+          const nextSeq = entrySeq + 1;
+          setEntrySeq(nextSeq);
+          if (typeof window !== "undefined") {
+            const { storageKey } = getAutoconerEntryConfig(selectedType);
+            window.localStorage.setItem(storageKey, String(nextSeq));
+          }
           setShowSuccess(false);
           setValidationMessage("");
           childRef.current?.clear?.();
@@ -235,3 +284,8 @@ function Autoconer() {
 }
 
 export default Autoconer;
+
+
+
+
+

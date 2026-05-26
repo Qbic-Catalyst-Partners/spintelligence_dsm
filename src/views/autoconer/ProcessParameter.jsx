@@ -18,6 +18,7 @@ import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import styles from "@/styles/AutoconerProcessParameter.module.css";
 
+
 const createDefaultForm = (selectedType = "Process Parameter") => ({
   versionId: "",
   paramId: "",
@@ -193,7 +194,13 @@ const buildPayload = (form) => ({
 });
 
 const ProcessParameter = forwardRef(function ProcessParameter(
-  { selectedType = "Process Parameter", onTypeChange, types = [], savedVersionsTargetId = "" },
+  {
+    selectedType = "Process Parameter",
+    onTypeChange,
+    types = [],
+    savedVersionsTargetId = "",
+    entryId = "",
+  },
   ref
 ) {
   const [versions, setVersions] = useState([]);
@@ -335,7 +342,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     { label: "Type", value: selectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Creation Date", value: formatDisplayDate(form.creationDate) || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -511,12 +518,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
           </div>
 
           <div className={styles.fieldGroup}>
-            <label>Creation Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
-              className={`${styles.field}${errors.creationDate ? ` ${styles.errorField}` : ""}`}
-              value={form.creationDate}
-              onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+              type="text"
+              className={styles.field}
+              value={entryId}
+              readOnly
+              disabled
             />
           </div>
         </div>

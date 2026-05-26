@@ -137,7 +137,7 @@ const displaySavedValue = (value) => {
 };
 
 const ProcessParameter = forwardRef(function ProcessParameter(
-  { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "" },
+  { entryId = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "" },
   ref
 ) {
   const [versions, setVersions] = useState([]);
@@ -303,7 +303,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Creation Date", value: formatDisplayDate(form.creationDate) || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -477,12 +477,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
           </div>
 
           <div className={styles.fieldGroup}>
-            <label>Creation Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
-              className={`${topFieldClass}${errors.creationDate ? ` ${styles.errorField}` : ""}`}
-              value={form.creationDate}
-              onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+              type="text"
+              className={topFieldClass}
+              value={entryId || ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
@@ -518,3 +519,4 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 });
 
 export default ProcessParameter;
+

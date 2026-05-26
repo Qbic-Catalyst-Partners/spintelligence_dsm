@@ -322,6 +322,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     selectedTypeName,
     typeOptions = [],
     onTypeChange,
+    entryId = "#SPN-001",
     standaloneSection = false,
     savedVersionsTargetId = "",
   },
@@ -508,7 +509,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Creation Date", value: formatDisplayDate(form.creationDate) || "-" },
+    { label: "Entry ID", value: entryId || "#SPN-001" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -566,12 +567,13 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Creation Date</label>
+          <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
           <input
             type="text"
             className={topFieldClass}
-            value={formatDisplayDate(form.creationDate)}
+            value={entryId || "#SPN-001"}
             readOnly
+            disabled
           />
         </div>
       </div>

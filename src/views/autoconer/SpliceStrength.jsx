@@ -10,6 +10,7 @@ import {
 import styles from "@/styles/spliceStrength.module.css";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
+
 const getTodayDate = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -74,6 +75,7 @@ function SpliceStrength({
   onTypeChange,
   onRegisterActions,
   postFooterPortalTargetId,
+  entryId = "",
 }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
@@ -185,7 +187,7 @@ function SpliceStrength({
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
     { label: "Test No.", value: testNo || "-" },
-    { label: "Date", value: date || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Count Name", value: countName || "-" },
     { label: "Auto Coner No.", value: autoconerNo || "-" },
     { label: "Drum From", value: drumFrom || "-" },
@@ -355,8 +357,8 @@ function SpliceStrength({
           </div>
 
           <div className={styles.field}>
-            <label>Date</label>
-            <input type="date" value={date} disabled style={errorStyle(errors.date)} />
+            <label>Entry ID</label>
+            <input type="text" value={entryId} readOnly disabled />
           </div>
 
           <div className={styles.field}>

@@ -47,7 +47,7 @@ const getPayloadValue = (row, value) => {
   return row.numeric ? Number(trimmed) : trimmed;
 };
 
-function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange }) {
+function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(getTodayDate);
@@ -65,7 +65,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     () => [
       { label: "Type", value: selectedType || "WheelChange" },
       { label: "Test No.", value: testNo || "-" },
-      { label: "Entry Date", value: entryDate || "-" },
+      { label: "Entry ID", value: entryId || "-" },
       { label: "CDO No.", value: cdoNo || "-" },
       { label: "CDG No. (Proposed)", value: proposedCdgNo || "-" },
       ...parameterRows.flatMap((row) => [
@@ -74,7 +74,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       ]),
       { label: "Remarks", value: remarks || "-" },
     ],
-    [cdoNo, entryDate, proposedCdgNo, remarks, selectedType, testNo, values]
+    [cdoNo, entryId, proposedCdgNo, remarks, selectedType, testNo, values]
   );
 
   const clearError = (field) => {
@@ -265,15 +265,13 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
           </div>
 
           <div className={styles.field}>
-            <label>Entry Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
+              type="text"
               className={`${styles.topInput} ${errors.entryDate ? styles.errorInput : ""}`}
-              value={entryDate}
-              onChange={(event) => {
-                setEntryDate(event.target.value);
-                clearError("entryDate");
-              }}
+              value={entryId || ""}
+              readOnly
+              disabled
             />
           </div>
         </div>

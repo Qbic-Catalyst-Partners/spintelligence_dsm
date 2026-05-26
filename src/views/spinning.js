@@ -57,6 +57,35 @@ const SPINNING_CHECKING_OPTIONS = [
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
+const SPINNING_ENTRY_SEQ_KEY = "spinning_entry_sequence";
+const SPINNING_ENTRY_ID_CONFIG = {
+    "Process Parameter": { prefix: "SNP", storageKey: "spinning_entry_sequence_process_parameter" },
+    "COTS Checking": { prefix: "SCT", storageKey: "spinning_entry_sequence_cots_checking" },
+    "Count Change": { prefix: "SCC", storageKey: "spinning_entry_sequence_count_change" },
+    "Ring Frame Log Book": { prefix: "SRF", storageKey: "spinning_entry_sequence_ring_frame" },
+    "Speed Checking": { prefix: "SSD", storageKey: "spinning_entry_sequence_speed_checking" },
+    "Lycra Missing": { prefix: "SLM", storageKey: "spinning_entry_sequence_lycra_missing" },
+    "Bottom Apron Checking": { prefix: "SBA", storageKey: "spinning_entry_sequence_bottom_apron" },
+    "Lycra Centering": { prefix: "SLC", storageKey: "spinning_entry_sequence_lycra_centering" },
+    "RSM & Lycrasensor Checking Online": { prefix: "SRO", storageKey: "spinning_entry_sequence_rsm_online" },
+    "RSM & Lycrasensor Checking Offline": { prefix: "SFO", storageKey: "spinning_entry_sequence_rsm_offline" },
+    "Wheel Change": { prefix: "SWC", storageKey: "spinning_entry_sequence_wheel_change" },
+};
+
+const getSpinningEntryConfig = (typeName) =>
+    SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN", storageKey: SPINNING_ENTRY_SEQ_KEY };
+
+const getSpinningEntryId = (seq, typeName) => {
+    const { prefix } = getSpinningEntryConfig(typeName);
+    return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readSpinningEntrySequence = (typeName) => {
+    if (typeof window === "undefined") return 1;
+    const { storageKey } = getSpinningEntryConfig(typeName);
+    const stored = Number(window.localStorage.getItem(storageKey) || "1");
+    return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 const createRingFrameRows = () =>
     Array.from({ length: 24 }, (_, index) => ({
@@ -148,6 +177,7 @@ function SpinningDepartment() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
+    const [entrySeq, setEntrySeq] = useState(1);
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -176,6 +206,14 @@ function SpinningDepartment() {
             setDate("");
         }
     }, [checkingOptions, queryType]);
+
+    useEffect(() => {
+        if (!checkingType) {
+            setEntrySeq(1);
+            return;
+        }
+        setEntrySeq(readSpinningEntrySequence(checkingType));
+    }, [checkingType]);
 
     useEffect(() => {
         if (success) {
@@ -485,17 +523,18 @@ function SpinningDepartment() {
         }
         setValidationMessage("");
 
+        const entryId = getSpinningEntryId(entrySeq, checkingType);
         const headerItems = isCountChange
             ? [
                 { label: "Checking Type", value: checkingType || "-" },
-                { label: "Entry Date", value: date || getTodayDate() },
+                { label: "Entry ID", value: entryId },
                 { label: "Test No.", value: testNo || "-" },
                 { label: "RF No.", value: rfNo || "-" },
                 { label: "Lycra Draft", value: lycraDraft || "-" },
             ]
             : [
                 { label: "Checking Type", value: checkingType || "-" },
-                { label: "Date", value: date || getTodayDate() },
+                { label: "Entry ID", value: entryId },
                 { label: "Machine", value: selectedMachine || "-" },
                 { label: "Employee", value: employeeSearch || "-" },
             ];
@@ -569,6 +608,7 @@ function SpinningDepartment() {
                             ref={childRef}
                             selectedTypeName={checkingType}
                             typeOptions={checkingOptions}
+                            entryId={getSpinningEntryId(entrySeq, checkingType)}
                             onTypeChange={(value) => handleTypeChange({ target: { value } })}
                             onSubmitSuccess={() => setShowSuccess(true)}
                             standaloneSection={isProcessParameter}
@@ -594,8 +634,8 @@ function SpinningDepartment() {
                                         </select>
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Entry Date</label>
-                                        <input type="date" className={`${styles["highlight-input"]} ${errors.date ? styles["input-error"] : ""}`} value={date} onChange={(e) => { setDate(e.target.value); clearFieldError("date"); }} disabled={checkingType !== ""} />
+                                        <label>Entry ID</label>
+                                        <input type="text" className={styles["highlight-input"]} value={getSpinningEntryId(entrySeq, checkingType)} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Test No.</label>
@@ -693,8 +733,8 @@ function SpinningDepartment() {
                                         </select>
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Entry Date</label>
-                                        <input type="date" className={`${styles["highlight-input"]} ${errors.date ? styles["input-error"] : ""}`} value={date} onChange={(e) => { setDate(e.target.value); clearFieldError("date"); }} disabled={checkingType !== ""} />
+                                        <label>Entry ID</label>
+                                        <input type="text" className={styles["highlight-input"]} value={getSpinningEntryId(entrySeq, checkingType)} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Shift</label>
@@ -792,8 +832,8 @@ function SpinningDepartment() {
                                         </select>
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Date</label>
-                                        <input type="date" className={`${styles["highlight-input"]} ${errors.date ? styles["input-error"] : ""}`} value={date} onChange={(e) => { setDate(e.target.value); clearFieldError("date"); }} disabled={checkingType !== ""} />
+                                        <label>Entry ID</label>
+                                        <input type="text" className={styles["highlight-input"]} value={getSpinningEntryId(entrySeq, checkingType)} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Machine</label>
@@ -931,6 +971,12 @@ function SpinningDepartment() {
             <SuccessModal
                 open={showSuccess}
                 onClose={() => {
+                    const nextSeq = entrySeq + 1;
+                    setEntrySeq(nextSeq);
+                    if (typeof window !== "undefined") {
+                        const { storageKey } = getSpinningEntryConfig(checkingType);
+                        window.localStorage.setItem(storageKey, String(nextSeq));
+                    }
                     setShowSuccess(false);
                     handleClearForm();
                 }}
@@ -940,5 +986,4 @@ function SpinningDepartment() {
 }
 
 export default SpinningDepartment;
-
 

@@ -6,7 +6,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 
-function UPercentDataEntry({ types, selectedType, onTypeChange }) {
+function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) {
   const dispatch = useDispatch();
   const { isLoading, uqc, error } = useSelector((state) => state.carding ?? {});
   const [form, setForm] = useState({
@@ -152,11 +152,11 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
           </div>
 
           <div>
-            <label>Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
-              value={form.date}
-              onChange={(e) => handleChange("date", e.target.value)}
+              type="text"
+              value={entryId || ""}
+              readOnly disabled
               className={errors.date ? styles.errorField : ""}
             />
           </div>
@@ -258,3 +258,4 @@ function UPercentDataEntry({ types, selectedType, onTypeChange }) {
 }
 
 export default UPercentDataEntry;
+

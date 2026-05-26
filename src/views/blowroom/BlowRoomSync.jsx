@@ -10,7 +10,7 @@ import {
 const todayValue = new Date().toISOString().split("T")[0];
 
 const BlowRoomSync = forwardRef(function BlowRoomSync(
-  { date, selectedTypeName, onTypeChange, onDateChange, typeOptions = [] },
+  { date, entryId, selectedTypeName, onTypeChange, onDateChange, typeOptions = [] },
   ref
 ) {
   const dispatch = useDispatch();
@@ -63,11 +63,12 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 
     const a = parseFloat(updated[index].a);
     const b = parseFloat(updated[index].b);
-    const c = parseFloat(updated[index].c);
-
-    if (![a, b, c].some(Number.isNaN) && updated[index].a !== "" && updated[index].b !== "" && updated[index].c !== "") {
-      updated[index].sync = (((a || 0) + (b || 0) + (c || 0)) / 3).toFixed(2);
+    if (![a, b].some(Number.isNaN) && updated[index].a !== "" && updated[index].b !== "") {
+      const c = a + b;
+      updated[index].c = c.toFixed(2);
+      updated[index].sync = c > 0 ? ((a / c) * 100).toFixed(2) : "";
     } else {
+      updated[index].c = "";
       updated[index].sync = "";
     }
 
@@ -76,7 +77,6 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       const next = { ...prev };
       delete next[`row-${index}-a`];
       delete next[`row-${index}-b`];
-      delete next[`row-${index}-c`];
       return next;
     });
   };
@@ -122,7 +122,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     if (!form.entryDate) nextErrors.entryDate = true;
     if (!generated || !tableData.length) nextErrors.table = true;
     tableData.forEach((row, idx) => {
-      ["a", "b", "c"].forEach((k) => {
+      ["a", "b"].forEach((k) => {
         if (String(row[k] || "").trim() === "") {
           nextErrors[`row-${idx}-${k}`] = true;
         }
@@ -193,7 +193,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       if (!form.entryDate) nextErrors.entryDate = true;
       if (!generated || !tableData.length) nextErrors.table = true;
       tableData.forEach((row, idx) => {
-        ["a", "b", "c"].forEach((k) => {
+        ["a", "b"].forEach((k) => {
           if (String(row[k] || "").trim() === "") {
             nextErrors[`row-${idx}-${k}`] = true;
           }
@@ -205,7 +205,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     getPreviewData: () => {
       const header = [
         { label: "Type", value: selectedTypeName || form.type },
-        { label: "Entry Date", value: form.entryDate },
+        { label: "Entry ID", value: entryId || "-" },
         { label: "Line No.", value: form.lineNo },
         { label: "Variety", value: form.variety },
         { label: "Checked By", value: form.checkedBy },
@@ -214,7 +214,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       ];
       const rowsData = tableData.map((row, idx) => ({
         label: `Row ${idx + 1}`,
-        value: `A:${row.a} | B:${row.b} | C:${row.c} | Sync:${row.sync}`,
+        value: `A:${row.a} | B:${row.b} | C:${row.c} | Sync:${row.sync ? `${row.sync}%` : ""}`,
       }));
       return [...header, ...rowsData];
     },
@@ -238,12 +238,12 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
         </div>
 
         <div className={styles.group}>
-          <label>Entry Date</label>
+          <label>Entry ID</label>
           <input
-            type="date"
-            value={form.entryDate}
-            onChange={(e) => onDateChange?.(e.target.value)}
-            className={errors.entryDate ? styles.errorField : undefined}
+            type="text"
+            value={entryId || ""}
+            readOnly
+            disabled
           />
         </div>
 
@@ -326,8 +326,8 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
             <span>S. No.</span>
             <span>Value A</span>
             <span>Value B</span>
-            <span>Value C</span>
-            <span>Sync Percentage</span>
+            <span>Value C (A+B)</span>
+            <span>Sync Percentage (%)</span>
           </div>
 
           {tableData.map((row, i) => (
@@ -346,10 +346,9 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
               />
               <input
                 value={row.c}
-                onChange={(e) => handleChange(i, "c", e.target.value)}
-                className={errors[`row-${i}-c`] ? styles.errorField : undefined}
+                readOnly
               />
-              <input value={row.sync} readOnly />
+              <input value={row.sync ? `${row.sync}%` : ""} readOnly />
             </div>
           ))}
         </div>
@@ -383,3 +382,4 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 });
 
 export default BlowRoomSync;
+

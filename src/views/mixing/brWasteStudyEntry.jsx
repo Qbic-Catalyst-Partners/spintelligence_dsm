@@ -6,39 +6,78 @@ import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidat
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
 const TYPE_3_COLUMNS = [
-    { key: 'flatStrip',  label: 'Flat Strip %'  },
-    { key: 'underGrid',  label: 'Under Grid %'  },
-    { key: 'moteKnife',  label: 'Mote Knife %'  },
-    { key: 'cylinder',   label: 'Cylinder %'    },
-    { key: 'doffer',     label: 'Doffer %'      },
-    { key: 'bowingFlat', label: 'Bowing Flat %' },
-    { key: 'filter',     label: 'Filter %'      },
-    { key: 'overallBL',  label: 'Overall BL %'  },
-    { key: 'cardWaste',  label: 'Card Waste %'  },
+    { key: 'flatSpeed', label: 'Flat Speed' },
+    { key: 'deliverySpeed', label: 'Delivery Speed' },
+    { key: 'wingSettling1', label: 'Wing Settling 1' },
+    { key: 'wingSettling2', label: 'Wing Settling 2' },
+    { key: 'firstLickerinSpeed', label: '1st Lickerin Speed' },
+    { key: 'secondLickerinSpeed', label: '2nd Lickerin Speed' },
+    { key: 'thirdLickerinSpeed', label: '3rd Lickerin Speed' },
+    { key: 'mcNo', label: 'MC No' },
+    { key: 'mcProduction', label: 'MC Production' },
+];
+const TYPE_2_COLUMNS = [
+    { key: "cylinderSpeed", label: "Cylinder Speed" },
+    { key: "flatSpeed", label: "Flat Speed" },
+    { key: "deliverySpeed", label: "Delivery Speed" },
+    { key: "wingSetting", label: "Wing Setting" },
+    { key: "lickerinSpeed", label: "Lickerin Speed" },
+    { key: "mcNo", label: "MC No" },
+    { key: "mcProduction", label: "MC Production" },
+];
+const TYPE_1_COLUMNS = [
+    { key: "cylinderSpeed", label: "Cylinder Speed" },
+    { key: "lickerinSpeed", label: "Lickerin Speed" },
+    { key: "flatSpeed", label: "Flat Speed" },
+    { key: "dofferSpeed", label: "Doffer Speed" },
+    { key: "mcNo", label: "MC No" },
+    { key: "mcProduction", label: "MC Production" },
+];
+const WASTE_TYPE_OPTIONS = [
+    "Flat Strip",
+    "Under Grid",
+    "Mote Knife",
+    "Cylinder",
+    "Doffer",
 ];
 
 const emptyType3Row = () =>
     TYPE_3_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
-
-const emptyWasteRow = () => ({ production: '', totalWaste: '', wastePercent: '' });
+const emptyType2Row = () =>
+    TYPE_2_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: "" }), {});
+const emptyType1Row = () =>
+    TYPE_1_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: "" }), {});
+const emptyWasteKgRow = () => ({ wasteType: '', wasteKgValue: '', wasteKgPercent: '' });
 
 const initialForm = { brWasteId: '', variety: '', cardingProduction: '', studyType: '' };
 const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
+const TYPE_1_MAX_ENTRIES = 10;
+const TYPE_3_MAX_ENTRIES = 10;
+const WASTE_KG_MAX_TYPES = 5;
 
-const buildBrWastePayloads = ({ date, lotNo, formData, wasteRows, type3Rows, overallWaste, remarks }) => {
+const buildBrWastePayloads = ({ date, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks }) => {
+    const totalWasteKg = wasteKgRows.reduce(
+        (sum, row) => sum + (Number(row.wasteKgValue) || 0),
+        0
+    );
+    const typeEntries = formData.studyType === "Type 3"
+        ? type3Rows.length
+        : formData.studyType === "Type 2"
+            ? type2Rows.length
+            : type1Rows.length;
     const basePayload = {
         waste_study_id: formData.brWasteId,
         date,
         variety: formData.variety,
         study_type: formData.studyType,
         carding_production_kg: Number(formData.cardingProduction) || 0,
-        type_entries: formData.studyType === "Type 3" ? type3Rows.length : wasteRows.length,
+        type_entries: typeEntries,
         overall_percent: Number(overallWaste) || 0,
         remarks,
         mc_no: lotNo || "",
         mc_production: 0,
         waste_type: formData.studyType,
-        waste_kg: 0,
+        waste_kg: totalWasteKg,
         waste_percent: 0,
         flat_speed: 0,
         delivery_speed: 0,
@@ -50,38 +89,47 @@ const buildBrWastePayloads = ({ date, lotNo, formData, wasteRows, type3Rows, ove
     };
 
     if (formData.studyType === "Type 1") {
-        return wasteRows.map((row, index) => ({
+        return type1Rows.map((row, index) => ({
             ...basePayload,
+            mc_no: String(row.mcNo || lotNo || `MC-${index + 1}`),
+            mc_production: Number(row.mcProduction) || 0,
             waste_type: `Type 1 Entry ${index + 1}`,
-            flat_speed: Number(row.production) || 0,
-            delivery_speed: Number(row.totalWaste) || 0,
-            wing1_speed: Number(row.wastePercent) || 0,
-            waste_percent: Number(row.wastePercent) || 0,
+            flat_speed: Number(row.flatSpeed) || 0,
+            lickerin_speed_1: Number(row.lickerinSpeed) || 0,
+            wing2_speed: Number(row.cylinderSpeed) || 0,
+            lickerin_speed_2: Number(row.dofferSpeed) || 0,
+            waste_percent: Number(overallWaste) || 0,
         }));
     }
 
     if (formData.studyType === "Type 2") {
-        return wasteRows.map((row, index) => ({
+        return type2Rows.map((row, index) => ({
             ...basePayload,
-            mc_no: lotNo || `MC-${index + 1}`,
-            mc_production: Number(row.production) || 0,
+            mc_no: String(row.mcNo || lotNo || `MC-${index + 1}`),
+            mc_production: Number(row.mcProduction) || 0,
             waste_type: `Type 2 Entry ${index + 1}`,
-            waste_kg: Number(row.totalWaste) || 0,
-            waste_percent: Number(row.wastePercent) || 0,
+            flat_speed: Number(row.flatSpeed) || 0,
+            delivery_speed: Number(row.deliverySpeed) || 0,
+            wing1_speed: Number(row.wingSetting) || 0,
+            wing2_speed: Number(row.cylinderSpeed) || 0,
+            lickerin_speed_1: Number(row.lickerinSpeed) || 0,
+            waste_percent: Number(overallWaste) || 0,
         }));
     }
 
     return type3Rows.map((row, index) => ({
         ...basePayload,
+        mc_no: String(row.mcNo || lotNo || ""),
+        mc_production: Number(row.mcProduction) || 0,
         waste_type: `Type 3 Entry ${index + 1}`,
-        flat_speed: Number(row.flatStrip) || 0,
-        delivery_speed: Number(row.underGrid) || 0,
-        wing1_speed: Number(row.moteKnife) || 0,
-        wing2_speed: Number(row.cylinder) || 0,
-        lickerin_speed_1: Number(row.doffer) || 0,
-        lickerin_speed_2: Number(row.bowingFlat) || 0,
-        lickerin_speed_3: Number(row.filter) || 0,
-        waste_percent: Number(row.cardWaste) || 0,
+        flat_speed: Number(row.flatSpeed) || 0,
+        delivery_speed: Number(row.deliverySpeed) || 0,
+        wing1_speed: Number(row.wingSettling1) || 0,
+        wing2_speed: Number(row.wingSettling2) || 0,
+        lickerin_speed_1: Number(row.firstLickerinSpeed) || 0,
+        lickerin_speed_2: Number(row.secondLickerinSpeed) || 0,
+        lickerin_speed_3: Number(row.thirdLickerinSpeed) || 0,
+        waste_percent: Number(overallWaste) || 0,
     }));
 };
 
@@ -91,25 +139,65 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
 
-    const [wasteCountInput, setWasteCountInput] = useState('1');
+    const [type1CountInput, setType1CountInput] = useState('1');
+    const [type2CountInput, setType2CountInput] = useState("1");
     const [type3CountInput, setType3CountInput] = useState('3');
+    const [wasteKgCountInput, setWasteKgCountInput] = useState('1');
 
-    const [wasteRows, setWasteRows] = useState([emptyWasteRow()]);
+    const [type1Rows, setType1Rows] = useState([emptyType1Row()]);
+    const [type2Rows, setType2Rows] = useState([emptyType2Row()]);
     const [type3Rows, setType3Rows] = useState(Array.from({ length: 3 }, emptyType3Row));
+    const [wasteKgRows, setWasteKgRows] = useState([emptyWasteKgRow()]);
 
     const [overallWaste, setOverallWaste] = useState('');
     const [remarks, setRemarks] = useState('');
+
+    const calculateWastePercent = (wasteKgValue, production) => {
+        const waste = Number(wasteKgValue) || 0;
+        const prod = Number(production) || 0;
+        if (prod <= 0 || waste <= 0) return '';
+        return ((waste / prod) * 100).toFixed(2);
+    };
 
     const handleChange = (field, value) => {
         const nextValue = FORM_NUMERIC_FIELDS.has(field)
             ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
             : value;
-        setFormData(prev => ({ ...prev, [field]: nextValue }));
+        setFormData(prev => {
+            const updated = { ...prev, [field]: nextValue };
+            if (field === "cardingProduction") {
+                setWasteKgRows((prevRows) =>
+                    prevRows.map((row) => ({
+                        ...row,
+                        wasteKgPercent: calculateWastePercent(row.wasteKgValue, nextValue),
+                    }))
+                );
+            }
+            return updated;
+        });
         setErrors((prev) => {
             if (!prev[field]) return prev;
             const next = { ...prev };
             delete next[field];
             return next;
+        });
+    };
+
+    const handleType1RowChange = (index, field, value) => {
+        const nextValue = field === "mcNo"
+            ? value
+            : sanitizeNumericInput(value, { precision: 10, scale: 2 });
+        setErrors((prev) => {
+            const key = `t1-${index}-${field}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+        setType1Rows((prev) => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: nextValue };
+            return updated;
         });
     };
 
@@ -130,7 +218,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     const handleType3RowChange = (index, field, value) => {
-        const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
+        const nextValue = field === "mcNo"
+            ? value
+            : sanitizeNumericInput(value, { precision: 10, scale: 2 });
         setErrors((prev) => {
             const key = `t3-${index}-${field}`;
             if (!prev[key]) return prev;
@@ -145,17 +235,35 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         });
     };
 
-    const applyWasteCount = () => {
-        const n = Math.max(1, parseInt(wasteCountInput) || 1);
-        setWasteRows(prev => {
+    const handleType2RowChange = (index, field, value) => {
+        const nextValue = field === "mcNo"
+            ? value
+            : sanitizeNumericInput(value, { precision: 10, scale: 2 });
+        setErrors((prev) => {
+            const key = `t2-${index}-${field}`;
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+        setType2Rows((prev) => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: nextValue };
+            return updated;
+        });
+    };
+
+    const applyType1Count = () => {
+        const n = Math.min(TYPE_1_MAX_ENTRIES, Math.max(1, parseInt(type1CountInput) || 1));
+        setType1Rows(prev => {
             const arr = [...prev];
-            while (arr.length < n) arr.push(emptyWasteRow());
+            while (arr.length < n) arr.push(emptyType1Row());
             return arr.slice(0, n);
         });
     };
 
     const applyType3Count = () => {
-        const n = Math.max(1, parseInt(type3CountInput) || 1);
+        const n = Math.min(TYPE_3_MAX_ENTRIES, Math.max(1, parseInt(type3CountInput) || 1));
         setType3Rows(prev => {
             const arr = [...prev];
             while (arr.length < n) arr.push(emptyType3Row());
@@ -163,11 +271,61 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         });
     };
 
+    const applyType2Count = () => {
+        const n = Math.max(1, parseInt(type2CountInput) || 1);
+        setType2Rows((prev) => {
+            const arr = [...prev];
+            while (arr.length < n) arr.push(emptyType2Row());
+            return arr.slice(0, n);
+        });
+    };
+
+    const handleWasteKgRowChange = (index, field, value) => {
+        const nextValue =
+            field === "wasteType"
+                ? value
+                : sanitizeNumericInput(value, { precision: 10, scale: 2 });
+        setWasteKgRows((prev) => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: nextValue };
+            if (field === "wasteKgValue") {
+                updated[index].wasteKgPercent = calculateWastePercent(
+                    nextValue,
+                    formData.cardingProduction
+                );
+            }
+            return updated;
+        });
+    };
+
+    const applyWasteKgCount = () => {
+        const n = Math.min(WASTE_KG_MAX_TYPES, Math.max(1, parseInt(wasteKgCountInput) || 1));
+        setWasteKgRows((prev) => {
+            const arr = [...prev];
+            while (arr.length < n) arr.push(emptyWasteKgRow());
+            return arr.slice(0, n);
+        });
+    };
+
+    const calculateOverallWaste = () => {
+        let total = 0;
+        setWasteKgRows((prev) =>
+            prev.map((row) => {
+                const percent = calculateWastePercent(row.wasteKgValue, formData.cardingProduction);
+                total += Number(percent) || 0;
+                return { ...row, wasteKgPercent: percent };
+            })
+        );
+        setOverallWaste(total > 0 ? total.toFixed(2) : "0.00");
+    };
+
     useEffect(() => {
         if (success) {
             setFormData(initialForm);
-            setWasteRows([emptyWasteRow()]);
+            setType1Rows([emptyType1Row()]);
+            setType2Rows([emptyType2Row()]);
             setType3Rows(Array.from({ length: 3 }, emptyType3Row));
+            setWasteKgRows([emptyWasteKgRow()]);
             setOverallWaste('');
             setRemarks('');
         }
@@ -179,8 +337,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
             date,
             lotNo,
             formData,
-            wasteRows,
+            type1Rows,
+            type2Rows,
             type3Rows,
+            wasteKgRows,
             overallWaste,
             remarks,
         });
@@ -196,8 +356,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
 
     const handleClear = () => {
         setFormData(initialForm);
-        setWasteRows([emptyWasteRow()]);
+        setType1Rows([emptyType1Row()]);
+        setType2Rows([emptyType2Row()]);
         setType3Rows(Array.from({ length: 3 }, emptyType3Row));
+        setWasteKgRows([emptyWasteKgRow()]);
         setOverallWaste('');
         setRemarks('');
         dispatch(resetState());
@@ -209,10 +371,17 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         ["brWasteId","variety","cardingProduction","studyType"].forEach((key)=>{
             if (String(formData[key] || "").trim() === "") nextErrors[key]=true;
         });
-        if (studyType === "Type 1" || studyType === "Type 2") {
-            wasteRows.forEach((row, idx)=>{
-                ["production","totalWaste","wastePercent"].forEach(k=>{
-                    if (String(row[k]||"").trim()==="") nextErrors[`waste-${idx}-${k}`]=true;
+        if (studyType === "Type 1") {
+            type1Rows.forEach((row, idx)=>{
+                TYPE_1_COLUMNS.forEach((col) => {
+                    if (String(row[col.key]||"").trim()==="") nextErrors[`t1-${idx}-${col.key}`]=true;
+                });
+            });
+        }
+        if (studyType === "Type 2") {
+            type2Rows.forEach((row, idx) => {
+                TYPE_2_COLUMNS.forEach((col) => {
+                    if (String(row[col.key] || "").trim() === "") nextErrors[`t2-${idx}-${col.key}`] = true;
                 });
             });
         }
@@ -238,13 +407,24 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
             { label: "Overall Waste %", value: overallWaste },
             { label: "Remarks", value: remarks },
         ];
-        const entries = (studyType === "Type 3" ? type3Rows : wasteRows).map((row, idx)=>({
+        const rowsForPreview = studyType === "Type 3"
+            ? type3Rows
+            : studyType === "Type 2"
+                ? type2Rows
+                : type1Rows;
+        const entries = rowsForPreview.map((row, idx)=>({
             label: `Entry ${idx+1}`,
             value: studyType === "Type 3"
                 ? TYPE_3_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
-                : `Flat:${row.production} | Under:${row.totalWaste} | Mote:${row.wastePercent}`
+                : studyType === "Type 2"
+                    ? TYPE_2_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
+                : TYPE_1_COLUMNS.map(col=>`${col.label}:${row[col.key]}`).join(" | ")
         }));
-        return [...header, ...entries];
+        const wasteKgEntries = wasteKgRows.map((row, idx) => ({
+            label: `Waste KGs ${idx + 1}`,
+            value: `Type:${row.wasteType} | Waste KG:${row.wasteKgValue} | Waste %:${row.wasteKgPercent}`,
+        }));
+        return [...header, ...entries, ...wasteKgEntries];
     };
 
     useImperativeHandle(ref, () => ({
@@ -324,139 +504,165 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
             {/* ===== TYPE 1 ===== */}
             {studyType === 'Type 1' && (
                 <>
-                    {/* Apply row */}
+                    <div className={styles['section-title']}>Type 1 Study Details</div>
                     <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
                         <div className={styles['mixx-group']}>
-                            <label>Number of Entries</label>
+                            <label>Number of Type 1 Entries (Max {TYPE_1_MAX_ENTRIES})</label>
                             <input
                                 type="number"
                                 className={styles['mixx-input']}
-                                value={wasteCountInput}
+                                value={type1CountInput}
                                 min={1}
-                                onChange={e => setWasteCountInput(sanitizeIntegerInput(e.target.value, 4))}
+                                onChange={e => setType1CountInput(sanitizeIntegerInput(e.target.value, 2))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
                         <div className={styles['mixx-group']}>
-                            <button className={styles['mixx-btn-primary']} onClick={applyWasteCount}>
-                                Apply
+                            <button className={styles['mixx-btn-primary']} onClick={applyType1Count}>
+                                Apply Type 1 Entries
                             </button>
                         </div>
                     </div>
 
-                    {wasteRows.map((row, i) => (
-                        <div className={styles['mixx-row']} key={i}>
-                            <div className={styles['mixx-group']}>
-                                <label>Flat Strip Waste %</label>
-                                <input
-                                    className={styles['mixx-input']}
-                                    placeholder="0.00"
-                                    value={row.production}
-                                    onChange={e => handleWasteRowChange(i, 'production', e.target.value)}
-                                    style={errors[`waste-${i}-production`] ? { borderColor: '#ef4444', background: '#fff1f2' } : undefined}
-                                />
-                            </div>
-                            <div className={styles['mixx-group']}>
-                                <label>Under Grid Waste %</label>
-                                <input
-                                    className={styles['mixx-input']}
-                                    placeholder="0.00"
-                                    value={row.totalWaste}
-                                    onChange={e => handleWasteRowChange(i, 'totalWaste', e.target.value)}
-                                    style={errors[`waste-${i}-totalWaste`] ? { borderColor: '#ef4444', background: '#fff1f2' } : undefined}
-                                />
-                            </div>
-                            <div className={styles['mixx-group']}>
-                                <label>Mote Knife Waste %</label>
-                                <input
-                                    className={styles['mixx-input']}
-                                    placeholder="0.00"
-                                    value={row.wastePercent}
-                                    onChange={e => handleWasteRowChange(i, 'wastePercent', e.target.value)}
-                                    style={errors[`waste-${i}-wastePercent`] ? { borderColor: '#ef4444', background: '#fff1f2' } : undefined}
-                                />
-                            </div>
+                    <div className={`${styles['type1-table']} ${styles['desktop-view']}`}>
+                        <div className={styles['type1-header']}>
+                            <span>#</span>
+                            {TYPE_1_COLUMNS.map((col) => (
+                                <span key={col.key}>{col.label}</span>
+                            ))}
                         </div>
-                    ))}
+                        {type1Rows.map((row, i) => (
+                            <div className={styles['type1-row']} key={i}>
+                                <span className={styles['type3-number']}>{i + 1}</span>
+                                {TYPE_1_COLUMNS.map((col) => (
+                                    <input
+                                        key={col.key}
+                                        className={`${styles['mixx-input']} ${errors[`t1-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                        placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                        value={row[col.key]}
+                                        onChange={e => handleType1RowChange(i, col.key, e.target.value)}
+                                    />
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className={styles['type1-mobile']}>
+                        {type1Rows.map((row, i) => (
+                            <div className={styles['type3-entry']} key={i}>
+                                <div className={styles['type3-number']}>Entry {i + 1}</div>
+                                <div className={styles['type3-card']}>
+                                    <div className={styles['type3-grid']}>
+                                        {TYPE_1_COLUMNS.map((col) => (
+                                            <div className={styles['mixx-group']} key={col.key}>
+                                                <label>{col.label}</label>
+                                                <input
+                                                    className={`${styles['mixx-input']} ${errors[`t1-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                                    placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                                    value={row[col.key]}
+                                                    onChange={e => handleType1RowChange(i, col.key, e.target.value)}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </>
             )}
 
             {/* ===== TYPE 2 ===== */}
             {studyType === 'Type 2' && (
                 <>
-                    {/* Apply row */}
+                    <div className={styles['section-title']}>Type 2 Study Details</div>
                     <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
                         <div className={styles['mixx-group']}>
-                            <label>Number of Entries</label>
+                            <label>Number of Type 2 Entries</label>
                             <input
                                 type="number"
                                 className={styles['mixx-input']}
-                                value={wasteCountInput}
+                                value={type2CountInput}
                                 min={1}
-                                onChange={e => setWasteCountInput(sanitizeIntegerInput(e.target.value, 4))}
+                                onChange={e => setType2CountInput(sanitizeIntegerInput(e.target.value, 4))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
                         <div className={styles['mixx-group']}>
-                            <button className={styles['mixx-btn-primary']} onClick={applyWasteCount}>
-                                Apply
+                            <button className={styles['mixx-btn-primary']} onClick={applyType2Count}>
+                                Apply Type 2 Entries
                             </button>
                         </div>
                     </div>
 
-                    {wasteRows.map((row, i) => (
-                        <div className={styles['mixx-row']} key={i}>
-                            <div className={styles['mixx-group']}>
-                                <label>Production (Kg)</label>
-                                <input
-                                    className={styles['mixx-input']}
-                                    placeholder="0.00"
-                                    value={row.production}
-                                    onChange={e => handleWasteRowChange(i, 'production', e.target.value)}
-                                />
-                            </div>
-                            <div className={styles['mixx-group']}>
-                                <label>Total Waste (Kg)</label>
-                                <input
-                                    className={styles['mixx-input']}
-                                    placeholder="0.00"
-                                    value={row.totalWaste}
-                                    onChange={e => handleWasteRowChange(i, 'totalWaste', e.target.value)}
-                                />
-                            </div>
-                            <div className={styles['mixx-group']}>
-                                <label>Waste %</label>
-                                <input
-                                    className={styles['mixx-input']}
-                                    placeholder="0.00"
-                                    value={row.wastePercent}
-                                    onChange={e => handleWasteRowChange(i, 'wastePercent', e.target.value)}
-                                />
-                            </div>
+                    <div className={`${styles['type2-table']} ${styles['desktop-view']}`}>
+                        <div className={styles['type2-header']}>
+                            <span>#</span>
+                            {TYPE_2_COLUMNS.map((col) => (
+                                <span key={col.key}>{col.label}</span>
+                            ))}
                         </div>
-                    ))}
+                        {type2Rows.map((row, i) => (
+                            <div className={styles['type2-row']} key={i}>
+                                <span className={styles['type3-number']}>{i + 1}</span>
+                                {TYPE_2_COLUMNS.map((col) => (
+                                    <input
+                                        key={col.key}
+                                        className={`${styles['mixx-input']} ${errors[`t2-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                        placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                        value={row[col.key]}
+                                        onChange={(e) => handleType2RowChange(i, col.key, e.target.value)}
+                                    />
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className={styles['type2-mobile']}>
+                        {type2Rows.map((row, i) => (
+                            <div className={styles['type3-entry']} key={i}>
+                                <div className={styles['type3-number']}>Entry {i + 1}</div>
+                                <div className={styles['type3-card']}>
+                                    <div className={styles['type3-grid']}>
+                                        {TYPE_2_COLUMNS.map((col) => (
+                                            <div className={styles['mixx-group']} key={col.key}>
+                                                <label>{col.label}</label>
+                                                <input
+                                                    className={`${styles['mixx-input']} ${errors[`t2-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                                    placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                                    value={row[col.key]}
+                                                    onChange={(e) => handleType2RowChange(i, col.key, e.target.value)}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </>
             )}
 
             {/* ===== TYPE 3 ===== */}
             {studyType === 'Type 3' && (
                 <>
+                    <div className={styles['section-title']}>Type 3 Study Details</div>
                     {/* Apply row */}
                     <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
                         <div className={styles['mixx-group']}>
-                            <label>Number of Entries</label>
+                            <label>Number of Type 3 Entries (Max {TYPE_3_MAX_ENTRIES})</label>
                             <input
                                 type="number"
                                 className={styles['mixx-input']}
                                 value={type3CountInput}
                                 min={1}
-                                onChange={e => setType3CountInput(sanitizeIntegerInput(e.target.value, 4))}
+                                onChange={e => setType3CountInput(sanitizeIntegerInput(e.target.value, 2))}
                                 onWheel={e => e.target.blur()}
                             />
                         </div>
                         <div className={styles['mixx-group']}>
                             <button className={styles['mixx-btn-primary']} onClick={applyType3Count}>
-                                Apply
+                                Apply Type 3 Entries
                             </button>
                         </div>
                     </div>
@@ -476,7 +682,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                                     <input
                                         key={col.key}
                                         className={`${styles['mixx-input']} ${errors[`t3-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
-                                        placeholder="0.00"
+                                        placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
                                         value={row[col.key]}
                                         onChange={e => handleType3RowChange(i, col.key, e.target.value)}
                                     />
@@ -511,23 +717,96 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
                 </>
             )}
 
-            {/* Bottom: Overall Waste %, Remarks */}
+            {/* Waste KGs Calculation */}
             {studyType && (
-                <div className={styles['mixx-row']}>
-                    <CustomInput
-                        label="Overall Waste %"
-                        placeholder="0.00"
-                        value={overallWaste}
-                        onChange={(value) => setOverallWaste(sanitizeNumericInput(value, { precision: 6, scale: 2 }))}
-                    />
-                    <CustomInput
-                        label="Remarks"
-                        placeholder="Enter Remarks"
-                        value={remarks}
-                        onChange={setRemarks}
-                    />
-                    <div className={styles['mixx-empty']} />
-                </div>
+                <>
+                    <div className={styles['section-title']}>Waste KGs Calculation</div>
+                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
+                        <div className={styles['mixx-group']}>
+                            <label>Number of Waste Types (Max {WASTE_KG_MAX_TYPES})</label>
+                            <input
+                                type="number"
+                                className={styles['mixx-input']}
+                                min={1}
+                                value={wasteKgCountInput}
+                                onChange={(e) => setWasteKgCountInput(sanitizeIntegerInput(e.target.value, 2))}
+                                onWheel={(e) => e.target.blur()}
+                            />
+                        </div>
+                        <div className={styles['mixx-group']}>
+                            <button className={styles['mixx-btn-primary']} onClick={applyWasteKgCount}>
+                                Apply Waste KGs
+                            </button>
+                        </div>
+                    </div>
+
+                    {wasteKgRows.map((row, i) => (
+                        <div className={styles['mixx-row']} key={`waste-kg-${i}`}>
+                            <div className={styles['mixx-group']}>
+                                <label>Waste Type</label>
+                                <select
+                                    className={styles['mixx-input']}
+                                    value={row.wasteType}
+                                    onChange={(e) => handleWasteKgRowChange(i, "wasteType", e.target.value)}
+                                >
+                                    <option value="">Select Waste Type</option>
+                                    {WASTE_TYPE_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>
+                                            {option}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className={styles['mixx-group']}>
+                                <label>Waste KGs Value</label>
+                                <input
+                                    className={styles['mixx-input']}
+                                    placeholder="0.00"
+                                    value={row.wasteKgValue}
+                                    onChange={(e) => handleWasteKgRowChange(i, "wasteKgValue", e.target.value)}
+                                />
+                            </div>
+                            <div className={styles['mixx-group']}>
+                                <label>Waste KGs %</label>
+                                <input
+                                    className={styles['mixx-input']}
+                                    value={row.wasteKgPercent ? `${row.wasteKgPercent} %` : "0.00 %"}
+                                    readOnly
+                                />
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
+                        <div className={styles['mixx-group']}>
+                            <label>Overall Waste %</label>
+                            <input
+                                className={styles['mixx-input']}
+                                value={overallWaste || "0.00"}
+                                readOnly
+                            />
+                        </div>
+                        <div className={styles['mixx-group']}>
+                            <button className={styles['mixx-btn-primary']} onClick={calculateOverallWaste}>
+                                Calculate Percentage
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className={styles['mixx-row']}>
+                        <div className={styles['mixx-group']}>
+                            <label>Remarks</label>
+                            <textarea
+                                className={`${styles['mixx-input']} ${styles['mixx-textarea']}`}
+                                placeholder="Type Remarks..."
+                                value={remarks}
+                                onChange={(e) => setRemarks(e.target.value)}
+                            />
+                        </div>
+                        <div className={styles['mixx-empty']} />
+                        <div className={styles['mixx-empty']} />
+                    </div>
+                </>
             )}
 
         </>
