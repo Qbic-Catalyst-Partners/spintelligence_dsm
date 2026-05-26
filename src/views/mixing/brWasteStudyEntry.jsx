@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
+import { fetchBlowroomBrWasteApi } from '@/apis/blowroom';
 import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
@@ -55,89 +56,108 @@ const TYPE_1_MAX_ENTRIES = 10;
 const TYPE_3_MAX_ENTRIES = 10;
 const WASTE_KG_MAX_TYPES = 5;
 
-const buildBrWastePayloads = ({ date, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks }) => {
-    const totalWasteKg = wasteKgRows.reduce(
-        (sum, row) => sum + (Number(row.wasteKgValue) || 0),
-        0
-    );
-    const typeEntries = formData.studyType === "Type 3"
-        ? type3Rows.length
+const buildBrWastePayload = ({ date, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
+    const selectedTypeRows = formData.studyType === "Type 3"
+        ? type3Rows
         : formData.studyType === "Type 2"
-            ? type2Rows.length
-            : type1Rows.length;
-    const basePayload = {
-        waste_study_id: formData.brWasteId,
-        date,
-        variety: formData.variety,
-        study_type: formData.studyType,
-        carding_production_kg: Number(formData.cardingProduction) || 0,
-        type_entries: typeEntries,
-        overall_percent: Number(overallWaste) || 0,
-        remarks,
-        mc_no: lotNo || "",
-        mc_production: 0,
-        waste_type: formData.studyType,
-        waste_kg: totalWasteKg,
-        waste_percent: 0,
-        flat_speed: 0,
-        delivery_speed: 0,
-        wing1_speed: 0,
-        wing2_speed: 0,
-        lickerin_speed_1: 0,
-        lickerin_speed_2: 0,
-        lickerin_speed_3: 0,
-    };
+            ? type2Rows
+            : type1Rows;
 
-    if (formData.studyType === "Type 1") {
-        return type1Rows.map((row, index) => ({
-            ...basePayload,
-            mc_no: String(row.mcNo || lotNo || `MC-${index + 1}`),
-            mc_production: Number(row.mcProduction) || 0,
-            waste_type: `Type 1 Entry ${index + 1}`,
-            flat_speed: Number(row.flatSpeed) || 0,
-            lickerin_speed_1: Number(row.lickerinSpeed) || 0,
-            wing2_speed: Number(row.cylinderSpeed) || 0,
-            lickerin_speed_2: Number(row.dofferSpeed) || 0,
-            waste_percent: Number(overallWaste) || 0,
-        }));
-    }
+    const totalWasteKg = wasteKgRows.reduce((sum, row) => sum + (Number(row.wasteKgValue) || 0), 0);
+    const averageWastePercent = wasteKgRows.length
+        ? wasteKgRows.reduce((sum, row) => sum + (Number(row.wasteKgPercent) || 0), 0) / wasteKgRows.length
+        : 0;
 
-    if (formData.studyType === "Type 2") {
-        return type2Rows.map((row, index) => ({
-            ...basePayload,
-            mc_no: String(row.mcNo || lotNo || `MC-${index + 1}`),
-            mc_production: Number(row.mcProduction) || 0,
-            waste_type: `Type 2 Entry ${index + 1}`,
-            flat_speed: Number(row.flatSpeed) || 0,
-            delivery_speed: Number(row.deliverySpeed) || 0,
-            wing1_speed: Number(row.wingSetting) || 0,
-            wing2_speed: Number(row.cylinderSpeed) || 0,
-            lickerin_speed_1: Number(row.lickerinSpeed) || 0,
-            waste_percent: Number(overallWaste) || 0,
-        }));
-    }
+    const type_rows = selectedTypeRows.map((row, index) => {
+        if (formData.studyType === "Type 1") {
+            return {
+                row_no: index + 1,
+                cylinder_speed: Number(row.cylinderSpeed) || null,
+                lickerin_speed: Number(row.lickerinSpeed) || null,
+                flat_speed: Number(row.flatSpeed) || null,
+                doffer_speed: Number(row.dofferSpeed) || null,
+                delivery_speed: null,
+                wing_setting_1: null,
+                wing_setting_2: null,
+                mc_no: row.mcNo || null,
+                mc_production: Number(row.mcProduction) || null,
+            };
+        }
 
-    return type3Rows.map((row, index) => ({
-        ...basePayload,
-        mc_no: String(row.mcNo || lotNo || ""),
-        mc_production: Number(row.mcProduction) || 0,
-        waste_type: `Type 3 Entry ${index + 1}`,
-        flat_speed: Number(row.flatSpeed) || 0,
-        delivery_speed: Number(row.deliverySpeed) || 0,
-        wing1_speed: Number(row.wingSettling1) || 0,
-        wing2_speed: Number(row.wingSettling2) || 0,
-        lickerin_speed_1: Number(row.firstLickerinSpeed) || 0,
-        lickerin_speed_2: Number(row.secondLickerinSpeed) || 0,
-        lickerin_speed_3: Number(row.thirdLickerinSpeed) || 0,
-        waste_percent: Number(overallWaste) || 0,
+        if (formData.studyType === "Type 2") {
+            return {
+                row_no: index + 1,
+                cylinder_speed: Number(row.cylinderSpeed) || null,
+                lickerin_speed: Number(row.lickerinSpeed) || null,
+                flat_speed: Number(row.flatSpeed) || null,
+                doffer_speed: null,
+                delivery_speed: Number(row.deliverySpeed) || null,
+                wing_setting_1: Number(row.wingSetting) || null,
+                wing_setting_2: null,
+                mc_no: row.mcNo || null,
+                mc_production: Number(row.mcProduction) || null,
+            };
+        }
+
+        return {
+            row_no: index + 1,
+            cylinder_speed: null,
+            lickerin_speed: null,
+            flat_speed: Number(row.flatSpeed) || null,
+            doffer_speed: null,
+            delivery_speed: Number(row.deliverySpeed) || null,
+            wing_setting_1: Number(row.wingSettling1) || null,
+            wing_setting_2: Number(row.wingSettling2) || null,
+            mc_no: row.mcNo || null,
+            mc_production: Number(row.mcProduction) || null,
+        };
+    });
+
+    const waste_rows = wasteKgRows.map((row, index) => ({
+        row_no: index + 1,
+        waste_type: row.wasteType || null,
+        waste_kgs_value: Number(row.wasteKgValue) || null,
+        waste_kgs_percent: Number(row.wasteKgPercent) || null,
     }));
+
+    return {
+        type: entryTypeLabel,
+        entry_id: formData.brWasteId || null,
+        lot_no: lotNo || null,
+        waste_study_id: formData.brWasteId || null,
+        date,
+        variety: formData.variety || null,
+        study_type: formData.studyType,
+        carding_production_kg: Number(formData.cardingProduction) || null,
+        type_entries: selectedTypeRows.length,
+        waste_type: "Overall",
+        waste_kg: totalWasteKg || null,
+        waste_percent: averageWastePercent || null,
+        overall_percent: Number(overallWaste) || null,
+        remarks: remarks || null,
+        type_rows,
+        waste_rows,
+    };
 };
 
-const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo }, ref) {
+const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
+    date,
+    lotNo,
+    onLotNoChange,
+    saveEntryApi = null,
+    fetchEntriesApi = null,
+    entryTypeLabel = "BR Waste Study Entry",
+    useBlowroomRedux = true,
+}, ref) {
     const dispatch = useDispatch();
     const { success } = useSelector(state => state.blowroom ?? {});
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
+    const [savedEntries, setSavedEntries] = useState([]);
+    const [loadingSavedEntries, setLoadingSavedEntries] = useState(false);
+    const [savedEntriesError, setSavedEntriesError] = useState("");
+    const [selectedSavedEntryId, setSelectedSavedEntryId] = useState("");
+    const [localSubmitTick, setLocalSubmitTick] = useState(0);
 
     const [type1CountInput, setType1CountInput] = useState('1');
     const [type2CountInput, setType2CountInput] = useState("1");
@@ -151,6 +171,105 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
 
     const [overallWaste, setOverallWaste] = useState('');
     const [remarks, setRemarks] = useState('');
+    const effectiveFetchEntriesApi = fetchEntriesApi || fetchBlowroomBrWasteApi;
+
+    const loadSavedEntries = async () => {
+        setLoadingSavedEntries(true);
+        try {
+            const response = await effectiveFetchEntriesApi({ page: 1, limit: 50 });
+            const rows = Array.isArray(response?.data) ? response.data : [];
+            setSavedEntries(rows);
+            setSavedEntriesError("");
+        } catch (error) {
+            setSavedEntries([]);
+            setSavedEntriesError(error.message || "Unable to load saved entries.");
+        } finally {
+            setLoadingSavedEntries(false);
+        }
+    };
+
+    const mapEntryToForm = (entry) => {
+        const typeRows = Array.isArray(entry?.type_rows) ? entry.type_rows : [];
+        const wasteRows = Array.isArray(entry?.waste_rows) ? entry.waste_rows : [];
+        const studyType = entry?.study_type || "";
+
+        setFormData({
+            brWasteId: entry?.waste_study_id || entry?.entry_id || "",
+            variety: entry?.variety || "",
+            cardingProduction: entry?.carding_production_kg == null ? "" : String(entry.carding_production_kg),
+            studyType,
+        });
+        setRemarks(entry?.remarks || "");
+        setOverallWaste(entry?.overall_percent == null ? "" : String(entry.overall_percent));
+
+        if (entry?.lot_no && onLotNoChange) {
+            onLotNoChange(entry.lot_no);
+        }
+
+        if (studyType === "Type 1") {
+            setType1Rows(
+                typeRows.length
+                    ? typeRows.map((row) => ({
+                        cylinderSpeed: row?.cylinder_speed == null ? "" : String(row.cylinder_speed),
+                        lickerinSpeed: row?.lickerin_speed == null ? "" : String(row.lickerin_speed),
+                        flatSpeed: row?.flat_speed == null ? "" : String(row.flat_speed),
+                        dofferSpeed: row?.doffer_speed == null ? "" : String(row.doffer_speed),
+                        mcNo: row?.mc_no || "",
+                        mcProduction: row?.mc_production == null ? "" : String(row.mc_production),
+                    }))
+                    : [emptyType1Row()]
+            );
+            setType1CountInput(String(typeRows.length || 1));
+        }
+
+        if (studyType === "Type 2") {
+            setType2Rows(
+                typeRows.length
+                    ? typeRows.map((row) => ({
+                        cylinderSpeed: row?.cylinder_speed == null ? "" : String(row.cylinder_speed),
+                        flatSpeed: row?.flat_speed == null ? "" : String(row.flat_speed),
+                        deliverySpeed: row?.delivery_speed == null ? "" : String(row.delivery_speed),
+                        wingSetting: row?.wing_setting_1 == null ? "" : String(row.wing_setting_1),
+                        lickerinSpeed: row?.lickerin_speed == null ? "" : String(row.lickerin_speed),
+                        mcNo: row?.mc_no || "",
+                        mcProduction: row?.mc_production == null ? "" : String(row.mc_production),
+                    }))
+                    : [emptyType2Row()]
+            );
+            setType2CountInput(String(typeRows.length || 1));
+        }
+
+        if (studyType === "Type 3") {
+            setType3Rows(
+                typeRows.length
+                    ? typeRows.map((row) => ({
+                        flatSpeed: row?.flat_speed == null ? "" : String(row.flat_speed),
+                        deliverySpeed: row?.delivery_speed == null ? "" : String(row.delivery_speed),
+                        wingSettling1: row?.wing_setting_1 == null ? "" : String(row.wing_setting_1),
+                        wingSettling2: row?.wing_setting_2 == null ? "" : String(row.wing_setting_2),
+                        firstLickerinSpeed: "",
+                        secondLickerinSpeed: "",
+                        thirdLickerinSpeed: "",
+                        mcNo: row?.mc_no || "",
+                        mcProduction: row?.mc_production == null ? "" : String(row.mc_production),
+                    }))
+                    : [emptyType3Row()]
+            );
+            setType3CountInput(String(typeRows.length || 1));
+        }
+
+        setWasteKgRows(
+            wasteRows.length
+                ? wasteRows.map((row) => ({
+                    wasteType: row?.waste_type || "",
+                    wasteKgValue: row?.waste_kgs_value == null ? "" : String(row.waste_kgs_value),
+                    wasteKgPercent: row?.waste_kgs_percent == null ? "" : String(row.waste_kgs_percent),
+                }))
+                : [emptyWasteKgRow()]
+        );
+        setWasteKgCountInput(String(wasteRows.length || 1));
+        setErrors({});
+    };
 
     const calculateWastePercent = (wasteKgValue, production) => {
         const waste = Number(wasteKgValue) || 0;
@@ -320,7 +439,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     };
 
     useEffect(() => {
-        if (success) {
+        loadSavedEntries();
+    }, []);
+
+    useEffect(() => {
+        const shouldReset = useBlowroomRedux ? success : localSubmitTick > 0;
+        if (shouldReset) {
+            loadSavedEntries();
             setFormData(initialForm);
             setType1Rows([emptyType1Row()]);
             setType2Rows([emptyType2Row()]);
@@ -328,12 +453,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
             setWasteKgRows([emptyWasteKgRow()]);
             setOverallWaste('');
             setRemarks('');
+            setSelectedSavedEntryId("");
         }
-    }, [success, dispatch]);
+    }, [success, localSubmitTick, dispatch, useBlowroomRedux]);
 
     const handleSubmit = async () => {
         if (!validate()) return;
-        const payloads = buildBrWastePayloads({
+        const payload = buildBrWastePayload({
             date,
             lotNo,
             formData,
@@ -343,12 +469,17 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
             wasteKgRows,
             overallWaste,
             remarks,
+            entryTypeLabel,
         });
 
         try {
-            for (const payload of payloads) {
+            if (saveEntryApi) {
+                await saveEntryApi(payload);
+                setLocalSubmitTick((value) => value + 1);
+            } else {
                 await dispatch(saveBlowroomBrWaste(payload)).unwrap();
             }
+            return true;
         } catch (error) {
             throw error;
         }
@@ -362,7 +493,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
         setWasteKgRows([emptyWasteKgRow()]);
         setOverallWaste('');
         setRemarks('');
-        dispatch(resetState());
+        setSelectedSavedEntryId("");
+        if (useBlowroomRedux) {
+            dispatch(resetState());
+        }
         setErrors({});
     };
 
@@ -439,6 +573,37 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({ date, lotNo },
     return (
         <>
             {/* Row 1: BR Waste ID, Entry Date, Variety */}
+            <div className={styles['mixx-row']}>
+                <div className={styles['mixx-group']}>
+                    <label>Load Saved Entry</label>
+                    <select
+                        className={styles['mixx-input']}
+                        value={selectedSavedEntryId}
+                        onChange={(e) => {
+                            const id = e.target.value;
+                            setSelectedSavedEntryId(id);
+                            const selected = savedEntries.find((item) => String(item.id) === String(id));
+                            if (selected) {
+                                mapEntryToForm(selected);
+                            }
+                        }}
+                        disabled={loadingSavedEntries || !savedEntries.length}
+                    >
+                        <option value="">
+                            {loadingSavedEntries ? "Loading..." : savedEntries.length ? "Select Saved Entry" : "No Saved Entries"}
+                        </option>
+                        {savedEntries.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                                {(entry.entry_id || entry.waste_study_id || `ID-${entry.id}`)} | {entry.study_type || "-"} | {entry.date || "-"}
+                            </option>
+                        ))}
+                    </select>
+                    {savedEntriesError ? <div className={styles['mixx-help-error']}>{savedEntriesError}</div> : null}
+                </div>
+                <div className={styles['mixx-empty']} />
+                <div className={styles['mixx-empty']} />
+            </div>
+
             <div className={styles['mixx-row']}>
                 <div className={styles['mixx-group']}>
                     <label>BR Waste ID</label>
