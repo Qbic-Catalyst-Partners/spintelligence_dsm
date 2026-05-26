@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { MdOutlineEditNote } from "react-icons/md";
@@ -25,7 +25,7 @@ import { useThemeMode } from "@/utils/useThemeMode";
 const today = new Date().toISOString().split("T")[0];
 
 const primaryTypeOptions = [
-  { id: 1, name: "Yarn CV% Calculation Form", aliases: ["Yarn CV% Calculation Form", "Yarn CV Calculation Form"] },
+  { id: 1, name: "1 Yard / Half Yard CV Entry", aliases: ["1 Yard / Half Yard CV Entry"] },
   { id: 2, name: "Draw Frame Cots Data Entry", aliases: ["Draw Frame Cots Data Entry", "Drawframe Cots Data Entry"] },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"] },
   {
@@ -43,8 +43,22 @@ const primaryTypeOptions = [
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
 
 const processTypeOptions = ["Breaker", "Finisher"];
-const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
-const cvMachineOptions = ["DF-01", "DF-02", "DF-03", "DF-04"];
+const shiftOptions = ["General", "Day", "Half Night", "Full Night"];
+const cvMachineOptions = [
+  "FR (HSR 1000-1)",
+  "FR (HSR 1000-2)",
+  "FR 01(D 40)",
+  "FR 02(D50-1)",
+  "FR 03(D50-2)",
+  "FR 04(D45-1)",
+  "FR 05(D 45-2)",
+  "FR 06(D 45-3)",
+  "FR 07(D45-4)",
+  "FR 08(LRSB 581)",
+  "FR 09(LDF 3)",
+  "FR 10(LRSB 581)",
+  "FR 11(D55-1)",
+];
 const U_PERCENT_NUMERIC_FIELDS = ["uPercent", "cvm", "oneMeterCvm", "threeMeterCvm"];
 
 const createMachineEntry = (machineName = "") => ({
@@ -72,6 +86,25 @@ const emptyMetric = () => ({
   sd: "",
   cv: "",
 });
+
+const calculateStats = (values, lengthInYards) => {
+  const numericValues = values.map(Number).filter((value) => Number.isFinite(value));
+  if (!numericValues.length) return emptyMetric();
+
+  const avg = numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length;
+  const variance =
+    numericValues.reduce((sum, value) => sum + Math.pow(value - avg, 2), 0) / numericValues.length;
+  const sd = Math.sqrt(variance);
+  const hank = avg > 0 ? (lengthInYards * 7000) / (avg * 840) : NaN;
+  const cv = avg > 0 ? (sd / avg) * 100 : NaN;
+
+  return {
+    avg: formatMetric(avg),
+    hank: formatMetric(hank),
+    sd: formatMetric(sd),
+    cv: formatMetric(cv),
+  };
+};
 
 function DrawFrame() {
   const router = useRouter();
@@ -126,6 +159,8 @@ function DrawFrame() {
   const [machineEntries, setMachineEntries] = useState(
     getMachineCardDefaults("Breaker").map((name) => createMachineEntry(name))
   );
+  const [oneYardReadings, setOneYardReadings] = useState([]);
+  const [halfYardReadings, setHalfYardReadings] = useState([]);
   const [oneYardMetrics, setOneYardMetrics] = useState([]);
   const [halfYardMetrics, setHalfYardMetrics] = useState([]);
   const [hasCalculated, setHasCalculated] = useState(false);
@@ -133,6 +168,8 @@ function DrawFrame() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [isCvMachineDropdownOpen, setIsCvMachineDropdownOpen] = useState(false);
+  const cvMachineDropdownRef = useRef(null);
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
     shift: "",
@@ -148,6 +185,19 @@ function DrawFrame() {
   const isUPercentEntry = form.type === "U% Data Entry";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
+
+  useEffect(() => {
+    if (!isCvMachineDropdownOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!cvMachineDropdownRef.current?.contains(event.target)) {
+        setIsCvMachineDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isCvMachineDropdownOpen]);
 
   useEffect(() => {
     if (!typeOptions.some((option) => option.name === form.type)) {
@@ -194,38 +244,37 @@ function DrawFrame() {
     });
   };
 
-  const handleMetricChange = (setter, index, field, value) => {
-    setter((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [field]: value,
-              ...(field !== "cv" ? { cv: "" } : {}),
-            }
-          : item
-      )
-    );
+  const handleReadingChange = (setter, errorKey, index, value) => {
+    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
+    setter((current) => current.map((item, itemIndex) => (itemIndex === index ? nextValue : item)));
     setHasCalculated(false);
+    setOneYardMetrics([]);
+    setHalfYardMetrics([]);
     setErrors((prev) => {
-      const key = setter === setOneYardMetrics ? "oneYard" : "halfYard";
-      const arr = prev[key] ? [...prev[key]] : [];
-      if (arr[index]?.[field]) {
-        const nextMetricErr = { ...(arr[index] || {}) };
-        delete nextMetricErr[field];
-        arr[index] = nextMetricErr;
-        return { ...prev, [key]: arr };
-      }
-      return prev;
+      const nextHeader = { ...(prev.header || {}) };
+      delete nextHeader.calculation;
+      const arr = prev[errorKey] ? [...prev[errorKey]] : [];
+      if (!arr[index]?.reading) return { ...prev, header: nextHeader };
+      const nextReadingErr = { ...(arr[index] || {}) };
+      delete nextReadingErr.reading;
+      arr[index] = nextReadingErr;
+      return { ...prev, header: nextHeader, [errorKey]: arr };
     });
   };
 
   const handleGenerate = () => {
     const count = Math.max(Number(form.readingCount) || 0, 0);
-    setOneYardMetrics(Array.from({ length: count }, () => emptyMetric()));
-    setHalfYardMetrics(Array.from({ length: count }, () => emptyMetric()));
+    setOneYardReadings(Array.from({ length: count }, () => ""));
+    setHalfYardReadings(Array.from({ length: count }, () => ""));
+    setOneYardMetrics([]);
+    setHalfYardMetrics([]);
     setHasCalculated(false);
-    setErrors((prev) => ({ ...prev, header: { ...prev.header, readingCount: false }, oneYard: [], halfYard: [] }));
+    setErrors((prev) => {
+      const nextHeader = { ...(prev.header || {}) };
+      delete nextHeader.readingCount;
+      delete nextHeader.calculation;
+      return { ...prev, header: nextHeader, oneYard: [], halfYard: [] };
+    });
   };
 
   const handleUPercentChange = (field, value) => {
@@ -246,26 +295,36 @@ function DrawFrame() {
   };
 
   const handleCalculate = () => {
-    const calculateMetricSet = (metrics) =>
-      metrics.map((metric) => {
-        const avg = Number(metric.avg);
-        const sd = Number(metric.sd);
-        const cv = avg > 0 && !Number.isNaN(sd) ? formatMetric((sd / avg) * 100) : "";
+    const count = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length);
+    const oneErrors = [];
+    const halfErrors = [];
 
-        return {
-          ...metric,
-          cv,
-        };
-      });
+    Array.from({ length: count }).forEach((_, index) => {
+      if (oneYardReadings[index] === "") oneErrors[index] = { reading: true };
+      if (halfYardReadings[index] === "") halfErrors[index] = { reading: true };
+    });
 
-    setOneYardMetrics((current) => calculateMetricSet(current));
-    setHalfYardMetrics((current) => calculateMetricSet(current));
+    if (oneErrors.some(Boolean) || halfErrors.some(Boolean)) {
+      setErrors((prev) => ({ ...prev, oneYard: oneErrors, halfYard: halfErrors }));
+      setHasCalculated(false);
+      setOneYardMetrics([]);
+      setHalfYardMetrics([]);
+      return;
+    }
+
+    setOneYardMetrics([calculateStats(oneYardReadings, 1)]);
+    setHalfYardMetrics([calculateStats(halfYardReadings, 0.5)]);
+    setErrors((prev) => {
+      const nextHeader = { ...(prev.header || {}) };
+      delete nextHeader.calculation;
+      return { ...prev, header: nextHeader, oneYard: [], halfYard: [] };
+    });
     setHasCalculated(true);
   };
 
   const handleClear = () => {
     setForm({
-      type: "Yarn CV% Calculation Form",
+      type: "1 Yard / Half Yard CV Entry",
       date: today,
       shift: "General",
       processType: "Breaker",
@@ -275,6 +334,8 @@ function DrawFrame() {
       readingCount: 5,
     });
     setMachineEntries(getMachineCardDefaults("Breaker").map((name) => createMachineEntry(name)));
+    setOneYardReadings([]);
+    setHalfYardReadings([]);
     setOneYardMetrics([]);
     setHalfYardMetrics([]);
     setHasCalculated(false);
@@ -389,23 +450,18 @@ function DrawFrame() {
       if (!form.readingCount || form.readingCount <= 0) headerErrors.readingCount = true;
 
       const ensureMetricCount = Math.max(form.readingCount || 0, 1);
-      const paddedOne = oneYardMetrics.length ? oneYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
-      const paddedHalf = halfYardMetrics.length ? halfYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
+      const paddedOne = oneYardReadings.length ? oneYardReadings : Array.from({ length: ensureMetricCount }, () => "");
+      const paddedHalf = halfYardReadings.length ? halfYardReadings : Array.from({ length: ensureMetricCount }, () => "");
 
-      paddedOne.forEach((item) => {
-        const errs = {};
-        if (item.avg === "") errs.avg = true;
-        if (item.hank === "") errs.hank = true;
-        if (item.sd === "") errs.sd = true;
-        oneErrors.push(errs);
+      paddedOne.forEach((value) => {
+        oneErrors.push(value === "" ? { reading: true } : {});
       });
-      paddedHalf.forEach((item) => {
-        const errs = {};
-        if (item.avg === "") errs.avg = true;
-        if (item.hank === "") errs.hank = true;
-        if (item.sd === "") errs.sd = true;
-        halfErrors.push(errs);
+      paddedHalf.forEach((value) => {
+        halfErrors.push(value === "" ? { reading: true } : {});
       });
+      if (!hasCalculated || !oneYardMetrics[0]?.cv || !halfYardMetrics[0]?.cv) {
+        headerErrors.calculation = true;
+      }
     }
 
     const hasErrors =
@@ -463,21 +519,25 @@ function DrawFrame() {
       items.push({ label: "Machine Number", value: form.machineNumber });
       items.push({ label: "Remarks", value: form.remarks });
       items.push({ label: "Number of Readings (N)", value: form.readingCount });
-      const ensureMetricCount = Math.max(form.readingCount || 0, oneYardMetrics.length, halfYardMetrics.length, 1);
-      const paddedOne = oneYardMetrics.length ? oneYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
-      const paddedHalf = halfYardMetrics.length ? halfYardMetrics : Array.from({ length: ensureMetricCount }, () => emptyMetric());
+      const ensureMetricCount = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length, 1);
+      const paddedOne = oneYardReadings.length ? oneYardReadings : Array.from({ length: ensureMetricCount }, () => "");
+      const paddedHalf = halfYardReadings.length ? halfYardReadings : Array.from({ length: ensureMetricCount }, () => "");
 
       Array.from({ length: ensureMetricCount }).forEach((_, idx) => {
-        items.push({ label: `Reading ${idx + 1} - AVG (1Y)`, value: paddedOne[idx]?.avg || "-" });
-        items.push({ label: `Reading ${idx + 1} - HANK (1Y)`, value: paddedOne[idx]?.hank || "-" });
-        items.push({ label: `Reading ${idx + 1} - SD (1Y)`, value: paddedOne[idx]?.sd || "-" });
-        items.push({ label: `Reading ${idx + 1} - AVG (1/2Y)`, value: paddedHalf[idx]?.avg || "-" });
-        items.push({ label: `Reading ${idx + 1} - HANK (1/2Y)`, value: paddedHalf[idx]?.hank || "-" });
-        items.push({ label: `Reading ${idx + 1} - SD (1/2Y)`, value: paddedHalf[idx]?.sd || "-" });
+        items.push({ label: `Reading ${idx + 1} - 1 Yard`, value: paddedOne[idx] || "-" });
+        items.push({ label: `Reading ${idx + 1} - 1/2 Yard`, value: paddedHalf[idx] || "-" });
       });
+      items.push({ label: "AVG (1Y)", value: oneYardMetrics[0]?.avg || "-" });
+      items.push({ label: "HANK (1Y)", value: oneYardMetrics[0]?.hank || "-" });
+      items.push({ label: "SD (1Y)", value: oneYardMetrics[0]?.sd || "-" });
+      items.push({ label: "CV% (1Y)", value: oneYardMetrics[0]?.cv || "-" });
+      items.push({ label: "AVG (1/2Y)", value: halfYardMetrics[0]?.avg || "-" });
+      items.push({ label: "HANK (1/2Y)", value: halfYardMetrics[0]?.hank || "-" });
+      items.push({ label: "SD (1/2Y)", value: halfYardMetrics[0]?.sd || "-" });
+      items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
-  }, [form, isHeaderEntry, machineEntries, oneYardMetrics, halfYardMetrics, uPercentForm]);
+  }, [form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
@@ -813,20 +873,51 @@ function DrawFrame() {
                     />
                   </div>
 
-                  <div className={styles.field}>
+                  <div className={styles.field} ref={cvMachineDropdownRef}>
                     <label className={styles.label}>Machine Number</label>
-                    <select
-                      value={form.machineNumber}
-                      onChange={(e) => handleFormChange("machineNumber", e.target.value)}
-                      className={`${styles.select} ${errors.header?.machineNumber ? styles.inputError : ""}`}
+                    <button
+                      type="button"
+                      onClick={() => setIsCvMachineDropdownOpen((current) => !current)}
+                      className={`${styles.selectButton} ${errors.header?.machineNumber ? styles.inputError : ""}`}
+                      aria-haspopup="listbox"
+                      aria-expanded={isCvMachineDropdownOpen}
                     >
-                      <option value="">Select Machine Number</option>
-                      {cvMachineOptions.map((machine) => (
-                        <option key={machine} value={machine}>
-                          {machine}
-                        </option>
-                      ))}
-                    </select>
+                      <span className={form.machineNumber ? styles.selectButtonValue : styles.selectButtonPlaceholder}>
+                        {form.machineNumber || "-- Select Machine Number --"}
+                      </span>
+                      <span className={styles.selectButtonArrow}>{isCvMachineDropdownOpen ? "^" : "v"}</span>
+                    </button>
+                    {isCvMachineDropdownOpen ? (
+                      <div className={styles.dropdownMenu} role="listbox">
+                        <button
+                          type="button"
+                          className={styles.dropdownOption}
+                          onClick={() => {
+                            handleFormChange("machineNumber", "");
+                            setIsCvMachineDropdownOpen(false);
+                          }}
+                          role="option"
+                          aria-selected={!form.machineNumber}
+                        >
+                          -- Select Machine Number --
+                        </button>
+                        {cvMachineOptions.map((machine) => (
+                          <button
+                            key={machine}
+                            type="button"
+                            className={styles.dropdownOption}
+                            onClick={() => {
+                              handleFormChange("machineNumber", machine);
+                              setIsCvMachineDropdownOpen(false);
+                            }}
+                            role="option"
+                            aria-selected={form.machineNumber === machine}
+                          >
+                            {machine}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className={`${styles.field} ${styles.fieldWide}`}>
@@ -986,117 +1077,106 @@ function DrawFrame() {
               </div>
             ) : form.type === "U% Data Entry" ? null : (
               <>
-                <div className={styles.calculateWrap}>
-                  <button
-                    type="button"
-                    onClick={handleCalculate}
-                    className={`${styles.button} ${styles.calculateButton}`}
-                  >
-                    Calculate CV%
-                  </button>
-                </div>
+                {oneYardReadings.length > 0 ? (
+                  <div className={styles.readingsSection}>
+                    <h3 className={styles.readingsTitle}>Enter Readings:</h3>
+                    <div className={styles.readingsTable}>
+                      <div className={styles.readingsHeader}>
+                        <span>S.No</span>
+                        <span>1 Yard Reading</span>
+                        <span>1/2 Yard Reading</span>
+                      </div>
+                      {oneYardReadings.map((value, index) => (
+                        <div key={`cv-reading-${index}`} className={styles.readingsRow}>
+                          <span className={styles.readingSerial}>{index + 1}</span>
+                          <input
+                            value={value}
+                            onChange={(e) =>
+                              handleReadingChange(setOneYardReadings, "oneYard", index, e.target.value)
+                            }
+                            placeholder="Enter 1 Yard reading"
+                            className={`${styles.readingInput} ${
+                              errors.oneYard?.[index]?.reading ? styles.inputError : ""
+                            }`}
+                          />
+                          <input
+                            value={halfYardReadings[index] || ""}
+                            onChange={(e) =>
+                              handleReadingChange(setHalfYardReadings, "halfYard", index, e.target.value)
+                            }
+                            placeholder="Enter 1/2 Yard reading"
+                            className={`${styles.readingInput} ${
+                              errors.halfYard?.[index]?.reading ? styles.inputError : ""
+                            }`}
+                          />
+                        </div>
+                      ))}
+                    </div>
 
-                <div className={styles.resultsWrap}>
-                  {(oneYardMetrics.length ? oneYardMetrics : [emptyMetric()]).map((_, index) => (
-                    <div key={`reading-result-${index}`} className={styles.readingBlock}>
-                      <h3 className={styles.readingTitle}>{`Reading - ${index + 1}`}</h3>
+                    <div className={styles.calculateWrap}>
+                      <button
+                        type="button"
+                        onClick={handleCalculate}
+                        className={`${styles.button} ${styles.calculateButton}`}
+                      >
+                        Calculate CV%
+                      </button>
+                    </div>
+                    {errors.header?.calculation ? (
+                      <p className={styles.messageError}>Please calculate CV% before saving.</p>
+                    ) : null}
+                  </div>
+                ) : null}
 
-                      <div className={styles.resultCard}>
-                        <div className={styles.resultSection}>
-                          <h4 className={styles.resultTitle}>Calculation Results - 1 yard Readings</h4>
-                          <div className={styles.metricsGrid}>
-                            <div className={styles.field}>
-                              <label className={styles.label}>AVG (1 Yard)</label>
-                            <input
-                              value={oneYardMetrics[index]?.avg || ""}
-                              onChange={(e) => handleMetricChange(setOneYardMetrics, index, "avg", e.target.value)}
-                              className={`${styles.metricInput} ${
-                                errors.oneYard?.[index]?.avg ? styles.inputError : ""
-                              }`}
-                            />
-                            </div>
-                            <div className={styles.field}>
-                              <label className={styles.label}>HANK (1 Yard)</label>
-                              <input
-                                value={oneYardMetrics[index]?.hank || ""}
-                                onChange={(e) => handleMetricChange(setOneYardMetrics, index, "hank", e.target.value)}
-                                className={`${styles.metricInput} ${
-                                  errors.oneYard?.[index]?.hank ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
-                            <div className={styles.field}>
-                              <label className={styles.label}>SD (1 Yard)</label>
-                              <input
-                                value={oneYardMetrics[index]?.sd || ""}
-                                onChange={(e) => handleMetricChange(setOneYardMetrics, index, "sd", e.target.value)}
-                                className={`${styles.metricInput} ${
-                                  errors.oneYard?.[index]?.sd ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
+                {hasCalculated ? (
+                  <div className={styles.resultsWrap}>
+                    <div className={styles.resultCard}>
+                      <div className={styles.resultSection}>
+                        <h4 className={styles.resultTitle}>Calculation Results - 1 yard Readings</h4>
+                        <div className={styles.metricsGrid}>
+                          <div className={styles.field}>
+                            <label className={styles.label}>AVG (1 Yard)</label>
+                            <input readOnly value={oneYardMetrics[0]?.avg || ""} className={styles.metricInput} />
                           </div>
-                          <div className={styles.metricCompact}>
-                            <div className={styles.field}>
-                              <label className={styles.label}>CV% (1 Yard)</label>
-                              <input
-                                readOnly
-                                value={hasCalculated ? oneYardMetrics[index]?.cv || "" : ""}
-                                className={styles.metricInput}
-                              />
-                            </div>
+                          <div className={styles.field}>
+                            <label className={styles.label}>HANK (1 Yard)</label>
+                            <input readOnly value={oneYardMetrics[0]?.hank || ""} className={styles.metricInput} />
+                          </div>
+                          <div className={styles.field}>
+                            <label className={styles.label}>SD (1 Yard)</label>
+                            <input readOnly value={oneYardMetrics[0]?.sd || ""} className={styles.metricInput} />
+                          </div>
+                          <div className={styles.field}>
+                            <label className={styles.label}>CV% (1 Yard)</label>
+                            <input readOnly value={oneYardMetrics[0]?.cv || ""} className={styles.metricInput} />
                           </div>
                         </div>
+                      </div>
 
-                        <div className={styles.resultSection}>
-                          <h4 className={styles.resultTitle}>Calculation Results - 1/2 yard Readings</h4>
-                          <div className={styles.metricsGrid}>
-                            <div className={styles.field}>
-                              <label className={styles.label}>AVG (1/2 Yard)</label>
-                              <input
-                                value={halfYardMetrics[index]?.avg || ""}
-                                onChange={(e) => handleMetricChange(setHalfYardMetrics, index, "avg", e.target.value)}
-                                className={`${styles.metricInput} ${
-                                  errors.halfYard?.[index]?.avg ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
-                            <div className={styles.field}>
-                              <label className={styles.label}>HANK (1/2 Yard)</label>
-                              <input
-                                value={halfYardMetrics[index]?.hank || ""}
-                                onChange={(e) => handleMetricChange(setHalfYardMetrics, index, "hank", e.target.value)}
-                                className={`${styles.metricInput} ${
-                                  errors.halfYard?.[index]?.hank ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
-                            <div className={styles.field}>
-                              <label className={styles.label}>SD (1/2 Yard)</label>
-                              <input
-                                value={halfYardMetrics[index]?.sd || ""}
-                                onChange={(e) => handleMetricChange(setHalfYardMetrics, index, "sd", e.target.value)}
-                                className={`${styles.metricInput} ${
-                                  errors.halfYard?.[index]?.sd ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
+                      <div className={styles.resultSection}>
+                        <h4 className={styles.resultTitle}>Calculation Results - 1/2 yard Readings</h4>
+                        <div className={styles.metricsGrid}>
+                          <div className={styles.field}>
+                            <label className={styles.label}>AVG (1/2 Yard)</label>
+                            <input readOnly value={halfYardMetrics[0]?.avg || ""} className={styles.metricInput} />
                           </div>
-                          <div className={styles.metricCompact}>
-                            <div className={styles.field}>
-                              <label className={styles.label}>CV% (1/2 Yard)</label>
-                              <input
-                                readOnly
-                                value={hasCalculated ? halfYardMetrics[index]?.cv || "" : ""}
-                                className={styles.metricInput}
-                              />
-                            </div>
+                          <div className={styles.field}>
+                            <label className={styles.label}>HANK (1/2 Yard)</label>
+                            <input readOnly value={halfYardMetrics[0]?.hank || ""} className={styles.metricInput} />
+                          </div>
+                          <div className={styles.field}>
+                            <label className={styles.label}>SD (1/2 Yard)</label>
+                            <input readOnly value={halfYardMetrics[0]?.sd || ""} className={styles.metricInput} />
+                          </div>
+                          <div className={styles.field}>
+                            <label className={styles.label}>CV% (1/2 Yard)</label>
+                            <input readOnly value={halfYardMetrics[0]?.cv || ""} className={styles.metricInput} />
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : null}
               </>
               )}
 

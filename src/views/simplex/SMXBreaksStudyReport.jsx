@@ -19,7 +19,7 @@ const breakColumns = [
   "Undraft",
   "Top Roller Lapping",
   "Bottom Roller Lapping",
-  "Silver Breaks",
+  "SLIVER BREAKS",
   "Can Exhaust",
   "Unknown Stop",
 ];
@@ -35,15 +35,33 @@ const breakRows = [
   "Repeated Spindle",
 ];
 
+const percentageBreakColumns = breakColumns.slice(0, breakColumns.indexOf("SLIVER BREAKS") + 1);
+
 const formatNumber = (value) => {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
+  return Number.isFinite(parsed) ? String(Math.round(parsed)) : "0";
 };
 
 const parseNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const parseBreakEntries = (value) =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const countBreakEntries = (value) => parseBreakEntries(value).length;
+
+const formatPercentage = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
+};
+
+const getColumnBreakValues = (breakMatrix, columnLabel) =>
+  breakRows.flatMap((rowLabel) => parseBreakEntries(breakMatrix[rowLabel]?.[columnLabel]));
 
 const createInitialForm = () => ({
   type: "SMX Breaks Study Report",
@@ -71,7 +89,7 @@ const createInitialForm = () => ({
 const createInitialBreakMatrix = () =>
   breakRows.reduce((rowAccumulator, rowLabel) => {
     rowAccumulator[rowLabel] = breakColumns.reduce((columnAccumulator, columnLabel) => {
-      columnAccumulator[columnLabel] = "0.00";
+      columnAccumulator[columnLabel] = "";
       return columnAccumulator;
     }, {});
     return rowAccumulator;
@@ -120,27 +138,42 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const totalTime = useMemo(() => {
     if (!form.startTime || !form.endTime) return "";
 
-    const [startHours, startMinutes, startSeconds = "0"] = form.startTime.split(":");
-    const [endHours, endMinutes, endSeconds = "0"] = form.endTime.split(":");
+    const [startHours, startMinutes] = form.startTime.split(":");
+    const [endHours, endMinutes] = form.endTime.split(":");
 
-    const start = Number(startHours) * 3600 + Number(startMinutes) * 60 + Number(startSeconds);
-    const end = Number(endHours) * 3600 + Number(endMinutes) * 60 + Number(endSeconds);
+    const start = Number(startHours) * 60 + Number(startMinutes);
+    const end = Number(endHours) * 60 + Number(endMinutes);
 
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "";
 
-    const diff = end - start;
-    const hours = String(Math.floor(diff / 3600)).padStart(2, "0");
-    const minutes = String(Math.floor((diff % 3600) / 60)).padStart(2, "0");
-    const seconds = String(diff % 60).padStart(2, "0");
-
-    return `${hours}:${minutes}:${seconds}`;
+    return String(end - start);
   }, [form.endTime, form.startTime]);
+
+  const calculatedHank = useMemo(() => {
+    if (form.startHk === "" || form.finishHk === "") return "";
+
+    const startHk = Number(form.startHk);
+    const finishHk = Number(form.finishHk);
+    if (!Number.isFinite(startHk) || !Number.isFinite(finishHk)) return "";
+
+    return formatNumber(finishHk - startHk);
+  }, [form.finishHk, form.startHk]);
+
+  const calculatedRunningSpdl = useMemo(() => {
+    if (form.ttSpdl === "" || form.ideals === "") return "";
+
+    const totalSpindles = Number(form.ttSpdl);
+    const idleSpindles = Number(form.ideals);
+    if (!Number.isFinite(totalSpindles) || !Number.isFinite(idleSpindles)) return "";
+
+    return formatNumber(totalSpindles - idleSpindles);
+  }, [form.ideals, form.ttSpdl]);
 
   const columnTotals = useMemo(
     () =>
       breakColumns.reduce((accumulator, columnLabel) => {
         accumulator[columnLabel] = breakRows.reduce(
-          (sum, rowLabel) => sum + parseNumber(breakMatrix[rowLabel]?.[columnLabel]),
+          (sum, rowLabel) => sum + countBreakEntries(breakMatrix[rowLabel]?.[columnLabel]),
           0
         );
         return accumulator;
@@ -164,21 +197,26 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   );
 
   const handleFormChange = (field, value) => {
+    const nextValue =
+      (field === "startTime" || field === "endTime") && value ? value.slice(0, 5) : value;
+
     setForm((current) => ({
       ...current,
-      [field]: value,
+      [field]: nextValue,
     }));
 
     setErrors((previous) => {
-      if (!previous.form?.[field]) return previous;
+      if (!previous.form?.[field] && !["startHk", "finishHk", "ttSpdl", "ideals"].includes(field)) return previous;
       const nextForm = { ...(previous.form || {}) };
       delete nextForm[field];
+      if (field === "startHk" || field === "finishHk") delete nextForm.hank;
+      if (field === "ttSpdl" || field === "ideals") delete nextForm.runningSpdl;
       return { ...previous, form: nextForm };
     });
   };
 
   const handleMatrixChange = (rowLabel, columnLabel, value) => {
-    const sanitized = value === "" ? "" : value.replace(/[^\d.]/g, "");
+    const sanitized = value === "" ? "" : value.replace(/[^\d,\s]/g, "");
 
     setBreakMatrix((current) => ({
       ...current,
@@ -208,17 +246,11 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     const nextErrors = { form: {}, matrix: {} };
 
     Object.entries(form).forEach(([key, value]) => {
+      if (key === "hank" || key === "runningSpdl") return;
       if (String(value).trim() === "") nextErrors.form[key] = true;
     });
-
-    breakRows.forEach((rowLabel) => {
-      breakColumns.forEach((columnLabel) => {
-        if (String(breakMatrix[rowLabel]?.[columnLabel] ?? "").trim() === "") {
-          if (!nextErrors.matrix[rowLabel]) nextErrors.matrix[rowLabel] = {};
-          nextErrors.matrix[rowLabel][columnLabel] = true;
-        }
-      });
-    });
+    if (!calculatedHank) nextErrors.form.hank = true;
+    if (!calculatedRunningSpdl) nextErrors.form.runningSpdl = true;
 
     setErrors(nextErrors);
 
@@ -235,16 +267,21 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
         .filter(([key]) => key !== "type")
         .map(([key, value]) => ({
           label: formatLabel(key),
-          value: value || "-",
+          value:
+            key === "hank"
+              ? calculatedHank || "-"
+              : key === "runningSpdl"
+                ? calculatedRunningSpdl || "-"
+                : value || "-",
         })),
-      { label: "Total Time", value: totalTime || "-" },
+      { label: "Total Minutes", value: totalTime || "-" },
     ];
 
     breakRows.forEach((rowLabel) => {
       breakColumns.forEach((columnLabel) => {
         items.push({
           label: `${rowLabel} - ${columnLabel}`,
-          value: breakMatrix[rowLabel]?.[columnLabel] || "0.00",
+          value: breakMatrix[rowLabel]?.[columnLabel] || "",
         });
       });
     });
@@ -254,9 +291,17 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
         label: `Total Breaks - ${columnLabel}`,
         value: formatNumber(columnTotals[columnLabel]),
       });
+    });
+
+    items.push({
+      label: "Total Breaks (Grand)",
+      value: formatNumber(grandTotal),
+    });
+
+    percentageBreakColumns.forEach((columnLabel) => {
       items.push({
         label: `Breaks % - ${columnLabel}`,
-        value: `${formatNumber(percentageTotals[columnLabel])}%`,
+        value: `${formatPercentage(percentageTotals[columnLabel])}%`,
       });
     });
 
@@ -269,22 +314,22 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     { label: "Date", field: "date", type: "date" },
     { label: "Start Time", field: "startTime", type: "time" },
     { label: "End Time", field: "endTime", type: "time" },
-    { label: "Total Time", field: "totalTime", type: "readonly", value: totalTime || "HH:MM:SS" },
+    { label: "Total Minutes", field: "totalTime", type: "readonly", value: totalTime ? `${totalTime} mins` : "0 mins" },
     { label: "TPI", field: "tpi", type: "text" },
     { label: "TPM", field: "tpm", type: "text" },
     { label: "Start HK", field: "startHk", type: "text" },
     { label: "Finish HK", field: "finishHk", type: "text" },
     { label: "Average Speed", field: "averageSpeed", type: "text" },
-    { label: "Hank", field: "hank", type: "text", placeholder: "Lorem Ipsum" },
+    { label: "Hank", field: "hank", type: "readonly", value: calculatedHank || "0" },
     { label: "Mixing", field: "mixing", type: "text" },
     { label: "Roving HK", field: "rovingHk", type: "text" },
     { label: "Doff Length", field: "doffLength", type: "text" },
     { label: "RH%", field: "rhPercent", type: "text" },
     { label: "TEMP%", field: "tempPercent", type: "text" },
-    { label: "TT_SPDL", field: "ttSpdl", type: "text" },
-    { label: "Running Spdl", field: "runningSpdl", type: "text" },
-    { label: "ideals", field: "ideals", type: "text", placeholder: "Lorem Ipsum" },
-    { label: "S. Name", field: "sName", type: "text" },
+    { label: "Total Spindles", field: "ttSpdl", type: "text" },
+    { label: "Running Spindles", field: "runningSpdl", type: "readonly", value: calculatedRunningSpdl || "0" },
+    { label: "Idle Spindles", field: "ideals", type: "text", placeholder: "Lorem Ipsum" },
+    { label: "Sider Name", field: "sName", type: "text" },
   ];
 
   const tableSection = (
@@ -313,7 +358,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 <input
                   key={`${rowLabel}-${columnLabel}`}
                   type="text"
-                  inputMode="decimal"
+                  inputMode="text"
+                  placeholder="1,2,3"
                   className={`${tableFieldClass}${errorClass(errors.matrix?.[rowLabel]?.[columnLabel])}`}
                   style={getFieldStyle(errors.matrix?.[rowLabel]?.[columnLabel], "table")}
                   value={breakMatrix[rowLabel]?.[columnLabel] ?? ""}
@@ -328,7 +374,12 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Total Breaks</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">
+              Total Breaks
+              <span className="block text-[11px] font-bold text-[#3d539f]">
+                Grand: {formatNumber(grandTotal)}
+              </span>
+            </div>
             {breakColumns.map((columnLabel) => (
               <input
                 key={`total-${columnLabel}`}
@@ -343,14 +394,14 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Breaks</div>
-            {breakColumns.map((columnLabel) => (
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Breaks %</div>
+            {percentageBreakColumns.map((columnLabel) => (
               <input
                 key={`percent-${columnLabel}`}
                 type="text"
                 readOnly
                 className={`${tableFieldClass} text-slate-500`}
-                value={`${formatNumber(percentageTotals[columnLabel])}%`}
+                value={`${formatPercentage(percentageTotals[columnLabel])}%`}
               />
             ))}
           </div>
@@ -365,39 +416,36 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     machine_name: form.simplexNo,
     operator_name: form.sName,
     shift: "A",
-    inspection_items: [
-      { item_name: "TPI", status_value: form.tpi, remarks: "" },
-      { item_name: "TPM", status_value: form.tpm, remarks: "" },
-      { item_name: "Start HK", status_value: form.startHk, remarks: "" },
-      { item_name: "Finish HK", status_value: form.finishHk, remarks: "" },
-      { item_name: "Average Speed", status_value: form.averageSpeed, remarks: "" },
-      { item_name: "Hank", status_value: form.hank, remarks: "" },
-      { item_name: "Mixing", status_value: form.mixing, remarks: "" },
-      { item_name: "Roving HK", status_value: form.rovingHk, remarks: "" },
-      { item_name: "Doff Length", status_value: form.doffLength, remarks: "" },
-      { item_name: "RH%", status_value: form.rhPercent, remarks: "" },
-      { item_name: "TEMP%", status_value: form.tempPercent, remarks: "" },
-      { item_name: "TT_SPDL", status_value: form.ttSpdl, remarks: "" },
-      { item_name: "Running Spdl", status_value: form.runningSpdl, remarks: "" },
-      { item_name: "Ideals", status_value: form.ideals, remarks: "" },
-    ],
+    start_time: form.startTime,
+    end_time: form.endTime,
+    start_hk: form.startHk,
+    finish_hk: form.finishHk,
+    total_spdl: form.ttSpdl,
+    idle_spindles: form.ideals,
+    ideals: form.ideals,
+    s_name: form.sName,
+    inspection_items: breakColumns.map((columnLabel) => ({
+      item_name: columnLabel,
+      status_value: getColumnBreakValues(breakMatrix, columnLabel),
+      remarks: "",
+    })),
     user_fiber_parameters: {
-      A1: breakMatrix["0 - 200"]["Roving Breaks at Finger"] || "0.00",
-      A2: breakMatrix["0 - 200"]["Roving Breaks at Front Roller Nip"] || "0.00",
-      A3: breakMatrix["0 - 200"]["Roving Breaks at Between Flyer"] || "0.00",
-      A4: breakMatrix["0 - 200"].Undraft || "0.00",
-      B1: breakMatrix["201 - 400"]["Roving Breaks at Finger"] || "0.00",
-      B2: breakMatrix["201 - 400"]["Roving Breaks at Front Roller Nip"] || "0.00",
-      B3: breakMatrix["201 - 400"]["Roving Breaks at Between Flyer"] || "0.00",
-      B4: breakMatrix["201 - 400"].Undraft || "0.00",
-      C1: breakMatrix["401 - 600"]["Roving Breaks at Finger"] || "0.00",
-      C2: breakMatrix["401 - 600"]["Roving Breaks at Front Roller Nip"] || "0.00",
-      C3: breakMatrix["401 - 600"]["Roving Breaks at Between Flyer"] || "0.00",
-      C4: breakMatrix["401 - 600"].Undraft || "0.00",
-      D1: breakMatrix["601 - 800"]["Roving Breaks at Finger"] || "0.00",
-      D2: breakMatrix["601 - 800"]["Roving Breaks at Front Roller Nip"] || "0.00",
-      D3: breakMatrix["601 - 800"]["Roving Breaks at Between Flyer"] || "0.00",
-      D4: breakMatrix["601 - 800"].Undraft || "0.00",
+      A1: breakMatrix["0 - 200"]["Roving Breaks at Finger"] || "0",
+      A2: breakMatrix["0 - 200"]["Roving Breaks at Front Roller Nip"] || "0",
+      A3: breakMatrix["0 - 200"]["Roving Breaks at Between Flyer"] || "0",
+      A4: breakMatrix["0 - 200"].Undraft || "0",
+      B1: breakMatrix["201 - 400"]["Roving Breaks at Finger"] || "0",
+      B2: breakMatrix["201 - 400"]["Roving Breaks at Front Roller Nip"] || "0",
+      B3: breakMatrix["201 - 400"]["Roving Breaks at Between Flyer"] || "0",
+      B4: breakMatrix["201 - 400"].Undraft || "0",
+      C1: breakMatrix["401 - 600"]["Roving Breaks at Finger"] || "0",
+      C2: breakMatrix["401 - 600"]["Roving Breaks at Front Roller Nip"] || "0",
+      C3: breakMatrix["401 - 600"]["Roving Breaks at Between Flyer"] || "0",
+      C4: breakMatrix["401 - 600"].Undraft || "0",
+      D1: breakMatrix["601 - 800"]["Roving Breaks at Finger"] || "0",
+      D2: breakMatrix["601 - 800"]["Roving Breaks at Front Roller Nip"] || "0",
+      D3: breakMatrix["601 - 800"]["Roving Breaks at Between Flyer"] || "0",
+      D4: breakMatrix["601 - 800"].Undraft || "0",
     },
     epi_parameters: {
       yarn_a1: parseNumber(columnTotals["Roving Breaks at Finger"]),
@@ -406,16 +454,40 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       yarn_a4: parseNumber(columnTotals.Undraft),
       yarn_b1: parseNumber(columnTotals["Top Roller Lapping"]),
       yarn_b2: parseNumber(columnTotals["Bottom Roller Lapping"]),
-      yarn_b3: parseNumber(columnTotals["Silver Breaks"]),
+      yarn_b3: parseNumber(columnTotals["SLIVER BREAKS"]),
       yarn_b4: parseNumber(columnTotals["Can Exhaust"]),
     },
     other_field_values: {
       time: form.startTime,
+      start_time: form.startTime,
+      end_time: form.endTime,
+      start_hk: form.startHk,
+      finish_hk: form.finishHk,
+      hank: calculatedHank,
+      total_spdl: form.ttSpdl,
+      idle_spindles: form.ideals,
+      ideals: form.ideals,
+      running_spdl: calculatedRunningSpdl,
+      s_name: form.sName,
+      sider_name: form.sName,
       break_count: parseNumber(grandTotal),
       remarks: JSON.stringify({
         type: selectedTypeName || form.type,
+        tpi: form.tpi,
+        tpm: form.tpm,
+        average_speed: form.averageSpeed,
+        mixing: form.mixing,
+        roving_hk: form.rovingHk,
+        doff_length: form.doffLength,
+        rh_percent: form.rhPercent,
+        temp_percent: form.tempPercent,
         end_time: form.endTime,
         total_time: totalTime,
+        total_time_in_mins: totalTime,
+        total_spdl: form.ttSpdl,
+        idle_spindles: form.ideals,
+        running_spdl: calculatedRunningSpdl,
+        hank: calculatedHank,
         unknown_stop_total: formatNumber(columnTotals["Unknown Stop"]),
         repeated_spindle: breakMatrix["Repeated Spindle"],
       }),
@@ -477,7 +549,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
               ) : (
                 <input
                   type={type === "readonly" ? "text" : type}
-                  step={type === "time" ? "1" : undefined}
+                  step={type === "time" ? "60" : undefined}
                   readOnly={type === "readonly"}
                   placeholder={placeholder}
                   className={`${topFieldClass}${type === "readonly" ? " text-slate-500" : ""}${errorClass(errors.form?.[field])}`}

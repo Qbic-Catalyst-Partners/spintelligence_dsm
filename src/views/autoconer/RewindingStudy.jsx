@@ -394,7 +394,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoConerOptions, placeholder: "Enter auto coner no." },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "No. of Cones", field: "noOfCones", type: "text", placeholder: "Enter no. of cones" },
-    { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Enter cone tip" },
+    { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
     {
       label: "Drum No.",
       field: "drumNo",
@@ -502,10 +502,10 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const summarySection = (
     <div className="flex flex-col gap-8 pt-6">
       <div className="max-w-[160px]">
-        <label className="mb-2 block text-[14px] font-semibold text-slate-700">Break per Lakh Meter</label>
+        <label className="mb-2 block text-[14px] font-semibold text-slate-700">Break / 1 Lakh Meter</label>
         <input
           type="text"
-          placeholder="Enter break per lakh meter"
+          placeholder="Break / 1 Lakh Meter"
           className={`${topFieldClass}${errorClass(errors.breakPerLakhMeter)}`}
           value={form.breakPerLakhMeter}
           onChange={(event) => handleFormChange("breakPerLakhMeter", event.target.value)}

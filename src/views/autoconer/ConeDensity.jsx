@@ -447,7 +447,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     { label: "Base Dia (E)", field: "baseDiaE", type: "text", placeholder: "Enter base dia (e)" },
     { label: "Nose Dia (E)", field: "noseDiaE", type: "text", placeholder: "Enter nose dia (e)" },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
-    { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Enter cone tip" },
+    { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
   ];
 
   return (

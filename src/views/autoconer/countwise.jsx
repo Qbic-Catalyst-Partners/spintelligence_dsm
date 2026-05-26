@@ -131,7 +131,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const [date, setDate] = useState(todayDate);
   const [machineNo, setMachineNo] = useState(machineOptions[0]);
   const [count, setCount] = useState(countOptions[0]);
-  const [drumsFromTo, setDrumsFromTo] = useState("");
+  const [drumFrom, setDrumFrom] = useState("");
+  const [drumTo, setDrumTo] = useState("");
   const [craneTip, setCraneTip] = useState("");
   const [lotNo, setLotNo] = useState("");
   const [frameNo, setFrameNo] = useState("");
@@ -163,7 +164,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     setDate(todayDate);
     setMachineNo(machineOptions[0]);
     setCount(countOptions[0]);
-    setDrumsFromTo("");
+    setDrumFrom("");
+    setDrumTo("");
     setCraneTip("");
     setLotNo("");
     setFrameNo("");
@@ -177,7 +179,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     if (!String(date || "").trim()) nextErrors.date = true;
     if (!String(machineNo || "").trim() || machineNo === machineOptions[0]) nextErrors.machineNo = true;
     if (!String(count || "").trim() || count === countOptions[0]) nextErrors.count = true;
-    if (!String(drumsFromTo || "").trim()) nextErrors.drumsFromTo = true;
+    if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
+    if (!String(drumTo || "").trim()) nextErrors.drumTo = true;
     if (!String(craneTip || "").trim()) nextErrors.craneTip = true;
     if (!String(lotNo || "").trim()) nextErrors.lotNo = true;
     if (!String(frameNo || "").trim()) nextErrors.frameNo = true;
@@ -193,8 +196,9 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     { label: "Date", value: date || "-" },
     { label: "Machine No.", value: machineNo || "-" },
     { label: "Count", value: count || "-" },
-    { label: "Drums From/To", value: drumsFromTo || "-" },
-    { label: "Crane Tip", value: craneTip || "-" },
+    { label: "Drums From", value: drumFrom || "-" },
+    { label: "Drums To", value: drumTo || "-" },
+    { label: "Cone Tip", value: craneTip || "-" },
     { label: "Lot No.", value: lotNo || "-" },
     { label: "Frame No.", value: frameNo || "-" },
     ...metricKeys.map((key) => ({ label: key, value: metrics[key] || "-" })),
@@ -203,7 +207,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const submit = async () => {
     if (!validate()) return false;
     try {
-      const { drumFrom, drumTo } = splitDrumsRange(drumsFromTo);
       const payload = {
         inspection_type: "Count Wise Cuts Record",
         entry_date: date,
@@ -283,7 +286,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     date,
     machineNo,
     count,
-    drumsFromTo,
+    drumFrom,
+    drumTo,
     craneTip,
     lotNo,
     frameNo,
@@ -334,12 +338,17 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         </div>
 
         <div className={styles.field}>
-          <label>Drums From/ To</label>
-          <input value={drumsFromTo} onChange={(e) => setDrumsFromTo(e.target.value.replace(/[^\d\s\-/,]/g, ""))} style={errorStyle(errors.drumsFromTo)} />
+          <label>Drums From</label>
+          <input value={drumFrom} onChange={(e) => setDrumFrom(e.target.value.replace(/[^\d]/g, ""))} style={errorStyle(errors.drumFrom)} />
         </div>
 
         <div className={styles.field}>
-          <label>Crane Tip</label>
+          <label>Drums To</label>
+          <input value={drumTo} onChange={(e) => setDrumTo(e.target.value.replace(/[^\d]/g, ""))} style={errorStyle(errors.drumTo)} />
+        </div>
+
+        <div className={styles.field}>
+          <label>Cone Tip</label>
           <input value={craneTip} onChange={(e) => setCraneTip(e.target.value)} style={errorStyle(errors.craneTip)} />
         </div>
 

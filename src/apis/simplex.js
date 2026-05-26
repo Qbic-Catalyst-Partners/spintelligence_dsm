@@ -41,6 +41,15 @@ export const submitSimplexStudyReportEntry = async (payload) => {
   }
 };
 
+export const fetchSimplexStudyReportEntries = async () => {
+  try {
+    const response = await apiConfig.get("/simplex/list");
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to fetch SMX Breaks Study Report entries."));
+  }
+};
+
 export const submitSimplexCotsChangeEntry = async (payload) => {
   try {
     const response = await apiConfig.post("/simplex/SMXCotsChange", payload);

@@ -6,7 +6,7 @@ import {
   saveAutoconerConePackingAudit,
 } from "@/store/slices/autoconer";
 import { toNullableNumber } from "@/apis/autoconer";
-import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -39,7 +39,6 @@ const createInitialForm = () => ({
   netWeight: "",
   tareWeight: "",
   strapColour: "",
-  noOfCuts: "",
 });
 
 const formFieldSanitizers = {
@@ -47,23 +46,6 @@ const formFieldSanitizers = {
   grossWtAct: (value) => sanitizeNumericInput(value, { precision: 6, scale: 2 }),
   netWeight: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   tareWeight: (value) => sanitizeNumericInput(value, { precision: 6, scale: 2 }),
-  noOfCuts: (value) => sanitizeIntegerInput(value, 10),
-};
-
-const tableInputClass =
-  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
-
-const createReadingRows = (count = "") => {
-  const total = Number(count);
-
-  if (!Number.isInteger(total) || total <= 0) {
-    return [];
-  }
-
-  return Array.from({ length: total }, (_, index) => ({
-    readingNumber: String(index + 1),
-    precentYarn: "",
-  }));
 };
 
 const mapConePackingEntryToRows = (entry = {}) => {
@@ -128,7 +110,6 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const dispatch = useDispatch();
   const { isLoading, isFetching, conePackingAudit = [] } = useSelector((state) => state.autoconer ?? {});
   const [form, setForm] = useState(createInitialForm);
-  const [rows, setRows] = useState([]);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
 
@@ -149,41 +130,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
 
   const clear = () => {
     setForm(createInitialForm());
-    setRows([]);
     setErrors({});
-  };
-
-  const handleGenerateRows = () => {
-    const nextRows = createReadingRows(form.noOfCuts);
-    setRows((current) => {
-      if (!nextRows.length) return [];
-
-      return nextRows.map((nextRow) => {
-        const existingRow = current.find((row) => row.readingNumber === nextRow.readingNumber);
-        return existingRow ? { ...nextRow, ...existingRow } : nextRow;
-      });
-    });
-    setErrors((current) => {
-      const next = { ...current };
-      delete next.noOfCuts;
-      delete next.generatedRows;
-      return next;
-    });
-  };
-
-  const handleRowChange = (index, value) => {
-    const nextValue = sanitizeNumericInput(value, { precision: 6, scale: 2 });
-    setRows((current) =>
-      current.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, precentYarn: nextValue } : row
-      )
-    );
-    setErrors((current) => {
-      if (!current[`row-${index}-precentYarn`]) return current;
-      const next = { ...current };
-      delete next[`row-${index}-precentYarn`];
-      return next;
-    });
   };
 
   const validate = () => {
@@ -191,22 +138,12 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     Object.entries(form).forEach(([key, value]) => {
       if (String(value).trim() === "") nextErrors[key] = true;
     });
-    if (!rows.length) nextErrors.generatedRows = true;
-    rows.forEach((row, index) => {
-      if (!String(row.precentYarn || "").trim()) {
-        nextErrors[`row-${index}-precentYarn`] = true;
-      }
-    });
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
   const getPreviewData = () => [
     ...Object.entries(form).map(([label, value]) => ({ label, value: value || "-" })),
-    ...rows.map((row, index) => ({
-      label: `Reading ${index + 1}`,
-      value: `${row.readingNumber} | ${row.precentYarn}`,
-    })),
   ];
 
   const buildPayload = () => ({
@@ -229,19 +166,9 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     net_weight: toNullableNumber(String(form.netWeight).replace(/,/g, "")),
     tare_weight: toNullableNumber(form.tareWeight),
     strap_colour: form.strapColour,
-    drum_entries: rows.map((row, index) => ({
-      drum_no: index + 1,
-      gross_weight: toNullableNumber(form.grossWtAct),
-      average: toNullableNumber(row.precentYarn),
-    })),
-    yarn_readings: rows.map((row) => ({
-      reading_number: toNullableNumber(row.readingNumber),
-      percent_yarn: toNullableNumber(row.precentYarn),
-    })),
-    cone_readings: rows.map((row) => ({
-      reading_number: toNullableNumber(row.readingNumber),
-      percent_yarn: toNullableNumber(row.precentYarn),
-    })),
+    drum_entries: [],
+    yarn_readings: [],
+    cone_readings: [],
   });
 
   const submit = async () => {
@@ -279,62 +206,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       : null;
 
   const lowerSection = (
-    <div className="grid gap-8 pt-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-      <div className="px-6 lg:px-0">
-        <div className="mb-5 max-w-[184px]">
-          <label className="mb-2 block text-[14px] font-semibold text-slate-700">No. of Cuts</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Enter cuts"
-              className={`${topFieldClass}${errorClass(errors.noOfCuts || errors.generatedRows)}`}
-              value={form.noOfCuts}
-              onChange={(event) => handleFormChange("noOfCuts", event.target.value)}
-            />
-            <button
-              type="button"
-              className="h-[30px] rounded-[6px] bg-[#4056a8] px-3 text-[11px] font-semibold text-white"
-              onClick={handleGenerateRows}
-            >
-              Generate
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-[11px] text-slate-700">
-            <thead>
-              <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
-                <th className="px-0 py-3 pr-6 font-semibold">Reading Number</th>
-                <th className="px-0 py-3 font-semibold">Precent Yarn</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={row.readingNumber} className="border-b border-slate-200">
-                  <td className="px-0 py-4 pr-6">{row.readingNumber}</td>
-                  <td className="px-0 py-4">
-                    <input
-                      type="text"
-                      className={`${tableInputClass}${errorClass(errors[`row-${index}-precentYarn`])}`}
-                      value={row.precentYarn}
-                      onChange={(event) => handleRowChange(index, event.target.value)}
-                    />
-                  </td>
-                </tr>
-              ))}
-              {!rows.length ? (
-                <tr>
-                  <td colSpan={2} className="px-0 py-5 text-center text-[12px] text-slate-400">
-                    Enter a valid number of cuts to generate rows.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
+    <div className="pt-6">
       <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
         <div className="overflow-x-auto">
@@ -382,13 +254,13 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     { label: "Box Colour", field: "boxColour", type: "text", placeholder: "Enter box colour" },
     { label: "Cone Colour", field: "coneColour", type: "text", placeholder: "Enter cone colour" },
     { label: "Gum Tape Colour", field: "gumTapeColour", type: "text", placeholder: "Enter gum tape colour" },
-    { label: "Count Label", field: "countLabel", type: "text", placeholder: "Yes / No" },
-    { label: "Cone Damage", field: "coneDamage", type: "text", placeholder: "Yes / No" },
-    { label: "Cover Missing", field: "coverMissing", type: "text", placeholder: "Yes / No" },
-    { label: "Cone Hardness", field: "coneHardness", type: "text", placeholder: "Yes / No" },
-    { label: "Stap Cone", field: "stapCone", type: "text", placeholder: "Yes / No" },
-    { label: "Disk", field: "disk", type: "text", placeholder: "Yes / No" },
-    { label: "Barcode", field: "barcode", type: "text", placeholder: "Yes / No" },
+    { label: "Count Label", field: "countLabel", type: "radio", options: ["Yes", "No"] },
+    { label: "Cone Damage", field: "coneDamage", type: "radio", options: ["Yes", "No"] },
+    { label: "Cover Missing", field: "coverMissing", type: "radio", options: ["Yes", "No"] },
+    { label: "Cone Hardness", field: "coneHardness", type: "radio", options: ["Yes", "No"] },
+    { label: "Stap Cone", field: "stapCone", type: "radio", options: ["Yes", "No"] },
+    { label: "Disk", field: "disk", type: "radio", options: ["Yes", "No"] },
+    { label: "Barcode", field: "barcode", type: "radio", options: ["Yes", "No"] },
     { label: "Center Pad", field: "centerPad", type: "text", placeholder: "Enter center pad" },
     { label: "Net Weight", field: "netWeight", type: "text", placeholder: "Enter net weight" },
     { label: "Tare Weight", field: "tareWeight", type: "text", placeholder: "Enter tare weight" },
@@ -417,6 +289,22 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
               </option>
             ))}
           </select>
+        ) : type === "radio" ? (
+          <div className="flex gap-4">
+            {options.map((option) => (
+              <label key={option} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name={field}
+                  value={option}
+                  checked={fieldValue === option}
+                  onChange={(event) => handleFormChange(field, event.target.value)}
+                  className="w-4 h-4 text-slate-700 cursor-pointer"
+                />
+                <span className="text-[14px] text-slate-700">{option}</span>
+              </label>
+            ))}
+          </div>
         ) : (
           <input
             type={type}
@@ -429,7 +317,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
         )}
       </div>
     );
-  };
+  };;
 
   return (
     <>

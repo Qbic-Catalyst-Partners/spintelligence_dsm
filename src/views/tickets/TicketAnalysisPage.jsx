@@ -47,7 +47,10 @@ const resolveTicketEmpId = (ticket, userIdByName) => {
 const toInputDate = (date) => {
   const next = new Date(date);
   if (Number.isNaN(next.getTime())) return "";
-  return next.toISOString().slice(0, 10);
+  const yyyy = next.getFullYear();
+  const mm = String(next.getMonth() + 1).padStart(2, "0");
+  const dd = String(next.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 };
 const addDays = (date, days) => {
   const next = new Date(date);

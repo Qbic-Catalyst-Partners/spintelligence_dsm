@@ -490,7 +490,7 @@ export const thresholdFieldCatalog = {
         "Drum No.",
         "Weight",
         "No. of Cuts",
-        "Break per Lakh Meter",
+        "Break / 1 Lakh Meter",
     ],
     "Cone Density": [
         "Test No.",
@@ -699,7 +699,7 @@ export const thresholdFieldCatalog = {
         "Ideals",
         "S. Name",
     ],
-    "Yarn CV% Calculation Form": [
+    "1 Yard / Half Yard CV Entry": [
         "S. No.",
         "Date",
         "Machine Number",

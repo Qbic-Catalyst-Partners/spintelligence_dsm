@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getSimplexCotsChangeEntries,
@@ -13,10 +13,25 @@ const detailItems = [
   "Condensor Missing",
 ];
 
-const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04", "MC-05", "MC-06"];
+const machineOptions = [
+  "SMX 002",
+  "SMX 01",
+  "SMX 02",
+  "SMX 03",
+  "SMX 04",
+  "SMX 05",
+  "SMX 06",
+  "SMX 07",
+  "SMX 08",
+  "SMX 09",
+  "SMX 10",
+  "SMX 11",
+  "SMX 12",
+  "SMX 13",
+];
 const today = new Date().toISOString().split("T")[0];
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
-const defaultTableFieldStyle = { backgroundColor: "#f8fafc" };
+const defaultTableFieldStyle = { backgroundColor: "#ffffff" };
 const getFieldStyle = (flag, variant = "default") =>
   flag
     ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" }
@@ -45,6 +60,21 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   });
   const [details, setDetails] = useState(createDetailRows);
   const [errors, setErrors] = useState({});
+  const [isMcDropdownOpen, setIsMcDropdownOpen] = useState(false);
+  const mcDropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!isMcDropdownOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!mcDropdownRef.current?.contains(event.target)) {
+        setIsMcDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isMcDropdownOpen]);
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -211,23 +241,59 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
           />
         </div>
 
-        <div className="flex flex-col gap-1.5 min-w-0">
+        <div className="relative flex flex-col gap-1.5 min-w-0" ref={mcDropdownRef}>
           <label className="text-[14px] font-semibold text-slate-700">MC Name</label>
-          <select
-            className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
+          <button
+            type="button"
+            className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] text-left focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
               errors.form?.mcName ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
             style={getFieldStyle(errors.form?.mcName)}
-            value={form.mcName}
-            onChange={(e) => handleFormChange("mcName", e.target.value)}
+            onClick={() => setIsMcDropdownOpen((current) => !current)}
+            aria-haspopup="listbox"
+            aria-expanded={isMcDropdownOpen}
           >
-            <option value="">Select MC Name</option>
-            {machineOptions.map((machine) => (
-              <option key={machine} value={machine}>
-                {machine}
-              </option>
-            ))}
-          </select>
+            <span className={form.mcName ? "text-slate-900" : "text-slate-500"}>
+              {form.mcName || "-- Select MC Name --"}
+            </span>
+            <span className="pointer-events-none absolute right-3 top-[34px] text-[10px] text-slate-900">
+              {isMcDropdownOpen ? "^" : "v"}
+            </span>
+          </button>
+          {isMcDropdownOpen ? (
+            <div
+              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg"
+              role="listbox"
+            >
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                onClick={() => {
+                  handleFormChange("mcName", "");
+                  setIsMcDropdownOpen(false);
+                }}
+                role="option"
+                aria-selected={!form.mcName}
+              >
+                -- Select MC Name --
+              </button>
+              {machineOptions.map((machine) => (
+                <button
+                  key={machine}
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                  onClick={() => {
+                    handleFormChange("mcName", machine);
+                    setIsMcDropdownOpen(false);
+                  }}
+                  role="option"
+                  aria-selected={form.mcName === machine}
+                >
+                  {machine}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div />

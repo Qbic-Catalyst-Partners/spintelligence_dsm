@@ -53,6 +53,13 @@ const FINAL_FIELDS = [
   { key: "nepsPlus400", label: "Neps +400%" },
 ];
 
+const HS_IPI_DISPLAY_FIELDS = HS_IPI_FIELDS.filter((field) => field.key !== "thickPlus70");
+const FINAL_DISPLAY_FIELDS = [
+  FINAL_FIELDS[0],
+  HS_IPI_FIELDS.find((field) => field.key === "thickPlus70"),
+  FINAL_FIELDS[1],
+].filter(Boolean);
+
 const ALL_FIELDS = [
   ...TOP_FIELDS,
   ...QUALITY_FIELDS,
@@ -548,10 +555,6 @@ function CspParameterEntries({
                   <strong>{entry.values.thickPlus35 || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
-                  <span>Thick +70%</span>
-                  <strong>{entry.values.thickPlus70 || "-"}</strong>
-                </div>
-                <div className={styles.pendingMetaItem}>
                   <span>Neps +140%</span>
                   <strong>{entry.values.nepsPlus140 || "-"}</strong>
                 </div>
@@ -562,6 +565,10 @@ function CspParameterEntries({
                 <div className={styles.pendingMetaItem}>
                   <span>Thin -30%</span>
                   <strong>{entry.values.thinMinus30 || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Thick +70%</span>
+                  <strong>{entry.values.thickPlus70 || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
                   <span>Neps +400%</span>
@@ -657,7 +664,7 @@ function CspParameterEntries({
 
         <div className={styles.sectionBlock}>
           <div className={styles.sectionGridFive}>
-            {HS_IPI_FIELDS.map((field) =>
+            {HS_IPI_DISPLAY_FIELDS.map((field) =>
               renderField(field, { value: lockedValues[field.key] || "", disabled: true, darkDisabled: true })
             )}
             {renderField({ key: "totalTwo", label: "TOTAL" }, { value: totalTwo, disabled: true, darkDisabled: true })}
@@ -666,7 +673,7 @@ function CspParameterEntries({
 
         <div className={styles.sectionBlock}>
           <div className={styles.sectionGridFive}>
-            {FINAL_FIELDS.map((field) =>
+            {FINAL_DISPLAY_FIELDS.map((field) =>
               renderField(field, { value: lockedValues[field.key] || "", disabled: true, darkDisabled: true })
             )}
           </div>
