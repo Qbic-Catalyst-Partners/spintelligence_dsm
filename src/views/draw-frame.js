@@ -51,7 +51,7 @@ const DRAW_FRAME_ENTRY_PREFIX = {
 };
 const getDrawFrameUniqueId = (seq, type = "") => {
   const prefix = DRAW_FRAME_ENTRY_PREFIX[type] || "DRAW";
-  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const processTypeOptions = ["Breaker", "Finisher"];

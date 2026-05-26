@@ -50,7 +50,7 @@ const getCardingEntryConfig = (typeName) =>
 
 const getCardingEntryId = (seq, typeName) => {
     const { prefix } = getCardingEntryConfig(typeName);
-    return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const readCardingEntrySequence = (typeName) => {
@@ -81,6 +81,14 @@ function Carding() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
     const [entrySeq, setEntrySeq] = useState(1);
+    const incrementEntrySequence = () => {
+        const nextSeq = entrySeq + 1;
+        setEntrySeq(nextSeq);
+        if (typeof window !== "undefined") {
+            const { storageKey } = getCardingEntryConfig(selectedType);
+            window.localStorage.setItem(storageKey, String(nextSeq));
+        }
+    };
 
     useEffect(() => {
         const typeName = typeOptions.find((item) => item.id === checkingType)?.name;
@@ -142,6 +150,7 @@ function Carding() {
         setShowPreview(false);
         const ok = await childRef.current?.submit?.();
         if (ok) {
+            incrementEntrySequence();
             setShowSuccess(true);
         }
     };
@@ -402,12 +411,6 @@ function Carding() {
                     message="Data Submitted"
                     typeValue={selectedType}
                     onClose={() => {
-                        const nextSeq = entrySeq + 1;
-                        setEntrySeq(nextSeq);
-                        if (typeof window !== "undefined") {
-                            const { storageKey } = getCardingEntryConfig(selectedType);
-                            window.localStorage.setItem(storageKey, String(nextSeq));
-                        }
                         setShowSuccess(false);
                         setValidationMessage("");
                         childRef.current?.clear?.();

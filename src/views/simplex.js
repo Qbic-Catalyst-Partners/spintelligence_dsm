@@ -39,7 +39,7 @@ const getSimplexEntryConfig = (typeName) =>
 
 const getSimplexEntryId = (seq, typeName) => {
   const { prefix } = getSimplexEntryConfig(typeName);
-  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const readSimplexEntrySequence = (typeName) => {
@@ -73,6 +73,14 @@ function Simplex() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
   const [entrySeq, setEntrySeq] = useState(1);
+  const incrementEntrySequence = () => {
+    const nextSeq = entrySeq + 1;
+    setEntrySeq(nextSeq);
+    if (typeof window !== "undefined") {
+      const { storageKey } = getSimplexEntryConfig(selectedTypeName);
+      window.localStorage.setItem(storageKey, String(nextSeq));
+    }
+  };
   const { uqcEntries = [], cotsChangeEntries = [], listLoading } = useSelector(
     (state) => state.simplex ?? {}
   );
@@ -132,6 +140,7 @@ function Simplex() {
     setShowPreview(false);
     const ok = await childRef.current?.submit?.();
     if (ok) {
+      incrementEntrySequence();
       setShowSuccess(true);
     }
   };
@@ -460,12 +469,6 @@ function Simplex() {
         message="Data Submitted"
         typeValue={selectedTypeName}
         onClose={() => {
-          const nextSeq = entrySeq + 1;
-          setEntrySeq(nextSeq);
-          if (typeof window !== "undefined") {
-            const { storageKey } = getSimplexEntryConfig(selectedTypeName);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-          }
           setShowSuccess(false);
           setValidationMessage("");
           childRef.current?.clear?.();

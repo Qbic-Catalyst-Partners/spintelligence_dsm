@@ -37,7 +37,7 @@ const getBlowRoomEntryConfig = (typeName) =>
 
 const getBlowRoomEntryId = (seq, typeName) => {
   const { prefix } = getBlowRoomEntryConfig(typeName);
-  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const readBlowRoomEntrySequence = (typeName) => {
@@ -73,6 +73,14 @@ function BlowRoom() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [headerErrors, setHeaderErrors] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
+  const incrementEntrySequence = () => {
+    const nextSeq = entrySeq + 1;
+    setEntrySeq(nextSeq);
+    if (typeof window !== "undefined") {
+      const { storageKey } = getBlowRoomEntryConfig(selectedTypeName);
+      window.localStorage.setItem(storageKey, String(nextSeq));
+    }
+  };
 
   const blowroomState = useSelector((state) => state.blowroom);
 
@@ -134,6 +142,7 @@ function BlowRoom() {
     setShowPreview(false);
     try {
       await childRef.current?.submit?.();
+      incrementEntrySequence();
       setShowSuccess(true);
     } catch (e) {
       // submission error handled by slices/toasts; keep modal closed
@@ -141,12 +150,6 @@ function BlowRoom() {
   };
 
   const handleSuccessClose = () => {
-    const nextSeq = entrySeq + 1;
-    setEntrySeq(nextSeq);
-    if (typeof window !== "undefined") {
-      const { storageKey } = getBlowRoomEntryConfig(selectedTypeName);
-      window.localStorage.setItem(storageKey, String(nextSeq));
-    }
     setShowSuccess(false);
     dispatch(resetBlowroom());
   };

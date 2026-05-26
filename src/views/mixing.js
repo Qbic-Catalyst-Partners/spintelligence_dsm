@@ -54,7 +54,7 @@ const getEntryConfigForType = (typeName) =>
 
 const getEntryIdFromSeq = (seq, typeName) => {
     const { prefix } = getEntryConfigForType(typeName);
-    return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const readEntrySequence = (typeName) => {
@@ -91,6 +91,14 @@ function Mixing() {
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy, setOcrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
+    const incrementEntrySequence = () => {
+        const nextSeq = entrySeq + 1;
+        setEntrySeq(nextSeq);
+        if (typeof window !== "undefined") {
+            const { storageKey } = getEntryConfigForType(selectedTypeName);
+            window.localStorage.setItem(storageKey, String(nextSeq));
+        }
+    };
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -104,6 +112,7 @@ function Mixing() {
 
     useEffect(() => {
         if (actionSuccess) {
+            incrementEntrySequence();
             setShowSuccess(true);
         }
     }, [actionSuccess]);
@@ -178,12 +187,6 @@ function Mixing() {
     };
 
     const handleSuccessClose = () => {
-        const nextSeq = entrySeq + 1;
-        setEntrySeq(nextSeq);
-        if (typeof window !== "undefined") {
-            const { storageKey } = getEntryConfigForType(selectedTypeName);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-        }
         setShowSuccess(false);
         dispatch(clearMixingState());
     };
