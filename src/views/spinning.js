@@ -77,7 +77,7 @@ const getSpinningEntryConfig = (typeName) =>
 
 const getSpinningEntryId = (seq, typeName) => {
     const { prefix } = getSpinningEntryConfig(typeName);
-    return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const readSpinningEntrySequence = (typeName) => {
@@ -127,6 +127,7 @@ const InspectionEntryIcon = () => (
 );
 
 function SpinningDepartment() {
+    const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
@@ -178,6 +179,14 @@ function SpinningDepartment() {
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [entrySeq, setEntrySeq] = useState(1);
+    const incrementEntrySequence = () => {
+        const nextSeq = entrySeq + 1;
+        setEntrySeq(nextSeq);
+        if (typeof window !== "undefined") {
+            const { storageKey } = getSpinningEntryConfig(checkingType);
+            window.localStorage.setItem(storageKey, String(nextSeq));
+        }
+    };
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -217,6 +226,7 @@ function SpinningDepartment() {
 
     useEffect(() => {
         if (success) {
+            incrementEntrySequence();
             setShowPreview(false);
             setShowSuccess(true);
             dispatch(resetSpinningState());
@@ -600,7 +610,7 @@ function SpinningDepartment() {
 
             <div className={styles.container}>
                 <h1 className={styles["sp-page-title"]}>Quality Control - Spinning Notebook</h1>
-                <p className={styles["sp-page-description"]}>Record and manage industrial machine quality inspections.</p>
+                <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
 
                 <div className={styles["sp-card"]}>
                     {(isProcessParameter || isWheelChange) && SelectedComponent ? (
@@ -971,12 +981,6 @@ function SpinningDepartment() {
             <SuccessModal
                 open={showSuccess}
                 onClose={() => {
-                    const nextSeq = entrySeq + 1;
-                    setEntrySeq(nextSeq);
-                    if (typeof window !== "undefined") {
-                        const { storageKey } = getSpinningEntryConfig(checkingType);
-                        window.localStorage.setItem(storageKey, String(nextSeq));
-                    }
                     setShowSuccess(false);
                     handleClearForm();
                 }}

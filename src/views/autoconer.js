@@ -63,7 +63,7 @@ const getAutoconerEntryConfig = (typeName) =>
 
 const getAutoconerEntryId = (seq, typeName) => {
   const { prefix } = getAutoconerEntryConfig(typeName);
-  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
 };
 
 const readAutoconerEntrySequence = (typeName) => {
@@ -97,6 +97,14 @@ function Autoconer() {
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
   const [entrySeq, setEntrySeq] = useState(1);
+  const incrementEntrySequence = () => {
+    const nextSeq = entrySeq + 1;
+    setEntrySeq(nextSeq);
+    if (typeof window !== "undefined") {
+      const { storageKey } = getAutoconerEntryConfig(selectedType);
+      window.localStorage.setItem(storageKey, String(nextSeq));
+    }
+  };
   const selectedType = useMemo(
     () => typeOptions.find((item) => item.name === checkingType)?.name || "",
     [checkingType, typeOptions]
@@ -145,6 +153,7 @@ function Autoconer() {
         ? await registeredActions.submit()
         : false;
     if (ok) {
+      incrementEntrySequence();
       setShowSuccess(true);
     }
   };
@@ -266,12 +275,6 @@ function Autoconer() {
         message="Data Submitted"
         typeValue={selectedType}
         onClose={() => {
-          const nextSeq = entrySeq + 1;
-          setEntrySeq(nextSeq);
-          if (typeof window !== "undefined") {
-            const { storageKey } = getAutoconerEntryConfig(selectedType);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-          }
           setShowSuccess(false);
           setValidationMessage("");
           childRef.current?.clear?.();

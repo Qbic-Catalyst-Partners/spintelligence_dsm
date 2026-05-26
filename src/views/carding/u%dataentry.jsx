@@ -165,10 +165,10 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
             <label>Shift</label>
             <select value={form.shift} onChange={(e) => handleChange("shift", e.target.value)} className={errors.shift ? styles.errorField : ""}>
               <option value="">Select</option>
-              <option>Shift A</option>
-              <option>Shift B</option>
-              <option>Shift C</option>
               <option>General</option>
+              <option>Day</option>
+              <option>Half Night</option>
+              <option>Full Night</option>
             </select>
           </div>
 
@@ -207,17 +207,17 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
           </div>
 
           <div>
-            <label>CVM</label>
+            <label>CV in Metres</label>
             <input value={form.cvm} onChange={(e) => handleChange("cvm", e.target.value)} className={errors.cvm ? styles.errorField : ""} />
           </div>
 
         <div>
-          <label>1m CVM</label>
+          <label>1m CV in Metres</label>
           <input value={form.im_cvm} onChange={(e) => handleChange("im_cvm", e.target.value)} className={errors.im_cvm ? styles.errorField : ""} />
         </div>
 
           <div>
-            <label>3m CVM</label>
+            <label>3m CV in Metres</label>
             <input value={form.m3_cvm} onChange={(e) => handleChange("m3_cvm", e.target.value)} className={errors.m3_cvm ? styles.errorField : ""} />
           </div>
 
