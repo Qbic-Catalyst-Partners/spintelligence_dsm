@@ -10,7 +10,7 @@ import { submitCardingChangeControlEntry } from "@/apis/carding";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
-const CDO_OPTIONS = Array.from({ length: 20 }, (_, index) => `CDO-${String(index + 1).padStart(2, "0")}`);
+const CDG_EXISTING_OPTIONS = Array.from({ length: 20 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 const CDG_OPTIONS = Array.from({ length: 20 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 
 const parameterRows = [
@@ -42,12 +42,9 @@ const getTodayDate = () => new Date().toISOString().split("T")[0];
 const hasValue = (value) => String(value ?? "").trim() !== "";
 const trimValue = (value) => String(value ?? "").trim();
 const isNumericValue = (value) => hasValue(value) && Number.isFinite(Number(value));
-const getPayloadValue = (row, value) => {
-  const trimmed = trimValue(value);
-  return row.numeric ? Number(trimmed) : trimmed;
-};
+const getPayloadValue = (_row, value) => trimValue(value);
 
-function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange }) {
+function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(getTodayDate);
@@ -65,8 +62,8 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     () => [
       { label: "Type", value: selectedType || "WheelChange" },
       { label: "Test No.", value: testNo || "-" },
-      { label: "Entry Date", value: entryDate || "-" },
-      { label: "CDO No.", value: cdoNo || "-" },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "CDG No.", value: cdoNo || "-" },
       { label: "CDG No. (Proposed)", value: proposedCdgNo || "-" },
       ...parameterRows.flatMap((row) => [
         { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
@@ -74,7 +71,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       ]),
       { label: "Remarks", value: remarks || "-" },
     ],
-    [cdoNo, entryDate, proposedCdgNo, remarks, selectedType, testNo, values]
+    [cdoNo, entryId, proposedCdgNo, remarks, selectedType, testNo, values]
   );
 
   const clearError = (field) => {
@@ -128,9 +125,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     parameterRows.forEach((row) => {
       const rowErrors = {};
       if (!hasValue(values[row.key]?.existing)) rowErrors.existing = true;
-      else if (row.numeric && !isNumericValue(values[row.key]?.existing)) rowErrors.existing = true;
       if (!hasValue(values[row.key]?.proposed)) rowErrors.proposed = true;
-      else if (row.numeric && !isNumericValue(values[row.key]?.proposed)) rowErrors.proposed = true;
       if (Object.keys(rowErrors).length) valueErrors[row.key] = rowErrors;
     });
     if (Object.keys(valueErrors).length) nextErrors.values = valueErrors;
@@ -214,8 +209,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     return (
       <input
         className={className}
-        type={row.numeric ? "number" : "text"}
-        step={row.numeric ? "any" : undefined}
+        type="text"
         value={value}
         onChange={handleValueChange(row.key, column)}
       />
@@ -265,22 +259,20 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
           </div>
 
           <div className={styles.field}>
-            <label>Entry Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
+              type="text"
               className={`${styles.topInput} ${errors.entryDate ? styles.errorInput : ""}`}
-              value={entryDate}
-              onChange={(event) => {
-                setEntryDate(event.target.value);
-                clearError("entryDate");
-              }}
+              value={entryId || ""}
+              readOnly
+              disabled
             />
           </div>
         </div>
 
         <div className={`${styles.row} ${styles.twoColumnRow}`}>
           <div className={styles.field}>
-            <label>CDO No.</label>
+            <label>CDG No.</label>
             <select
               className={`${styles.topInput} ${errors.cdoNo ? styles.errorInput : ""}`}
               value={cdoNo}
@@ -290,7 +282,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
               }}
             >
               <option value="">Select</option>
-              {CDO_OPTIONS.map((option) => (
+              {CDG_EXISTING_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>

@@ -10,6 +10,7 @@ import {
 } from "@/store/slices/autoconer";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
+
 const COUNT_NAME_OPTIONS = [
   "12 RECYCLE (GRG) POLY COTTON CW 49.5",
   "20 WHITE POLY 40D SPX YARN CONES",
@@ -190,6 +191,7 @@ function CspParameterEntries({
   onTypeChange,
   onRegisterActions,
   tablePortalTargetId,
+  entryId = "",
 }) {
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer ?? {});
@@ -310,7 +312,7 @@ function CspParameterEntries({
   const getPreviewData = () => [
     { label: "ID", value: selectedEntryId || "-", wide: true },
     { label: "Type", value: selectedType || "-" },
-    { label: "Date", value: formatPreviewDateTime(entryDate) },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Count Name", value: countName || "-", wide: true },
     ...ALL_FIELDS.map((field) => ({
       label: field.label,
@@ -488,8 +490,8 @@ function CspParameterEntries({
             >
               <div className={styles.pendingTopRow}>
                 <div className={styles.pendingMetaItem}>
-                  <span>Date</span>
-                  <strong>{entry.date || "-"}</strong>
+                  <span>Entry ID</span>
+                  <strong>{entryId}</strong>
                 </div>
                 <div className={`${styles.pendingMetaItem} ${styles.pendingMetaWide}`}>
                   <span>Count Name</span>
@@ -605,12 +607,12 @@ function CspParameterEntries({
         </div>
 
         <div className={styles.metricField}>
-          <label>Date</label>
+          <label>Entry ID</label>
           <input
-            type="date"
-            value={entryDate}
-            onChange={(event) => setEntryDate(event.target.value)}
+            type="text"
+            value={entryId}
             disabled
+            readOnly
             className={`${styles.input} ${styles.topControlInput} ${styles.topControlDisabled} ${errors.entryDate ? styles.errorField : ""}`}
           />
         </div>

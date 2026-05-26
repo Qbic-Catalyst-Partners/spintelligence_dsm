@@ -7,6 +7,7 @@ import {
 import styles from "@/styles/countwise.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
+
 const getTodayDate = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -123,7 +124,7 @@ const splitDrumsRange = (value) => {
   };
 };
 
-function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterActions }) {
+function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterActions, entryId = "" }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -193,7 +194,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
-    { label: "Date", value: date || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Machine No.", value: machineNo || "-" },
     { label: "Count", value: count || "-" },
     { label: "Drums From", value: drumFrom || "-" },
@@ -311,8 +312,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         </div>
 
         <div className={styles.field}>
-          <label>Date</label>
-          <input type="date" value={date} disabled style={errorStyle(errors.date)} />
+          <label>Entry ID</label>
+          <input type="text" value={entryId} readOnly disabled />
         </div>
 
         <div className={styles.field}>

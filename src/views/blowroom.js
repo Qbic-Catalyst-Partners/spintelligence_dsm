@@ -24,8 +24,31 @@ const blowroomTypes = [
 export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
 
 const today = new Date().toISOString().split("T")[0];
+const BLOWROOM_ENTRY_SEQ_KEY = "blowroom_entry_sequence";
+const BLOWROOM_ENTRY_ID_CONFIG = {
+  "Blow Room Sync": { prefix: "BRS", storageKey: "blowroom_entry_sequence_sync" },
+  "Process Parameter": { prefix: "BPP", storageKey: "blowroom_entry_sequence_process_parameter" },
+  "BR Waste Study Entry": { prefix: "BWS", storageKey: "blowroom_entry_sequence_br_waste" },
+  "Drop Test Data Entry": { prefix: "BDT", storageKey: "blowroom_entry_sequence_drop_test" },
+};
+
+const getBlowRoomEntryConfig = (typeName) =>
+  BLOWROOM_ENTRY_ID_CONFIG[typeName] || { prefix: "BLR", storageKey: BLOWROOM_ENTRY_SEQ_KEY };
+
+const getBlowRoomEntryId = (seq, typeName) => {
+  const { prefix } = getBlowRoomEntryConfig(typeName);
+  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readBlowRoomEntrySequence = (typeName) => {
+  if (typeof window === "undefined") return 1;
+  const { storageKey } = getBlowRoomEntryConfig(typeName);
+  const stored = Number(window.localStorage.getItem(storageKey) || "1");
+  return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 function BlowRoom() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
@@ -43,12 +66,21 @@ function BlowRoom() {
   );
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [date, setDate] = useState(today);
+  const [entrySeq, setEntrySeq] = useState(1);
   const [lotNo, setLotNo] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [headerErrors, setHeaderErrors] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
+  const incrementEntrySequence = () => {
+    const nextSeq = entrySeq + 1;
+    setEntrySeq(nextSeq);
+    if (typeof window !== "undefined") {
+      const { storageKey } = getBlowRoomEntryConfig(selectedTypeName);
+      window.localStorage.setItem(storageKey, String(nextSeq));
+    }
+  };
 
   const blowroomState = useSelector((state) => state.blowroom);
 
@@ -72,10 +104,13 @@ function BlowRoom() {
     }
   }, [blowroomState?.success]);
 
+  useEffect(() => {
+    setEntrySeq(readBlowRoomEntrySequence(selectedTypeName));
+  }, [selectedTypeName]);
+
   const validateHeader = () => {
     const errs = {};
     if (selectedType?.needsLotNo && !lotNo) errs.lotNo = true;
-    if (!date) errs.date = true;
     setHeaderErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -95,7 +130,7 @@ function BlowRoom() {
     }
     const headerItems = [
       { label: "Type", value: selectedTypeName },
-      { label: "Date", value: date },
+      { label: "Entry ID", value: getBlowRoomEntryId(entrySeq, selectedTypeName) },
     ];
     if (selectedType?.needsLotNo) headerItems.push({ label: "Lot No", value: lotNo });
     const childItems = childRef.current.getPreviewData() || [];
@@ -107,6 +142,7 @@ function BlowRoom() {
     setShowPreview(false);
     try {
       await childRef.current?.submit?.();
+      incrementEntrySequence();
       setShowSuccess(true);
     } catch (e) {
       // submission error handled by slices/toasts; keep modal closed
@@ -127,9 +163,7 @@ function BlowRoom() {
           <h1 className="text-[24px] font-extrabold text-slate-900 m-0">
             Quality Control - Blow Room Notebook
           </h1>
-          <p className="text-[14px] text-slate-500 mt-1.5 mb-0">
-            Record and manage blow room quality inspections.
-          </p>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
 
         <div className="bg-white rounded-xl border border-slate-200">
@@ -164,11 +198,10 @@ function BlowRoom() {
                   </div>
 
                   <CustomInput
-                    label="Date"
-                    type="date"
-                    value={date}
-                    onChange={(value) => setDate(value)}
-                    error={headerErrors.date}
+                    label="Entry ID"
+                    value={getBlowRoomEntryId(entrySeq, selectedTypeName)}
+                    onChange={() => {}}
+                    disabled
                   />
 
                   {selectedType?.needsLotNo && (
@@ -187,6 +220,7 @@ function BlowRoom() {
                 <SelectedComponent
                   ref={childRef}
                   date={date}
+                  entryId={getBlowRoomEntryId(entrySeq, selectedTypeName)}
                   lotNo={lotNo}
                   selectedTypeName={selectedTypeName}
                   typeOptions={typeOptions}
@@ -267,3 +301,5 @@ function BlowRoom() {
 }
 
 export default BlowRoom;
+
+

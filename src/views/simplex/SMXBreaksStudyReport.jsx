@@ -120,6 +120,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     selectedTypeName = "SMX Breaks Study Report",
     onTypeChange,
     typeOptions = [],
+    entryId = "",
     tablePortalTargetId,
   },
   ref
@@ -263,8 +264,9 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const getPreviewData = () => {
     const items = [
       { label: "Type", value: selectedTypeName || form.type },
+      { label: "Entry ID", value: entryId || "#SIM-001" },
       ...Object.entries(form)
-        .filter(([key]) => key !== "type")
+        .filter(([key]) => key !== "type" && key !== "date")
         .map(([key, value]) => ({
           label: formatLabel(key),
           value:
@@ -311,7 +313,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type },
     { label: "Simplex No.", field: "simplexNo", type: "select", options: simplexOptions, placeholder: "Select" },
-    { label: "Date", field: "date", type: "date" },
+    { label: "Entry ID", field: "entryId", type: "readonly", value: entryId || "#SIM-001" },
     { label: "Start Time", field: "startTime", type: "time" },
     { label: "End Time", field: "endTime", type: "time" },
     { label: "Total Minutes", field: "totalTime", type: "readonly", value: totalTime ? `${totalTime} mins` : "0 mins" },

@@ -332,6 +332,7 @@ const SavedVersionsSection = ({
 const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   {
     onSubmitSuccess,
+    entryId = "",
     selectedTypeName,
     typeOptions = [],
     onTypeChange,
@@ -455,7 +456,6 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
     if (!String(form.countName || "").trim()) nextErrors.countName = true;
     if (!String(form.consigneeName || "").trim()) nextErrors.consigneeName = true;
-    if (!String(form.creationDate || "").trim()) nextErrors.creationDate = true;
 
     form.rows.forEach((row, index) => {
       ["lotNo", "blend", "cutLength", "tenacity", "elongation", "mergeNo"].forEach((field) => {
@@ -513,7 +513,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const getPreviewData = () => [
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Creation Date", value: formatDisplayDate(form.creationDate) || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     ...form.rows.flatMap((row, index) => [
       { label: `Lot No ${index + 1}`, value: row.lotNo || "-" },
       { label: row.label, value: row.blend || "-" },
@@ -575,12 +575,13 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Creation Date</label>
+          <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
           <input
-            type="date"
-            className={`${topFieldClass}${errors.creationDate ? " border-red-500 bg-red-50" : ""}`}
-            value={form.creationDate}
-            onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+            type="text"
+            className={topFieldClass}
+            value={entryId}
+            readOnly
+            disabled
           />
         </div>
       </div>
@@ -668,7 +669,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
           <div className="flex items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2 min-w-0">
               <InspectionEntryIcon />
-              <span className="text-[18px] font-bold text-slate-900">Inspection</span>
+              <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
             </div>
             <InputScreenUploadButton />
           </div>

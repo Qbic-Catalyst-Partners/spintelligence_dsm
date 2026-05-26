@@ -109,7 +109,7 @@ const DECIMAL_FIELD_CONFIG = {
     csp: { precision: 8, scale: 2 },
 };
 
-function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false }) {
+function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false, entryId = "" }) {
     const router = useRouter();
     const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [time, setTime] = useState("");
@@ -189,15 +189,22 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         return true;
     };
 
+    const computeTotalRegular = (data) =>
+        (Number.parseFloat(data.thin50) || 0) +
+        (Number.parseFloat(data.thick50) || 0) +
+        (Number.parseFloat(data.neps200) || 0);
+
+    const computeTotalHs = (data) =>
+        (Number.parseFloat(data.thin40) || 0) +
+        (Number.parseFloat(data.thick35) || 0) +
+        (Number.parseFloat(data.neps140) || 0);
+
+    const totalRegularValue = computeTotalRegular(formData);
+    const totalHsValue = computeTotalHs(formData);
+
     const buildTrialsPayload = () => {
-        const totalRegular =
-            (Number.parseFloat(formData.thin50) || 0) +
-            (Number.parseFloat(formData.thick50) || 0) +
-            (Number.parseFloat(formData.neps200) || 0);
-        const totalHs =
-            (Number.parseFloat(formData.thin40) || 0) +
-            (Number.parseFloat(formData.thick35) || 0) +
-            (Number.parseFloat(formData.neps140) || 0);
+        const totalRegular = totalRegularValue;
+        const totalHs = totalHsValue;
 
         const payload = {
             date,
@@ -292,7 +299,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
     const previewItems = [
         { label: "Type", value: selectedType },
-        { label: "Date", value: date },
+        { label: "Entry ID", value: entryId || "-" },
         { label: "Time", value: time },
         ...requiredFields.map((field) => ({
             label: field,
@@ -339,8 +346,8 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                     <>
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
-                                <label>Date</label>
-                                <input type="date" name="date" value={date} readOnly />
+                                <label>Entry ID</label>
+                                <input type="text" name="date" value={entryId || ""} readOnly />
                             </div>
 
                             <div className={styles.cardFormGroup}>
@@ -486,7 +493,11 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         ))}
                         <div className={styles.formGroup}>
                             <label>Total (Regular)</label>
-                            <input type="number" value="0.00" readOnly />
+                            <input
+                                type="number"
+                                value={totalRegularValue ? totalRegularValue.toFixed(2) : "0.00"}
+                                readOnly
+                            />
                         </div>
                     </div>
 
@@ -500,7 +511,11 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         ))}
                         <div className={styles.formGroup}>
                             <label>Total (HS)</label>
-                            <input type="number" value="0.00" readOnly />
+                            <input
+                                type="number"
+                                value={totalHsValue ? totalHsValue.toFixed(2) : "0.00"}
+                                readOnly
+                            />
                         </div>
                     </div>
 
@@ -558,3 +573,4 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 }
 
 export default TrialDepartment;
+

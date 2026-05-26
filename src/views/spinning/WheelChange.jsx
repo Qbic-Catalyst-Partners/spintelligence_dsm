@@ -269,6 +269,7 @@ const WheelChange = forwardRef(function WheelChange(
   {
     selectedTypeName = "Wheel Change",
     typeOptions = [],
+    entryId = "#SPN-001",
     onTypeChange,
   },
   ref
@@ -419,7 +420,7 @@ const WheelChange = forwardRef(function WheelChange(
     { label: "Checking Type", value: selectedTypeName || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Test No.", value: testNo || "-" },
-    { label: "Date", value: date || getTodayDate() },
+    { label: "Entry ID", value: entryId || "#SPN-001" },
     { label: "RF No.", value: rfNo || "-" },
     ...activeRows.flatMap((row) => [
       { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
@@ -522,16 +523,13 @@ const WheelChange = forwardRef(function WheelChange(
 
         <div className={styles.row}>
           <div className={styles.field}>
-            <label>Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
-              className={`${styles.topInput} ${errors.date ? styles.errorInput : ""}`}
-              value={date}
-              onChange={(event) => {
-                setDate(event.target.value);
-                clearFieldError("date");
-              }}
-              disabled={Boolean(selectedTypeName)}
+              type="text"
+              className={styles.topInput}
+              value={entryId || "#SPN-001"}
+              readOnly
+              disabled
             />
           </div>
 

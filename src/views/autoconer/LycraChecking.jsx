@@ -7,6 +7,7 @@ import {
 import styles from "@/styles/lycraChecking.module.css";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
+
 const getTodayDate = () => {
   const today = new Date();
   const year = today.getFullYear();
@@ -28,7 +29,7 @@ const initialReadings = (count) =>
     length: "",
   }));
 
-function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions }) {
+function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, entryId = "" }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -133,7 +134,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
     { label: "Test No.", value: testNo || "-" },
-    { label: "Entry Date", value: entryDate || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Lycra Draft", value: lycraDraft || "-" },
     { label: "Count Name", value: countName || "-" },
     { label: "No. of Readings", value: readingsCount || "-" },
@@ -236,8 +237,8 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions })
         </div>
 
         <div className={styles.field}>
-          <label>Entry Date</label>
-          <input type="date" value={entryDate} disabled style={errorStyle(errors.entryDate)} />
+          <label>Entry ID</label>
+          <input type="text" value={entryId} readOnly disabled />
         </div>
 
         <div className={styles.field}>

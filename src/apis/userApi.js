@@ -16,19 +16,51 @@ const emitFetchSuccess = () => {
   });
 };
 
+const parseJsonSafely = async (res) => {
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+  return res.json().catch(() => null);
+};
+
 export const fetchUsersAPI = async () => {
-  const res = await fetch(`${BASE_URL}/users`);
-  return res.json();
+  const res = await fetch(`${BASE_URL}/users`, {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+  const data = await parseJsonSafely(res);
+  if (!res.ok) {
+    throw new Error(data?.message || "Failed to fetch users");
+  }
+  return data || [];
 };
 
 export const fetchRolesAPI = async () => {
-  const res = await fetch(`${BASE_URL}/roles?page=1&limit=200`);
-  return res.json();
+  const res = await fetch(`${BASE_URL}/roles?page=1&limit=200`, {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+  const data = await parseJsonSafely(res);
+  if (!res.ok) {
+    throw new Error(data?.message || "Failed to fetch roles");
+  }
+  return data || {};
 };
 
 export const fetchDepartmentsAPI = async () => {
-  const res = await fetch(`${BASE_URL}/roles/departments`);
-  return res.json();
+  const res = await fetch(`${BASE_URL}/roles/departments`, {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+  const data = await parseJsonSafely(res);
+  if (!res.ok) {
+    throw new Error(data?.message || "Failed to fetch departments");
+  }
+  return data || [];
 };
 
 export const deleteUserAPI = async (id) => {
@@ -79,6 +111,9 @@ export const addUserAPI = async (data) => {
 export const exportUsersAPI = async () => {
   const res = await fetch(`${BASE_URL}/users/export`, {
     method: "GET",
+    headers: {
+      ...getAuthHeaders(),
+    },
   });
 
   if (!res.ok) {
@@ -91,7 +126,7 @@ export const exportUsersAPI = async () => {
   const a = document.createElement("a");
 
   a.href = url;
-  a.download = "users.xlsx"; 
+  a.download = "users.csv";
 
   document.body.appendChild(a);
   a.click();

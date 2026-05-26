@@ -35,10 +35,20 @@
     font-size: 14px;
 }
 
+.mixx-textarea {
+    height: 140px;
+    resize: vertical;
+}
+
 .mixx-error {
     border-color: #ef4444 !important;
     background: #fff1f2 !important;
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
+}
+
+.mixx-help-error {
+    font-size: 12px;
+    color: #b91c1c;
 }
 
 /* apply button */
@@ -55,6 +65,13 @@
     align-self: flex-end;
 }
 
+.section-title {
+    margin-top: 6px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
 /* waste apply row: input + button side by side */
 .waste-apply-row {
     grid-template-columns: 2fr 1fr;
@@ -68,22 +85,66 @@
 
 .type3-table {
     margin-top: 20px;
-    overflow-x: auto;
+    width: 100%;
+    overflow: hidden;
+}
+
+.type1-table,
+.type2-table {
+    margin-top: 20px;
+    width: 100%;
+    overflow: hidden;
 }
 
 .type3-header,
 .type3-row {
     display: grid;
-    grid-template-columns: 40px repeat(9, 1fr);
+    grid-template-columns: 32px repeat(9, minmax(0, 1fr));
     gap: 10px;
     margin-bottom: 10px;
     align-items: center;
+    width: 100%;
+}
+
+.type1-header,
+.type1-row {
+    display: grid;
+    grid-template-columns: 32px repeat(6, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+    width: 100%;
+}
+
+.type2-header,
+.type2-row {
+    display: grid;
+    grid-template-columns: 32px repeat(7, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+    width: 100%;
 }
 
 .type3-header span {
     font-size: 14px;
     font-weight: 600;
     color: #334155;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.type1-header span,
+.type2-header span {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.2;
+    word-break: break-word;
 }
 
 .type3-number {
@@ -92,8 +153,24 @@
     color: #334155;
 }
 
+.type3-row .mixx-input {
+    width: 100%;
+    min-width: 0;
+}
+
+.type1-row .mixx-input,
+.type2-row .mixx-input {
+    width: 100%;
+    min-width: 0;
+}
+
 /* ===== Type 3 mobile cards ===== */
 .type3-mobile {
+    display: none;
+}
+
+.type1-mobile,
+.type2-mobile {
     display: none;
 }
 
@@ -169,7 +246,17 @@
         display: block;
     }
 
+    .type1-mobile,
+    .type2-mobile {
+        display: block;
+    }
+
     .type3-mobile .mixx-group label {
+        color: #3D539F;
+    }
+
+    .type1-mobile .mixx-group label,
+    .type2-mobile .mixx-group label {
         color: #3D539F;
     }
 

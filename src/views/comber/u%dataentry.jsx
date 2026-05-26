@@ -20,7 +20,7 @@ const initialForm = () => ({
 });
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
-  { types = [], selectedType = "", onTypeChange = () => {} },
+  { types = [], selectedType = "", onTypeChange = () => {}, entryId = "" },
   ref
 ) {
   const dispatch = useDispatch();
@@ -90,15 +90,15 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   };
 
   const getPreviewData = () => [
-    { label: "Date", value: form.date },
+    { label: "Entry ID", value: entryId || "-" },
     { label: "Shift", value: form.shift },
     { label: "Variety", value: form.variety },
     { label: "Department", value: form.department },
     { label: "MC No.", value: form.mc_no },
     { label: "U%", value: form.u_percent },
-    { label: "CVM", value: form.cvm },
-    { label: "1m CVM", value: form.im_cvm },
-    { label: "3m CVM", value: form.m3_cvm },
+    { label: "CV in Metres", value: form.cvm },
+    { label: "1m CV in Metres", value: form.im_cvm },
+    { label: "3m CV in Metres", value: form.m3_cvm },
     { label: "Remarks", value: form.remarks },
   ];
 
@@ -148,11 +148,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
-          <label>Date</label>
+          <label>Entry ID</label>
           <input
-            type="date"
-            value={form.date}
-            onChange={(e) => handleChange("date", e.target.value)}
+            type="text"
+            value={entryId || ""}
+            readOnly disabled
             className={errors.date ? styles.errorField : ""}
           />
         </div>
@@ -165,10 +165,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             className={errors.shift ? styles.errorField : ""}
           >
             <option value="">Select</option>
-            <option>Shift A</option>
-            <option>Shift B</option>
-            <option>Shift C</option>
             <option>General</option>
+            <option>Day</option>
+            <option>Half Night</option>
+            <option>Full Night</option>
           </select>
         </div>
 
@@ -229,7 +229,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
-          <label>CVM</label>
+          <label>CV in Metres</label>
           <input
             value={form.cvm}
             onChange={(e) => handleChange("cvm", e.target.value)}
@@ -238,7 +238,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
-          <label>1m CVM</label>
+          <label>1m CV in Metres</label>
           <input
             value={form.im_cvm}
             onChange={(e) => handleChange("im_cvm", e.target.value)}
@@ -247,7 +247,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
-          <label>3m CVM</label>
+          <label>3m CV in Metres</label>
           <input
             value={form.m3_cvm}
             onChange={(e) => handleChange("m3_cvm", e.target.value)}
@@ -275,3 +275,4 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 });
 
 export default UPercentDataEntry;
+

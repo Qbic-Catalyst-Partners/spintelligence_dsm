@@ -16,7 +16,20 @@ import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const mixingDepartmentTypes = [
-    { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry, needsLotNo: false },
+    {
+        id: 0,
+        name: "Process Parameter",
+        aliases: [
+            "Process Parameter",
+            "Process Parameter Data Entry",
+            "Mixing Process Parameter",
+            "Mixing QC",
+            "Mixing QC Data Entry",
+            "Mixing Qc Data Entry",
+        ],
+        component: ProcessParameterDataEntry,
+        needsLotNo: false,
+    },
     { id: 1, name: "Cotton HVI Data Entry", aliases: ["Cotton HVI Data Entry", "Cotton HVI"], component: CottonHVIDataEntry, needsLotNo: true },
     { id: 2, name: "Fibre Data Entry", aliases: ["Fibre Data Entry", "Fiber Data Entry"], component: FibreDataEntry, needsLotNo: true },
     { id: 3, name: "AFIS Data Entry", aliases: ["AFIS Data Entry", "Afis Data Entry"], component: AfisDataEntry, needsLotNo: true },
@@ -27,8 +40,32 @@ const mixingDepartmentTypes = [
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
 
 const getCurrentDate = () => new Date().toISOString().split("T")[0];
+const MIXING_ENTRY_SEQ_KEY = "mixing_entry_sequence";
+const MIXING_ENTRY_ID_CONFIG = {
+    "Cotton HVI Data Entry": { prefix: "COT", storageKey: "mixing_entry_sequence_cotton_hvi" },
+    "Fibre Data Entry": { prefix: "FIB", storageKey: "mixing_entry_sequence_fibre" },
+    "AFIS Data Entry": { prefix: "AFI", storageKey: "mixing_entry_sequence_afis" },
+    "Moisture Data Entry": { prefix: "MOI", storageKey: "mixing_entry_sequence_moisture" },
+    "Openness Data Entry": { prefix: "OPN", storageKey: "mixing_entry_sequence_openness" },
+};
+
+const getEntryConfigForType = (typeName) =>
+    MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX", storageKey: MIXING_ENTRY_SEQ_KEY };
+
+const getEntryIdFromSeq = (seq, typeName) => {
+    const { prefix } = getEntryConfigForType(typeName);
+    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readEntrySequence = (typeName) => {
+    if (typeof window === "undefined") return 1;
+    const { storageKey } = getEntryConfigForType(typeName);
+    const stored = Number(window.localStorage.getItem(storageKey) || "1");
+    return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 function Mixing() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const childRef = useRef(null);
     const dispatch = useDispatch();
@@ -44,6 +81,7 @@ function Mixing() {
     );
     const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
+    const [entrySeq, setEntrySeq] = useState(1);
     const [lotNo, setLotNo] = useState("");
     const [mixingValue, setMixingValue] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
@@ -53,6 +91,14 @@ function Mixing() {
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy, setOcrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
+    const incrementEntrySequence = () => {
+        const nextSeq = entrySeq + 1;
+        setEntrySeq(nextSeq);
+        if (typeof window !== "undefined") {
+            const { storageKey } = getEntryConfigForType(selectedTypeName);
+            window.localStorage.setItem(storageKey, String(nextSeq));
+        }
+    };
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -66,6 +112,7 @@ function Mixing() {
 
     useEffect(() => {
         if (actionSuccess) {
+            incrementEntrySequence();
             setShowSuccess(true);
         }
     }, [actionSuccess]);
@@ -74,16 +121,9 @@ function Mixing() {
         setDate(getCurrentDate());
     }, [router.asPath]);
 
-    const handleDateChange = (value) => {
-        const nextDate = getCurrentDate();
-        setDate(value === nextDate ? value : nextDate);
-        setHeaderErrors((prev) => {
-            if (!prev.date) return prev;
-            const next = { ...prev };
-            delete next.date;
-            return next;
-        });
-    };
+    useEffect(() => {
+        setEntrySeq(readEntrySequence(selectedTypeName));
+    }, [selectedTypeName]);
 
     const handleTypeChange = (value) => {
         setSelectedTypeName(value);
@@ -107,9 +147,7 @@ function Mixing() {
         const list = [
             { label: "Type", value: selectedTypeName },
         ];
-        if (!isProcessParameter) {
-            list.push({ label: "Date", value: date });
-        }
+        if (!isProcessParameter) list.push({ label: "Entry ID", value: getEntryIdFromSeq(entrySeq, selectedTypeName) });
         if (selectedType?.needsLotNo !== false) {
             list.push({ label: "Lot No", value: lotNo });
         }
@@ -121,7 +159,6 @@ function Mixing() {
 
     const openPreview = () => {
         const errors = {};
-        if (!isProcessParameter && !date) errors.date = true;
         if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
         if (selectedTypeName === "Openness Data Entry" && !mixingValue) errors.mixing = true;
 
@@ -199,8 +236,8 @@ function Mixing() {
                     <h1 className="text-[24px] font-extrabold text-slate-900 m-0">
                         Quality Control - Mixing Notebook
                     </h1>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
                     <p className="text-[14px] text-slate-500 mt-1.5 mb-0">
-                        Record and manage industrial machine quality inspections.
                     </p>
                 </div>
 
@@ -245,13 +282,10 @@ function Mixing() {
                                     )}
 
                                     <CustomInput
-                                        label="Date"
-                                        type="date"
-                                        value={date}
-                                        onChange={handleDateChange}
-                                        error={headerErrors.date}
-                                        min={currentDate}
-                                        max={currentDate}
+                                        label="Entry ID"
+                                        value={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                                        onChange={() => {}}
+                                        disabled
                                     />
 
                                     {selectedType?.needsLotNo !== false && (
@@ -269,6 +303,7 @@ function Mixing() {
                                     <SelectedComponent
                                         ref={childRef}
                                         date={date}
+                                        entryId={getEntryIdFromSeq(entrySeq, selectedTypeName)}
                                         lotNo={lotNo}
                                         mixing={mixingValue}
                                         selectedTypeName={selectedTypeName}
@@ -287,6 +322,7 @@ function Mixing() {
                         <SelectedComponent
                             ref={childRef}
                             date={date}
+                            entryId={getEntryIdFromSeq(entrySeq, selectedTypeName)}
                             lotNo={lotNo}
                             mixing={mixingValue}
                             selectedTypeName={selectedTypeName}
@@ -348,3 +384,5 @@ function Mixing() {
 }
 
 export default Mixing;
+
+

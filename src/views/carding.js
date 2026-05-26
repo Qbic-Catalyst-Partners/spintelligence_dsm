@@ -14,6 +14,9 @@ import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
 import CardingWheelChange from "./carding/WheelChange";
+import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
+import { fetchCardWasteStudyEntries, submitCardWasteStudyEntry } from "@/apis/carding";
+import brWasteStyles from "@/styles/brWasteStudyEntry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
@@ -30,11 +33,40 @@ const cardingDepartmentTypes = [
     { id: 5, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U Percentage Data Entry", "U% Checking"] },
     { id: 6, name: "Card DFK Pressure Checking", aliases: ["Card DFK Pressure Checking", "DFK Pressure Checking", "Carding DFK Pressure"] },
     { id: 7, name: "WheelChange", aliases: ["WheelChange", "Wheel Change"], component: CardingWheelChange },
+    { id: 8, name: "Card Waste Study", aliases: ["Card Waste Study", "Card Waste Study Entry"] },
 ];
 
 export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
+const CARDING_ENTRY_SEQ_KEY = "carding_entry_sequence";
+const CARDING_ENTRY_ID_CONFIG = {
+    "Process Parameter": { prefix: "CPP", storageKey: "carding_entry_sequence_process_parameter" },
+    "Between & Within Card Data Entry": { prefix: "BWC", storageKey: "carding_entry_sequence_between_within" },
+    "Card Thick Place Entry": { prefix: "CTP", storageKey: "carding_entry_sequence_card_thick_place" },
+    "Trials Data Entry Form": { prefix: "TRI", storageKey: "carding_entry_sequence_trials" },
+    "Nati Data Entry": { prefix: "NAT", storageKey: "carding_entry_sequence_nati" },
+    "U% Data Entry": { prefix: "CAU", storageKey: "carding_entry_sequence_u_percent" },
+    "Card DFK Pressure Checking": { prefix: "DFK", storageKey: "carding_entry_sequence_dfk" },
+    WheelChange: { prefix: "WHL", storageKey: "carding_entry_sequence_wheelchange" },
+    "Card Waste Study": { prefix: "CWS", storageKey: "carding_entry_sequence_card_waste_study" },
+};
+
+const getCardingEntryConfig = (typeName) =>
+    CARDING_ENTRY_ID_CONFIG[typeName] || { prefix: "CAR", storageKey: CARDING_ENTRY_SEQ_KEY };
+
+const getCardingEntryId = (seq, typeName) => {
+    const { prefix } = getCardingEntryConfig(typeName);
+    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+};
+
+const readCardingEntrySequence = (typeName) => {
+    if (typeof window === "undefined") return 1;
+    const { storageKey } = getCardingEntryConfig(typeName);
+    const stored = Number(window.localStorage.getItem(storageKey) || "1");
+    return Number.isFinite(stored) && stored > 0 ? stored : 1;
+};
 
 function Carding() {
+  const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
@@ -53,6 +85,14 @@ function Carding() {
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
+    const [entrySeq, setEntrySeq] = useState(1);
+    const [lotNo, setLotNo] = useState("");
+
+    useEffect(() => {
+        const typeName = typeOptions.find((item) => item.id === checkingType)?.name;
+        if (!typeName) return;
+        setEntrySeq(readCardingEntrySequence(typeName));
+    }, [checkingType, typeOptions]);
 
     useEffect(() => {
         if (!typeOptions.some((item) => item.id === checkingType)) {
@@ -65,6 +105,7 @@ function Carding() {
             (item) => item.name === value
         );
         setCheckingType(selected?.id ?? null);
+        setLotNo("");
         setValidationMessage("");
         setPreviewItems([]);
         setShowPreview(false);
@@ -77,6 +118,8 @@ function Carding() {
     const SelectedComponent = selectedOption?.component ?? null;
     const isProcessParameter = selectedType === "Process Parameter";
     const isWheelChange = selectedType === "WheelChange";
+    const isCardWasteStudy = selectedType === "Card Waste Study";
+    const showParentFooter = isProcessParameter || isCardWasteStudy;
     const entryTableTheme = {
         surface: isDarkMode ? "#050505" : "#fff",
         header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -108,6 +151,7 @@ function Carding() {
         setShowPreview(false);
         const ok = await childRef.current?.submit?.();
         if (ok) {
+            incrementEntrySequence();
             setShowSuccess(true);
         }
     };
@@ -117,7 +161,7 @@ function Carding() {
             <div className={styles["card-container"]}>
                 <div className={styles["card-header"]}>
                     <h1>Quality Control - Carding Notebook</h1>
-                    <p>Record and manage industrial machine quality inspections.</p>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
                 </div>
 
                 <div className={styles["card-shell"]}>
@@ -138,11 +182,60 @@ function Carding() {
                     {isProcessParameter && SelectedComponent ? (
                         <SelectedComponent
                             ref={childRef}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             savedVersionsTargetId="carding-process-parameter-saved-versions"
                         />
+                    ) : null}
+
+                    {isCardWasteStudy ? (
+                        <>
+                            <div className={brWasteStyles["mixx-row"]}>
+                                <div className={brWasteStyles["mixx-group"]}>
+                                    <label>Type</label>
+                                    <select
+                                        className={brWasteStyles["mixx-input"]}
+                                        value={selectedType}
+                                        onChange={(e) => handleTypeChange(e.target.value)}
+                                    >
+                                        {typeOptions.map((item) => (
+                                            <option key={item.id} value={item.name}>
+                                                {item.displayName ?? item.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className={brWasteStyles["mixx-group"]}>
+                                    <label>Entry ID</label>
+                                    <input
+                                        className={brWasteStyles["mixx-input"]}
+                                        value={getCardingEntryId(entrySeq, selectedType)}
+                                        readOnly
+                                    />
+                                </div>
+                                <div className={brWasteStyles["mixx-group"]}>
+                                    <label>Lot No</label>
+                                    <input
+                                        className={brWasteStyles["mixx-input"]}
+                                        value={lotNo}
+                                        onChange={(e) => setLotNo(e.target.value)}
+                                        placeholder="Enter Lot Number"
+                                    />
+                                </div>
+                            </div>
+                            <BrWasteStudyEntry
+                                ref={childRef}
+                                date={new Date().toISOString().split("T")[0]}
+                                lotNo={lotNo}
+                                onLotNoChange={setLotNo}
+                                saveEntryApi={submitCardWasteStudyEntry}
+                                fetchEntriesApi={fetchCardWasteStudyEntries}
+                                entryTypeLabel="Card Waste Study"
+                                useBlowroomRedux={false}
+                            />
+                        </>
                     ) : null}
 
                     {selectedType === "Between & Within Card Data Entry" && (
@@ -151,6 +244,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -160,6 +254,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -169,6 +264,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -178,6 +274,7 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm={selectedType === "Card Thick Place Entry"}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     ) : null}
 
@@ -186,6 +283,7 @@ function Carding() {
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -194,6 +292,7 @@ function Carding() {
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                         />
                     )}
 
@@ -205,17 +304,19 @@ function Carding() {
 
                     {isWheelChange && SelectedComponent ? (
                         <SelectedComponent
+                            entryId={getCardingEntryId(entrySeq, selectedType)}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                         />
                     ) : null}
 
-                    {isProcessParameter ? (
+                    {showParentFooter ? (
                         <Footer
                             onBack={() => router.push("/departments/quality-control")}
                             onClear={() => {
                                 setValidationMessage("");
+                                setLotNo("");
                                 childRef.current?.clear?.();
                             }}
                             onSave={openPreview}
@@ -355,19 +456,23 @@ function Carding() {
                 confirmLabel="Submit"
             />
 
-            <SuccessModal
-                open={showSuccess}
-                message="Data Submitted"
-                typeValue={selectedType}
-                onClose={() => {
-                    setShowSuccess(false);
-                    setValidationMessage("");
-                    childRef.current?.clear?.();
-                    dispatch(clearCardingState());
-                }}
+                <SuccessModal
+                    open={showSuccess}
+                    message="Data Submitted"
+                    typeValue={selectedType}
+                    onClose={() => {
+                        setShowSuccess(false);
+                        setValidationMessage("");
+                        childRef.current?.clear?.();
+                        dispatch(clearCardingState());
+                    }}
             />
         </div>
     );
 }
 
 export default Carding;
+
+
+
+

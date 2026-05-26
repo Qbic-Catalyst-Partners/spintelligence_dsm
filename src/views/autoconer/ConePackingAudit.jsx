@@ -104,6 +104,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     typeOptions = [],
     tablePortalTargetId,
     postFooterPortalTargetId,
+    entryId = "",
   },
   ref
 ) {
@@ -143,7 +144,16 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   };
 
   const getPreviewData = () => [
-    ...Object.entries(form).map(([label, value]) => ({ label, value: value || "-" })),
+    ...Object.entries(form)
+      .filter(([label]) => label !== "packedDate")
+      .map(([label, value]) => ({
+        label: label === "date" ? "Entry ID" : label,
+        value: label === "date" ? entryId || "-" : value || "-",
+      })),
+    ...rows.map((row, index) => ({
+      label: `Reading ${index + 1}`,
+      value: `${row.readingNumber} | ${row.precentYarn}`,
+    })),
   ];
 
   const buildPayload = () => ({
@@ -244,8 +254,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
 
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
-    { label: "Date", field: "date", type: "date", placeholder: "Enter date" },
-    { label: "Packed Date", field: "packedDate", type: "date", placeholder: "Enter packed date" },
+    { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
   ];
 
   const detailFields = [

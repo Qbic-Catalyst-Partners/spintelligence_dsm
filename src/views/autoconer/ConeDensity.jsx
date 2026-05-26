@@ -127,6 +127,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     typeOptions = [],
     tablePortalTargetId,
     postFooterPortalTargetId,
+    entryId = "",
   },
   ref
 ) {
@@ -201,7 +202,10 @@ const ConeDensity = forwardRef(function ConeDensity(
   };
 
   const getPreviewData = () => [
-    ...Object.entries(form).map(([label, value]) => ({ label, value: value || "-" })),
+    ...Object.entries(form).map(([label, value]) => ({
+      label: label === "date" ? "Entry ID" : label,
+      value: label === "date" ? entryId || "-" : value || "-",
+    })),
     ...readingRows.map((row, index) => ({
       label: `Reading ${index + 1}`,
       value: `${row.drumNo} | ${row.baseDiaE} | ${row.noseDiaE} | ${row.baseDia} | ${row.noseDia} | ${row.coneWeight} | ${row.coneTrav} | ${row.density} | ${row.hardness}`,
@@ -441,7 +445,7 @@ const ConeDensity = forwardRef(function ConeDensity(
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
-    { label: "Date", field: "date", type: "date", placeholder: "Enter date" },
+    { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameOptions, placeholder: "Enter count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoConerOptions, placeholder: "Enter auto coner no." },
     { label: "Base Dia (E)", field: "baseDiaE", type: "text", placeholder: "Enter base dia (e)" },

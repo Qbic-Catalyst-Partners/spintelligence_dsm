@@ -181,3 +181,21 @@ export const fetchCardingUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
         throw new Error(error.message || "Server error occurred");
     }
 };
+
+export const submitCardWasteStudyEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/carding/card-waste-study", payload);
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Invalid payload data."));
+    }
+};
+
+export const fetchCardWasteStudyEntries = async ({ page = 1, limit = 50 } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/card-waste-study", { page, limit });
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch entries."));
+    }
+};

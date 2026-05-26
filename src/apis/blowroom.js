@@ -53,6 +53,18 @@ export const saveBlowroomBrWasteApi = async (payload) => {
   }
 };
 
+export const fetchBlowroomBrWasteApi = async ({ page = 1, limit = 50 } = {}) => {
+  try {
+    const res = await apiConfig.get(BLOWROOM_BR_WASTE_ENDPOINT, { page, limit });
+    return res.data;
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(error.response.data.message || "Failed to fetch waste study data");
+    }
+    throw new Error(error.message || "Failed to fetch waste study data");
+  }
+};
+
 export const fetchBlowroomProcessParametersApi = async ({ page = 1, limit = 10 } = {}) => {
   try {
     const res = await apiConfig.get(BLOWROOM_PROCESS_PARAMETER_ENDPOINT, { page, limit });

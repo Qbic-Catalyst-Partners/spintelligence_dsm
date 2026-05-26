@@ -22,7 +22,7 @@ const createEmptyEntries = (count) =>
         ratio_size_05: "",
     }));
 
-function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
+function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = "" }) {
     const router = useRouter();
     const dispatch = useDispatch();
     const { isLoading, data, error } = useSelector((state) => state.comber ?? emptyComberState);
@@ -173,7 +173,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "Nati ID", value: natiId },
-        { label: "Entry Date", value: entryDate },
+        { label: "Entry ID", value: entryId || "-" },
         { label: "Variety", value: variety },
         { label: "Entry Count", value: entryCount },
         ...entries.flatMap((entry, index) => ([
@@ -224,12 +224,12 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
                                 </div>
 
                                 <div className={styles["cb-form-group"]}>
-                                    <label>Entry Date</label>
+                                    <label>Entry ID</label>
                                     <input
-                                        type="date"
-                                        value={entryDate}
-                                        onChange={(e) => setEntryDate(e.target.value)}
+                                        type="text"
+                                        value={entryId || ""}
                                         readOnly
+                                        disabled
                                         className={errors.entryDate ? styles["field-error"] : ""}
                                     />
                                 </div>
@@ -374,3 +374,4 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm }) {
 }
 
 export default NatiDataEntry;
+

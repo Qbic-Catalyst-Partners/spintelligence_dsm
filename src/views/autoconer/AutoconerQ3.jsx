@@ -11,6 +11,7 @@ import {
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/AutoconerQ2.module.css";
 
+
 const fieldDefs = [
   { key: "nsl1", label: "NSL1", numeric: true },
   { key: "nsl2", label: "NSL2", numeric: true },
@@ -256,7 +257,13 @@ const buildPayload = (form) => ({
 });
 
 const AutoconerQ3 = forwardRef(function AutoconerQ3(
-  { selectedType = "PP - Autoconer Q3", onTypeChange, types = [], savedVersionsTargetId = "" },
+  {
+    selectedType = "PP - Autoconer Q3",
+    onTypeChange,
+    types = [],
+    savedVersionsTargetId = "",
+    entryId = "",
+  },
   ref
 ) {
   const [versions, setVersions] = useState([]);
@@ -407,7 +414,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
     { label: "Type", value: selectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Creation Date", value: formatDisplayDate(form.creationDate) || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -576,12 +583,13 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
           </div>
 
           <div className={styles.fieldGroup}>
-            <label>Creation Date</label>
+            <label>Entry ID</label>
             <input
-              type="date"
-              className={`${styles.field}${errors.creationDate ? ` ${styles.errorField}` : ""}`}
-              value={form.creationDate}
-              onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+              type="text"
+              className={styles.field}
+              value={entryId}
+              readOnly
+              disabled
             />
           </div>
         </div>

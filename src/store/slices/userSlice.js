@@ -12,8 +12,15 @@ import {
 /* ================= FETCH USERS ================= */
 export const fetchUsers = createAsyncThunk("users/fetch", async () => {
   const data = await fetchUsersAPI();
+  const users = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.users)
+      ? data.users
+      : Array.isArray(data?.data)
+        ? data.data
+        : [];
 
-  return data.map((user) => ({
+  return users.map((user) => ({
     id: user.id,
     employeeId: user.employee_id,
     name: user.full_name,
@@ -29,12 +36,19 @@ export const fetchUsers = createAsyncThunk("users/fetch", async () => {
 /* ================= FETCH ROLES ================= */
 export const fetchRoles = createAsyncThunk("roles/fetch", async () => {
   const data = await fetchRolesAPI();
-  return data.roles || [];
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.roles)) return data.roles;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
 });
 
 /* ================= FETCH DEPARTMENTS ================= */
 export const fetchDepartments = createAsyncThunk("dept/fetch", async () => {
-  return await fetchDepartmentsAPI();
+  const data = await fetchDepartmentsAPI();
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.departments)) return data.departments;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
 });
 
 /* ================= ADD USER ================= */

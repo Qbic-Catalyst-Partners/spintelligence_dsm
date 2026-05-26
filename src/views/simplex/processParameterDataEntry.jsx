@@ -277,7 +277,7 @@ const SavedVersionsSection = ({
 );
 
 const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParameterDataEntry(
-  { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], tablePortalTargetId = "" },
+  { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], entryId = "", tablePortalTargetId = "" },
   ref
 ) {
   const [versions, setVersions] = useState([]);
@@ -434,7 +434,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Creation Date", value: formatDisplayDate(form.creationDate) || "-" },
+    { label: "Entry ID", value: entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -548,12 +548,13 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
           </div>
 
           <div className="flex flex-col gap-1.5 min-w-0">
-            <label className="text-[14px] font-semibold text-slate-700">Creation Date</label>
+            <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
             <input
-              type="date"
-              className={`${topFieldClass}${errors.creationDate ? " border-red-500 bg-red-50" : ""}`}
-              value={form.creationDate}
-              onChange={(event) => handleFieldChange("creationDate", event.target.value)}
+              type="text"
+              className={topFieldClass}
+              value={entryId}
+              readOnly
+              disabled
             />
           </div>
         </div>

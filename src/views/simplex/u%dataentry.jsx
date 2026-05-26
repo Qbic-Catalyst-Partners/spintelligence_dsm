@@ -20,7 +20,7 @@ const initialForm = () => ({
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
-  { selectedTypeName, onTypeChange, typeOptions = [] },
+  { selectedTypeName, onTypeChange, typeOptions = [], entryId = "" },
   ref
 ) {
   const dispatch = useDispatch();
@@ -67,7 +67,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   };
 
   const getPreviewData = () => [
-    { label: "Date", value: form.date },
+    { label: "Entry ID", value: entryId || "#SIM-001" },
     { label: "Shift", value: form.shift },
     { label: "Variety", value: form.variety },
     { label: "Department", value: form.department },
@@ -132,13 +132,13 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div className={styles.field}>
-          <label>Date</label>
+          <label>Entry ID</label>
           <input
-            type="date"
-            value={form.date}
-            onChange={(e) => handleChange("date", e.target.value)}
-            className={errors.date ? styles.errorField : ""}
-            style={errors.date ? undefined : defaultFieldStyle}
+            type="text"
+            value={entryId || "#SIM-001"}
+            readOnly
+            disabled
+            style={defaultFieldStyle}
           />
         </div>
 
