@@ -6,8 +6,9 @@ import { clearCardingState, submitCardingBetweenWithin } from "@/store/slices/ca
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { fetchCardingMasterMachines } from "@/apis/carding";
 
-const machineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
+const defaultMachineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 
 const statFields = [
     { key: "avg", label: "Avg" },
@@ -64,6 +65,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     const [inspectionDate, setInspectionDate] = useState("");
     const [inspectionTime, setInspectionTime] = useState("");
     const [mcName, setMcName] = useState("CDG-05");
+    const [machineOptions, setMachineOptions] = useState(defaultMachineOptions);
     const [inspectionType, setInspectionType] = useState("Within");
     const [entryCount, setEntryCount] = useState(5);
     const [rows, setRows] = useState(createRows(5));
@@ -93,6 +95,21 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     }, [error]);
 
     useEffect(() => () => dispatch(clearCardingState()), [dispatch]);
+
+    useEffect(() => {
+        const loadMachines = async () => {
+            try {
+                const options = await fetchCardingMasterMachines({ prefix: "CDG" });
+                if (options.length) {
+                    setMachineOptions(options);
+                    setMcName((current) => (options.includes(current) ? current : options[0]));
+                }
+            } catch {
+                setMachineOptions(defaultMachineOptions);
+            }
+        };
+        loadMachines();
+    }, []);
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -192,6 +209,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         const activeRows = rows.slice(0, Number(entryCount) || rows.length);
 
         const payload = {
+            entry_id: entryId || "",
             type_category: selectedType,
             inspection_type: inspectionType,
             mc_name: mcName,

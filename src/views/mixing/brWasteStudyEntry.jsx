@@ -51,6 +51,7 @@ const emptyType1Row = () =>
 const emptyWasteKgRow = () => ({ wasteType: '', wasteKgValue: '', wasteKgPercent: '' });
 
 const initialForm = { brWasteId: '', variety: '', cardingProduction: '', studyType: '' };
+const DEFAULT_BLOWROOM_STATE = { success: false };
 const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
 const TYPE_1_MAX_ENTRIES = 10;
 const TYPE_3_MAX_ENTRIES = 10;
@@ -146,11 +147,12 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     onLotNoChange,
     saveEntryApi = null,
     fetchEntriesApi = null,
+    fetchMachineOptionsApi = null,
     entryTypeLabel = "BR Waste Study Entry",
     useBlowroomRedux = true,
 }, ref) {
     const dispatch = useDispatch();
-    const { success } = useSelector(state => state.blowroom ?? {});
+    const { success } = useSelector((state) => state.blowroom ?? DEFAULT_BLOWROOM_STATE);
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
     const [savedEntries, setSavedEntries] = useState([]);
@@ -158,6 +160,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [savedEntriesError, setSavedEntriesError] = useState("");
     const [selectedSavedEntryId, setSelectedSavedEntryId] = useState("");
     const [localSubmitTick, setLocalSubmitTick] = useState(0);
+    const [machineOptions, setMachineOptions] = useState([]);
 
     const [type1CountInput, setType1CountInput] = useState('1');
     const [type2CountInput, setType2CountInput] = useState("1");
@@ -443,6 +446,19 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     }, []);
 
     useEffect(() => {
+        const loadMachines = async () => {
+            if (!fetchMachineOptionsApi) return;
+            try {
+                const options = await fetchMachineOptionsApi({ prefix: "CDG" });
+                setMachineOptions(Array.isArray(options) ? options : []);
+            } catch {
+                setMachineOptions([]);
+            }
+        };
+        loadMachines();
+    }, [fetchMachineOptionsApi]);
+
+    useEffect(() => {
         const shouldReset = useBlowroomRedux ? success : localSubmitTick > 0;
         if (shouldReset) {
             loadSavedEntries();
@@ -700,13 +716,27 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                             <div className={styles['type1-row']} key={i}>
                                 <span className={styles['type3-number']}>{i + 1}</span>
                                 {TYPE_1_COLUMNS.map((col) => (
-                                    <input
-                                        key={col.key}
-                                        className={`${styles['mixx-input']} ${errors[`t1-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
-                                        placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
-                                        value={row[col.key]}
-                                        onChange={e => handleType1RowChange(i, col.key, e.target.value)}
-                                    />
+                                    col.key === "mcNo" && machineOptions.length ? (
+                                        <select
+                                            key={col.key}
+                                            className={`${styles['mixx-input']} ${errors[`t1-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                            value={row[col.key]}
+                                            onChange={e => handleType1RowChange(i, col.key, e.target.value)}
+                                        >
+                                            <option value="">Select MC No</option>
+                                            {machineOptions.map((option) => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            key={col.key}
+                                            className={`${styles['mixx-input']} ${errors[`t1-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                            placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                            value={row[col.key]}
+                                            onChange={e => handleType1RowChange(i, col.key, e.target.value)}
+                                        />
+                                    )
                                 ))}
                             </div>
                         ))}
@@ -771,13 +801,27 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                             <div className={styles['type2-row']} key={i}>
                                 <span className={styles['type3-number']}>{i + 1}</span>
                                 {TYPE_2_COLUMNS.map((col) => (
-                                    <input
-                                        key={col.key}
-                                        className={`${styles['mixx-input']} ${errors[`t2-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
-                                        placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
-                                        value={row[col.key]}
-                                        onChange={(e) => handleType2RowChange(i, col.key, e.target.value)}
-                                    />
+                                    col.key === "mcNo" && machineOptions.length ? (
+                                        <select
+                                            key={col.key}
+                                            className={`${styles['mixx-input']} ${errors[`t2-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                            value={row[col.key]}
+                                            onChange={(e) => handleType2RowChange(i, col.key, e.target.value)}
+                                        >
+                                            <option value="">Select MC No</option>
+                                            {machineOptions.map((option) => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            key={col.key}
+                                            className={`${styles['mixx-input']} ${errors[`t2-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                            placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                            value={row[col.key]}
+                                            onChange={(e) => handleType2RowChange(i, col.key, e.target.value)}
+                                        />
+                                    )
                                 ))}
                             </div>
                         ))}
@@ -844,13 +888,27 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                             <div className={styles['type3-row']} key={i}>
                                 <span className={styles['type3-number']}>{i + 1}</span>
                                 {TYPE_3_COLUMNS.map(col => (
-                                    <input
-                                        key={col.key}
-                                        className={`${styles['mixx-input']} ${errors[`t3-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
-                                        placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
-                                        value={row[col.key]}
-                                        onChange={e => handleType3RowChange(i, col.key, e.target.value)}
-                                    />
+                                    col.key === "mcNo" && machineOptions.length ? (
+                                        <select
+                                            key={col.key}
+                                            className={`${styles['mixx-input']} ${errors[`t3-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                            value={row[col.key]}
+                                            onChange={e => handleType3RowChange(i, col.key, e.target.value)}
+                                        >
+                                            <option value="">Select MC No</option>
+                                            {machineOptions.map((option) => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <input
+                                            key={col.key}
+                                            className={`${styles['mixx-input']} ${errors[`t3-${i}-${col.key}`] ? styles['mixx-error'] : ''}`}
+                                            placeholder={col.key === "mcNo" ? "MC No" : "0.00"}
+                                            value={row[col.key]}
+                                            onChange={e => handleType3RowChange(i, col.key, e.target.value)}
+                                        />
+                                    )
                                 ))}
                             </div>
                         ))}
