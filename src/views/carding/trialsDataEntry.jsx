@@ -5,7 +5,11 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
-import { submitTrialsDataEntry } from "@/apis/carding";
+import {
+    fetchTrialsAutoconerMachines,
+    fetchTrialsSpinningMachines,
+    submitTrialsDataEntry,
+} from "@/apis/carding";
 import styles from "./trialsDataEntry.module.css";
 
 const topCutFields = [
@@ -119,12 +123,48 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     const [showSuccess, setShowSuccess] = useState(false);
     const [formMessage, setFormMessage] = useState("");
     const [isError, setIsError] = useState(false);
+    const [spinningMachineOptions, setSpinningMachineOptions] = useState([]);
+    const [autoconerMachineOptions, setAutoconerMachineOptions] = useState([]);
+    const [machinesLoading, setMachinesLoading] = useState(false);
+    const [machinesError, setMachinesError] = useState("");
 
     useEffect(() => {
         const now = new Date();
         setTime(
             [String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0"), String(now.getSeconds()).padStart(2, "0")].join(":")
         );
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadMachineOptions = async () => {
+            setMachinesLoading(true);
+            setMachinesError("");
+            try {
+                const [spinningOptions, autoconerOptions] = await Promise.all([
+                    fetchTrialsSpinningMachines({ prefix: "" }),
+                    fetchTrialsAutoconerMachines({ prefix: "" }),
+                ]);
+
+                if (cancelled) return;
+                setSpinningMachineOptions(spinningOptions);
+                setAutoconerMachineOptions(autoconerOptions);
+            } catch (error) {
+                if (cancelled) return;
+                setSpinningMachineOptions([]);
+                setAutoconerMachineOptions([]);
+                setMachinesError(error.message || "Unable to load machine dropdown options.");
+            } finally {
+                if (!cancelled) {
+                    setMachinesLoading(false);
+                }
+            }
+        };
+
+        loadMachineOptions();
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     const refreshStamp = () => {
@@ -308,6 +348,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     ];
 
     const fieldClass = (name) => (errors[name] ? styles.errorField : "");
+    const trialTypeOptions = ["Trial"];
 
     return (
         <div className={styles.cardShell}>
@@ -359,17 +400,35 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
                                 <label>Spinning Machine Name</label>
-                                <select name="machine" value={formData.machine || ""} onChange={handleChange} className={fieldClass("machine")}>
+                                <select
+                                    name="machine"
+                                    value={formData.machine || ""}
+                                    onChange={handleChange}
+                                    className={fieldClass("machine")}
+                                >
                                     <option value="">Select</option>
-                                    <option value="Carding Machine">Carding Machine</option>
+                                    {spinningMachineOptions.map((name) => (
+                                        <option key={name} value={name}>
+                                            {name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Autoconer Machine Name</label>
-                                <select name="autoMachine" value={formData.autoMachine || ""} onChange={handleChange} className={fieldClass("autoMachine")}>
+                                <select
+                                    name="autoMachine"
+                                    value={formData.autoMachine || ""}
+                                    onChange={handleChange}
+                                    className={fieldClass("autoMachine")}
+                                >
                                     <option value="">Select</option>
-                                    <option value="Autoconer Machine">Autoconer Machine</option>
+                                    {autoconerMachineOptions.map((name) => (
+                                        <option key={name} value={name}>
+                                            {name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -378,6 +437,9 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                                 <input name="count" value={formData.count || ""} onChange={handleChange} className={fieldClass("count")} />
                             </div>
                         </div>
+
+                        {machinesLoading ? <p>Loading machine options...</p> : null}
+                        {machinesError ? <p className={`${styles.messageBox} ${styles.messageError}`}>{machinesError}</p> : null}
 
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
@@ -392,9 +454,18 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
                             <div className={styles.cardFormGroup}>
                                 <label>Type</label>
-                                <select name="trialtype" value={formData.trialtype || ""} onChange={handleChange} className={fieldClass("trialtype")}>
+                                <select
+                                    name="trialtype"
+                                    value={formData.trialtype || ""}
+                                    onChange={handleChange}
+                                    className={fieldClass("trialtype")}
+                                >
                                     <option value="">Select</option>
-                                    <option value="Trial">Trial</option>
+                                    {trialTypeOptions.map((name) => (
+                                        <option key={name} value={name}>
+                                            {name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                         </div>

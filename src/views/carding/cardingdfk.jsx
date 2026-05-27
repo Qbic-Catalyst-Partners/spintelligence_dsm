@@ -104,29 +104,32 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" 
   const handleSave = async () => {
     const entries = MACHINE_NAMES.filter((machineName) =>
       Object.values(rows[machineName]).some((value) => value !== "")
-    );
+    ).map((machineName) => {
+      const row = rows[machineName];
+      return {
+        machine_name: machineName,
+        dfk: row.cw || "0.00",
+        ccd: row.ccd || "0.00",
+        icfd_1: row.hfd1 || "0.00",
+        lt: row.hfd2 || "0.00",
+        cds: row.cgs || "0.00",
+        silver_draft: row.sliverDraft || "0.00",
+        icfd_2: row.kfdDd || "0.00",
+        idf_in: row.dfIn || "0.00",
+        idf_out: row.dfOut || "0.00",
+        al_on: row.alRh || "0.00",
+      };
+    });
 
     try {
-      for (const machineName of entries) {
-        const row = rows[machineName];
-        await dispatch(
-          submitCardingDfkPressure({
-            inspection_type: DFK_TYPE,
-            entry_date: date,
-            machine_name: machineName,
-            dfk: row.cw || "0.00",
-            ccd: row.ccd || "0.00",
-            icfd_1: row.hfd1 || "0.00",
-            lt: row.hfd2 || "0.00",
-            cds: row.cgs || "0.00",
-            silver_draft: row.sliverDraft || "0.00",
-            icfd_2: row.kfdDd || "0.00",
-            idf_in: row.dfIn || "0.00",
-            idf_out: row.dfOut || "0.00",
-            al_on: row.alRh || "0.00",
-          })
-        ).unwrap();
-      }
+      await dispatch(
+        submitCardingDfkPressure({
+          entry_id: entryId || "",
+          inspection_type: DFK_TYPE,
+          entry_date: date,
+          data: entries,
+        })
+      ).unwrap();
 
       handleClear();
       setShowPreview(false);

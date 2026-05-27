@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { STATIC_VARIETY_OPTIONS } from "@/constants/staticVarietyOptions";
 import styles from "./natiDataEntry.module.css";
 
 const emptyComberState = {
@@ -103,6 +104,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     };
 
     const buildPayload = () => ({
+        entry_id: entryId || "",
         type: selectedType,
         nati_id: natiId,
         entry_date: entryDate,
@@ -110,7 +112,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
         entries: entries
             .filter((entry) => entry.mc_no !== "")
             .map((entry) => ({
-                mc_no: Number(entry.mc_no),
+                mc_no: Number.isFinite(Number(entry.mc_no)) ? Number(entry.mc_no) : entry.mc_no,
                 ratio_size_1: entry.ratio_size_1 === "" ? null : Number(entry.ratio_size_1),
                 ratio_size_07: entry.ratio_size_07 === "" ? null : Number(entry.ratio_size_07),
                 ratio_size_05: entry.ratio_size_05 === "" ? null : Number(entry.ratio_size_05),
@@ -238,10 +240,10 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                                         });
                                     }}
                                 >
-                                    <option value="">Select</option>
-                                    <option value="Cotton">Cotton</option>
-                                    <option value="Polyester">Polyester</option>
-                                    <option value="PC Blend">PC Blend</option>
+                                    <option value="">-- Select Variety --</option>
+                                    {STATIC_VARIETY_OPTIONS.map((name, index) => (
+                                        <option key={`${name}-${index}`} value={name}>{name}</option>
+                                    ))}
                                 </select>
                             </div>
                         </div>
@@ -272,11 +274,11 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                                         <div className={styles["cb-neps-grid"]}>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>MC No</label>
-                                                    <input
-                                                        className={errors.entries ? styles["input-error"] : ""}
-                                                        value={entry.mc_no}
-                                                        onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
-                                                    />
+                                                <input
+                                                    className={errors.entries ? styles["input-error"] : ""}
+                                                    value={entry.mc_no}
+                                                    onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
+                                                />
                                             </div>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>Ratio into size-1.0</label>

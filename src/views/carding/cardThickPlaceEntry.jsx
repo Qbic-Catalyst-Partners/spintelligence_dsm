@@ -6,11 +6,12 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { clearCardingState, submitCardingCardThickPlace } from "@/store/slices/carding";
+import { fetchCardingMasterMachines } from "@/apis/carding";
 import styles from "./cardThickPlaceEntry.module.css";
 
-const machines = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
+const defaultMachines = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 
-const createMachineValues = () =>
+const createMachineValues = (machines) =>
     machines.reduce((accumulator, machine) => {
         accumulator[machine] = { cv1: "", cv2: "" };
         return accumulator;
@@ -35,7 +36,8 @@ function CardThickPlaceEntry({
     const [idNo, setIdNo] = useState("3");
     const [date, setDate] = useState("");
     const [time, setTime] = useState("");
-    const [machineValues, setMachineValues] = useState(createMachineValues);
+    const [machines, setMachines] = useState(defaultMachines);
+    const [machineValues, setMachineValues] = useState(() => createMachineValues(defaultMachines));
     const [formMessage, setFormMessage] = useState("");
     const [isError, setIsError] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
@@ -57,6 +59,27 @@ function CardThickPlaceEntry({
 
     useEffect(() => {
         stampNow();
+    }, []);
+
+    useEffect(() => {
+        const loadMachines = async () => {
+            try {
+                const options = await fetchCardingMasterMachines({ prefix: "CDG" });
+                if (options.length) {
+                    setMachines(options);
+                    setMachineValues((current) => {
+                        const next = createMachineValues(options);
+                        options.forEach((machine) => {
+                            if (current[machine]) next[machine] = current[machine];
+                        });
+                        return next;
+                    });
+                }
+            } catch {
+                setMachines(defaultMachines);
+            }
+        };
+        loadMachines();
     }, []);
 
     useEffect(() => {
@@ -89,7 +112,7 @@ function CardThickPlaceEntry({
     const resetFormFields = () => {
         setIdNo("3");
         stampNow();
-        setMachineValues(createMachineValues());
+        setMachineValues(createMachineValues(machines));
         setFormMessage("");
         setIsError(false);
     };

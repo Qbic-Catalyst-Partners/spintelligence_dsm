@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
@@ -6,12 +6,11 @@ import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
-import { submitCardingChangeControlEntry } from "@/apis/carding";
+import { fetchCardingMasterMachines, submitCardingChangeControlEntry } from "@/apis/carding";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
-const CDG_EXISTING_OPTIONS = Array.from({ length: 20 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
-const CDG_OPTIONS = Array.from({ length: 20 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
+const DEFAULT_CDG_OPTIONS = Array.from({ length: 20 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 
 const parameterRows = [
   { key: "mixing", field: "mixing", label: "Mixing" },
@@ -57,6 +56,19 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [submitting, setSubmitting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [cdgOptions, setCdgOptions] = useState(DEFAULT_CDG_OPTIONS);
+
+  useEffect(() => {
+    const loadMachines = async () => {
+      try {
+        const options = await fetchCardingMasterMachines({ prefix: "CDG" });
+        if (options.length) setCdgOptions(options);
+      } catch {
+        setCdgOptions(DEFAULT_CDG_OPTIONS);
+      }
+    };
+    loadMachines();
+  }, []);
 
   const previewItems = useMemo(
     () => [
@@ -282,7 +294,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
               }}
             >
               <option value="">Select</option>
-              {CDG_EXISTING_OPTIONS.map((option) => (
+              {cdgOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -301,7 +313,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
               }}
             >
               <option value="">Select</option>
-              {CDG_OPTIONS.map((option) => (
+              {cdgOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>

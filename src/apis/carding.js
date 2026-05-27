@@ -101,7 +101,7 @@ export const submitCardThickPlaceEntry = async (payload) => {
 
 export const submitNatiDataEntry = async (payload) => {
     try {
-        const response = await apiConfig.post("/carding/nati-data", payload);
+        const response = await apiConfig.post("/carding/nati-data-entry", payload);
         return response.data;
     } catch (error) {
         if (error.response && error.response.data) {
@@ -170,9 +170,15 @@ export const fetchCardingChangeControlEntries = async ({ page = 1, limit = 10 } 
     }
 };
 
-export const fetchCardingUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
+export const fetchCardingUqcEntries = async ({ page = 1, limit = 10, global = false, department = "" } = {}) => {
     try {
-        const response = await apiConfig.get("/carding/uqc", { page, limit });
+        const trimmedDepartment = String(department || "").trim();
+        const shouldUseGlobalRoute = global === true || String(global).toLowerCase() === "true";
+        const endpoint = shouldUseGlobalRoute ? "/carding/uqc/global" : "/carding/uqc";
+        const params = shouldUseGlobalRoute
+            ? { page, limit }
+            : { page, limit, ...(trimmedDepartment ? { department: trimmedDepartment } : {}) };
+        const response = await apiConfig.get(endpoint, params);
         return response.data;
     } catch (error) {
         if (error.response && error.response.data) {
@@ -181,6 +187,7 @@ export const fetchCardingUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
         throw new Error(error.message || "Server error occurred");
     }
 };
+const uniqueStrings = (values = []) => Array.from(new Set(values.map((v) => String(v || "").trim()).filter(Boolean)));
 
 export const submitCardWasteStudyEntry = async (payload) => {
     try {
@@ -197,5 +204,238 @@ export const fetchCardWasteStudyEntries = async ({ page = 1, limit = 50 } = {}) 
         return response.data;
     } catch (error) {
         throw new Error(getCardingApiErrorMessage(error, "Unable to fetch entries."));
+    }
+};
+
+export const fetchCardingMasterMachines = async ({ prefix = "CDG" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/master/machines", { prefix });
+        const payload = response?.data;
+        const namesList = Array.isArray(payload?.names) ? payload.names : [];
+        if (namesList.length) {
+            return uniqueStrings(namesList);
+        }
+
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        return uniqueStrings(rows
+            .map((row) => row?.mc_name || row?.machine_name || row?.machine || row?.name || row)
+            .map((name) => String(name || "").trim())
+            .filter(Boolean));
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch machine options."));
+    }
+};
+
+export const fetchCardingMasterMachineRows = async ({ prefix = "CDG" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/master/machines", { prefix });
+        const payload = response?.data;
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+
+        return rows
+            .map((row) => ({
+                mc_no: String(row?.mc_no || row?.mccode || "").trim(),
+                mc_name: String(row?.mc_name || row?.mcname || row?.name || "").trim(),
+                dept_name: String(row?.dept_name || row?.deptname || "").trim(),
+            }))
+            .filter((row) => row.mc_no || row.mc_name);
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch machine options."));
+    }
+};
+
+export const fetchCardingMasterVarieties = async ({ prefix = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/master/varieties", { prefix });
+        const payload = response?.data;
+        const namesList = Array.isArray(payload?.names) ? payload.names : [];
+        if (namesList.length) {
+            return namesList.map((name) => String(name || "").trim()).filter(Boolean);
+        }
+
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        return uniqueStrings(rows
+            .map((row) => row?.variety_name || row?.name || row)
+            .map((name) => String(name || "").trim())
+            .filter(Boolean));
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch variety options."));
+    }
+};
+
+export const fetchCardingCdgDenominations = async ({ machineName } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/master/cdg-denominations", { machine_name: machineName });
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch denomination."));
+    }
+};
+
+export const fetchCardingUqcMasterVarieties = async ({ prefix = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/uqc/master/varieties", { prefix });
+        const payload = response?.data;
+        const namesList = Array.isArray(payload?.names) ? payload.names : [];
+        if (namesList.length) return uniqueStrings(namesList);
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        return uniqueStrings(rows.map((row) => row?.variety_name || row?.name || row));
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch UQC variety options."));
+    }
+};
+
+export const fetchCardingUqcMasterDepartments = async ({ prefix = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/uqc/master/departments", { prefix });
+        const payload = response?.data;
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        return rows
+            .map((row) => ({
+                dept_code: String(row?.dept_code || row?.department_code || "").trim(),
+                dept_name: String(row?.dept_name || row?.department_name || row?.name || "").trim(),
+            }))
+            .filter((row) => row.dept_name);
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch UQC department options."));
+    }
+};
+
+export const fetchCardingUqcMasterMcNos = async ({ prefix = "", department = "", department_code = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/uqc/master/mc-nos", { prefix, department, department_code });
+        const payload = response?.data;
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        return rows
+            .map((row) => ({
+                mc_no: String(row?.mc_no || row?.mccode || row?.value || "").trim(),
+                mc_name: String(row?.mc_name || row?.mcname || "").trim(),
+                dept_code: String(row?.dept_code || "").trim(),
+                dept_name: String(row?.dept_name || "").trim(),
+            }))
+            .filter((row) => row.mc_no);
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch UQC MC No options."));
+    }
+};
+
+export const fetchCardingUqcMasterDropdown = async ({
+    prefix = "",
+    variety_prefix = "",
+    department_prefix = "",
+    mc_no_prefix = "",
+    department = "",
+    department_code = "",
+} = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/uqc/master/dropdown", {
+            prefix,
+            variety_prefix,
+            department_prefix,
+            mc_no_prefix,
+            department,
+            department_code,
+        });
+        const payload = response?.data || {};
+        const options = payload.options || {};
+
+        const optionRowsToPairs = (rows = []) =>
+            (Array.isArray(rows) ? rows : [])
+                .map((row) => ({
+                    value: String(row?.value || "").trim(),
+                    label: String(row?.text || row?.label || row?.value || "").trim(),
+                }))
+                .filter((row) => row.value);
+
+        const varieties = Array.isArray(payload.varieties)
+            ? payload.varieties.map((row) => ({
+                var_code: String(row?.var_code || "").trim(),
+                variety_name: String(row?.variety_name || row?.name || "").trim(),
+            })).filter((row) => row.variety_name)
+            : [];
+
+        const departments = Array.isArray(payload.departments)
+            ? payload.departments.map((row) => ({
+                dept_code: String(row?.dept_code || row?.department_code || "").trim(),
+                dept_name: String(row?.dept_name || row?.department_name || row?.name || "").trim(),
+            })).filter((row) => row.dept_name)
+            : [];
+
+        const mcNos = Array.isArray(payload.mc_nos)
+            ? payload.mc_nos.map((row) => ({
+                mc_no: String(row?.mc_no || row?.mccode || row?.value || "").trim(),
+                mc_name: String(row?.mc_name || row?.mcname || "").trim(),
+                dept_code: String(row?.dept_code || "").trim(),
+                dept_name: String(row?.dept_name || "").trim(),
+            })).filter((row) => row.mc_no)
+            : [];
+
+        const shifts = Array.isArray(payload.shifts)
+            ? payload.shifts.map((row) => ({
+                value: String(row?.value || row?.label || "").trim(),
+                label: String(row?.label || row?.value || "").trim(),
+            })).filter((row) => row.value)
+            : [];
+
+        const optionVarieties = optionRowsToPairs(options.variety);
+        const optionDepartments = optionRowsToPairs(options.department);
+        const optionMcNos = optionRowsToPairs(options.mc_no);
+        const optionShifts = optionRowsToPairs(options.shift);
+
+        const normalizedVarieties = optionVarieties.length
+            ? optionVarieties.map((row) => ({ var_code: "", variety_name: row.value }))
+            : varieties;
+        const normalizedDepartments = optionDepartments.length
+            ? optionDepartments.map((row) => ({ dept_code: "", dept_name: row.value }))
+            : departments;
+        const normalizedMcNos = optionMcNos.length
+            ? optionMcNos.map((row) => ({ mc_no: row.value, mc_name: row.label, dept_code: "", dept_name: "" }))
+            : mcNos;
+        const normalizedShifts = optionShifts.length ? optionShifts : shifts;
+
+        return {
+            shifts: normalizedShifts,
+            varieties: normalizedVarieties,
+            departments: normalizedDepartments,
+            mcNos: normalizedMcNos,
+        };
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch UQC dropdown options."));
+    }
+};
+
+const parseMachineNameList = (payload) => {
+    const namesList = Array.isArray(payload?.names) ? payload.names : [];
+    if (namesList.length) {
+        return uniqueStrings(namesList);
+    }
+
+    const rows = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+            ? payload
+            : [];
+
+    return uniqueStrings(rows
+        .map((row) => row?.mc_name || row?.machine_name || row?.machine || row?.name || row)
+        .map((name) => String(name || "").trim())
+        .filter(Boolean));
+};
+
+export const fetchTrialsSpinningMachines = async ({ prefix = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/trials/master/spinning-machines", { prefix });
+        return parseMachineNameList(response?.data);
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch spinning machine options."));
+    }
+};
+
+export const fetchTrialsAutoconerMachines = async ({ prefix = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/trials/master/autoconer-machines", { prefix });
+        return parseMachineNameList(response?.data);
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch autoconer machine options."));
     }
 };
