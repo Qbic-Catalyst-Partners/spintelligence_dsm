@@ -126,6 +126,40 @@
   color: #6b7280;
 }
 
+.generateBtn {
+  height: 38px;
+  border: 1px solid #3d539f;
+  border-radius: 6px;
+  background: #3d539f;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.generateBtn:hover {
+  background: #2f4180;
+  border-color: #2f4180;
+}
+
+.generateBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+:global(:root[data-theme="dark"]) :local(.generateBtn) {
+  background: #3d539f;
+  border-color: #3d539f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) :local(.generateBtn):hover {
+  background: #2f4180;
+  border-color: #2f4180;
+}
+
 @media (max-width: 900px) {
   .formGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

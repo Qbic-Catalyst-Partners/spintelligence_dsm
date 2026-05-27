@@ -102,9 +102,9 @@ function UPercentDataEntry() {
     { label: "Department", value: form.department },
     { label: "MC No.", value: form.mc_no },
     { label: "U%", value: form.u_percent },
-    { label: "CVM", value: form.cvm },
-    { label: "1m CVM", value: form.im_cvm },
-    { label: "3m CVM", value: form.m3_cvm },
+    { label: "CV in Metres", value: form.cvm },
+    { label: "1m CV in Metres", value: form.im_cvm },
+    { label: "3m CV in Metres", value: form.m3_cvm },
     { label: "Remarks", value: form.remarks },
   ];
 
@@ -169,20 +169,17 @@ function UPercentDataEntry() {
         </div>
 
         <div>
-          <label>CVM</label>
+          <label>CV in Metres</label>
           <input value={form.cvm} onChange={(e) => handleChange("cvm", e.target.value)} className={errors.cvm ? styles.errorField : ""} />
         </div>
 
         <div>
-          <label>1m CVM</label>
-          <select value={form.im_cvm} onChange={(e) => handleChange("im_cvm", e.target.value)} className={errors.im_cvm ? styles.errorField : ""}>
-            <option value="">Select</option>
-            <option>0.32</option>
-          </select>
+          <label>1m CV in Metres</label>
+          <input value={form.im_cvm} onChange={(e) => handleChange("im_cvm", e.target.value)} className={errors.im_cvm ? styles.errorField : ""} />
         </div>
 
         <div>
-          <label>3m CVM</label>
+          <label>3m CV in Metres</label>
           <input value={form.m3_cvm} onChange={(e) => handleChange("m3_cvm", e.target.value)} className={errors.m3_cvm ? styles.errorField : ""} />
         </div>
 

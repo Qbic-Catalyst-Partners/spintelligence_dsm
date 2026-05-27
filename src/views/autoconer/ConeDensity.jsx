@@ -11,7 +11,7 @@ import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidat
 const today = new Date().toISOString().split("T")[0];
 
 const topFieldClass =
-  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const countNameOptions = [
   "10 BLACK RECYCLE(GRC) 70D LYC YARN...",
@@ -54,7 +54,7 @@ const createInitialForm = () => ({
 });
 
 const tableInputClass =
-  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const createReadingRows = (from = "", to = "", baseDiaE = "", noseDiaE = "") => {
   const start = Number(from);
@@ -451,7 +451,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     { label: "Base Dia (E)", field: "baseDiaE", type: "text", placeholder: "Enter base dia (e)" },
     { label: "Nose Dia (E)", field: "noseDiaE", type: "text", placeholder: "Enter nose dia (e)" },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
-    { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Enter cone tip" },
+    { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
   ];
 
   return (

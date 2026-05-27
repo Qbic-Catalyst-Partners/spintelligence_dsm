@@ -155,25 +155,26 @@ function CardThickPlaceEntry({
     };
 
     const handleSubmit = async () => {
-        const entries = machines.filter((machine) =>
-            String(machineValues[machine]?.cv1 || "").trim() !== "" ||
-            String(machineValues[machine]?.cv2 || "").trim() !== ""
-        );
+        const entries = machines
+            .filter((machine) =>
+                String(machineValues[machine]?.cv1 || "").trim() !== "" ||
+                String(machineValues[machine]?.cv2 || "").trim() !== ""
+            )
+            .map((machine) => ({
+                machine,
+                cv_value: parseFloat(machineValues[machine]?.cv1),
+                cv_5m: parseFloat(machineValues[machine]?.cv2),
+            }));
 
         try {
-            for (const machine of entries) {
-                await dispatch(
-                    submitCardingCardThickPlace({
-                        id_no: idNo,
-                        entry_date: date,
-                        entry_time: time,
-                        machine,
-                        cv_value: parseFloat(machineValues[machine]?.cv1),
-                        cv_value_2: parseFloat(machineValues[machine]?.cv2),
-                        unit: "5m CV",
-                    })
-                ).unwrap();
-            }
+            await dispatch(
+                submitCardingCardThickPlace({
+                    entry_id: entryId || idNo,
+                    entry_date: date,
+                    entry_time: time,
+                    entries,
+                })
+            ).unwrap();
 
             setFormMessage("");
             setIsError(false);

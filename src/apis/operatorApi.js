@@ -137,7 +137,7 @@ const manualTicketInputScreenEndpoints = {
       "U% Data Entry": "/comber/uqc",
     },
     "draw-frame": {
-      "Yarn CV% Calculation Form": "/drawframe/yarn-cv",
+      "1 Yard / Half Yard CV Entry": "/drawframe/yarn-cv",
       "Draw Frame Cots Data Entry": "/drawframe/cots",
       "U% Data Entry": "/drawframe/uqc",
       "PP - Breaker Drawing": "/drawframe/header",

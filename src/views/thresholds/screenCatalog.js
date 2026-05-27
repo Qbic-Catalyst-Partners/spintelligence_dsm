@@ -30,7 +30,7 @@ export const thresholdScreenCatalog = {
             "U% Data Entry",
         ],
         "draw-frame": [
-            "Yarn CV% Calculation Form",
+            "1 Yard / Half Yard CV Entry",
             "Draw Frame Cots Data Entry",
             "U% Data Entry",
             "PP - Breaker Drawing",

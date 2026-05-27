@@ -73,6 +73,7 @@ import {
 import {
   fetchSimplexCotsChangeEntries,
   fetchSimplexProcessParameterEntries,
+  fetchSimplexStudyReportEntries,
   fetchSimplexUqcEntries,
 } from "@/apis/simplex";
 import { getSpinningProcessParameterEntries } from "@/apis/spinning";
@@ -178,7 +179,7 @@ const reportSources = {
       "U% Data Entry": { fetcher: fetchComberUqcEntries },
     },
     "Draw Frame": {
-      "Yarn CV% Calculation Form": { endpoint: "/drawframe/yarn-cv" },
+      "1 Yard / Half Yard CV Entry": { endpoint: "/drawframe/yarn-cv" },
       "Draw Frame Cots Data Entry": { fetcher: fetchDrawFrameCotsEntries },
       "U% Data Entry": { fetcher: fetchDrawFrameUqcEntries },
       "PP - Breaker Drawing": { fetcher: fetchDrawFrameHeaderEntries },
@@ -187,7 +188,7 @@ const reportSources = {
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },
       "SMXCots Change Data Entry": { fetcher: fetchSimplexCotsChangeEntries },
-      "SMX Breaks Study Report": { endpoint: "/simplex/study" },
+      "SMX Breaks Study Report": { fetcher: fetchSimplexStudyReportEntries },
       "U% Data Entry": { fetcher: fetchSimplexUqcEntries },
     },
     Spinning: {
