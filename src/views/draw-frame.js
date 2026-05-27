@@ -6,8 +6,10 @@ import { MdOutlineEditNote } from "react-icons/md";
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
+import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -55,26 +57,19 @@ const getDrawFrameUniqueId = (seq, type = "") => {
 };
 
 const processTypeOptions = ["Breaker", "Finisher"];
-const shiftOptions = ["General", "Day", "Half Night", "Full Night"];
-const cvMachineOptions = [
-  "FR (HSR 1000-1)",
-  "FR (HSR 1000-2)",
-  "FR 01(D 40)",
-  "FR 02(D50-1)",
-  "FR 03(D50-2)",
-  "FR 04(D45-1)",
-  "FR 05(D 45-2)",
-  "FR 06(D 45-3)",
-  "FR 07(D45-4)",
-  "FR 08(LRSB 581)",
-  "FR 09(LDF 3)",
-  "FR 10(LRSB 581)",
-  "FR 11(D55-1)",
-];
+const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
 const U_PERCENT_NUMERIC_FIELDS = ["uPercent", "cvm", "oneMeterCvm", "threeMeterCvm"];
+const BREAKER_PREFIX = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIX || "DFB").trim().toUpperCase();
+const FINISHER_PREFIXES = String(
+  process.env.NEXT_PUBLIC_DRAWFRAME_FINISHER_PREFIXES || "DFF,FR"
+)
+  .split(",")
+  .map((v) => v.trim().toUpperCase())
+  .filter(Boolean);
 
 const createMachineEntry = (machineName = "") => ({
   machineName,
+  mcNo: "",
   fanWaste: "",
   cotChange: "",
   stripperWaste: "",
@@ -85,10 +80,15 @@ const createMachineEntry = (machineName = "") => ({
   scanningR: "",
 });
 
-const getMachineCardDefaults = (processType) => {
-  const count = processType === "Finisher" ? 6 : 4;
-  return Array.from({ length: count }, (_, index) => `MC-0${index + 1}`);
+const matchesCotsTypePrefix = (machineName, processType) => {
+  const normalized = String(machineName || "").trim().toUpperCase();
+  if (!normalized) return false;
+  if (processType === "Breaker") return normalized.startsWith(BREAKER_PREFIX);
+  if (processType === "Finisher") return FINISHER_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+  return true;
 };
+
+const getMachineCardDefaults = () => [];
 
 const formatMetric = (value) => (Number.isFinite(value) ? value.toFixed(2) : "");
 
@@ -169,11 +169,7 @@ function DrawFrame() {
     readingCount: 5,
   });
 
-  const [machineEntries, setMachineEntries] = useState(
-    getMachineCardDefaults("Breaker").map((name) => createMachineEntry(name))
-  );
-  const [oneYardReadings, setOneYardReadings] = useState([]);
-  const [halfYardReadings, setHalfYardReadings] = useState([]);
+  const [machineEntries, setMachineEntries] = useState([]);
   const [oneYardMetrics, setOneYardMetrics] = useState([]);
   const [halfYardMetrics, setHalfYardMetrics] = useState([]);
   const [hasCalculated, setHasCalculated] = useState(false);
@@ -182,8 +178,9 @@ function DrawFrame() {
   const [previewItems, setPreviewItems] = useState([]);
   const [entrySeq, setEntrySeq] = useState(1);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [isCvMachineDropdownOpen, setIsCvMachineDropdownOpen] = useState(false);
-  const cvMachineDropdownRef = useRef(null);
+  const [machineNameOptions, setMachineNameOptions] = useState([]);
+  const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
+  const [machineMasterByName, setMachineMasterByName] = useState({});
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
     shift: "",
@@ -215,6 +212,88 @@ function DrawFrame() {
     }
   }, [form.type, typeOptions]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadYarnCvMachineNames = async () => {
+      try {
+        const machines = await fetchDrawFrameMachineMaster();
+        if (!isMounted) return;
+        const names = [];
+        const nextMasterByName = {};
+        machines.forEach((item) => {
+          const machineName = String(item?.machine_number || item?.mc_name || "").trim();
+          const mcNo = String(item?.mc_no || "").trim();
+          if (!machineName) return;
+          names.push(machineName);
+          nextMasterByName[machineName] = { mcNo };
+        });
+        setYarnCvMachineOptions(names);
+        setMachineMasterByName(nextMasterByName);
+      } catch (_error) {
+        if (isMounted) {
+          setYarnCvMachineOptions([]);
+          setMachineMasterByName({});
+        }
+      }
+    };
+
+    loadYarnCvMachineNames();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (form.type !== "Draw Frame Cots Data Entry") return;
+    let isMounted = true;
+
+    const loadCotsMachineNames = async () => {
+      try {
+        const machines = await fetchDrawFrameCotsMachineMaster({ subType: form.processType });
+        const rawNames = machines
+          .map((item) => String(item?.mc_name || item?.machine_number || "").trim())
+          .filter(Boolean);
+        const filteredNames = rawNames.filter((name) => matchesCotsTypePrefix(name, form.processType));
+        const names = filteredNames;
+        if (!isMounted) return;
+        if (names.length) {
+          setMachineNameOptions(names);
+          return;
+        }
+        const fallbackMachines = await fetchDrawFrameMachineMaster();
+        const fallbackRawNames = fallbackMachines
+          .map((item) => String(item?.mc_name || item?.machine_number || "").trim())
+          .filter(Boolean);
+        const filteredFallbackNames = fallbackRawNames.filter((name) =>
+          matchesCotsTypePrefix(name, form.processType)
+        );
+        const fallbackNames = filteredFallbackNames;
+        setMachineNameOptions(fallbackNames);
+      } catch (_error) {
+        if (!isMounted) return;
+        try {
+          const fallbackMachines = await fetchDrawFrameMachineMaster();
+          const fallbackRawNames = fallbackMachines
+            .map((item) => String(item?.mc_name || item?.machine_number || "").trim())
+            .filter(Boolean);
+          const filteredFallbackNames = fallbackRawNames.filter((name) =>
+            matchesCotsTypePrefix(name, form.processType)
+          );
+          const fallbackNames = filteredFallbackNames;
+          setMachineNameOptions(fallbackNames);
+        } catch (_fallbackError) {
+          setMachineNameOptions([]);
+        }
+      }
+    };
+
+    loadCotsMachineNames();
+    return () => {
+      isMounted = false;
+    };
+  }, [form.type, form.processType]);
+
   const handleFormChange = (field, value) => {
     setForm((current) => ({
       ...current,
@@ -235,6 +314,9 @@ function DrawFrame() {
           ? {
               ...item,
               [field]: value,
+              ...(field === "machineName"
+                ? { mcNo: machineMasterByName[value]?.mcNo || item.mcNo || "" }
+                : {}),
             }
           : item
       )
@@ -340,9 +422,7 @@ function DrawFrame() {
       remarks: "",
       readingCount: 5,
     });
-    setMachineEntries(getMachineCardDefaults("Breaker").map((name) => createMachineEntry(name)));
-    setOneYardReadings([]);
-    setHalfYardReadings([]);
+    setMachineEntries([]);
     setOneYardMetrics([]);
     setHalfYardMetrics([]);
     setHasCalculated(false);
@@ -370,16 +450,16 @@ function DrawFrame() {
 
   useEffect(() => {
     if (form.type !== "Draw Frame Cots Data Entry") return;
+    setMachineEntries((current) => {
+      const names = machineNameOptions;
 
-    const defaults = getMachineCardDefaults(form.processType);
-    setMachineEntries((current) =>
-      defaults.map((name, index) => ({
-        ...createMachineEntry(name),
+      return names.map((machineName, index) => ({
+        ...createMachineEntry(machineName),
         ...current[index],
-        machineName: current[index]?.machineName || name,
-      }))
-    );
-  }, [form.processType, form.type]);
+        machineName,
+      }));
+    });
+  }, [form.processType, form.type, machineNameOptions]);
 
   useEffect(() => {
     if (form.type === "Draw Frame Cots Data Entry") {
@@ -581,6 +661,7 @@ function DrawFrame() {
           shift: form.shift,
           machines: machineEntries.map((item) => ({
             mc_name: item.machineName,
+            mc_no: item.mcNo || item.machineName,
             fan_waste: Number(item.fanWaste) || 0,
             cot_change: Number(item.cotChange) || 0,
             stripper_w: Number(item.stripperWaste) || 0,
@@ -732,17 +813,14 @@ function DrawFrame() {
 
                 <div className={uPercentStyles.field}>
                   <label>MC No.</label>
-                  <select
+                  <SearchableSelect
                     value={uPercentForm.mcNo}
-                    onChange={(e) => handleUPercentChange("mcNo", e.target.value)}
+                    onChange={(value) => handleUPercentChange("mcNo", value)}
+                    options={machineNameOptions}
+                    placeholder="Select MC No."
                     className={errors.uPercent?.mcNo ? uPercentStyles.errorField : ""}
-                  >
-                    <option value="">Select MC No.</option>
-                    <option value="DF-01">DF-01</option>
-                    <option value="DF-02">DF-02</option>
-                    <option value="DF-03">DF-03</option>
-                    <option value="DF-04">DF-04</option>
-                  </select>
+                    ariaLabel="MC Number"
+                  />
                 </div>
 
                 <div className={uPercentStyles.field}>
@@ -863,49 +941,14 @@ function DrawFrame() {
 
                   <div className={styles.field} ref={cvMachineDropdownRef}>
                     <label className={styles.label}>Machine Number</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsCvMachineDropdownOpen((current) => !current)}
-                      className={`${styles.selectButton} ${errors.header?.machineNumber ? styles.inputError : ""}`}
-                      aria-haspopup="listbox"
-                      aria-expanded={isCvMachineDropdownOpen}
-                    >
-                      <span className={form.machineNumber ? styles.selectButtonValue : styles.selectButtonPlaceholder}>
-                        {form.machineNumber || "-- Select Machine Number --"}
-                      </span>
-                      <span className={styles.selectButtonArrow}>{isCvMachineDropdownOpen ? "^" : "v"}</span>
-                    </button>
-                    {isCvMachineDropdownOpen ? (
-                      <div className={styles.dropdownMenu} role="listbox">
-                        <button
-                          type="button"
-                          className={styles.dropdownOption}
-                          onClick={() => {
-                            handleFormChange("machineNumber", "");
-                            setIsCvMachineDropdownOpen(false);
-                          }}
-                          role="option"
-                          aria-selected={!form.machineNumber}
-                        >
-                          -- Select Machine Number --
-                        </button>
-                        {cvMachineOptions.map((machine) => (
-                          <button
-                            key={machine}
-                            type="button"
-                            className={styles.dropdownOption}
-                            onClick={() => {
-                              handleFormChange("machineNumber", machine);
-                              setIsCvMachineDropdownOpen(false);
-                            }}
-                            role="option"
-                            aria-selected={form.machineNumber === machine}
-                          >
-                            {machine}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
+                    <SearchableSelect
+                      value={form.machineNumber}
+                      onChange={(value) => handleFormChange("machineNumber", value)}
+                      options={yarnCvMachineOptions}
+                      placeholder="Select Machine Number"
+                      className={`${styles.select} ${errors.header?.machineNumber ? styles.inputError : ""}`}
+                      ariaLabel="Machine Number"
+                    />
                   </div>
 
                   <div className={`${styles.field} ${styles.fieldWide}`}>
@@ -948,10 +991,12 @@ function DrawFrame() {
 
                 <div className={styles.machineCardList}>
                   {machineEntries.map((machine, index) => (
-                    <div key={`machine-card-${index}`} className={styles.machineCard}>
+                    <div key={`machine-card-${machine.machineName || "unknown"}-${index}`} className={styles.machineCard}>
                       <div className={styles.machineNameRow}>
-                        <label className={styles.machineNameLabel}>MC Name :</label>
-                        <span className={styles.machineNameValue}>{machine.machineName}</span>
+                        <label className={styles.machineNameLabel}>MC No :</label>
+                        <div style={{ minWidth: 220, flex: 1 }}>
+                          <span className={styles.machineNameValue}>{machine.machineName}</span>
+                        </div>
                       </div>
 
                       <div className={styles.machineGrid}>
