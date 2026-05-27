@@ -14,6 +14,15 @@ const COTS_BASE_URL =
 const UQC_BASE_URL =
     process.env.NEXT_PUBLIC_DRAWFRAME_UQC_URL ||
     `${API_BASE_URL}/drawframe/uqc`;
+const MACHINE_MASTER_BASE_URL =
+    process.env.NEXT_PUBLIC_DRAWFRAME_MACHINE_MASTER_URL ||
+    `${API_BASE_URL}/drawframe/yarn-cv/machine-numbers`;
+const MACHINE_MASTER_FALLBACK_URL =
+    process.env.NEXT_PUBLIC_DRAWFRAME_MACHINE_MASTER_FALLBACK_URL ||
+    `${API_BASE_URL}/drawframe/machine-numbers`;
+const COTS_MACHINE_MASTER_URL =
+    process.env.NEXT_PUBLIC_DRAWFRAME_COTS_MACHINE_MASTER_URL ||
+    `${API_BASE_URL}/drawframe/cots/machine-numbers`;
 
 const parseJson = async (response) => response.json().catch(() => null);
 const DRAW_FRAME_UQC_ENDPOINTS = ["/drawframe/uqc", "/draw-frame/uqc"];
@@ -174,6 +183,66 @@ export const fetchDrawFrameFinisherEntries = async ({ page = 1, limit = 10 } = {
     } catch (error) {
         throw new Error(extractApiError(error, "Failed to fetch draw frame finisher entries"));
     }
+};
+
+export const fetchDrawFrameMachineMaster = async ({ prefix = "" } = {}) => {
+    const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : "";
+    const candidateUrls = [MACHINE_MASTER_BASE_URL, MACHINE_MASTER_FALLBACK_URL];
+    let lastError = null;
+
+    for (const baseUrl of candidateUrls) {
+        try {
+            const response = await fetch(`${baseUrl}${query}`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            });
+            const data = await parseJson(response);
+            if (!response.ok) {
+                lastError = new Error(data?.message || "Failed to fetch draw frame machine master");
+                continue;
+            }
+            if (Array.isArray(data?.data)) return data.data;
+            if (Array.isArray(data?.machine_numbers)) {
+                return data.machine_numbers.map((machineNumber) => ({
+                    machine_number: String(machineNumber || "").trim(),
+                }));
+            }
+            return [];
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw new Error(extractApiError(lastError, "Failed to fetch draw frame machine master"));
+};
+
+export const fetchDrawFrameCotsMachineMaster = async ({ prefix = "", subType = "" } = {}) => {
+    const queryParams = new URLSearchParams();
+    if (prefix) queryParams.set("prefix", prefix);
+    if (subType) queryParams.set("sub_type", subType);
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
+
+    const response = await fetch(`${COTS_MACHINE_MASTER_URL}${query}`, {
+        method: "GET",
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+    const data = await parseJson(response);
+
+    if (!response.ok) {
+        throw new Error(data?.message || "Failed to fetch draw frame cots machine master");
+    }
+
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.machine_numbers)) {
+        return data.machine_numbers.map((mcName) => ({
+            mc_name: String(mcName || "").trim(),
+        }));
+    }
+    return [];
 };
 
 export const updateDrawFrameHeaderEntry = async (insId, payload) => {
