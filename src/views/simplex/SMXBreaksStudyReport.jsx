@@ -1,11 +1,15 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
+import { fetchSimplexStudyMachineNames } from "@/apis/simplex";
 import { submitSimplexStudyReport } from "@/store/slices/simplex";
 
 const today = new Date().toISOString().split("T")[0];
 
-const simplexOptions = ["SX-01", "SX-02", "SX-03", "SX-04", "SX-05", "SX-06"];
+const simplexOptions = [
+  "SMX 002",
+  ...Array.from({ length: 13 }, (_, index) => `SMX ${String(index + 1).padStart(2, "0")}`),
+];
 
 const topFieldClass =
   "w-full h-[42px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
@@ -131,9 +135,43 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const [breakMatrix, setBreakMatrix] = useState(createInitialBreakMatrix);
   const [errors, setErrors] = useState({ form: {}, matrix: {} });
   const [portalReady, setPortalReady] = useState(false);
+  const [simplexNoOptions, setSimplexNoOptions] = useState(simplexOptions);
 
   useEffect(() => {
     setPortalReady(true);
+  }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadSimplexNos = async () => {
+      try {
+        const response = await fetchSimplexStudyMachineNames();
+        if (isCancelled) return;
+
+        const apiOptions = Array.isArray(response?.simplex_nos)
+          ? response.simplex_nos
+          : Array.isArray(response?.machine_names)
+            ? response.machine_names
+            : Array.isArray(response?.data)
+              ? response.data.map((item) => item?.simplex_no || item?.machine_name || item?.s_no)
+              : [];
+
+        const cleaned = apiOptions
+          .map((item) => String(item || "").trim())
+          .filter(Boolean);
+
+        const merged = [...new Set([...simplexOptions, ...cleaned])];
+        setSimplexNoOptions(merged);
+      } catch (_error) {
+        if (!isCancelled) setSimplexNoOptions(simplexOptions);
+      }
+    };
+
+    loadSimplexNos();
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   const totalTime = useMemo(() => {
@@ -312,7 +350,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type },
-    { label: "Simplex No.", field: "simplexNo", type: "select", options: simplexOptions, placeholder: "Select" },
+    { label: "Simplex No.", field: "simplexNo", type: "select", options: simplexNoOptions, placeholder: "Select" },
     { label: "Entry ID", field: "entryId", type: "readonly", value: entryId || "#SIM-001" },
     { label: "Start Time", field: "startTime", type: "time" },
     { label: "End Time", field: "endTime", type: "time" },
@@ -412,8 +450,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     </section>
   );
 
-  const buildStudyPayload = () => ({
-    s_no: "1",
+const buildStudyPayload = () => ({
+    s_no: form.simplexNo,
     entry_date: form.date,
     machine_name: form.simplexNo,
     operator_name: form.sName,

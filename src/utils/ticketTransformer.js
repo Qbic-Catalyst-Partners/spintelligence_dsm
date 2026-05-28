@@ -29,7 +29,7 @@ export const formatTicketIdForDisplay = (ticketId) => {
     return rawId.startsWith("#") ? rawId : `#${rawId}`;
   }
 
-  return `#TK-${numericPart.padStart(4, "0")}`;
+  return `#TK-${numericPart.padStart(3, "0")}`;
 };
 
 const toParameterList = (value) => {

@@ -147,7 +147,7 @@ const mapApiEntryToVersion = (entry) => ({
   label: formatDisplayDate(entry?.creation_date),
   data: {
     versionId: getEntryId(entry),
-    paramId: entry?.ins_code || "",
+    paramId: entry?.entry_id || entry?.ins_code || "",
     type: "PP - Autoconer Q3",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
@@ -205,7 +205,8 @@ const isVersionComplete = (version) =>
     String(version?.data?.[field] || "").trim()
   );
 
-const buildPayload = (form) => ({
+const buildPayload = (form, entryId = "") => ({
+  entry_id: entryId || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -427,11 +428,12 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
     try {
       setIsSubmitting(true);
       setSubmitError("");
-      const payload = buildPayload(form);
+      const payload = buildPayload(form, entryId);
       const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
 
       if (selectedExistingVersion) {
-        await updateAutoconerQ3Entry(selectedExistingVersion.id, payload);
+        const { entry_id, ...updatePayload } = payload;
+        await updateAutoconerQ3Entry(selectedExistingVersion.id, updatePayload);
       } else {
         await submitAutoconerQ3Entry(payload);
       }
@@ -439,7 +441,12 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       await loadVersions();
       return true;
     } catch (error) {
-      setSubmitError(error.message || "Unable to submit the form.");
+      const errorMessage = String(error?.message || "");
+      setSubmitError(
+        /duplicate entry_id/i.test(errorMessage)
+          ? "Entry ID already exists. Please clear and save again to generate next ID."
+          : errorMessage || "Unable to submit the form."
+      );
       return false;
     } finally {
       setIsSubmitting(false);

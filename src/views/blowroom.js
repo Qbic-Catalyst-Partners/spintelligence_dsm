@@ -13,6 +13,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const blowroomTypes = [
   { id: 1, name: "Blow Room Sync", aliases: ["Blow Room Sync"], component: BlowRoomSync, needsLotNo: false },
@@ -24,28 +25,15 @@ const blowroomTypes = [
 export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
 
 const today = new Date().toISOString().split("T")[0];
-const BLOWROOM_ENTRY_SEQ_KEY = "blowroom_entry_sequence";
 const BLOWROOM_ENTRY_ID_CONFIG = {
-  "Blow Room Sync": { prefix: "BRS", storageKey: "blowroom_entry_sequence_sync" },
-  "Process Parameter": { prefix: "BPP", storageKey: "blowroom_entry_sequence_process_parameter" },
-  "BR Waste Study Entry": { prefix: "BWS", storageKey: "blowroom_entry_sequence_br_waste" },
-  "Drop Test Data Entry": { prefix: "BDT", storageKey: "blowroom_entry_sequence_drop_test" },
+  "Blow Room Sync": { prefix: "BRS",  },
+  "Process Parameter": { prefix: "BPP",  },
+  "BR Waste Study Entry": { prefix: "BWS",  },
+  "Drop Test Data Entry": { prefix: "BDT",  },
 };
 
 const getBlowRoomEntryConfig = (typeName) =>
-  BLOWROOM_ENTRY_ID_CONFIG[typeName] || { prefix: "BLR", storageKey: BLOWROOM_ENTRY_SEQ_KEY };
-
-const getBlowRoomEntryId = (seq, typeName) => {
-  const { prefix } = getBlowRoomEntryConfig(typeName);
-  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
-
-const readBlowRoomEntrySequence = (typeName) => {
-  if (typeof window === "undefined") return 1;
-  const { storageKey } = getBlowRoomEntryConfig(typeName);
-  const stored = Number(window.localStorage.getItem(storageKey) || "1");
-  return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
+  BLOWROOM_ENTRY_ID_CONFIG[typeName] || { prefix: "BLR" };
 
 function BlowRoom() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -66,21 +54,12 @@ function BlowRoom() {
   );
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [date, setDate] = useState(today);
-  const [entrySeq, setEntrySeq] = useState(1);
   const [lotNo, setLotNo] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [headerErrors, setHeaderErrors] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
-  const incrementEntrySequence = () => {
-    const nextSeq = entrySeq + 1;
-    setEntrySeq(nextSeq);
-    if (typeof window !== "undefined") {
-      const { storageKey } = getBlowRoomEntryConfig(selectedTypeName);
-      window.localStorage.setItem(storageKey, String(nextSeq));
-    }
-  };
 
   const blowroomState = useSelector((state) => state.blowroom);
 
@@ -89,6 +68,11 @@ function BlowRoom() {
     [selectedTypeName, typeOptions]
   );
   const SelectedComponent = selectedType?.component ?? null;
+  const { entryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Blow Room",
+    typeName: selectedTypeName,
+    config: getBlowRoomEntryConfig(selectedTypeName),
+  });
 
   useEffect(() => {
     if (!typeOptions.some((item) => item.name === selectedTypeName)) {
@@ -103,11 +87,6 @@ function BlowRoom() {
       setShowSuccess(true);
     }
   }, [blowroomState?.success]);
-
-  useEffect(() => {
-    setEntrySeq(readBlowRoomEntrySequence(selectedTypeName));
-  }, [selectedTypeName]);
-
   const validateHeader = () => {
     const errs = {};
     if (selectedType?.needsLotNo && !lotNo) errs.lotNo = true;
@@ -130,7 +109,7 @@ function BlowRoom() {
     }
     const headerItems = [
       { label: "Type", value: selectedTypeName },
-      { label: "Entry ID", value: getBlowRoomEntryId(entrySeq, selectedTypeName) },
+      { label: "Entry ID", value: entryId },
     ];
     if (selectedType?.needsLotNo) headerItems.push({ label: "Lot No", value: lotNo });
     const childItems = childRef.current.getPreviewData() || [];
@@ -142,7 +121,7 @@ function BlowRoom() {
     setShowPreview(false);
     try {
       await childRef.current?.submit?.();
-      incrementEntrySequence();
+      await reserveEntryId();
       setShowSuccess(true);
     } catch (e) {
       // submission error handled by slices/toasts; keep modal closed
@@ -199,7 +178,7 @@ function BlowRoom() {
 
                   <CustomInput
                     label="Entry ID"
-                    value={getBlowRoomEntryId(entrySeq, selectedTypeName)}
+                    value={entryId}
                     onChange={() => {}}
                     disabled
                   />
@@ -220,7 +199,7 @@ function BlowRoom() {
                 <SelectedComponent
                   ref={childRef}
                   date={date}
-                  entryId={getBlowRoomEntryId(entrySeq, selectedTypeName)}
+                  entryId={entryId}
                   lotNo={lotNo}
                   selectedTypeName={selectedTypeName}
                   typeOptions={typeOptions}

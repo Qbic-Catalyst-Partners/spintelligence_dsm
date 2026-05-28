@@ -3,6 +3,8 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberRibbonLapCV } from "@/store/slices/comber";
 import Footer from "@/components/Footer";
+import SearchableSelect from "@/components/SearchableSelect";
+import { fetchComberMasterVarieties } from "@/apis/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
@@ -42,11 +44,27 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const [stats, setStats] = useState(defaultStats);
     const [formMessage, setFormMessage] = useState("");
     const [errors, setErrors] = useState({});
+    const [varietyOptions, setVarietyOptions] = useState(["Cotton", "Polyester", "PC Blend"]);
 
     const isCVEntry = selectedType === "Ribbon Lap CV Data Entry";
 
     useEffect(() => {
         setDate(new Date().toISOString().split("T")[0]);
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const options = await fetchComberMasterVarieties();
+                if (active && options.length) setVarietyOptions(options);
+            } catch (_error) {
+                if (active) setVarietyOptions(["Cotton", "Polyester", "PC Blend"]);
+            }
+        })();
+        return () => {
+            active = false;
+        };
     }, []);
 
     useEffect(() => {
@@ -151,6 +169,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
     const buildPayload = () => {
         return {
+            entry_id: entryId || "",
             record_date: date,
             machine_name: machine,
             variety,
@@ -330,11 +349,11 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
                             <div className={styles["cb-form-group"]}>
                                 <label>Variety</label>
-                                <select
+                                <SearchableSelect
                                     className={errors.variety ? styles["input-error"] : ""}
                                     value={variety}
-                                    onChange={(e) => {
-                                        setVariety(e.target.value);
+                                    onChange={(value) => {
+                                        setVariety(value);
                                         setErrors((prev) => {
                                             if (!prev.variety) return prev;
                                             const next = { ...prev };
@@ -342,12 +361,10 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                             return next;
                                         });
                                     }}
-                                >
-                                    <option value="">Select Variety</option>
-                                    <option value="Cotton">Cotton</option>
-                                    <option value="Polyester">Polyester</option>
-                                    <option value="PC Blend">PC Blend</option>
-                                </select>
+                                    options={varietyOptions}
+                                    placeholder="Select Variety"
+                                    ariaLabel="Variety"
+                                />
                             </div>
 
                             <div className={styles["cb-form-group"]}>

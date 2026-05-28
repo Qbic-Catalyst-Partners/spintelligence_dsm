@@ -1,11 +1,12 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   getAutoconerConePackingAudit,
   saveAutoconerConePackingAudit,
 } from "@/store/slices/autoconer";
-import { toNullableNumber } from "@/apis/autoconer";
+import { fetchAutoconerConePackingAuditMasterData, toNullableNumber } from "@/apis/autoconer";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
@@ -111,8 +112,30 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const dispatch = useDispatch();
   const { isLoading, isFetching, conePackingAudit = [] } = useSelector((state) => state.autoconer ?? {});
   const [form, setForm] = useState(createInitialForm);
+  const [countCode, setCountCode] = useState("");
+  const [countDropdownOptions, setCountDropdownOptions] = useState(
+    countNameOptions.map((option) => ({ value: option, label: option, code: "" }))
+  );
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const auditRows = useMemo(() => {
+    const grossWeight = toNullableNumber(form.grossWtAct);
+    const average = toNullableNumber(String(form.netWeight).replace(/,/g, ""));
+    const percentYarn =
+      grossWeight && average
+        ? Number(((average / grossWeight) * 100).toFixed(2))
+        : null;
+
+    return [
+      {
+        drumNo: 1,
+        readingNumber: 1,
+        grossWeight,
+        average,
+        percentYarn,
+      },
+    ];
+  }, [form.grossWtAct, form.netWeight]);
 
   useEffect(() => {
     setPortalReady(true);
@@ -150,9 +173,9 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
         label: label === "date" ? "Entry ID" : label,
         value: label === "date" ? entryId || "-" : value || "-",
       })),
-    ...rows.map((row, index) => ({
+    ...auditRows.map((row, index) => ({
       label: `Reading ${index + 1}`,
-      value: `${row.readingNumber} | ${row.precentYarn}`,
+      value: `${row.readingNumber} | ${row.percentYarn ?? "-"}`,
     })),
   ];
 
@@ -160,6 +183,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     inspection_date: form.date,
     packed_date: form.packedDate,
     count_name: form.countName,
+    cntcode: countCode || undefined,
     gross_weight_std: toNullableNumber(form.grossWtStd),
     gross_weight_actual: toNullableNumber(form.grossWtAct),
     box_colour: form.boxColour,
@@ -176,9 +200,15 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     net_weight: toNullableNumber(String(form.netWeight).replace(/,/g, "")),
     tare_weight: toNullableNumber(form.tareWeight),
     strap_colour: form.strapColour,
-    drum_entries: [],
-    yarn_readings: [],
-    cone_readings: [],
+    drum_entries: auditRows.map((row) => ({
+      drum_no: row.drumNo,
+      gross_weight: row.grossWeight,
+      average: row.average,
+    })),
+    cone_readings: auditRows.map((row) => ({
+      reading_number: row.readingNumber,
+      percent_yarn: row.percentYarn,
+    })),
   });
 
   const submit = async () => {
@@ -204,6 +234,38 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   useEffect(() => {
     dispatch(getAutoconerConePackingAudit({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadMasterData = async () => {
+      const response = await fetchAutoconerConePackingAuditMasterData();
+      if (isCancelled) return;
+      const fromObjects = Array.isArray(response?.count_options)
+        ? response.count_options
+            .map((item) => {
+              const code = String(item?.cntcode ?? "").trim();
+              const label = String(item?.cntname ?? "").trim();
+              return label ? { value: code || label, label, code: code || "" } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const fromLegacy = Array.isArray(response?.count_names)
+        ? response.count_names.map((item) => String(item || "").trim()).filter(Boolean).map((label) => ({ value: label, label, code: "" }))
+        : [];
+      const unique = Array.from(new Map([...fromObjects, ...fromLegacy].map((item) => [item.value, item])).values());
+      if (unique.length) {
+        setCountDropdownOptions(unique);
+        setForm((current) => ({
+          ...current,
+          countName: unique.some((item) => item.label === current.countName) ? current.countName : unique[0].label,
+        }));
+      }
+    };
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   const allDrumEntries = useMemo(
     () => conePackingAudit.flatMap((entry) => mapConePackingEntryToRows(entry)).slice(0, 10),
@@ -282,7 +344,32 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     return (
       <div key={field} className="flex flex-col gap-2">
         <label className="text-[14px] font-semibold text-slate-700">{label}</label>
-        {type === "select" ? (
+        {type === "select" && field === "countName" ? (
+          <SearchableSelect
+            className={`${topFieldClass}${errorClass(errors[field])}`}
+            value={fieldValue}
+            onChange={(nextValue) => {
+              if (field === "countName") {
+                const selected = options.find((option) => {
+                  if (!option || typeof option !== "object") return option === nextValue;
+                  return String(option.value) === nextValue || String(option.label) === nextValue;
+                });
+                if (selected && typeof selected === "object") {
+                  handleFormChange("countName", selected.label || "");
+                  setCountCode(selected.code || "");
+                } else {
+                  handleFormChange("countName", nextValue);
+                  setCountCode("");
+                }
+              } else {
+                handleFormChange(field, nextValue);
+              }
+              if (field === "type") onTypeChange?.(nextValue);
+            }}
+            options={options.map((option) => (option && typeof option === "object" ? option.label : option))}
+            placeholder={placeholder || "Enter value"}
+          />
+        ) : type === "select" ? (
           <select
             className={`${topFieldClass}${errorClass(errors[field])}`}
             value={fieldValue}
@@ -292,11 +379,16 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
             }}
           >
             <option value="">{placeholder || "Enter value"}</option>
-            {options.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
+            {options.map((option) => {
+              const isObject = option && typeof option === "object";
+              const optionValue = isObject ? option.value : option;
+              const optionLabel = isObject ? option.label : option;
+              return (
+                <option key={optionValue} value={optionValue}>
+                  {optionLabel}
+                </option>
+              );
+            })}
           </select>
         ) : type === "radio" ? (
           <div className="flex gap-4">
@@ -340,7 +432,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
             label: "Count Name",
             field: "countName",
             type: "select",
-            options: countNameOptions,
+            options: countDropdownOptions,
             placeholder: "Enter count name",
           })}
         </div>

@@ -23,6 +23,7 @@ import styles from "@/styles/draw-frame.module.css";
 import uPercentStyles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
 const today = new Date().toISOString().split("T")[0];
@@ -49,18 +50,30 @@ const primaryTypeOptions = [
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
-const DRAW_FRAME_ENTRY_SEQ_KEY = "drawframe_entry_sequence";
-const DRAW_FRAME_ENTRY_PREFIX = {
-  "Yarn CV% Calculation Form": "YAR",
-  "Draw Frame Cots Data Entry": "DRC",
-  "U% Data Entry": "DUP",
-  "PP - Breaker Drawing": "DRB",
-  "PP - Finisher Drawing": "DRF",
+const DRAW_FRAME_ENTRY_ID_CONFIG = {
+  "1 Yard / Half Yard CV Entry": {
+    prefix: "DY",
+  },
+  "Draw Frame Cots Data Entry": {
+    prefix: "DC",
+  },
+  "U% Data Entry": {
+    prefix: "DU",
+  },
+  "PP - Breaker Drawing": {
+    prefix: "DH",
+  },
+  "PP - Finisher Drawing": {
+    prefix: "DF",
+  },
 };
-const getDrawFrameUniqueId = (seq, type = "") => {
-  const prefix = DRAW_FRAME_ENTRY_PREFIX[type] || "DRAW";
-  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
+
+const getDrawFrameEntryConfig = (type = "") =>
+  DRAW_FRAME_ENTRY_ID_CONFIG[type] || {
+    prefix: "DRAW",
+  };
+
+const STATIC_FR_MACHINE_NAMES = ["FR (HSR 1000-2)", "FR (HSR 1000-1)"];
 
 const processTypeOptions = ["Breaker", "Finisher"];
 const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
@@ -105,7 +118,7 @@ const emptyMetric = () => ({
   cv: "",
 });
 
-const calculateStats = (values, lengthInYards) => {
+const calculateStats = (values, hankNumerator) => {
   const numericValues = values.map(Number).filter((value) => Number.isFinite(value));
   if (!numericValues.length) return emptyMetric();
 
@@ -113,7 +126,7 @@ const calculateStats = (values, lengthInYards) => {
   const variance =
     numericValues.reduce((sum, value) => sum + Math.pow(value - avg, 2), 0) / numericValues.length;
   const sd = Math.sqrt(variance);
-  const hank = avg > 0 ? (lengthInYards * 7000) / (avg * 840) : NaN;
+  const hank = avg > 0 ? hankNumerator / avg : NaN;
   const cv = avg > 0 ? (sd / avg) * 100 : NaN;
 
   return {
@@ -122,6 +135,20 @@ const calculateStats = (values, lengthInYards) => {
     sd: formatMetric(sd),
     cv: formatMetric(cv),
   };
+};
+
+const mergeUniqueMachineNames = (names = [], staticNames = []) => {
+  const seen = new Set();
+  const merged = [];
+  [...names, ...staticNames].forEach((name) => {
+    const clean = String(name || "").trim();
+    if (!clean) return;
+    const key = clean.toUpperCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(clean);
+  });
+  return merged;
 };
 
 function DrawFrame() {
@@ -184,8 +211,8 @@ function DrawFrame() {
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
-  const [entrySeq, setEntrySeq] = useState(1);
   const [showSuccess, setShowSuccess] = useState(false);
+  const cvMachineDropdownRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
   const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
   const [machineMasterByName, setMachineMasterByName] = useState({});
@@ -205,12 +232,12 @@ function DrawFrame() {
   const isWrappingDrawframeNotebook = form.type === "Wrapping Drawframe Notebook";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = Number(window.localStorage.getItem(DRAW_FRAME_ENTRY_SEQ_KEY) || "1");
-    setEntrySeq(Number.isFinite(stored) && stored > 0 ? stored : 1);
-  }, []);
+  const { entryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Draw Frame",
+    typeName: form.type,
+    config: getDrawFrameEntryConfig(form.type),
+    leadingHash: true,
+  });
 
   useEffect(() => {
     if (!typeOptions.some((option) => option.name === form.type)) {
@@ -237,11 +264,11 @@ function DrawFrame() {
           names.push(machineName);
           nextMasterByName[machineName] = { mcNo };
         });
-        setYarnCvMachineOptions(names);
+        setYarnCvMachineOptions(mergeUniqueMachineNames(names, STATIC_FR_MACHINE_NAMES));
         setMachineMasterByName(nextMasterByName);
       } catch (_error) {
         if (isMounted) {
-          setYarnCvMachineOptions([]);
+          setYarnCvMachineOptions(mergeUniqueMachineNames([], STATIC_FR_MACHINE_NAMES));
           setMachineMasterByName({});
         }
       }
@@ -264,10 +291,14 @@ function DrawFrame() {
           .map((item) => String(item?.mc_name || item?.machine_number || "").trim())
           .filter(Boolean);
         const filteredNames = rawNames.filter((name) => matchesCotsTypePrefix(name, form.processType));
-        const names = filteredNames;
+        const names = filteredNames.length ? filteredNames : rawNames;
         if (!isMounted) return;
         if (names.length) {
-          setMachineNameOptions(names);
+          const nextNames =
+            form.processType === "Finisher"
+              ? mergeUniqueMachineNames(names, STATIC_FR_MACHINE_NAMES)
+              : names;
+          setMachineNameOptions(nextNames);
           return;
         }
         const fallbackMachines = await fetchDrawFrameMachineMaster();
@@ -277,8 +308,12 @@ function DrawFrame() {
         const filteredFallbackNames = fallbackRawNames.filter((name) =>
           matchesCotsTypePrefix(name, form.processType)
         );
-        const fallbackNames = filteredFallbackNames;
-        setMachineNameOptions(fallbackNames);
+        const fallbackNames = filteredFallbackNames.length ? filteredFallbackNames : fallbackRawNames;
+        const nextFallbackNames =
+          form.processType === "Finisher"
+            ? mergeUniqueMachineNames(fallbackNames, STATIC_FR_MACHINE_NAMES)
+            : fallbackNames;
+        setMachineNameOptions(nextFallbackNames);
       } catch (_error) {
         if (!isMounted) return;
         try {
@@ -289,10 +324,14 @@ function DrawFrame() {
           const filteredFallbackNames = fallbackRawNames.filter((name) =>
             matchesCotsTypePrefix(name, form.processType)
           );
-          const fallbackNames = filteredFallbackNames;
-          setMachineNameOptions(fallbackNames);
+          const fallbackNames = filteredFallbackNames.length ? filteredFallbackNames : fallbackRawNames;
+          const nextFallbackNames =
+            form.processType === "Finisher"
+              ? mergeUniqueMachineNames(fallbackNames, STATIC_FR_MACHINE_NAMES)
+              : fallbackNames;
+          setMachineNameOptions(nextFallbackNames);
         } catch (_fallbackError) {
-          setMachineNameOptions([]);
+          setMachineNameOptions(form.processType === "Finisher" ? [...STATIC_FR_MACHINE_NAMES] : []);
         }
       }
     };
@@ -410,8 +449,8 @@ function DrawFrame() {
       return;
     }
 
-    setOneYardMetrics([calculateStats(oneYardReadings, 1)]);
-    setHalfYardMetrics([calculateStats(halfYardReadings, 0.5)]);
+    setOneYardMetrics([calculateStats(oneYardReadings, 0.54)]);
+    setHalfYardMetrics([calculateStats(halfYardReadings, 0.27)]);
     setErrors((prev) => {
       const nextHeader = { ...(prev.header || {}) };
       delete nextHeader.calculation;
@@ -639,12 +678,13 @@ function DrawFrame() {
 
   const handleSubmit = () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
-
+    
     if (!validate()) return;
 
     if (form.type === "U% Data Entry") {
       dispatch(
         submitDrawFrameUqcInspection({
+          entry_id: entryId,
           entry_type: form.type,
           entry_date: uPercentForm.date,
           shift: uPercentForm.shift,
@@ -667,6 +707,7 @@ function DrawFrame() {
 
     const payload = isCots
       ? {
+          entry_id: entryId,
           sub_type: form.processType,
           entry_date: form.date,
           shift: form.shift,
@@ -684,6 +725,7 @@ function DrawFrame() {
           })),
         }
       : {
+          entry_id: entryId,
           type: form.type,
           s_no: form.serialNumber,
           entry_date: form.date,
@@ -713,6 +755,7 @@ function DrawFrame() {
 
   useEffect(() => {
     if (actionSuccess) {
+      reserveEntryId();
       if (form.type === "Draw Frame Cots Data Entry") {
         dispatch(fetchDrawFrameCotsEntries({ page: 1, limit: 10 }));
       }
@@ -721,7 +764,7 @@ function DrawFrame() {
       }
       setShowSuccess(true);
     }
-  }, [actionSuccess, dispatch, form.type]);
+  }, [actionSuccess, dispatch, form.type, reserveEntryId]);
 
   const formatListDate = (value) => {
     if (!value) return "-";
@@ -745,7 +788,7 @@ function DrawFrame() {
           />
         ) : isHeaderEntry ? (
           <DrawFrameHeaderEntry
-            entryId={getDrawFrameUniqueId(entrySeq, form.type)}
+            entryId={entryId}
             typeOptions={typeOptions}
             selectedType={form.type}
             onTypeChange={(value) => handleFormChange("type", value)}
@@ -781,7 +824,7 @@ function DrawFrame() {
 
                 <div className={uPercentStyles.field}>
                   <label>Entry ID</label>
-                  <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={errors.header?.date ? uPercentStyles.errorField : ""} />
+                  <input type="text" value={entryId} readOnly disabled className={errors.header?.date ? uPercentStyles.errorField : ""} />
                 </div>
 
                 <div className={uPercentStyles.field}>
@@ -792,9 +835,9 @@ function DrawFrame() {
                     className={errors.uPercent?.shift ? uPercentStyles.errorField : ""}
                   >
                     <option value="">Select</option>
-                    {shiftOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                    {STATIC_SHIFT_OPTIONS.map((option, index) => (
+                      <option key={`${option.value}-${index}`} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -802,16 +845,14 @@ function DrawFrame() {
 
                 <div className={uPercentStyles.field}>
                   <label>Variety</label>
-                  <select
+                  <SearchableSelect
                     value={uPercentForm.variety}
-                    onChange={(e) => handleUPercentChange("variety", e.target.value)}
+                    onChange={(value) => handleUPercentChange("variety", value)}
+                    options={["WPSF 0.90", "WPSF 1.20", "PSF Blend"]}
+                    placeholder="Select"
                     className={errors.uPercent?.variety ? uPercentStyles.errorField : ""}
-                  >
-                    <option value="">Select</option>
-                    <option value="WPSF 0.90">WPSF 0.90</option>
-                    <option value="WPSF 1.20">WPSF 1.20</option>
-                    <option value="PSF Blend">PSF Blend</option>
-                  </select>
+                    ariaLabel="Variety"
+                  />
                 </div>
 
                 <div className={uPercentStyles.field}>
@@ -822,9 +863,11 @@ function DrawFrame() {
                     className={errors.uPercent?.department ? uPercentStyles.errorField : ""}
                   >
                     <option value="">Select Department</option>
-                    <option value="FR Drawing">FR Drawing</option>
-                    <option value="Draw Frame">Draw Frame</option>
-                    <option value="Finisher Drawing">Finisher Drawing</option>
+                    {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
+                      <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
+                        {item.dept_name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -833,7 +876,7 @@ function DrawFrame() {
                   <SearchableSelect
                     value={uPercentForm.mcNo}
                     onChange={(value) => handleUPercentChange("mcNo", value)}
-                    options={machineNameOptions}
+                    options={STATIC_MC_NO_OPTIONS.map((item) => item.mc_no)}
                     placeholder="Select MC No."
                     className={errors.uPercent?.mcNo ? uPercentStyles.errorField : ""}
                     ariaLabel="MC Number"
@@ -907,7 +950,7 @@ function DrawFrame() {
                 <>
                   <div className={styles.field}>
                     <label className={styles.label}>Unique</label>
-                    <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
+                    <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
                   <div className={styles.field}>
@@ -953,7 +996,7 @@ function DrawFrame() {
 
                   <div className={styles.field}>
                     <label className={styles.label}>Unique</label>
-                    <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
+                    <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
                   <div className={styles.field}>
@@ -1178,7 +1221,7 @@ function DrawFrame() {
                   </div>
                 ) : null}
 
-                {hasCalculated ? (
+                {oneYardReadings.length > 0 ? (
                   <div className={styles.resultsWrap}>
                     <div className={styles.resultCard}>
                       <div className={styles.resultSection}>

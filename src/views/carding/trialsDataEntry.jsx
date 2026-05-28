@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import {
@@ -182,6 +183,10 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
     const handleChange = (event) => {
         const { name, value } = event.target;
+        setFieldValue(name, value);
+    };
+
+    const setFieldValue = (name, value) => {
         const nextValue = INTEGER_FIELDS.has(name)
             ? sanitizeIntegerInput(value, 9)
             : DECIMAL_FIELD_CONFIG[name]
@@ -400,36 +405,26 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
                                 <label>Spinning Machine Name</label>
-                                <select
-                                    name="machine"
+                                <SearchableSelect
                                     value={formData.machine || ""}
-                                    onChange={handleChange}
+                                    onChange={(value) => setFieldValue("machine", value)}
+                                    options={spinningMachineOptions}
+                                    placeholder={machinesLoading ? "Loading machines..." : "Select"}
                                     className={fieldClass("machine")}
-                                >
-                                    <option value="">Select</option>
-                                    {spinningMachineOptions.map((name) => (
-                                        <option key={name} value={name}>
-                                            {name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    ariaLabel="Spinning Machine Name"
+                                />
                             </div>
 
                             <div className={styles.cardFormGroup}>
                                 <label>Autoconer Machine Name</label>
-                                <select
-                                    name="autoMachine"
+                                <SearchableSelect
                                     value={formData.autoMachine || ""}
-                                    onChange={handleChange}
+                                    onChange={(value) => setFieldValue("autoMachine", value)}
+                                    options={autoconerMachineOptions}
+                                    placeholder={machinesLoading ? "Loading machines..." : "Select"}
                                     className={fieldClass("autoMachine")}
-                                >
-                                    <option value="">Select</option>
-                                    {autoconerMachineOptions.map((name) => (
-                                        <option key={name} value={name}>
-                                            {name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    ariaLabel="Autoconer Machine Name"
+                                />
                             </div>
 
                             <div className={styles.cardFormGroup}>

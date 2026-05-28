@@ -5,6 +5,8 @@ import {
   getAutoconerSpliceStrength,
   saveAutoconerSpliceStrength,
 } from "@/store/slices/autoconer";
+import { fetchAutoconerSpliceStrengthMasterData } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/spliceStrength.module.css";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -82,7 +84,14 @@ function SpliceStrength({
   const [testNo, setTestNo] = useState("");
   const [date, setDate] = useState(todayDate);
   const [countName, setCountName] = useState(countOptions[0]);
+  const [countCode, setCountCode] = useState("");
   const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
+  const [countDropdownOptions, setCountDropdownOptions] = useState(
+    countOptions.map((option) => ({ value: option, label: option, code: "" }))
+  );
+  const [autoconerDropdownOptions, setAutoconerDropdownOptions] = useState(
+    autoconerOptions.map((option) => ({ value: option, label: option }))
+  );
   const [drumFrom, setDrumFrom] = useState("");
   const [drumTo, setDrumTo] = useState("");
   const [coneTip, setConeTip] = useState("");
@@ -156,8 +165,9 @@ function SpliceStrength({
   const resetForm = () => {
     setTestNo("");
     setDate(todayDate);
-    setCountName(countOptions[0]);
-    setAutoconerNo(autoconerOptions[0]);
+    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
+    setCountCode(countDropdownOptions[0]?.code || "");
+    setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0]);
     setDrumFrom("");
     setDrumTo("");
     setConeTip("");
@@ -213,6 +223,7 @@ function SpliceStrength({
         test_no: Number(testNo) || 0,
         inspection_date: date,
         count_name: countName,
+        cntcode: countCode || undefined,
         auto_coner_no: autoconerNo,
         drum_from: Number(drumFrom) || 0,
         drum_to: Number(drumTo) || 0,
@@ -239,6 +250,88 @@ function SpliceStrength({
   useEffect(() => {
     dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadMasterData = async () => {
+      const response = await fetchAutoconerSpliceStrengthMasterData();
+      if (isCancelled) return;
+
+      const countOpts = Array.isArray(response?.count_options)
+        ? response.count_options
+            .map((item) => {
+              const code = String(item?.cntcode ?? "").trim();
+              const label = String(item?.cntname ?? "").trim();
+              if (!label) return null;
+              return { value: code || label, label, code: code || "" };
+            })
+            .filter(Boolean)
+        : [];
+
+      const legacyCountOpts = Array.isArray(response?.count_names)
+        ? response.count_names
+            .map((item) => {
+              const label = String(item ?? "").trim();
+              return label ? { value: label, label, code: "" } : null;
+            })
+            .filter(Boolean)
+        : [];
+
+      const autoconerOpts = Array.isArray(response?.autoconer_options)
+        ? response.autoconer_options
+            .map((item) => {
+              const value = String(item?.value ?? "").trim();
+              const label = String(item?.label ?? value).trim();
+              if (!value && !label) return null;
+              return { value: value || label, label: label || value };
+            })
+            .filter(Boolean)
+        : [];
+
+      const legacyAutoconerOpts = Array.isArray(response?.autoconer_nos)
+        ? response.autoconer_nos
+            .map((item) => {
+              const label = String(item ?? "").trim();
+              return label ? { value: label, label } : null;
+            })
+            .filter(Boolean)
+        : [];
+
+      const uniqueByValue = (options) => {
+        const map = new Map();
+        options.forEach((option) => {
+          if (!map.has(option.value)) map.set(option.value, option);
+        });
+        return Array.from(map.values());
+      };
+
+      const nextCountOptions = uniqueByValue([...countOpts, ...legacyCountOpts]);
+      const nextAutoconerOptions = uniqueByValue([...autoconerOpts, ...legacyAutoconerOpts]);
+
+      if (nextCountOptions.length) {
+        setCountDropdownOptions(nextCountOptions);
+        setCountName((current) =>
+          nextCountOptions.some((option) => option.label === current)
+            ? current
+            : nextCountOptions[0].label
+        );
+      }
+      if (nextAutoconerOptions.length) {
+        setAutoconerDropdownOptions(nextAutoconerOptions);
+        setAutoconerNo((current) =>
+          nextAutoconerOptions.some((option) => option.value === current)
+            ? current
+            : nextAutoconerOptions[0].value
+        );
+      }
+    };
+
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setPortalReady(true);
@@ -361,24 +454,26 @@ function SpliceStrength({
 
           <div className={styles.field}>
             <label>Count Name (From)</label>
-            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
-              {countOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={countName}
+              onChange={(value) => {
+                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+                setCountName(selected?.label ?? value);
+                setCountCode(selected?.code ?? "");
+              }}
+              options={countDropdownOptions.map((option) => option.label)}
+              className={styles.select}
+            />
           </div>
 
           <div className={styles.field}>
             <label>Auto Coner No.</label>
-            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
-              {autoconerOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={autoconerNo}
+              onChange={(value) => setAutoconerNo(value)}
+              options={autoconerDropdownOptions.map((option) => option.value)}
+              className={styles.select}
+            />
           </div>
 
           <div className={styles.doubleField}>

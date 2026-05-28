@@ -3,178 +3,19 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "@/styles/u%dataentry.module.css";
 import Footer from "@/components/Footer";
 import SuccessModal from "@/components/SuccessModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@/apis/carding";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 
-const STATIC_SHIFT_OPTIONS = [
+export const STATIC_SHIFT_OPTIONS = [
   { value: "General", label: "General" },
   { value: "Day", label: "Day" },
   { value: "Halfnight", label: "Halfnight" },
   { value: "Fullnight", label: "Fullnight" },
 ];
 
-const STATIC_VARIETY_OPTIONS = [
-  "B. PV",
-  "B.AIR (0.09)",
-  "B.AIRTHERMO 0.70",
-  "B.AIRTHERMO VIS",
-  "B.AIRTHERMO(0.09)",
-  "B.AIRTHERMO/VIS",
-  "B.ALLK 50/50 (0.70)",
-  "B.ALLKIMA 50/50",
-  "B.KOOLTEX",
-  "B.KOOLTEX 0.100",
-  "B.KOOLTEX(0.09)",
-  "B.KOOLTEX(0.70)",
-  "B.KOOLTEX0.100",
-  "B.MODAL",
-  "B.MODAL(0.09)",
-  "B.MODAL(0.70)",
-  "B.P/V (0.10)",
-  "B.P/V 90/10",
-  "B.P/V(0.10)",
-  "B.P/V(0.100)",
-  "B.P/V65/35(0.70)",
-  "B.PSF",
-  "B.PV (0.10)",
-  "B.PV 0.090",
-  "B.PV 0.100",
-  "B.PV 1.00",
-  "B.PV 1.90",
-  "B.PV 65/35(0.70)",
-  "B.PV 90/10",
-  "B.PV(0.09)",
-  "B.PV65/35",
-  "BLACK MODAL",
-  "BOMBAY DYEING (0.09)",
-  "BOMBAY DYEING(0.07)",
-  "Bombay dyeing(0.70)",
-  "C/P[60/40]",
-  "COMBED (0.12)",
-  "COMBED(0.13)",
-  "COT (0.80)",
-  "COT (1.80)",
-  "COT/BANANA",
-  "COT/BANANA 80/20",
-  "cot/cordura",
-  "COTTON  0.13",
-  "COTTON 0.100",
-  "COTTON(0.10)",
-  "COTTON(0.11)",
-  "COTTON(0.80)",
-  "COTTON(1.80)",
-  "GRC B PSF",
-  "GRC B PSF (0.13)",
-  "GRC B PSF 0.100",
-  "GRC W PSF",
-  "GRC W PSF(0.09)",
-  "GRC W.PSF (0.10)",
-  "GRC. B. Pv (65/35)",
-  "GRC.B.PSF (0.09)",
-  "GRC.B.PSF (0.70)",
-  "GRC.B.PSF 0.100",
-  "GRC.B.PSF(0.09)",
-  "GRC.B.PSF(0.10)",
-  "GRC.B.PSF(0.100)",
-  "GRC.B.PSF(0.13)",
-  "GRC.B.PV",
-  "GRC.W.P(0.09)",
-  "GRC.W.PSF",
-  "GRC.W.PSF _(0.70)",
-  "GRC.W.PSF 0.100",
-  "GRC.W.PSF(0.70)",
-  "GRC.WPSF(0.10)",
-  "GREY PV MEL 65/35",
-  "GREY PV MEL 65/35 (0.70)",
-  "KINKY (0.13) SIRO",
-  "KINKY FIN",
-  "KINKY YARN cot/lin",
-  "lGREY PV MEL",
-  "MODAL / PSF 65/35",
-  "NYLON 6(0.14)",
-  "P/c [62/38]",
-  "P/C52/48(0.09)",
-  "PC 0.100",
-  "PC 52/48 (0.10)",
-  "PC 52/48 (0.70)",
-  "PC 52/48 (0.80)",
-  "PC 52/48 0.09",
-  "PC 52/48 0.10",
-  "PC 52/48 0.100",
-  "PC 52/48 0.11",
-  "PC 52/48 0.12",
-  "PC 52/48 0.13",
-  "PC 52/48 0.14",
-  "PC 52/48 0.15",
-  "PC 52/48(0.09)",
-  "PC 52/48(0.10)",
-  "PC 52/48(0.70)",
-  "PC 55/45",
-  "PC 55/45 (0.10)",
-  "PC LINEN 20/40/40 0.110",
-  "PC LINEN 40/40/20",
-  "PC LINEN 40/40/20(0.70)",
-  "PC LINEN(0.100)",
-  "RRC B PSF",
-  "RRC B PSF (0.13)",
-  "RRC B PSF 0.10",
-  "RRC B PSF(0.10)",
-  "RRC B.PSF",
-  "RRC B.PSF 0.10",
-  "RRC. B. PSF 0.100",
-  "RRC.B PSF",
-  "RRC.B PSF(0.09)",
-  "RRC.B. PSF(0.100)",
-  "RRC.B.PSF (0.70)",
-  "RRC.B.PSF(0.09)",
-  "RRC.B.PSF(0.100)",
-  "RRC.B.PSF(0.70)",
-  "RRC.B.PSF(1.80)",
-  "RRC.BPSF(0.09)",
-  "RRE B.PSF(0.70)",
-  "TEN/BANANA(0.70)",
-  "TEN/COT",
-  "TEN/COT 90/10",
-  "TEN/COT(0.09)",
-  "TEN/COT(0.100)",
-  "Tencel Hemp(1.40)",
-  "TENCEL/COT 90/10",
-  "TENCEL/HEMP (0.13)",
-  "TENCIL/COT",
-  "TENCIL/COT 90/10",
-  "TESTING",
-  "THERMOLITE/COTTON [75/25]",
-  "W PV 65/35 (0.09)",
-  "W PV 65/35(0.70)",
-  "W. ALL (0.70)",
-  "W. PV",
-  "W.ALLK 0.090",
-  "W.ALLK 50/50 0.09",
-  "W.ALLK(0.90)50/50",
-  "W.ALLK0.90",
-  "W.ALLKLIMA 0.10",
-  "W.ALLKLIMA 50/50",
-  "W.KOOLTEX",
-  "W.KOOLTEX (0.70)",
-  "W.KOOLTEX 0.090",
-  "W.MODAL PSF 65/35",
-  "W.MODAL PSF0.10",
-  "W.P/V 65/35",
-  "W.P/V(0.10)",
-  "W.PSF (0.100)",
-  "W.PSF (0.13)",
-  "W.PSF (0.70)",
-  "W.PSF (1.80)",
-  "W.PSF 0.90",
-  "W.PSF 1.100",
-  "W.PSF(0.090)",
-  "W.PSF(0.100)",
-  "W.PSF(0.76)",
-  "W.PSF(1.80)",
-  "W.PV 65/35(0.70)",
-];
-
-const STATIC_DEPARTMENT_OPTIONS = [
+export const STATIC_DEPARTMENT_OPTIONS = [
   { dept_code: "BR", dept_name: "Br drawing" },
   { dept_code: "FR", dept_name: "Fr drawing" },
   { dept_code: "CD", dept_name: "Carding" },
@@ -182,7 +23,7 @@ const STATIC_DEPARTMENT_OPTIONS = [
   { dept_code: "CB", dept_name: "Comber" },
 ];
 
-const STATIC_MC_NO_OPTIONS = [
+export const STATIC_MC_NO_OPTIONS = [
   "CDG-01","CDG-02","CDG-03","CDG-04","CDG-05","CDG-06","CDG-07","CDG-08","CDG-09","CDG-10",
   "CDG-11","CDG-12","CDG-13","CDG-14","CDG-15","CDG-16","CDG-17","CDG-18","CDG-19","CDG-20",
   "CDG-21","CDG-22","CDG-23","CDG-24","CDG-25","CDG-26",
@@ -211,9 +52,9 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [varietyOptions] = useState(STATIC_VARIETY_OPTIONS);
-  const [departmentOptions] = useState(STATIC_DEPARTMENT_OPTIONS);
-  const [mcNoOptions] = useState(STATIC_MC_NO_OPTIONS);
+  const [varietyOptions, setVarietyOptions] = useState([]);
+  const [departmentOptions, setDepartmentOptions] = useState(STATIC_DEPARTMENT_OPTIONS);
+  const [mcNoOptions, setMcNoOptions] = useState(STATIC_MC_NO_OPTIONS);
   const [shiftOptions] = useState(STATIC_SHIFT_OPTIONS);
 
   const handleChange = (field, value) => {
@@ -263,6 +104,34 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
   useEffect(() => {
     dispatch(getCardingUqcEntries({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const dropdownOptions = await fetchCardingUqcMasterDropdown();
+        if (!active) return;
+        const masterVarieties = dropdownOptions.varieties?.map((row) => row.variety_name).filter(Boolean) || [];
+        const masterDepartments = dropdownOptions.departments || [];
+        const masterMcNos = dropdownOptions.mcNos || [];
+        setVarietyOptions(masterVarieties.length ? masterVarieties : await fetchCardingUqcMasterVarieties());
+        if (masterDepartments.length) setDepartmentOptions(masterDepartments);
+        if (masterMcNos.length) setMcNoOptions(masterMcNos);
+      } catch (_err) {
+        if (active) {
+          try {
+            const options = await fetchCardingUqcMasterVarieties();
+            if (active) setVarietyOptions(Array.isArray(options) ? options : []);
+          } catch {
+            if (active) setVarietyOptions([]);
+          }
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (uqc?.message) {
@@ -353,36 +222,49 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
 
           <div>
             <label>Shift</label>
-            <select value={form.shift} onChange={(e) => handleChange("shift", e.target.value)} className={errors.shift ? styles.errorField : ""}>
-              <option value="">-- Select Shift --</option>
-              {shiftOptions.map((item, index) => (
-                <option key={`${item.value}-${index}`} value={item.value}>{item.label}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={form.shift}
+              onChange={(value) => handleChange("shift", value)}
+              className={errors.shift ? styles.errorField : ""}
+              options={shiftOptions.map((item) => item.value)}
+              placeholder="-- Select Shift --"
+              ariaLabel="Shift"
+            />
           </div>
 
           <div>
             <label>Variety</label>
-            <select value={form.variety} onChange={(e) => handleChange("variety", e.target.value)} className={errors.variety ? styles.errorField : ""}>
-              <option value="">-- Select Variety --</option>
-              {varietyOptions.map((name, index) => <option key={`${name}-${index}`} value={name}>{name}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.variety}
+              onChange={(value) => handleChange("variety", value)}
+              className={errors.variety ? styles.errorField : ""}
+              options={varietyOptions}
+              placeholder="-- Select Variety --"
+            />
           </div>
 
           <div>
             <label>Department</label>
-            <select value={form.department} onChange={(e) => handleChange("department", e.target.value)} className={errors.department ? styles.errorField : ""}>
-              <option value="">Select Department</option>
-              {departmentOptions.map((item, index) => <option key={`${item.dept_code}-${index}`} value={item.dept_name}>{item.dept_name}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.department}
+              onChange={(value) => handleChange("department", value)}
+              className={errors.department ? styles.errorField : ""}
+              options={departmentOptions.map((item) => item.dept_name)}
+              placeholder="Select Department"
+              ariaLabel="Department"
+            />
           </div>
 
           <div>
             <label>MC No.</label>
-            <select value={form.mc_no} onChange={(e) => handleChange("mc_no", e.target.value)} className={errors.mc_no ? styles.errorField : ""}>
-              <option value="">-- Select MC No. --</option>
-              {mcNoOptions.map((item, index) => <option key={`${item.mc_no}-${index}`} value={item.mc_no}>{item.mc_no}</option>)}
-            </select>
+            <SearchableSelect
+              value={form.mc_no}
+              onChange={(value) => handleChange("mc_no", value)}
+              className={errors.mc_no ? styles.errorField : ""}
+              options={mcNoOptions.map((item) => item.mc_no)}
+              placeholder="-- Select MC No. --"
+              ariaLabel="MC No."
+            />
           </div>
 
           <div>
@@ -442,4 +324,5 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
 }
 
 export default UPercentDataEntry;
+
 

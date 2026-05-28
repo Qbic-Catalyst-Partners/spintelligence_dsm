@@ -5,6 +5,8 @@ import {
   getAutoconerDrumWise,
   saveAutoconerDrumWise,
 } from "@/store/slices/autoconer";
+import { fetchAutoconerDrumWiseMasterData } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/drumWiseAppearance.module.css";
 import { sanitizeIntegerInput } from "@/utils/inputValidation";
 
@@ -18,12 +20,18 @@ const getTodayDate = () => {
 };
 
 const countOptions = [
-  "10 COTTON POLY LINEN 60/20/20 400...",
-  "20 WHITE POLY YARN CONES",
-  "30 BLACK POLY YARN CONES",
+  { value: "", label: "Select Count Name" },
+  { value: "10 COTTON POLY LINEN 60/20/20 400...", label: "10 COTTON POLY LINEN 60/20/20 400..." },
+  { value: "20 WHITE POLY YARN CONES", label: "20 WHITE POLY YARN CONES" },
+  { value: "30 BLACK POLY YARN CONES", label: "30 BLACK POLY YARN CONES" },
 ];
 
-const autoconerOptions = ["AC03", "AC04", "AC05"];
+const autoconerOptions = [
+  { value: "", label: "Select Auto Coner" },
+  { value: "AC03", label: "AC03" },
+  { value: "AC04", label: "AC04" },
+  { value: "AC05", label: "AC05" },
+];
 
 const buildRowsFromRange = (from, to) => {
   const start = Number(from) || 1;
@@ -74,7 +82,14 @@ function DrumWiseAppearance({
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
   const [countName, setCountName] = useState(countOptions[0]);
+  const [countCode, setCountCode] = useState("");
   const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
+  const [countDropdownOptions, setCountDropdownOptions] = useState(
+    countOptions.map((option) => ({ value: option, label: option, code: "" }))
+  );
+  const [autoconerDropdownOptions, setAutoconerDropdownOptions] = useState(
+    autoconerOptions.map((option) => ({ value: option, label: option }))
+  );
   const [drumFrom, setDrumFrom] = useState("");
   const [drumTo, setDrumTo] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -94,6 +109,10 @@ function DrumWiseAppearance({
     () => savedEntries.flatMap((entry) => mapDrumWiseEntryToRows(entry)).slice(0, 10),
     [savedEntries]
   );
+  const selectedCountLabel =
+    masterCounts.find((option) => String(option.value) === String(countName))?.label || countName;
+  const selectedMachineLabel =
+    masterMachines.find((option) => String(option.value) === String(autoconerNo))?.label || autoconerNo;
 
   useEffect(() => {
     setPortalReady(true);
@@ -112,8 +131,9 @@ function DrumWiseAppearance({
   const resetForm = () => {
     setTestNo("");
     setEntryDate(todayDate);
-    setCountName(countOptions[0]);
-    setAutoconerNo(autoconerOptions[0]);
+    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
+    setCountCode(countDropdownOptions[0]?.code || "");
+    setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0]);
     setDrumFrom("");
     setDrumTo("");
     setRemarks("");
@@ -140,8 +160,8 @@ function DrumWiseAppearance({
     { label: "Type", value: selectedType || "-" },
     { label: "Test No.", value: testNo || "-" },
     { label: "Entry ID", value: entryId || "-" },
-    { label: "Count Name", value: countName || "-" },
-    { label: "Auto Coner No.", value: autoconerNo || "-" },
+    { label: "Count Name", value: selectedCountLabel || "-" },
+    { label: "Auto Coner No.", value: selectedMachineLabel || "-" },
     { label: "Drum From", value: drumFrom || "-" },
     { label: "Drum To", value: drumTo || "-" },
     { label: "Remarks", value: remarks || "-" },
@@ -158,11 +178,14 @@ function DrumWiseAppearance({
         test_no: Number(testNo) || 0,
         entry_date: entryDate,
         type: "Drum Inspection",
+        machine_id: Number(autoconerNo) || null,
+        count_id: Number(countName) || null,
         drum_from: Number(drumFrom) || 0,
         drum_to: Number(drumTo) || 0,
         remarks,
         machine_code: autoconerNo || null,
         count_name: countName || null,
+        cntcode: countCode || undefined,
         drum_inspections: rows.map((row) => ({
           drum_no: Number(row.drumNo) || 0,
           appearance_ok: Boolean(row.ok),
@@ -209,6 +232,55 @@ function DrumWiseAppearance({
   useEffect(() => {
     dispatch(getAutoconerDrumWise({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadMasterData = async () => {
+      const response = await fetchAutoconerDrumWiseMasterData();
+      if (isCancelled) return;
+
+      const countOpts = Array.isArray(response?.count_options)
+        ? response.count_options
+            .map((item) => {
+              const code = String(item?.cntcode ?? "").trim();
+              const label = String(item?.cntname ?? "").trim();
+              if (!label) return null;
+              return { value: code || label, label, code: code || "" };
+            })
+            .filter(Boolean)
+        : [];
+      const legacyCount = Array.isArray(response?.count_names)
+        ? response.count_names.map((v) => String(v || "").trim()).filter(Boolean).map((label) => ({ value: label, label, code: "" }))
+        : [];
+      const autoOpts = Array.isArray(response?.autoconer_options)
+        ? response.autoconer_options
+            .map((item) => {
+              const value = String(item?.value ?? "").trim();
+              const label = String(item?.label ?? value).trim();
+              return value || label ? { value: value || label, label: label || value } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const legacyAuto = Array.isArray(response?.autoconer_nos)
+        ? response.autoconer_nos.map((v) => String(v || "").trim()).filter(Boolean).map((label) => ({ value: label, label }))
+        : [];
+      const dedupe = (items) => Array.from(new Map(items.map((item) => [item.value, item])).values());
+      const nextCounts = dedupe([...countOpts, ...legacyCount]);
+      const nextAutos = dedupe([...autoOpts, ...legacyAuto]);
+      if (nextCounts.length) {
+        setCountDropdownOptions(nextCounts);
+        setCountName((current) => (nextCounts.some((item) => item.label === current) ? current : nextCounts[0].label));
+      }
+      if (nextAutos.length) {
+        setAutoconerDropdownOptions(nextAutos);
+        setAutoconerNo((current) => (nextAutos.some((item) => item.value === current) ? current : nextAutos[0].value));
+      }
+    };
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -348,24 +420,26 @@ function DrumWiseAppearance({
 
           <div className={styles.field}>
             <label>Count Name</label>
-            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
-              {countOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={countName}
+              onChange={(value) => {
+                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+                setCountName(selected?.label ?? value);
+                setCountCode(selected?.code ?? "");
+              }}
+              options={countDropdownOptions.map((option) => option.label)}
+              className={styles.select}
+            />
           </div>
 
           <div className={styles.field}>
             <label>Auto Coner No.</label>
-            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
-              {autoconerOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={autoconerNo}
+              onChange={(value) => setAutoconerNo(value)}
+              options={autoconerDropdownOptions.map((option) => option.value)}
+              className={styles.select}
+            />
           </div>
 
           <div className={styles.doubleField}>

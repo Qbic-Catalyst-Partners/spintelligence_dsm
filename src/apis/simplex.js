@@ -103,3 +103,19 @@ export const fetchSimplexCotsChangeEntries = async ({ page = 1, limit = 10 } = {
     throw new Error(extractErrorMessage(error, "Unable to fetch SMXCots Change entries."));
   }
 };
+
+export const fetchSimplexStudyMachineNames = async ({ prefix = "" } = {}) => {
+  const endpoints = ["/simplex/study/machine-names", "/simplex/study/master/machine-names"];
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.get(endpoint, { prefix });
+      return response.data;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(extractErrorMessage(lastError, "Unable to fetch Simplex No options."));
+};

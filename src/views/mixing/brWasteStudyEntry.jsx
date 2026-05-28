@@ -1,6 +1,8 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
+import SearchableSelect from '@/components/SearchableSelect';
+import useBlowroomMasterVarieties from '@/hooks/useBlowroomMasterVarieties';
 import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
 import { fetchBlowroomBrWasteApi } from '@/apis/blowroom';
 import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
@@ -57,7 +59,7 @@ const TYPE_1_MAX_ENTRIES = 10;
 const TYPE_3_MAX_ENTRIES = 10;
 const WASTE_KG_MAX_TYPES = 5;
 
-const buildBrWastePayload = ({ date, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
+const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
     const selectedTypeRows = formData.studyType === "Type 3"
         ? type3Rows
         : formData.studyType === "Type 2"
@@ -123,9 +125,9 @@ const buildBrWastePayload = ({ date, lotNo, formData, type1Rows, type2Rows, type
 
     return {
         type: entryTypeLabel,
-        entry_id: formData.brWasteId || null,
+        entry_id: formData.brWasteId || entryId || null,
         lot_no: lotNo || null,
-        waste_study_id: formData.brWasteId || null,
+        waste_study_id: formData.brWasteId || entryId || null,
         date,
         variety: formData.variety || null,
         study_type: formData.studyType,
@@ -143,6 +145,7 @@ const buildBrWastePayload = ({ date, lotNo, formData, type1Rows, type2Rows, type
 
 const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     date,
+    entryId,
     lotNo,
     onLotNoChange,
     saveEntryApi = null,
@@ -161,6 +164,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [selectedSavedEntryId, setSelectedSavedEntryId] = useState("");
     const [localSubmitTick, setLocalSubmitTick] = useState(0);
     const [machineOptions, setMachineOptions] = useState([]);
+    const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
 
     const [type1CountInput, setType1CountInput] = useState('1');
     const [type2CountInput, setType2CountInput] = useState("1");
@@ -477,6 +481,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         if (!validate()) return;
         const payload = buildBrWastePayload({
             date,
+            entryId,
             lotNo,
             formData,
             type1Rows,
@@ -518,9 +523,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
 
     const validate = () => {
         const nextErrors = {};
-        ["brWasteId","variety","cardingProduction","studyType"].forEach((key)=>{
+        ["variety","cardingProduction","studyType"].forEach((key)=>{
             if (String(formData[key] || "").trim() === "") nextErrors[key]=true;
         });
+        if (!String(formData.brWasteId || entryId || "").trim()) nextErrors.brWasteId = true;
         if (studyType === "Type 1") {
             type1Rows.forEach((row, idx)=>{
                 TYPE_1_COLUMNS.forEach((col) => {
@@ -549,7 +555,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const getPreviewData = () => {
         const header = [
             { label: "Date", value: date },
-            { label: "BR Waste ID", value: formData.brWasteId },
+            { label: "BR Waste ID", value: formData.brWasteId || entryId },
             { label: "Lot No", value: lotNo },
             { label: "Variety", value: formData.variety },
             { label: "Carding Production (KGs)", value: formData.cardingProduction },
@@ -626,7 +632,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     <input
                         className={`${styles['mixx-input']} ${errors.brWasteId ? styles['mixx-error'] : ''}`}
                         placeholder="Enter BR Waste ID"
-                        value={formData.brWasteId}
+                        value={formData.brWasteId || entryId || ""}
                         onChange={e => handleChange('brWasteId', e.target.value)}
                     />
                 </div>
@@ -643,15 +649,20 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
 
                 <div className={styles['mixx-group']}>
                     <label>Variety</label>
-                    <select
+                    <SearchableSelect
                         className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
-                        onChange={e => handleChange('variety', e.target.value)}
-                    >
-                        <option value="">Select Variety</option>
-                        <option>Bunny</option>
-                        <option>MCU5</option>
-                    </select>
+                        onChange={(value) => handleChange('variety', value)}
+                        options={varietyOptions}
+                        placeholder={
+                            loadingVarietyOptions
+                                ? 'Loading varieties...'
+                                : varietyOptionsError
+                                    ? 'Type variety'
+                                    : 'Select Variety'
+                        }
+                        ariaLabel="Variety"
+                    />
                 </div>
             </div>
 

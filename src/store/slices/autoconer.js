@@ -260,6 +260,12 @@ const initialState = {
 
 const getEntryId = (entry) => entry?.id ?? entry?._id ?? entry?.entry_id ?? null;
 
+const getPayloadRows = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
 const normalizeParameterEntry = (entry) => {
   if (!entry) return null;
 
@@ -490,7 +496,7 @@ const autoconerSlice = createSlice({
         state.isFetching = false;
         state.parameterEntries = mergeEntryCollections(
           state.parameterEntries,
-          (action.payload?.data || []).map(normalizeParameterEntry).filter(Boolean)
+          getPayloadRows(action.payload).map(normalizeParameterEntry).filter(Boolean)
         );
       })
       .addCase(getAutoconerParameterEntries.rejected, (state, action) => {
@@ -503,7 +509,7 @@ const autoconerSlice = createSlice({
       })
       .addCase(getAutoconerPendingCspParameterEntries.fulfilled, (state, action) => {
         state.isFetching = false;
-        state.pendingCspParameterEntries = (action.payload?.data || action.payload || [])
+        state.pendingCspParameterEntries = getPayloadRows(action.payload)
           .map(normalizeParameterEntry)
           .filter(Boolean);
       })
@@ -517,7 +523,7 @@ const autoconerSlice = createSlice({
       })
       .addCase(getAutoconerPendingQualityParameterEntries.fulfilled, (state, action) => {
         state.isFetching = false;
-        state.pendingQualityParameterEntries = (action.payload?.data || action.payload || [])
+        state.pendingQualityParameterEntries = getPayloadRows(action.payload)
           .map(normalizeParameterEntry)
           .filter(Boolean);
       })

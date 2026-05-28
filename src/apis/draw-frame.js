@@ -26,6 +26,10 @@ const COTS_MACHINE_MASTER_URL =
 
 const parseJson = async (response) => response.json().catch(() => null);
 const DRAW_FRAME_UQC_ENDPOINTS = ["/drawframe/uqc", "/draw-frame/uqc"];
+const DRAW_FRAME_UQC_MASTER_DROPDOWN_ENDPOINTS = [
+    "/drawframe/uqc/master/dropdown",
+    "/draw-frame/uqc/master/dropdown",
+];
 
 const emitFetchSuccess = () => {
     emitGlobalSuccessModal({
@@ -51,6 +55,28 @@ const extractApiError = (error, fallbackMessage) => {
 
     return error?.message || fallbackMessage;
 };
+
+const uniqueStrings = (values) =>
+    Array.from(new Set(
+        values
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+    ));
+
+const normalizeOptionRows = (rows = []) =>
+    rows
+        .map((row) => {
+            if (typeof row === "string") {
+                const value = row.trim();
+                return value ? { label: value, value } : null;
+            }
+
+            const value = String(row?.value ?? row?.text ?? "").trim();
+            const label = String(row?.text ?? row?.label ?? row?.value ?? "").trim();
+            if (!value && !label) return null;
+            return { label: label || value, value: value || label };
+        })
+        .filter(Boolean);
 
 export const submitDrawFrameYarnCvInspection = async (payload) => {
     try {
@@ -147,6 +173,77 @@ export const fetchDrawFrameUqcEntries = async ({ page = 1, limit = 10 } = {}) =>
     }
 
     throw new Error(extractApiError(lastError, "Failed to fetch draw frame UQC entries"));
+};
+
+export const fetchDrawFrameUqcMasterDropdown = async ({
+    prefix = "",
+    variety_prefix = "",
+    department_prefix = "",
+    mc_no_prefix = "",
+    department = "",
+    department_code = "",
+} = {}) => {
+    let lastError;
+
+    for (const endpoint of DRAW_FRAME_UQC_MASTER_DROPDOWN_ENDPOINTS) {
+        try {
+            const response = await apiConfig.get(endpoint, {
+                prefix,
+                variety_prefix,
+                department_prefix,
+                mc_no_prefix,
+                department,
+                department_code,
+            }, { skipGlobalErrorModal: true });
+
+            const payload = response?.data || {};
+            const options = payload.options || {};
+            const optionShifts = normalizeOptionRows(options.shift);
+            const optionVarieties = normalizeOptionRows(options.variety);
+            const optionDepartments = normalizeOptionRows(options.department);
+            const optionMcNos = normalizeOptionRows(options.mc_no);
+
+            const shifts = Array.isArray(payload.shifts) && payload.shifts.length
+                ? payload.shifts.map((row) => row?.value || row?.label || row).filter(Boolean)
+                : optionShifts.map((row) => row.value);
+
+            const varietyNames = uniqueStrings([
+                ...(Array.isArray(payload.variety_names) ? payload.variety_names : []),
+                ...(Array.isArray(payload.names) ? payload.names : []),
+                ...(Array.isArray(payload.varieties)
+                    ? payload.varieties.map((row) => row?.variety_name || row?.name || row)
+                    : []),
+                ...optionVarieties.map((row) => row.value),
+            ]);
+
+            const departmentNames = uniqueStrings([
+                ...(Array.isArray(payload.department_names) ? payload.department_names : []),
+                ...(Array.isArray(payload.departments)
+                    ? payload.departments.map((row) => row?.dept_name || row?.department_name || row?.name || row)
+                    : []),
+                ...optionDepartments.map((row) => row.value),
+            ]);
+
+            const mcNos = uniqueStrings([
+                ...(Array.isArray(payload.mc_no_values) ? payload.mc_no_values : []),
+                ...(Array.isArray(payload.mc_nos)
+                    ? payload.mc_nos.map((row) => row?.mc_name || row?.mc_no || row?.value || row)
+                    : []),
+                ...optionMcNos.map((row) => row.value),
+            ]);
+
+            return {
+                shifts: uniqueStrings(shifts),
+                varietyNames,
+                departmentNames,
+                mcNos,
+            };
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw new Error(extractApiError(lastError, "Failed to fetch draw frame UQC dropdown options"));
 };
 
 export const submitDrawFrameHeaderEntry = async (payload) => {

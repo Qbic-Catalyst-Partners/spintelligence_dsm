@@ -1,9 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
+import { fetchComberMasterVarieties, fetchComberNatiMasterMcNos } from "@/apis/comber";
+import SearchableSelect from "@/components/SearchableSelect";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { STATIC_VARIETY_OPTIONS } from "@/constants/staticVarietyOptions";
 import styles from "./natiDataEntry.module.css";
 
 const emptyComberState = {
@@ -35,9 +36,33 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     const [entries, setEntries] = useState(createEmptyEntries(1));
     const [formMessage, setFormMessage] = useState("");
     const [errors, setErrors] = useState({});
+    const [varietyOptions, setVarietyOptions] = useState([]);
+    const [mcNoOptions, setMcNoOptions] = useState([]);
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const [varieties, mcNos] = await Promise.all([
+                    fetchComberMasterVarieties(),
+                    fetchComberNatiMasterMcNos(),
+                ]);
+                if (!active) return;
+                setVarietyOptions(Array.isArray(varieties) ? varieties : []);
+                setMcNoOptions(Array.isArray(mcNos) ? mcNos.map((item) => item.mc_no).filter(Boolean) : []);
+            } catch (_err) {
+                if (!active) return;
+                setVarietyOptions([]);
+                setMcNoOptions([]);
+            }
+        })();
+        return () => {
+            active = false;
+        };
     }, []);
 
     useEffect(() => {
@@ -227,11 +252,11 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                         <div className={styles["cb-row"]}>
                             <div className={styles["cb-form-group"]}>
                                 <label>Variety</label>
-                                <select
+                                <SearchableSelect
                                     className={errors.variety ? styles["input-error"] : ""}
                                     value={variety}
-                                    onChange={(e) => {
-                                        setVariety(e.target.value);
+                                    onChange={(value) => {
+                                        setVariety(value);
                                         setErrors((prev) => {
                                             if (!prev.variety) return prev;
                                             const next = { ...prev };
@@ -239,12 +264,9 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                                             return next;
                                         });
                                     }}
-                                >
-                                    <option value="">-- Select Variety --</option>
-                                    {STATIC_VARIETY_OPTIONS.map((name, index) => (
-                                        <option key={`${name}-${index}`} value={name}>{name}</option>
-                                    ))}
-                                </select>
+                                    options={varietyOptions}
+                                    placeholder="-- Select Variety --"
+                                />
                             </div>
                         </div>
 
@@ -274,10 +296,13 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                                         <div className={styles["cb-neps-grid"]}>
                                             <div className={styles["cb-form-group-field"]}>
                                                 <label>MC No</label>
-                                                <input
+                                                <SearchableSelect
                                                     className={errors.entries ? styles["input-error"] : ""}
                                                     value={entry.mc_no}
-                                                    onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
+                                                    onChange={(value) => handleEntryChange(index, "mc_no", value)}
+                                                    options={mcNoOptions}
+                                                    placeholder="Select MC No"
+                                                    ariaLabel={`MC No Row ${index + 1}`}
                                                 />
                                             </div>
                                             <div className={styles["cb-form-group-field"]}>

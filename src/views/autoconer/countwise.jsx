@@ -4,6 +4,8 @@ import {
   getAutoconerCountWiseCuts,
   saveAutoconerCountWiseCuts,
 } from "@/store/slices/autoconer";
+import { fetchAutoconerCountWiseCutsMasterData } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/countwise.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -132,6 +134,13 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const [date, setDate] = useState(todayDate);
   const [machineNo, setMachineNo] = useState(machineOptions[0]);
   const [count, setCount] = useState(countOptions[0]);
+  const [countCode, setCountCode] = useState("");
+  const [machineDropdownOptions, setMachineDropdownOptions] = useState(
+    machineOptions.map((option) => ({ value: option, label: option }))
+  );
+  const [countDropdownOptions, setCountDropdownOptions] = useState(
+    countOptions.map((option) => ({ value: option, label: option, code: "" }))
+  );
   const [drumFrom, setDrumFrom] = useState("");
   const [drumTo, setDrumTo] = useState("");
   const [craneTip, setCraneTip] = useState("");
@@ -163,8 +172,9 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
   const resetForm = () => {
     setDate(todayDate);
-    setMachineNo(machineOptions[0]);
-    setCount(countOptions[0]);
+    setMachineNo(machineDropdownOptions[0]?.value || machineOptions[0]);
+    setCount(countDropdownOptions[0]?.label || countOptions[0]);
+    setCountCode(countDropdownOptions[0]?.code || "");
     setDrumFrom("");
     setDrumTo("");
     setCraneTip("");
@@ -213,6 +223,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         entry_date: date,
         machine_no: machineNo,
         count_name: count,
+        cntcode: countCode || undefined,
         drum_from: drumFrom,
         drum_to: drumTo,
         cone_tip: craneTip,
@@ -271,6 +282,54 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   }, [dispatch]);
 
   useEffect(() => {
+    let isCancelled = false;
+    const loadMasterData = async () => {
+      const response = await fetchAutoconerCountWiseCutsMasterData();
+      if (isCancelled) return;
+
+      const countsFromObjects = Array.isArray(response?.count_options)
+        ? response.count_options
+            .map((item) => {
+              const code = String(item?.cntcode ?? "").trim();
+              const label = String(item?.cntname ?? "").trim();
+              return label ? { value: code || label, label, code: code || "" } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const countsFromLegacy = Array.isArray(response?.count_names)
+        ? response.count_names.map((item) => String(item || "").trim()).filter(Boolean).map((label) => ({ value: label, label, code: "" }))
+        : [];
+      const machinesFromObjects = Array.isArray(response?.autoconer_options)
+        ? response.autoconer_options
+            .map((item) => {
+              const value = String(item?.value ?? "").trim();
+              const label = String(item?.label ?? value).trim();
+              return value || label ? { value: value || label, label: label || value } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const machinesFromLegacy = Array.isArray(response?.autoconer_nos)
+        ? response.autoconer_nos.map((item) => String(item || "").trim()).filter(Boolean).map((label) => ({ value: label, label }))
+        : [];
+      const dedupe = (items) => Array.from(new Map(items.map((item) => [item.value, item])).values());
+      const nextCounts = dedupe([...countsFromObjects, ...countsFromLegacy]);
+      const nextMachines = dedupe([...machinesFromObjects, ...machinesFromLegacy]);
+      if (nextCounts.length) {
+        setCountDropdownOptions(nextCounts);
+        setCount((current) => (nextCounts.some((item) => item.label === current) ? current : nextCounts[0].label));
+      }
+      if (nextMachines.length) {
+        setMachineDropdownOptions(nextMachines);
+        setMachineNo((current) => (nextMachines.some((item) => item.value === current) ? current : nextMachines[0].value));
+      }
+    };
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!onRegisterActions) return;
 
     onRegisterActions({
@@ -318,24 +377,26 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
         <div className={styles.field}>
           <label>Machine No.</label>
-          <select value={machineNo} onChange={(e) => setMachineNo(e.target.value)} style={errorStyle(errors.machineNo)}>
-            {machineOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={machineNo}
+            onChange={(value) => setMachineNo(value)}
+            options={machineDropdownOptions.map((option) => option.value)}
+            className={styles.select}
+          />
         </div>
 
         <div className={styles.field}>
           <label>Count</label>
-          <select value={count} onChange={(e) => setCount(e.target.value)} style={errorStyle(errors.count)}>
-            {countOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={count}
+            onChange={(value) => {
+              const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+              setCount(selected?.label ?? value);
+              setCountCode(selected?.code ?? "");
+            }}
+            options={countDropdownOptions.map((option) => option.label)}
+            className={styles.select}
+          />
         </div>
 
         <div className={styles.field}>

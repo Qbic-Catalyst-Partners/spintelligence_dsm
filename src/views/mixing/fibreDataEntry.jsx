@@ -1,6 +1,8 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
+import SearchableSelect from '@/components/SearchableSelect';
+import useMixingMasterVarieties from '@/hooks/useMixingMasterVarieties';
 import { submitFibre, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
@@ -19,9 +21,10 @@ const NUMERIC_FIELDS = new Set([
     'cutLength', 'lengthCV', 'meanDenier', 'cvPerDenier', 'tenacity', 'cvPerTenacity', 'elongation', 'cvPerElongation', 'crimp', 'whitenessIndex', 'spinFinish',
 ]);
 
-const FibreDataEntry = forwardRef(function FibreDataEntry({ date, lotNo, selectedTypeName }, ref) {
+const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
+    const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
 
@@ -45,6 +48,7 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, lotNo, selecte
     }, [actionSuccess, dispatch]);
 
     const buildPayload = () => ({
+        entry_id:          entryId || undefined,
         inspection_date:   date,
         lot_no:            lotNo,
         variety:           formData.variety,
@@ -143,15 +147,20 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, lotNo, selecte
             <div className={styles['mixx-row']}>
                 <div className={styles['mixx-group']}>
                     <label>Variety</label>
-                    <select
+                    <SearchableSelect
                         className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
-                        onChange={e => handleChange('variety', e.target.value)}
-                    >
-                        <option value="">Select Variety</option>
-                        <option>Polyester</option>
-                        <option>Viscose</option>
-                    </select>
+                        onChange={(value) => handleChange('variety', value)}
+                        options={varietyOptions}
+                        placeholder={
+                            loadingVarietyOptions
+                                ? 'Loading varieties...'
+                                : varietyOptionsError
+                                    ? 'Type variety'
+                                    : 'Select Variety'
+                        }
+                        ariaLabel="Variety"
+                    />
                 </div>
                 <CustomInput label="Invoice No" placeholder=""
                     value={formData.invoiceNo} onChange={v => handleChange('invoiceNo', v)} error={errors.invoiceNo} />
