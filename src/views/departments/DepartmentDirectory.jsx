@@ -15,7 +15,7 @@ const departmentIcons = {
 };
 
 const departmentCountLabels = {
-    "quality-control": "8 Departments",
+    "quality-control": "9 Departments",
     electrical: "0 Departments",
     mechanical: "1 Departments",
 };

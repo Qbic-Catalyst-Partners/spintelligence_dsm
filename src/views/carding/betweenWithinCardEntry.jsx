@@ -8,6 +8,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const machineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
+const MAX_ENTRY_COUNT = 100;
 
 const statFields = [
     { key: "avg", label: "Avg" },
@@ -32,6 +33,22 @@ const createRows = (count) =>
         sampleWeight: "",
         hank: "",
     }));
+
+const clampEntryCount = (count) => Math.min(Math.max(1, Number(count) || 1), MAX_ENTRY_COUNT);
+
+const normalizeNumericValue = (value) => {
+    const cleaned = String(value ?? "")
+        .replace(/,/g, "")
+        .match(/-?\d+(?:\.\d+)?/)?.[0] || "";
+    return sanitizeNumericInput(cleaned, { precision: 10, scale: 3 });
+};
+
+const toNumber = (value) => Number(normalizeNumericValue(value));
+
+const isValidNumericValue = (value) => {
+    const normalized = normalizeNumericValue(value);
+    return normalized !== "" && Number.isFinite(Number(normalized));
+};
 
 const calculateStats = (values) => {
     if (!values.length) return emptyStats;
@@ -74,6 +91,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [submittedEntryId, setSubmittedEntryId] = useState("");
     const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
@@ -134,15 +152,19 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                 return "";
             };
 
-            const nextRows = createRows(5).map((row, index) => ({
+            const detectedEntryCount = clampEntryCount(
+                pick("num_entries", "no_of_entries", "Number of Entries", "Number of Entries (N)") || 5
+            );
+
+            const nextRows = createRows(detectedEntryCount).map((row, index) => ({
                 ...row,
-                sampleWeight: pick(
+                sampleWeight: normalizeNumericValue(pick(
                     `Sample Weight ${index + 1}`,
                     `SampleWeight${index + 1}`,
                     `Sample_Weight_${index + 1}`,
                     `sample_weight_${index + 1}`
-                ),
-                hank: pick(`Hank ${index + 1}`, `hank_${index + 1}`),
+                )),
+                hank: normalizeNumericValue(pick(`Hank ${index + 1}`, `hank_${index + 1}`)),
             }));
 
             const nextMachine = pick("Machine Name", "MC Name", "mc_name", "machine_name", "machine");
@@ -152,7 +174,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             if (nextMachine) setMcName(nextMachine);
             if (nextInspectionType) setInspectionType(nextInspectionType);
             if (nextInspectionDate) setInspectionDate(nextInspectionDate);
-            setEntryCount(5);
+            setEntryCount(detectedEntryCount);
             setRows(nextRows);
             if (typeof window !== "undefined") {
                 window.localStorage.removeItem("ocr_prefill");
@@ -161,11 +183,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     }, []);
 
     const sampleWeights = useMemo(
-        () => rows.map((row) => parseFloat(row.sampleWeight)).filter((value) => !Number.isNaN(value)),
+        () => rows.map((row) => toNumber(row.sampleWeight)).filter(Number.isFinite),
         [rows]
     );
     const hanks = useMemo(
-        () => rows.map((row) => parseFloat(row.hank)).filter((value) => !Number.isNaN(value)),
+        () => rows.map((row) => toNumber(row.hank)).filter(Number.isFinite),
         [rows]
     );
 
@@ -175,7 +197,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     }, [sampleWeights, hanks]);
 
     const handleGenerate = () => {
-        const nextCount = Math.min(Math.max(1, Number(entryCount) || 1), 10);
+        const nextCount = clampEntryCount(entryCount);
         setEntryCount(nextCount);
         setRows((current) => {
             const next = createRows(nextCount);
@@ -230,8 +252,8 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
         if (!String(entryCount || "").trim()) nextErrors.entryCount = true;
 
         activeRows.forEach((row, index) => {
-            if (String(row.sampleWeight || "").trim() === "") nextErrors[`row-${index}-sampleWeight`] = true;
-            if (String(row.hank || "").trim() === "") nextErrors[`row-${index}-hank`] = true;
+            if (!isValidNumericValue(row.sampleWeight)) nextErrors[`row-${index}-sampleWeight`] = true;
+            if (!isValidNumericValue(row.hank)) nextErrors[`row-${index}-hank`] = true;
         });
 
         setErrors(nextErrors);
@@ -256,17 +278,19 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             mc_name: mcName,
             inspection_date: inspectionDate,
             inspection_time: inspectionTime,
-            sample_weights: activeRows.map((row) => Number(row.sampleWeight)),
-            hanks: activeRows.map((row) => Number(row.hank)),
+            sample_weights: activeRows.map((row) => toNumber(row.sampleWeight)),
+            hanks: activeRows.map((row) => toNumber(row.hank)),
         };
 
         setFormMessage("");
         setIsError(false);
 
         try {
-            await dispatch(submitCardingBetweenWithin(payload)).unwrap();
+            const saved = await dispatch(submitCardingBetweenWithin(payload)).unwrap();
+            const nextEntryId = saved?.entry_id || saved?.inspection_id || "";
+            setSubmittedEntryId(nextEntryId);
             setShowPreview(false);
-            setFormMessage("");
+            setFormMessage(nextEntryId ? `Data submitted. Entry ID: ${nextEntryId}` : "");
             setIsError(false);
             setShowSuccess(true);
         } catch (submitError) {
@@ -277,8 +301,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
 
     const previewItems = [
         { label: "Type", value: selectedType },
-        { label: "ID", value: entryId },
-        { label: "Entry ID", value: entryId || "-" },
+        { label: "Entry ID", value: submittedEntryId || "Will be generated after submit" },
         { label: "MC Name", value: mcName },
         { label: "Inspection Type", value: inspectionType },
         { label: "Number of Entries", value: entryCount },
@@ -315,7 +338,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     <div className="bwc-form-group">
                         <label>Entry ID</label>
                         <div className="bwc-input-icon-wrap">
-                            <input type="text" value={entryId || ""} readOnly disabled className={errors.inspectionDate ? "bwc-error-field" : ""} />
+                            <input type="text" value={submittedEntryId || "Will be generated after submit"} readOnly disabled />
                         </div>
                     </div>
                 </div>
@@ -366,12 +389,12 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     </div>
 
                     <div className="bwc-form-group">
-                        <label>Number of Entries (N)</label>
+                        <label>Number of Entries (N) (Max {MAX_ENTRY_COUNT})</label>
                         <div className="bwc-inline-control">
                             <input
                                 type="number"
                                 min="1"
-                                max="10"
+                                max={MAX_ENTRY_COUNT}
                                 value={entryCount}
                                 onChange={(e) => setEntryCount(e.target.value)}
                                 onWheel={(e) => e.currentTarget.blur()}

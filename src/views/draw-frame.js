@@ -9,6 +9,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
+import Wrapping from "@/views/wrapping";
 import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
@@ -39,6 +40,11 @@ const primaryTypeOptions = [
     id: 5,
     name: "PP - Finisher Drawing",
     aliases: ["PP - Finisher Drawing", "Finisher Drawing"],
+  },
+  {
+    id: 6,
+    name: "Wrapping Drawframe Notebook",
+    aliases: ["Wrapping Drawframe Notebook", "Wrapping Draw Frame Notebook", "Drawframe Wrapping Notebook"],
   },
 ];
 
@@ -170,6 +176,8 @@ function DrawFrame() {
   });
 
   const [machineEntries, setMachineEntries] = useState([]);
+  const [oneYardReadings, setOneYardReadings] = useState([]);
+  const [halfYardReadings, setHalfYardReadings] = useState([]);
   const [oneYardMetrics, setOneYardMetrics] = useState([]);
   const [halfYardMetrics, setHalfYardMetrics] = useState([]);
   const [hasCalculated, setHasCalculated] = useState(false);
@@ -194,6 +202,7 @@ function DrawFrame() {
     remarks: "",
   });
   const isUPercentEntry = form.type === "U% Data Entry";
+  const isWrappingDrawframeNotebook = form.type === "Wrapping Drawframe Notebook";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
 
@@ -423,6 +432,8 @@ function DrawFrame() {
       readingCount: 5,
     });
     setMachineEntries([]);
+    setOneYardReadings([]);
+    setHalfYardReadings([]);
     setOneYardMetrics([]);
     setHalfYardMetrics([]);
     setHasCalculated(false);
@@ -726,7 +737,13 @@ function DrawFrame() {
           <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
 
-        {isHeaderEntry ? (
+        {isWrappingDrawframeNotebook ? (
+          <Wrapping
+            fixedType="Drawing"
+            backPath="/draw-frame"
+            title="Quality Control - Wrapping Drawframe Notebook"
+          />
+        ) : isHeaderEntry ? (
           <DrawFrameHeaderEntry
             entryId={getDrawFrameUniqueId(entrySeq, form.type)}
             typeOptions={typeOptions}
@@ -939,7 +956,7 @@ function DrawFrame() {
                     <input type="text" value={getDrawFrameUniqueId(entrySeq, form.type)} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
-                  <div className={styles.field} ref={cvMachineDropdownRef}>
+                  <div className={styles.field}>
                     <label className={styles.label}>Machine Number</label>
                     <SearchableSelect
                       value={form.machineNumber}
