@@ -93,7 +93,11 @@ const buildDrumNumberOptions = (from = "", to = "") => {
 };
 
 const mapRewindingEntryToRows = (entry = {}) => {
-  const nestedRows = Array.isArray(entry.drum_inspections) ? entry.drum_inspections : [];
+  const nestedRows = Array.isArray(entry.readings)
+    ? entry.readings
+    : Array.isArray(entry.drum_inspections)
+      ? entry.drum_inspections
+      : [];
 
   if (nestedRows.length > 0) {
     return nestedRows.map((row, index) => ({

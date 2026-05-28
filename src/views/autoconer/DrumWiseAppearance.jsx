@@ -5,6 +5,10 @@ import {
   getAutoconerDrumWise,
   saveAutoconerDrumWise,
 } from "@/store/slices/autoconer";
+import {
+  fetchAutoconerCountMaster,
+  fetchAutoconerMachineMaster,
+} from "@/apis/autoconer";
 import styles from "@/styles/drumWiseAppearance.module.css";
 import { sanitizeIntegerInput } from "@/utils/inputValidation";
 
@@ -18,12 +22,18 @@ const getTodayDate = () => {
 };
 
 const countOptions = [
-  "10 COTTON POLY LINEN 60/20/20 400...",
-  "20 WHITE POLY YARN CONES",
-  "30 BLACK POLY YARN CONES",
+  { value: "", label: "Select Count Name" },
+  { value: "10 COTTON POLY LINEN 60/20/20 400...", label: "10 COTTON POLY LINEN 60/20/20 400..." },
+  { value: "20 WHITE POLY YARN CONES", label: "20 WHITE POLY YARN CONES" },
+  { value: "30 BLACK POLY YARN CONES", label: "30 BLACK POLY YARN CONES" },
 ];
 
-const autoconerOptions = ["AC03", "AC04", "AC05"];
+const autoconerOptions = [
+  { value: "", label: "Select Auto Coner" },
+  { value: "AC03", label: "AC03" },
+  { value: "AC04", label: "AC04" },
+  { value: "AC05", label: "AC05" },
+];
 
 const buildRowsFromRange = (from, to) => {
   const start = Number(from) || 1;
@@ -73,8 +83,10 @@ function DrumWiseAppearance({
   const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
-  const [countName, setCountName] = useState(countOptions[0]);
-  const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
+  const [countName, setCountName] = useState("");
+  const [autoconerNo, setAutoconerNo] = useState("");
+  const [masterCounts, setMasterCounts] = useState(countOptions);
+  const [masterMachines, setMasterMachines] = useState(autoconerOptions);
   const [drumFrom, setDrumFrom] = useState("");
   const [drumTo, setDrumTo] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -94,6 +106,10 @@ function DrumWiseAppearance({
     () => savedEntries.flatMap((entry) => mapDrumWiseEntryToRows(entry)).slice(0, 10),
     [savedEntries]
   );
+  const selectedCountLabel =
+    masterCounts.find((option) => String(option.value) === String(countName))?.label || countName;
+  const selectedMachineLabel =
+    masterMachines.find((option) => String(option.value) === String(autoconerNo))?.label || autoconerNo;
 
   useEffect(() => {
     setPortalReady(true);
@@ -112,8 +128,8 @@ function DrumWiseAppearance({
   const resetForm = () => {
     setTestNo("");
     setEntryDate(todayDate);
-    setCountName(countOptions[0]);
-    setAutoconerNo(autoconerOptions[0]);
+    setCountName("");
+    setAutoconerNo("");
     setDrumFrom("");
     setDrumTo("");
     setRemarks("");
@@ -140,8 +156,8 @@ function DrumWiseAppearance({
     { label: "Type", value: selectedType || "-" },
     { label: "Test No.", value: testNo || "-" },
     { label: "Entry ID", value: entryId || "-" },
-    { label: "Count Name", value: countName || "-" },
-    { label: "Auto Coner No.", value: autoconerNo || "-" },
+    { label: "Count Name", value: selectedCountLabel || "-" },
+    { label: "Auto Coner No.", value: selectedMachineLabel || "-" },
     { label: "Drum From", value: drumFrom || "-" },
     { label: "Drum To", value: drumTo || "-" },
     { label: "Remarks", value: remarks || "-" },
@@ -158,11 +174,13 @@ function DrumWiseAppearance({
         test_no: Number(testNo) || 0,
         entry_date: entryDate,
         type: "Drum Inspection",
+        machine_id: Number(autoconerNo) || null,
+        count_id: Number(countName) || null,
         drum_from: Number(drumFrom) || 0,
         drum_to: Number(drumTo) || 0,
         remarks,
-        machine_code: autoconerNo || null,
-        count_name: countName || null,
+        machine_code: selectedMachineLabel || null,
+        count_name: selectedCountLabel || null,
         drum_inspections: rows.map((row) => ({
           drum_no: Number(row.drumNo) || 0,
           appearance_ok: Boolean(row.ok),
@@ -209,6 +227,41 @@ function DrumWiseAppearance({
   useEffect(() => {
     dispatch(getAutoconerDrumWise({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadMasters = async () => {
+      const [countResponse, machineResponse] = await Promise.all([
+        fetchAutoconerCountMaster(),
+        fetchAutoconerMachineMaster(),
+      ]);
+
+      if (!active) return;
+
+      const countList = Array.isArray(countResponse?.options)
+        ? countResponse.options.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }))
+        : [];
+      const machineList = Array.isArray(machineResponse?.options)
+        ? machineResponse.options.map((option) => ({
+            value: option.value,
+            label: option.label,
+          }))
+        : [];
+
+      setMasterCounts([countOptions[0], ...(countList.length ? countList : countOptions.slice(1))]);
+      setMasterMachines([autoconerOptions[0], ...(machineList.length ? machineList : autoconerOptions.slice(1))]);
+    };
+
+    loadMasters();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -349,9 +402,9 @@ function DrumWiseAppearance({
           <div className={styles.field}>
             <label>Count Name</label>
             <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
-              {countOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
+              {masterCounts.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -360,9 +413,9 @@ function DrumWiseAppearance({
           <div className={styles.field}>
             <label>Auto Coner No.</label>
             <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
-              {autoconerOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
+              {masterMachines.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>

@@ -41,9 +41,9 @@ const autoconerTypes = [
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
 const AUTOCONER_ENTRY_SEQ_KEY = "autoconer_entry_sequence";
 const AUTOCONER_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "APP", storageKey: "autoconer_entry_sequence_process_parameter" },
-  "PP - Autoconer Q2": { prefix: "AQ2", storageKey: "autoconer_entry_sequence_q2" },
-  "PP - Autoconer Q3": { prefix: "AQ3", storageKey: "autoconer_entry_sequence_q3" },
+  "Process Parameter": { prefix: "AP", storageKey: "autoconer_entry_sequence_process_parameter", width: 4 },
+  "PP - Autoconer Q2": { prefix: "A2", storageKey: "autoconer_entry_sequence_q2", width: 4 },
+  "PP - Autoconer Q3": { prefix: "A3", storageKey: "autoconer_entry_sequence_q3", width: 4 },
   "Rewinding Study": { prefix: "ARW", storageKey: "autoconer_entry_sequence_rewinding" },
   "Cone Density": { prefix: "ACD", storageKey: "autoconer_entry_sequence_cone_density" },
   "Cone Packing Audit": { prefix: "ACP", storageKey: "autoconer_entry_sequence_cone_packing" },
@@ -62,8 +62,8 @@ const getAutoconerEntryConfig = (typeName) =>
   };
 
 const getAutoconerEntryId = (seq, typeName) => {
-  const { prefix } = getAutoconerEntryConfig(typeName);
-  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
+  const { prefix, width = 3 } = getAutoconerEntryConfig(typeName);
+  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(width, "0")}`;
 };
 
 const readAutoconerEntrySequence = (typeName) => {

@@ -174,6 +174,22 @@ export const fetchAutoconerCountWiseCuts = async () =>
     suppressFailure: true,
   });
 
+export const fetchAutoconerCountMaster = async ({ search = "" } = {}) =>
+  getAutoconer(
+    "master/counts",
+    { search },
+    "Unable to fetch Autoconer count master.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerMachineMaster = async ({ search = "" } = {}) =>
+  getAutoconer(
+    "master/machines",
+    { search },
+    "Unable to fetch Autoconer machine master.",
+    { suppressFailure: true }
+  );
+
 export const fetchAutoconerParameterEntries = async () =>
   getAutoconer("parameter-entries", {}, "Unable to fetch parameter entries.", {
     suppressFailure: true,
@@ -223,6 +239,7 @@ const buildParameterEntryPayload = (payload) => ({
   total_2: payload?.total_2,
   thin_minus_30: payload?.thin_minus_30,
   neps_plus_400: payload?.neps_plus_400,
+  payload: payload?.payload || null,
 });
 
 export const submitAutoconerParameterEntry = async (payload) =>
@@ -317,11 +334,14 @@ export const submitAutoconerConeDensity = async (payload) =>
   postAutoconerCandidates(
     "cone-density",
     [
-      payload,
       {
         ...payload,
-        cone_density_readings: payload?.cone_density_readings ?? payload?.cone_readings,
+        cone_readings:
+          payload?.cone_readings ??
+          payload?.readings ??
+          payload?.cone_density_readings,
       },
+      payload,
     ],
     "Unable to save cone density."
   );

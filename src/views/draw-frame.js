@@ -9,6 +9,12 @@ import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
+import {
+  STATIC_DEPARTMENT_OPTIONS,
+  STATIC_MC_NO_OPTIONS,
+  STATIC_SHIFT_OPTIONS,
+  STATIC_VARIETY_OPTIONS,
+} from "@/views/carding/u%dataentry";
 import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
@@ -99,7 +105,7 @@ const emptyMetric = () => ({
   cv: "",
 });
 
-const calculateStats = (values, lengthInYards) => {
+const calculateStats = (values, hankNumerator) => {
   const numericValues = values.map(Number).filter((value) => Number.isFinite(value));
   if (!numericValues.length) return emptyMetric();
 
@@ -107,7 +113,7 @@ const calculateStats = (values, lengthInYards) => {
   const variance =
     numericValues.reduce((sum, value) => sum + Math.pow(value - avg, 2), 0) / numericValues.length;
   const sd = Math.sqrt(variance);
-  const hank = avg > 0 ? (lengthInYards * 7000) / (avg * 840) : NaN;
+  const hank = avg > 0 ? hankNumerator / avg : NaN;
   const cv = avg > 0 ? (sd / avg) * 100 : NaN;
 
   return {
@@ -170,6 +176,8 @@ function DrawFrame() {
   });
 
   const [machineEntries, setMachineEntries] = useState([]);
+  const [oneYardReadings, setOneYardReadings] = useState([]);
+  const [halfYardReadings, setHalfYardReadings] = useState([]);
   const [oneYardMetrics, setOneYardMetrics] = useState([]);
   const [halfYardMetrics, setHalfYardMetrics] = useState([]);
   const [hasCalculated, setHasCalculated] = useState(false);
@@ -178,6 +186,7 @@ function DrawFrame() {
   const [previewItems, setPreviewItems] = useState([]);
   const [entrySeq, setEntrySeq] = useState(1);
   const [showSuccess, setShowSuccess] = useState(false);
+  const cvMachineDropdownRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
   const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
   const [machineMasterByName, setMachineMasterByName] = useState({});
@@ -401,8 +410,8 @@ function DrawFrame() {
       return;
     }
 
-    setOneYardMetrics([calculateStats(oneYardReadings, 1)]);
-    setHalfYardMetrics([calculateStats(halfYardReadings, 0.5)]);
+    setOneYardMetrics([calculateStats(oneYardReadings, 0.54)]);
+    setHalfYardMetrics([calculateStats(halfYardReadings, 0.27)]);
     setErrors((prev) => {
       const nextHeader = { ...(prev.header || {}) };
       delete nextHeader.calculation;
@@ -775,9 +784,9 @@ function DrawFrame() {
                     className={errors.uPercent?.shift ? uPercentStyles.errorField : ""}
                   >
                     <option value="">Select</option>
-                    {shiftOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
+                    {STATIC_SHIFT_OPTIONS.map((option, index) => (
+                      <option key={`${option.value}-${index}`} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -790,10 +799,12 @@ function DrawFrame() {
                     onChange={(e) => handleUPercentChange("variety", e.target.value)}
                     className={errors.uPercent?.variety ? uPercentStyles.errorField : ""}
                   >
-                    <option value="">Select</option>
-                    <option value="WPSF 0.90">WPSF 0.90</option>
-                    <option value="WPSF 1.20">WPSF 1.20</option>
-                    <option value="PSF Blend">PSF Blend</option>
+                    <option value="">-- Select Variety --</option>
+                    {STATIC_VARIETY_OPTIONS.map((name, index) => (
+                      <option key={`${name}-${index}`} value={name}>
+                        {name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -805,9 +816,11 @@ function DrawFrame() {
                     className={errors.uPercent?.department ? uPercentStyles.errorField : ""}
                   >
                     <option value="">Select Department</option>
-                    <option value="FR Drawing">FR Drawing</option>
-                    <option value="Draw Frame">Draw Frame</option>
-                    <option value="Finisher Drawing">Finisher Drawing</option>
+                    {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
+                      <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
+                        {item.dept_name}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -816,7 +829,7 @@ function DrawFrame() {
                   <SearchableSelect
                     value={uPercentForm.mcNo}
                     onChange={(value) => handleUPercentChange("mcNo", value)}
-                    options={machineNameOptions}
+                    options={STATIC_MC_NO_OPTIONS.map((item) => item.mc_no)}
                     placeholder="Select MC No."
                     className={errors.uPercent?.mcNo ? uPercentStyles.errorField : ""}
                     ariaLabel="MC Number"
@@ -1161,7 +1174,7 @@ function DrawFrame() {
                   </div>
                 ) : null}
 
-                {hasCalculated ? (
+                {oneYardReadings.length > 0 ? (
                   <div className={styles.resultsWrap}>
                     <div className={styles.resultCard}>
                       <div className={styles.resultSection}>
