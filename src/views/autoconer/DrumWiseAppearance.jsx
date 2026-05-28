@@ -5,10 +5,8 @@ import {
   getAutoconerDrumWise,
   saveAutoconerDrumWise,
 } from "@/store/slices/autoconer";
-import {
-  fetchAutoconerCountMaster,
-  fetchAutoconerMachineMaster,
-} from "@/apis/autoconer";
+import { fetchAutoconerDrumWiseMasterData } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/drumWiseAppearance.module.css";
 import { sanitizeIntegerInput } from "@/utils/inputValidation";
 
@@ -83,10 +81,15 @@ function DrumWiseAppearance({
   const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
-  const [countName, setCountName] = useState("");
-  const [autoconerNo, setAutoconerNo] = useState("");
-  const [masterCounts, setMasterCounts] = useState(countOptions);
-  const [masterMachines, setMasterMachines] = useState(autoconerOptions);
+  const [countName, setCountName] = useState(countOptions[0]);
+  const [countCode, setCountCode] = useState("");
+  const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
+  const [countDropdownOptions, setCountDropdownOptions] = useState(
+    countOptions.map((option) => ({ value: option, label: option, code: "" }))
+  );
+  const [autoconerDropdownOptions, setAutoconerDropdownOptions] = useState(
+    autoconerOptions.map((option) => ({ value: option, label: option }))
+  );
   const [drumFrom, setDrumFrom] = useState("");
   const [drumTo, setDrumTo] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -128,8 +131,9 @@ function DrumWiseAppearance({
   const resetForm = () => {
     setTestNo("");
     setEntryDate(todayDate);
-    setCountName("");
-    setAutoconerNo("");
+    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
+    setCountCode(countDropdownOptions[0]?.code || "");
+    setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0]);
     setDrumFrom("");
     setDrumTo("");
     setRemarks("");
@@ -179,8 +183,9 @@ function DrumWiseAppearance({
         drum_from: Number(drumFrom) || 0,
         drum_to: Number(drumTo) || 0,
         remarks,
-        machine_code: selectedMachineLabel || null,
-        count_name: selectedCountLabel || null,
+        machine_code: autoconerNo || null,
+        count_name: countName || null,
+        cntcode: countCode || undefined,
         drum_inspections: rows.map((row) => ({
           drum_no: Number(row.drumNo) || 0,
           appearance_ok: Boolean(row.ok),
@@ -229,37 +234,51 @@ function DrumWiseAppearance({
   }, [dispatch]);
 
   useEffect(() => {
-    let active = true;
+    let isCancelled = false;
+    const loadMasterData = async () => {
+      const response = await fetchAutoconerDrumWiseMasterData();
+      if (isCancelled) return;
 
-    const loadMasters = async () => {
-      const [countResponse, machineResponse] = await Promise.all([
-        fetchAutoconerCountMaster(),
-        fetchAutoconerMachineMaster(),
-      ]);
-
-      if (!active) return;
-
-      const countList = Array.isArray(countResponse?.options)
-        ? countResponse.options.map((option) => ({
-            value: option.value,
-            label: option.label,
-          }))
+      const countOpts = Array.isArray(response?.count_options)
+        ? response.count_options
+            .map((item) => {
+              const code = String(item?.cntcode ?? "").trim();
+              const label = String(item?.cntname ?? "").trim();
+              if (!label) return null;
+              return { value: code || label, label, code: code || "" };
+            })
+            .filter(Boolean)
         : [];
-      const machineList = Array.isArray(machineResponse?.options)
-        ? machineResponse.options.map((option) => ({
-            value: option.value,
-            label: option.label,
-          }))
+      const legacyCount = Array.isArray(response?.count_names)
+        ? response.count_names.map((v) => String(v || "").trim()).filter(Boolean).map((label) => ({ value: label, label, code: "" }))
         : [];
-
-      setMasterCounts([countOptions[0], ...(countList.length ? countList : countOptions.slice(1))]);
-      setMasterMachines([autoconerOptions[0], ...(machineList.length ? machineList : autoconerOptions.slice(1))]);
+      const autoOpts = Array.isArray(response?.autoconer_options)
+        ? response.autoconer_options
+            .map((item) => {
+              const value = String(item?.value ?? "").trim();
+              const label = String(item?.label ?? value).trim();
+              return value || label ? { value: value || label, label: label || value } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const legacyAuto = Array.isArray(response?.autoconer_nos)
+        ? response.autoconer_nos.map((v) => String(v || "").trim()).filter(Boolean).map((label) => ({ value: label, label }))
+        : [];
+      const dedupe = (items) => Array.from(new Map(items.map((item) => [item.value, item])).values());
+      const nextCounts = dedupe([...countOpts, ...legacyCount]);
+      const nextAutos = dedupe([...autoOpts, ...legacyAuto]);
+      if (nextCounts.length) {
+        setCountDropdownOptions(nextCounts);
+        setCountName((current) => (nextCounts.some((item) => item.label === current) ? current : nextCounts[0].label));
+      }
+      if (nextAutos.length) {
+        setAutoconerDropdownOptions(nextAutos);
+        setAutoconerNo((current) => (nextAutos.some((item) => item.value === current) ? current : nextAutos[0].value));
+      }
     };
-
-    loadMasters();
-
+    loadMasterData();
     return () => {
-      active = false;
+      isCancelled = true;
     };
   }, []);
 
@@ -401,24 +420,26 @@ function DrumWiseAppearance({
 
           <div className={styles.field}>
             <label>Count Name</label>
-            <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
-              {masterCounts.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={countName}
+              onChange={(value) => {
+                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+                setCountName(selected?.label ?? value);
+                setCountCode(selected?.code ?? "");
+              }}
+              options={countDropdownOptions.map((option) => option.label)}
+              className={styles.select}
+            />
           </div>
 
           <div className={styles.field}>
             <label>Auto Coner No.</label>
-            <select value={autoconerNo} onChange={(e) => setAutoconerNo(e.target.value)} style={errorStyle(errors.autoconerNo)}>
-              {masterMachines.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={autoconerNo}
+              onChange={(value) => setAutoconerNo(value)}
+              options={autoconerDropdownOptions.map((option) => option.value)}
+              className={styles.select}
+            />
           </div>
 
           <div className={styles.doubleField}>

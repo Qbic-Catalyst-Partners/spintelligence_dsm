@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
+import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import {
   STATIC_DEPARTMENT_OPTIONS,
@@ -24,6 +25,9 @@ const initialForm = () => ({
 });
 
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
+const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
+const DEPARTMENT_OPTIONS = ["FR Drawing"];
+const MC_NO_OPTIONS = ["FR DSS-1"];
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   { selectedTypeName, onTypeChange, typeOptions = [], entryId = "" },
@@ -150,70 +154,49 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
         <div className={styles.field}>
           <label>Shift</label>
-          <select
+          <SearchableSelect
             value={form.shift}
-            onChange={(e) => handleChange("shift", e.target.value)}
+            onChange={(value) => handleChange("shift", value)}
             className={errors.shift ? styles.errorField : ""}
-            style={errors.shift ? undefined : defaultFieldStyle}
-          >
-            <option value="">-- Select Shift --</option>
-            {STATIC_SHIFT_OPTIONS.map((item, index) => (
-              <option key={`${item.value}-${index}`} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            options={SHIFT_OPTIONS}
+            placeholder="Select"
+            ariaLabel="Shift"
+          />
         </div>
 
         <div className={styles.field}>
           <label>Variety</label>
-          <select
+          <SearchableSelect
             value={form.variety}
-            onChange={(e) => handleChange("variety", e.target.value)}
+            onChange={(value) => handleChange("variety", value)}
             className={errors.variety ? styles.errorField : ""}
-            style={errors.variety ? undefined : defaultFieldStyle}
-          >
-            <option value="">-- Select Variety --</option>
-            {STATIC_VARIETY_OPTIONS.map((name, index) => (
-              <option key={`${name}-${index}`} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+            options={["WPSF 0.90"]}
+            placeholder="Select"
+          />
         </div>
 
         <div className={styles.field}>
           <label>Department</label>
-          <select
+          <SearchableSelect
             value={form.department}
-            onChange={(e) => handleChange("department", e.target.value)}
+            onChange={(value) => handleChange("department", value)}
             className={errors.department ? styles.errorField : ""}
-            style={errors.department ? undefined : defaultFieldStyle}
-          >
-            <option value="">Select Department</option>
-            {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
-              <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
-                {item.dept_name}
-              </option>
-            ))}
-          </select>
+            options={DEPARTMENT_OPTIONS}
+            placeholder="Select Department"
+            ariaLabel="Department"
+          />
         </div>
 
         <div className={styles.field}>
           <label>MC No.</label>
-          <select
+          <SearchableSelect
             value={form.mc_no}
-            onChange={(e) => handleChange("mc_no", e.target.value)}
+            onChange={(value) => handleChange("mc_no", value)}
             className={errors.mc_no ? styles.errorField : ""}
-            style={errors.mc_no ? undefined : defaultFieldStyle}
-          >
-            <option value="">-- Select MC No. --</option>
-            {STATIC_MC_NO_OPTIONS.map((item, index) => (
-              <option key={`${item.mc_no}-${index}`} value={item.mc_no}>
-                {item.mc_no}
-              </option>
-            ))}
-          </select>
+            options={MC_NO_OPTIONS}
+            placeholder="Select MC No."
+            ariaLabel="MC No."
+          />
         </div>
 
         <div className={styles.field}>

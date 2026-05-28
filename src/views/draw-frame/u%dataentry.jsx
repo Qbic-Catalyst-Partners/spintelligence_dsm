@@ -1,16 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import styles from "@/styles/u%dataentry.module.css";
-import CustomSelect from "@/components/CustomSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import {
-  STATIC_DEPARTMENT_OPTIONS,
-  STATIC_MC_NO_OPTIONS,
-  STATIC_SHIFT_OPTIONS,
-  STATIC_VARIETY_OPTIONS,
-} from "@/views/carding/u%dataentry";
+import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
+
+const SHIFT_OPTIONS = ["General"];
+const VARIETY_OPTIONS = ["WPSF 0.90"];
+const DEPARTMENT_OPTIONS = ["FR Drawing"];
+const MC_NO_OPTIONS = ["FR DSS-1"];
 
 function UPercentDataEntry() {
   const [form, setForm] = useState({
@@ -30,18 +30,36 @@ function UPercentDataEntry() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
-  const [selectedType, setSelectedType] = useState("");
+  const selectedType = "Draw Frame U% Data Entry";
+  const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
+  const [varietyOptions, setVarietyOptions] = useState(VARIETY_OPTIONS);
+  const [departmentOptions, setDepartmentOptions] = useState(DEPARTMENT_OPTIONS);
+  const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
 
-  const types = [{ name: "Carding U% Data Entry" }];
+  useEffect(() => {
+    let active = true;
 
-  const onTypeChange = (value) => {
-    setSelectedType(value);
-    setErrors((current) => {
-      const next = { ...current };
-      delete next.selectedType;
-      return next;
-    });
-  };
+    (async () => {
+      try {
+        const dropdown = await fetchDrawFrameUqcMasterDropdown();
+        if (!active) return;
+        if (dropdown.shifts?.length) setShiftOptions(dropdown.shifts);
+        if (dropdown.varietyNames?.length) setVarietyOptions(dropdown.varietyNames);
+        if (dropdown.departmentNames?.length) setDepartmentOptions(dropdown.departmentNames);
+        if (dropdown.mcNos?.length) setMcNoOptions(dropdown.mcNos);
+      } catch (_error) {
+        if (!active) return;
+        setShiftOptions(SHIFT_OPTIONS);
+        setVarietyOptions(VARIETY_OPTIONS);
+        setDepartmentOptions(DEPARTMENT_OPTIONS);
+        setMcNoOptions(MC_NO_OPTIONS);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -76,7 +94,6 @@ function UPercentDataEntry() {
 
   const validateForm = () => {
     const nextErrors = {};
-    if (!selectedType) nextErrors.selectedType = true;
     Object.entries(form).forEach(([key, value]) => {
       if (!String(value || "").trim()) nextErrors[key] = true;
     });
@@ -119,11 +136,10 @@ function UPercentDataEntry() {
       <div className={styles.formGrid}>
         <div>
           <label>Type</label>
-          <CustomSelect
-            options={types}
+          <input
+            type="text"
             value={selectedType}
-            onChange={onTypeChange}
-            error={errors.selectedType}
+            readOnly
           />
         </div>
 
@@ -139,50 +155,50 @@ function UPercentDataEntry() {
 
         <div>
           <label>Shift</label>
-          <select value={form.shift} onChange={(e) => handleChange("shift", e.target.value)} className={errors.shift ? styles.errorField : ""}>
-            <option value="">-- Select Shift --</option>
-            {STATIC_SHIFT_OPTIONS.map((item, index) => (
-              <option key={`${item.value}-${index}`} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={form.shift}
+            onChange={(value) => handleChange("shift", value)}
+            className={errors.shift ? styles.errorField : ""}
+            options={shiftOptions}
+            placeholder="Select"
+            ariaLabel="Shift"
+          />
         </div>
 
         <div>
           <label>Variety</label>
-          <select value={form.variety} onChange={(e) => handleChange("variety", e.target.value)} className={errors.variety ? styles.errorField : ""}>
-            <option value="">-- Select Variety --</option>
-            {STATIC_VARIETY_OPTIONS.map((name, index) => (
-              <option key={`${name}-${index}`} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={form.variety}
+            onChange={(value) => handleChange("variety", value)}
+            className={errors.variety ? styles.errorField : ""}
+            options={varietyOptions}
+            placeholder="Select"
+            ariaLabel="Variety"
+          />
         </div>
 
         <div>
           <label>Department</label>
-          <select value={form.department} onChange={(e) => handleChange("department", e.target.value)} className={errors.department ? styles.errorField : ""}>
-            <option value="">Select Department</option>
-            {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
-              <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
-                {item.dept_name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={form.department}
+            onChange={(value) => handleChange("department", value)}
+            className={errors.department ? styles.errorField : ""}
+            options={departmentOptions}
+            placeholder="Select Department"
+            ariaLabel="Department"
+          />
         </div>
 
         <div>
           <label>MC No.</label>
-          <select value={form.mc_no} onChange={(e) => handleChange("mc_no", e.target.value)} className={errors.mc_no ? styles.errorField : ""}>
-            <option value="">-- Select MC No. --</option>
-            {STATIC_MC_NO_OPTIONS.map((item, index) => (
-              <option key={`${item.mc_no}-${index}`} value={item.mc_no}>
-                {item.mc_no}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={form.mc_no}
+            onChange={(value) => handleChange("mc_no", value)}
+            className={errors.mc_no ? styles.errorField : ""}
+            options={mcNoOptions}
+            placeholder="Select MC No."
+            ariaLabel="MC No."
+          />
         </div>
 
         <div>

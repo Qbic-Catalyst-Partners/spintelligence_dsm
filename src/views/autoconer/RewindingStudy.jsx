@@ -1,10 +1,12 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   getAutoconerRewindingStudy,
   saveAutoconerRewindingStudy,
 } from "@/store/slices/autoconer";
+import { fetchAutoconerRewindingStudyMasterData } from "@/apis/autoconer";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
@@ -35,6 +37,7 @@ const formFieldSanitizers = {
   weight: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   noOfCuts: (value) => sanitizeIntegerInput(value, 10),
   breakPerLakhMeter: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  coneTip: (value) => String(value || "").toUpperCase(),
 };
 
 const rowFieldSanitizers = {
@@ -93,10 +96,10 @@ const buildDrumNumberOptions = (from = "", to = "") => {
 };
 
 const mapRewindingEntryToRows = (entry = {}) => {
-  const nestedRows = Array.isArray(entry.readings)
-    ? entry.readings
-    : Array.isArray(entry.drum_inspections)
-      ? entry.drum_inspections
+  const nestedRows = Array.isArray(entry.drum_inspections)
+    ? entry.drum_inspections
+    : Array.isArray(entry.readings)
+      ? entry.readings
       : [];
 
   if (nestedRows.length > 0) {
@@ -151,6 +154,9 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [countNameDropdownOptions, setCountNameDropdownOptions] = useState(countNameOptions);
+  const [autoconerDropdownOptions, setAutoconerDropdownOptions] = useState(autoConerOptions);
+  const [countCodeByName, setCountCodeByName] = useState({});
   const dropdownAreaRef = useRef(null);
 
   useEffect(() => {
@@ -249,6 +255,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     type: selectedTypeName || form.type,
     machine_name: form.autoConerNo,
     count_name: form.countNameFrom,
+    cntcode: countCodeByName[form.countNameFrom] || undefined,
     cone_tip: form.coneTip,
     drum_from: Number(form.drumFrom),
     drum_to: Number(form.drumTo),
@@ -295,6 +302,86 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   useEffect(() => {
     dispatch(getAutoconerRewindingStudy({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadMasterData = async () => {
+      try {
+        const response = await fetchAutoconerRewindingStudyMasterData();
+        if (isCancelled) return;
+
+        const masterData = response?.data && typeof response.data === "object" ? response.data : response;
+
+        const countOptionsFromObjects = Array.isArray(masterData?.count_options)
+          ? masterData.count_options
+              .map((item) => ({
+                code: String(
+                  item?.cntcode ??
+                    item?.cntCode ??
+                    item?.count_code ??
+                    item?.countCode ??
+                    ""
+                ).trim(),
+                name: String(
+                  item?.cntname ??
+                    item?.cntName ??
+                    item?.count_name ??
+                    item?.countName ??
+                    item?.label ??
+                    ""
+                ).trim(),
+              }))
+              .filter((item) => item.name)
+          : [];
+        const legacyCountOptions = Array.isArray(masterData?.count_names)
+          ? masterData.count_names.map((value) => String(value || "").trim()).filter(Boolean)
+          : [];
+        const nextCountNames = [
+          ...countOptionsFromObjects.map((item) => item.name),
+          ...legacyCountOptions,
+        ].filter(Boolean);
+        const uniqueCountNames = Array.from(new Set(nextCountNames));
+
+        const nextCodeMap = {};
+        countOptionsFromObjects.forEach((item) => {
+          if (item.name) nextCodeMap[item.name] = item.code;
+        });
+
+        const autoconerObjectOptions = Array.isArray(masterData?.autoconer_options)
+          ? masterData.autoconer_options
+              .map((item) =>
+                String(
+                  item?.value ??
+                    item?.label ??
+                    item?.acname ??
+                    item?.ac_name ??
+                    item?.machine_name ??
+                    ""
+                ).trim()
+              )
+              .filter(Boolean)
+          : [];
+        const legacyAutoconer = Array.isArray(masterData?.autoconer_nos)
+          ? masterData.autoconer_nos.map((value) => String(value || "").trim()).filter(Boolean)
+          : [];
+        const uniqueAutoconers = Array.from(
+          new Set([...autoconerObjectOptions, ...legacyAutoconer])
+        );
+
+        if (uniqueCountNames.length) setCountNameDropdownOptions(uniqueCountNames);
+        if (uniqueAutoconers.length) setAutoconerDropdownOptions(uniqueAutoconers);
+        setCountCodeByName(nextCodeMap);
+      } catch (error) {
+        if (!isCancelled) {
+          setCountCodeByName({});
+        }
+      }
+    };
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setReadingRows((current) => {
@@ -395,8 +482,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
-    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameOptions, placeholder: "Enter count name" },
-    { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoConerOptions, placeholder: "Enter auto coner no." },
+    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Enter count name" },
+    { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerDropdownOptions, placeholder: "Enter auto coner no." },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "No. of Cones", field: "noOfCones", type: "text", placeholder: "Enter no. of cones" },
     { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
@@ -599,6 +686,15 @@ const RewindingStudy = forwardRef(function RewindingStudy(
                   placeholder: placeholder || "Select",
                   errorFlag: errors[field],
                 })
+              ) : type === "select" && (field === "countNameFrom" || field === "autoConerNo") ? (
+                <SearchableSelect
+                  className={`${topFieldClass}${errorClass(errors[field])}`}
+                  value={fieldValue}
+                  options={options}
+                  placeholder={placeholder || "Type to search..."}
+                  onChange={(nextValue) => handleFormChange(field, nextValue)}
+                  ariaLabel={field === "countNameFrom" ? "Count Name" : "Auto Coner No"}
+                />
               ) : type === "select" ? (
                 <select
                   className={`${topFieldClass} ${className}${errorClass(errors[field])}`}

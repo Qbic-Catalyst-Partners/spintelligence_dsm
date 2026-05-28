@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import Footer from "@/components/Footer";
 import { clearCardingState, submitCardingBetweenWithin } from "@/store/slices/carding";
 import PreviewModal from "@/components/PreviewModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingMasterMachines } from "@/apis/carding";
@@ -341,27 +342,21 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                 <div className="bwc-row">
                     <div className="bwc-form-group">
                         <label>MC Name</label>
-                        <select
+                        <SearchableSelect
                             value={mcName}
-                            onChange={(e) => {
-                                setMcName(e.target.value);
+                            onChange={(value) => {
+                                setMcName(value);
                                 setErrors((current) => {
                                     const next = { ...current };
                                     delete next.mcName;
                                     return next;
                                 });
                             }}
+                            options={machineOptions}
+                            placeholder="Select MC Name"
                             className={errors.mcName ? "bwc-error-field" : ""}
-                        >
-                            {!machineOptions.includes(mcName) ? (
-                                <option value={mcName}>{mcName}</option>
-                            ) : null}
-                            {machineOptions.map((machine) => (
-                                <option key={machine} value={machine}>
-                                    {machine}
-                                </option>
-                            ))}
-                        </select>
+                            ariaLabel="MC Name"
+                        />
                     </div>
 
                     <div className="bwc-form-group">

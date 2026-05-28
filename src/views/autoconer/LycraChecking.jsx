@@ -4,6 +4,8 @@ import {
   getAutoconerLycraChecking,
   saveAutoconerLycraChecking,
 } from "@/store/slices/autoconer";
+import { fetchAutoconerLycraCheckingMasterData } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/lycraChecking.module.css";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -38,6 +40,10 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const [entryDate, setEntryDate] = useState(todayDate);
   const [lycraDraft, setLycraDraft] = useState("");
   const [countName, setCountName] = useState(countOptions[0]);
+  const [countCode, setCountCode] = useState("");
+  const [countDropdownOptions, setCountDropdownOptions] = useState(
+    countOptions.map((option) => ({ value: option, label: option, code: "" }))
+  );
   const [readingsCount, setReadingsCount] = useState("");
   const [lycraWeight, setLycraWeight] = useState("");
   const [fabricWeight, setFabricWeight] = useState("");
@@ -105,7 +111,8 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     setTestNo("");
     setEntryDate(todayDate);
     setLycraDraft("");
-    setCountName(countOptions[0]);
+    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
+    setCountCode(countDropdownOptions[0]?.code || "");
     setReadingsCount("");
     setLycraWeight("");
     setFabricWeight("");
@@ -157,6 +164,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
         entry_date: entryDate,
         lycra_draft: lycraDraft,
         count_name: countName,
+        cntcode: countCode || undefined,
         no_of_readings: Number(readingsCount) || generatedRows.length || 0,
         lycra_weight: lycraWeight,
         fabric_weight: fabricWeight,
@@ -186,6 +194,39 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
       return false;
     }
   };
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadMasterData = async () => {
+      const response = await fetchAutoconerLycraCheckingMasterData();
+      if (isCancelled) return;
+
+      const fromObjects = Array.isArray(response?.count_options)
+        ? response.count_options
+            .map((item) => {
+              const code = String(item?.cntcode ?? "").trim();
+              const label = String(item?.cntname ?? "").trim();
+              return label ? { value: code || label, label, code: code || "" } : null;
+            })
+            .filter(Boolean)
+        : [];
+      const fromLegacy = Array.isArray(response?.count_names)
+        ? response.count_names
+            .map((item) => String(item || "").trim())
+            .filter(Boolean)
+            .map((label) => ({ value: label, label, code: "" }))
+        : [];
+      const unique = Array.from(new Map([...fromObjects, ...fromLegacy].map((item) => [item.value, item])).values());
+      if (unique.length) {
+        setCountDropdownOptions(unique);
+        setCountName((current) => (unique.some((item) => item.label === current) ? current : unique[0].label));
+      }
+    };
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -248,13 +289,16 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
 
         <div className={styles.field}>
           <label>Count Name (From)</label>
-          <select value={countName} onChange={(e) => setCountName(e.target.value)} style={errorStyle(errors.countName)}>
-            {countOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            value={countName}
+            onChange={(value) => {
+              const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+              setCountName(selected?.label ?? value);
+              setCountCode(selected?.code ?? "");
+            }}
+            options={countDropdownOptions.map((option) => option.label)}
+            className={styles.select}
+          />
         </div>
 
         <div className={styles.generateField}>

@@ -58,7 +58,13 @@ function SearchableSelect({
       <input
         ref={inputRef}
         type="text"
-        className={`${className} !text-[12px] pr-10`}
+        className={className}
+        style={{
+          width: "100%",
+          minWidth: 0,
+          boxSizing: "border-box",
+          paddingRight: "2.5rem",
+        }}
         value={value}
         onChange={(event) => {
           const nextValue = event.target.value;

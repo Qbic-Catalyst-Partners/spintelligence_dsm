@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import CustomSelect from "@/components/CustomSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import {
@@ -11,6 +12,7 @@ import {
   STATIC_VARIETY_OPTIONS,
 } from "@/views/carding/u%dataentry";
 import { getComberUqcEntries, submitComberUqc } from "@/store/slices/comber";
+import { fetchComberMasterVarieties, fetchComberUqcMasterDropdown } from "@/apis/comber";
 
 const initialForm = () => ({
   date: new Date().toISOString().split("T")[0],
@@ -25,6 +27,11 @@ const initialForm = () => ({
   remarks: "",
 });
 
+const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
+const DEPARTMENT_OPTIONS = ["Comber", "Drawing", "Preparatory"];
+const MC_NO_OPTIONS = ["MC-01", "MC-02", "MC-03", "CB-01", "CB-02", "CB-03", "CB-04"];
+const VARIETY_FALLBACK_OPTIONS = ["Cotton", "WPSF 0.90", "WPSF 1.20", "PSF Blend"];
+
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   { types = [], selectedType = "", onTypeChange = () => {}, entryId = "" },
   ref
@@ -34,6 +41,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [form, setForm] = useState(initialForm());
   const [errors, setErrors] = useState({});
   const [formMessage, setFormMessage] = useState("");
+  const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
+  const [varietyOptions, setVarietyOptions] = useState(VARIETY_FALLBACK_OPTIONS);
+  const [departmentOptions, setDepartmentOptions] = useState(DEPARTMENT_OPTIONS);
+  const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -61,6 +72,46 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   useEffect(() => {
     dispatch(getComberUqcEntries({ page: 1, limit: 10 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      try {
+        const dropdown = await fetchComberUqcMasterDropdown();
+        if (!active) return;
+
+        const nextShifts = dropdown.shifts
+          .map((item) => item?.value || item?.label || item)
+          .filter(Boolean);
+        const nextVarieties = dropdown.varietyNames?.length
+          ? dropdown.varietyNames
+          : dropdown.varieties.map((item) => item.variety_name).filter(Boolean);
+        const nextDepartments = dropdown.departmentNames?.length
+          ? dropdown.departmentNames
+          : dropdown.departments.map((item) => item.dept_name).filter(Boolean);
+        const nextMcNos = dropdown.mcNos
+          .map((item) => item.mc_name || item.mc_no)
+          .filter(Boolean);
+
+        if (nextShifts.length) setShiftOptions(nextShifts);
+        if (nextVarieties.length) setVarietyOptions(nextVarieties);
+        if (nextDepartments.length) setDepartmentOptions(nextDepartments);
+        if (nextMcNos.length) setMcNoOptions(nextMcNos);
+      } catch (_error) {
+        try {
+          const options = await fetchComberMasterVarieties();
+          if (active && options.length) setVarietyOptions(options);
+        } catch (_fallbackError) {
+          if (active) setVarietyOptions(VARIETY_FALLBACK_OPTIONS);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (data?.message === "UQC entry created successfully") {
@@ -113,6 +164,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     try {
       await dispatch(
         submitComberUqc({
+          entry_id: entryId || "",
           entry_type: selectedType,
           entry_date: form.date,
           shift: form.shift,
@@ -165,66 +217,50 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
         <div>
           <label>Shift</label>
-          <select
+          <SearchableSelect
             value={form.shift}
-            onChange={(e) => handleChange("shift", e.target.value)}
+            onChange={(value) => handleChange("shift", value)}
             className={errors.shift ? styles.errorField : ""}
-          >
-            <option value="">-- Select Shift --</option>
-            {STATIC_SHIFT_OPTIONS.map((item, index) => (
-              <option key={`${item.value}-${index}`} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+            options={shiftOptions}
+            placeholder="Select"
+            ariaLabel="Shift"
+          />
         </div>
 
         <div>
           <label>Variety</label>
-          <select
+          <SearchableSelect
             value={form.variety}
-            onChange={(e) => handleChange("variety", e.target.value)}
+            onChange={(value) => handleChange("variety", value)}
             className={errors.variety ? styles.errorField : ""}
-          >
-            <option value="">-- Select Variety --</option>
-            {STATIC_VARIETY_OPTIONS.map((name, index) => (
-              <option key={`${name}-${index}`} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+            options={varietyOptions}
+            placeholder="Select"
+            ariaLabel="Variety"
+          />
         </div>
 
         <div>
           <label>Department</label>
-          <select
+          <SearchableSelect
             value={form.department}
-            onChange={(e) => handleChange("department", e.target.value)}
+            onChange={(value) => handleChange("department", value)}
             className={errors.department ? styles.errorField : ""}
-          >
-            <option value="">Select Department</option>
-            {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
-              <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
-                {item.dept_name}
-              </option>
-            ))}
-          </select>
+            options={departmentOptions}
+            placeholder="Select Department"
+            ariaLabel="Department"
+          />
         </div>
 
         <div>
           <label>MC No.</label>
-          <select
+          <SearchableSelect
             value={form.mc_no}
-            onChange={(e) => handleChange("mc_no", e.target.value)}
+            onChange={(value) => handleChange("mc_no", value)}
             className={errors.mc_no ? styles.errorField : ""}
-          >
-            <option value="">-- Select MC No. --</option>
-            {STATIC_MC_NO_OPTIONS.map((item, index) => (
-              <option key={`${item.mc_no}-${index}`} value={item.mc_no}>
-                {item.mc_no}
-              </option>
-            ))}
-          </select>
+            options={mcNoOptions}
+            placeholder="Select MC No."
+            ariaLabel="MC No."
+          />
         </div>
 
         <div>

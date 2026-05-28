@@ -161,6 +161,32 @@ const getAutoconer = async (
   throw new Error(getErrorMessage(lastError, fallbackMessage));
 };
 
+const getAutoconerPathCandidates = async (
+  paths,
+  params,
+  fallbackMessage,
+  { suppressFailure = false, paginated = false } = {}
+) => {
+  let lastError;
+
+  for (const path of paths) {
+    try {
+      return await getAutoconer(path, params, fallbackMessage, {
+        suppressFailure: false,
+        paginated,
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (suppressFailure) {
+    return buildFallbackResponse({ paginated });
+  }
+
+  throw new Error(getErrorMessage(lastError, fallbackMessage));
+};
+
 export const submitAutoconerLycraChecking = async (payload) =>
   postAutoconer("lycra-checking", payload, "Unable to save lycra checking.");
 
@@ -330,21 +356,88 @@ export const fetchAutoconerConeDensity = async ({
     { suppressFailure: true, paginated: true }
   );
 
-export const submitAutoconerConeDensity = async (payload) =>
-  postAutoconerCandidates(
-    "cone-density",
-    [
-      {
-        ...payload,
-        cone_readings:
-          payload?.cone_readings ??
-          payload?.readings ??
-          payload?.cone_density_readings,
-      },
-      payload,
-    ],
-    "Unable to save cone density."
+export const fetchAutoconerConeDensityMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["cone-density/master-data", "conedensity/master-data", "master-data"],
+    {},
+    "Unable to fetch cone density master data.",
+    { suppressFailure: true }
   );
+
+export const fetchAutoconerSpliceStrengthMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["splice-strength/master-data", "master-data"],
+    {},
+    "Unable to fetch splice strength master data.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerDrumWiseMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["drum-wise/master-data", "master-data"],
+    {},
+    "Unable to fetch drum wise master data.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerRewindingStudyMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["rewinding-study/master-data", "rewindingstudy/master-data", "master-data"],
+    {},
+    "Unable to fetch rewinding study master data.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerCountWiseCutsMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["count-wise-cuts/master-data", "master-data"],
+    {},
+    "Unable to fetch count wise cuts master data.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerLycraCheckingMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["lycra-checking/master-data", "master-data"],
+    {},
+    "Unable to fetch lycra checking master data.",
+    { suppressFailure: true }
+  );
+
+export const fetchAutoconerConePackingAuditMasterData = async () =>
+  getAutoconerPathCandidates(
+    ["cone-packing-audit/master-data", "master-data"],
+    {},
+    "Unable to fetch cone packing audit master data.",
+    { suppressFailure: true }
+  );
+
+export const submitAutoconerConeDensity = async (payload) =>
+  {
+    const sourceRows = payload?.cone_density_readings ?? payload?.cone_readings ?? [];
+    const normalizedRows = Array.isArray(sourceRows)
+      ? sourceRows.map((row) => ({
+          ...row,
+          // Backend variants read either `cone_weight` or `weight`.
+          weight: row?.weight ?? row?.cone_weight ?? null,
+          cone_weight: row?.cone_weight ?? row?.weight ?? null,
+          // Preserve alternate traverse naming seen in older payloads.
+          cone_traverse: row?.cone_traverse ?? row?.coneTrav ?? null,
+        }))
+      : [];
+
+    const normalizedPayload = {
+      ...payload,
+      cone_density_readings: normalizedRows,
+      cone_readings: normalizedRows,
+    };
+
+    return postAutoconerCandidates(
+      "cone-density",
+      [normalizedPayload],
+      "Unable to save cone density."
+    );
+  };
 
 export const fetchAutoconerConePackingAudit = async ({
   page = 1,

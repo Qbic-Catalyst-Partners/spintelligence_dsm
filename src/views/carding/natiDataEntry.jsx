@@ -4,9 +4,10 @@ import { useDispatch, useSelector } from "react-redux";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
-import { STATIC_VARIETY_OPTIONS } from "@/constants/staticVarietyOptions";
+import { fetchCardingMasterVarieties } from "@/apis/carding";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -38,10 +39,25 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
-    const [varietyOptions] = useState(STATIC_VARIETY_OPTIONS);
+    const [varietyOptions, setVarietyOptions] = useState([]);
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const options = await fetchCardingMasterVarieties();
+                if (active) setVarietyOptions(Array.isArray(options) ? options : []);
+            } catch (_err) {
+                if (active) setVarietyOptions([]);
+            }
+        })();
+        return () => {
+            active = false;
+        };
     }, []);
 
     useEffect(() => {
@@ -245,10 +261,10 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                             <div className={styles["cb-row"]}>
                                 <div className={styles["cb-form-group"]}>
                                     <label>Variety</label>
-                                    <select
+                                    <SearchableSelect
                                         value={variety}
-                                        onChange={(e) => {
-                                            setVariety(e.target.value);
+                                        onChange={(value) => {
+                                            setVariety(value);
                                             setErrors((current) => {
                                                 const next = { ...current };
                                                 delete next.variety;
@@ -256,12 +272,9 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                                             });
                                         }}
                                         className={errors.variety ? styles["field-error"] : ""}
-                                    >
-                                        <option value="">-- Select Variety --</option>
-                                        {varietyOptions.map((name, index) => (
-                                            <option key={`${name}-${index}`} value={name}>{name}</option>
-                                        ))}
-                                    </select>
+                                        options={varietyOptions}
+                                        placeholder="-- Select Variety --"
+                                    />
                                 </div>
                             </div>
 

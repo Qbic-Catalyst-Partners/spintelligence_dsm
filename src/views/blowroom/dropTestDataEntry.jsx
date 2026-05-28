@@ -3,6 +3,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { HiChevronDown, HiChevronUp } from 'react-icons/hi2';
 import { saveBlowroomDropTest, resetState } from '@/store/slices/blowroomSlice';
 import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
+import SearchableSelect from '@/components/SearchableSelect';
+import useBlowroomMasterVarieties from '@/hooks/useBlowroomMasterVarieties';
 import styles from '@/styles/dropTestDataEntry.module.css';
 
 const emptyTuft = () => ({
@@ -27,6 +29,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const [tufts, setTufts] = useState([]);
     const [expandedTuftIndex, setExpandedTuftIndex] = useState(0);
     const [errors, setErrors] = useState({});
+    const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
 
     useEffect(() => {
         if (success) {
@@ -42,6 +45,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         try {
             for (let i = 0; i < tufts.length; i++) {
                 await dispatch(saveBlowroomDropTest({
+                    entry_id: `${entryId || "BDT"}-${String(i + 1).padStart(2, "0")}`,
                     drop_id: lotNo,
                     date,
                     variety: formData.variety,
@@ -208,15 +212,20 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
             <div className={styles['mixx-row']}>
                 <div className={styles['mixx-group']}>
                     <label>Variety</label>
-                    <select
+                    <SearchableSelect
                         className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
-                        onChange={e => handleChange('variety', e.target.value)}
-                    >
-                        <option value="">Select Variety</option>
-                        <option>B AIR</option>
-                        <option>MCU5</option>
-                    </select>
+                        onChange={value => handleChange('variety', value)}
+                        options={varietyOptions}
+                        placeholder={
+                            loadingVarietyOptions
+                                ? 'Loading varieties...'
+                                : varietyOptionsError
+                                    ? 'Type variety'
+                                    : 'Select Variety'
+                        }
+                        ariaLabel="Variety"
+                    />
                 </div>
 
                 <div className={styles['mixx-group']}>
@@ -264,11 +273,19 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                             <div className={styles['mixxx-row']}>
                                 <div className={styles['mixx-group']}>
                                     <label>Tuft Variety</label>
-                                    <input
+                                    <SearchableSelect
                                         className={`${styles['mixx-input']} ${errors[`tuft-${i}-tuftVariety`] ? styles['mixx-error'] : ''}`}
-                                        placeholder="Enter tuft variety"
                                         value={tuft.tuftVariety}
-                                        onChange={e => handleTuftFieldChange(i, 'tuftVariety', e.target.value)}
+                                        onChange={value => handleTuftFieldChange(i, 'tuftVariety', value)}
+                                        options={varietyOptions}
+                                        placeholder={
+                                            loadingVarietyOptions
+                                                ? 'Loading varieties...'
+                                                : varietyOptionsError
+                                                    ? 'Type tuft variety'
+                                                    : 'Select tuft variety'
+                                        }
+                                        ariaLabel={`Tuft ${i + 1} Variety`}
                                     />
                                 </div>
                             </div>

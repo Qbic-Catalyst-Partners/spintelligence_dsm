@@ -441,7 +441,12 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       await loadVersions();
       return true;
     } catch (error) {
-      setSubmitError(error.message || "Unable to submit the form.");
+      const errorMessage = String(error?.message || "");
+      setSubmitError(
+        /duplicate entry_id/i.test(errorMessage)
+          ? "Entry ID already exists. Please clear and save again to generate next ID."
+          : errorMessage || "Unable to submit the form."
+      );
       return false;
     } finally {
       setIsSubmitting(false);

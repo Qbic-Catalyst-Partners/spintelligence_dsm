@@ -1,10 +1,12 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   getAutoconerConeDensity,
   saveAutoconerConeDensity,
 } from "@/store/slices/autoconer";
+import { fetchAutoconerConeDensityMasterData as fetchConeDensityMasterData } from "@/apis/autoconer";
 import { toNullableNumber } from "@/apis/autoconer";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -13,12 +15,8 @@ const today = new Date().toISOString().split("T")[0];
 const topFieldClass =
   "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
-const countNameOptions = [
-  "10 BLACK RECYCLE(GRC) 70D LYC YARN...",
-  "20 BLACK RECYCLE(GRC) 70D LYC YARN...",
-];
-
-const autoConerOptions = ["AC01", "AC02", "AC03", "AC04"];
+const countNameOptions = [];
+const autoConerOptions = [];
 const coneTipOptions = ["Blue", "Red", "White"];
 
 const formFieldSanitizers = {
@@ -45,6 +43,7 @@ const createInitialForm = () => ({
   testNo: "",
   date: today,
   countNameFrom: "",
+  countCode: "",
   autoConerNo: "",
   baseDiaE: "",
   noseDiaE: "",
@@ -84,7 +83,7 @@ const mapConeDensityEntryToRows = (entry = {}) => {
       ? entry.cone_readings
       : Array.isArray(entry.readings)
         ? entry.readings
-        : [];
+      : [];
 
   if (nestedRows.length > 0) {
     return nestedRows.map((row, index) => ({
@@ -93,7 +92,7 @@ const mapConeDensityEntryToRows = (entry = {}) => {
       noseDiaE: String(row.nose_dia_e ?? entry.nose_dia_e ?? "-"),
       baseDia: String(row.base_dia ?? row.baseDia ?? "-"),
       noseDia: String(row.nose_dia ?? row.noseDia ?? "-"),
-      coneWeight: String(row.cone_weight ?? row.coneWeight ?? "-"),
+      coneWeight: String(row.cone_weight ?? row.weight ?? row.coneWeight ?? "-"),
       coneTraverse: String(row.cone_traverse ?? row.coneTrav ?? "-"),
       coneDensity: String(row.density ?? row.cone_density ?? row.coneDensity ?? "-"),
       percentYarn: String(row.hardness ?? "-"),
@@ -138,6 +137,9 @@ const ConeDensity = forwardRef(function ConeDensity(
   const [form, setForm] = useState(createInitialForm);
   const [readingRows, setReadingRows] = useState([]);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState("");
+  const [countOptions, setCountOptions] = useState(countNameOptions);
+  const [autoconerOptions, setAutoconerOptions] = useState(autoConerOptions);
   const [portalReady, setPortalReady] = useState(false);
 
   useEffect(() => {
@@ -169,6 +171,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     setForm(createInitialForm());
     setReadingRows([]);
     setErrors({});
+    setSubmitError("");
   };
 
   const handleRowChange = (index, field, value) => {
@@ -215,11 +218,13 @@ const ConeDensity = forwardRef(function ConeDensity(
   ];
 
   const buildPayload = () => ({
+    entry_id: entryId || undefined,
     test_no: toNullableNumber(form.testNo),
     entry_date: form.date,
     type: selectedTypeName || form.type,
     machine_name: form.autoConerNo,
     count_name: form.countNameFrom,
+    cntcode: form.countCode || undefined,
     cone_tip: form.coneTip,
     base_dia_e: toNullableNumber(form.baseDiaE),
     nose_dia_e: toNullableNumber(form.noseDiaE),
@@ -244,13 +249,20 @@ const ConeDensity = forwardRef(function ConeDensity(
   const submit = async () => {
     if (!validate()) return false;
 
+    setSubmitError("");
     const resultAction = await dispatch(saveAutoconerConeDensity(buildPayload()));
 
     if (saveAutoconerConeDensity.fulfilled.match(resultAction)) {
-      dispatch(getAutoconerConeDensity({ page: 1, limit: 10 }));
+      dispatch(getAutoconerConeDensity({ page: 1, limit: 1000 }));
       return true;
     }
 
+    const errorMessage = String(resultAction?.payload || resultAction?.error?.message || "");
+    setSubmitError(
+      /duplicate entry_id/i.test(errorMessage)
+        ? "Entry ID already exists. Please clear and save again to generate next ID."
+        : errorMessage || "Unable to submit cone density."
+    );
     return false;
   };
 
@@ -262,8 +274,96 @@ const ConeDensity = forwardRef(function ConeDensity(
   }));
 
   useEffect(() => {
-    dispatch(getAutoconerConeDensity({ page: 1, limit: 10 }));
+    dispatch(getAutoconerConeDensity({ page: 1, limit: 1000 }));
   }, [dispatch]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadMasterData = async () => {
+      try {
+        const response = await fetchConeDensityMasterData();
+        if (isCancelled) return;
+
+        const countOptsFromNewShape = Array.isArray(response?.count_options)
+          ? response.count_options
+              .map((item) => {
+                const code = String(item?.cntcode ?? "").trim();
+                const name = String(item?.cntname ?? "").trim();
+                if (!name) return null;
+                return {
+                  value: code || name,
+                  label: name,
+                  code: code || "",
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        const autoconerOptsFromNewShape = Array.isArray(response?.autoconer_options)
+          ? response.autoconer_options
+              .map((item) => {
+                const value = String(item?.value ?? "").trim();
+                const label = String(item?.label ?? value).trim();
+                if (!value && !label) return null;
+                return {
+                  value: value || label,
+                  label: label || value,
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        const countOptsFromLegacy = Array.isArray(response?.count_names)
+          ? response.count_names
+              .map((item) => {
+                const label = String(
+                  (item && typeof item === "object"
+                    ? item.cntname ?? item.count_name ?? item.label ?? item.name
+                    : item) ?? ""
+                ).trim();
+                if (!label) return null;
+                return { value: label, label, code: "" };
+              })
+              .filter(Boolean)
+          : [];
+
+        const autoconerOptsFromLegacy = Array.isArray(response?.autoconer_nos)
+          ? response.autoconer_nos
+              .map((item) => {
+                const label = String(
+                  (item && typeof item === "object"
+                    ? item.label ?? item.value ?? item.name
+                    : item) ?? ""
+                ).trim();
+                if (!label) return null;
+                return { value: label, label };
+              })
+              .filter(Boolean)
+          : [];
+
+        const uniqueByValue = (options) => {
+          const map = new Map();
+          options.forEach((option) => {
+            if (!map.has(option.value)) map.set(option.value, option);
+          });
+          return Array.from(map.values());
+        };
+
+        setCountOptions(uniqueByValue([...countOptsFromNewShape, ...countOptsFromLegacy]));
+        setAutoconerOptions(uniqueByValue([...autoconerOptsFromNewShape, ...autoconerOptsFromLegacy]));
+      } catch (_error) {
+        if (isCancelled) return;
+        setCountOptions([]);
+        setAutoconerOptions([]);
+      }
+    };
+
+    loadMasterData();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     setReadingRows((current) => {
@@ -291,7 +391,7 @@ const ConeDensity = forwardRef(function ConeDensity(
   }, [form.drumFrom, form.drumTo, form.baseDiaE, form.noseDiaE]);
 
   const allDrumEntries = useMemo(
-    () => coneDensity.flatMap((entry) => mapConeDensityEntryToRows(entry)).slice(0, 10),
+    () => coneDensity.flatMap((entry) => mapConeDensityEntryToRows(entry)),
     [coneDensity]
   );
 
@@ -448,8 +548,8 @@ const ConeDensity = forwardRef(function ConeDensity(
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
-    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameOptions, placeholder: "Enter count name" },
-    { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoConerOptions, placeholder: "Enter auto coner no." },
+    { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countOptions, placeholder: "Enter count name" },
+    { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerOptions, placeholder: "Enter auto coner no." },
     { label: "Base Dia (E)", field: "baseDiaE", type: "text", placeholder: "Enter base dia (e)" },
     { label: "Nose Dia (E)", field: "noseDiaE", type: "text", placeholder: "Enter nose dia (e)" },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
@@ -489,7 +589,32 @@ const ConeDensity = forwardRef(function ConeDensity(
           return (
             <div key={field} className="flex flex-col gap-2">
               <label className="text-[14px] font-semibold text-slate-700">{label}</label>
-              {type === "select" ? (
+              {type === "select" && (field === "countNameFrom" || field === "autoConerNo") ? (
+                <SearchableSelect
+                  className={`${topFieldClass}${errorClass(errors[field])}`}
+                  value={fieldValue}
+                  onChange={(nextValue) => {
+                    if (field === "countNameFrom") {
+                      const selected = options.find((option) => {
+                        if (!option || typeof option !== "object") return option === nextValue;
+                        return String(option.value) === nextValue || String(option.label) === nextValue;
+                      });
+                      if (selected && typeof selected === "object") {
+                        handleFormChange("countNameFrom", selected.label || "");
+                        handleFormChange("countCode", selected.code || "");
+                      } else {
+                        handleFormChange("countNameFrom", nextValue);
+                        handleFormChange("countCode", "");
+                      }
+                    } else {
+                      handleFormChange(field, nextValue);
+                    }
+                    if (field === "type") onTypeChange?.(nextValue);
+                  }}
+                  options={options.map((option) => (option && typeof option === "object" ? option.label : option))}
+                  placeholder={placeholder || "Enter value"}
+                />
+              ) : type === "select" ? (
                 <select
                   className={`${topFieldClass}${errorClass(errors[field])}`}
                   value={fieldValue}
@@ -499,11 +624,16 @@ const ConeDensity = forwardRef(function ConeDensity(
                   }}
                 >
                   <option value="">{placeholder || "Enter value"}</option>
-                  {options.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
+                  {options.map((option) => {
+                    const isObject = option && typeof option === "object";
+                    const optionValue = isObject ? option.value : option;
+                    const optionLabel = isObject ? option.label : option;
+                    return (
+                      <option key={optionValue} value={optionValue}>
+                        {optionLabel}
+                      </option>
+                    );
+                  })}
                 </select>
               ) : (
                 <input
@@ -521,6 +651,7 @@ const ConeDensity = forwardRef(function ConeDensity(
       </div>
       {topPortalTarget ? createPortal(generatedTableSection, topPortalTarget) : null}
       {bottomPortalTarget ? createPortal(summarySection, bottomPortalTarget) : null}
+      {submitError ? <p className="mt-3 text-[14px] text-red-600">{submitError}</p> : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving cone density...</p> : null}
     </>
   );

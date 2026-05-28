@@ -2,6 +2,8 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import styles from "@/styles/BlowRoomSync.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import SearchableSelect from "@/components/SearchableSelect";
+import useBlowroomMasterVarieties from "@/hooks/useBlowroomMasterVarieties";
 import {
   saveBlowroomData,
   fetchBlowroomData,
@@ -29,6 +31,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const [tableData, setTableData] = useState([]);
   const [generated, setGenerated] = useState(false);
   const [errors, setErrors] = useState({});
+  const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
   const [form, setForm] = useState({
     type: "Blow Room Sync",
     entryDate: date || todayValue,
@@ -134,6 +137,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     try {
       await dispatch(
         saveBlowroomData({
+          entry_id: entryId || undefined,
           inspection_date: form.entryDate,
           line_no: form.lineNo,
           variety: form.variety,
@@ -258,16 +262,20 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 
         <div className={styles.group}>
           <label>Variety</label>
-          <select
+          <SearchableSelect
             value={form.variety}
-            onChange={(e) => handleFormChange("variety", e.target.value)}
+            onChange={(value) => handleFormChange("variety", value)}
             className={errors.variety ? styles.errorField : undefined}
-          >
-            <option value="">Select Variety</option>
-            <option>Cotton Blend</option>
-            <option>Compact Cotton</option>
-            <option>Viscose Mix</option>
-          </select>
+            options={varietyOptions}
+            placeholder={
+              loadingVarietyOptions
+                ? "Loading varieties..."
+                : varietyOptionsError
+                  ? "Type variety"
+                  : "Select Variety"
+            }
+            ariaLabel="Variety"
+          />
         </div>
 
         <div className={styles.group}>

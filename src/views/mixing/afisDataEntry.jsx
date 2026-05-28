@@ -1,6 +1,8 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
+import SearchableSelect from '@/components/SearchableSelect';
+import useMixingMasterVarieties from '@/hooks/useMixingMasterVarieties';
 import { submitAfis, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
@@ -17,9 +19,10 @@ const NUMERIC_FIELDS = new Set([
     'uql', 'l5', 'sfcN', 'ifc', 'fibreNepsGms', 'sfcW', 'maturity', 'fineness', 'scnGms',
 ]);
 
-const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo, selectedTypeName }, ref) {
+const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
+    const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
 
@@ -43,6 +46,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo, selectedT
     }, [actionSuccess, dispatch]);
 
     const buildPayload = () => ({
+        entry_id:         entryId || undefined,
         inspection_date:  date,
         lot_no:           lotNo,
         variety:          formData.variety,
@@ -166,16 +170,20 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, lotNo, selectedT
             <div className={styles['mixx-row']}>
                 <div className={styles['mixx-group']}>
                     <label className="text-xs font-semibold text-slate-700">Variety</label>
-                    <select
+                    <SearchableSelect
                         className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
                         value={formData.variety}
-                        onChange={(e) => handleChange('variety', e.target.value)}
-                    >
-                        <option value="">Select Variety</option>
-                        <option>Bunny</option>
-                        <option>MCU5</option>
-                        <option>DCH32</option>
-                    </select>
+                        onChange={(value) => handleChange('variety', value)}
+                        options={varietyOptions}
+                        placeholder={
+                            loadingVarietyOptions
+                                ? 'Loading varieties...'
+                                : varietyOptionsError
+                                    ? 'Type variety'
+                                    : 'Select Variety'
+                        }
+                        ariaLabel="Variety"
+                    />
                 </div>
 
                 <CustomInput

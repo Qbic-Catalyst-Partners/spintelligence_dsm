@@ -5,6 +5,7 @@ import { MdEditNote } from "react-icons/md";
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { fetchCardingMasterMachines, submitCardingChangeControlEntry } from "@/apis/carding";
 import styles from "./cardingWheelChange.module.css";
@@ -285,40 +286,32 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
         <div className={`${styles.row} ${styles.twoColumnRow}`}>
           <div className={styles.field}>
             <label>CDG No.</label>
-            <select
+            <SearchableSelect
               className={`${styles.topInput} ${errors.cdoNo ? styles.errorInput : ""}`}
               value={cdoNo}
-              onChange={(event) => {
-                setCdoNo(event.target.value);
+              onChange={(value) => {
+                setCdoNo(value);
                 clearError("cdoNo");
               }}
-            >
-              <option value="">Select</option>
-              {cdgOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              options={cdgOptions}
+              placeholder="Select"
+              ariaLabel="CDG No."
+            />
           </div>
 
           <div className={styles.field}>
             <label>CDG No. (Proposed)</label>
-            <select
+            <SearchableSelect
               className={`${styles.topInput} ${errors.proposedCdgNo ? styles.errorInput : ""}`}
               value={proposedCdgNo}
-              onChange={(event) => {
-                setProposedCdgNo(event.target.value);
+              onChange={(value) => {
+                setProposedCdgNo(value);
                 clearError("proposedCdgNo");
               }}
-            >
-              <option value="">Select</option>
-              {cdgOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              options={cdgOptions}
+              placeholder="Select"
+              ariaLabel="CDG No. Proposed"
+            />
           </div>
         </div>
 
