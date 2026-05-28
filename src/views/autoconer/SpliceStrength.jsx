@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { MdEditNote } from "react-icons/md";
 import { useDispatch, useSelector } from "react-redux";
-import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import {
   getAutoconerSpliceStrength,
   saveAutoconerSpliceStrength,
@@ -130,6 +128,12 @@ function SpliceStrength({
       percent: (totalPercent / count).toFixed(2),
     };
   }, [rowsWithPercent]);
+
+  const cspAverage = useMemo(() => {
+    if (!cspValue) return "";
+    const csp = parseFloat(cspValue) || 0;
+    return (csp * 0.264).toFixed(2);
+  }, [cspValue]);
 
   const handleGenerate = () => {
     const count = Math.max(1, Number(readingCount) || 1);
@@ -333,12 +337,6 @@ function SpliceStrength({
   return (
     <div className={styles.wrapper}>
       <div className={styles.entryCard}>
-        <div className={styles.formTitle}>
-          <MdEditNote />
-          <h3>Inspection Data Entry</h3>
-          <InputScreenUploadButton className="ml-auto" />
-        </div>
-
         <div className={styles.formGrid}>
           <div className={styles.field}>
             <label>Type</label>
@@ -418,7 +416,7 @@ function SpliceStrength({
 
           <div className={styles.field}>
             <label>Average</label>
-            <input value={average.splice} readOnly />
+            <input value={cspAverage} readOnly />
           </div>
         </div>
 

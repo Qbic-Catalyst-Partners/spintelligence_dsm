@@ -134,7 +134,7 @@ const mapApiEntryToVersion = (entry) => {
 };
 
 const topFieldClass =
-  "w-full h-[38px] px-3 py-2 border border-[#dbe4f0] rounded-lg bg-[#F8FAFC] text-[14px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors";
+  "w-full h-[38px] px-3 py-2 border border-[#dbe4f0] rounded-lg !bg-[#F1F5F9] text-[14px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
 
 const InspectionEntryIcon = () => (
   <svg

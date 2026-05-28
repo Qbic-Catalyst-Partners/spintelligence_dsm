@@ -600,7 +600,7 @@ function UPercentParameterEntries({
 
         <div className={styles.sectionBlock}>
           <div className={styles.sectionGridFive}>
-            {HS_IPI_FIELDS.map((field) =>
+            {HS_IPI_FIELDS.filter((field) => field.key !== "thickPlus70").map((field) =>
               renderField(field, { value: values[field.key] || "", error: errors[field.key] })
             )}
             {renderField({ key: "totalTwo", label: "TOTAL", numeric: true }, { value: totalTwo, readOnly: true })}
@@ -612,6 +612,10 @@ function UPercentParameterEntries({
             {FINAL_FIELDS.map((field) =>
               renderField(field, { value: values[field.key] || "", error: errors[field.key] })
             )}
+            {renderField(HS_IPI_FIELDS.find((field) => field.key === "thickPlus70"), {
+              value: values.thickPlus70 || "",
+              error: errors.thickPlus70,
+            })}
           </div>
         </div>
       </div>

@@ -10,12 +10,12 @@ import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidat
 const today = new Date().toISOString().split("T")[0];
 
 const topFieldClass =
-  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 !bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "autoconer-input w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const compactSelectClass = "";
 
 const tableInputClass =
-  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 !bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5] dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
 const countNameOptions = [
   "10 GRC POLY 40D SPX 8/2 YARN CONES",
@@ -395,7 +395,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoConerOptions, placeholder: "Enter auto coner no." },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "No. of Cones", field: "noOfCones", type: "text", placeholder: "Enter no. of cones" },
-    { label: "Cone Tip", field: "coneTip", type: "select", options: coneTipOptions, placeholder: "Enter cone tip" },
+    { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
     {
       label: "Drum No.",
       field: "drumNo",
@@ -503,10 +503,10 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const summarySection = (
     <div className="flex flex-col gap-8 pt-6">
       <div className="max-w-[160px]">
-        <label className="mb-2 block text-[14px] font-semibold text-slate-700">Break per Lakh Meter</label>
+        <label className="mb-2 block text-[14px] font-semibold text-slate-700">Break / 1 Lakh Meter</label>
         <input
           type="text"
-          placeholder="Enter break per lakh meter"
+          placeholder="Break / 1 Lakh Meter"
           className={`${topFieldClass}${errorClass(errors.breakPerLakhMeter)}`}
           value={form.breakPerLakhMeter}
           onChange={(event) => handleFormChange("breakPerLakhMeter", event.target.value)}

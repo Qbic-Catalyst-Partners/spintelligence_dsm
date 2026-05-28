@@ -256,20 +256,28 @@ function DrumWiseAppearance({
           <div key={row.drumNo} className={styles.appearanceRow}>
             <span className={styles.drumNo}>{row.drumNo}</span>
             <div className={styles.toggleGroup}>
-              <button
-                type="button"
-                className={`${styles.toggleBtn} ${row.ok ? styles.active : ""}`}
-                onClick={() => updateAppearance(row.drumNo, "ok")}
-              >
-                OK
-              </button>
-              <button
-                type="button"
-                className={`${styles.toggleBtn} ${row.notOk ? styles.active : ""}`}
-                onClick={() => updateAppearance(row.drumNo, "notOk")}
-              >
-                NOT OK
-              </button>
+              <label className={styles.radioOption}>
+                <input
+                  type="radio"
+                  name={`appearance-${row.drumNo}`}
+                  value="ok"
+                  checked={row.ok === 1}
+                  onChange={() => updateAppearance(row.drumNo, "ok")}
+                  className={styles.radioInput}
+                />
+                <span>Yes</span>
+              </label>
+              <label className={styles.radioOption}>
+                <input
+                  type="radio"
+                  name={`appearance-${row.drumNo}`}
+                  value="notOk"
+                  checked={row.notOk === 1}
+                  onChange={() => updateAppearance(row.drumNo, "notOk")}
+                  className={styles.radioInput}
+                />
+                <span>No</span>
+              </label>
             </div>
           </div>
         ))}

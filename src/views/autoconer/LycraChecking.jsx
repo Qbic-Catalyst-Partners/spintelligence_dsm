@@ -302,7 +302,8 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                 <th>LYCRA WEIGHT (gms)</th>
                 <th>FABRIC WEIGHT (gms)</th>
                 <th>TOTAL WEIGHT (gms)</th>
-                <th>LYCRA %</th>
+                <th>LYCRA % (Lycra Wt / Total Wt)</th>
+                <th>AVG LYCRA %</th>
               </tr>
             </thead>
             <tbody>
@@ -320,6 +321,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                   <td>{fabricWeight}</td>
                   <td>{totalWeight}</td>
                   <td>{lycraPercent}</td>
+                  <td>{lycraPercent}</td>
                 </tr>
               ))}
               <tr className={styles.summaryRow}>
@@ -328,6 +330,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                 <td>{lycraWeight}</td>
                 <td>{fabricWeight}</td>
                 <td>{totalWeight}</td>
+                <td>{lycraPercent}</td>
                 <td>{lycraPercent}</td>
               </tr>
             </tbody>

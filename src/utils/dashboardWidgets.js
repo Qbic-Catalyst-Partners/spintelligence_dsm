@@ -69,7 +69,7 @@ const screenEndpoints = {
       "U% Data Entry": "/comber/uqc",
     },
     "Draw Frame": {
-      "Yarn CV% Calculation Form": "/drawframe/yarn-cv",
+      "1 Yard / Half Yard CV Entry": "/drawframe/yarn-cv",
       "Draw Frame Cots Data Entry": "/drawframe/cots",
       "U% Data Entry": "/drawframe/uqc",
       "PP - Breaker Drawing": "/drawframe/header",
@@ -78,7 +78,7 @@ const screenEndpoints = {
     Simplex: {
       "Process Parameter": "/simplex/process-parameters",
       "SMXCots Change Data Entry": "/simplex/cots-change",
-      "SMX Breaks Study Report": "/simplex/study",
+      "SMX Breaks Study Report": "/simplex/list",
       "U% Data Entry": "/simplex/uqc",
     },
     Spinning: {

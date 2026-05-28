@@ -46,6 +46,11 @@
     box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15);
 }
 
+.mixx-help-error {
+    font-size: 12px;
+    color: #b91c1c;
+}
+
 /* apply button */
 .mixx-btn-primary {
     height: 38px;

@@ -142,7 +142,7 @@
     height: 42px;
     border-radius: 10px;
     border: 1px solid #dbe4f0;
-    background: #f8fafc;
+    background: #f1f5f9;
     box-shadow: inset 0 1px 1px rgba(148, 163, 184, 0.08);
 }
 
@@ -229,6 +229,81 @@
     padding: 0 12px;
 }
 
+.selectButton {
+    position: relative;
+    width: 100%;
+    height: 38px;
+    padding: 0 34px 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #0f172a;
+    cursor: pointer;
+    font-size: 14px;
+    text-align: left;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.selectButton:focus {
+    border-color: transparent;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.85);
+}
+
+.selectButtonValue,
+.selectButtonPlaceholder {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.selectButtonPlaceholder {
+    color: #64748b;
+}
+
+.selectButtonArrow {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    color: #0f172a;
+    font-size: 10px;
+    transform: translateY(-50%);
+}
+
+.dropdownMenu {
+    position: absolute;
+    z-index: 50;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 320px;
+    margin-top: 4px;
+    overflow-y: auto;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+
+.dropdownOption {
+    display: block;
+    width: 100%;
+    border: none;
+    background: #ffffff;
+    color: #0f172a;
+    cursor: pointer;
+    padding: 6px 12px;
+    font-size: 14px;
+    text-align: left;
+}
+
+.dropdownOption:hover,
+.dropdownOption:focus {
+    background: #3d539f;
+    color: #ffffff;
+    outline: none;
+}
+
 .textarea {
     min-height: 6.5rem;
     padding: 0.75rem;
@@ -276,10 +351,13 @@
 
 .calculateWrap {
     margin-top: 1.5rem;
+    display: flex;
+    justify-content: flex-end;
 }
 
 .calculateButton {
     padding: 0.625rem 1.25rem;
+    min-height: 42px;
 }
 
 .resultsWrap {
@@ -300,6 +378,76 @@
     color: #0f172a;
     font-size: 14px;
     font-weight: 700;
+}
+
+.readingsSection {
+    margin-top: 2rem;
+}
+
+.readingsTitle {
+    margin: 0 0 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #0056b3;
+    font-size: 18px;
+    line-height: 1.25;
+    font-weight: 700;
+}
+
+.readingsTable {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.readingsHeader,
+.readingsRow {
+    display: grid;
+    grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+}
+
+.readingsHeader {
+    min-height: 54px;
+    padding: 0 1rem;
+    border-radius: 6px;
+    background: #f8f8f8;
+    color: #111827;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.readingsRow {
+    padding: 0 0.5rem;
+}
+
+.readingSerial {
+    color: #475569;
+    font-size: 14px;
+    text-align: center;
+}
+
+.readingInput {
+    width: 100%;
+    height: 43px;
+    padding: 0 10px;
+    border: 1px solid #d6d6d6;
+    border-radius: 5px;
+    background: #ffffff;
+    color: #111827;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.readingInput:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.28);
+}
+
+.readingInput::placeholder {
+    color: #64748b;
 }
 
 .resultCard {
@@ -569,6 +717,10 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .resultCard .metricsGrid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
     .machineGrid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
@@ -583,6 +735,27 @@
 }
 
 @media (max-width: 767px) {
+    .readingsHeader,
+    .readingsRow {
+        grid-template-columns: 48px minmax(0, 1fr);
+    }
+
+    .readingsHeader span:nth-child(3) {
+        display: none;
+    }
+
+    .readingsRow .readingInput:last-child {
+        grid-column: 2;
+    }
+
+    .readingsHeader {
+        font-size: 15px;
+    }
+
+    .readingInput {
+        font-size: 14px;
+    }
+
     .headerEntryCardHeader {
         grid-template-columns: repeat(1, minmax(0, 1fr));
     }

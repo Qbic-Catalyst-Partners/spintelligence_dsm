@@ -123,12 +123,13 @@
 .appearanceHeader,
 .appearanceRow {
   display: grid;
-  grid-template-columns: 72px 1fr;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 20px;
   align-items: center;
 }
 
 .appearanceHeader {
-  margin-bottom: 10px;
+  margin-bottom: 16px;
   color: #7c8799;
   font-size: 12px;
   font-weight: 700;
@@ -137,12 +138,12 @@
 }
 
 .appearanceHeader span:last-child {
-  padding-left: 30px;
+  padding-left: 0;
 }
 
 .appearanceRow {
-  min-height: 42px;
-  margin-bottom: 10px;
+  min-height: 44px;
+  margin-bottom: 16px;
 }
 
 .drumNo {
@@ -153,7 +154,23 @@
 
 .toggleGroup {
   display: flex;
-  gap: 6px;
+  gap: 18px;
+}
+
+.radioOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+}
+
+.radioInput {
+  width: 16px;
+  height: 16px;
+  accent-color: #4258b7;
+  cursor: pointer;
 }
 
 .toggleBtn {
