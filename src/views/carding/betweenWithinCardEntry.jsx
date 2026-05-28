@@ -53,7 +53,7 @@ const calculateStats = (values) => {
     };
 };
 
-function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, hideTypeField = false, entryId = "" }) {
+function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectionTypeChange, showForm, hideTypeField = false, entryId = "" }) {
     const router = useRouter();
     const dispatch = useDispatch();
     const { isLoading, data, error } = useSelector((state) => state.carding ?? {
@@ -88,6 +88,12 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
     }, []);
 
     useEffect(() => {
+        if (typeof onInspectionTypeChange === "function") {
+            onInspectionTypeChange(inspectionType);
+        }
+    }, [inspectionType, onInspectionTypeChange]);
+
+    useEffect(() => {
         if (error) {
             setFormMessage(error);
             setIsError(true);
@@ -116,6 +122,59 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
         checkScreen();
         window.addEventListener("resize", checkScreen);
         return () => window.removeEventListener("resize", checkScreen);
+    }, []);
+
+    useEffect(() => {
+        const raw = typeof window !== "undefined" ? window.localStorage.getItem("ocr_prefill") : "";
+        if (!raw) return;
+        try {
+            const payload = JSON.parse(raw);
+            const screen = String(payload?.screen || "").toLowerCase();
+            if (payload?.docType !== "bwc" || !screen.startsWith("carding")) return;
+
+            const sourceRow =
+                payload?.values ||
+                payload?.result?.json_output?.[0] ||
+                {};
+            const normalize = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            const sourceEntries = Object.entries(sourceRow || {});
+            const pick = (...keys) => {
+                for (const key of keys) {
+                    const direct = sourceRow?.[key];
+                    if (direct !== undefined && direct !== null && String(direct).trim() !== "") return String(direct);
+                }
+                const normalizedTargets = keys.map(normalize);
+                for (const [k, v] of sourceEntries) {
+                    if (!normalizedTargets.includes(normalize(k))) continue;
+                    if (v !== undefined && v !== null && String(v).trim() !== "") return String(v);
+                }
+                return "";
+            };
+
+            const nextRows = createRows(5).map((row, index) => ({
+                ...row,
+                sampleWeight: pick(
+                    `Sample Weight ${index + 1}`,
+                    `SampleWeight${index + 1}`,
+                    `Sample_Weight_${index + 1}`,
+                    `sample_weight_${index + 1}`
+                ),
+                hank: pick(`Hank ${index + 1}`, `hank_${index + 1}`),
+            }));
+
+            const nextMachine = pick("Machine Name", "MC Name", "mc_name", "machine_name", "machine");
+            const nextInspectionType = pick("Inspection Type", "inspection_type");
+            const nextInspectionDate = pick("Inspection Date", "inspection_date");
+
+            if (nextMachine) setMcName(nextMachine);
+            if (nextInspectionType) setInspectionType(nextInspectionType);
+            if (nextInspectionDate) setInspectionDate(nextInspectionDate);
+            setEntryCount(5);
+            setRows(nextRows);
+            if (typeof window !== "undefined") {
+                window.localStorage.removeItem("ocr_prefill");
+            }
+        } catch {}
     }, []);
 
     const sampleWeights = useMemo(
@@ -294,6 +353,9 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, showForm, h
                             }}
                             className={errors.mcName ? "bwc-error-field" : ""}
                         >
+                            {!machineOptions.includes(mcName) ? (
+                                <option value={mcName}>{mcName}</option>
+                            ) : null}
                             {machineOptions.map((machine) => (
                                 <option key={machine} value={machine}>
                                     {machine}

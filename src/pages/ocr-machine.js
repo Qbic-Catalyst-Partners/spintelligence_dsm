@@ -6,6 +6,20 @@ const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 const DOC_TYPES = [
   { label: "HVI Data Entry", value: "hvi" },
   { label: "AFIS Data Entry", value: "afis" },
+  { label: "Between & Within Card Data Entry", value: "bwc" },
+];
+
+const BWC_FIELDS = [
+  "Sample Weight 1",
+  "Sample Weight 2",
+  "Sample Weight 3",
+  "Sample Weight 4",
+  "Sample Weight 5",
+  "Hank 1",
+  "Hank 2",
+  "Hank 3",
+  "Hank 4",
+  "Hank 5",
 ];
 
 export default function OcrMachinePage() {
@@ -19,7 +33,29 @@ export default function OcrMachinePage() {
   const [saved, setSaved] = useState(false);
   const returnTo = typeof router.query.returnTo === "string" ? router.query.returnTo : "";
   const requestedDocType = typeof router.query.docType === "string" ? router.query.docType.toLowerCase() : "";
+  const queryMcName = typeof router.query.mc_name === "string" ? router.query.mc_name : "";
+  const queryInspectionType = typeof router.query.inspection_type === "string" ? router.query.inspection_type : "";
+  const queryInspectionDate = typeof router.query.inspection_date === "string" ? router.query.inspection_date : "";
+  const [meta, setMeta] = useState({
+    mc_name: "",
+    inspection_type: "",
+    inspection_date: "",
+  });
   const [isDark, setIsDark] = useState(false);
+  const inferredDocType = useMemo(() => {
+    if (requestedDocType === "afis" || requestedDocType === "hvi" || requestedDocType === "bwc") return requestedDocType;
+    const haystack = [
+      returnTo,
+      typeof router.query.type === "string" ? router.query.type : "",
+      typeof router.query.type_category === "string" ? router.query.type_category : "",
+      typeof router.query.screen === "string" ? router.query.screen : "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    if (haystack.includes("between") && haystack.includes("within") && haystack.includes("card")) return "bwc";
+    if (haystack.includes("afis")) return "afis";
+    return "hvi";
+  }, [requestedDocType, returnTo, router.query.screen, router.query.type, router.query.type_category]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -36,14 +72,30 @@ export default function OcrMachinePage() {
   }, []);
 
   useEffect(() => {
-    if (requestedDocType === "afis" || requestedDocType === "hvi") setDocType(requestedDocType);
-  }, [requestedDocType]);
+    setDocType(inferredDocType);
+  }, [inferredDocType]);
+
+  useEffect(() => {
+    setMeta((prev) => ({
+      ...prev,
+      mc_name: queryMcName || prev.mc_name,
+      inspection_type: queryInspectionType || prev.inspection_type,
+      inspection_date: queryInspectionDate || prev.inspection_date,
+    }));
+  }, [queryInspectionDate, queryInspectionType, queryMcName]);
 
   const step = useMemo(() => {
     if (rows.length > 0) return 3;
     if (loading || file) return 2;
     return 1;
   }, [file, loading, rows.length]);
+
+  const docTypeLabel = useMemo(() => {
+    if (docType !== "bwc") return DOC_TYPES.find((d) => d.value === docType)?.label || "HVI Data Entry";
+    const inspection = (meta.inspection_type || queryInspectionType || "").trim();
+    if (!inspection) return "Between & Within Card Data Entry";
+    return `${inspection} Card Data Entry`;
+  }, [docType, meta.inspection_type, queryInspectionType]);
 
   const runOcr = async () => {
     if (!file) return;
@@ -55,8 +107,12 @@ export default function OcrMachinePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("doc_type", docType);
-      const res = await fetch(`${API_BASE}/ocr-machine/api/ocr`, { method: "POST", body: form });
-      if (!res.ok) throw new Error(await res.text());
+      const ocrUrl = `${API_BASE}/ocr-machine/api/ocr`;
+      const res = await fetch(ocrUrl, { method: "POST", body: form });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`OCR request failed (${res.status}) at ${ocrUrl}${errorText ? `: ${errorText}` : ""}`);
+      }
       if (!res.body) throw new Error("No stream returned");
 
       const reader = res.body.getReader();
@@ -79,14 +135,44 @@ export default function OcrMachinePage() {
       }
 
       const parsed = Array.isArray(finalResult?.json_output) ? finalResult.json_output : [];
+      if (docType === "bwc") {
+        const rawText = String(finalResult?.raw_text || "").toLowerCase();
+        const looksLikeHviReport =
+          rawText.includes("hvi1000") ||
+          rawText.includes("systemtesting-individual tests") ||
+          rawText.includes("uster");
+        if (looksLikeHviReport) {
+          setRows([]);
+          setFormValues({});
+          setLogs((prev) => [
+            ...prev,
+            "Uploaded PDF appears to be an HVI report. Please upload a Between/Within Card report for BWC.",
+          ]);
+          return;
+        }
+      }
       setRows(parsed);
-      setFormValues(parsed[0] || {});
+      const first = parsed[0] || {};
+      if (docType === "bwc") {
+        const bwcValues = {};
+        BWC_FIELDS.forEach((field) => {
+          bwcValues[field] = first[field] ?? "";
+        });
+        setFormValues(bwcValues);
+      } else {
+        setFormValues(first);
+      }
     } catch (e) {
-      setLogs((prev) => [...prev, e.message || "OCR failed"]);
+      const isNetworkFailure = e instanceof TypeError && /fetch/i.test(e.message || "");
+      const msg = isNetworkFailure
+        ? `Network error calling ${API_BASE}/ocr-machine/api/ocr. Check NEXT_PUBLIC_API_URL and backend availability.`
+        : e.message || "OCR failed";
+      setLogs((prev) => [...prev, msg]);
     } finally {
       setLoading(false);
     }
   };
+
 
   const stepColor = (idx) => (step === idx ? "#3f56a9" : "#cfd4dd");
   const stepTextColor = (idx) => (step === idx ? "#3f56a9" : "#94a3b8");
@@ -153,7 +239,7 @@ export default function OcrMachinePage() {
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 36 / 2.2, fontWeight: 700, color: colors.heading }}>{rows.length > 0 ? "Review & Edit" : "Upload Report PDF"}</h2>
           <div style={{ marginTop: 2, fontWeight: 700, fontSize: 18, color: colors.heading }}>
-            {DOC_TYPES.find((d) => d.value === docType)?.label || "HVI Data Entry"}
+            {docTypeLabel}
           </div>
         </div>
 
@@ -191,8 +277,37 @@ export default function OcrMachinePage() {
             </div>
           ) : (
             <div>
+              {docType === "bwc" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 10 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Machine Name</span>
+                    <input
+                      value={meta.mc_name}
+                      onChange={(e) => setMeta((prev) => ({ ...prev, mc_name: e.target.value }))}
+                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Inspection Type</span>
+                    <input
+                      value={meta.inspection_type}
+                      onChange={(e) => setMeta((prev) => ({ ...prev, inspection_type: e.target.value }))}
+                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Inspection Date</span>
+                    <input
+                      type="date"
+                      value={meta.inspection_date}
+                      onChange={(e) => setMeta((prev) => ({ ...prev, inspection_date: e.target.value }))}
+                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
+                    />
+                  </label>
+                </div>
+              ) : null}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-                {Object.keys(formValues).map((key) => (
+                {(docType === "bwc" ? BWC_FIELDS : Object.keys(formValues)).map((key) => (
                   <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>{key}</span>
                     <input
@@ -215,7 +330,7 @@ export default function OcrMachinePage() {
                       JSON.stringify({
                         screen: normalizedScreen,
                         docType,
-                        values: formValues,
+                        values: docType === "bwc" ? { ...formValues, "Machine Name": meta.mc_name, "Inspection Type": meta.inspection_type, "Inspection Date": meta.inspection_date } : formValues,
                         result: { json_output: rows },
                       })
                     );

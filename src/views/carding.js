@@ -66,6 +66,8 @@ const readCardingEntrySequence = (typeName) => {
     return Number.isFinite(stored) && stored > 0 ? stored : 1;
 };
 
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
+
 function Carding() {
     const router = useRouter();
     const dispatch = useDispatch();
@@ -88,6 +90,7 @@ function Carding() {
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
+    const [bwcInspectionType, setBwcInspectionType] = useState("Within");
     const [entrySeq, setEntrySeq] = useState(1);
     const [lotNo, setLotNo] = useState("");
 
@@ -104,8 +107,17 @@ function Carding() {
     }, [checkingType, typeOptions]);
 
     useEffect(() => {
-        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
-    }, []);
+        const requestedType = typeof router.query.type === "string" ? router.query.type : "";
+        if (!requestedType || !typeOptions.length) return;
+        const requested = normalizeTypeName(requestedType);
+        const matched = typeOptions.find((item) => {
+            const names = [item.name, ...(item.aliases || [])].map(normalizeTypeName);
+            return names.includes(requested);
+        });
+        if (matched && matched.id !== checkingType) {
+            setCheckingType(matched.id);
+        }
+    }, [router.query.type, typeOptions, checkingType]);
 
     const handleTypeChange = (value) => {
         const selected = typeOptions.find(
@@ -123,6 +135,12 @@ function Carding() {
         typeOptions.find((item) => item.id === checkingType)?.name || "";
     const selectedOption = typeOptions.find((item) => item.id === checkingType) || null;
     const SelectedComponent = selectedOption?.component ?? null;
+    const ocrDocType =
+        selectedType === "Between & Within Card Data Entry"
+            ? "bwc"
+            : selectedType === "U% Data Entry"
+              ? "hvi"
+              : "hvi";
     const isProcessParameter = selectedType === "Process Parameter";
     const isWheelChange = selectedType === "WheelChange";
     const isCardWasteStudy = selectedType === "Card Waste Study";
@@ -176,7 +194,12 @@ function Carding() {
                         <div className={styles["card-form-title"]}>
                             <MdEditNote />
                             <h3>Inspection Data Entry</h3>
-                            <InputScreenUploadButton className="ml-auto" />
+                            <InputScreenUploadButton
+                                className="ml-auto"
+                                docType={ocrDocType}
+                                inspectionType={selectedType === "Between & Within Card Data Entry" ? bwcInspectionType : ""}
+                                returnTo={selectedType === "Between & Within Card Data Entry" ? "/carding?type=Between%20%26%20Within%20Card%20Data%20Entry" : "/carding"}
+                            />
                         </div>
                     ) : null}
 
@@ -251,6 +274,7 @@ function Carding() {
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
+                            onInspectionTypeChange={setBwcInspectionType}
                             showForm
                             entryId={getCardingEntryId(entrySeq, selectedType)}
                         />

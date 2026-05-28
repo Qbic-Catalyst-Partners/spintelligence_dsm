@@ -7,6 +7,7 @@ export default function InputScreenUploadButton({
   navigateToOcr = true,
   returnTo = "",
   docType = "hvi",
+  inspectionType = "",
 }) {
   const router = useRouter();
   const handleClick = () => {
@@ -15,6 +16,7 @@ export default function InputScreenUploadButton({
     const q = new URLSearchParams();
     if (returnTo) q.set("returnTo", returnTo);
     if (docType) q.set("docType", docType);
+    if (inspectionType) q.set("inspection_type", inspectionType);
     router.push(`/ocr-machine?${q.toString()}`);
   };
 
