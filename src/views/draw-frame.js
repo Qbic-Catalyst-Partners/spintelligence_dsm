@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { MdOutlineEditNote } from "react-icons/md";
+import { MdInsertDriveFile, MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
+import { runOcrForDocument } from "@/apis/ocrApi";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
-import {
-  STATIC_DEPARTMENT_OPTIONS,
-  STATIC_MC_NO_OPTIONS,
-  STATIC_SHIFT_OPTIONS,
-} from "@/views/carding/u%dataentry";
+import Wrapping from "@/views/wrapping";
 import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
@@ -46,25 +43,18 @@ const primaryTypeOptions = [
     name: "PP - Finisher Drawing",
     aliases: ["PP - Finisher Drawing", "Finisher Drawing"],
   },
+  { id: 6, name: "A%", aliases: ["A%", "A Percent"] },
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
-const DRAW_FRAME_ENTRY_ID_CONFIG = {
-  "1 Yard / Half Yard CV Entry": {
-    prefix: "DY",
-  },
-  "Draw Frame Cots Data Entry": {
-    prefix: "DC",
-  },
-  "U% Data Entry": {
-    prefix: "DU",
-  },
-  "PP - Breaker Drawing": {
-    prefix: "DH",
-  },
-  "PP - Finisher Drawing": {
-    prefix: "DF",
-  },
+const DRAW_FRAME_ENTRY_SEQ_KEY = "drawframe_entry_sequence";
+const DRAW_FRAME_ENTRY_PREFIX = {
+  "Yarn CV% Calculation Form": "YAR",
+  "Draw Frame Cots Data Entry": "DRC",
+  "U% Data Entry": "DUP",
+  "PP - Breaker Drawing": "DRB",
+  "PP - Finisher Drawing": "DRF",
+  "A%": "DAP",
 };
 
 const getDrawFrameEntryConfig = (type = "") =>
@@ -76,7 +66,36 @@ const STATIC_FR_MACHINE_NAMES = ["FR (HSR 1000-2)", "FR (HSR 1000-1)"];
 
 const processTypeOptions = ["Breaker", "Finisher"];
 const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
+const STATIC_SHIFT_OPTIONS = [
+  { value: "General", label: "General" },
+  { value: "Day", label: "Day" },
+  { value: "Halfnight", label: "Halfnight" },
+  { value: "Fullnight", label: "Fullnight" },
+];
+const STATIC_DEPARTMENT_OPTIONS = [
+  { dept_code: "BR", dept_name: "Br drawing" },
+  { dept_code: "FR", dept_name: "Fr drawing" },
+  { dept_code: "CD", dept_name: "Carding" },
+  { dept_code: "SX", dept_name: "Simplx" },
+  { dept_code: "CB", dept_name: "Comber" },
+];
+const STATIC_MC_NO_OPTIONS = [
+  "CDG-01","CDG-02","CDG-03","CDG-04","CDG-05","CDG-06","CDG-07","CDG-08","CDG-09","CDG-10",
+  "CDG-11","CDG-12","CDG-13","CDG-14","CDG-15","CDG-16","CDG-17","CDG-18","CDG-19","CDG-20",
+  "CDG-21","CDG-22","CDG-23","CDG-24","CDG-25","CDG-26",
+  "SMX-01","SMX-02","SMX-03","SMX-04","SMX-05","SMX-06","SMX-07","SMX-08","SMX-09","SMX-10","SMX-11","SMX-12","SMX-13",
+  "CBR-01","CBR-02","CBR-03","CBR-04","CBR-05","CBR-06",
+  "FR HSR1000-1","FR HSR1000-2","FR D40","FR D50-1","FR D50-2","FR D45-1","FR D45-2","FR D45-3","FR D45-4","FR LRSB 581-1","FR LRSB 581-2","FR LDF3","FR D55-1",
+  "BR SB-20","BR TD7-1","BR TD7-2","BR TD7-3","BR TD7-4","BR TD7-5","BR TD7-6",
+].map((mc_no) => ({ mc_no }));
 const U_PERCENT_NUMERIC_FIELDS = ["uPercent", "cvm", "oneMeterCvm", "threeMeterCvm"];
+const A_PERCENT_TABLE_COLUMNS = [
+  { key: "sampleNo", label: "Sample No" },
+  { key: "nMinus1", label: "N-1" },
+  { key: "n", label: "N" },
+  { key: "nPlus1", label: "N+1" },
+];
+const A_PERCENT_SUMMARY_ROWS = new Set(["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"]);
 const BREAKER_PREFIX = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIX || "DFB").trim().toUpperCase();
 const FINISHER_PREFIXES = String(
   process.env.NEXT_PUBLIC_DRAWFRAME_FINISHER_PREFIXES || "DFF,FR"
@@ -150,6 +169,68 @@ const mergeUniqueMachineNames = (names = [], staticNames = []) => {
   return merged;
 };
 
+const getObjectValueByAliases = (row, aliases = []) => {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return "";
+  const entries = Object.entries(row);
+  for (const alias of aliases) {
+    const aliasKey = String(alias).trim().toLowerCase();
+    const match = entries.find(([key]) => String(key).trim().toLowerCase() === aliasKey);
+    if (match) return match[1];
+  }
+  return "";
+};
+
+const normalizeAPercentJsonRows = (rows = []) =>
+  rows
+    .map((row) => {
+      const sampleNo = getObjectValueByAliases(row, [
+        "Sample No",
+        "SampleNo",
+        "Sample",
+        "S.No",
+        "S No",
+        "s_no",
+        "sample_no",
+      ]);
+      const nMinus1 = getObjectValueByAliases(row, ["N-1", "N - 1", "N_minus_1", "n_minus_1", "n-1"]);
+      const n = getObjectValueByAliases(row, ["N", "n"]);
+      const nPlus1 = getObjectValueByAliases(row, ["N+1", "N + 1", "N_plus_1", "n_plus_1", "n+1"]);
+
+      return {
+        sampleNo: sampleNo === null || sampleNo === undefined ? "" : String(sampleNo).trim(),
+        nMinus1: nMinus1 === null || nMinus1 === undefined ? "" : String(nMinus1).trim(),
+        n: n === null || n === undefined ? "" : String(n).trim(),
+        nPlus1: nPlus1 === null || nPlus1 === undefined ? "" : String(nPlus1).trim(),
+      };
+    })
+    .filter((row) => row.sampleNo || row.nMinus1 || row.n || row.nPlus1);
+
+const parseAPercentRawTextRows = (rawText = "") => {
+  const rows = [];
+  String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .forEach((line) => {
+      const match = line.match(
+        /^(Average Weight|Weight\s*\(Max\)|Weight\s*\(Min\)|Range|Hank|SD|CV|\d{1,3})\s+(\S+)\s+(\S+)\s+(\S+)$/i
+      );
+      if (!match) return;
+      rows.push({
+        sampleNo: match[1].replace(/\s+/g, " ").replace(/^weight\s*\(/i, "Weight ("),
+        nMinus1: match[2],
+        n: match[3],
+        nPlus1: match[4],
+      });
+    });
+  return rows;
+};
+
+const getAPercentRowsFromOcrResult = (result, parsedRows = []) => {
+  const jsonRows = normalizeAPercentJsonRows(parsedRows);
+  if (jsonRows.length) return jsonRows;
+  return parseAPercentRawTextRows(result?.raw_text || result?.text || "");
+};
+
 function DrawFrame() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
@@ -212,9 +293,14 @@ function DrawFrame() {
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const cvMachineDropdownRef = useRef(null);
+  const aPercentFileInputRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
   const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
   const [machineMasterByName, setMachineMasterByName] = useState({});
+  const [aPercentFile, setAPercentFile] = useState(null);
+  const [aPercentOcrBusy, setAPercentOcrBusy] = useState(false);
+  const [aPercentOcrMessage, setAPercentOcrMessage] = useState("");
+  const [aPercentOcrRows, setAPercentOcrRows] = useState([]);
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
     shift: "",
@@ -228,6 +314,7 @@ function DrawFrame() {
     remarks: "",
   });
   const isUPercentEntry = form.type === "U% Data Entry";
+  const isAPercentEntry = form.type === "A%";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
   const { entryId, reserveEntryId } = useDatabaseEntryId({
@@ -429,6 +516,74 @@ function DrawFrame() {
     });
   };
 
+  const handleAPercentFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    setAPercentFile(file);
+    setAPercentOcrMessage("");
+    setAPercentOcrRows([]);
+    setErrors((prev) => {
+      if (!prev.aPercent?.file) return prev;
+      const nextAPercent = { ...(prev.aPercent || {}) };
+      delete nextAPercent.file;
+      return { ...prev, aPercent: nextAPercent };
+    });
+  };
+
+  const clearAPercentFile = () => {
+    setAPercentFile(null);
+    setAPercentOcrBusy(false);
+    setAPercentOcrMessage("");
+    setAPercentOcrRows([]);
+    if (aPercentFileInputRef.current) {
+      aPercentFileInputRef.current.value = "";
+    }
+    setErrors((prev) => ({ ...prev, aPercent: {} }));
+  };
+
+  const handleAPercentRunOcr = async () => {
+    if (!aPercentFile || aPercentOcrBusy) return;
+    setAPercentOcrBusy(true);
+    setAPercentOcrMessage("Running OCR...");
+    setAPercentOcrRows([]);
+    try {
+      const result = await runOcrForDocument({ file: aPercentFile, docType: "hvi" });
+      const parsedRows = Array.isArray(result?.json_output) ? result.json_output : [];
+      setAPercentOcrRows(parsedRows);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          "ocr_prefill",
+          JSON.stringify({
+            screen: "draw-frame",
+            docType: "a_percent",
+            values: parsedRows[0] || {},
+            result,
+          })
+        );
+      }
+      setAPercentOcrMessage(
+        parsedRows.length ? "OCR completed. Extracted values are ready." : "OCR completed, but no table rows were returned."
+      );
+    } catch (ocrError) {
+      setAPercentOcrMessage(ocrError?.message || "OCR failed. Please try again.");
+    } finally {
+      setAPercentOcrBusy(false);
+    }
+  };
+
+  const aPercentOcrColumns = useMemo(() => {
+    const columns = [];
+    const seen = new Set();
+    aPercentOcrRows.forEach((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return;
+      Object.keys(row).forEach((key) => {
+        if (seen.has(key)) return;
+        seen.add(key);
+        columns.push(key);
+      });
+    });
+    return columns;
+  }, [aPercentOcrRows]);
+
   const handleCalculate = () => {
     const count = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length);
     const oneErrors = [];
@@ -474,6 +629,7 @@ function DrawFrame() {
     setOneYardMetrics([]);
     setHalfYardMetrics([]);
     setHasCalculated(false);
+    clearAPercentFile();
     setUPercentForm({
       date: today,
       shift: "",
@@ -551,6 +707,21 @@ function DrawFrame() {
       });
 
       return !hasErrors;
+    }
+
+    if (form.type === "A%") {
+      const aPercentErrors = {};
+      if (!aPercentFile) aPercentErrors.file = true;
+
+      setErrors({
+        header: {},
+        aPercent: aPercentErrors,
+        machines: [],
+        oneYard: [],
+        halfYard: [],
+      });
+
+      return Object.keys(aPercentErrors).length === 0;
     }
 
     if (isHeaderEntry) {
@@ -647,6 +818,10 @@ function DrawFrame() {
       items.push({ label: "1m CV in Metres", value: uPercentForm.oneMeterCvm });
       items.push({ label: "3m CV in Metres", value: uPercentForm.threeMeterCvm });
       items.push({ label: "Remarks", value: uPercentForm.remarks });
+    } else if (form.type === "A%") {
+      items.push({ label: "Type", value: form.type });
+      items.push({ label: "Entry ID", value: getDrawFrameUniqueId(entrySeq, form.type) });
+      items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "S. No.", value: form.serialNumber });
@@ -672,7 +847,7 @@ function DrawFrame() {
       items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
-  }, [form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
+  }, [aPercentFile, entrySeq, form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
@@ -700,6 +875,18 @@ function DrawFrame() {
           dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
         }
       });
+      return;
+    }
+
+    if (form.type === "A%") {
+      setEntrySeq((current) => {
+        const next = Math.max(1, Number(current) || 1) + 1;
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(DRAW_FRAME_ENTRY_SEQ_KEY, String(next));
+        }
+        return next;
+      });
+      setShowSuccess(true);
       return;
     }
 
@@ -778,13 +965,152 @@ function DrawFrame() {
           <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
 
-        {isHeaderEntry ? (
+        {isWrappingDrawframeNotebook ? (
+          <Wrapping
+            fixedType="Drawing"
+            backPath="/draw-frame"
+            title="Quality Control - Wrapping Drawframe Notebook"
+          />
+        ) : isHeaderEntry ? (
           <DrawFrameHeaderEntry
             entryId={entryId}
             typeOptions={typeOptions}
             selectedType={form.type}
             onTypeChange={(value) => handleFormChange("type", value)}
           />
+        ) : isAPercentEntry ? (
+          <div className={styles.aPercentWrap}>
+            <div className={`${styles.field} ${styles.aPercentTypeField}`}>
+              <label className={styles.label}>Type</label>
+              <select
+                value={form.type}
+                onChange={(e) => handleFormChange("type", e.target.value)}
+                className={styles.select}
+              >
+                {typeOptions.map((option) => (
+                  <option key={option.id} value={option.name}>
+                    {option.displayName ?? option.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className={styles.aPercentUploadCard}>
+              <input
+                ref={aPercentFileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className={styles.aPercentFileInput}
+                onChange={handleAPercentFileChange}
+              />
+              <MdInsertDriveFile className={styles.aPercentFileIcon} aria-hidden="true" />
+              <p className={styles.aPercentUploadTitle}>
+                {aPercentFile?.name || "Select the PDF File"}
+              </p>
+              {aPercentFile ? (
+                <>
+                  <div className={styles.aPercentOcrActions}>
+                    <button
+                      type="button"
+                      className={styles.aPercentCancelButton}
+                      onClick={clearAPercentFile}
+                      disabled={aPercentOcrBusy}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.aPercentRunOcrButton}
+                      onClick={handleAPercentRunOcr}
+                      disabled={aPercentOcrBusy}
+                    >
+                      {aPercentOcrBusy ? "Running..." : "Run OCR"}
+                    </button>
+                  </div>
+                  {aPercentOcrMessage ? (
+                    <p className={styles.aPercentOcrMessage}>{aPercentOcrMessage}</p>
+                  ) : null}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.aPercentBrowseButton}
+                  onClick={() => aPercentFileInputRef.current?.click()}
+                >
+                  Browse File
+                </button>
+              )}
+              {errors.aPercent?.file ? (
+                <p className={styles.aPercentError}>Please select a PDF file.</p>
+              ) : null}
+            </div>
+
+            {aPercentOcrRows.length > 0 ? (
+              <div className={styles.aPercentTableSection}>
+                <div className={styles.aPercentTableHeader}>
+                  <h3 className={styles.aPercentTableTitle}>PDF Values</h3>
+                  <span className={styles.aPercentTableCount}>
+                    {aPercentOcrRows.length} {aPercentOcrRows.length === 1 ? "row" : "rows"}
+                  </span>
+                </div>
+                {aPercentOcrColumns.length > 0 ? (
+                  <div className={styles.aPercentTableScroll}>
+                    <table className={styles.aPercentTable}>
+                      <thead>
+                        <tr>
+                          <th>S.No</th>
+                          {aPercentOcrColumns.map((column) => (
+                            <th key={column}>{column}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {aPercentOcrRows.map((row, rowIndex) => (
+                          <tr key={`a-percent-ocr-row-${rowIndex}`}>
+                            <td>{rowIndex + 1}</td>
+                            {aPercentOcrColumns.map((column) => {
+                              const value = row?.[column];
+                              return (
+                                <td key={`${rowIndex}-${column}`}>
+                                  {value === null || value === undefined || value === "" ? "-" : String(value)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className={styles.aPercentEmptyTable}>OCR returned rows without readable fields.</p>
+                )}
+              </div>
+            ) : null}
+
+            <div className={styles.aPercentFooter}>
+              <button
+                type="button"
+                className={styles.aPercentBackButton}
+                onClick={() => router.push("/departments/quality-control")}
+              >
+                <span aria-hidden="true">←</span>
+                Back to Dashboard
+              </button>
+
+              <div className={styles.aPercentActions}>
+                <button
+                  type="button"
+                  className={styles.aPercentClearButton}
+                  onClick={clearAPercentFile}
+                >
+                  Clear Form
+                </button>
+                <button type="button" className={styles.aPercentSaveButton} onClick={openPreview}>
+                  Save Record
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className={`${styles.card} ${styles.inspectionCard}`}>
             <div className={styles.cardBody}>
@@ -991,7 +1317,7 @@ function DrawFrame() {
                     <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
-                  <div className={styles.field} ref={cvMachineDropdownRef}>
+                  <div className={styles.field}>
                     <label className={styles.label}>Machine Number</label>
                     <SearchableSelect
                       value={form.machineNumber}

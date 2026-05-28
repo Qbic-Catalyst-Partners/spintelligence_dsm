@@ -79,7 +79,10 @@ export const submitBetweenWithinCardEntry = async (payload) => {
         return response.data;
     } catch (error) {
         if (error.response && error.response.data) {
-            throw new Error(error.response.data.message || "Invalid payload data.");
+            const data = error.response.data;
+            const details = Array.isArray(data.details) ? data.details.join(", ") : data.details;
+            const message = data.message || data.error || details || "Invalid payload data.";
+            throw new Error(`${message} (${error.response.status})`);
         }
 
         throw new Error(error.message || "Server error occurred");
