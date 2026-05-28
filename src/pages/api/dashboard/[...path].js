@@ -11,7 +11,7 @@ const VISUAL_TYPES = new Set([
   "ticket_status_card",
 ]);
 const TICKET_CARD_METRICS = new Set(["total", "open", "closed", "reopened", "pending", "overdue"]);
-const ALL_SUB_DEPARTMENTS = ["Mixing", "Spinning", "Carding", "Comber", "Blowroom", "Autoconer", "Drawframe", "Simplex"];
+const ALL_SUB_DEPARTMENTS = ["Mixing", "Spinning", "Carding", "Comber", "Blowroom", "Autoconer", "Drawframe", "Simplex", "Wrapping"];
 
 const SUB_DEPARTMENT_SCREEN_KEYS = {
   mixing: ["cottonhvidataentry", "fibredataentry", "afisdataentry", "moisturedataentry", "opennessdataentry", "mixingqcdataentry"],

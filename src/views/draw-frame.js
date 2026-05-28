@@ -9,11 +9,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
-import {
-  STATIC_DEPARTMENT_OPTIONS,
-  STATIC_MC_NO_OPTIONS,
-  STATIC_SHIFT_OPTIONS,
-} from "@/views/carding/u%dataentry";
+import Wrapping from "@/views/wrapping";
 import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
@@ -45,6 +41,11 @@ const primaryTypeOptions = [
     id: 5,
     name: "PP - Finisher Drawing",
     aliases: ["PP - Finisher Drawing", "Finisher Drawing"],
+  },
+  {
+    id: 6,
+    name: "Wrapping Drawframe Notebook",
+    aliases: ["Wrapping Drawframe Notebook", "Wrapping Draw Frame Notebook", "Drawframe Wrapping Notebook"],
   },
 ];
 
@@ -228,6 +229,7 @@ function DrawFrame() {
     remarks: "",
   });
   const isUPercentEntry = form.type === "U% Data Entry";
+  const isWrappingDrawframeNotebook = form.type === "Wrapping Drawframe Notebook";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
   const { entryId, reserveEntryId } = useDatabaseEntryId({
@@ -778,7 +780,13 @@ function DrawFrame() {
           <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
 
-        {isHeaderEntry ? (
+        {isWrappingDrawframeNotebook ? (
+          <Wrapping
+            fixedType="Drawing"
+            backPath="/draw-frame"
+            title="Quality Control - Wrapping Drawframe Notebook"
+          />
+        ) : isHeaderEntry ? (
           <DrawFrameHeaderEntry
             entryId={entryId}
             typeOptions={typeOptions}
@@ -991,7 +999,7 @@ function DrawFrame() {
                     <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
-                  <div className={styles.field} ref={cvMachineDropdownRef}>
+                  <div className={styles.field}>
                     <label className={styles.label}>Machine Number</label>
                     <SearchableSelect
                       value={form.machineNumber}
