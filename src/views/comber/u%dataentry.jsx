@@ -4,6 +4,12 @@ import { useDispatch, useSelector } from "react-redux";
 import CustomSelect from "@/components/CustomSelect";
 import styles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import {
+  STATIC_DEPARTMENT_OPTIONS,
+  STATIC_MC_NO_OPTIONS,
+  STATIC_SHIFT_OPTIONS,
+  STATIC_VARIETY_OPTIONS,
+} from "@/views/carding/u%dataentry";
 import { getComberUqcEntries, submitComberUqc } from "@/store/slices/comber";
 
 const initialForm = () => ({
@@ -164,11 +170,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             onChange={(e) => handleChange("shift", e.target.value)}
             className={errors.shift ? styles.errorField : ""}
           >
-            <option value="">Select</option>
-            <option>General</option>
-            <option>Day</option>
-            <option>Half Night</option>
-            <option>Full Night</option>
+            <option value="">-- Select Shift --</option>
+            {STATIC_SHIFT_OPTIONS.map((item, index) => (
+              <option key={`${item.value}-${index}`} value={item.value}>
+                {item.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -179,11 +186,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             onChange={(e) => handleChange("variety", e.target.value)}
             className={errors.variety ? styles.errorField : ""}
           >
-            <option value="">Select</option>
-            <option>Cotton</option>
-            <option>WPSF 0.90</option>
-            <option>WPSF 1.20</option>
-            <option>PSF Blend</option>
+            <option value="">-- Select Variety --</option>
+            {STATIC_VARIETY_OPTIONS.map((name, index) => (
+              <option key={`${name}-${index}`} value={name}>
+                {name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -195,9 +203,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             className={errors.department ? styles.errorField : ""}
           >
             <option value="">Select Department</option>
-            <option>Comber</option>
-            <option>Drawing</option>
-            <option>Preparatory</option>
+            {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
+              <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
+                {item.dept_name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -208,14 +218,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             onChange={(e) => handleChange("mc_no", e.target.value)}
             className={errors.mc_no ? styles.errorField : ""}
           >
-            <option value="">Select MC No.</option>
-            <option>MC-01</option>
-            <option>MC-02</option>
-            <option>MC-03</option>
-            <option>CB-01</option>
-            <option>CB-02</option>
-            <option>CB-03</option>
-            <option>CB-04</option>
+            <option value="">-- Select MC No. --</option>
+            {STATIC_MC_NO_OPTIONS.map((item, index) => (
+              <option key={`${item.mc_no}-${index}`} value={item.mc_no}>
+                {item.mc_no}
+              </option>
+            ))}
           </select>
         </div>
 

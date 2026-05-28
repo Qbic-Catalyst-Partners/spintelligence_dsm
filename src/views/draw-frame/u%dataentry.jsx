@@ -5,6 +5,12 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import {
+  STATIC_DEPARTMENT_OPTIONS,
+  STATIC_MC_NO_OPTIONS,
+  STATIC_SHIFT_OPTIONS,
+  STATIC_VARIETY_OPTIONS,
+} from "@/views/carding/u%dataentry";
 
 function UPercentDataEntry() {
   const [form, setForm] = useState({
@@ -134,16 +140,24 @@ function UPercentDataEntry() {
         <div>
           <label>Shift</label>
           <select value={form.shift} onChange={(e) => handleChange("shift", e.target.value)} className={errors.shift ? styles.errorField : ""}>
-            <option value="">Select</option>
-            <option>General</option>
+            <option value="">-- Select Shift --</option>
+            {STATIC_SHIFT_OPTIONS.map((item, index) => (
+              <option key={`${item.value}-${index}`} value={item.value}>
+                {item.label}
+              </option>
+            ))}
           </select>
         </div>
 
         <div>
           <label>Variety</label>
           <select value={form.variety} onChange={(e) => handleChange("variety", e.target.value)} className={errors.variety ? styles.errorField : ""}>
-            <option value="">Select</option>
-            <option>WPSF 0.90</option>
+            <option value="">-- Select Variety --</option>
+            {STATIC_VARIETY_OPTIONS.map((name, index) => (
+              <option key={`${name}-${index}`} value={name}>
+                {name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -151,15 +165,23 @@ function UPercentDataEntry() {
           <label>Department</label>
           <select value={form.department} onChange={(e) => handleChange("department", e.target.value)} className={errors.department ? styles.errorField : ""}>
             <option value="">Select Department</option>
-            <option>FR Drawing</option>
+            {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
+              <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
+                {item.dept_name}
+              </option>
+            ))}
           </select>
         </div>
 
         <div>
           <label>MC No.</label>
           <select value={form.mc_no} onChange={(e) => handleChange("mc_no", e.target.value)} className={errors.mc_no ? styles.errorField : ""}>
-            <option value="">Select MC No.</option>
-            <option>FR DSS-1</option>
+            <option value="">-- Select MC No. --</option>
+            {STATIC_MC_NO_OPTIONS.map((item, index) => (
+              <option key={`${item.mc_no}-${index}`} value={item.mc_no}>
+                {item.mc_no}
+              </option>
+            ))}
           </select>
         </div>
 

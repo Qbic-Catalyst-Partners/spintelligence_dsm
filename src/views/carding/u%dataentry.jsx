@@ -6,14 +6,14 @@ import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 
-const STATIC_SHIFT_OPTIONS = [
+export const STATIC_SHIFT_OPTIONS = [
   { value: "General", label: "General" },
   { value: "Day", label: "Day" },
   { value: "Halfnight", label: "Halfnight" },
   { value: "Fullnight", label: "Fullnight" },
 ];
 
-const STATIC_VARIETY_OPTIONS = [
+export const STATIC_VARIETY_OPTIONS = [
   "B. PV",
   "B.AIR (0.09)",
   "B.AIRTHERMO 0.70",
@@ -174,7 +174,7 @@ const STATIC_VARIETY_OPTIONS = [
   "W.PV 65/35(0.70)",
 ];
 
-const STATIC_DEPARTMENT_OPTIONS = [
+export const STATIC_DEPARTMENT_OPTIONS = [
   { dept_code: "BR", dept_name: "Br drawing" },
   { dept_code: "FR", dept_name: "Fr drawing" },
   { dept_code: "CD", dept_name: "Carding" },
@@ -182,7 +182,7 @@ const STATIC_DEPARTMENT_OPTIONS = [
   { dept_code: "CB", dept_name: "Comber" },
 ];
 
-const STATIC_MC_NO_OPTIONS = [
+export const STATIC_MC_NO_OPTIONS = [
   "CDG-01","CDG-02","CDG-03","CDG-04","CDG-05","CDG-06","CDG-07","CDG-08","CDG-09","CDG-10",
   "CDG-11","CDG-12","CDG-13","CDG-14","CDG-15","CDG-16","CDG-17","CDG-18","CDG-19","CDG-20",
   "CDG-21","CDG-22","CDG-23","CDG-24","CDG-25","CDG-26",

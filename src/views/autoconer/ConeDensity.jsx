@@ -82,7 +82,9 @@ const mapConeDensityEntryToRows = (entry = {}) => {
     ? entry.cone_density_readings
     : Array.isArray(entry.cone_readings)
       ? entry.cone_readings
-      : [];
+      : Array.isArray(entry.readings)
+        ? entry.readings
+        : [];
 
   if (nestedRows.length > 0) {
     return nestedRows.map((row, index) => ({
@@ -226,7 +228,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     weight: null,
     no_of_cuts: null,
     remarks: "Normal",
-    cone_density_readings: readingRows.map((row) => ({
+    cone_readings: readingRows.map((row) => ({
       drum_no: toNullableNumber(row.drumNo),
       base_dia_e: toNullableNumber(row.baseDiaE),
       nose_dia_e: toNullableNumber(row.noseDiaE),

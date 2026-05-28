@@ -2,6 +2,12 @@ import { forwardRef, useImperativeHandle, useState } from "react";
 import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import {
+  STATIC_DEPARTMENT_OPTIONS,
+  STATIC_MC_NO_OPTIONS,
+  STATIC_SHIFT_OPTIONS,
+  STATIC_VARIETY_OPTIONS,
+} from "@/views/carding/u%dataentry";
 import { getSimplexUqcEntries, submitSimplexUqc } from "@/store/slices/simplex";
 
 const initialForm = () => ({
@@ -150,11 +156,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             className={errors.shift ? styles.errorField : ""}
             style={errors.shift ? undefined : defaultFieldStyle}
           >
-            <option value="">Select</option>
-            <option>General</option>
-            <option>Day</option>
-            <option>Half Night</option>
-            <option>Full Night</option>
+            <option value="">-- Select Shift --</option>
+            {STATIC_SHIFT_OPTIONS.map((item, index) => (
+              <option key={`${item.value}-${index}`} value={item.value}>
+                {item.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -166,8 +173,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             className={errors.variety ? styles.errorField : ""}
             style={errors.variety ? undefined : defaultFieldStyle}
           >
-            <option value="">Select</option>
-            <option>WPSF 0.90</option>
+            <option value="">-- Select Variety --</option>
+            {STATIC_VARIETY_OPTIONS.map((name, index) => (
+              <option key={`${name}-${index}`} value={name}>
+                {name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -180,7 +191,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             style={errors.department ? undefined : defaultFieldStyle}
           >
             <option value="">Select Department</option>
-            <option>FR Drawing</option>
+            {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
+              <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
+                {item.dept_name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -192,8 +207,12 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             className={errors.mc_no ? styles.errorField : ""}
             style={errors.mc_no ? undefined : defaultFieldStyle}
           >
-            <option value="">Select MC No.</option>
-            <option>FR DSS-1</option>
+            <option value="">-- Select MC No. --</option>
+            {STATIC_MC_NO_OPTIONS.map((item, index) => (
+              <option key={`${item.mc_no}-${index}`} value={item.mc_no}>
+                {item.mc_no}
+              </option>
+            ))}
           </select>
         </div>
 

@@ -113,6 +113,24 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const [form, setForm] = useState(createInitialForm);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const auditRows = useMemo(() => {
+    const grossWeight = toNullableNumber(form.grossWtAct);
+    const average = toNullableNumber(String(form.netWeight).replace(/,/g, ""));
+    const percentYarn =
+      grossWeight && average
+        ? Number(((average / grossWeight) * 100).toFixed(2))
+        : null;
+
+    return [
+      {
+        drumNo: 1,
+        readingNumber: 1,
+        grossWeight,
+        average,
+        percentYarn,
+      },
+    ];
+  }, [form.grossWtAct, form.netWeight]);
 
   useEffect(() => {
     setPortalReady(true);
@@ -150,9 +168,9 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
         label: label === "date" ? "Entry ID" : label,
         value: label === "date" ? entryId || "-" : value || "-",
       })),
-    ...rows.map((row, index) => ({
+    ...auditRows.map((row, index) => ({
       label: `Reading ${index + 1}`,
-      value: `${row.readingNumber} | ${row.precentYarn}`,
+      value: `${row.readingNumber} | ${row.percentYarn ?? "-"}`,
     })),
   ];
 
@@ -176,9 +194,15 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     net_weight: toNullableNumber(String(form.netWeight).replace(/,/g, "")),
     tare_weight: toNullableNumber(form.tareWeight),
     strap_colour: form.strapColour,
-    drum_entries: [],
-    yarn_readings: [],
-    cone_readings: [],
+    drum_entries: auditRows.map((row) => ({
+      drum_no: row.drumNo,
+      gross_weight: row.grossWeight,
+      average: row.average,
+    })),
+    cone_readings: auditRows.map((row) => ({
+      reading_number: row.readingNumber,
+      percent_yarn: row.percentYarn,
+    })),
   });
 
   const submit = async () => {
