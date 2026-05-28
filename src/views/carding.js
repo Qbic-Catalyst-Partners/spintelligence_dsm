@@ -15,7 +15,7 @@ import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
 import CardingWheelChange from "./carding/WheelChange";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
-import { fetchCardWasteStudyEntries, submitCardWasteStudyEntry } from "@/apis/carding";
+import { fetchCardWasteStudyEntries, fetchCardingMasterMachines, submitCardWasteStudyEntry } from "@/apis/carding";
 import brWasteStyles from "@/styles/brWasteStudyEntry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
@@ -52,6 +52,7 @@ const CARDING_ENTRY_ID_CONFIG = {
 
 const getCardingEntryConfig = (typeName) =>
     CARDING_ENTRY_ID_CONFIG[typeName] || { prefix: "CAR", storageKey: CARDING_ENTRY_SEQ_KEY };
+const DEFAULT_CARDING_STATE = { uqcEntries: [], listLoading: false };
 
 const getCardingEntryId = (seq, typeName) => {
     const { prefix } = getCardingEntryConfig(typeName);
@@ -68,14 +69,16 @@ const readCardingEntrySequence = (typeName) => {
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
 function Carding() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
     const { isDarkMode } = useThemeMode();
-    const { uqcEntries = [], listLoading } = useSelector((state) => state.carding ?? {});
+    const { uqcEntries = [], listLoading } = useSelector(
+        (state) => state.carding ?? DEFAULT_CARDING_STATE
+    );
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
+    const [currentDateLabel, setCurrentDateLabel] = useState("");
     const typeOptions = filterOptionsByDepartmentAccess(
         cardingDepartmentTypes,
         accessByDepartment,
@@ -259,6 +262,7 @@ function Carding() {
                                 onLotNoChange={setLotNo}
                                 saveEntryApi={submitCardWasteStudyEntry}
                                 fetchEntriesApi={fetchCardWasteStudyEntries}
+                                fetchMachineOptionsApi={fetchCardingMasterMachines}
                                 entryTypeLabel="Card Waste Study"
                                 useBlowroomRedux={false}
                             />

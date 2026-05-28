@@ -8,6 +8,12 @@ import {
 } from "../../store/slices/blowroomSlice";
 
 const todayValue = new Date().toISOString().split("T")[0];
+const DEFAULT_BLOWROOM_STATE = {
+  loading: false,
+  success: false,
+  message: "",
+  error: null,
+};
 
 const BlowRoomSync = forwardRef(function BlowRoomSync(
   { date, entryId, selectedTypeName, onTypeChange, onDateChange, typeOptions = [] },
@@ -16,13 +22,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const dispatch = useDispatch();
 
   const { loading, success, message, error } = useSelector(
-    (state) =>
-      state.blowroom ?? {
-        loading: false,
-        success: false,
-        message: "",
-        error: null,
-      }
+    (state) => state.blowroom ?? DEFAULT_BLOWROOM_STATE
   );
 
   const [rows, setRows] = useState(5);

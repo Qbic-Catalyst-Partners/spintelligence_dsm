@@ -82,9 +82,9 @@ export const submitCardingUqc = createAsyncThunk(
 
 export const getCardingUqcEntries = createAsyncThunk(
     "carding/getUqcEntries",
-    async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
+    async ({ page = 1, limit = 10, global = false, department = "" } = {}, { rejectWithValue }) => {
         try {
-            return await fetchCardingUqcEntries({ page, limit });
+            return await fetchCardingUqcEntries({ page, limit, global, department });
         } catch (error) {
             return rejectWithValue(error.message);
         }

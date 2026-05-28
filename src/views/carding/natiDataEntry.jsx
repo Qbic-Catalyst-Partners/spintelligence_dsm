@@ -5,12 +5,13 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
+import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
+import { STATIC_VARIETY_OPTIONS } from "@/constants/staticVarietyOptions";
 import styles from "./natiDataEntry.module.css";
 
-const emptyComberState = {
+const emptyCardingState = {
     isLoading: false,
-    data: null,
+    nati: null,
     error: null,
 };
 
@@ -25,7 +26,7 @@ const createEmptyEntries = (count) =>
 function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = "" }) {
     const router = useRouter();
     const dispatch = useDispatch();
-    const { isLoading, data, error } = useSelector((state) => state.comber ?? emptyComberState);
+    const { isLoading, nati, error } = useSelector((state) => state.carding ?? emptyCardingState);
 
     const [natiId, setNatiId] = useState("");
     const [entryDate, setEntryDate] = useState("");
@@ -37,16 +38,17 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    const [varietyOptions] = useState(STATIC_VARIETY_OPTIONS);
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
     }, []);
 
     useEffect(() => {
-        if (data) {
+        if (nati) {
             setFormMessage("");
         }
-    }, [data]);
+    }, [nati]);
 
     useEffect(() => {
         if (error) {
@@ -56,7 +58,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
 
     useEffect(() => {
         return () => {
-            dispatch(clearComberState());
+            dispatch(clearCardingState());
         };
     }, [dispatch]);
 
@@ -118,6 +120,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     };
 
     const buildPayload = () => ({
+        entry_id: entryId || "",
         type: selectedType,
         nati_id: natiId,
         entry_date: entryDate,
@@ -161,7 +164,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
 
     const handleSubmit = async () => {
         try {
-            await dispatch(submitComberNatiDataEntry(buildPayload())).unwrap();
+            await dispatch(submitCardingNati(buildPayload())).unwrap();
             setShowPreview(false);
             setFormMessage("");
             setShowSuccess(true);
@@ -254,10 +257,10 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                                         }}
                                         className={errors.variety ? styles["field-error"] : ""}
                                     >
-                                        <option value="">Select</option>
-                                        <option value="Cotton">Cotton</option>
-                                        <option value="Polyester">Polyester</option>
-                                        <option value="PC Blend">PC Blend</option>
+                                        <option value="">-- Select Variety --</option>
+                                        {varietyOptions.map((name, index) => (
+                                            <option key={`${name}-${index}`} value={name}>{name}</option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -336,7 +339,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                             {formMessage}
                         </div>
                     ) : null}
-
                     <div className={styles["cb-footer"]}>
                         <Footer
                             isMobile={isMobile}

@@ -145,7 +145,7 @@ export default function UserManagement() {
 
   const downloadBulkUploadTemplate = async () => {
     try {
-      const excelJSImport = await import("exceljs");
+      const excelJSImport = await (new Function("m", "return import(m)"))("exceljs");
       const ExcelJS = excelJSImport?.default || excelJSImport;
       const workbook = new ExcelJS.Workbook();
       const templateSheet = workbook.addWorksheet("Users Template");
