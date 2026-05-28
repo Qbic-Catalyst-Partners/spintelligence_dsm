@@ -15,7 +15,7 @@ export const STATIC_SHIFT_OPTIONS = [
   { value: "Fullnight", label: "Fullnight" },
 ];
 
-const STATIC_DEPARTMENT_OPTIONS = [
+export const STATIC_DEPARTMENT_OPTIONS = [
   { dept_code: "BR", dept_name: "Br drawing" },
   { dept_code: "FR", dept_name: "Fr drawing" },
   { dept_code: "CD", dept_name: "Carding" },
