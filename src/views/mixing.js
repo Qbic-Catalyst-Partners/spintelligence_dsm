@@ -14,6 +14,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const mixingDepartmentTypes = [
     {
@@ -40,29 +41,16 @@ const mixingDepartmentTypes = [
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
 
 const getCurrentDate = () => new Date().toISOString().split("T")[0];
-const MIXING_ENTRY_SEQ_KEY = "mixing_entry_sequence";
 const MIXING_ENTRY_ID_CONFIG = {
-    "Cotton HVI Data Entry": { prefix: "COT", storageKey: "mixing_entry_sequence_cotton_hvi" },
-    "Fibre Data Entry": { prefix: "FIB", storageKey: "mixing_entry_sequence_fibre" },
-    "AFIS Data Entry": { prefix: "AFI", storageKey: "mixing_entry_sequence_afis" },
-    "Moisture Data Entry": { prefix: "MOI", storageKey: "mixing_entry_sequence_moisture" },
-    "Openness Data Entry": { prefix: "OPN", storageKey: "mixing_entry_sequence_openness" },
+    "Cotton HVI Data Entry": { prefix: "COT",  },
+    "Fibre Data Entry": { prefix: "FIB",  },
+    "AFIS Data Entry": { prefix: "AFI",  },
+    "Moisture Data Entry": { prefix: "MOI",  },
+    "Openness Data Entry": { prefix: "OPN",  },
 };
 
 const getEntryConfigForType = (typeName) =>
-    MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX", storageKey: MIXING_ENTRY_SEQ_KEY };
-
-const getEntryIdFromSeq = (seq, typeName) => {
-    const { prefix } = getEntryConfigForType(typeName);
-    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
-
-const readEntrySequence = (typeName) => {
-    if (typeof window === "undefined") return 1;
-    const { storageKey } = getEntryConfigForType(typeName);
-    const stored = Number(window.localStorage.getItem(storageKey) || "1");
-    return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
+    MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX" };
 
 function Mixing() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -81,7 +69,6 @@ function Mixing() {
     );
     const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
-    const [entrySeq, setEntrySeq] = useState(1);
     const [lotNo, setLotNo] = useState("");
     const [mixingValue, setMixingValue] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
@@ -89,20 +76,17 @@ function Mixing() {
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
-    const [ocrBusy, setOcrBusy] = useState(false);
+    const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
-    const incrementEntrySequence = () => {
-        const nextSeq = entrySeq + 1;
-        setEntrySeq(nextSeq);
-        if (typeof window !== "undefined") {
-            const { storageKey } = getEntryConfigForType(selectedTypeName);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-        }
-    };
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
     const isProcessParameter = selectedTypeName === "Process Parameter";
+    const { entryId, reserveEntryId } = useDatabaseEntryId({
+        department: "Mixing",
+        typeName: selectedTypeName,
+        config: getEntryConfigForType(selectedTypeName),
+    });
 
     useEffect(() => {
         if (!typeOptions.some((item) => item.name === selectedTypeName)) {
@@ -112,7 +96,7 @@ function Mixing() {
 
     useEffect(() => {
         if (actionSuccess) {
-            incrementEntrySequence();
+            reserveEntryId();
             setShowSuccess(true);
         }
     }, [actionSuccess]);
@@ -120,11 +104,6 @@ function Mixing() {
     useEffect(() => {
         setDate(getCurrentDate());
     }, [router.asPath]);
-
-    useEffect(() => {
-        setEntrySeq(readEntrySequence(selectedTypeName));
-    }, [selectedTypeName]);
-
     const handleTypeChange = (value) => {
         setSelectedTypeName(value);
         setLotNo("");
@@ -147,7 +126,7 @@ function Mixing() {
         const list = [
             { label: "Type", value: selectedTypeName },
         ];
-        if (!isProcessParameter) list.push({ label: "Entry ID", value: getEntryIdFromSeq(entrySeq, selectedTypeName) });
+        if (!isProcessParameter) list.push({ label: "Entry ID", value: entryId });
         if (selectedType?.needsLotNo !== false) {
             list.push({ label: "Lot No", value: lotNo });
         }
@@ -283,7 +262,7 @@ function Mixing() {
 
                                     <CustomInput
                                         label="Entry ID"
-                                        value={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                                        value={entryId}
                                         onChange={() => {}}
                                         disabled
                                     />
@@ -303,7 +282,7 @@ function Mixing() {
                                     <SelectedComponent
                                         ref={childRef}
                                         date={date}
-                                        entryId={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                                        entryId={entryId}
                                         lotNo={lotNo}
                                         mixing={mixingValue}
                                         selectedTypeName={selectedTypeName}
@@ -322,7 +301,7 @@ function Mixing() {
                         <SelectedComponent
                             ref={childRef}
                             date={date}
-                            entryId={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                            entryId={entryId}
                             lotNo={lotNo}
                             mixing={mixingValue}
                             selectedTypeName={selectedTypeName}

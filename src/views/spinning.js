@@ -13,6 +13,7 @@ import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
 
 const COUNT_NAME_OPTIONS = [
@@ -57,35 +58,22 @@ const SPINNING_CHECKING_OPTIONS = [
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
-const SPINNING_ENTRY_SEQ_KEY = "spinning_entry_sequence";
 const SPINNING_ENTRY_ID_CONFIG = {
-    "Process Parameter": { prefix: "SNP", storageKey: "spinning_entry_sequence_process_parameter" },
-    "COTS Checking": { prefix: "SCT", storageKey: "spinning_entry_sequence_cots_checking" },
-    "Count Change": { prefix: "SCC", storageKey: "spinning_entry_sequence_count_change" },
-    "Ring Frame Log Book": { prefix: "SRF", storageKey: "spinning_entry_sequence_ring_frame" },
-    "Speed Checking": { prefix: "SSD", storageKey: "spinning_entry_sequence_speed_checking" },
-    "Lycra Missing": { prefix: "SLM", storageKey: "spinning_entry_sequence_lycra_missing" },
-    "Bottom Apron Checking": { prefix: "SBA", storageKey: "spinning_entry_sequence_bottom_apron" },
-    "Lycra Centering": { prefix: "SLC", storageKey: "spinning_entry_sequence_lycra_centering" },
-    "RSM & Lycrasensor Checking Online": { prefix: "SRO", storageKey: "spinning_entry_sequence_rsm_online" },
-    "RSM & Lycrasensor Checking Offline": { prefix: "SFO", storageKey: "spinning_entry_sequence_rsm_offline" },
-    "Wheel Change": { prefix: "SWC", storageKey: "spinning_entry_sequence_wheel_change" },
+    "Process Parameter": { prefix: "SNP",  },
+    "COTS Checking": { prefix: "SCT",  },
+    "Count Change": { prefix: "SCC",  },
+    "Ring Frame Log Book": { prefix: "SRF",  },
+    "Speed Checking": { prefix: "SSD",  },
+    "Lycra Missing": { prefix: "SLM",  },
+    "Bottom Apron Checking": { prefix: "SBA",  },
+    "Lycra Centering": { prefix: "SLC",  },
+    "RSM & Lycrasensor Checking Online": { prefix: "SRO",  },
+    "RSM & Lycrasensor Checking Offline": { prefix: "SFO",  },
+    "Wheel Change": { prefix: "SWC",  },
 };
 
 const getSpinningEntryConfig = (typeName) =>
-    SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN", storageKey: SPINNING_ENTRY_SEQ_KEY };
-
-const getSpinningEntryId = (seq, typeName) => {
-    const { prefix } = getSpinningEntryConfig(typeName);
-    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
-
-const readSpinningEntrySequence = (typeName) => {
-    if (typeof window === "undefined") return 1;
-    const { storageKey } = getSpinningEntryConfig(typeName);
-    const stored = Number(window.localStorage.getItem(storageKey) || "1");
-    return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
+    SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN" };
 
 const createRingFrameRows = () =>
     Array.from({ length: 24 }, (_, index) => ({
@@ -178,15 +166,6 @@ function SpinningDepartment() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
-    const [entrySeq, setEntrySeq] = useState(1);
-    const incrementEntrySequence = () => {
-        const nextSeq = entrySeq + 1;
-        setEntrySeq(nextSeq);
-        if (typeof window !== "undefined") {
-            const { storageKey } = getSpinningEntryConfig(checkingType);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-        }
-    };
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -198,6 +177,11 @@ function SpinningDepartment() {
     const isCountChange = checkingType === "Count Change";
     const isRingFrame = checkingType === "Ring Frame Log Book";
     const isWheelChange = checkingType === "Wheel Change";
+    const { entryId, reserveEntryId } = useDatabaseEntryId({
+        department: "Spinning",
+        typeName: checkingType,
+        config: getSpinningEntryConfig(checkingType),
+    });
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -215,18 +199,9 @@ function SpinningDepartment() {
             setDate("");
         }
     }, [checkingOptions, queryType]);
-
-    useEffect(() => {
-        if (!checkingType) {
-            setEntrySeq(1);
-            return;
-        }
-        setEntrySeq(readSpinningEntrySequence(checkingType));
-    }, [checkingType]);
-
     useEffect(() => {
         if (success) {
-            incrementEntrySequence();
+            reserveEntryId();
             setShowPreview(false);
             setShowSuccess(true);
             dispatch(resetSpinningState());
@@ -533,7 +508,6 @@ function SpinningDepartment() {
         }
         setValidationMessage("");
 
-        const entryId = getSpinningEntryId(entrySeq, checkingType);
         const headerItems = isCountChange
             ? [
                 { label: "Checking Type", value: checkingType || "-" },
@@ -618,7 +592,7 @@ function SpinningDepartment() {
                             ref={childRef}
                             selectedTypeName={checkingType}
                             typeOptions={checkingOptions}
-                            entryId={getSpinningEntryId(entrySeq, checkingType)}
+                            entryId={entryId}
                             onTypeChange={(value) => handleTypeChange({ target: { value } })}
                             onSubmitSuccess={() => setShowSuccess(true)}
                             standaloneSection={isProcessParameter}
@@ -645,7 +619,7 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Entry ID</label>
-                                        <input type="text" className={styles["highlight-input"]} value={getSpinningEntryId(entrySeq, checkingType)} readOnly disabled />
+                                        <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Test No.</label>
@@ -744,7 +718,7 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Entry ID</label>
-                                        <input type="text" className={styles["highlight-input"]} value={getSpinningEntryId(entrySeq, checkingType)} readOnly disabled />
+                                        <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Shift</label>
@@ -843,7 +817,7 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Entry ID</label>
-                                        <input type="text" className={styles["highlight-input"]} value={getSpinningEntryId(entrySeq, checkingType)} readOnly disabled />
+                                        <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Machine</label>

@@ -12,6 +12,7 @@ import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
 import { clearComberState, submitComberUqc } from "@/store/slices/comber";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
 const comberDepartmentTypes = [
@@ -33,27 +34,15 @@ const comberDepartmentTypes = [
 ];
 
 export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
-const COMBER_ENTRY_SEQ_KEY = "comber_entry_sequence";
 const COMBER_ENTRY_ID_CONFIG = {
-    "Ribbon Lap CV Data Entry": { prefix: "RLC", storageKey: "comber_entry_sequence_ribbon_lap_cv" },
-    "Nati Data Entry": { prefix: "CNT", storageKey: "comber_entry_sequence_nati" },
-    "U% Data Entry": { prefix: "COU", storageKey: "comber_entry_sequence_u_percent" },
+    "Ribbon Lap CV Data Entry": { prefix: "RLC",  },
+    "Nati Data Entry": { prefix: "CNT",  },
+    "U% Data Entry": { prefix: "COU",  },
 };
 
 const getComberEntryConfig = (typeName) =>
-    COMBER_ENTRY_ID_CONFIG[typeName] || { prefix: "COM", storageKey: COMBER_ENTRY_SEQ_KEY };
+    COMBER_ENTRY_ID_CONFIG[typeName] || { prefix: "COM" };
 
-const getComberEntryId = (seq, typeName) => {
-    const { prefix } = getComberEntryConfig(typeName);
-    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
-
-const readComberEntrySequence = (typeName) => {
-    if (typeof window === "undefined") return 1;
-    const { storageKey } = getComberEntryConfig(typeName);
-    const stored = Number(window.localStorage.getItem(storageKey) || "1");
-    return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
 function Comber() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
@@ -89,16 +78,12 @@ function Comber() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
-    const [entrySeq, setEntrySeq] = useState(1);
     const selectedType = typeOptions.find((item) => item.id === checkingType)?.name || "";
-    const incrementEntrySequence = useCallback(() => {
-        const nextSeq = entrySeq + 1;
-        setEntrySeq(nextSeq);
-        if (typeof window !== "undefined") {
-            const { storageKey } = getComberEntryConfig(selectedType);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-        }
-    }, [entrySeq, selectedType]);
+    const { entryId, reserveEntryId } = useDatabaseEntryId({
+        department: "Comber",
+        typeName: selectedType,
+        config: getComberEntryConfig(selectedType),
+    });
 
     const handleTypeChange = (value) => {
         const selectedType = typeOptions.find((item) => item.name === value);
@@ -114,23 +99,17 @@ function Comber() {
     useEffect(() => {
         if (data) setShowSuccess(true);
     }, [data]);
-
-    useEffect(() => {
-        if (!selectedType) return;
-        setEntrySeq(readComberEntrySequence(selectedType));
-    }, [selectedType]);
-
     const handleSubmit = useCallback(async () => {
         try {
             const ok = await childRef.current?.submit?.();
             if (ok) {
-                incrementEntrySequence();
+                await reserveEntryId();
                 setShowSuccess(true);
             }
         } catch (e) {
             // child handles its own errors
         }
-    }, [incrementEntrySequence]);
+    }, [reserveEntryId]);
 
     const handleCalculate = useCallback(() => {
         childRef.current?.calculateStats?.();
@@ -157,13 +136,13 @@ function Comber() {
         try {
             const ok = await childRef.current?.submit?.();
             if (ok) {
-                incrementEntrySequence();
+                await reserveEntryId();
                 setShowSuccess(true);
             }
         } catch (e) {
             // child handles errors
         }
-    }, [incrementEntrySequence]);
+    }, [reserveEntryId]);
 
     return (
         <div className={styles["cb-page"]}>
@@ -193,7 +172,7 @@ function Comber() {
                         <>
                             <NatiDataEntry
                                 ref={childRef}
-                                entryId={getComberEntryId(entrySeq, selectedType)}
+                                entryId={entryId}
                                 types={typeOptions}
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
@@ -214,7 +193,7 @@ function Comber() {
                         <>
                             <UPercentDataEntry
                                 ref={childRef}
-                                entryId={getComberEntryId(entrySeq, selectedType)}
+                                entryId={entryId}
                                 types={typeOptions}
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
@@ -254,7 +233,7 @@ function Comber() {
                     ) : (
                         <RibbonLapCVDataEntry
                             ref={childRef}
-                            entryId={getComberEntryId(entrySeq, selectedType)}
+                            entryId={entryId}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
