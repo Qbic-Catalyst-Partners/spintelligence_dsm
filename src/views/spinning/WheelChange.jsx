@@ -430,6 +430,7 @@ const WheelChange = forwardRef(function WheelChange(
   const [errors, setErrors] = useState({});
   const [rfOptions, setRfOptions] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const activeRows = WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE[wheelChangeType] || TYPE_1_PARAMETER_ROWS;
   const referenceLabel = "R/F No.";
   const rfLookupParams = useMemo(

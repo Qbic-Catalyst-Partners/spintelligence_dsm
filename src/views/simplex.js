@@ -81,11 +81,6 @@ function Simplex() {
   });
   const SelectedComponent = selectedType?.component ?? null;
   const isWrappingSimplexNotebook = selectedTypeName === "Wrapping Simplex Notebook";
-  const { entryId, reserveEntryId } = useDatabaseEntryId({
-    department: "Simplex",
-    typeName: selectedTypeName,
-    config: getSimplexEntryConfig(selectedTypeName),
-  });
   const entryTableTheme = {
     surface: isDarkMode ? "#050505" : "#fff",
     header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -192,6 +187,7 @@ function Simplex() {
                   onTypeChange={setSelectedTypeName}
                   typeOptions={typeOptions.map((type) => type.name)}
                   docType="strech"
+                  entryId={entryId}
                 />
               ) : (
                 <SelectedComponent

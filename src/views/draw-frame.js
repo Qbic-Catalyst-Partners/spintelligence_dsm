@@ -59,7 +59,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
 };
 
 const getDrawFrameEntryConfig = (type = "") =>
-  ({ prefix: DRAW_FRAME_ENTRY_PREFIX[type] || "DRAW" });
+  DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRAW" };
 
 const getDrawFrameUniqueId = (sequence, type = "") => {
   const config = getDrawFrameEntryConfig(type);

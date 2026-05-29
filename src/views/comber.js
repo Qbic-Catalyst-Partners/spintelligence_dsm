@@ -226,6 +226,7 @@ function Comber() {
                                 onTypeChange={handleTypeChange}
                                 typeOptions={typeOptions}
                                 docType="noils"
+                                entryId={entryId}
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>

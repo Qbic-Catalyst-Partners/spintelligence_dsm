@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { MdInsertDriveFile } from "react-icons/md";
 
+import { submitWrappingOcrPercentInspection } from "@/apis/draw-frame";
 import { runOcrForDocument, runOcrJsonForDocument } from "@/apis/ocrApi";
 import styles from "@/styles/draw-frame.module.css";
 
@@ -139,6 +140,51 @@ const getOcrRows = (result = {}) => {
   return parseRawTextRows(result?.raw_text || result?.text || "");
 };
 
+const cleanOcrRow = (row = {}) => {
+  const { __ocrRowId, ...rest } = row;
+  return rest;
+};
+
+const getReportTableName = (docType) => {
+  const normalized = String(docType || "").toLowerCase();
+  if (normalized === "noils" || normalized === "noil") return "comber_noil_percent";
+  return "stretch_percent";
+};
+
+const getReportEntryType = (docType, selectedType) => {
+  if (selectedType) return selectedType;
+  const normalized = String(docType || "").toLowerCase();
+  if (normalized === "noils" || normalized === "noil") return "Comber Nolis %";
+  return "Stretch %";
+};
+
+const buildWrappingOcrPayload = ({ docType, entryId, file, rows, selectedType }) => {
+  const cleanRows = rows.map(cleanOcrRow);
+  const metaRows = rows.filter((row) => rowKindIs(row, "Meta"));
+  const sampleRows = rows.filter((row) => rowKindIs(row, "Sample"));
+  const summaryRows = rows.filter((row) => rowKindIs(row, "Summary"));
+
+  return {
+    entry_id: entryId,
+    entry_type: getReportEntryType(docType, selectedType),
+    schema_name: "wrapping",
+    table_name: getReportTableName(docType),
+    pdf_file: file?.name || "",
+    meta: {
+      pdf_file: file?.name || "",
+      row_count: cleanRows.length,
+      meta_row_count: metaRows.length,
+      sample_row_count: sampleRows.length,
+      summary_row_count: summaryRows.length,
+      rows: metaRows.map(cleanOcrRow),
+    },
+    sample_rows: sampleRows.map(cleanOcrRow),
+    summary_rows: summaryRows.map(cleanOcrRow),
+    rows: cleanRows,
+    raw_ocr_rows: cleanRows,
+  };
+};
+
 const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
   {
     selectedType,
@@ -146,6 +192,7 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
     typeOptions = [],
     docType,
     tableTitle = "PDF Values",
+    entryId = "",
   },
   ref
 ) {
@@ -184,7 +231,9 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
   const validate = () => {
     const nextErrors = {};
     if (!file) nextErrors.file = true;
+    if (!rows.length) nextErrors.rows = true;
     setErrors(nextErrors);
+    if (file && !rows.length) setMessage("Please run OCR before saving.");
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -197,7 +246,19 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
     clear,
     validate,
     getPreviewData,
-    submit: async () => true,
+    submit: async () => {
+      if (!validate()) return false;
+      try {
+        await submitWrappingOcrPercentInspection(
+          docType,
+          buildWrappingOcrPayload({ docType, entryId, file, rows, selectedType })
+        );
+        return true;
+      } catch (error) {
+        setMessage(error?.message || "Unable to save OCR data.");
+        return false;
+      }
+    },
   }));
 
   const handleFileChange = (event) => {

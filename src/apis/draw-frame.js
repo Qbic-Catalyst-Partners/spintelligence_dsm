@@ -225,6 +225,52 @@ export const submitDrawFrameAPercentInspection = async (payload) => {
     throw new Error(extractApiError(lastError, "Failed to save draw frame A% data"));
 };
 
+export const submitWrappingOcrPercentInspection = async (docType, payload) => {
+    const normalizedDocType = String(docType || "").trim().toLowerCase();
+    const endpointMap = {
+        strech: [
+            "/drawframe/stretch-percent",
+            "/drawframe/stretch-percent-inspection",
+            "/drawframe/wrapping/stretch-percent",
+            "/drawframe/wrapping/stretch-percentage",
+            "/drawframe/wrapping/drawframe/stretch-percent",
+        ],
+        stretch: [
+            "/drawframe/stretch-percent",
+            "/drawframe/stretch-percent-inspection",
+            "/drawframe/wrapping/stretch-percent",
+            "/drawframe/wrapping/stretch-percentage",
+            "/drawframe/wrapping/drawframe/stretch-percent",
+        ],
+        noils: [
+            "/drawframe/comber-noil-percent",
+            "/drawframe/noil-percent",
+            "/drawframe/wrapping/comber-noil-percent",
+            "/drawframe/wrapping/noil-percent",
+        ],
+        noil: [
+            "/drawframe/comber-noil-percent",
+            "/drawframe/noil-percent",
+            "/drawframe/wrapping/comber-noil-percent",
+            "/drawframe/wrapping/noil-percent",
+        ],
+    };
+    const endpoints = endpointMap[normalizedDocType] || endpointMap.strech;
+    let lastError;
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await apiConfig.post(endpoint, payload);
+            return response.data;
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status !== 404) break;
+        }
+    }
+
+    throw new Error(extractApiError(lastError, `Failed to save ${docType || "OCR"} percent data`));
+};
+
 export const fetchDrawFrameUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
     let lastError;
 
