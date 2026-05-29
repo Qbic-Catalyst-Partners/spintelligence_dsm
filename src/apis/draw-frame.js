@@ -28,7 +28,20 @@ const parseJson = async (response) => response.json().catch(() => null);
 const DRAW_FRAME_UQC_ENDPOINTS = ["/drawframe/uqc", "/draw-frame/uqc"];
 const DRAW_FRAME_UQC_MASTER_DROPDOWN_ENDPOINTS = [
     "/drawframe/uqc/master/dropdown",
+    "/drawframe/master/dropdown",
     "/draw-frame/uqc/master/dropdown",
+];
+const DRAW_FRAME_UQC_MASTER_VARIETY_ENDPOINTS = [
+    "/drawframe/uqc/master/varieties",
+    "/drawframe/master/varieties",
+];
+const DRAW_FRAME_UQC_MASTER_DEPARTMENT_ENDPOINTS = [
+    "/drawframe/uqc/master/departments",
+    "/drawframe/master/departments",
+];
+const DRAW_FRAME_UQC_MASTER_MC_NO_ENDPOINTS = [
+    "/drawframe/uqc/master/mc-nos",
+    "/drawframe/master/mc-nos",
 ];
 
 const emitFetchSuccess = () => {
@@ -77,6 +90,36 @@ const normalizeOptionRows = (rows = []) =>
             return { label: label || value, value: value || label };
         })
         .filter(Boolean);
+
+const pickFirstValue = (row, keys = []) => {
+    if (!row || typeof row !== "object") return row;
+    for (const key of keys) {
+        const value = row[key];
+        if (value !== undefined && value !== null && String(value).trim()) return value;
+    }
+    return row.value ?? row.text ?? row.label ?? row.name;
+};
+
+const mapRowsToValues = (rows = [], keys = []) =>
+    uniqueStrings(
+        (Array.isArray(rows) ? rows : [])
+            .map((row) => pickFirstValue(row, keys))
+    );
+
+const fetchFirstDropdownPayload = async (endpoints, params) => {
+    let lastError;
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
+            return response?.data || {};
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError;
+};
 
 export const submitDrawFrameYarnCvInspection = async (payload) => {
     try {
@@ -160,6 +203,74 @@ export const submitDrawFrameUqcInspection = async (payload) => {
     throw new Error(extractApiError(lastError, "Failed to save draw frame UQC data"));
 };
 
+export const submitDrawFrameAPercentInspection = async (payload) => {
+    const endpoints = [
+        "/drawframe/a-percent",
+        "/drawframe/a-percent-inspection",
+        "/drawframe/wrapping/a-percent",
+        "/drawframe/wrapping/drawframe/a-percent",
+    ];
+    let lastError;
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await apiConfig.post(endpoint, payload);
+            return response.data;
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status !== 404) break;
+        }
+    }
+
+    throw new Error(extractApiError(lastError, "Failed to save draw frame A% data"));
+};
+
+export const submitWrappingOcrPercentInspection = async (docType, payload) => {
+    const normalizedDocType = String(docType || "").trim().toLowerCase();
+    const endpointMap = {
+        strech: [
+            "/drawframe/stretch-percent",
+            "/drawframe/stretch-percent-inspection",
+            "/drawframe/wrapping/stretch-percent",
+            "/drawframe/wrapping/stretch-percentage",
+            "/drawframe/wrapping/drawframe/stretch-percent",
+        ],
+        stretch: [
+            "/drawframe/stretch-percent",
+            "/drawframe/stretch-percent-inspection",
+            "/drawframe/wrapping/stretch-percent",
+            "/drawframe/wrapping/stretch-percentage",
+            "/drawframe/wrapping/drawframe/stretch-percent",
+        ],
+        noils: [
+            "/drawframe/comber-noil-percent",
+            "/drawframe/noil-percent",
+            "/drawframe/wrapping/comber-noil-percent",
+            "/drawframe/wrapping/noil-percent",
+        ],
+        noil: [
+            "/drawframe/comber-noil-percent",
+            "/drawframe/noil-percent",
+            "/drawframe/wrapping/comber-noil-percent",
+            "/drawframe/wrapping/noil-percent",
+        ],
+    };
+    const endpoints = endpointMap[normalizedDocType] || endpointMap.strech;
+    let lastError;
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await apiConfig.post(endpoint, payload);
+            return response.data;
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status !== 404) break;
+        }
+    }
+
+    throw new Error(extractApiError(lastError, `Failed to save ${docType || "OCR"} percent data`));
+};
+
 export const fetchDrawFrameUqcEntries = async ({ page = 1, limit = 10 } = {}) => {
     let lastError;
 
@@ -184,24 +295,24 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
     department_code = "",
 } = {}) => {
     let lastError;
+    const params = {
+        prefix,
+        variety_prefix,
+        department_prefix,
+        mc_no_prefix,
+        department,
+        department_code,
+    };
 
     for (const endpoint of DRAW_FRAME_UQC_MASTER_DROPDOWN_ENDPOINTS) {
         try {
-            const response = await apiConfig.get(endpoint, {
-                prefix,
-                variety_prefix,
-                department_prefix,
-                mc_no_prefix,
-                department,
-                department_code,
-            }, { skipGlobalErrorModal: true });
-
+            const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
             const payload = response?.data || {};
             const options = payload.options || {};
-            const optionShifts = normalizeOptionRows(options.shift);
-            const optionVarieties = normalizeOptionRows(options.variety);
-            const optionDepartments = normalizeOptionRows(options.department);
-            const optionMcNos = normalizeOptionRows(options.mc_no);
+            const optionShifts = normalizeOptionRows(options.shift || options.shifts);
+            const optionVarieties = normalizeOptionRows(options.variety || options.varieties);
+            const optionDepartments = normalizeOptionRows(options.department || options.departments);
+            const optionMcNos = normalizeOptionRows(options.mc_no || options.mc_nos || options.machines);
 
             const shifts = Array.isArray(payload.shifts) && payload.shifts.length
                 ? payload.shifts.map((row) => row?.value || row?.label || row).filter(Boolean)
@@ -211,16 +322,46 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
                 ...(Array.isArray(payload.variety_names) ? payload.variety_names : []),
                 ...(Array.isArray(payload.names) ? payload.names : []),
                 ...(Array.isArray(payload.varieties)
-                    ? payload.varieties.map((row) => row?.variety_name || row?.name || row)
+                    ? mapRowsToValues(payload.varieties, [
+                        "variety_name",
+                        "VARIETY_NAME",
+                        "variety",
+                        "VARIETY",
+                        "name",
+                    ])
                     : []),
+                ...mapRowsToValues(payload.data, [
+                    "variety_name",
+                    "VARIETY_NAME",
+                    "variety",
+                    "VARIETY",
+                    "name",
+                ]),
                 ...optionVarieties.map((row) => row.value),
             ]);
 
             const departmentNames = uniqueStrings([
                 ...(Array.isArray(payload.department_names) ? payload.department_names : []),
                 ...(Array.isArray(payload.departments)
-                    ? payload.departments.map((row) => row?.dept_name || row?.department_name || row?.name || row)
+                    ? mapRowsToValues(payload.departments, [
+                        "dept_name",
+                        "deptname",
+                        "DEPTNAME",
+                        "department_name",
+                        "department",
+                        "DEPARTMENT",
+                        "name",
+                    ])
                     : []),
+                ...mapRowsToValues(payload.data, [
+                    "dept_name",
+                    "deptname",
+                    "DEPTNAME",
+                    "department_name",
+                    "department",
+                    "DEPARTMENT",
+                    "name",
+                ]),
                 ...optionDepartments.map((row) => row.value),
             ]);
 
@@ -232,12 +373,56 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
                 ...optionMcNos.map((row) => row.value),
             ]);
 
-            return {
+            const dropdown = {
                 shifts: uniqueStrings(shifts),
                 varietyNames,
                 departmentNames,
                 mcNos,
             };
+
+            if (!dropdown.varietyNames.length) {
+                const varietyPayload = await fetchFirstDropdownPayload(DRAW_FRAME_UQC_MASTER_VARIETY_ENDPOINTS, params).catch(() => null);
+                dropdown.varietyNames = uniqueStrings([
+                    ...(Array.isArray(varietyPayload?.names) ? varietyPayload.names : []),
+                    ...(Array.isArray(varietyPayload?.variety_names) ? varietyPayload.variety_names : []),
+                    ...mapRowsToValues(varietyPayload?.data, [
+                        "variety_name",
+                        "VARIETY_NAME",
+                        "variety",
+                        "VARIETY",
+                        "name",
+                    ]),
+                ]);
+            }
+
+            if (!dropdown.departmentNames.length) {
+                const departmentPayload = await fetchFirstDropdownPayload(DRAW_FRAME_UQC_MASTER_DEPARTMENT_ENDPOINTS, params).catch(() => null);
+                dropdown.departmentNames = uniqueStrings([
+                    ...(Array.isArray(departmentPayload?.names) ? departmentPayload.names : []),
+                    ...(Array.isArray(departmentPayload?.department_names) ? departmentPayload.department_names : []),
+                    ...mapRowsToValues(departmentPayload?.data, [
+                        "dept_name",
+                        "deptname",
+                        "DEPTNAME",
+                        "department_name",
+                        "department",
+                        "DEPARTMENT",
+                        "name",
+                    ]),
+                ]);
+            }
+
+            if (!dropdown.mcNos.length) {
+                const mcNoPayload = await fetchFirstDropdownPayload(DRAW_FRAME_UQC_MASTER_MC_NO_ENDPOINTS, params).catch(() => null);
+                dropdown.mcNos = uniqueStrings([
+                    ...(Array.isArray(mcNoPayload?.names) ? mcNoPayload.names : []),
+                    ...(Array.isArray(mcNoPayload?.mc_no_values) ? mcNoPayload.mc_no_values : []),
+                    ...(Array.isArray(mcNoPayload?.mc_nos) ? mapRowsToValues(mcNoPayload.mc_nos, ["mc_no", "mc_name", "value"]) : []),
+                    ...mapRowsToValues(mcNoPayload?.data, ["mc_no", "mc_name", "mccode", "value"]),
+                ]);
+            }
+
+            return dropdown;
         } catch (error) {
             lastError = error;
         }

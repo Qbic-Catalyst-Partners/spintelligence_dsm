@@ -12,17 +12,17 @@ import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
-import { fetchSpinningCotsCheckingMachines } from "@/apis/spinning";
+import {
+    fetchSpinningCotsCheckingMachines,
+    fetchSpinningCountChangeDropdown,
+    fetchSpinningCountChangeRfNos,
+    fetchSpinningRingFrameCheckerNames,
+    fetchSpinningRingFrameShifts,
+} from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
-
-const COUNT_NAME_OPTIONS = [
-    "10 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
-    "20 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
-    "30 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
-];
 
 const COUNT_CHANGE_BASE_ROWS = [
     { reading_value: "5", count: "10.23", cv_percent: "11.46", strength: "250", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
@@ -41,8 +41,8 @@ const createCountChangeRows = (readingCount) => {
     }));
 };
 
-const SHIFT_OPTIONS = ["Shift A", "Shift B", "Shift C", "General"];
-const RING_FRAME_CHECKERS = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
+const SHIFT_OPTIONS = ["1", "2", "3"];
+const RING_FRAME_CHECKERS = [];
 const SPINNING_CHECKING_OPTIONS = [
     { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
     { id: 1, name: "COTS Checking", aliases: ["COTS Checking", "COTS - CHECKING"] },
@@ -60,7 +60,8 @@ const SPINNING_CHECKING_OPTIONS = [
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
-const COTS_SIDE_MAX = 650;
+const RING_FRAME_RF_TOTAL = 24;
+const RING_FRAME_TOTAL_FIELDS = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6"];
 const SPINNING_ENTRY_ID_CONFIG = {
     "Process Parameter": { prefix: "SNP",  },
     "COTS Checking": { prefix: "SCT",  },
@@ -88,6 +89,12 @@ const getMachineText = (value) => {
         value.machine_no ??
         value.machine_number ??
         value.machineno ??
+        value.rf_no ??
+        value.rf_name ??
+        value.checker_name ??
+        value.shift_name ??
+        value.shift_code ??
+        value.text ??
         value.mc_name ??
         value.machine_name ??
         value.name ??
@@ -104,7 +111,25 @@ const normalizeMachineOptions = (payload) => {
                 ? payload.machines
                 : Array.isArray(payload?.machineOptions)
                     ? payload.machineOptions
-                    : [];
+                    : Array.isArray(payload?.options)
+                        ? payload.options
+                        : Array.isArray(payload?.values)
+                            ? payload.values
+                            : Array.isArray(payload?.machine_numbers)
+                                ? payload.machine_numbers
+                                : Array.isArray(payload?.rf_nos)
+                                    ? payload.rf_nos
+                                    : Array.isArray(payload?.names)
+                                        ? payload.names
+                                        : Array.isArray(payload?.checker_names)
+                                            ? payload.checker_names
+                                            : Array.isArray(payload?.check_names)
+                                                ? payload.check_names
+                                                : Array.isArray(payload?.shift_names)
+                                                    ? payload.shift_names
+                                                    : Array.isArray(payload?.shift_codes)
+                                                        ? payload.shift_codes
+                                                        : [];
 
     return rows
         .map((row) => {
@@ -114,13 +139,24 @@ const normalizeMachineOptions = (payload) => {
                 row?.machine_no ??
                 row?.machine_number ??
                 row?.machineno ??
+                row?.rf_no ??
+                row?.checker_name ??
+                row?.shift_code ??
+                row?.shift_name ??
+                row?.text ??
+                row?.rf_name ??
                 row?.id ??
                 row;
             const rawLabel =
                 row?.label ??
+                row?.text ??
+                row?.checker_name ??
+                row?.shift_name ??
+                row?.shift_code ??
                 row?.mc_name ??
                 row?.machine_name ??
                 row?.machine_number ??
+                row?.rf_name ??
                 row?.name ??
                 rawValue;
             const value = getMachineText(rawValue);
@@ -137,8 +173,8 @@ const normalizeCotsSideValue = (value) => {
 };
 
 const createRingFrameRows = () =>
-    Array.from({ length: 24 }, (_, index) => ({
-        machine_no: index + 1,
+    Array.from({ length: RING_FRAME_RF_TOTAL }, (_, index) => ({
+        machine_no: String(index + 1),
         lycra: "",
         bobbin_color: "",
         position_1: "",
@@ -147,7 +183,6 @@ const createRingFrameRows = () =>
         position_4: "",
         position_5: "",
         position_6: "",
-        lycra_missing: "",
         guide_roll_lapping: "",
         others: "",
     }));
@@ -201,7 +236,6 @@ function SpinningDepartment() {
     const [displaySpeed, setDisplaySpeed] = useState("");
     const [spindleSpeed, setSpindleSpeed] = useState("");
     const [countChangeMode, setCountChangeMode] = useState("");
-    const [testNo, setTestNo] = useState("");
     const [rfNo, setRfNo] = useState("");
     const [lycraDraft, setLycraDraft] = useState("");
     const [countNameFrom, setCountNameFrom] = useState("");
@@ -211,11 +245,10 @@ function SpinningDepartment() {
     const [shift, setShift] = useState("");
     const [checkerName, setCheckerName] = useState("");
     const [ringFrameRows, setRingFrameRows] = useState(createRingFrameRows);
-    const [outOfCenter, setOutOfCenter] = useState("");
-    const [ringFrameLycraMissing, setRingFrameLycraMissing] = useState("");
+    const [outOfCenterAc, setOutOfCenterAc] = useState("");
     const [comments, setComments] = useState("");
-    const [faultCops, setFaultCops] = useState("");
-    const [totalCops, setTotalCops] = useState("");
+    const [faultCopsAc, setFaultCopsAc] = useState("");
+    const [faultCopsRf, setFaultCopsRf] = useState("");
     const [date, setDate] = useState("");
     const [lhsValue, setLhsValue] = useState("");
     const [lhsRemarks, setLhsRemarks] = useState("");
@@ -228,6 +261,15 @@ function SpinningDepartment() {
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
+    const [countChangeRfOptions, setCountChangeRfOptions] = useState([]);
+    const [countChangeCountNameFromOptions, setCountChangeCountNameFromOptions] = useState(
+        []
+    );
+    const [countChangeCountNameToOptions, setCountChangeCountNameToOptions] = useState(
+        []
+    );
+    const [ringFrameCheckerOptions, setRingFrameCheckerOptions] = useState([]);
+    const [ringFrameShiftOptions, setRingFrameShiftOptions] = useState(SHIFT_OPTIONS);
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -246,9 +288,14 @@ function SpinningDepartment() {
         config: getSpinningEntryConfig(checkingType),
     });
     const machineOptions = isCotsChecking && cotsMachineOptions.length ? cotsMachineOptions : fallbackMachineOptions;
-    const machineSelectOptions = machineOptions
-        .map((machine) => getMachineText(machine?.label ?? machine?.value ?? machine))
-        .filter(Boolean);
+    const machineSelectOptions = machineOptions;
+    const countChangeRfSelectOptions = countChangeRfOptions;
+    const countChangeCountNameFromSelectOptions = countChangeCountNameFromOptions;
+    const countChangeCountNameToSelectOptions = countChangeCountNameToOptions;
+    const ringFrameCheckerSelectOptions = ringFrameCheckerOptions;
+    const ringFrameShiftSelectOptions = ringFrameShiftOptions;
+    const machineFieldLabel = isCotsChecking ? "Variety" : "Machine";
+    const machineFieldPlaceholder = isCotsChecking ? "Select Variety" : "Select Machine";
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -286,6 +333,72 @@ function SpinningDepartment() {
     }, [isCotsChecking]);
 
     useEffect(() => {
+        if (!isCountChange) return;
+
+        let isMounted = true;
+        Promise.allSettled([
+            fetchSpinningCountChangeRfNos(),
+            fetchSpinningCountChangeDropdown(),
+        ]).then(([rfResult, countNameResult]) => {
+            if (!isMounted) return;
+
+            if (rfResult.status === "fulfilled") {
+                setCountChangeRfOptions(normalizeMachineOptions(rfResult.value));
+            } else {
+                setCountChangeRfOptions([]);
+            }
+
+            if (countNameResult.status === "fulfilled") {
+                const options = countNameResult.value?.countNameOptions || [];
+                const fromOptions = countNameResult.value?.countNameFromOptions || [];
+                const toOptions = countNameResult.value?.countNameToOptions || [];
+                setCountChangeCountNameFromOptions(fromOptions.length ? fromOptions : options);
+                setCountChangeCountNameToOptions(toOptions.length ? toOptions : options);
+            } else {
+                setCountChangeCountNameFromOptions([]);
+                setCountChangeCountNameToOptions([]);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isCountChange]);
+
+    useEffect(() => {
+        if (!isRingFrame) return;
+
+        let isMounted = true;
+        Promise.allSettled([
+            fetchSpinningRingFrameCheckerNames(),
+            fetchSpinningRingFrameShifts(),
+        ]).then(([checkerResult, shiftResult]) => {
+            if (!isMounted) return;
+
+            if (checkerResult.status === "fulfilled") {
+                if (!isMounted) return;
+                const options = normalizeMachineOptions(checkerResult.value)
+                    .filter((option) => option.value);
+                setRingFrameCheckerOptions(options);
+            } else {
+                setRingFrameCheckerOptions([]);
+            }
+
+            if (shiftResult.status === "fulfilled") {
+                const options = normalizeMachineOptions(shiftResult.value)
+                    .filter((option) => option.value);
+                setRingFrameShiftOptions(options.length ? options : SHIFT_OPTIONS);
+            } else {
+                setRingFrameShiftOptions(SHIFT_OPTIONS);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isRingFrame]);
+
+    useEffect(() => {
         if (success) {
             reserveEntryId();
             setShowPreview(false);
@@ -309,6 +422,18 @@ function SpinningDepartment() {
         const parsedValue = parseNumericInput(value);
         return parsedValue === null ? null : Number(parsedValue.toFixed(2));
     };
+    const sumDecimalValues = (...values) =>
+        Number(values.reduce((total, value) => total + (parseNumericInput(value) ?? 0), 0).toFixed(2));
+    const outOfCenterRf = Number(
+        ringFrameRows.reduce(
+            (rowTotal, row) =>
+                rowTotal + RING_FRAME_TOTAL_FIELDS.reduce((fieldTotal, field) => fieldTotal + (parseNumericInput(row[field]) ?? 0), 0),
+            0
+        ).toFixed(2)
+    );
+    const totalCopsAc = sumDecimalValues(outOfCenterAc, faultCopsAc);
+    const totalCopsRf = sumDecimalValues(outOfCenterRf, faultCopsRf);
+    const totalCopsGrandTotal = sumDecimalValues(totalCopsAc, totalCopsRf);
     const hasTextValue = (value) => String(value ?? "").trim() !== "";
     const handleDecimalInputChange = (setter, field) => (event) => {
         setter(sanitizeNumericInput(event.target.value, DECIMAL_10_2_CONFIG));
@@ -382,7 +507,6 @@ function SpinningDepartment() {
         setDisplaySpeed("");
         setSpindleSpeed("");
         setCountChangeMode("");
-        setTestNo("");
         setRfNo("");
         setLycraDraft("");
         setCountNameFrom("");
@@ -392,11 +516,10 @@ function SpinningDepartment() {
         setShift("");
         setCheckerName("");
         setRingFrameRows(createRingFrameRows());
-        setOutOfCenter("");
-        setRingFrameLycraMissing("");
+        setOutOfCenterAc("");
         setComments("");
-        setFaultCops("");
-        setTotalCops("");
+        setFaultCopsAc("");
+        setFaultCopsRf("");
         setLhsValue("");
         setLhsRemarks("");
         setRhsValue("");
@@ -411,7 +534,6 @@ function SpinningDepartment() {
         if (!checkingType) nextErrors.checkingType = true;
         if (!date) nextErrors.date = true;
         if (isCountChange) {
-            if (!testNo.trim()) nextErrors.testNo = true;
             if (!rfNo.trim()) nextErrors.rfNo = true;
             if (!lycraDraft.trim()) nextErrors.lycraDraft = true;
             if (!countNameFrom.trim()) nextErrors.countNameFrom = true;
@@ -421,15 +543,15 @@ function SpinningDepartment() {
         } else if (isRingFrame) {
             if (!shift.trim()) nextErrors.shift = true;
             if (!checkerName.trim()) nextErrors.checkerName = true;
-            if (!outOfCenter.trim()) nextErrors.outOfCenter = true;
-            if (!ringFrameLycraMissing.trim()) nextErrors.ringFrameLycraMissing = true;
+            if (!outOfCenterAc.trim()) nextErrors.outOfCenterAc = true;
             if (!comments.trim()) nextErrors.comments = true;
-            if (!faultCops.trim()) nextErrors.faultCops = true;
-            if (!totalCops.trim()) nextErrors.totalCops = true;
+            if (!faultCopsAc.trim()) nextErrors.faultCopsAc = true;
+            if (!faultCopsRf.trim()) nextErrors.faultCopsRf = true;
 
             const ringFrameRowErrors = {};
-            ringFrameRows.forEach((row) => {
+            ringFrameRows.forEach((row, index) => {
                 const rowErrors = {};
+                if (!hasTextValue(row.machine_no)) rowErrors.machine_no = true;
                 if (!hasTextValue(row.lycra)) rowErrors.lycra = true;
                 if (!hasTextValue(row.bobbin_color)) rowErrors.bobbin_color = true;
                 if (!hasTextValue(row.position_1)) rowErrors.position_1 = true;
@@ -438,10 +560,9 @@ function SpinningDepartment() {
                 if (!hasTextValue(row.position_4)) rowErrors.position_4 = true;
                 if (!hasTextValue(row.position_5)) rowErrors.position_5 = true;
                 if (!hasTextValue(row.position_6)) rowErrors.position_6 = true;
-                if (!hasTextValue(row.lycra_missing)) rowErrors.lycra_missing = true;
                 if (!hasTextValue(row.guide_roll_lapping)) rowErrors.guide_roll_lapping = true;
                 if (!hasTextValue(row.others)) rowErrors.others = true;
-                if (Object.keys(rowErrors).length > 0) ringFrameRowErrors[row.machine_no] = rowErrors;
+                if (Object.keys(rowErrors).length > 0) ringFrameRowErrors[index] = rowErrors;
             });
 
             if (Object.keys(ringFrameRowErrors).length > 0) nextErrors.ringFrameRows = ringFrameRowErrors;
@@ -475,10 +596,10 @@ function SpinningDepartment() {
     const buildPayload = () => {
         if (isCountChange) {
             return {
+                entry_id: entryId,
                 type: checkingType,
                 entry_date: date || getTodayDate(),
-                test_no: Number.parseInt(testNo, 10) || 0,
-                rf_no: Number.parseInt(rfNo, 10) || 0,
+                rf_no: rfNo,
                 lycra_draft: parseDecimalPayloadValue(lycraDraft) ?? 0,
                 count_name_from: countNameFrom,
                 count_name_to: countNameTo,
@@ -496,12 +617,13 @@ function SpinningDepartment() {
         }
         if (isRingFrame) {
             return {
+                entry_id: entryId,
                 inspection_type: "Ring Frame",
                 entry_date: date || getTodayDate(),
                 shift,
                 checker_name: checkerName,
                 rows: ringFrameRows.map((row) => ({
-                    mc_no: row.machine_no,
+                    mc_no: String(row.machine_no ?? "").trim(),
                     lycra: String(row.lycra ?? "").trim(),
                     bobbin_color: String(row.bobbin_color ?? "").trim(),
                     spindle_1: String(row.position_1 ?? "").trim(),
@@ -510,16 +632,20 @@ function SpinningDepartment() {
                     spindle_4: String(row.position_4 ?? "").trim(),
                     spindle_5: String(row.position_5 ?? "").trim(),
                     spindle_6: String(row.position_6 ?? "").trim(),
-                    lycra_missing: String(row.lycra_missing ?? "").trim(),
                     guide_roll_lapping: String(row.guide_roll_lapping ?? "").trim(),
                     others: String(row.others ?? "").trim(),
                     total: String(getRingFrameRowTotal(row)),
                 })),
                 summary: {
-                    out_of_center: parseDecimalPayloadValue(outOfCenter) ?? 0,
-                    lycra_missing: parseDecimalPayloadValue(ringFrameLycraMissing) ?? 0,
-                    fault_cops: parseDecimalPayloadValue(faultCops) ?? 0,
-                    total_cops: parseDecimalPayloadValue(totalCops) ?? 0,
+                    out_of_center_ac: parseDecimalPayloadValue(outOfCenterAc) ?? 0,
+                    out_of_center_rf: parseDecimalPayloadValue(outOfCenterRf) ?? 0,
+                    out_of_center: sumDecimalValues(outOfCenterAc, outOfCenterRf),
+                    fault_cops_ac: parseDecimalPayloadValue(faultCopsAc) ?? 0,
+                    fault_cops_rf: parseDecimalPayloadValue(faultCopsRf) ?? 0,
+                    fault_cops: sumDecimalValues(faultCopsAc, faultCopsRf),
+                    total_cops_ac: totalCopsAc,
+                    total_cops_rf: totalCopsRf,
+                    total_cops: totalCopsGrandTotal,
                     comments: comments.trim(),
                 },
             };
@@ -529,8 +655,10 @@ function SpinningDepartment() {
         }
         const machineNo = Number.parseInt(String(selectedMachine).replace(/\D/g, ""), 10) || 0;
         const payload = {
+            entry_id: entryId,
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
+            variety: isCotsChecking ? selectedMachine : undefined,
             lhs_value: isCotsChecking ? Number(lhsValue) : parseDecimalPayloadValue(lhsValue) ?? 0,
             rhs_value: isCotsChecking ? Number(rhsValue) : parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_textremarks: lhsRemarks.trim(),
@@ -570,10 +698,10 @@ function SpinningDepartment() {
         setErrors((prev) => ({ ...prev, countReadingCount: false }));
     };
 
-    const handleRingFrameChange = (machineNo, field, value) => {
+    const handleRingFrameChange = (rowIndex, field, value) => {
         setRingFrameRows((currentRows) =>
-            currentRows.map((row) =>
-                row.machine_no === machineNo
+            currentRows.map((row, index) =>
+                index === rowIndex
                     ? {
                         ...row,
                         [field]: value,
@@ -581,15 +709,17 @@ function SpinningDepartment() {
                     : row
             )
         );
-        clearRingFrameRowError(machineNo, field);
+        clearRingFrameRowError(rowIndex, field);
     };
-    const handleRingFrameTextChange = (machineNo, field) => (event) => {
-        handleRingFrameChange(machineNo, field, event.target.value);
+    const handleRingFrameTextChange = (rowIndex, field) => (event) => {
+        handleRingFrameChange(rowIndex, field, event.target.value);
+    };
+    const handleRingFrameMachineNoChange = (rowIndex) => (event) => {
+        handleRingFrameChange(rowIndex, "machine_no", sanitizeIntegerInput(event.target.value).slice(0, 2));
     };
 
     const getRingFrameRowTotal = (row) => {
-        const numericFields = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6", "lycra_missing", "guide_roll_lapping", "others"];
-        return numericFields.reduce((total, field) => total + (parseNumericInput(row[field]) ?? 0), 0);
+        return RING_FRAME_TOTAL_FIELDS.reduce((total, field) => total + (parseNumericInput(row[field]) ?? 0), 0);
     };
 
     const handleSaveRecord = () => {
@@ -616,14 +746,13 @@ function SpinningDepartment() {
             ? [
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
-                { label: "Test No.", value: testNo || "-" },
                 { label: "RF No.", value: rfNo || "-" },
                 { label: "Lycra Draft", value: lycraDraft || "-" },
             ]
             : [
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
-                { label: "Machine", value: selectedMachine || "-" },
+                { label: machineFieldLabel, value: selectedMachine || "-" },
             ];
         if (!isCotsChecking && !isCountChange) {
             headerItems.push({ label: "Employee", value: employeeSearch || "-" });
@@ -642,10 +771,13 @@ function SpinningDepartment() {
                     { label: "Shift", value: shift || "-" },
                     { label: "Checker Name", value: checkerName || "-" },
                     { label: "Rows", value: ringFrameRows.length },
-                    { label: "Out of Center (AC/RF)", value: outOfCenter || "-" },
-                    { label: "Lycra Missing (AC/RF)", value: ringFrameLycraMissing || "-" },
-                    { label: "Fault Cops", value: faultCops || "-" },
-                    { label: "Total Cops", value: totalCops || "-" },
+                    { label: "Out of Center AC", value: outOfCenterAc || "-" },
+                    { label: "Out of Center RF", value: outOfCenterRf || "-" },
+                    { label: "Fault Cops AC", value: faultCopsAc || "-" },
+                    { label: "Fault Cops RF", value: faultCopsRf || "-" },
+                    { label: "Total Cops AC", value: String(totalCopsAc) },
+                    { label: "Total Cops RF", value: String(totalCopsRf) },
+                    { label: "Grand Total", value: String(totalCopsGrandTotal) },
                     { label: "Comments", value: comments || "-" },
                     ...ringFrameRows.flatMap((row) => ([
                         { label: `MC ${row.machine_no} - Lycra`, value: String(row.lycra ?? "") || "-" },
@@ -656,7 +788,6 @@ function SpinningDepartment() {
                         { label: `MC ${row.machine_no} - 4`, value: String(row.position_4 ?? "") || "-" },
                         { label: `MC ${row.machine_no} - 5`, value: String(row.position_5 ?? "") || "-" },
                         { label: `MC ${row.machine_no} - 6`, value: String(row.position_6 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - Lycra Missing`, value: String(row.lycra_missing ?? "") || "-" },
                         { label: `MC ${row.machine_no} - Guide Roll Lapping`, value: String(row.guide_roll_lapping ?? "") || "-" },
                         { label: `MC ${row.machine_no} - Others`, value: String(row.others ?? "") || "-" },
                         { label: `MC ${row.machine_no} - Total`, value: String(getRingFrameRowTotal(row)) || "0" },
@@ -728,16 +859,22 @@ function SpinningDepartment() {
                                         <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Test No.</label>
-                                        <input type="text" inputMode="numeric" placeholder="Enter test number" className={`${styles["highlight-input"]} ${errors.testNo ? styles["input-error"] : ""}`} value={testNo} onChange={handleIntegerInputChange(setTestNo, "testNo")} />
+                                        <label>RF No.</label>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.rfNo ? styles["input-error"] : ""}`}
+                                            value={rfNo}
+                                            onChange={(value) => {
+                                                setRfNo(value);
+                                                clearFieldError("rfNo");
+                                            }}
+                                            options={countChangeRfSelectOptions}
+                                            placeholder="Select RF No."
+                                            ariaLabel="RF No."
+                                        />
                                     </div>
                                 </div>
 
                                 <div className={styles.row}>
-                                    <div className={styles["sp-form-group"]}>
-                                        <label>RF No.</label>
-                                        <input type="text" inputMode="numeric" placeholder="Enter RF number" className={`${styles["highlight-input"]} ${errors.rfNo ? styles["input-error"] : ""}`} value={rfNo} onChange={handleIntegerInputChange(setRfNo, "rfNo")} />
-                                    </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Lycra Draft</label>
                                         <input type="text" inputMode="decimal" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={handleCustomDecimalInputChange(setLycraDraft, "lycraDraft", DECIMAL_5_2_CONFIG)} />
@@ -757,17 +894,31 @@ function SpinningDepartment() {
                                 <div className={styles.row}>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Count Name (From)</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.countNameFrom ? styles["input-error"] : ""}`} value={countNameFrom} onChange={(e) => { setCountNameFrom(e.target.value); clearFieldError("countNameFrom"); }}>
-                                            <option value="">Select count name</option>
-                                            {COUNT_NAME_OPTIONS.map((item) => <option key={`from-${item}`} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.countNameFrom ? styles["input-error"] : ""}`}
+                                            value={countNameFrom}
+                                            onChange={(value) => {
+                                                setCountNameFrom(value);
+                                                clearFieldError("countNameFrom");
+                                            }}
+                                            options={countChangeCountNameFromSelectOptions}
+                                            placeholder="Select count name"
+                                            ariaLabel="Count Name From"
+                                        />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Count Name (To)</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.countNameTo ? styles["input-error"] : ""}`} value={countNameTo} onChange={(e) => { setCountNameTo(e.target.value); clearFieldError("countNameTo"); }}>
-                                            <option value="">Select count name</option>
-                                            {COUNT_NAME_OPTIONS.map((item) => <option key={`to-${item}`} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.countNameTo ? styles["input-error"] : ""}`}
+                                            value={countNameTo}
+                                            onChange={(value) => {
+                                                setCountNameTo(value);
+                                                clearFieldError("countNameTo");
+                                            }}
+                                            options={countChangeCountNameToSelectOptions}
+                                            placeholder="Select count name"
+                                            ariaLabel="Count Name To"
+                                        />
                                     </div>
                                 </div>
 
@@ -828,20 +979,34 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Shift</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.shift ? styles["input-error"] : ""}`} value={shift} onChange={(e) => { setShift(e.target.value); clearFieldError("shift"); }}>
-                                            <option value="">Select Shift</option>
-                                            {SHIFT_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.shift ? styles["input-error"] : ""}`}
+                                            value={shift}
+                                            onChange={(value) => {
+                                                setShift(value);
+                                                clearFieldError("shift");
+                                            }}
+                                            options={ringFrameShiftSelectOptions}
+                                            placeholder="Select Shift"
+                                            ariaLabel="Shift"
+                                        />
                                     </div>
                                 </div>
 
                                 <div className={styles.row}>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Checker Name</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.checkerName ? styles["input-error"] : ""}`} value={checkerName} onChange={(e) => { setCheckerName(e.target.value); clearFieldError("checkerName"); }}>
-                                            <option value="">Select Checker</option>
-                                            {RING_FRAME_CHECKERS.map((item) => <option key={item} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.checkerName ? styles["input-error"] : ""}`}
+                                            value={checkerName}
+                                            onChange={(value) => {
+                                                setCheckerName(value);
+                                                clearFieldError("checkerName");
+                                            }}
+                                            options={ringFrameCheckerSelectOptions}
+                                            placeholder="Select Checker"
+                                            ariaLabel="Checker Name"
+                                        />
                                     </div>
                                 </div>
 
@@ -851,34 +1016,54 @@ function SpinningDepartment() {
                                             <tr>
                                                 <th>Mc.No</th>
                                                 <th>Lycra</th>
-                                                <th>Bobbin Color</th>
+                                                <th>Bobbin</th>
                                                 <th>1</th>
                                                 <th>2</th>
                                                 <th>3</th>
                                                 <th>4</th>
                                                 <th>5</th>
                                                 <th>6</th>
-                                                <th>Lycra Missing</th>
                                                 <th>Guide Roll Lapping</th>
                                                 <th>Others</th>
                                                 <th>Total</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {ringFrameRows.map((row) => (
-                                                <tr key={row.machine_no}>
-                                                    <td className={styles.ringFrameMachineCell}>{row.machine_no}</td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "lycra")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.bobbin_color ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "bobbin_color")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.bobbin_color ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_1 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_1")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_1 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_2 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_2")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_2 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_3 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_3")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_3 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_4 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_4")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_4 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_5 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_5")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_5 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_6 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_6")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_6 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra_missing ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "lycra_missing")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra_missing ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.guide_roll_lapping ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "guide_roll_lapping")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.others ? styles["input-error"] : ""}`} /></td>
+                                            {ringFrameRows.map((row, rowIndex) => (
+                                                <tr key={rowIndex}>
+                                                    <td className={styles.ringFrameMachineCell}>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            maxLength={2}
+                                                            value={String(row.machine_no ?? "")}
+                                                            onChange={handleRingFrameMachineNoChange(rowIndex)}
+                                                            className={`${styles.ringFrameInput} ${styles.ringFrameMachineInput} ${errors.ringFrameRows?.[rowIndex]?.machine_no ? styles["input-error"] : ""}`}
+                                                        />
+                                                    </td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={handleRingFrameTextChange(rowIndex, "lycra")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.lycra ? styles["input-error"] : ""}`} /></td>
+                                                    <td>
+                                                        <div className={`${styles.ringFrameToggle} ${errors.ringFrameRows?.[rowIndex]?.bobbin_color ? styles["input-error"] : ""}`}>
+                                                            {["Yes", "No"].map((option) => (
+                                                                <button
+                                                                    key={option}
+                                                                    type="button"
+                                                                    className={row.bobbin_color === option ? styles.ringFrameToggleActive : ""}
+                                                                    onClick={() => handleRingFrameChange(rowIndex, "bobbin_color", option)}
+                                                                >
+                                                                    {option}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_1 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_1")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_1 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_2 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_2")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_2 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_3 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_3")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_3 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_4 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_4")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_4 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_5 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_5")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_5 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_6 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_6")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_6 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.guide_roll_lapping ?? "")} onChange={handleRingFrameTextChange(rowIndex, "guide_roll_lapping")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(rowIndex, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.others ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" value={String(getRingFrameRowTotal(row))} readOnly className={styles.ringFrameInputWide} /></td>
                                                 </tr>
                                             ))}
@@ -889,24 +1074,36 @@ function SpinningDepartment() {
                                 <div className={styles.ringFrameSummaryBox}>
                                     <div className={styles.ringFrameSummaryGrid}>
                                         <div className={styles["sp-form-group"]}>
-                                            <label>Out of Center (AC/RF)</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={outOfCenter} onChange={handleDecimalInputChange(setOutOfCenter, "outOfCenter")} className={`${styles["highlight-input"]} ${errors.outOfCenter ? styles["input-error"] : ""}`} />
+                                            <label>Out of Center AC</label>
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={outOfCenterAc} onChange={handleDecimalInputChange(setOutOfCenterAc, "outOfCenterAc")} className={`${styles["highlight-input"]} ${errors.outOfCenterAc ? styles["input-error"] : ""}`} />
                                         </div>
                                         <div className={styles["sp-form-group"]}>
-                                            <label>Lycra Missing (AC/RF)</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={ringFrameLycraMissing} onChange={handleDecimalInputChange(setRingFrameLycraMissing, "ringFrameLycraMissing")} className={`${styles["highlight-input"]} ${errors.ringFrameLycraMissing ? styles["input-error"] : ""}`} />
+                                            <label>Out of Center RF</label>
+                                            <input type="text" value={String(outOfCenterRf)} readOnly className={styles["highlight-input"]} />
                                         </div>
-                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameComments}`}>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Fault Cops AC</label>
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCopsAc} onChange={handleDecimalInputChange(setFaultCopsAc, "faultCopsAc")} className={`${styles["highlight-input"]} ${errors.faultCopsAc ? styles["input-error"] : ""}`} />
+                                        </div>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Fault Cops RF</label>
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCopsRf} onChange={handleDecimalInputChange(setFaultCopsRf, "faultCopsRf")} className={`${styles["highlight-input"]} ${errors.faultCopsRf ? styles["input-error"] : ""}`} />
+                                        </div>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Total Cops AC</label>
+                                            <input type="text" value={String(totalCopsAc)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Total Cops RF</label>
+                                            <input type="text" value={String(totalCopsRf)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameSummaryFull}`}>
+                                            <label>Grand Total</label>
+                                            <input type="text" value={String(totalCopsGrandTotal)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameComments} ${styles.ringFrameSummaryFull}`}>
                                             <label>Comments</label>
                                             <textarea placeholder="Enter comments" value={comments} onChange={(e) => { setComments(e.target.value); clearFieldError("comments"); }} className={`${styles["highlight-input"]} ${errors.comments ? styles["input-error"] : ""}`} />
-                                        </div>
-                                        <div className={styles["sp-form-group"]}>
-                                            <label>Fault Cops</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCops} onChange={handleDecimalInputChange(setFaultCops, "faultCops")} className={`${styles["highlight-input"]} ${errors.faultCops ? styles["input-error"] : ""}`} />
-                                        </div>
-                                        <div className={styles["sp-form-group"]}>
-                                            <label>Total Cops</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={totalCops} onChange={handleDecimalInputChange(setTotalCops, "totalCops")} className={`${styles["highlight-input"]} ${errors.totalCops ? styles["input-error"] : ""}`} />
                                         </div>
                                     </div>
                                 </div>
@@ -926,7 +1123,7 @@ function SpinningDepartment() {
                                         <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Machine</label>
+                                        <label>{machineFieldLabel}</label>
                                         <SearchableSelect
                                             className={`${styles["highlight-input"]} ${errors.selectedMachine ? styles["input-error"] : ""}`}
                                             value={selectedMachine}
@@ -935,8 +1132,8 @@ function SpinningDepartment() {
                                                 clearFieldError("selectedMachine");
                                             }}
                                             options={machineSelectOptions}
-                                            placeholder="Select Machine"
-                                            ariaLabel="Machine Number"
+                                            placeholder={machineFieldPlaceholder}
+                                            ariaLabel={machineFieldLabel}
                                         />
                                     </div>
                                 </div>

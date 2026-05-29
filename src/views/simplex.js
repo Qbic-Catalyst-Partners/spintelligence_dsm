@@ -187,6 +187,7 @@ function Simplex() {
                   onTypeChange={setSelectedTypeName}
                   typeOptions={typeOptions.map((type) => type.name)}
                   docType="strech"
+                  entryId={entryId}
                 />
               ) : (
                 <SelectedComponent

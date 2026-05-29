@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { MdInsertDriveFile } from "react-icons/md";
 
+import { submitWrappingOcrPercentInspection } from "@/apis/draw-frame";
 import { runOcrForDocument, runOcrJsonForDocument } from "@/apis/ocrApi";
 import styles from "@/styles/draw-frame.module.css";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
@@ -440,6 +441,7 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
     typeOptions = [],
     docType,
     tableTitle = "PDF Values",
+    entryId = "",
   },
   ref
 ) {
@@ -469,7 +471,9 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
   const validate = () => {
     const nextErrors = {};
     if (!file) nextErrors.file = true;
+    if (!rows.length) nextErrors.rows = true;
     setErrors(nextErrors);
+    if (file && !rows.length) setMessage("Please run OCR before saving.");
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -482,7 +486,19 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
     clear,
     validate,
     getPreviewData,
-    submit: async () => true,
+    submit: async () => {
+      if (!validate()) return false;
+      try {
+        await submitWrappingOcrPercentInspection(
+          docType,
+          buildWrappingOcrPayload({ docType, entryId, file, rows, selectedType })
+        );
+        return true;
+      } catch (error) {
+        setMessage(error?.message || "Unable to save OCR data.");
+        return false;
+      }
+    },
   }));
 
   const handleFileChange = (event) => {
