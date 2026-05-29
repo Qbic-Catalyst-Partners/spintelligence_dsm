@@ -114,6 +114,12 @@ function Carding() {
 
     const selectedType =
         typeOptions.find((item) => item.id === checkingType)?.name || "";
+    const { entryId, reserveEntryId } = useDatabaseEntryId({
+        department: "Carding",
+        typeName: selectedType,
+        config: getCardingEntryConfig(selectedType),
+        leadingHash: true,
+    });
     const selectedOption = typeOptions.find((item) => item.id === checkingType) || null;
     const SelectedComponent = selectedOption?.component ?? null;
     const ocrDocType =

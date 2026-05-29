@@ -10,7 +10,6 @@ import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
-import Wrapping from "@/views/wrapping";
 import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
@@ -24,6 +23,7 @@ import styles from "@/styles/draw-frame.module.css";
 import uPercentStyles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { formatEntryId } from "@/utils/entryIds";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
@@ -48,19 +48,30 @@ const primaryTypeOptions = [
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
 const DRAW_FRAME_ENTRY_SEQ_KEY = "drawframe_entry_sequence";
-const DRAW_FRAME_ENTRY_PREFIX = {
-  "Yarn CV% Calculation Form": "YAR",
-  "Draw Frame Cots Data Entry": "DRC",
-  "U% Data Entry": "DUP",
-  "PP - Breaker Drawing": "DRB",
-  "PP - Finisher Drawing": "DRF",
-  "A%": "DAP",
+const DRAW_FRAME_ENTRY_ID_CONFIG = {
+  "1 Yard / Half Yard CV Entry": { prefix: "YAR" },
+  "Yarn CV% Calculation Form": { prefix: "YAR" },
+  "Draw Frame Cots Data Entry": { prefix: "DRC" },
+  "U% Data Entry": { prefix: "DUP" },
+  "PP - Breaker Drawing": { prefix: "DRB" },
+  "PP - Finisher Drawing": { prefix: "DRF" },
+  "A%": { prefix: "DAP" },
 };
 
 const getDrawFrameEntryConfig = (type = "") =>
   DRAW_FRAME_ENTRY_ID_CONFIG[type] || {
     prefix: "DRAW",
   };
+
+const getDrawFrameUniqueId = (sequence, type = "") => {
+  const config = getDrawFrameEntryConfig(type);
+  return formatEntryId({
+    prefix: config.prefix,
+    sequence,
+    width: config.width || 3,
+    leadingHash: true,
+  });
+};
 
 const STATIC_FR_MACHINE_NAMES = ["FR (HSR 1000-2)", "FR (HSR 1000-1)"];
 
@@ -205,30 +216,206 @@ const normalizeAPercentJsonRows = (rows = []) =>
     })
     .filter((row) => row.sampleNo || row.nMinus1 || row.n || row.nPlus1);
 
-const parseAPercentRawTextRows = (rawText = "") => {
+const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
+
+const normalizeCell = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value).trim();
+};
+
+const rowsFromArrayTable = (table = []) => {
+  if (!Array.isArray(table) || !table.length) return [];
+  if (table.every(isPlainObject)) return table;
+
+  const arrayRows = table.filter(Array.isArray);
+  if (!arrayRows.length) return [];
+
+  const firstRow = arrayRows[0].map(normalizeCell);
+  const hasHeader = firstRow.some((cell) => /[a-zA-Z%]/.test(cell));
+  const headers = (hasHeader ? firstRow : arrayRows[0].map((_, index) => `Column ${index + 1}`)).map(
+    (header, index) => header || `Column ${index + 1}`
+  );
+  const dataRows = hasHeader ? arrayRows.slice(1) : arrayRows;
+
+  return dataRows
+    .map((row) =>
+      headers.reduce((acc, header, index) => {
+        acc[header] = normalizeCell(row[index]);
+        return acc;
+      }, {})
+    )
+    .filter((row) => Object.values(row).some(Boolean));
+};
+
+const collectStructuredRows = (result = {}) => {
+  const candidates = [
+    result?.json_output,
+    result?.rows,
+    result?.data,
+    result?.table,
+    result?.tables,
+    result?.extracted_tables,
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || !candidate.length) continue;
+    const directRows = rowsFromArrayTable(candidate);
+    if (directRows.length) return directRows;
+
+    for (const nested of candidate) {
+      const nestedRows = rowsFromArrayTable(nested?.rows || nested?.data || nested?.table || nested);
+      if (nestedRows.length) return nestedRows;
+    }
+  }
+
+  return [];
+};
+
+const looksLikeHeader = (line = "") =>
+  /[a-zA-Z%]/.test(line) || /^n\s*[-+]?\s*\d+$/i.test(line) || /^s\.?\s*no\.?$/i.test(line);
+
+const isLikelyValue = (line = "") =>
+  /^[-+]?\d+(?:\.\d+)?(?:\([^)]*\))?$/.test(line) ||
+  /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/.test(line) ||
+  /^[A-Z]?\d{1,4}$/i.test(line);
+
+const parseVerticalRawTextTable = (lines = []) => {
+  const headerStart = lines.findIndex((line, index) => {
+    if (!looksLikeHeader(line)) return false;
+    const next = lines.slice(index + 1, index + 8);
+    return next.filter(looksLikeHeader).length >= 1 && next.some(isLikelyValue);
+  });
+
+  if (headerStart === -1) return [];
+
+  const headers = [];
+  let cursor = headerStart;
+  while (cursor < lines.length) {
+    const line = lines[cursor];
+    if (headers.length >= 2 && isLikelyValue(line) && !looksLikeHeader(line)) break;
+    if (!looksLikeHeader(line)) break;
+    headers.push(line);
+    cursor += 1;
+    if (headers.length >= 10) break;
+  }
+
+  if (headers.length < 2) return [];
+
   const rows = [];
-  String(rawText || "")
+  while (cursor + headers.length - 1 < lines.length) {
+    const chunk = lines.slice(cursor, cursor + headers.length);
+    if (!chunk.some(Boolean)) break;
+    rows.push(
+      headers.reduce((acc, header, index) => {
+        acc[header] = chunk[index] || "";
+        return acc;
+      }, {})
+    );
+    cursor += headers.length;
+  }
+
+  return rows.filter((row) => Object.values(row).some(Boolean));
+};
+
+const parseRawTextRows = (rawText = "") => {
+  const lines = String(rawText || "")
     .split(/\r?\n/)
     .map((line) => line.replace(/\s+/g, " ").trim())
-    .forEach((line) => {
-      const match = line.match(
-        /^(Average Weight|Weight\s*\(Max\)|Weight\s*\(Min\)|Range|Hank|SD|CV|\d{1,3})\s+(\S+)\s+(\S+)\s+(\S+)$/i
-      );
-      if (!match) return;
-      rows.push({
-        sampleNo: match[1].replace(/\s+/g, " ").replace(/^weight\s*\(/i, "Weight ("),
-        nMinus1: match[2],
-        n: match[3],
-        nPlus1: match[4],
-      });
+    .filter(Boolean);
+
+  if (!lines.length) return [];
+
+  const verticalRows = parseVerticalRawTextTable(lines);
+  if (verticalRows.length) return verticalRows;
+
+  const splitRows = lines
+    .map((line) => line.split(/\s{2,}|\t+/).map(normalizeCell).filter(Boolean))
+    .filter((parts) => parts.length > 1);
+  const tableRows = rowsFromArrayTable(splitRows);
+  if (tableRows.length) return tableRows;
+
+  return lines.map((line, index) => ({ "S.No": index + 1, Text: line }));
+};
+
+const getOcrRowsFromGeneral = (result = {}) => {
+  const structuredRows = collectStructuredRows(result);
+  if (structuredRows.length) return structuredRows;
+  return parseRawTextRows(result?.raw_text || result?.text || "");
+};
+
+const normalizeAPercentRowLabel = (value = "") => {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  const compact = clean.replace(/\s+/g, "").toLowerCase();
+  if (!clean) return "";
+  if (/^\d{1,3}$/.test(clean)) return clean;
+  if (compact === "averageweight") return "Average Weight";
+  if (/^weight\(?max\)?$/i.test(compact)) return "Weight (Max)";
+  if (/^weight\(?min\)?$/i.test(compact)) return "Weight (Min)";
+  if (compact === "range") return "Range";
+  if (compact === "hank") return "Hank";
+  if (compact === "sd") return "SD";
+  if (compact === "cv") return "CV";
+  return "";
+};
+
+const parseAPercentRawTextRows = (rawText = "") => {
+  const rows = [];
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  lines.forEach((line) => {
+    const match = line.match(
+      /^(Average\s*Weight|Weight\s*\(Max\)|Weight\s*\(Min\)|Range|Hank|SD|CV|\d{1,3})\s+(\S+)\s+(\S+)\s+(\S+)$/i
+    );
+    if (!match) return;
+    rows.push({
+      sampleNo: normalizeAPercentRowLabel(match[1]),
+      nMinus1: match[2],
+      n: match[3],
+      nPlus1: match[4],
     });
+  });
+
+  if (rows.length) return rows;
+
+  const sampleHeaderIndex = lines.findIndex((line) => /^sample\s*no$/i.test(line));
+  if (sampleHeaderIndex === -1) return [];
+
+  let cursor = sampleHeaderIndex + 1;
+  while (cursor < lines.length && /^(n\s*-?\s*1|n|n\s*\+?\s*1)$/i.test(lines[cursor])) {
+    cursor += 1;
+  }
+
+  while (cursor < lines.length) {
+    const sampleNo = normalizeAPercentRowLabel(lines[cursor]);
+    if (!sampleNo) {
+      cursor += 1;
+      continue;
+    }
+
+    const nMinus1 = lines[cursor + 1] || "";
+    const n = lines[cursor + 2] || "";
+    const nPlus1 = lines[cursor + 3] || "";
+    if (!nMinus1 || !n || !nPlus1) break;
+
+    rows.push({ sampleNo, nMinus1, n, nPlus1 });
+    cursor += 4;
+  }
+
   return rows;
 };
 
 const getAPercentRowsFromOcrResult = (result, parsedRows = []) => {
   const jsonRows = normalizeAPercentJsonRows(parsedRows);
   if (jsonRows.length) return jsonRows;
-  return parseAPercentRawTextRows(result?.raw_text || result?.text || "");
+
+  const rawTextRows = parseAPercentRawTextRows(result?.raw_text || result?.text || "");
+  if (rawTextRows.length) return rawTextRows;
+
+  return getOcrRowsFromGeneral(result);
 };
 
 function DrawFrame() {
@@ -292,6 +479,7 @@ function DrawFrame() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [entrySeq, setEntrySeq] = useState(1);
   const cvMachineDropdownRef = useRef(null);
   const aPercentFileInputRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
@@ -323,6 +511,14 @@ function DrawFrame() {
     config: getDrawFrameEntryConfig(form.type),
     leadingHash: true,
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedSequence = Number(window.localStorage.getItem(DRAW_FRAME_ENTRY_SEQ_KEY));
+    if (Number.isFinite(storedSequence) && storedSequence > 0) {
+      setEntrySeq(storedSequence);
+    }
+  }, []);
 
   useEffect(() => {
     if (!typeOptions.some((option) => option.name === form.type)) {
@@ -546,22 +742,23 @@ function DrawFrame() {
     setAPercentOcrMessage("Running OCR...");
     setAPercentOcrRows([]);
     try {
-      const result = await runOcrForDocument({ file: aPercentFile, docType: "hvi" });
+      const result = await runOcrForDocument({ file: aPercentFile, docType: "a_percent" });
       const parsedRows = Array.isArray(result?.json_output) ? result.json_output : [];
-      setAPercentOcrRows(parsedRows);
+      const aPercentRows = getAPercentRowsFromOcrResult(result, parsedRows);
+      setAPercentOcrRows(aPercentRows);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
           "ocr_prefill",
           JSON.stringify({
             screen: "draw-frame",
             docType: "a_percent",
-            values: parsedRows[0] || {},
-            result,
+            values: aPercentRows[0] || {},
+            result: { ...result, json_output: aPercentRows },
           })
         );
       }
       setAPercentOcrMessage(
-        parsedRows.length ? "OCR completed. Extracted values are ready." : "OCR completed, but no table rows were returned."
+        aPercentRows.length ? "OCR completed. Extracted values are ready." : "OCR completed, but no table rows were returned."
       );
     } catch (ocrError) {
       setAPercentOcrMessage(ocrError?.message || "OCR failed. Please try again.");
@@ -965,13 +1162,7 @@ function DrawFrame() {
           <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
 
-        {isWrappingDrawframeNotebook ? (
-          <Wrapping
-            fixedType="Drawing"
-            backPath="/draw-frame"
-            title="Quality Control - Wrapping Drawframe Notebook"
-          />
-        ) : isHeaderEntry ? (
+        {isHeaderEntry ? (
           <DrawFrameHeaderEntry
             entryId={entryId}
             typeOptions={typeOptions}

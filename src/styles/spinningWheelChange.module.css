@@ -120,6 +120,46 @@
   outline: none;
 }
 
+.radioGroup {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.radioGroupError {
+  background: transparent;
+}
+
+.radioOption {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 3px;
+  height: 24px;
+  border-radius: 5px;
+  color: #1e293b;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.radioOption input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #3d539f;
+}
+
 .tableWrap {
   margin-top: 18px;
   overflow-x: auto;

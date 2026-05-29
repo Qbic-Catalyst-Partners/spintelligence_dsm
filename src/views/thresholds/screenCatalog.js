@@ -36,7 +36,6 @@ export const thresholdScreenCatalog = {
             "U% Data Entry",
             "PP - Breaker Drawing",
             "PP - Finisher Drawing",
-            "Wrapping Drawframe Notebook",
         ],
         simplex: [
             "Process Parameter",
@@ -72,7 +71,6 @@ export const thresholdScreenCatalog = {
             "CSP Parameter Entries",
             "U% Parameter Entries",
         ],
-        wrapping: [],
     },
     electrical: {
         maintenance: [],

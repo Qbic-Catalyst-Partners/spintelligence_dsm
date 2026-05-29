@@ -7,6 +7,7 @@ import UPercentDataEntry from "./comber/u%dataentry";
 import styles from "./comber/ribbonLapCVDataEntry.module.css";
 import PreviewModal from "@/components/PreviewModal";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import PdfOcrTableEntry from "@/components/PdfOcrTableEntry";
 import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
@@ -31,6 +32,11 @@ const comberDepartmentTypes = [
         name: "U% Data Entry",
         aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"],
     },
+    {
+        id: 4,
+        name: "Comber Nolis %",
+        aliases: ["Comber Nolis %", "Comber Nolis Percent", "Nolis %", "Nolis Percent"],
+    },
 ];
 
 export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
@@ -38,6 +44,7 @@ const COMBER_ENTRY_ID_CONFIG = {
     "Ribbon Lap CV Data Entry": { prefix: "RLC",  },
     "Nati Data Entry": { prefix: "CNT",  },
     "U% Data Entry": { prefix: "COU",  },
+    "Comber Nolis %": { prefix: "CNP",  },
 };
 
 const getComberEntryConfig = (typeName) =>
@@ -161,7 +168,9 @@ function Comber() {
                     <div className={styles["cb-form-title"]}>
                         <MdEditNote id="car-title-icon" />
                         <h3>Inspection Data Entry</h3>
-                        <InputScreenUploadButton className="ml-auto" />
+                        {selectedType !== "Comber Nolis %" ? (
+                            <InputScreenUploadButton className="ml-auto" />
+                        ) : null}
                     </div>
 
                     {!typeOptions.length ? (
@@ -197,6 +206,26 @@ function Comber() {
                                 types={typeOptions}
                                 selectedType={selectedType}
                                 onTypeChange={handleTypeChange}
+                            />
+
+                            <div style={{ margin: "0 -24px -20px -24px" }}>
+                                <Footer
+                                    onBack={() => router.push("/departments/quality-control")}
+                                    onClear={handleClear}
+                                    onSave={openPreview}
+                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                        </>
+                    ) : selectedType === "Comber Nolis %" ? (
+                        <>
+                            <PdfOcrTableEntry
+                                ref={childRef}
+                                selectedType={selectedType}
+                                onTypeChange={handleTypeChange}
+                                typeOptions={typeOptions}
+                                docType="noils"
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>

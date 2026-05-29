@@ -64,7 +64,6 @@ const departmentLinks = [
     { href: "/simplex", label: "Simplex", department: "Simplex" },
     { href: "/spinning", label: "Spinning", department: "Spinning" },
     { href: "/autoconer", label: "Autoconer", department: "Autoconer" },
-    { href: "/departments/quality-control/wrapping", label: "Wrapping", department: "Wrapping" },
 ];
 
 const settingsLinks = [
