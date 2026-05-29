@@ -5,9 +5,7 @@ const OCR_BASE_URL = (
 const OCR_ENDPOINT = OCR_BASE_URL
   ? `${OCR_BASE_URL}/ocr-machine/api/ocr`
   : "/api/ocr-machine/ocr";
-const OCR_JSON_ENDPOINT = OCR_BASE_URL
-  ? `${OCR_BASE_URL}/ocr-machine/api/ocr-json`
-  : "/api/ocr-machine/ocr-json";
+const OCR_JSON_ENDPOINT = "/ocr-machine/api/ocr-json";
 
 export const runOcrForDocument = async ({ file, docType }) => {
   const form = new FormData();
@@ -101,5 +99,6 @@ export const runOcrJsonForDocument = async ({ file, docType }) => {
   }
 
   const payload = await res.json().catch(() => ({}));
+  console.log("OCR JSON response", payload);
   return payload || {};
 };

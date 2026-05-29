@@ -29,6 +29,10 @@ const nextConfig = {
         source: "/operatordetail/:ticketId",
         destination: "/operatordetail?ticketId=:ticketId",
       },
+      {
+        source: "/ocr-machine/api/ocr-json",
+        destination: "/api/ocr-machine/ocr-json",
+      },
     ];
   },
 };
