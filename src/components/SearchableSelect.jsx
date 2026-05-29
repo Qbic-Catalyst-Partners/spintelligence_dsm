@@ -17,27 +17,42 @@ function SearchableSelect({
   const [searchTerm, setSearchTerm] = useState("");
 
   const normalizedOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (Array.isArray(options) ? options : [])
-            .map((option) => {
-              if (option && typeof option === "object") {
-                return String(option.value ?? option.label ?? option.text ?? "").trim();
-              }
+    () => {
+      const seen = new Set();
+      return (Array.isArray(options) ? options : [])
+        .map((option) => {
+          if (option && typeof option === "object") {
+            const value = String(option.value ?? option.label ?? option.text ?? "").trim();
+            const label = String(option.text ?? option.label ?? option.value ?? "").trim();
+            return value || label ? { value: value || label, label: label || value } : null;
+          }
 
-              return String(option || "").trim();
-            })
-            .filter(Boolean)
-        )
-      ),
+          const value = String(option || "").trim();
+          return value ? { value, label: value } : null;
+        })
+        .filter((option) => {
+          if (!option || seen.has(option.value)) return false;
+          seen.add(option.value);
+          return true;
+        });
+    },
     [options]
   );
+
+  const selectedOption = useMemo(
+    () => normalizedOptions.find((option) => option.value === value) || null,
+    [normalizedOptions, value]
+  );
+  const displayValue = isOpen ? searchTerm : selectedOption?.label || value;
 
   const filteredOptions = useMemo(() => {
     const keyword = String(searchTerm || "").trim().toLowerCase();
     if (!keyword) return normalizedOptions;
-    return normalizedOptions.filter((option) => option.toLowerCase().includes(keyword));
+    return normalizedOptions.filter(
+      (option) =>
+        option.label.toLowerCase().includes(keyword) ||
+        option.value.toLowerCase().includes(keyword)
+    );
   }, [normalizedOptions, searchTerm]);
 
   useEffect(() => {
@@ -54,7 +69,8 @@ function SearchableSelect({
   }, []);
 
   const handleSelect = (option) => {
-    onChange?.(option);
+    onChange?.(option.value);
+    setSearchTerm(option.label);
     setIsOpen(false);
     inputRef.current?.focus();
   };
@@ -71,7 +87,7 @@ function SearchableSelect({
           boxSizing: "border-box",
           paddingRight: "2.5rem",
         }}
-        value={value}
+        value={displayValue}
         onChange={(event) => {
           const nextValue = event.target.value;
           onChange?.(nextValue);
@@ -79,7 +95,7 @@ function SearchableSelect({
           setIsOpen(true);
         }}
         onFocus={() => {
-          setSearchTerm(value);
+          setSearchTerm(selectedOption?.label || value);
           setIsOpen(true);
         }}
         placeholder={placeholder}
@@ -115,16 +131,16 @@ function SearchableSelect({
           {filteredOptions.length ? (
             <ul className="py-1" role="listbox" aria-label={ariaLabel}>
               {filteredOptions.map((option) => (
-                <li key={option}>
+                <li key={option.value}>
                   <button
                     type="button"
                     className={`flex w-full items-center px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-100 ${
-                      option === value ? "bg-slate-50 font-semibold" : ""
+                      option.value === value ? "bg-slate-50 font-semibold" : ""
                     }`}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => handleSelect(option)}
                   >
-                    <span className="truncate">{option}</span>
+                    <span className="truncate">{option.label}</span>
                   </button>
                 </li>
               ))}

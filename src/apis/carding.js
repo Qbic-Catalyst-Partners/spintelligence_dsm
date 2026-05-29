@@ -366,15 +366,19 @@ export const fetchCardingUqcMasterDropdown = async ({
     department = "",
     department_code = "",
 } = {}) => {
-    try {
-        const response = await apiConfig.get("/carding/uqc/master/dropdown", {
-            prefix,
-            variety_prefix,
-            department_prefix,
-            mc_no_prefix,
-            department,
-            department_code,
-        });
+    const endpoints = ["/carding/uqc/master/dropdown", "/carding/master/dropdown"];
+    let lastError = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await apiConfig.get(endpoint, {
+          prefix,
+          variety_prefix,
+          department_prefix,
+          mc_no_prefix,
+          department,
+          department_code,
+        }, { skipGlobalErrorModal: true });
         const payload = response?.data || {};
         const options = payload.options || {};
 
@@ -438,9 +442,12 @@ export const fetchCardingUqcMasterDropdown = async ({
             departments: normalizedDepartments,
             mcNos: normalizedMcNos,
         };
-    } catch (error) {
-        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch UQC dropdown options."));
+      } catch (error) {
+        lastError = error;
+      }
     }
+
+    throw new Error(getCardingApiErrorMessage(lastError, "Unable to fetch UQC dropdown options."));
 };
 
 const parseMachineNameList = (payload) => {

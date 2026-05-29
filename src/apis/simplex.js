@@ -23,6 +23,134 @@ const extractErrorMessage = (error, fallbackMessage) => {
   return error?.message || fallbackMessage;
 };
 
+const uniqueStrings = (values = []) =>
+  Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+
+const normalizeOptionRows = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      if (typeof row === "string") {
+        const value = row.trim();
+        return value ? { value, label: value } : null;
+      }
+
+      const value = String(row?.value ?? row?.text ?? "").trim();
+      const label = String(row?.text ?? row?.label ?? row?.value ?? "").trim();
+      return value || label ? { value: value || label, label: label || value } : null;
+    })
+    .filter(Boolean);
+
+const SIMPLEX_UQC_MASTER_DROPDOWN_ENDPOINTS = [
+  "/simplex/uqc/master/dropdown",
+  "/simplex/master/dropdown",
+];
+
+const SIMPLEX_UQC_MASTER_VARIETY_ENDPOINTS = [
+  "/simplex/uqc/master/varieties",
+  "/simplex/master/varieties",
+];
+
+const SIMPLEX_UQC_MASTER_DEPARTMENT_ENDPOINTS = [
+  "/simplex/uqc/master/departments",
+  "/simplex/master/departments",
+];
+
+const SIMPLEX_UQC_MASTER_MC_NO_ENDPOINTS = [
+  "/simplex/uqc/master/mc-nos",
+  "/simplex/master/mc-nos",
+];
+
+const pickFirstValue = (row, keys = []) => {
+  if (!row || typeof row !== "object") return row;
+
+  for (const key of keys) {
+    const value = row[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return value;
+    }
+  }
+
+  return row.value ?? row.text ?? row.label ?? row.name;
+};
+
+const mapRowsToValues = (rows = [], keys = []) =>
+  uniqueStrings((Array.isArray(rows) ? rows : []).map((row) => pickFirstValue(row, keys)));
+
+const normalizeDepartmentRows = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      if (typeof row === "string") {
+        const deptName = row.trim();
+        return deptName ? { dept_code: "", dept_name: deptName } : null;
+      }
+
+      const deptCode = String(row?.dept_code ?? row?.department_code ?? row?.DEPTCODE ?? "").trim();
+      const deptName = String(
+        row?.dept_name ??
+          row?.deptname ??
+          row?.DEPTNAME ??
+          row?.department_name ??
+          row?.department ??
+          row?.DEPARTMENT ??
+          row?.name ??
+          row?.value ??
+          ""
+      ).trim();
+      return deptName ? { dept_code: deptCode, dept_name: deptName } : null;
+    })
+    .filter(Boolean);
+
+const normalizeMcNoRows = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      if (typeof row === "string") {
+        const mcNo = row.trim();
+        return mcNo ? { mc_no: mcNo, mc_name: "", dept_code: "", dept_name: "" } : null;
+      }
+
+      const mcNo = String(row?.mc_no ?? row?.mccode ?? row?.MCCODE ?? row?.value ?? "").trim();
+      const mcName = String(row?.mc_name ?? row?.mcname ?? row?.MCNAME ?? row?.label ?? row?.text ?? "").trim();
+      const deptCode = String(row?.dept_code ?? row?.department_code ?? row?.DEPTCODE ?? "").trim();
+      const deptName = String(row?.dept_name ?? row?.deptname ?? row?.DEPTNAME ?? "").trim();
+      return mcNo ? { mc_no: mcNo, mc_name: mcName, dept_code: deptCode, dept_name: deptName } : null;
+    })
+    .filter(Boolean);
+
+const mergeDepartmentRows = (...groups) => {
+  const seen = new Set();
+  return groups.flat().filter((row) => {
+    const key = row?.dept_name;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const mergeMcNoRows = (...groups) => {
+  const seen = new Set();
+  return groups.flat().filter((row) => {
+    const key = row?.mc_no;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const fetchFirstSimplexMasterPayload = async (endpoints, params) => {
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
+      return response?.data || {};
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
+
 export const submitSimplexUqcEntry = async (payload) => {
   try {
     const response = await apiConfig.post("/simplex/uqc", payload);
@@ -102,6 +230,142 @@ export const fetchSimplexCotsChangeEntries = async ({ page = 1, limit = 10 } = {
   } catch (error) {
     throw new Error(extractErrorMessage(error, "Unable to fetch SMXCots Change entries."));
   }
+};
+
+export const fetchSimplexUqcMasterDropdown = async ({
+  prefix = "",
+  variety_prefix = "",
+  department_prefix = "",
+  mc_no_prefix = "",
+  department = "",
+  department_code = "",
+} = {}) => {
+  const params = {
+    prefix,
+    variety_prefix,
+    department_prefix,
+    mc_no_prefix,
+    department,
+    department_code,
+  };
+  let lastError;
+
+  for (const endpoint of SIMPLEX_UQC_MASTER_DROPDOWN_ENDPOINTS) {
+    try {
+      const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
+      const payload = response?.data || {};
+      const options = payload.options || {};
+      const optionShifts = normalizeOptionRows(options.shift || options.shifts);
+      const optionVarieties = normalizeOptionRows(options.variety || options.varieties);
+      const optionDepartments = normalizeOptionRows(options.department || options.departments);
+      const optionMcNos = normalizeOptionRows(options.mc_no || options.mc_nos || options.machines);
+      const departmentRows = mergeDepartmentRows(
+        normalizeDepartmentRows(payload.departments),
+        normalizeDepartmentRows(payload.data),
+        optionDepartments.map((row) => ({ dept_code: "", dept_name: row.value }))
+      );
+      const mcNoRows = mergeMcNoRows(
+        normalizeMcNoRows(payload.mc_nos),
+        normalizeMcNoRows(payload.data),
+        optionMcNos.map((row) => ({ mc_no: row.value, mc_name: row.label, dept_code: "", dept_name: "" }))
+      );
+
+      const dropdown = {
+        shifts: uniqueStrings([
+          ...(Array.isArray(payload.shifts)
+            ? payload.shifts.map((row) => row?.value || row?.label || row?.shift_name || row?.SHIFTNAME || row)
+            : []),
+          ...optionShifts.map((row) => row.value),
+        ]),
+        varietyNames: uniqueStrings([
+          ...(Array.isArray(payload.variety_names) ? payload.variety_names : []),
+          ...(Array.isArray(payload.names) ? payload.names : []),
+          ...(Array.isArray(payload.varieties)
+            ? mapRowsToValues(payload.varieties, [
+                "variety_name",
+                "VARIETY_NAME",
+                "variety",
+                "VARIETY",
+                "name",
+              ])
+            : []),
+          ...mapRowsToValues(payload.data, [
+            "variety_name",
+            "VARIETY_NAME",
+            "variety",
+            "VARIETY",
+            "name",
+          ]),
+          ...optionVarieties.map((row) => row.value),
+        ]),
+        departmentNames: uniqueStrings([
+          ...(Array.isArray(payload.department_names) ? payload.department_names : []),
+          ...departmentRows.map((row) => row.dept_name),
+        ]),
+        departments: departmentRows,
+        mcNos: mergeMcNoRows(
+          mcNoRows,
+          normalizeMcNoRows(payload.mc_no_values)
+        ),
+        mcNoValues: uniqueStrings([
+          ...(Array.isArray(payload.mc_no_values) ? payload.mc_no_values : []),
+          ...mcNoRows.map((row) => row.mc_no),
+        ]),
+      };
+
+      if (!dropdown.varietyNames.length) {
+        const varietyPayload = await fetchFirstSimplexMasterPayload(
+          SIMPLEX_UQC_MASTER_VARIETY_ENDPOINTS,
+          params
+        ).catch(() => null);
+        dropdown.varietyNames = uniqueStrings([
+          ...(Array.isArray(varietyPayload?.names) ? varietyPayload.names : []),
+          ...(Array.isArray(varietyPayload?.variety_names) ? varietyPayload.variety_names : []),
+          ...mapRowsToValues(varietyPayload?.data, [
+            "variety_name",
+            "VARIETY_NAME",
+            "variety",
+            "VARIETY",
+            "name",
+          ]),
+        ]);
+      }
+
+      if (!dropdown.departmentNames.length) {
+        const departmentPayload = await fetchFirstSimplexMasterPayload(
+          SIMPLEX_UQC_MASTER_DEPARTMENT_ENDPOINTS,
+          params
+        ).catch(() => null);
+        dropdown.departments = mergeDepartmentRows(
+          normalizeDepartmentRows(departmentPayload?.data),
+          normalizeDepartmentRows(departmentPayload?.departments),
+          normalizeDepartmentRows(departmentPayload?.names),
+          normalizeDepartmentRows(departmentPayload?.department_names)
+        );
+        dropdown.departmentNames = dropdown.departments.map((row) => row.dept_name);
+      }
+
+      if (!dropdown.mcNos.length) {
+        const mcNoPayload = await fetchFirstSimplexMasterPayload(
+          SIMPLEX_UQC_MASTER_MC_NO_ENDPOINTS,
+          params
+        ).catch(() => null);
+        dropdown.mcNos = mergeMcNoRows(
+          normalizeMcNoRows(mcNoPayload?.data),
+          normalizeMcNoRows(mcNoPayload?.mc_nos),
+          normalizeMcNoRows(mcNoPayload?.names),
+          normalizeMcNoRows(mcNoPayload?.mc_no_values)
+        );
+        dropdown.mcNoValues = dropdown.mcNos.map((row) => row.mc_no);
+      }
+
+      return dropdown;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(extractErrorMessage(lastError, "Unable to fetch Simplex UQC dropdown options."));
 };
 
 export const fetchSimplexStudyMachineNames = async ({ prefix = "" } = {}) => {
