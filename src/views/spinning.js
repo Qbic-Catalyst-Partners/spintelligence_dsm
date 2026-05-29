@@ -12,17 +12,17 @@ import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
-import { fetchSpinningCotsCheckingMachines } from "@/apis/spinning";
+import {
+    fetchSpinningCotsCheckingMachines,
+    fetchSpinningCountChangeDropdown,
+    fetchSpinningCountChangeRfNos,
+    fetchSpinningRingFrameCheckerNames,
+    fetchSpinningRingFrameShifts,
+} from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
-
-const COUNT_NAME_OPTIONS = [
-    "10 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
-    "20 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
-    "30 BLACK POLY VISCOSE 65/35 40D SPX YARN CONES",
-];
 
 const COUNT_CHANGE_BASE_ROWS = [
     { reading_value: "5", count: "10.23", cv_percent: "11.46", strength: "250", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
@@ -41,8 +41,8 @@ const createCountChangeRows = (readingCount) => {
     }));
 };
 
-const SHIFT_OPTIONS = ["Shift A", "Shift B", "Shift C", "General"];
-const RING_FRAME_CHECKERS = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
+const SHIFT_OPTIONS = ["1", "2", "3"];
+const RING_FRAME_CHECKERS = [];
 const SPINNING_CHECKING_OPTIONS = [
     { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
     { id: 1, name: "COTS Checking", aliases: ["COTS Checking", "COTS - CHECKING"] },
@@ -88,6 +88,12 @@ const getMachineText = (value) => {
         value.machine_no ??
         value.machine_number ??
         value.machineno ??
+        value.rf_no ??
+        value.rf_name ??
+        value.checker_name ??
+        value.shift_name ??
+        value.shift_code ??
+        value.text ??
         value.mc_name ??
         value.machine_name ??
         value.name ??
@@ -104,7 +110,25 @@ const normalizeMachineOptions = (payload) => {
                 ? payload.machines
                 : Array.isArray(payload?.machineOptions)
                     ? payload.machineOptions
-                    : [];
+                    : Array.isArray(payload?.options)
+                        ? payload.options
+                        : Array.isArray(payload?.values)
+                            ? payload.values
+                            : Array.isArray(payload?.machine_numbers)
+                                ? payload.machine_numbers
+                                : Array.isArray(payload?.rf_nos)
+                                    ? payload.rf_nos
+                                    : Array.isArray(payload?.names)
+                                        ? payload.names
+                                        : Array.isArray(payload?.checker_names)
+                                            ? payload.checker_names
+                                            : Array.isArray(payload?.check_names)
+                                                ? payload.check_names
+                                                : Array.isArray(payload?.shift_names)
+                                                    ? payload.shift_names
+                                                    : Array.isArray(payload?.shift_codes)
+                                                        ? payload.shift_codes
+                                                        : [];
 
     return rows
         .map((row) => {
@@ -114,13 +138,24 @@ const normalizeMachineOptions = (payload) => {
                 row?.machine_no ??
                 row?.machine_number ??
                 row?.machineno ??
+                row?.rf_no ??
+                row?.checker_name ??
+                row?.shift_code ??
+                row?.shift_name ??
+                row?.text ??
+                row?.rf_name ??
                 row?.id ??
                 row;
             const rawLabel =
                 row?.label ??
+                row?.text ??
+                row?.checker_name ??
+                row?.shift_name ??
+                row?.shift_code ??
                 row?.mc_name ??
                 row?.machine_name ??
                 row?.machine_number ??
+                row?.rf_name ??
                 row?.name ??
                 rawValue;
             const value = getMachineText(rawValue);
@@ -201,7 +236,6 @@ function SpinningDepartment() {
     const [displaySpeed, setDisplaySpeed] = useState("");
     const [spindleSpeed, setSpindleSpeed] = useState("");
     const [countChangeMode, setCountChangeMode] = useState("");
-    const [testNo, setTestNo] = useState("");
     const [rfNo, setRfNo] = useState("");
     const [lycraDraft, setLycraDraft] = useState("");
     const [countNameFrom, setCountNameFrom] = useState("");
@@ -228,6 +262,15 @@ function SpinningDepartment() {
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
+    const [countChangeRfOptions, setCountChangeRfOptions] = useState([]);
+    const [countChangeCountNameFromOptions, setCountChangeCountNameFromOptions] = useState(
+        []
+    );
+    const [countChangeCountNameToOptions, setCountChangeCountNameToOptions] = useState(
+        []
+    );
+    const [ringFrameCheckerOptions, setRingFrameCheckerOptions] = useState([]);
+    const [ringFrameShiftOptions, setRingFrameShiftOptions] = useState(SHIFT_OPTIONS);
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -246,9 +289,14 @@ function SpinningDepartment() {
         config: getSpinningEntryConfig(checkingType),
     });
     const machineOptions = isCotsChecking && cotsMachineOptions.length ? cotsMachineOptions : fallbackMachineOptions;
-    const machineSelectOptions = machineOptions
-        .map((machine) => getMachineText(machine?.label ?? machine?.value ?? machine))
-        .filter(Boolean);
+    const machineSelectOptions = machineOptions;
+    const countChangeRfSelectOptions = countChangeRfOptions;
+    const countChangeCountNameFromSelectOptions = countChangeCountNameFromOptions;
+    const countChangeCountNameToSelectOptions = countChangeCountNameToOptions;
+    const ringFrameCheckerSelectOptions = ringFrameCheckerOptions;
+    const ringFrameShiftSelectOptions = ringFrameShiftOptions;
+    const machineFieldLabel = isCotsChecking ? "Variety" : "Machine";
+    const machineFieldPlaceholder = isCotsChecking ? "Select Variety" : "Select Machine";
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -284,6 +332,72 @@ function SpinningDepartment() {
             isMounted = false;
         };
     }, [isCotsChecking]);
+
+    useEffect(() => {
+        if (!isCountChange) return;
+
+        let isMounted = true;
+        Promise.allSettled([
+            fetchSpinningCountChangeRfNos(),
+            fetchSpinningCountChangeDropdown(),
+        ]).then(([rfResult, countNameResult]) => {
+            if (!isMounted) return;
+
+            if (rfResult.status === "fulfilled") {
+                setCountChangeRfOptions(normalizeMachineOptions(rfResult.value));
+            } else {
+                setCountChangeRfOptions([]);
+            }
+
+            if (countNameResult.status === "fulfilled") {
+                const options = countNameResult.value?.countNameOptions || [];
+                const fromOptions = countNameResult.value?.countNameFromOptions || [];
+                const toOptions = countNameResult.value?.countNameToOptions || [];
+                setCountChangeCountNameFromOptions(fromOptions.length ? fromOptions : options);
+                setCountChangeCountNameToOptions(toOptions.length ? toOptions : options);
+            } else {
+                setCountChangeCountNameFromOptions([]);
+                setCountChangeCountNameToOptions([]);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isCountChange]);
+
+    useEffect(() => {
+        if (!isRingFrame) return;
+
+        let isMounted = true;
+        Promise.allSettled([
+            fetchSpinningRingFrameCheckerNames(),
+            fetchSpinningRingFrameShifts(),
+        ]).then(([checkerResult, shiftResult]) => {
+            if (!isMounted) return;
+
+            if (checkerResult.status === "fulfilled") {
+                if (!isMounted) return;
+                const options = normalizeMachineOptions(checkerResult.value)
+                    .filter((option) => option.value);
+                setRingFrameCheckerOptions(options);
+            } else {
+                setRingFrameCheckerOptions([]);
+            }
+
+            if (shiftResult.status === "fulfilled") {
+                const options = normalizeMachineOptions(shiftResult.value)
+                    .filter((option) => option.value);
+                setRingFrameShiftOptions(options.length ? options : SHIFT_OPTIONS);
+            } else {
+                setRingFrameShiftOptions(SHIFT_OPTIONS);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isRingFrame]);
 
     useEffect(() => {
         if (success) {
@@ -382,7 +496,6 @@ function SpinningDepartment() {
         setDisplaySpeed("");
         setSpindleSpeed("");
         setCountChangeMode("");
-        setTestNo("");
         setRfNo("");
         setLycraDraft("");
         setCountNameFrom("");
@@ -411,7 +524,6 @@ function SpinningDepartment() {
         if (!checkingType) nextErrors.checkingType = true;
         if (!date) nextErrors.date = true;
         if (isCountChange) {
-            if (!testNo.trim()) nextErrors.testNo = true;
             if (!rfNo.trim()) nextErrors.rfNo = true;
             if (!lycraDraft.trim()) nextErrors.lycraDraft = true;
             if (!countNameFrom.trim()) nextErrors.countNameFrom = true;
@@ -475,10 +587,10 @@ function SpinningDepartment() {
     const buildPayload = () => {
         if (isCountChange) {
             return {
+                entry_id: entryId,
                 type: checkingType,
                 entry_date: date || getTodayDate(),
-                test_no: Number.parseInt(testNo, 10) || 0,
-                rf_no: Number.parseInt(rfNo, 10) || 0,
+                rf_no: rfNo,
                 lycra_draft: parseDecimalPayloadValue(lycraDraft) ?? 0,
                 count_name_from: countNameFrom,
                 count_name_to: countNameTo,
@@ -496,6 +608,7 @@ function SpinningDepartment() {
         }
         if (isRingFrame) {
             return {
+                entry_id: entryId,
                 inspection_type: "Ring Frame",
                 entry_date: date || getTodayDate(),
                 shift,
@@ -529,8 +642,10 @@ function SpinningDepartment() {
         }
         const machineNo = Number.parseInt(String(selectedMachine).replace(/\D/g, ""), 10) || 0;
         const payload = {
+            entry_id: entryId,
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
+            variety: isCotsChecking ? selectedMachine : undefined,
             lhs_value: isCotsChecking ? Number(lhsValue) : parseDecimalPayloadValue(lhsValue) ?? 0,
             rhs_value: isCotsChecking ? Number(rhsValue) : parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_textremarks: lhsRemarks.trim(),
@@ -616,14 +731,13 @@ function SpinningDepartment() {
             ? [
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
-                { label: "Test No.", value: testNo || "-" },
                 { label: "RF No.", value: rfNo || "-" },
                 { label: "Lycra Draft", value: lycraDraft || "-" },
             ]
             : [
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
-                { label: "Machine", value: selectedMachine || "-" },
+                { label: machineFieldLabel, value: selectedMachine || "-" },
             ];
         if (!isCotsChecking && !isCountChange) {
             headerItems.push({ label: "Employee", value: employeeSearch || "-" });
@@ -728,16 +842,22 @@ function SpinningDepartment() {
                                         <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Test No.</label>
-                                        <input type="text" inputMode="numeric" placeholder="Enter test number" className={`${styles["highlight-input"]} ${errors.testNo ? styles["input-error"] : ""}`} value={testNo} onChange={handleIntegerInputChange(setTestNo, "testNo")} />
+                                        <label>RF No.</label>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.rfNo ? styles["input-error"] : ""}`}
+                                            value={rfNo}
+                                            onChange={(value) => {
+                                                setRfNo(value);
+                                                clearFieldError("rfNo");
+                                            }}
+                                            options={countChangeRfSelectOptions}
+                                            placeholder="Select RF No."
+                                            ariaLabel="RF No."
+                                        />
                                     </div>
                                 </div>
 
                                 <div className={styles.row}>
-                                    <div className={styles["sp-form-group"]}>
-                                        <label>RF No.</label>
-                                        <input type="text" inputMode="numeric" placeholder="Enter RF number" className={`${styles["highlight-input"]} ${errors.rfNo ? styles["input-error"] : ""}`} value={rfNo} onChange={handleIntegerInputChange(setRfNo, "rfNo")} />
-                                    </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Lycra Draft</label>
                                         <input type="text" inputMode="decimal" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={handleCustomDecimalInputChange(setLycraDraft, "lycraDraft", DECIMAL_5_2_CONFIG)} />
@@ -757,17 +877,31 @@ function SpinningDepartment() {
                                 <div className={styles.row}>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Count Name (From)</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.countNameFrom ? styles["input-error"] : ""}`} value={countNameFrom} onChange={(e) => { setCountNameFrom(e.target.value); clearFieldError("countNameFrom"); }}>
-                                            <option value="">Select count name</option>
-                                            {COUNT_NAME_OPTIONS.map((item) => <option key={`from-${item}`} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.countNameFrom ? styles["input-error"] : ""}`}
+                                            value={countNameFrom}
+                                            onChange={(value) => {
+                                                setCountNameFrom(value);
+                                                clearFieldError("countNameFrom");
+                                            }}
+                                            options={countChangeCountNameFromSelectOptions}
+                                            placeholder="Select count name"
+                                            ariaLabel="Count Name From"
+                                        />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Count Name (To)</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.countNameTo ? styles["input-error"] : ""}`} value={countNameTo} onChange={(e) => { setCountNameTo(e.target.value); clearFieldError("countNameTo"); }}>
-                                            <option value="">Select count name</option>
-                                            {COUNT_NAME_OPTIONS.map((item) => <option key={`to-${item}`} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.countNameTo ? styles["input-error"] : ""}`}
+                                            value={countNameTo}
+                                            onChange={(value) => {
+                                                setCountNameTo(value);
+                                                clearFieldError("countNameTo");
+                                            }}
+                                            options={countChangeCountNameToSelectOptions}
+                                            placeholder="Select count name"
+                                            ariaLabel="Count Name To"
+                                        />
                                     </div>
                                 </div>
 
@@ -828,20 +962,34 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Shift</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.shift ? styles["input-error"] : ""}`} value={shift} onChange={(e) => { setShift(e.target.value); clearFieldError("shift"); }}>
-                                            <option value="">Select Shift</option>
-                                            {SHIFT_OPTIONS.map((item) => <option key={item} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.shift ? styles["input-error"] : ""}`}
+                                            value={shift}
+                                            onChange={(value) => {
+                                                setShift(value);
+                                                clearFieldError("shift");
+                                            }}
+                                            options={ringFrameShiftSelectOptions}
+                                            placeholder="Select Shift"
+                                            ariaLabel="Shift"
+                                        />
                                     </div>
                                 </div>
 
                                 <div className={styles.row}>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Checker Name</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.checkerName ? styles["input-error"] : ""}`} value={checkerName} onChange={(e) => { setCheckerName(e.target.value); clearFieldError("checkerName"); }}>
-                                            <option value="">Select Checker</option>
-                                            {RING_FRAME_CHECKERS.map((item) => <option key={item} value={item}>{item}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.checkerName ? styles["input-error"] : ""}`}
+                                            value={checkerName}
+                                            onChange={(value) => {
+                                                setCheckerName(value);
+                                                clearFieldError("checkerName");
+                                            }}
+                                            options={ringFrameCheckerSelectOptions}
+                                            placeholder="Select Checker"
+                                            ariaLabel="Checker Name"
+                                        />
                                     </div>
                                 </div>
 
@@ -926,7 +1074,7 @@ function SpinningDepartment() {
                                         <input type="text" className={styles["highlight-input"]} value={entryId} readOnly disabled />
                                     </div>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Machine</label>
+                                        <label>{machineFieldLabel}</label>
                                         <SearchableSelect
                                             className={`${styles["highlight-input"]} ${errors.selectedMachine ? styles["input-error"] : ""}`}
                                             value={selectedMachine}
@@ -935,8 +1083,8 @@ function SpinningDepartment() {
                                                 clearFieldError("selectedMachine");
                                             }}
                                             options={machineSelectOptions}
-                                            placeholder="Select Machine"
-                                            ariaLabel="Machine Number"
+                                            placeholder={machineFieldPlaceholder}
+                                            ariaLabel={machineFieldLabel}
                                         />
                                     </div>
                                 </div>
