@@ -13,6 +13,7 @@ import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
 import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
+import WrappingCardingNotebook from "./carding/WrappingCardingNotebook";
 import CardingWheelChange from "./carding/WheelChange";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
 import Wrapping from "./wrapping";
@@ -50,6 +51,7 @@ const CARDING_ENTRY_ID_CONFIG = {
     "Card DFK Pressure Checking": { prefix: "DFK",  },
     WheelChange: { prefix: "WHL",  },
     "Card Waste Study": { prefix: "CWS",  },
+    "Wrapping Carding Notebook": { prefix: "WCN" },
 };
 
 const getCardingEntryConfig = (typeName) =>
@@ -114,6 +116,12 @@ function Carding() {
 
     const selectedType =
         typeOptions.find((item) => item.id === checkingType)?.name || "";
+    const { entryId, reserveEntryId } = useDatabaseEntryId({
+        department: "Carding",
+        typeName: selectedType,
+        config: getCardingEntryConfig(selectedType),
+        leadingHash: true,
+    });
     const selectedOption = typeOptions.find((item) => item.id === checkingType) || null;
     const SelectedComponent = selectedOption?.component ?? null;
     const ocrDocType =
@@ -322,6 +330,16 @@ function Carding() {
                             entryId={entryId}
                         />
                     )}
+
+                    {isWrappingCardingNotebook && SelectedComponent ? (
+                        <SelectedComponent
+                            ref={childRef}
+                            entryId={entryId}
+                            types={typeOptions}
+                            selectedType={selectedType}
+                            onTypeChange={handleTypeChange}
+                        />
+                    ) : null}
 
                     {isProcessParameter && validationMessage ? (
                         <div className={styles["message-box"]}>

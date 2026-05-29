@@ -7,10 +7,12 @@ import Image from "next/image";
 import Footer from "../components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
+import { fetchSpinningCotsCheckingMachines } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
@@ -76,6 +78,64 @@ const SPINNING_ENTRY_ID_CONFIG = {
 
 const getSpinningEntryConfig = (typeName) =>
     SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN" };
+
+const getMachineText = (value) => {
+    if (value === undefined || value === null) return "";
+    if (typeof value !== "object") return String(value).trim();
+    return String(
+        value.value ??
+        value.label ??
+        value.mc_no ??
+        value.machine_no ??
+        value.machine_number ??
+        value.machineno ??
+        value.mc_name ??
+        value.machine_name ??
+        value.name ??
+        ""
+    ).trim();
+};
+
+const normalizeMachineOptions = (payload) => {
+    const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.machines)
+                ? payload.machines
+                : Array.isArray(payload?.machineOptions)
+                    ? payload.machineOptions
+                    : [];
+
+    return rows
+        .map((row) => {
+            const rawValue =
+                row?.value ??
+                row?.mc_no ??
+                row?.machine_no ??
+                row?.machine_number ??
+                row?.machineno ??
+                row?.id ??
+                row;
+            const rawLabel =
+                row?.label ??
+                row?.mc_name ??
+                row?.machine_name ??
+                row?.machine_number ??
+                row?.name ??
+                rawValue;
+            const value = getMachineText(rawValue);
+            const label = getMachineText(rawLabel) || value;
+            return value ? { value, label: label || value } : null;
+        })
+        .filter(Boolean);
+};
+
+const normalizeCotsSideValue = (value) => {
+    const digits = sanitizeIntegerInput(value, 3);
+    if (digits === "") return "";
+    return String(Math.min(COTS_SIDE_MAX, Number(digits)));
+};
 
 const createRingFrameRows = () =>
     Array.from({ length: RING_FRAME_RF_TOTAL }, (_, index) => ({
@@ -166,14 +226,16 @@ function SpinningDepartment() {
     const [showSuccess, setShowSuccess] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
+    const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
-    const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"];
+    const fallbackMachineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"].map((value) => ({ value, label: value }));
     const employees = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
     const selectedCheckingOption = checkingOptions.find((item) => item.name === checkingType) || null;
     const SelectedComponent = selectedCheckingOption?.component ?? null;
     const isProcessParameter = checkingType === "Process Parameter";
+    const isCotsChecking = checkingType === "COTS Checking";
     const isCountChange = checkingType === "Count Change";
     const isRingFrame = checkingType === "Ring Frame Log Book";
     const isWheelChange = checkingType === "Wheel Change";
@@ -182,6 +244,10 @@ function SpinningDepartment() {
         typeName: checkingType,
         config: getSpinningEntryConfig(checkingType),
     });
+    const machineOptions = isCotsChecking && cotsMachineOptions.length ? cotsMachineOptions : fallbackMachineOptions;
+    const machineSelectOptions = machineOptions
+        .map((machine) => getMachineText(machine?.label ?? machine?.value ?? machine))
+        .filter(Boolean);
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -199,6 +265,25 @@ function SpinningDepartment() {
             setDate("");
         }
     }, [checkingOptions, queryType]);
+
+    useEffect(() => {
+        if (!isCotsChecking) return;
+
+        let isMounted = true;
+        fetchSpinningCotsCheckingMachines()
+            .then((payload) => {
+                if (!isMounted) return;
+                setCotsMachineOptions(normalizeMachineOptions(payload));
+            })
+            .catch(() => {
+                if (isMounted) setCotsMachineOptions([]);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isCotsChecking]);
+
     useEffect(() => {
         if (success) {
             reserveEntryId();
@@ -246,6 +331,10 @@ function SpinningDepartment() {
     };
     const handleIntegerInputChange = (setter, field, maxDigits = null) => (event) => {
         setter(sanitizeIntegerInput(event.target.value, maxDigits));
+        clearFieldError(field);
+    };
+    const handleCotsSideInputChange = (setter, field) => (event) => {
+        setter(normalizeCotsSideValue(event.target.value));
         clearFieldError(field);
     };
     const clearFieldError = (field) => {
@@ -367,9 +456,20 @@ function SpinningDepartment() {
             if (Object.keys(ringFrameRowErrors).length > 0) nextErrors.ringFrameRows = ringFrameRowErrors;
         } else {
             if (!selectedMachine) nextErrors.selectedMachine = true;
-            if (!employeeSearch.trim()) nextErrors.employeeSearch = true;
             if (!lhsValue.trim()) nextErrors.lhsValue = true;
             if (!rhsValue.trim()) nextErrors.rhsValue = true;
+            if (isCotsChecking) {
+                const lhsNumber = Number(lhsValue);
+                const rhsNumber = Number(rhsValue);
+                if (!Number.isInteger(lhsNumber) || lhsNumber < 0 || lhsNumber > COTS_SIDE_MAX) {
+                    nextErrors.lhsValue = true;
+                }
+                if (!Number.isInteger(rhsNumber) || rhsNumber < 0 || rhsNumber > COTS_SIDE_MAX) {
+                    nextErrors.rhsValue = true;
+                }
+            } else if (!employeeSearch.trim()) {
+                nextErrors.employeeSearch = true;
+            }
             if (!lhsRemarks.trim()) nextErrors.lhsRemarks = true;
             if (!rhsRemarks.trim()) nextErrors.rhsRemarks = true;
         }
@@ -440,18 +540,21 @@ function SpinningDepartment() {
         if (isWheelChange) {
             return childRef.current?.getPayload?.() || {};
         }
+        const machineNo = Number.parseInt(String(selectedMachine).replace(/\D/g, ""), 10) || 0;
         const payload = {
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
-            machineno: parseInt(selectedMachine.replace("MC-", ""), 10) || 0,
-            employeename: employeeSearch,
-            lhs_value: parseDecimalPayloadValue(lhsValue) ?? 0,
-            rhs_value: parseDecimalPayloadValue(rhsValue) ?? 0,
+            machineno: machineNo,
+            lhs_value: isCotsChecking ? Number(lhsValue) : parseDecimalPayloadValue(lhsValue) ?? 0,
+            rhs_value: isCotsChecking ? Number(rhsValue) : parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_textremarks: lhsRemarks.trim(),
             rhs_textremarks: rhsRemarks.trim(),
             lhs_audio: "",
             rhs_audio: "",
             checking_type: checkingType,
         };
+        if (!isCotsChecking) {
+            payload.employeename = employeeSearch;
+        }
         if (checkingType === "Speed Checking") {
             payload.display_speed = parseDecimalPayloadValue(displaySpeed);
             payload.spindle_speed = parseDecimalPayloadValue(spindleSpeed);
@@ -536,8 +639,10 @@ function SpinningDepartment() {
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
                 { label: "Machine", value: selectedMachine || "-" },
-                { label: "Employee", value: employeeSearch || "-" },
             ];
+        if (!isCotsChecking && !isCountChange) {
+            headerItems.push({ label: "Employee", value: employeeSearch || "-" });
+        }
 
         const bodyItems = isCountChange
             ? [
@@ -871,47 +976,56 @@ function SpinningDepartment() {
                                     </div>
                                     <div className={styles["sp-form-group"]}>
                                         <label>Machine</label>
-                                        <select className={`${styles["highlight-input"]} ${errors.selectedMachine ? styles["input-error"] : ""}`} value={selectedMachine} onChange={(e) => { setSelectedMachine(e.target.value); clearFieldError("selectedMachine"); }}>
-                                            <option value="">Select Machine</option>
-                                            {machineOptions.map((mc) => <option key={mc}>{mc}</option>)}
-                                        </select>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.selectedMachine ? styles["input-error"] : ""}`}
+                                            value={selectedMachine}
+                                            onChange={(value) => {
+                                                setSelectedMachine(value);
+                                                clearFieldError("selectedMachine");
+                                            }}
+                                            options={machineSelectOptions}
+                                            placeholder="Select Machine"
+                                            ariaLabel="Machine Number"
+                                        />
                                     </div>
                                 </div>
 
-                                <div className={`${styles["sp-form-group"]} ${styles["full-width"]}`} ref={dropdownRef}>
-                                    <label>Employee Name</label>
-                                    <div className={styles["search-dropdown"]}>
-                                        <div className={styles["input-wrapper"]}>
-                                            <input
-                                                type="text"
-                                                placeholder="Search employee..."
-                                                value={employeeSearch}
-                                                onChange={(e) => {
-                                                    setEmployeeSearch(e.target.value);
-                                                    clearFieldError("employeeSearch");
-                                                    setShowEmployeeList(true);
-                                                }}
-                                                onFocus={() => setShowEmployeeList(true)}
-                                                className={`${styles["highlight-input"]} ${styles["employee-input"]} ${errors.employeeSearch ? styles["input-error"] : ""}`}
-                                            />
-                                        </div>
-                                        {showEmployeeList && (
-                                            <div className={styles["dropdown-list"]}>
-                                                {filteredEmployees.length > 0
-                                                    ? filteredEmployees.map((emp, index) => (
-                                                        <div key={index} className={styles["dropdown-item"]} onClick={() => {
-                                                            setEmployeeSearch(emp);
-                                                            clearFieldError("employeeSearch");
-                                                            setShowEmployeeList(false);
-                                                        }}>
-                                                            {emp}
-                                                        </div>
-                                                    ))
-                                                    : <div className={`${styles["dropdown-item"]} ${styles.disabled}`}>No employees found</div>}
+                                {!isCotsChecking && (
+                                    <div className={`${styles["sp-form-group"]} ${styles["full-width"]}`} ref={dropdownRef}>
+                                        <label>Employee Name</label>
+                                        <div className={styles["search-dropdown"]}>
+                                            <div className={styles["input-wrapper"]}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search employee..."
+                                                    value={employeeSearch}
+                                                    onChange={(e) => {
+                                                        setEmployeeSearch(e.target.value);
+                                                        clearFieldError("employeeSearch");
+                                                        setShowEmployeeList(true);
+                                                    }}
+                                                    onFocus={() => setShowEmployeeList(true)}
+                                                    className={`${styles["highlight-input"]} ${styles["employee-input"]} ${errors.employeeSearch ? styles["input-error"] : ""}`}
+                                                />
                                             </div>
-                                        )}
+                                            {showEmployeeList && (
+                                                <div className={styles["dropdown-list"]}>
+                                                    {filteredEmployees.length > 0
+                                                        ? filteredEmployees.map((emp, index) => (
+                                                            <div key={index} className={styles["dropdown-item"]} onClick={() => {
+                                                                setEmployeeSearch(emp);
+                                                                clearFieldError("employeeSearch");
+                                                                setShowEmployeeList(false);
+                                                            }}>
+                                                                {emp}
+                                                            </div>
+                                                        ))
+                                                        : <div className={`${styles["dropdown-item"]} ${styles.disabled}`}>No employees found</div>}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {checkingType === "Speed Checking" && (
                                     <div className={styles["speed-section"]}>
@@ -944,7 +1058,14 @@ function SpinningDepartment() {
                                                 <label>LHS (Left Hand Side)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
-                                            <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={handleDecimalInputChange(setLhsValue, "lhsValue")} className={errors.lhsValue ? styles["input-error"] : ""} />
+                                            <input
+                                                type="text"
+                                                inputMode={isCotsChecking ? "numeric" : "decimal"}
+                                                placeholder={isCotsChecking ? "0-650" : "Enter value..."}
+                                                value={lhsValue}
+                                                onChange={isCotsChecking ? handleCotsSideInputChange(setLhsValue, "lhsValue") : handleDecimalInputChange(setLhsValue, "lhsValue")}
+                                                className={errors.lhsValue ? styles["input-error"] : ""}
+                                            />
                                             <div className={styles["remarks-header"]}>
                                                 <span>LHS Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
@@ -960,7 +1081,14 @@ function SpinningDepartment() {
                                                 <label>RHS (Right Hand Side)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
-                                            <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={handleDecimalInputChange(setRhsValue, "rhsValue")} className={errors.rhsValue ? styles["input-error"] : ""} />
+                                            <input
+                                                type="text"
+                                                inputMode={isCotsChecking ? "numeric" : "decimal"}
+                                                placeholder={isCotsChecking ? "0-650" : "Enter value..."}
+                                                value={rhsValue}
+                                                onChange={isCotsChecking ? handleCotsSideInputChange(setRhsValue, "rhsValue") : handleDecimalInputChange(setRhsValue, "rhsValue")}
+                                                className={errors.rhsValue ? styles["input-error"] : ""}
+                                            />
                                             <div className={styles["remarks-header"]}>
                                                 <span>RHS Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>

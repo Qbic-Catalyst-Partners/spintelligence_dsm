@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+const OCR_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || "").replace(/\/+$/, "");
+const OCR_ENDPOINT = OCR_BASE ? `${OCR_BASE}/ocr-machine/api/ocr` : "/api/ocr-machine/ocr";
 
 const DOC_TYPES = [
   { label: "HVI Data Entry", value: "hvi" },
@@ -165,7 +167,7 @@ export default function OcrMachinePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("doc_type", docType);
-      const ocrUrl = `${API_BASE}/ocr-machine/api/ocr`;
+      const ocrUrl = OCR_ENDPOINT;
       const res = await fetch(ocrUrl, { method: "POST", body: form });
       if (!res.ok) {
         const errorText = await res.text();
@@ -226,7 +228,7 @@ export default function OcrMachinePage() {
     } catch (e) {
       const isNetworkFailure = e instanceof TypeError && /fetch/i.test(e.message || "");
       const msg = isNetworkFailure
-        ? `Network error calling ${API_BASE}/ocr-machine/api/ocr. Check NEXT_PUBLIC_API_URL and backend availability.`
+        ? `Network error calling ${OCR_ENDPOINT}. Check backend availability.`
         : e.message || "OCR failed";
       setLogs((prev) => [...prev, msg]);
     } finally {

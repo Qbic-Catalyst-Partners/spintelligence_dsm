@@ -25,7 +25,6 @@ const subDepartmentScreenCounts = {
     simplex: SIMPLEX_INPUT_SCREEN_COUNT,
     spinning: SPINNING_INPUT_SCREEN_COUNT,
     autoconer: AUTOCONER_INPUT_SCREEN_COUNT,
-    wrapping: 0,
 };
 
 const formatInputScreenLabel = (count) => {
@@ -42,7 +41,6 @@ const qualityControlDepartmentNames = {
     simplex: "Simplex",
     spinning: "Spinning",
     autoconer: "Autoconer",
-    wrapping: "Wrapping",
 };
 
 function SubDepartmentDirectory({ initialDepartment } = {}) {

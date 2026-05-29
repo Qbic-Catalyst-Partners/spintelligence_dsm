@@ -1,6 +1,6 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
-import { sanitizeIntegerInput } from "@/utils/inputValidation";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
@@ -9,6 +9,7 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 2": "type2",
   "Type 3": "type3",
 };
+const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
@@ -223,6 +224,20 @@ const ALL_WHEEL_CHANGE_PARAMETER_ROWS = Object.values(WHEEL_CHANGE_PARAMETER_ROW
 
 const getTodayDate = () => new Date().toISOString().split("T")[0];
 
+const normalizeLabel = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/colour/g, "color")
+    .replace(/[^a-z0-9]+/g, "");
+
+const getParameterInputType = (row) => {
+  const label = normalizeLabel(row.label);
+  if (label === "lycratype" || label === "emptiescolor") return "text";
+  if (label === "offsetonoff") return "onOff";
+  if (label === "coporconecondition") return "copCone";
+  return "number";
+};
+
 const createWheelChangeValues = () =>
   ALL_WHEEL_CHANGE_PARAMETER_ROWS.reduce(
     (values, row) => ({
@@ -275,12 +290,45 @@ const WheelChange = forwardRef(function WheelChange(
   ref
 ) {
   const [wheelChangeType, setWheelChangeType] = useState("");
-  const [testNo, setTestNo] = useState("");
   const [rfNo, setRfNo] = useState("");
   const [date, setDate] = useState(getTodayDate);
   const [values, setValues] = useState(createWheelChangeValues);
   const [errors, setErrors] = useState({});
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const activeRows = WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE[wheelChangeType] || TYPE_1_PARAMETER_ROWS;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY) || "{}");
+      if (stored && typeof stored === "object") {
+        setWheelChangeType(typeof stored.wheelChangeType === "string" ? stored.wheelChangeType : "");
+        setRfNo(typeof stored.rfNo === "string" ? stored.rfNo : "");
+        setDate(typeof stored.date === "string" && stored.date ? stored.date : getTodayDate());
+        setValues({
+          ...createWheelChangeValues(),
+          ...(stored.values && typeof stored.values === "object" ? stored.values : {}),
+        });
+      }
+    } catch {
+      // Ignore invalid stored drafts.
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded || typeof window === "undefined") return;
+    window.localStorage.setItem(
+      WHEEL_CHANGE_DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        wheelChangeType,
+        rfNo,
+        date,
+        values,
+      })
+    );
+  }, [date, draftLoaded, rfNo, values, wheelChangeType]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -328,13 +376,38 @@ const WheelChange = forwardRef(function WheelChange(
     clearValueError(rowKey, column);
   };
 
+  const handleNumericValueChange = (rowKey, column) => (event) => {
+    const nextValue = sanitizeNumericInput(event.target.value, { precision: 10, scale: 3 });
+    setValues((current) => ({
+      ...current,
+      [rowKey]: {
+        ...(current[rowKey] || { existing: "", proposed: "" }),
+        [column]: nextValue,
+      },
+    }));
+    clearValueError(rowKey, column);
+  };
+
+  const handleRadioValueChange = (rowKey, column, nextValue) => {
+    setValues((current) => ({
+      ...current,
+      [rowKey]: {
+        ...(current[rowKey] || { existing: "", proposed: "" }),
+        [column]: nextValue,
+      },
+    }));
+    clearValueError(rowKey, column);
+  };
+
   const clear = () => {
     setWheelChangeType("");
-    setTestNo("");
     setRfNo("");
     setDate(getTodayDate());
     setValues(createWheelChangeValues());
     setErrors({});
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY);
+    }
   };
 
   const validate = () => {
@@ -342,22 +415,17 @@ const WheelChange = forwardRef(function WheelChange(
 
     if (!selectedTypeName) nextErrors.selectedTypeName = true;
     if (!wheelChangeType.trim()) nextErrors.wheelChangeType = true;
-    if (!testNo.trim()) nextErrors.testNo = true;
     if (!date) nextErrors.date = true;
     if (!rfNo.trim()) nextErrors.rfNo = true;
 
     const valueErrors = {};
-    const typeFieldConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
-    const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS[wheelChangeType] || new Set();
-
     activeRows.forEach((row) => {
       const rowValues = values[row.key] || {};
       const rowErrors = {};
       if (!hasTextValue(rowValues.existing)) rowErrors.existing = true;
       if (!hasTextValue(rowValues.proposed)) rowErrors.proposed = true;
 
-      const fieldBase = typeFieldConfig?.rows?.[row.key];
-      if (fieldBase && numericFields.has(fieldBase)) {
+      if (getParameterInputType(row) === "number") {
         if (hasTextValue(rowValues.existing) && parseNumericValue(rowValues.existing) === null) {
           rowErrors.existing = true;
         }
@@ -385,7 +453,7 @@ const WheelChange = forwardRef(function WheelChange(
         type: selectedTypeName,
         wheel_change_type: "",
         date: date || getTodayDate(),
-        test_no: getTextValue(testNo),
+        test_no: "",
       };
     }
 
@@ -393,7 +461,7 @@ const WheelChange = forwardRef(function WheelChange(
       type: selectedTypeName,
       wheel_change_type: typeCode,
       date: date || getTodayDate(),
-      test_no: getTextValue(testNo),
+      test_no: "",
       [typeFieldConfig.referenceField]: getTextValue(rfNo),
     };
 
@@ -419,7 +487,6 @@ const WheelChange = forwardRef(function WheelChange(
   const getPreviewData = () => [
     { label: "Checking Type", value: selectedTypeName || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
-    { label: "Test No.", value: testNo || "-" },
     { label: "Entry ID", value: entryId || "#SPN-001" },
     { label: "RF No.", value: rfNo || "-" },
     ...activeRows.flatMap((row) => [
@@ -437,28 +504,44 @@ const WheelChange = forwardRef(function WheelChange(
 
   const renderControl = (row, column) => {
     const value = values[row.key]?.[column] || "";
+    const parameterInputType = getParameterInputType(row);
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
 
-    if (row.inputType === "select") {
+    if (parameterInputType === "onOff" || parameterInputType === "copCone") {
+      const options = parameterInputType === "onOff" ? ["Off", "On"] : ["Cop", "Cone"];
       return (
-        <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
-          <option value="">Select</option>
-          <option value="Option 1">Option 1</option>
-          <option value="Option 2">Option 2</option>
-          <option value="Option 3">Option 3</option>
-        </select>
+        <div className={`${styles.radioGroup} ${errors.values?.[row.key]?.[column] ? styles.radioGroupError : ""}`}>
+          {options.map((option) => (
+            <label key={option} className={styles.radioOption}>
+              <input
+                type="radio"
+                name={`${row.key}-${column}`}
+                value={option}
+                checked={value === option}
+                onChange={() => handleRadioValueChange(row.key, column, option)}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
       );
     }
 
     return (
       <input
-        type="text"
+        type={parameterInputType === "number" ? "number" : "text"}
+        inputMode={parameterInputType === "number" ? "decimal" : undefined}
+        step={parameterInputType === "number" ? "any" : undefined}
         placeholder={row.placeholder || ""}
         className={className}
         value={value}
-        onChange={handleValueChange(row.key, column)}
+        onChange={
+          parameterInputType === "number"
+            ? handleNumericValueChange(row.key, column)
+            : handleValueChange(row.key, column)
+        }
       />
     );
   };
@@ -506,18 +589,6 @@ const WheelChange = forwardRef(function WheelChange(
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Test No.</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="Enter test number"
-              className={`${styles.topInput} ${errors.testNo ? styles.errorInput : ""}`}
-              value={testNo}
-              onChange={handleIntegerChange(setTestNo, "testNo")}
-            />
           </div>
         </div>
 

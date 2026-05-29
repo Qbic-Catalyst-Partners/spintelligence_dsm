@@ -92,3 +92,41 @@ export const getSpinningProcessParameterEntries = async (params = {}) => {
     throw new Error(error.message || "Server error occurred");
   }
 };
+
+export const fetchSpinningCotsCheckingMachines = async () => {
+  const endpoints = [
+    "/spinning/cots-checking/machines",
+    "/spinning/cots-checking/master/machines",
+    "/spinning/master/machines",
+  ];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.get(
+        endpoint,
+        {},
+        { skipGlobalErrorModal: true }
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status !== 404) {
+        break;
+      }
+    }
+  }
+
+  try {
+    throw lastError || new Error("Failed to load COTS Checking machines.");
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(
+        error.response.data.message ||
+          error.response.data.error ||
+          "Failed to load COTS Checking machines."
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};

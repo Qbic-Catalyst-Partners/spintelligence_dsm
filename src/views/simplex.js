@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import PdfOcrTableEntry from "@/components/PdfOcrTableEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "@/views/simplex/processParameterDataEntry";
@@ -26,6 +27,7 @@ const simplexTypes = [
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
   { id: 4, name: "Wrapping Simplex Notebook", aliases: ["Wrapping Simplex Notebook", "Simplex Wrapping Notebook"] },
+  { id: 5, name: "Stretch %", aliases: ["Stretch %", "Stretch Percent", "Simplex Stretch %"], component: PdfOcrTableEntry },
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
@@ -34,6 +36,7 @@ const SIMPLEX_ENTRY_ID_CONFIG = {
   "SMXCots Change Data Entry": { prefix: "SCC",  },
   "SMX Breaks Study Report": { prefix: "SBS",  },
   "U% Data Entry": { prefix: "SUP",  },
+  "Stretch %": { prefix: "STP",  },
 };
 
 const getSimplexEntryConfig = (typeName) =>
@@ -70,6 +73,12 @@ function Simplex() {
     () => typeOptions.find((item) => item.name === selectedTypeName) || null,
     [selectedTypeName, typeOptions]
   );
+  const { entryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Simplex",
+    typeName: selectedTypeName,
+    config: getSimplexEntryConfig(selectedTypeName),
+    leadingHash: true,
+  });
   const SelectedComponent = selectedType?.component ?? null;
   const isWrappingSimplexNotebook = selectedTypeName === "Wrapping Simplex Notebook";
   const { entryId, reserveEntryId } = useDatabaseEntryId({
@@ -154,7 +163,7 @@ function Simplex() {
                     </span>
                     <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
                   </div>
-                  <InputScreenUploadButton />
+                  {selectedTypeName !== "Stretch %" ? <InputScreenUploadButton /> : null}
                 </div>
                 <div className="mb-6 h-px bg-slate-100" />
               </>
@@ -175,15 +184,26 @@ function Simplex() {
                 title="Quality Control - Wrapping Simplex Notebook"
               />
             ) : SelectedComponent ? (
-              <SelectedComponent
-                key={selectedTypeName}
-                ref={childRef}
-                selectedTypeName={selectedTypeName}
-                onTypeChange={setSelectedTypeName}
-                typeOptions={typeOptions.map((type) => type.name)}
-                entryId={entryId}
-                tablePortalTargetId="simplex-report-table-slot"
-              />
+              selectedTypeName === "Stretch %" ? (
+                <PdfOcrTableEntry
+                  key={selectedTypeName}
+                  ref={childRef}
+                  selectedType={selectedTypeName}
+                  onTypeChange={setSelectedTypeName}
+                  typeOptions={typeOptions.map((type) => type.name)}
+                  docType="strech"
+                />
+              ) : (
+                <SelectedComponent
+                  key={selectedTypeName}
+                  ref={childRef}
+                  selectedTypeName={selectedTypeName}
+                  onTypeChange={setSelectedTypeName}
+                  typeOptions={typeOptions.map((type) => type.name)}
+                  entryId={entryId}
+                  tablePortalTargetId="simplex-report-table-slot"
+                />
+              )
             ) : (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                 No accessible input screens are available for this department.

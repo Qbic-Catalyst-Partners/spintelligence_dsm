@@ -27,12 +27,24 @@ const normalizeOptionRows = (rows = []) =>
                 return value ? { label: value, value } : null;
             }
 
-            const value = String(row?.value ?? row?.text ?? "").trim();
+            const value = String(row?.value ?? row?.text ?? row?.label ?? "").trim();
             const label = String(row?.text ?? row?.label ?? row?.value ?? "").trim();
             if (!value && !label) return null;
             return { label: label || value, value: value || label };
         })
         .filter(Boolean);
+
+const normalizeOptionValue = (row) => {
+    if (row && typeof row === "object") {
+        return {
+            value: String(row.value ?? row.label ?? row.text ?? "").trim(),
+            label: String(row.label ?? row.value ?? row.text ?? "").trim(),
+        };
+    }
+
+    const value = String(row ?? "").trim();
+    return { value, label: value };
+};
 
 export const submitRibbonLapCVDataEntry = async (payload) => {
     try {
@@ -119,8 +131,7 @@ export const fetchComberUqcMasterDropdown = async ({
         const shifts = Array.isArray(payload.shifts) && payload.shifts.length
             ? payload.shifts
                 .map((row) => {
-                    const value = String((row?.value ?? row?.label ?? row) || "").trim();
-                    const label = String((row?.label ?? row?.value ?? row) || "").trim();
+                    const { value, label } = normalizeOptionValue(row);
                     return value ? { value, label: label || value } : null;
                 })
                 .filter(Boolean)
