@@ -7,7 +7,7 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
-import { fetchCardingMasterVarieties } from "@/apis/carding";
+import { fetchCardingMasterVarieties, fetchCardingNatiMasterMcNos } from "@/apis/carding";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -40,6 +40,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     const [showSuccess, setShowSuccess] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [varietyOptions, setVarietyOptions] = useState([]);
+    const [mcNoOptions, setMcNoOptions] = useState([]);
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
@@ -49,10 +50,23 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
         let active = true;
         (async () => {
             try {
-                const options = await fetchCardingMasterVarieties();
-                if (active) setVarietyOptions(Array.isArray(options) ? options : []);
+                const [varietyList, mcNos] = await Promise.all([
+                    fetchCardingMasterVarieties(),
+                    fetchCardingNatiMasterMcNos(),
+                ]);
+                if (active) {
+                    setVarietyOptions(Array.isArray(varietyList) ? varietyList : []);
+                    setMcNoOptions(
+                        Array.isArray(mcNos)
+                            ? mcNos.map((item) => item.mc_no).filter(Boolean)
+                            : []
+                    );
+                }
             } catch (_err) {
-                if (active) setVarietyOptions([]);
+                if (active) {
+                    setVarietyOptions([]);
+                    setMcNoOptions([]);
+                }
             }
         })();
         return () => {
@@ -305,9 +319,12 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                                             <div className={styles["cb-neps-grid"]}>
                                                 <div className={styles["cb-form-group"]}>
                                                     <label>MC No</label>
-                                                    <input
+                                                    <SearchableSelect
                                                         value={entry.mc_no}
-                                                        onChange={(e) => handleEntryChange(index, "mc_no", e.target.value)}
+                                                        onChange={(value) => handleEntryChange(index, "mc_no", value)}
+                                                        options={mcNoOptions}
+                                                        placeholder="Select MC No"
+                                                        ariaLabel={`MC No Row ${index + 1}`}
                                                         className={errors[`${index}-mc_no`] ? styles["field-error"] : ""}
                                                     />
                                                 </div>

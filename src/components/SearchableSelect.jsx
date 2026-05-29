@@ -21,7 +21,13 @@ function SearchableSelect({
       Array.from(
         new Set(
           (Array.isArray(options) ? options : [])
-            .map((option) => String(option || "").trim())
+            .map((option) => {
+              if (option && typeof option === "object") {
+                return String(option.value ?? option.label ?? option.text ?? "").trim();
+              }
+
+              return String(option || "").trim();
+            })
             .filter(Boolean)
         )
       ),
