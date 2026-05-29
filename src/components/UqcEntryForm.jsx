@@ -31,6 +31,14 @@ const createInitialForm = (departmentValue) => ({
 
 const UQC_NUMERIC_FIELDS = new Set(["u_percent", "cvm", "cvm_1m", "cvm_3m"]);
 
+const toOptionText = (option) => {
+  if (option && typeof option === "object") {
+    return String(option.value ?? option.label ?? option.text ?? option.name ?? "").trim();
+  }
+
+  return String(option || "").trim();
+};
+
 const UqcEntryForm = forwardRef(function UqcEntryForm(
   {
     typeOptions = [],
@@ -171,11 +179,14 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             style={errorStyle(errors.shift)}
           >
             <option value="">Select Shift</option>
-            {shiftOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
+            {shiftOptions.map((option) => {
+              const optionText = toOptionText(option);
+              return optionText ? (
+                <option key={optionText} value={optionText}>
+                  {optionText}
+                </option>
+              ) : null;
+            })}
           </select>
         </div>
 
@@ -188,11 +199,14 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             style={errorStyle(errors.variety)}
           >
             <option value="">Select Variety</option>
-            {varietyOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
+            {varietyOptions.map((option) => {
+              const optionText = toOptionText(option);
+              return optionText ? (
+                <option key={optionText} value={optionText}>
+                  {optionText}
+                </option>
+              ) : null;
+            })}
           </select>
         </div>
 
@@ -216,11 +230,14 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
             style={errorStyle(errors.mc_no)}
           >
             <option value="">Select MC No.</option>
-            {machineOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
+            {machineOptions.map((option) => {
+              const optionText = toOptionText(option);
+              return optionText ? (
+                <option key={optionText} value={optionText}>
+                  {optionText}
+                </option>
+              ) : null;
+            })}
           </select>
         </div>
 

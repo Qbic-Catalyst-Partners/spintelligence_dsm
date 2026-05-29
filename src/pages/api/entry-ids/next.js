@@ -33,8 +33,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ message: "department, typeName, and prefix are required" });
   }
 
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query("BEGIN");
     await ensureEntryIdTable(client);
 
@@ -68,12 +69,14 @@ export default async function handler(req, res) {
       scope,
     });
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (client) {
+      await client.query("ROLLBACK").catch(() => {});
+    }
     return res.status(500).json({
       message: "Unable to generate database entry ID",
       error: error.message,
     });
   } finally {
-    client.release();
+    client?.release();
   }
 }

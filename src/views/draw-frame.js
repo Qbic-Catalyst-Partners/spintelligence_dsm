@@ -59,9 +59,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
 };
 
 const getDrawFrameEntryConfig = (type = "") =>
-  DRAW_FRAME_ENTRY_ID_CONFIG[type] || {
-    prefix: "DRAW",
-  };
+  ({ prefix: DRAW_FRAME_ENTRY_PREFIX[type] || "DRAW" });
 
 const getDrawFrameUniqueId = (sequence, type = "") => {
   const config = getDrawFrameEntryConfig(type);
@@ -503,6 +501,7 @@ function DrawFrame() {
   });
   const isUPercentEntry = form.type === "U% Data Entry";
   const isAPercentEntry = form.type === "A%";
+  const isWrappingDrawframeNotebook = form.type === "Wrapping Drawframe Notebook";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
   const { entryId, reserveEntryId } = useDatabaseEntryId({
@@ -1017,7 +1016,7 @@ function DrawFrame() {
       items.push({ label: "Remarks", value: uPercentForm.remarks });
     } else if (form.type === "A%") {
       items.push({ label: "Type", value: form.type });
-      items.push({ label: "Entry ID", value: getDrawFrameUniqueId(entrySeq, form.type) });
+      items.push({ label: "Entry ID", value: entryId });
       items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
@@ -1044,7 +1043,7 @@ function DrawFrame() {
       items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
-  }, [aPercentFile, entrySeq, form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
+  }, [aPercentFile, entryId, form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
@@ -1076,13 +1075,7 @@ function DrawFrame() {
     }
 
     if (form.type === "A%") {
-      setEntrySeq((current) => {
-        const next = Math.max(1, Number(current) || 1) + 1;
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(DRAW_FRAME_ENTRY_SEQ_KEY, String(next));
-        }
-        return next;
-      });
+      reserveEntryId();
       setShowSuccess(true);
       return;
     }
