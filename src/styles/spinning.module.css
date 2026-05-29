@@ -374,6 +374,39 @@
   min-width: 58px;
 }
 
+.ringFrameMachineInput {
+  max-width: 34px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.ringFrameToggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  min-width: 62px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #dde6f1;
+  border-radius: 5px;
+  background: #f8fbff;
+}
+
+.ringFrameToggle button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ringFrameToggleActive {
+  background: #4965b7 !important;
+  color: #ffffff !important;
+}
+
 .ringFrameCheckbox {
   display: inline-flex;
   align-items: center;
@@ -410,13 +443,17 @@
 
 .ringFrameSummaryGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
   align-items: start;
 }
 
 .ringFrameComments {
-  grid-row: span 2;
+  grid-row: auto;
+}
+
+.ringFrameSummaryFull {
+  grid-column: 1 / -1;
 }
 
 .ringFrameComments textarea {

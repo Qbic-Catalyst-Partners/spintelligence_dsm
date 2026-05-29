@@ -1,5 +1,12 @@
-import ReportsPage from "@/views/reports/ReportsPage";
+import { useEffect } from "react";
+import { useRouter } from "next/router";
 
 export default function Reports() {
-  return <ReportsPage />;
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/reports/custom");
+  }, [router]);
+
+  return null;
 }

@@ -49,6 +49,31 @@
   line-height: 20px;
 }
 
+.generalReportCard {
+  padding: 26px 24px;
+}
+
+.generalReportHeader {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.generalReportHeader h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 800;
+  color: #101828;
+}
+
+.generalReportHeader p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 20px;
+}
+
 .reportTabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -338,6 +363,39 @@
 
 .dateInputs svg {
   color: #6d7e95;
+}
+
+.dateInputs input {
+  height: auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: #182230;
+  cursor: pointer;
+}
+
+.hiddenDateInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media print {
+  .page {
+    background: #fff;
+    padding: 0;
+  }
+
+  .filterCard {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .exportActions {
+    display: none;
+  }
 }
 
 .datePickerPopover {

@@ -134,12 +134,12 @@ function Carding() {
     const isWheelChange = selectedType === "WheelChange";
     const isCardWasteStudy = selectedType === "Card Waste Study";
     const isWrappingCardingNotebook = selectedType === "Wrapping Carding Notebook";
+    const showParentFooter = isProcessParameter || isCardWasteStudy;
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Carding",
         typeName: selectedType,
         config: getCardingEntryConfig(selectedType),
     });
-    const showParentFooter = isProcessParameter || isCardWasteStudy || isWrappingCardingNotebook;
     const entryTableTheme = {
         surface: isDarkMode ? "#050505" : "#fff",
         header: isDarkMode ? "#3b3b3b" : "#f4f6f8",

@@ -60,7 +60,8 @@ const SPINNING_CHECKING_OPTIONS = [
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
-const COTS_SIDE_MAX = 650;
+const RING_FRAME_RF_TOTAL = 24;
+const RING_FRAME_TOTAL_FIELDS = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6"];
 const SPINNING_ENTRY_ID_CONFIG = {
     "Process Parameter": { prefix: "SNP",  },
     "COTS Checking": { prefix: "SCT",  },
@@ -137,8 +138,8 @@ const normalizeCotsSideValue = (value) => {
 };
 
 const createRingFrameRows = () =>
-    Array.from({ length: 24 }, (_, index) => ({
-        machine_no: index + 1,
+    Array.from({ length: RING_FRAME_RF_TOTAL }, (_, index) => ({
+        machine_no: String(index + 1),
         lycra: "",
         bobbin_color: "",
         position_1: "",
@@ -147,7 +148,6 @@ const createRingFrameRows = () =>
         position_4: "",
         position_5: "",
         position_6: "",
-        lycra_missing: "",
         guide_roll_lapping: "",
         others: "",
     }));
@@ -211,11 +211,10 @@ function SpinningDepartment() {
     const [shift, setShift] = useState("");
     const [checkerName, setCheckerName] = useState("");
     const [ringFrameRows, setRingFrameRows] = useState(createRingFrameRows);
-    const [outOfCenter, setOutOfCenter] = useState("");
-    const [ringFrameLycraMissing, setRingFrameLycraMissing] = useState("");
+    const [outOfCenterAc, setOutOfCenterAc] = useState("");
     const [comments, setComments] = useState("");
-    const [faultCops, setFaultCops] = useState("");
-    const [totalCops, setTotalCops] = useState("");
+    const [faultCopsAc, setFaultCopsAc] = useState("");
+    const [faultCopsRf, setFaultCopsRf] = useState("");
     const [date, setDate] = useState("");
     const [lhsValue, setLhsValue] = useState("");
     const [lhsRemarks, setLhsRemarks] = useState("");
@@ -309,6 +308,18 @@ function SpinningDepartment() {
         const parsedValue = parseNumericInput(value);
         return parsedValue === null ? null : Number(parsedValue.toFixed(2));
     };
+    const sumDecimalValues = (...values) =>
+        Number(values.reduce((total, value) => total + (parseNumericInput(value) ?? 0), 0).toFixed(2));
+    const outOfCenterRf = Number(
+        ringFrameRows.reduce(
+            (rowTotal, row) =>
+                rowTotal + RING_FRAME_TOTAL_FIELDS.reduce((fieldTotal, field) => fieldTotal + (parseNumericInput(row[field]) ?? 0), 0),
+            0
+        ).toFixed(2)
+    );
+    const totalCopsAc = sumDecimalValues(outOfCenterAc, faultCopsAc);
+    const totalCopsRf = sumDecimalValues(outOfCenterRf, faultCopsRf);
+    const totalCopsGrandTotal = sumDecimalValues(totalCopsAc, totalCopsRf);
     const hasTextValue = (value) => String(value ?? "").trim() !== "";
     const handleDecimalInputChange = (setter, field) => (event) => {
         setter(sanitizeNumericInput(event.target.value, DECIMAL_10_2_CONFIG));
@@ -392,11 +403,10 @@ function SpinningDepartment() {
         setShift("");
         setCheckerName("");
         setRingFrameRows(createRingFrameRows());
-        setOutOfCenter("");
-        setRingFrameLycraMissing("");
+        setOutOfCenterAc("");
         setComments("");
-        setFaultCops("");
-        setTotalCops("");
+        setFaultCopsAc("");
+        setFaultCopsRf("");
         setLhsValue("");
         setLhsRemarks("");
         setRhsValue("");
@@ -421,15 +431,15 @@ function SpinningDepartment() {
         } else if (isRingFrame) {
             if (!shift.trim()) nextErrors.shift = true;
             if (!checkerName.trim()) nextErrors.checkerName = true;
-            if (!outOfCenter.trim()) nextErrors.outOfCenter = true;
-            if (!ringFrameLycraMissing.trim()) nextErrors.ringFrameLycraMissing = true;
+            if (!outOfCenterAc.trim()) nextErrors.outOfCenterAc = true;
             if (!comments.trim()) nextErrors.comments = true;
-            if (!faultCops.trim()) nextErrors.faultCops = true;
-            if (!totalCops.trim()) nextErrors.totalCops = true;
+            if (!faultCopsAc.trim()) nextErrors.faultCopsAc = true;
+            if (!faultCopsRf.trim()) nextErrors.faultCopsRf = true;
 
             const ringFrameRowErrors = {};
-            ringFrameRows.forEach((row) => {
+            ringFrameRows.forEach((row, index) => {
                 const rowErrors = {};
+                if (!hasTextValue(row.machine_no)) rowErrors.machine_no = true;
                 if (!hasTextValue(row.lycra)) rowErrors.lycra = true;
                 if (!hasTextValue(row.bobbin_color)) rowErrors.bobbin_color = true;
                 if (!hasTextValue(row.position_1)) rowErrors.position_1 = true;
@@ -438,10 +448,9 @@ function SpinningDepartment() {
                 if (!hasTextValue(row.position_4)) rowErrors.position_4 = true;
                 if (!hasTextValue(row.position_5)) rowErrors.position_5 = true;
                 if (!hasTextValue(row.position_6)) rowErrors.position_6 = true;
-                if (!hasTextValue(row.lycra_missing)) rowErrors.lycra_missing = true;
                 if (!hasTextValue(row.guide_roll_lapping)) rowErrors.guide_roll_lapping = true;
                 if (!hasTextValue(row.others)) rowErrors.others = true;
-                if (Object.keys(rowErrors).length > 0) ringFrameRowErrors[row.machine_no] = rowErrors;
+                if (Object.keys(rowErrors).length > 0) ringFrameRowErrors[index] = rowErrors;
             });
 
             if (Object.keys(ringFrameRowErrors).length > 0) nextErrors.ringFrameRows = ringFrameRowErrors;
@@ -501,7 +510,7 @@ function SpinningDepartment() {
                 shift,
                 checker_name: checkerName,
                 rows: ringFrameRows.map((row) => ({
-                    mc_no: row.machine_no,
+                    mc_no: String(row.machine_no ?? "").trim(),
                     lycra: String(row.lycra ?? "").trim(),
                     bobbin_color: String(row.bobbin_color ?? "").trim(),
                     spindle_1: String(row.position_1 ?? "").trim(),
@@ -510,16 +519,20 @@ function SpinningDepartment() {
                     spindle_4: String(row.position_4 ?? "").trim(),
                     spindle_5: String(row.position_5 ?? "").trim(),
                     spindle_6: String(row.position_6 ?? "").trim(),
-                    lycra_missing: String(row.lycra_missing ?? "").trim(),
                     guide_roll_lapping: String(row.guide_roll_lapping ?? "").trim(),
                     others: String(row.others ?? "").trim(),
                     total: String(getRingFrameRowTotal(row)),
                 })),
                 summary: {
-                    out_of_center: parseDecimalPayloadValue(outOfCenter) ?? 0,
-                    lycra_missing: parseDecimalPayloadValue(ringFrameLycraMissing) ?? 0,
-                    fault_cops: parseDecimalPayloadValue(faultCops) ?? 0,
-                    total_cops: parseDecimalPayloadValue(totalCops) ?? 0,
+                    out_of_center_ac: parseDecimalPayloadValue(outOfCenterAc) ?? 0,
+                    out_of_center_rf: parseDecimalPayloadValue(outOfCenterRf) ?? 0,
+                    out_of_center: sumDecimalValues(outOfCenterAc, outOfCenterRf),
+                    fault_cops_ac: parseDecimalPayloadValue(faultCopsAc) ?? 0,
+                    fault_cops_rf: parseDecimalPayloadValue(faultCopsRf) ?? 0,
+                    fault_cops: sumDecimalValues(faultCopsAc, faultCopsRf),
+                    total_cops_ac: totalCopsAc,
+                    total_cops_rf: totalCopsRf,
+                    total_cops: totalCopsGrandTotal,
                     comments: comments.trim(),
                 },
             };
@@ -570,10 +583,10 @@ function SpinningDepartment() {
         setErrors((prev) => ({ ...prev, countReadingCount: false }));
     };
 
-    const handleRingFrameChange = (machineNo, field, value) => {
+    const handleRingFrameChange = (rowIndex, field, value) => {
         setRingFrameRows((currentRows) =>
-            currentRows.map((row) =>
-                row.machine_no === machineNo
+            currentRows.map((row, index) =>
+                index === rowIndex
                     ? {
                         ...row,
                         [field]: value,
@@ -581,15 +594,17 @@ function SpinningDepartment() {
                     : row
             )
         );
-        clearRingFrameRowError(machineNo, field);
+        clearRingFrameRowError(rowIndex, field);
     };
-    const handleRingFrameTextChange = (machineNo, field) => (event) => {
-        handleRingFrameChange(machineNo, field, event.target.value);
+    const handleRingFrameTextChange = (rowIndex, field) => (event) => {
+        handleRingFrameChange(rowIndex, field, event.target.value);
+    };
+    const handleRingFrameMachineNoChange = (rowIndex) => (event) => {
+        handleRingFrameChange(rowIndex, "machine_no", sanitizeIntegerInput(event.target.value).slice(0, 2));
     };
 
     const getRingFrameRowTotal = (row) => {
-        const numericFields = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6", "lycra_missing", "guide_roll_lapping", "others"];
-        return numericFields.reduce((total, field) => total + (parseNumericInput(row[field]) ?? 0), 0);
+        return RING_FRAME_TOTAL_FIELDS.reduce((total, field) => total + (parseNumericInput(row[field]) ?? 0), 0);
     };
 
     const handleSaveRecord = () => {
@@ -642,10 +657,13 @@ function SpinningDepartment() {
                     { label: "Shift", value: shift || "-" },
                     { label: "Checker Name", value: checkerName || "-" },
                     { label: "Rows", value: ringFrameRows.length },
-                    { label: "Out of Center (AC/RF)", value: outOfCenter || "-" },
-                    { label: "Lycra Missing (AC/RF)", value: ringFrameLycraMissing || "-" },
-                    { label: "Fault Cops", value: faultCops || "-" },
-                    { label: "Total Cops", value: totalCops || "-" },
+                    { label: "Out of Center AC", value: outOfCenterAc || "-" },
+                    { label: "Out of Center RF", value: outOfCenterRf || "-" },
+                    { label: "Fault Cops AC", value: faultCopsAc || "-" },
+                    { label: "Fault Cops RF", value: faultCopsRf || "-" },
+                    { label: "Total Cops AC", value: String(totalCopsAc) },
+                    { label: "Total Cops RF", value: String(totalCopsRf) },
+                    { label: "Grand Total", value: String(totalCopsGrandTotal) },
                     { label: "Comments", value: comments || "-" },
                     ...ringFrameRows.flatMap((row) => ([
                         { label: `MC ${row.machine_no} - Lycra`, value: String(row.lycra ?? "") || "-" },
@@ -656,7 +674,6 @@ function SpinningDepartment() {
                         { label: `MC ${row.machine_no} - 4`, value: String(row.position_4 ?? "") || "-" },
                         { label: `MC ${row.machine_no} - 5`, value: String(row.position_5 ?? "") || "-" },
                         { label: `MC ${row.machine_no} - 6`, value: String(row.position_6 ?? "") || "-" },
-                        { label: `MC ${row.machine_no} - Lycra Missing`, value: String(row.lycra_missing ?? "") || "-" },
                         { label: `MC ${row.machine_no} - Guide Roll Lapping`, value: String(row.guide_roll_lapping ?? "") || "-" },
                         { label: `MC ${row.machine_no} - Others`, value: String(row.others ?? "") || "-" },
                         { label: `MC ${row.machine_no} - Total`, value: String(getRingFrameRowTotal(row)) || "0" },
@@ -851,34 +868,54 @@ function SpinningDepartment() {
                                             <tr>
                                                 <th>Mc.No</th>
                                                 <th>Lycra</th>
-                                                <th>Bobbin Color</th>
+                                                <th>Bobbin</th>
                                                 <th>1</th>
                                                 <th>2</th>
                                                 <th>3</th>
                                                 <th>4</th>
                                                 <th>5</th>
                                                 <th>6</th>
-                                                <th>Lycra Missing</th>
                                                 <th>Guide Roll Lapping</th>
                                                 <th>Others</th>
                                                 <th>Total</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {ringFrameRows.map((row) => (
-                                                <tr key={row.machine_no}>
-                                                    <td className={styles.ringFrameMachineCell}>{row.machine_no}</td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "lycra")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.bobbin_color ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "bobbin_color")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.bobbin_color ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_1 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_1")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_1 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_2 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_2")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_2 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_3 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_3")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_3 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_4 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_4")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_4 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_5 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_5")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_5 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.position_6 ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "position_6")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[row.machine_no]?.position_6 ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra_missing ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "lycra_missing")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.lycra_missing ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.guide_roll_lapping ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "guide_roll_lapping")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
-                                                    <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(row.machine_no, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[row.machine_no]?.others ? styles["input-error"] : ""}`} /></td>
+                                            {ringFrameRows.map((row, rowIndex) => (
+                                                <tr key={rowIndex}>
+                                                    <td className={styles.ringFrameMachineCell}>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="numeric"
+                                                            maxLength={2}
+                                                            value={String(row.machine_no ?? "")}
+                                                            onChange={handleRingFrameMachineNoChange(rowIndex)}
+                                                            className={`${styles.ringFrameInput} ${styles.ringFrameMachineInput} ${errors.ringFrameRows?.[rowIndex]?.machine_no ? styles["input-error"] : ""}`}
+                                                        />
+                                                    </td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra ?? "")} onChange={handleRingFrameTextChange(rowIndex, "lycra")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.lycra ? styles["input-error"] : ""}`} /></td>
+                                                    <td>
+                                                        <div className={`${styles.ringFrameToggle} ${errors.ringFrameRows?.[rowIndex]?.bobbin_color ? styles["input-error"] : ""}`}>
+                                                            {["Yes", "No"].map((option) => (
+                                                                <button
+                                                                    key={option}
+                                                                    type="button"
+                                                                    className={row.bobbin_color === option ? styles.ringFrameToggleActive : ""}
+                                                                    onClick={() => handleRingFrameChange(rowIndex, "bobbin_color", option)}
+                                                                >
+                                                                    {option}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_1 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_1")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_1 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_2 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_2")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_2 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_3 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_3")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_3 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_4 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_4")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_4 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_5 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_5")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_5 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.position_6 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_6")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_6 ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.guide_roll_lapping ?? "")} onChange={handleRingFrameTextChange(rowIndex, "guide_roll_lapping")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(rowIndex, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.others ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" value={String(getRingFrameRowTotal(row))} readOnly className={styles.ringFrameInputWide} /></td>
                                                 </tr>
                                             ))}
@@ -889,24 +926,36 @@ function SpinningDepartment() {
                                 <div className={styles.ringFrameSummaryBox}>
                                     <div className={styles.ringFrameSummaryGrid}>
                                         <div className={styles["sp-form-group"]}>
-                                            <label>Out of Center (AC/RF)</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={outOfCenter} onChange={handleDecimalInputChange(setOutOfCenter, "outOfCenter")} className={`${styles["highlight-input"]} ${errors.outOfCenter ? styles["input-error"] : ""}`} />
+                                            <label>Out of Center AC</label>
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={outOfCenterAc} onChange={handleDecimalInputChange(setOutOfCenterAc, "outOfCenterAc")} className={`${styles["highlight-input"]} ${errors.outOfCenterAc ? styles["input-error"] : ""}`} />
                                         </div>
                                         <div className={styles["sp-form-group"]}>
-                                            <label>Lycra Missing (AC/RF)</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={ringFrameLycraMissing} onChange={handleDecimalInputChange(setRingFrameLycraMissing, "ringFrameLycraMissing")} className={`${styles["highlight-input"]} ${errors.ringFrameLycraMissing ? styles["input-error"] : ""}`} />
+                                            <label>Out of Center RF</label>
+                                            <input type="text" value={String(outOfCenterRf)} readOnly className={styles["highlight-input"]} />
                                         </div>
-                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameComments}`}>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Fault Cops AC</label>
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCopsAc} onChange={handleDecimalInputChange(setFaultCopsAc, "faultCopsAc")} className={`${styles["highlight-input"]} ${errors.faultCopsAc ? styles["input-error"] : ""}`} />
+                                        </div>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Fault Cops RF</label>
+                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCopsRf} onChange={handleDecimalInputChange(setFaultCopsRf, "faultCopsRf")} className={`${styles["highlight-input"]} ${errors.faultCopsRf ? styles["input-error"] : ""}`} />
+                                        </div>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Total Cops AC</label>
+                                            <input type="text" value={String(totalCopsAc)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Total Cops RF</label>
+                                            <input type="text" value={String(totalCopsRf)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameSummaryFull}`}>
+                                            <label>Grand Total</label>
+                                            <input type="text" value={String(totalCopsGrandTotal)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameComments} ${styles.ringFrameSummaryFull}`}>
                                             <label>Comments</label>
                                             <textarea placeholder="Enter comments" value={comments} onChange={(e) => { setComments(e.target.value); clearFieldError("comments"); }} className={`${styles["highlight-input"]} ${errors.comments ? styles["input-error"] : ""}`} />
-                                        </div>
-                                        <div className={styles["sp-form-group"]}>
-                                            <label>Fault Cops</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={faultCops} onChange={handleDecimalInputChange(setFaultCops, "faultCops")} className={`${styles["highlight-input"]} ${errors.faultCops ? styles["input-error"] : ""}`} />
-                                        </div>
-                                        <div className={styles["sp-form-group"]}>
-                                            <label>Total Cops</label>
-                                            <input type="text" inputMode="decimal" placeholder="Enter" value={totalCops} onChange={handleDecimalInputChange(setTotalCops, "totalCops")} className={`${styles["highlight-input"]} ${errors.totalCops ? styles["input-error"] : ""}`} />
                                         </div>
                                     </div>
                                 </div>

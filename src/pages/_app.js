@@ -62,7 +62,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname === "/settings" ||
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");
-  const isReportsFlow = router.pathname === "/reports";
+  const isReportsFlow = router.pathname === "/reports" || router.pathname.startsWith("/reports/");
   const canAccessManagementFlow = isFullAccessUser(user);
   const defaultTicketingRoute = getDefaultTicketingRoute(user);
   const defaultTicketingLabel = getDefaultTicketingLabel(user);
@@ -73,7 +73,7 @@ function AppShell({ Component, pageProps }) {
     { href: "/rolespermission", label: "Roles & Permissions" },
     { href: "/threshold-values", label: "Threshold Values" },
     { href: "/submission-threshold", label: "Submission Threshold" },
-    { href: "/reports", label: "Reports" },
+    { href: "/reports/custom", label: "Reports" },
     { href: "/ticket-calendar", label: "Ticket Calendar" },
     { href: "/settings", label: "Settings" },
   ];
