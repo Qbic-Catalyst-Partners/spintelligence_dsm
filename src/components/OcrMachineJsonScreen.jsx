@@ -2,8 +2,13 @@ import { useMemo, useRef, useState } from "react";
 import { FiFile, FiRefreshCw, FiUpload } from "react-icons/fi";
 
 import { runOcrJsonForDocument } from "@/apis/ocrApi";
+import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
 
 const normalizeCell = (value) => {
+  return normalizeOcrDisplayValue(value);
+};
+
+const stringifyCell = (value) => {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value).trim();
@@ -17,7 +22,7 @@ const getValue = (row, aliases) => {
   if (!isPlainObject(row)) return "";
   const wanted = aliases.map(toLookupKey);
   const key = Object.keys(row).find((item) => wanted.includes(toLookupKey(item)));
-  return key ? normalizeCell(row[key]) : "";
+  return key ? stringifyCell(row[key]) : "";
 };
 
 const setCanonicalValue = (row, field, value) => {
@@ -63,6 +68,7 @@ const KNOWN_FIELDS = [
   "Total Test",
   "Number of Entries (N)",
   "Length",
+  "Tester",
   "Std. Noils %",
   "Std. Stretch %",
   "Stretch %",
@@ -71,16 +77,19 @@ const KNOWN_FIELDS = [
 
 const hasKnownField = (row) => KNOWN_FIELDS.some((field) => getValue(row, FIELD_ALIASES[field] || [field]));
 
+const hasNestedRowContainer = (value) =>
+  isPlainObject(value) && ["rows", "data", "table", "tables"].some((key) => Array.isArray(value[key]));
+
 const collectRows = (value) => {
   if (!value) return [];
   if (Array.isArray(value)) {
     const directRows = rowsFromArrayTable(value);
-    if (directRows.length && directRows.some(hasKnownField)) return directRows;
+    if (directRows.length && directRows.some(hasKnownField) && !directRows.some(hasNestedRowContainer)) return directRows;
     return value.flatMap((item) => collectRows(item));
   }
   if (!isPlainObject(value)) return [];
-  if (Array.isArray(value.rows) || Array.isArray(value.data) || Array.isArray(value.table)) {
-    return collectRows(value.rows || value.data || value.table);
+  if (hasNestedRowContainer(value)) {
+    return [value.rows, value.data, value.table, value.tables].flatMap((item) => collectRows(item));
   }
   if (hasKnownField(value)) return [value];
   return Object.values(value).flatMap((item) => collectRows(item));
@@ -98,7 +107,8 @@ const getOcrTableRows = (result = {}) => {
     result.result?.json_output,
   ];
 
-  return rowSources.flatMap((source) => collectRows(source));
+  const firstNonEmptySource = rowSources.find((source) => Array.isArray(source) && source.length);
+  return firstNonEmptySource ? collectRows(firstNonEmptySource) : [];
 };
 
 const hasSourceRows = (value) => {
@@ -107,7 +117,7 @@ const hasSourceRows = (value) => {
     return value.length > 0 && (value.some(isPlainObject) || value.some(Array.isArray) || value.some(hasSourceRows));
   }
   if (!isPlainObject(value)) return false;
-  return [value.rows, value.data, value.table].some(hasSourceRows);
+  return [value.rows, value.data, value.table, value.tables].some(hasSourceRows);
 };
 
 const hasOcrResponseRows = (result = {}) => {
@@ -139,6 +149,7 @@ const FIELD_ALIASES = {
   "Total Test": ["Total Test", "Total Tests"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "N"],
   "Length": ["Length"],
+  "Tester": ["Tester", "Tester Name", "User"],
   "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %"],
   "Std. Stretch %": ["Std. Stretch %", "Std Stretch %"],
   "Stretch %": ["Stretch %"],
@@ -157,6 +168,7 @@ const inferRowKind = (row) => {
     "Total Test",
     "Number of Entries (N)",
     "Length",
+    "Tester",
     "Std. Noils %",
     "Std. Stretch %",
     "Stretch %",
@@ -184,14 +196,14 @@ const REPORT_CONFIG = {
     docType: "noils",
     sampleColumns: ["Sample No", "Sliver Wt", "Noils Wt", "Noils %"],
     summaryColumns: ["Label", "Sliver Wt", "Noils Wt", "Noils %"],
-    metaFields: ["Total Test", "Number of Entries (N)", "Std. Noils %", "Noils %"],
+    metaFields: ["Total Test", "Number of Entries (N)", "Tester", "Std. Noils %", "Noils %"],
   },
   strech: {
     title: "Stretch",
     docType: "strech",
     sampleColumns: ["Sample No", "Initial Bobbin", "Full Bobbin"],
     summaryColumns: ["Label", "Initial Bobbin", "Full Bobbin"],
-    metaFields: ["Test ID", "Total Test", "Number of Entries (N)", "Length", "Std. Stretch %", "Stretch %", "Remark"],
+    metaFields: ["Table No", "Test ID", "Total Test", "Number of Entries (N)", "Length", "Tester", "Std. Stretch %", "Stretch %", "Remark"],
   },
 };
 
@@ -200,7 +212,7 @@ const prepareRows = (rows, config, reportType) => {
     .filter((row) => isPlainObject(row))
     .filter(isRenderableOcrRow)
     .map((row, index) => ({
-      ...row,
+      ...normalizeOcrDisplayRow(row),
       __ocrRowId: row.__ocrRowId || `ocr-row-${index}`,
     }));
 
@@ -229,7 +241,7 @@ function FieldInput({ value, onChange, readOnly = false }) {
   return (
     <input
       readOnly={readOnly}
-      value={value || ""}
+      value={stringifyCell(value)}
       onChange={(event) => onChange?.(event.target.value)}
       style={{ width: "100%", height: 34, border: "1px solid #dbe3ef", borderRadius: 6, padding: "0 9px", color: "#111827", background: readOnly ? "#f8fafc" : "#fff", boxSizing: "border-box" }}
     />
@@ -338,7 +350,7 @@ export default function OcrMachineJsonScreen({ reportType }) {
       setAllRows(nextRows);
       setMessage(
         nextRows.length
-          ? `OCR completed. Rendered ${nextRows.length} extracted row(s).`
+          ? "OCR completed. Extracted values are ready."
           : responseHasRows
             ? "OCR completed. Rows were returned, but none were marked Meta, Sample, or Summary."
             : "OCR completed, but no OCR table rows were returned."
