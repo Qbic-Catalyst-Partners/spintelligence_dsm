@@ -30,11 +30,12 @@ const simplexTypes = [
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
 const SIMPLEX_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "SPP",  },
-  "SMXCots Change Data Entry": { prefix: "SCC",  },
-  "SMX Breaks Study Report": { prefix: "SBS",  },
-  "U% Data Entry": { prefix: "SUP",  },
+  "Process Parameter": { prefix: "SPP", width: 4, routePath: "/simplex/process_parameter" },
+  "SMXCots Change Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
+  "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/study" },
+  "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
   "Stretch %": { prefix: "STP",  },
+  "Wrapping Simplex Notebook": { prefix: "WSX" },
 };
 
 const getSimplexEntryConfig = (typeName) =>
@@ -75,7 +76,6 @@ function Simplex() {
     department: "Simplex",
     typeName: selectedTypeName,
     config: getSimplexEntryConfig(selectedTypeName),
-    leadingHash: true,
   });
   const SelectedComponent = selectedType?.component ?? null;
   const isStretchPercent = selectedTypeName === "Stretch %";

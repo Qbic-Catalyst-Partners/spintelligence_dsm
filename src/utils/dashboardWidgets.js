@@ -50,7 +50,7 @@ const screenEndpoints = {
     },
     "Blow Room": {
       "Blow Room Sync": "/blowroom/sync",
-      "Process Parameter": "/blowroom/process-parameters",
+      "Process Parameter": "/blowroom/header",
       "BR Waste Study Entry": "/blowroom/br-waste-study",
       "Drop Test Data Entry": "/blowroom/drop-test",
     },
@@ -279,13 +279,41 @@ export const fetchRowsForDashboardWidget = async (widget) => {
       widget?.input_screen || widget?.screen_name
     ];
 
-  if (!endpoint) return [];
+  const fallbackParams = {
+    department: widget?.department,
+    subDepartment: widget?.sub_department || widget?.subDepartment,
+    sub_department: widget?.sub_department || widget?.subDepartment,
+    reportType: widget?.input_screen || widget?.screen_name,
+    report_type: widget?.input_screen || widget?.screen_name,
+    input_screen: widget?.input_screen || widget?.screen_name,
+    page: 1,
+    limit: 500,
+  };
 
-  const response = await apiConfig.get(
-    endpoint,
-    { page: 1, limit: 500 },
-    { skipGlobalErrorModal: true }
-  );
+  const fetchFallbackRows = async () => {
+    if (!fallbackParams.department || !fallbackParams.subDepartment || !fallbackParams.reportType) return [];
+    const response = await apiConfig.get(
+      "/reports/general-report/data",
+      fallbackParams,
+      { skipGlobalErrorModal: true }
+    );
+    return normalizeDashboardRows(response?.data);
+  };
 
-  return normalizeDashboardRows(response?.data);
+  if (!endpoint) return fetchFallbackRows();
+
+  try {
+    const response = await apiConfig.get(
+      endpoint,
+      { page: 1, limit: 500 },
+      { skipGlobalErrorModal: true }
+    );
+
+    return normalizeDashboardRows(response?.data);
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return fetchFallbackRows();
+    }
+    throw error;
+  }
 };

@@ -62,16 +62,17 @@ const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
 const RING_FRAME_RF_TOTAL = 24;
 const RING_FRAME_TOTAL_FIELDS = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6"];
 const SPINNING_ENTRY_ID_CONFIG = {
-    "Process Parameter": { prefix: "SNP",  },
-    "COTS Checking": { prefix: "SCT",  },
-    "Count Change": { prefix: "SCC",  },
-    "Ring Frame Log Book": { prefix: "SRF",  },
-    "Speed Checking": { prefix: "SSD",  },
-    "Bottom Apron Checking": { prefix: "SBA",  },
-    "Lycra Centering": { prefix: "SLC",  },
-    "RSM & Lycrasensor Checking Online": { prefix: "SRO",  },
-    "RSM & Lycrasensor Checking Offline": { prefix: "SFO",  },
-    "Wheel Change": { prefix: "SWC",  },
+    "Process Parameter": { prefix: "SNP", width: 4, routePath: "/spinning/qc" },
+    "COTS Checking": { prefix: "SCT", width: 4, routePath: "/spinning/cots-checking" },
+    "Count Change": { prefix: "SCG", width: 4, routePath: "/spinning/count-change" },
+    "Ring Frame Log Book": { prefix: "SRF", width: 4, routePath: "/spinning/ring-frame" },
+    "Speed Checking": { prefix: "SSD", width: 4, routePath: "/spinning/speed-checking" },
+    "Lycra Missing": { prefix: "SLM", width: 4, routePath: "/spinning/lycra-missing" },
+    "Bottom Apron Checking": { prefix: "SBA", width: 4, routePath: "/spinning/bottom-apron-checking" },
+    "Lycra Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
+    "RSM & Lycrasensor Checking Online": { prefix: "SRO", width: 4, routePath: "/spinning/rsm-lycra-online" },
+    "RSM & Lycrasensor Checking Offline": { prefix: "SFO", width: 4, routePath: "/spinning/rsm-lycra-offline" },
+    "Wheel Change": { prefix: "SWC", width: 4, routePath: "/spinning/wheel-change" },
 };
 
 const getSpinningEntryConfig = (typeName) =>

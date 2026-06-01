@@ -81,14 +81,14 @@ function DrumWiseAppearance({
   const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
   const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
-  const [countName, setCountName] = useState(countOptions[0]);
+  const [countName, setCountName] = useState(countOptions[0].value);
   const [countCode, setCountCode] = useState("");
-  const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
+  const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0].value);
   const [countDropdownOptions, setCountDropdownOptions] = useState(
-    countOptions.map((option) => ({ value: option, label: option, code: "" }))
+    countOptions.map((option) => ({ value: option.value, label: option.label, code: "" }))
   );
   const [autoconerDropdownOptions, setAutoconerDropdownOptions] = useState(
-    autoconerOptions.map((option) => ({ value: option, label: option }))
+    autoconerOptions.map((option) => ({ value: option.value, label: option.label }))
   );
   const [drumFrom, setDrumFrom] = useState("");
   const [drumTo, setDrumTo] = useState("");
@@ -110,9 +110,11 @@ function DrumWiseAppearance({
     [savedEntries]
   );
   const selectedCountLabel =
-    masterCounts.find((option) => String(option.value) === String(countName))?.label || countName;
+    countDropdownOptions.find(
+      (option) => String(option.value) === String(countName) || String(option.label) === String(countName)
+    )?.label || countName;
   const selectedMachineLabel =
-    masterMachines.find((option) => String(option.value) === String(autoconerNo))?.label || autoconerNo;
+    autoconerDropdownOptions.find((option) => String(option.value) === String(autoconerNo))?.label || autoconerNo;
 
   useEffect(() => {
     setPortalReady(true);
@@ -131,9 +133,9 @@ function DrumWiseAppearance({
   const resetForm = () => {
     setTestNo("");
     setEntryDate(todayDate);
-    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
+    setCountName(countDropdownOptions[0]?.label || countOptions[0].value);
     setCountCode(countDropdownOptions[0]?.code || "");
-    setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0]);
+    setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0].value);
     setDrumFrom("");
     setDrumTo("");
     setRemarks("");

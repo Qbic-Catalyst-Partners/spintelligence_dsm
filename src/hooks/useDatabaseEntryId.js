@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { resolvedBaseUrl } from "@/apis/apiConfig";
 import { formatEntryId } from "@/utils/entryIds";
 
 export default function useDatabaseEntryId({
@@ -11,13 +12,17 @@ export default function useDatabaseEntryId({
 }) {
   const resolvedPrefix = config?.prefix || fallbackPrefix;
   const resolvedWidth = config?.width || fallbackWidth;
+  const routePath = String(config?.routePath || "").trim();
+  const initialEntryId = routePath
+    ? `${resolvedPrefix}-${String(1).padStart(resolvedWidth, "0")}`
+    : formatEntryId({
+        prefix: resolvedPrefix,
+        sequence: 1,
+        width: resolvedWidth,
+        leadingHash,
+      });
   const [entryId, setEntryId] = useState(() =>
-    formatEntryId({
-      prefix: resolvedPrefix,
-      sequence: 1,
-      width: resolvedWidth,
-      leadingHash,
-    })
+    initialEntryId
   );
   const [loading, setLoading] = useState(false);
 
@@ -26,7 +31,24 @@ export default function useDatabaseEntryId({
 
     setLoading(true);
     try {
-      const response = await fetch("/api/entry-ids/next", {
+      if (routePath) {
+        const url = new URL("/entry-id/next", resolvedBaseUrl);
+        url.searchParams.set("route_path", routePath);
+        const response = await fetch(url.toString());
+        if (!response.ok) return null;
+        const data = await response.json();
+        const nextSequence = data?.entry_id || data?.value;
+        const nextEntryId = nextSequence
+          ? `${resolvedPrefix}-${String(nextSequence).replace(/^\D+/, "").padStart(resolvedWidth, "0")}`
+          : "";
+        if (nextEntryId) {
+          setEntryId(nextEntryId);
+        }
+        return nextEntryId || null;
+      }
+
+      const url = new URL("/entry-ids/next", resolvedBaseUrl);
+      const response = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -39,7 +61,7 @@ export default function useDatabaseEntryId({
       });
       if (!response.ok) return null;
       const data = await response.json();
-      const nextEntryId = data?.entryId;
+      const nextEntryId = data?.entryId || data?.entry_id || data?.value;
       if (nextEntryId) {
         setEntryId(nextEntryId);
       }
@@ -49,19 +71,12 @@ export default function useDatabaseEntryId({
     } finally {
       setLoading(false);
     }
-  }, [department, leadingHash, resolvedPrefix, resolvedWidth, typeName]);
+  }, [department, leadingHash, resolvedPrefix, resolvedWidth, routePath, typeName]);
 
   useEffect(() => {
-    setEntryId(
-      formatEntryId({
-        prefix: resolvedPrefix,
-        sequence: 1,
-        width: resolvedWidth,
-        leadingHash,
-      })
-    );
+    setEntryId(initialEntryId);
     reserveEntryId();
-  }, [leadingHash, reserveEntryId, resolvedPrefix, resolvedWidth]);
+  }, [initialEntryId, reserveEntryId]);
 
   return { entryId, loading, reserveEntryId };
 }

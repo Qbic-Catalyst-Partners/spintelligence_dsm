@@ -318,9 +318,11 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
         }
     };
 
+    const displayEntryId = submittedEntryId || entryId || "-";
+
     const previewItems = [
         { label: "Type", value: selectedType },
-        { label: "Entry ID", value: submittedEntryId || "Will be generated after submit" },
+        { label: "Entry ID", value: displayEntryId },
         { label: "MC Name", value: mcName },
         { label: "Inspection Type", value: inspectionType },
         { label: "Number of Entries", value: entryCount },
@@ -357,7 +359,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     <div className="bwc-form-group">
                         <label>Entry ID</label>
                         <div className="bwc-input-icon-wrap">
-                            <input type="text" value={submittedEntryId || "Will be generated after submit"} readOnly disabled />
+                            <input type="text" value={displayEntryId} readOnly disabled />
                         </div>
                     </div>
                 </div>

@@ -41,18 +41,18 @@ const autoconerTypes = [
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
 const AUTOCONER_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "AP" },
-  "PP - Autoconer Q2": { prefix: "A2" },
-  "PP - Autoconer Q3": { prefix: "A3" },
-  "Rewinding Study": { prefix: "ARW",  },
-  "Cone Density": { prefix: "ACD",  },
-  "Cone Packing Audit": { prefix: "ACP",  },
-  "Lycra Checking": { prefix: "ALC",  },
-  "Count Wise Cuts Record": { prefix: "ACC",  },
-  "Splice Strength": { prefix: "ASS",  },
-  "Drum wise Appearance": { prefix: "ADA",  },
-  "CSP Parameter Entries": { prefix: "ACS",  },
-  "U% Parameter Entries": { prefix: "AUP",  },
+  "Process Parameter": { prefix: "APP", width: 4, routePath: "/autoconer/process-parameters" },
+  "PP - Autoconer Q2": { prefix: "AQD", width: 4, routePath: "/autoconer/q2" },
+  "PP - Autoconer Q3": { prefix: "AQT", width: 4, routePath: "/autoconer/q3" },
+  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/rewinding-study" },
+  "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
+  "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
+  "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking" },
+  "Count Wise Cuts Record": { prefix: "ACW", width: 4, routePath: "/autoconer/count-wise-cuts" },
+  "Splice Strength": { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength" },
+  "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise-appearance" },
+  "CSP Parameter Entries": { prefix: "ACS", width: 4, routePath: "/autoconer/parameter-entries/pending-csp" },
+  "U% Parameter Entries": { prefix: "AUP", width: 4, routePath: "/autoconer/parameter-entries/pending-quality" },
 };
 
 const getAutoconerEntryConfig = (typeName) =>
@@ -95,7 +95,6 @@ function Autoconer() {
     department: "Autoconer",
     typeName: selectedType,
     config: getAutoconerEntryConfig(selectedType),
-    leadingHash: true,
   });
   const isFooterHistoryType =
     selectedType === "Process Parameter" ||

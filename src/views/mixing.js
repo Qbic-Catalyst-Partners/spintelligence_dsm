@@ -42,11 +42,12 @@ export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
 
 const getCurrentDate = () => new Date().toISOString().split("T")[0];
 const MIXING_ENTRY_ID_CONFIG = {
-    "Cotton HVI Data Entry": { prefix: "COT",  },
-    "Fibre Data Entry": { prefix: "FIB",  },
-    "AFIS Data Entry": { prefix: "AFI",  },
-    "Moisture Data Entry": { prefix: "MOI",  },
-    "Openness Data Entry": { prefix: "OPN",  },
+    "Cotton HVI Data Entry": { prefix: "COT", width: 4, routePath: "/mixing/cotton-hvi" },
+    "Fibre Data Entry": { prefix: "FIB", width: 4, routePath: "/mixing/fibre" },
+    "AFIS Data Entry": { prefix: "AFI", width: 4, routePath: "/mixing/afis" },
+    "Moisture Data Entry": { prefix: "MOI", width: 4, routePath: "/mixing/moisture" },
+    "Openness Data Entry": { prefix: "OPN", width: 4, routePath: "/mixing/openness" },
+    "Process Parameter": { prefix: "MIX", width: 4, routePath: "/mixing/qc" },
 };
 
 const getEntryConfigForType = (typeName) =>
