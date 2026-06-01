@@ -12,7 +12,6 @@ import ProcessParameterDataEntry from "@/views/simplex/processParameterDataEntry
 import SMXCotsChangeDataEntry from "@/views/simplex/SMXCotsChangeDataEntry";
 import SMXBreaksStudyReport from "@/views/simplex/SMXBreaksStudyReport";
 import UPercentDataEntry from "@/views/simplex/u%dataentry";
-import Wrapping from "@/views/wrapping";
 import {
   clearSimplexState,
   getSimplexCotsChangeEntries,
@@ -26,7 +25,6 @@ const simplexTypes = [
   { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
-  { id: 4, name: "Wrapping Simplex Notebook", aliases: ["Wrapping Simplex Notebook", "Simplex Wrapping Notebook"] },
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
@@ -79,7 +77,6 @@ function Simplex() {
     leadingHash: true,
   });
   const SelectedComponent = selectedType?.component ?? null;
-  const isWrappingSimplexNotebook = selectedTypeName === "Wrapping Simplex Notebook";
   const entryTableTheme = {
     surface: isDarkMode ? "#050505" : "#fff",
     header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -171,13 +168,7 @@ function Simplex() {
 
 
   
-            {isWrappingSimplexNotebook ? (
-              <Wrapping
-                fixedType="Simplex"
-                backPath="/simplex"
-                title="Quality Control - Wrapping Simplex Notebook"
-              />
-            ) : SelectedComponent ? (
+            {SelectedComponent ? (
               <SelectedComponent
                 key={selectedTypeName}
                 ref={childRef}

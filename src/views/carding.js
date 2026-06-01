@@ -13,7 +13,6 @@ import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
 import TrialDepartment from "./carding/trialsDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
-import WrappingCardingNotebook from "./carding/WrappingCardingNotebook";
 import CardingWheelChange from "./carding/WheelChange";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
 import { fetchCardWasteStudyEntries, fetchCardingMasterMachines, submitCardWasteStudyEntry } from "@/apis/carding";
@@ -36,7 +35,6 @@ const cardingDepartmentTypes = [
     { id: 6, name: "Card DFK Pressure Checking", aliases: ["Card DFK Pressure Checking", "DFK Pressure Checking", "Carding DFK Pressure"] },
     { id: 7, name: "WheelChange", aliases: ["WheelChange", "Wheel Change"], component: CardingWheelChange },
     { id: 8, name: "Card Waste Study", aliases: ["Card Waste Study", "Card Waste Study Entry"] },
-    { id: 9, name: "Wrapping Carding Notebook", aliases: ["Wrapping Carding Notebook", "Carding Wrapping Notebook"], component: WrappingCardingNotebook },
 ];
 
 export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
@@ -50,7 +48,6 @@ const CARDING_ENTRY_ID_CONFIG = {
     "Card DFK Pressure Checking": { prefix: "DFK",  },
     WheelChange: { prefix: "WHL",  },
     "Card Waste Study": { prefix: "CWS",  },
-    "Wrapping Carding Notebook": { prefix: "WCN" },
 };
 
 const getCardingEntryConfig = (typeName) =>
@@ -132,7 +129,6 @@ function Carding() {
     const isProcessParameter = selectedType === "Process Parameter";
     const isWheelChange = selectedType === "WheelChange";
     const isCardWasteStudy = selectedType === "Card Waste Study";
-    const isWrappingCardingNotebook = selectedType === "Wrapping Carding Notebook";
     const showParentFooter = isProcessParameter || isCardWasteStudy;
     const entryTableTheme = {
         surface: isDarkMode ? "#050505" : "#fff",
@@ -316,16 +312,6 @@ function Carding() {
                             entryId={entryId}
                         />
                     )}
-
-                    {isWrappingCardingNotebook && SelectedComponent ? (
-                        <SelectedComponent
-                            ref={childRef}
-                            entryId={entryId}
-                            types={typeOptions}
-                            selectedType={selectedType}
-                            onTypeChange={handleTypeChange}
-                        />
-                    ) : null}
 
                     {isProcessParameter && validationMessage ? (
                         <div className={styles["message-box"]}>

@@ -44,11 +44,6 @@ const primaryTypeOptions = [
     name: "PP - Finisher Drawing",
     aliases: ["PP - Finisher Drawing", "Finisher Drawing"],
   },
-  {
-    id: 6,
-    name: "Wrapping Drawframe Notebook",
-    aliases: ["Wrapping Drawframe Notebook", "Wrapping Draw Frame Notebook", "Drawframe Wrapping Notebook"],
-  },
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
@@ -659,7 +654,6 @@ function DrawFrame() {
   );
   const isUPercentEntry = form.type === "U% Data Entry";
   const isAPercentEntry = form.type === "A%";
-  const isWrappingDrawframeNotebook = form.type === "Wrapping Drawframe Notebook";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
   const { entryId, reserveEntryId } = useDatabaseEntryId({

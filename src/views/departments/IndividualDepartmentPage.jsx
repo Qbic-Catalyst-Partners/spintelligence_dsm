@@ -2,7 +2,6 @@ import { useRouter } from "next/router";
 
 import styles from "@/styles/departmentDirectory.module.css";
 import { getDepartmentBySlug, getSubDepartmentBySlug } from "./data";
-import Wrapping from "@/views/wrapping";
 
 function IndividualDepartmentPage() {
     const router = useRouter();
@@ -12,10 +11,6 @@ function IndividualDepartmentPage() {
     const subDepartmentData = router.isReady
         ? getSubDepartmentBySlug(department, subDepartment)
         : null;
-
-    if (router.isReady && department === "quality-control" && subDepartment === "wrapping") {
-        return <Wrapping />;
-    }
 
     if (router.isReady && (!departmentData || !subDepartmentData)) {
         return (
