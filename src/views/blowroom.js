@@ -26,10 +26,10 @@ export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
 
 const today = new Date().toISOString().split("T")[0];
 const BLOWROOM_ENTRY_ID_CONFIG = {
-  "Blow Room Sync": { prefix: "BRS",  },
-  "Process Parameter": { prefix: "BPP",  },
-  "BR Waste Study Entry": { prefix: "BWS",  },
-  "Drop Test Data Entry": { prefix: "BDT",  },
+  "Blow Room Sync": { prefix: "BRS", width: 4, routePath: "/blowroom/sync" },
+  "Process Parameter": { prefix: "BPP", width: 4, routePath: "/blowroom/process-parameters" },
+  "BR Waste Study Entry": { prefix: "BWS", width: 4, routePath: "/blowroom/br-waste-study" },
+  "Drop Test Data Entry": { prefix: "BDT", width: 4, routePath: "/blowroom/drop-test" },
 };
 
 const getBlowRoomEntryConfig = (typeName) =>
@@ -87,9 +87,10 @@ function BlowRoom() {
       setShowSuccess(true);
     }
   }, [blowroomState?.success]);
+
   const validateHeader = () => {
     const errs = {};
-    if (selectedType?.needsLotNo && !lotNo) errs.lotNo = true;
+    if (selectedType?.needsLotNo && selectedTypeName !== "Drop Test Data Entry" && !lotNo) errs.lotNo = true;
     setHeaderErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -111,7 +112,9 @@ function BlowRoom() {
       { label: "Type", value: selectedTypeName },
       { label: "Entry ID", value: entryId },
     ];
-    if (selectedType?.needsLotNo) headerItems.push({ label: "Lot No", value: lotNo });
+    if (selectedType?.needsLotNo && selectedTypeName !== "Drop Test Data Entry") {
+      headerItems.push({ label: "Lot No", value: lotNo });
+    }
     const childItems = childRef.current.getPreviewData() || [];
     setPreviewItems([...headerItems, ...childItems]);
     setShowPreview(true);

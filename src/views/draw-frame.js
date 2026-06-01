@@ -13,6 +13,7 @@ import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
 import {
   fetchDrawFrameCotsMachineMaster,
   fetchDrawFrameMachineMaster,
+  fetchDrawFrameUqcMasterDropdown,
   submitDrawFrameAPercentInspection,
 } from "@/apis/draw-frame";
 import {
@@ -54,17 +55,17 @@ const primaryTypeOptions = [
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
 const DRAW_FRAME_ENTRY_SEQ_KEY = "drawframe_entry_sequence";
 const DRAW_FRAME_ENTRY_ID_CONFIG = {
-  "1 Yard / Half Yard CV Entry": { prefix: "YAR" },
-  "Yarn CV% Calculation Form": { prefix: "YAR" },
-  "Draw Frame Cots Data Entry": { prefix: "DRC" },
-  "U% Data Entry": { prefix: "DUP" },
-  "PP - Breaker Drawing": { prefix: "DRB" },
-  "PP - Finisher Drawing": { prefix: "DRF" },
+  "1 Yard / Half Yard CV Entry": { prefix: "YAR", width: 4, routePath: "/drawframe/yarn-cv" },
+  "Yarn CV% Calculation Form": { prefix: "YCV" },
+  "Draw Frame Cots Data Entry": { prefix: "DRC", width: 4, routePath: "/drawframe/cots" },
+  "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
+  "PP - Breaker Drawing": { prefix: "DRB", width: 4, routePath: "/drawframe/header" },
+  "PP - Finisher Drawing": { prefix: "DRF", width: 4, routePath: "/drawframe/finisher" },
   "A%": { prefix: "DAP" },
 };
 
 const getDrawFrameEntryConfig = (type = "") =>
-  DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRAW" };
+  DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRA" };
 
 const getDrawFrameUniqueId = (sequence, type = "") => {
   const config = getDrawFrameEntryConfig(type);
@@ -72,7 +73,6 @@ const getDrawFrameUniqueId = (sequence, type = "") => {
     prefix: config.prefix,
     sequence,
     width: config.width || 3,
-    leadingHash: true,
   });
 };
 
@@ -691,7 +691,6 @@ function DrawFrame() {
     department: "Draw Frame",
     typeName: form.type,
     config: getDrawFrameEntryConfig(form.type),
-    leadingHash: true,
   });
 
   useEffect(() => {
@@ -1699,7 +1698,7 @@ function DrawFrame() {
               {form.type === "Draw Frame Cots Data Entry" ? (
                 <>
                   <div className={styles.field}>
-                    <label className={styles.label}>Unique</label>
+                    <label className={styles.label}>Entry ID</label>
                     <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 
@@ -1745,7 +1744,7 @@ function DrawFrame() {
                   </div>
 
                   <div className={styles.field}>
-                    <label className={styles.label}>Unique</label>
+                    <label className={styles.label}>Entry ID</label>
                     <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
 

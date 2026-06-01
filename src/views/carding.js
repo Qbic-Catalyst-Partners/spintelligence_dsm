@@ -39,15 +39,15 @@ const cardingDepartmentTypes = [
 
 export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
 const CARDING_ENTRY_ID_CONFIG = {
-    "Process Parameter": { prefix: "CPP",  },
-    "Between & Within Card Data Entry": { prefix: "BWC",  },
-    "Card Thick Place Entry": { prefix: "CTP",  },
-    "Trials Data Entry Form": { prefix: "TRI",  },
-    "Nati Data Entry": { prefix: "NAT",  },
-    "U% Data Entry": { prefix: "CAU",  },
-    "Card DFK Pressure Checking": { prefix: "DFK",  },
-    WheelChange: { prefix: "WHL",  },
-    "Card Waste Study": { prefix: "CWS",  },
+    "Process Parameter": { prefix: "CPP", width: 4, routePath: "/carding/qc-header" },
+    "Between & Within Card Data Entry": { prefix: "BWC", width: 4, routePath: "/carding/between-within-card" },
+    "Card Thick Place Entry": { prefix: "CTP", width: 4, routePath: "/carding/card-thick-place" },
+    "Trials Data Entry Form": { prefix: "TRI", width: 4, routePath: "/carding/trials" },
+    "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/carding/nati-data" },
+    "U% Data Entry": { prefix: "CAU", width: 4, routePath: "/carding/uqc" },
+    "Card DFK Pressure Checking": { prefix: "DFK", width: 4, routePath: "/carding/dfk-pressure" },
+    WheelChange: { prefix: "WHL", width: 4, routePath: "/carding/change-control" },
+    "Card Waste Study": { prefix: "CWS", width: 4, routePath: "/carding/card-waste-study" },
 };
 
 const getCardingEntryConfig = (typeName) =>
@@ -116,7 +116,6 @@ function Carding() {
         department: "Carding",
         typeName: selectedType,
         config: getCardingEntryConfig(selectedType),
-        leadingHash: true,
     });
     const selectedOption = typeOptions.find((item) => item.id === checkingType) || null;
     const SelectedComponent = selectedOption?.component ?? null;
