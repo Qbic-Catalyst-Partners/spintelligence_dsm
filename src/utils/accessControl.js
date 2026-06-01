@@ -63,7 +63,6 @@ export const routeDepartmentMap = {
   "/simplex": "Simplex",
   "/spinning": "Spinning",
   "/autoconer": "Autoconer",
-  "/departments/quality-control/wrapping": "Wrapping",
 };
 
 export const buildAccessibleDepartmentSet = (accessByDepartment) => {

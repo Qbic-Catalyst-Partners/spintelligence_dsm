@@ -210,6 +210,24 @@ export const fetchCardWasteStudyEntries = async ({ page = 1, limit = 50 } = {}) 
     }
 };
 
+export const submitWrappingCardingNotebookEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/carding/wrapping-carding-notebook", payload);
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Invalid wrapping carding notebook payload."));
+    }
+};
+
+export const fetchWrappingCardingNotebookEntries = async ({ page = 1, limit = 10 } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/wrapping-carding-notebook", { page, limit });
+        return response.data;
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch wrapping carding notebook entries."));
+    }
+};
+
 export const fetchCardingMasterMachines = async ({ prefix = "CDG" } = {}) => {
     try {
         const response = await apiConfig.get("/carding/master/machines", { prefix });
@@ -319,6 +337,24 @@ export const fetchCardingUqcMasterMcNos = async ({ prefix = "", department = "",
             .filter((row) => row.mc_no);
     } catch (error) {
         throw new Error(getCardingApiErrorMessage(error, "Unable to fetch UQC MC No options."));
+    }
+};
+
+export const fetchCardingNatiMasterMcNos = async ({ prefix = "", department = "", department_code = "" } = {}) => {
+    try {
+        const response = await apiConfig.get("/carding/nati/master/mc-nos", { prefix, department, department_code });
+        const payload = response?.data;
+        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+        return rows
+            .map((row) => ({
+                mc_no: String(row?.mc_no || row?.mccode || row?.value || "").trim(),
+                mc_name: String(row?.mc_name || row?.mcname || "").trim(),
+                dept_code: String(row?.dept_code || "").trim(),
+                dept_name: String(row?.dept_name || "").trim(),
+            }))
+            .filter((row) => row.mc_no);
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch Nati MC No options."));
     }
 };
 

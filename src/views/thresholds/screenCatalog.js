@@ -68,7 +68,6 @@ export const thresholdScreenCatalog = {
             "CSP Parameter Entries",
             "U% Parameter Entries",
         ],
-        wrapping: [],
     },
     electrical: {
         maintenance: [],

@@ -688,6 +688,245 @@
     line-height: 1.5;
 }
 
+.aPercentWrap {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+}
+
+.aPercentTypeField {
+    max-width: 330px;
+}
+
+.aPercentUploadCard {
+    display: flex;
+    min-height: 292px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    text-align: center;
+}
+
+.aPercentFileInput {
+    display: none;
+}
+
+.aPercentFileIcon {
+    color: #8a8f96;
+    font-size: 40px;
+}
+
+.aPercentUploadTitle {
+    margin: 0;
+    max-width: min(90%, 460px);
+    color: #1f2937;
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.aPercentBrowseButton,
+.aPercentSaveButton {
+    display: inline-flex;
+    min-width: 148px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #3d539f;
+    border-radius: 8px;
+    background: #3d539f;
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.aPercentBrowseButton:hover,
+.aPercentSaveButton:hover {
+    border-color: #2f4180;
+    background: #2f4180;
+}
+
+.aPercentOcrActions {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.aPercentCancelButton,
+.aPercentRunOcrButton {
+    display: inline-flex;
+    min-width: 118px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.aPercentCancelButton {
+    border: 1px solid #8b8f97;
+    background: #ffffff;
+    color: #4b5563;
+}
+
+.aPercentRunOcrButton {
+    border: 1px solid #3d539f;
+    background: #3d539f;
+    color: #ffffff;
+}
+
+.aPercentCancelButton:disabled,
+.aPercentRunOcrButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.aPercentOcrMessage {
+    margin: -0.25rem 0 0;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aPercentError {
+    margin: -0.35rem 0 0;
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aPercentTableSection {
+    overflow: hidden;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.aPercentTableHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e6edf7;
+}
+
+.aPercentTableTitle {
+    margin: 0;
+    color: #16233b;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.aPercentTableCount {
+    flex-shrink: 0;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.aPercentTableScroll {
+    overflow-x: auto;
+}
+
+.aPercentTable {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.aPercentTable th,
+.aPercentTable td {
+    padding: 0.75rem 0.875rem;
+    border-bottom: 1px solid #eef2f7;
+    color: #334155;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+.aPercentTable th {
+    background: #f3f6fb;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.aPercentTable tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+.aPercentTable tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.aPercentEmptyTable {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aPercentFooter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.35rem 7.5rem;
+    border-top: 1px solid #e6edf7;
+    background: #f8fafc;
+}
+
+.aPercentActions {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+}
+
+.aPercentBackButton,
+.aPercentClearButton {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #334155;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.aPercentBackButton {
+    gap: 0.45rem;
+    min-width: 196px;
+    border-color: #dbe4f0;
+    background: #ffffff;
+}
+
+.aPercentBackButton:hover {
+    background: #f8fafc;
+}
+
+.aPercentClearButton:hover {
+    color: #1e293b;
+}
+
 @media (min-width: 768px) {
     .formGrid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -763,5 +1002,27 @@
     .headerEntryCardStatus,
     .headerEntryToggle {
         justify-self: start;
+    }
+
+    .aPercentUploadCard {
+        min-height: 240px;
+        padding: 1.5rem 1rem;
+    }
+
+    .aPercentFooter {
+        align-items: stretch;
+        flex-direction: column;
+        padding: 1rem;
+    }
+
+    .aPercentActions {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .aPercentBackButton,
+    .aPercentClearButton,
+    .aPercentSaveButton {
+        width: 100%;
     }
 }
