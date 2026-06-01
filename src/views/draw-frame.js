@@ -26,6 +26,7 @@ import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { formatEntryId } from "@/utils/entryIds";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
+import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -109,6 +110,25 @@ const A_PERCENT_TABLE_COLUMNS = [
   { key: "nPlus1", label: "N+1" },
 ];
 const A_PERCENT_SUMMARY_ROWS = new Set(["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"]);
+const A_PERCENT_META_FIELDS = [
+  { key: "entryId", label: "Entry ID" },
+  { key: "pdfFile", label: "PDF File" },
+  { key: "reportTitle", label: "Report" },
+  { key: "testId", label: "Test ID" },
+  { key: "machine", label: "Machine" },
+  { key: "countSystem", label: "Count System" },
+  { key: "lengthUnit", label: "Length Unit" },
+  { key: "length", label: "Length" },
+  { key: "totalTest", label: "Total Test" },
+  { key: "standardAPercent", label: "Standard A%" },
+  { key: "aPercentNMinus1", label: "A% (N-1)" },
+  { key: "aPercentNPlus1", label: "A% (N+1)" },
+  { key: "date", label: "Date" },
+  { key: "tester", label: "Tester" },
+  { key: "shift", label: "Shift" },
+  { key: "process", label: "Process" },
+  { key: "remark", label: "Remark" },
+];
 const BREAKER_PREFIX = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIX || "DFB").trim().toUpperCase();
 const FINISHER_PREFIXES = String(
   process.env.NEXT_PUBLIC_DRAWFRAME_FINISHER_PREFIXES || "DFF,FR"
@@ -204,16 +224,19 @@ const normalizeAPercentJsonRows = (rows = []) =>
         "S No",
         "s_no",
         "sample_no",
+        "Label",
+        "Summary",
+        "Metric",
       ]);
       const nMinus1 = getObjectValueByAliases(row, ["N-1", "N - 1", "N_minus_1", "n_minus_1", "n-1"]);
       const n = getObjectValueByAliases(row, ["N", "n"]);
       const nPlus1 = getObjectValueByAliases(row, ["N+1", "N + 1", "N_plus_1", "n_plus_1", "n+1"]);
 
       return {
-        sampleNo: sampleNo === null || sampleNo === undefined ? "" : String(sampleNo).trim(),
-        nMinus1: nMinus1 === null || nMinus1 === undefined ? "" : String(nMinus1).trim(),
-        n: n === null || n === undefined ? "" : String(n).trim(),
-        nPlus1: nPlus1 === null || nPlus1 === undefined ? "" : String(nPlus1).trim(),
+        sampleNo: normalizeOcrDisplayValue(sampleNo),
+        nMinus1: normalizeOcrDisplayValue(nMinus1),
+        n: normalizeOcrDisplayValue(n),
+        nPlus1: normalizeOcrDisplayValue(nPlus1),
       };
     })
     .filter((row) => row.sampleNo || row.nMinus1 || row.n || row.nPlus1);
@@ -221,9 +244,7 @@ const normalizeAPercentJsonRows = (rows = []) =>
 const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
 
 const normalizeCell = (value) => {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value).trim();
+  return normalizeOcrDisplayValue(value);
 };
 
 const rowsFromArrayTable = (table = []) => {
@@ -375,9 +396,9 @@ const parseAPercentRawTextRows = (rawText = "") => {
     if (!match) return;
     rows.push({
       sampleNo: normalizeAPercentRowLabel(match[1]),
-      nMinus1: match[2],
-      n: match[3],
-      nPlus1: match[4],
+      nMinus1: normalizeOcrDisplayValue(match[2]),
+      n: normalizeOcrDisplayValue(match[3]),
+      nPlus1: normalizeOcrDisplayValue(match[4]),
     });
   });
 
@@ -403,7 +424,12 @@ const parseAPercentRawTextRows = (rawText = "") => {
     const nPlus1 = lines[cursor + 3] || "";
     if (!nMinus1 || !n || !nPlus1) break;
 
-    rows.push({ sampleNo, nMinus1, n, nPlus1 });
+    rows.push({
+      sampleNo,
+      nMinus1: normalizeOcrDisplayValue(nMinus1),
+      n: normalizeOcrDisplayValue(n),
+      nPlus1: normalizeOcrDisplayValue(nPlus1),
+    });
     cursor += 4;
   }
 
@@ -417,8 +443,127 @@ const getAPercentRowsFromOcrResult = (result, parsedRows = []) => {
   const rawTextRows = parseAPercentRawTextRows(result?.raw_text || result?.text || "");
   if (rawTextRows.length) return rawTextRows;
 
-  return getOcrRowsFromGeneral(result);
+  const generalRows = getOcrRowsFromGeneral(result);
+  const normalizedGeneralRows = normalizeAPercentJsonRows(generalRows);
+  return normalizedGeneralRows.length ? normalizedGeneralRows : generalRows;
 };
+
+const firstTextLine = (lines = [], pattern) => lines.find((line) => pattern.test(line)) || "";
+
+const getLabelValue = (text = "", label = "") => {
+  const pattern = new RegExp(`(?:^|\\|)\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*([^|]*)`, "i");
+  return normalizeOcrDisplayValue(text.match(pattern)?.[1] || "");
+};
+
+const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", entryId = "") => {
+  const rawLines = String(result?.raw_text || result?.text || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const allText = rawLines.join(" | ");
+  const structuredRows = getOcrRowsFromGeneral(result);
+  const metaRow =
+    structuredRows.find((row) => String(getObjectValueByAliases(row, ["Row Type", "row_type", "type"])).trim().toLowerCase() === "meta") ||
+    {};
+  const rowValue = (aliases) => normalizeOcrDisplayValue(getObjectValueByAliases(metaRow, aliases));
+
+  return {
+    entryId,
+    pdfFile: fileName,
+    reportTitle: normalizeOcrDisplayValue(firstTextLine(rawLines, /A%\s*Report/i)) || rowValue(["Report", "Report Title"]),
+    testId: getLabelValue(allText, "Test ID") || rowValue(["Test ID", "Test Id", "test_id"]),
+    machine: getLabelValue(allText, "Machine") || rowValue(["Machine", "Machine Name", "machine"]),
+    countSystem: getLabelValue(allText, "Count System") || rowValue(["Count System", "count_system"]),
+    lengthUnit: getLabelValue(allText, "Length Unit") || rowValue(["Length Unit", "length_unit"]),
+    length: getLabelValue(allText, "Length") || rowValue(["Length"]),
+    totalTest: getLabelValue(allText, "Total Test") || rowValue(["Total Test", "Total Tests", "total_test"]) || (rows.length ? String(rows.length) : ""),
+    standardAPercent: getLabelValue(allText, "Standard A%") || rowValue(["Standard A%", "Std. A%", "standard_a_percent"]),
+    aPercentNMinus1: getLabelValue(allText, "A% (N-1)") || rowValue(["A% (N-1)", "A Percent N-1", "a_percent_n_minus_1"]),
+    aPercentNPlus1: getLabelValue(allText, "A% (N+1)") || rowValue(["A% (N+1)", "A Percent N+1", "a_percent_n_plus_1"]),
+    date: getLabelValue(allText, "Date") || rowValue(["Date", "entry_date"]),
+    tester: getLabelValue(allText, "Tester") || rowValue(["Tester", "User"]),
+    shift: getLabelValue(allText, "Shift") || rowValue(["Shift"]),
+    process: getLabelValue(allText, "Process") || rowValue(["Process"]),
+    remark: getLabelValue(allText, "Remark") || rowValue(["Remark", "Remarks"]),
+  };
+};
+
+function APercentFieldInput({ value, onChange, readOnly = false }) {
+  return (
+    <input
+      readOnly={readOnly}
+      value={value ?? ""}
+      onChange={(event) => onChange?.(event.target.value)}
+      style={{
+        width: "100%",
+        height: 34,
+        border: "1px solid #dbe3ef",
+        borderRadius: 6,
+        padding: "0 9px",
+        color: "#111827",
+        background: readOnly ? "#f8fafc" : "#fff",
+        boxSizing: "border-box",
+      }}
+    />
+  );
+}
+
+function APercentMetaFields({ meta, onMetaChange }) {
+  return (
+    <section style={{ border: "1px solid #dbe3ef", borderRadius: 8, background: "#fff", padding: 14 }}>
+      <div style={{ fontWeight: 800, color: "#111827", marginBottom: 12 }}>Meta</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+        {A_PERCENT_META_FIELDS.map((field) => (
+          <label key={field.key} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{field.label}</span>
+            <APercentFieldInput value={meta[field.key]} onChange={(value) => onMetaChange(field.key, value)} />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function APercentDataTable({ title, rows, columns, onCellChange, emptyText }) {
+  return (
+    <section style={{ border: "1px solid #dbe3ef", borderRadius: 8, background: "#fff", overflowX: "auto" }}>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid #e5eaf1", fontWeight: 800, color: "#111827" }}>
+        {title}
+      </div>
+      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: columns.length * 150 }}>
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column.key} style={{ textAlign: "left", padding: "10px 12px", color: "#334155", fontSize: 12, borderBottom: "1px solid #dbe3ef" }}>
+                {column.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? rows.map((row) => (
+            <tr key={row.__rowIndex}>
+              {columns.map((column) => (
+                <td key={column.key} style={{ padding: "9px 12px", borderBottom: "1px solid #edf2f7", color: "#0f172a", fontSize: 13 }}>
+                  <APercentFieldInput
+                    value={row[column.key] ?? ""}
+                    onChange={(value) => onCellChange(row.__rowIndex, column.key, value)}
+                  />
+                </td>
+              ))}
+            </tr>
+          )) : (
+            <tr>
+              <td colSpan={columns.length} style={{ padding: 14, color: "#64748b", fontSize: 13 }}>
+                {emptyText}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </section>
+  );
+}
 
 function DrawFrame() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -491,6 +636,7 @@ function DrawFrame() {
   const [aPercentOcrBusy, setAPercentOcrBusy] = useState(false);
   const [aPercentOcrMessage, setAPercentOcrMessage] = useState("");
   const [aPercentOcrRows, setAPercentOcrRows] = useState([]);
+  const [aPercentOcrMeta, setAPercentOcrMeta] = useState({});
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
     shift: "",
@@ -503,6 +649,14 @@ function DrawFrame() {
     threeMeterCvm: "",
     remarks: "",
   });
+  const [uPercentShiftOptions, setUPercentShiftOptions] = useState(STATIC_SHIFT_OPTIONS.map((option) => option.value));
+  const [uPercentVarietyOptions, setUPercentVarietyOptions] = useState([]);
+  const [uPercentDepartmentOptions, setUPercentDepartmentOptions] = useState(
+    STATIC_DEPARTMENT_OPTIONS.map((item) => item.dept_name)
+  );
+  const [uPercentMcNoOptions, setUPercentMcNoOptions] = useState(
+    STATIC_MC_NO_OPTIONS.map((item) => item.mc_no)
+  );
   const isUPercentEntry = form.type === "U% Data Entry";
   const isAPercentEntry = form.type === "A%";
   const isWrappingDrawframeNotebook = form.type === "Wrapping Drawframe Notebook";
@@ -626,6 +780,39 @@ function DrawFrame() {
     };
   }, [form.type, form.processType]);
 
+  useEffect(() => {
+    if (!isUPercentEntry) return;
+
+    let isMounted = true;
+    fetchDrawFrameUqcMasterDropdown()
+      .then((dropdown) => {
+        if (!isMounted) return;
+        setUPercentShiftOptions(dropdown.shifts?.length ? dropdown.shifts : STATIC_SHIFT_OPTIONS.map((option) => option.value));
+        setUPercentVarietyOptions(dropdown.varietyNames?.length ? dropdown.varietyNames : []);
+        setUPercentDepartmentOptions(
+          dropdown.departmentNames?.length
+            ? dropdown.departmentNames
+            : STATIC_DEPARTMENT_OPTIONS.map((item) => item.dept_name)
+        );
+        setUPercentMcNoOptions(
+          dropdown.mcNos?.length
+            ? dropdown.mcNos
+            : STATIC_MC_NO_OPTIONS.map((item) => item.mc_no)
+        );
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setUPercentShiftOptions(STATIC_SHIFT_OPTIONS.map((option) => option.value));
+        setUPercentVarietyOptions([]);
+        setUPercentDepartmentOptions(STATIC_DEPARTMENT_OPTIONS.map((item) => item.dept_name));
+        setUPercentMcNoOptions(STATIC_MC_NO_OPTIONS.map((item) => item.mc_no));
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isUPercentEntry]);
+
   const handleFormChange = (field, value) => {
     setForm((current) => ({
       ...current,
@@ -720,6 +907,7 @@ function DrawFrame() {
     setAPercentFile(file);
     setAPercentOcrMessage("");
     setAPercentOcrRows([]);
+    setAPercentOcrMeta({});
     setErrors((prev) => {
       if (!prev.aPercent?.file) return prev;
       const nextAPercent = { ...(prev.aPercent || {}) };
@@ -733,6 +921,7 @@ function DrawFrame() {
     setAPercentOcrBusy(false);
     setAPercentOcrMessage("");
     setAPercentOcrRows([]);
+    setAPercentOcrMeta({});
     if (aPercentFileInputRef.current) {
       aPercentFileInputRef.current.value = "";
     }
@@ -744,11 +933,14 @@ function DrawFrame() {
     setAPercentOcrBusy(true);
     setAPercentOcrMessage("Running OCR...");
     setAPercentOcrRows([]);
+    setAPercentRawOcrRows([]);
     try {
       const result = await runOcrForDocument({ file: aPercentFile, docType: "a_percent" });
       const parsedRows = Array.isArray(result?.json_output) ? result.json_output : [];
-      const aPercentRows = getAPercentRowsFromOcrResult(result, parsedRows);
+      const aPercentRows = getAPercentRowsFromOcrResult(result, parsedRows).map(normalizeOcrDisplayRow);
+      const aPercentMeta = getAPercentMetaFromOcrResult(result, aPercentRows, aPercentFile?.name || "", entryId);
       setAPercentOcrRows(aPercentRows);
+      setAPercentOcrMeta(aPercentMeta);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
           "ocr_prefill",
@@ -756,7 +948,8 @@ function DrawFrame() {
             screen: "draw-frame",
             docType: "a_percent",
             values: aPercentRows[0] || {},
-            result: { ...result, json_output: aPercentRows },
+            meta: aPercentMeta,
+            result: { ...result, json_output: aPercentRows, meta: aPercentMeta },
           })
         );
       }
@@ -770,19 +963,43 @@ function DrawFrame() {
     }
   };
 
-  const aPercentOcrColumns = useMemo(() => {
-    const columns = [];
-    const seen = new Set();
-    aPercentOcrRows.forEach((row) => {
-      if (!row || typeof row !== "object" || Array.isArray(row)) return;
-      Object.keys(row).forEach((key) => {
-        if (seen.has(key)) return;
-        seen.add(key);
-        columns.push(key);
-      });
-    });
-    return columns;
-  }, [aPercentOcrRows]);
+  const aPercentRowsWithIndex = useMemo(
+    () => aPercentOcrRows.map((row, index) => ({ ...row, __rowIndex: index })),
+    [aPercentOcrRows]
+  );
+  const aPercentSampleRows = useMemo(
+    () =>
+      aPercentRowsWithIndex.filter((row) => {
+        const label = String(row.sampleNo || "").trim();
+        return label && !A_PERCENT_SUMMARY_ROWS.has(label);
+      }),
+    [aPercentRowsWithIndex]
+  );
+  const aPercentSummaryRows = useMemo(
+    () =>
+      aPercentRowsWithIndex.filter((row) =>
+        A_PERCENT_SUMMARY_ROWS.has(String(row.sampleNo || "").trim())
+      ),
+    [aPercentRowsWithIndex]
+  );
+  const aPercentMeta = useMemo(
+    () => ({
+      entryId,
+      pdfFile: aPercentFile?.name || "",
+      ...aPercentOcrMeta,
+    }),
+    [aPercentFile?.name, aPercentOcrMeta, entryId]
+  );
+
+  const handleAPercentOcrCellChange = (rowIndex, field, value) => {
+    setAPercentOcrRows((current) =>
+      current.map((row, index) => (index === rowIndex ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const handleAPercentOcrMetaChange = (field, value) => {
+    setAPercentOcrMeta((current) => ({ ...current, [field]: value }));
+  };
 
   const handleCalculate = () => {
     const count = Math.max(form.readingCount || 0, oneYardReadings.length, halfYardReadings.length);
@@ -912,6 +1129,7 @@ function DrawFrame() {
     if (form.type === "A%") {
       const aPercentErrors = {};
       if (!aPercentFile) aPercentErrors.file = true;
+      if (!aPercentOcrRows.length) aPercentErrors.ocrRows = true;
 
       setErrors({
         header: {},
@@ -921,7 +1139,11 @@ function DrawFrame() {
         halfYard: [],
       });
 
-      return Object.keys(aPercentErrors).length === 0;
+      const isValid = Object.keys(aPercentErrors).length === 0;
+      if (!isValid && aPercentFile && !aPercentOcrRows.length) {
+        setAPercentOcrMessage("Please run OCR before saving A% data.");
+      }
+      return isValid;
     }
 
     if (isHeaderEntry) {
@@ -1022,6 +1244,8 @@ function DrawFrame() {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "Entry ID", value: entryId });
       items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
+      items.push({ label: "Sample Rows", value: aPercentOcrRows.filter((row) => !A_PERCENT_SUMMARY_ROWS.has(row.sampleNo)).length });
+      items.push({ label: "Summary Rows", value: aPercentOcrRows.filter((row) => A_PERCENT_SUMMARY_ROWS.has(row.sampleNo)).length });
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "S. No.", value: form.serialNumber });
@@ -1047,9 +1271,9 @@ function DrawFrame() {
       items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
-  }, [aPercentFile, entryId, form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
+  }, [aPercentFile, aPercentOcrRows, entryId, form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
     
     if (!validate()) return;
@@ -1079,8 +1303,18 @@ function DrawFrame() {
     }
 
     if (form.type === "A%") {
-      reserveEntryId();
-      setShowSuccess(true);
+      try {
+        await submitDrawFrameAPercentInspection(buildAPercentPayload({
+          entryId,
+          file: aPercentFile,
+          rows: aPercentOcrRows,
+          rawRows: aPercentRawOcrRows,
+        }));
+        reserveEntryId();
+        setShowSuccess(true);
+      } catch (submitError) {
+        setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
+      }
       return;
     }
 
@@ -1241,37 +1475,26 @@ function DrawFrame() {
                     {aPercentOcrRows.length} {aPercentOcrRows.length === 1 ? "row" : "rows"}
                   </span>
                 </div>
-                {aPercentOcrColumns.length > 0 ? (
-                  <div className={styles.aPercentTableScroll}>
-                    <table className={styles.aPercentTable}>
-                      <thead>
-                        <tr>
-                          <th>S.No</th>
-                          {aPercentOcrColumns.map((column) => (
-                            <th key={column}>{column}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {aPercentOcrRows.map((row, rowIndex) => (
-                          <tr key={`a-percent-ocr-row-${rowIndex}`}>
-                            <td>{rowIndex + 1}</td>
-                            {aPercentOcrColumns.map((column) => {
-                              const value = row?.[column];
-                              return (
-                                <td key={`${rowIndex}-${column}`}>
-                                  {value === null || value === undefined || value === "" ? "-" : String(value)}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className={styles.aPercentEmptyTable}>OCR returned rows without readable fields.</p>
-                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <APercentMetaFields meta={aPercentMeta} onMetaChange={handleAPercentOcrMetaChange} />
+                  <APercentDataTable
+                    title="Sample Rows"
+                    rows={aPercentSampleRows}
+                    columns={A_PERCENT_TABLE_COLUMNS}
+                    onCellChange={handleAPercentOcrCellChange}
+                    emptyText="No sample rows found."
+                  />
+                  <APercentDataTable
+                    title="Summary Rows"
+                    rows={aPercentSummaryRows}
+                    columns={[
+                      { key: "sampleNo", label: "Label" },
+                      ...A_PERCENT_TABLE_COLUMNS.slice(1),
+                    ]}
+                    onCellChange={handleAPercentOcrCellChange}
+                    emptyText="No summary rows found."
+                  />
+                </div>
               </div>
             ) : null}
 
@@ -1335,18 +1558,14 @@ function DrawFrame() {
 
                 <div className={uPercentStyles.field}>
                   <label>Shift</label>
-                  <select
+                  <SearchableSelect
                     value={uPercentForm.shift}
-                    onChange={(e) => handleUPercentChange("shift", e.target.value)}
+                    onChange={(value) => handleUPercentChange("shift", value)}
                     className={errors.uPercent?.shift ? uPercentStyles.errorField : ""}
-                  >
-                    <option value="">Select</option>
-                    {STATIC_SHIFT_OPTIONS.map((option, index) => (
-                      <option key={`${option.value}-${index}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={uPercentShiftOptions}
+                    placeholder="-- Select Shift --"
+                    ariaLabel="Shift"
+                  />
                 </div>
 
                 <div className={uPercentStyles.field}>
@@ -1354,8 +1573,8 @@ function DrawFrame() {
                   <SearchableSelect
                     value={uPercentForm.variety}
                     onChange={(value) => handleUPercentChange("variety", value)}
-                    options={["WPSF 0.90", "WPSF 1.20", "PSF Blend"]}
-                    placeholder="Select"
+                    options={uPercentVarietyOptions}
+                    placeholder="-- Select Variety --"
                     className={errors.uPercent?.variety ? uPercentStyles.errorField : ""}
                     ariaLabel="Variety"
                   />
@@ -1363,18 +1582,14 @@ function DrawFrame() {
 
                 <div className={uPercentStyles.field}>
                   <label>Department</label>
-                  <select
+                  <SearchableSelect
                     value={uPercentForm.department}
-                    onChange={(e) => handleUPercentChange("department", e.target.value)}
+                    onChange={(value) => handleUPercentChange("department", value)}
                     className={errors.uPercent?.department ? uPercentStyles.errorField : ""}
-                  >
-                    <option value="">Select Department</option>
-                    {STATIC_DEPARTMENT_OPTIONS.map((item, index) => (
-                      <option key={`${item.dept_code}-${index}`} value={item.dept_name}>
-                        {item.dept_name}
-                      </option>
-                    ))}
-                  </select>
+                    options={uPercentDepartmentOptions}
+                    placeholder="Select Department"
+                    ariaLabel="Department"
+                  />
                 </div>
 
                 <div className={uPercentStyles.field}>
@@ -1382,8 +1597,8 @@ function DrawFrame() {
                   <SearchableSelect
                     value={uPercentForm.mcNo}
                     onChange={(value) => handleUPercentChange("mcNo", value)}
-                    options={STATIC_MC_NO_OPTIONS.map((item) => item.mc_no)}
-                    placeholder="Select MC No."
+                    options={uPercentMcNoOptions}
+                    placeholder="-- Select MC No. --"
                     className={errors.uPercent?.mcNo ? uPercentStyles.errorField : ""}
                     ariaLabel="MC Number"
                   />

@@ -449,6 +449,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const buildPayload = () => ({
+    entry_id: entryId,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
