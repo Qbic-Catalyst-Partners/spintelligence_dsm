@@ -10,7 +10,11 @@ import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
-import { fetchDrawFrameCotsMachineMaster, fetchDrawFrameMachineMaster } from "@/apis/draw-frame";
+import {
+  fetchDrawFrameCotsMachineMaster,
+  fetchDrawFrameMachineMaster,
+  submitDrawFrameAPercentInspection,
+} from "@/apis/draw-frame";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -44,6 +48,7 @@ const primaryTypeOptions = [
     name: "PP - Finisher Drawing",
     aliases: ["PP - Finisher Drawing", "Finisher Drawing"],
   },
+  { id: 6, name: "A%", aliases: ["A%", "A Percent", "A% Data Entry"] },
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
@@ -483,6 +488,31 @@ const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", ent
   };
 };
 
+const buildAPercentPayload = ({ entryId = "", file = null, rows = [], rawRows = [], meta = {} } = {}) => ({
+  entry_id: entryId,
+  filename: file?.name || meta.pdfFile || "",
+  pdf_file: file?.name || meta.pdfFile || "",
+  report_title: meta.reportTitle || "",
+  test_id: meta.testId || "",
+  machine: meta.machine || "",
+  count_system: meta.countSystem || "",
+  length_unit: meta.lengthUnit || "",
+  length: meta.length || "",
+  total_test: meta.totalTest || "",
+  standard_a_percent: meta.standardAPercent || "",
+  a_percent_n_minus_1: meta.aPercentNMinus1 || "",
+  a_percent_n_plus_1: meta.aPercentNPlus1 || "",
+  entry_date: meta.date || "",
+  tester: meta.tester || "",
+  shift: meta.shift || "",
+  process: meta.process || "",
+  remark: meta.remark || "",
+  ocr_json: rawRows.length ? rawRows : rows,
+  manual_json: rows,
+  rows,
+  meta,
+});
+
 function APercentFieldInput({ value, onChange, readOnly = false }) {
   return (
     <input
@@ -631,6 +661,7 @@ function DrawFrame() {
   const [aPercentOcrBusy, setAPercentOcrBusy] = useState(false);
   const [aPercentOcrMessage, setAPercentOcrMessage] = useState("");
   const [aPercentOcrRows, setAPercentOcrRows] = useState([]);
+  const [aPercentRawOcrRows, setAPercentRawOcrRows] = useState([]);
   const [aPercentOcrMeta, setAPercentOcrMeta] = useState({});
   const [uPercentForm, setUPercentForm] = useState({
     date: today,
@@ -901,6 +932,7 @@ function DrawFrame() {
     setAPercentFile(file);
     setAPercentOcrMessage("");
     setAPercentOcrRows([]);
+    setAPercentRawOcrRows([]);
     setAPercentOcrMeta({});
     setErrors((prev) => {
       if (!prev.aPercent?.file) return prev;
@@ -915,6 +947,7 @@ function DrawFrame() {
     setAPercentOcrBusy(false);
     setAPercentOcrMessage("");
     setAPercentOcrRows([]);
+    setAPercentRawOcrRows([]);
     setAPercentOcrMeta({});
     if (aPercentFileInputRef.current) {
       aPercentFileInputRef.current.value = "";
@@ -934,6 +967,7 @@ function DrawFrame() {
       const aPercentRows = getAPercentRowsFromOcrResult(result, parsedRows).map(normalizeOcrDisplayRow);
       const aPercentMeta = getAPercentMetaFromOcrResult(result, aPercentRows, aPercentFile?.name || "", entryId);
       setAPercentOcrRows(aPercentRows);
+      setAPercentRawOcrRows(parsedRows);
       setAPercentOcrMeta(aPercentMeta);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
@@ -1303,6 +1337,7 @@ function DrawFrame() {
           file: aPercentFile,
           rows: aPercentOcrRows,
           rawRows: aPercentRawOcrRows,
+          meta: aPercentMeta,
         }));
         reserveEntryId();
         setShowSuccess(true);
