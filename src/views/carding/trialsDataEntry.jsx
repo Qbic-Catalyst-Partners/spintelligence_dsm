@@ -11,6 +11,8 @@ import {
     fetchTrialsSpinningMachines,
     submitTrialsDataEntry,
 } from "@/apis/carding";
+import useCardingCountOptions from "@/hooks/useCardingCountOptions";
+import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import styles from "./trialsDataEntry.module.css";
 
 const topCutFields = [
@@ -128,6 +130,9 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     const [autoconerMachineOptions, setAutoconerMachineOptions] = useState([]);
     const [machinesLoading, setMachinesLoading] = useState(false);
     const [machinesError, setMachinesError] = useState("");
+    const { countOptions, countOptionsError, loadingCountOptions } = useCardingCountOptions("trials");
+    const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("trials");
+    const countNameOptions = countOptions.map((option) => option.count_name || option.label || option.value).filter(Boolean);
 
     useEffect(() => {
         const now = new Date();
@@ -429,7 +434,20 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
                             <div className={styles.cardFormGroup}>
                                 <label>Count Name</label>
-                                <input name="count" value={formData.count || ""} onChange={handleChange} className={fieldClass("count")} />
+                                <SearchableSelect
+                                    value={formData.count || ""}
+                                    onChange={(value) => setFieldValue("count", value)}
+                                    options={countNameOptions}
+                                    placeholder={
+                                        loadingCountOptions
+                                            ? "Loading count names..."
+                                            : countOptionsError
+                                                ? "Type count name"
+                                                : "Select Count Name"
+                                    }
+                                    className={fieldClass("count")}
+                                    ariaLabel="Count Name"
+                                />
                             </div>
                         </div>
 
@@ -533,7 +551,24 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                             {[["User ID", "userId"], ["U%", "uPercent"], ["CVM", "cvm"]].map(([label, name]) => (
                                 <div className={styles.cardFormGroupfield} key={name}>
                                     <label>{label}</label>
-                                    <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
+                                    {name === "userId" ? (
+                                        <SearchableSelect
+                                            className={fieldClass(name)}
+                                            value={formData[name] || ""}
+                                            onChange={(value) => setFieldValue(name, value)}
+                                            options={employeeOptions}
+                                            placeholder={
+                                                loadingEmployeeOptions
+                                                    ? "Loading employees..."
+                                                    : employeeOptionsError
+                                                        ? "Type employee name"
+                                                        : "Select Employee"
+                                            }
+                                            ariaLabel={label}
+                                        />
+                                    ) : (
+                                        <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
+                                    )}
                                 </div>
                             ))}
                         </div>

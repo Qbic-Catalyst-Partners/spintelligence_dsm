@@ -22,7 +22,7 @@ const initialForm = () => ({
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
 const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
 const DEPARTMENT_OPTIONS = [{ dept_code: "", dept_name: "FR Drawing" }];
-const MC_NO_OPTIONS = [{ mc_no: "FR DSS-1", mc_name: "", dept_code: "", dept_name: "" }];
+const MC_NO_OPTIONS = [{ mc_no: "FR DSS-1", mc_name: "FR DSS-1", value: "FR DSS-1", label: "FR DSS-1", dept_code: "", dept_name: "" }];
 const VARIETY_OPTIONS = ["WPSF 0.90"];
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
@@ -221,7 +221,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             value={form.mc_no}
             onChange={(value) => handleChange("mc_no", value)}
             className={errors.mc_no ? styles.errorField : ""}
-            options={mcNoOptions.map((item) => item.mc_no)}
+            options={mcNoOptions.map((item) => ({
+              value: item.value || item.mc_no,
+              label: item.label || item.mc_name || item.mc_no,
+            }))}
             placeholder="Select MC No."
             ariaLabel="MC No."
           />

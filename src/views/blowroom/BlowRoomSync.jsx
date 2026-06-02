@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import SearchableSelect from "@/components/SearchableSelect";
 import useBlowroomMasterVarieties from "@/hooks/useBlowroomMasterVarieties";
+import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import {
   saveBlowroomData,
   fetchBlowroomData,
@@ -32,6 +33,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const [generated, setGenerated] = useState(false);
   const [errors, setErrors] = useState({});
   const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
+  const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("blowroom-checked-by");
   const [form, setForm] = useState({
     type: "Blow Room Sync",
     entryDate: date || todayValue,
@@ -280,10 +282,19 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 
         <div className={styles.group}>
           <label>Checked by</label>
-          <input
+          <SearchableSelect
             value={form.checkedBy}
-            onChange={(e) => handleFormChange("checkedBy", e.target.value)}
+            onChange={(value) => handleFormChange("checkedBy", value)}
             className={errors.checkedBy ? styles.errorField : undefined}
+            options={employeeOptions}
+            placeholder={
+              loadingEmployeeOptions
+                ? "Loading employees..."
+                : employeeOptionsError
+                  ? "Type employee name"
+                  : "Select Employee"
+            }
+            ariaLabel="Checked by"
           />
         </div>
 

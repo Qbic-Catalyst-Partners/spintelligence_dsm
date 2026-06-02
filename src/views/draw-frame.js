@@ -61,7 +61,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
   "PP - Breaker Drawing": { prefix: "DRB", width: 4, routePath: "/drawframe/header" },
   "PP - Finisher Drawing": { prefix: "DRF", width: 4, routePath: "/drawframe/finisher" },
-  "A%": { prefix: "DAP" },
+  "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },
 };
 
 const getDrawFrameEntryConfig = (type = "") =>

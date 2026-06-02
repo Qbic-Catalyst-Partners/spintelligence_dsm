@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import styles from "@/styles/cspParameterEntries.module.css";
 import { toNullableNumber } from "@/apis/autoconer";
+import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
 import {
   getAutoconerPendingCspParameterEntries,
   saveAutoconerParameterEntriesCsp,
@@ -206,6 +207,22 @@ function CspParameterEntries({
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
   const [selectedEntryId, setSelectedEntryId] = useState(null);
+  const { countOptions: masterCountOptions } = useAutoconerCountOptions();
+  const countDropdownOptions = useMemo(
+    () => {
+      const values = masterCountOptions.length
+        ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+        : COUNT_NAME_OPTIONS;
+      return Array.from(
+        new Set(
+          [...values, countName]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
+    },
+    [countName, masterCountOptions]
+  );
   const selectedPendingEntry = useMemo(
     () =>
       pendingCspParameterEntries.find(
@@ -287,7 +304,7 @@ function CspParameterEntries({
   const clear = () => {
     setSelectedEntryId(null);
     setEntryDate(getTodayDate());
-    setCountName(COUNT_NAME_OPTIONS[0]);
+    setCountName(countDropdownOptions[0] || COUNT_NAME_OPTIONS[0]);
     setValues(createInitialValues());
     setErrors({});
   };
@@ -413,7 +430,7 @@ function CspParameterEntries({
       getEntryValue(selectedPendingEntry, ["entry_date", "date", "inspection_date"]) || getTodayDate()
     );
     setCountName(
-      getEntryValue(selectedPendingEntry, ["count_name", "countName"]) || COUNT_NAME_OPTIONS[0]
+      getEntryValue(selectedPendingEntry, ["count_name", "countName"]) || countDropdownOptions[0] || COUNT_NAME_OPTIONS[0]
     );
     setValues((current) => ({
       ...current,
@@ -423,7 +440,7 @@ function CspParameterEntries({
       strengthCv: getEntryValue(selectedPendingEntry, ["strengthCv", "strength_cv"]),
       csp: getEntryValue(selectedPendingEntry, "csp"),
     }));
-  }, [selectedPendingEntry]);
+  }, [countDropdownOptions, selectedPendingEntry]);
 
   useEffect(() => {
     if (!onRegisterActions) return;
@@ -624,7 +641,7 @@ function CspParameterEntries({
             onChange={(event) => setCountName(event.target.value)}
             className={`${styles.input} ${styles.topControlInput} ${errors.countName ? styles.errorField : ""}`}
           >
-            {COUNT_NAME_OPTIONS.map((option) => (
+            {countDropdownOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>

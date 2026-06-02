@@ -8,6 +8,7 @@ import {
   submitAutoconerQ2Entry,
   updateAutoconerQ2Entry,
 } from "@/apis/autoconer";
+import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/AutoconerQ2.module.css";
 
@@ -263,18 +264,24 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { countOptions: masterCountOptions } = useAutoconerCountOptions();
 
   const countOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          versions
+          masterCountOptions
+            .map((option) => String(option?.count_name || option?.label || option?.value || "").trim())
+            .filter(Boolean)
+            .concat(
+              versions
             .map((version) => String(version?.data?.countName || "").trim())
             .filter(Boolean)
+            )
             .concat(String(form.countName || "").trim() ? [String(form.countName || "").trim()] : [])
         )
       ),
-    [form.countName, versions]
+    [form.countName, masterCountOptions, versions]
   );
 
   const consigneeOptions = useMemo(

@@ -20,7 +20,7 @@ const NUMERIC_FIELDS = new Set([
     'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd', 'colourGrade',
 ]);
 
-const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedTypeName }, ref) {
+const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
@@ -45,6 +45,23 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
             setFormData(initialForm);
         }
     }, [actionSuccess, dispatch]);
+
+    useEffect(() => {
+        if (!selectedLotDetails) return;
+        setFormData((prev) => ({
+            ...prev,
+            variety: selectedLotDetails.variety || prev.variety,
+            invoiceNo: selectedLotDetails.invoice_no || prev.invoiceNo,
+            invoiceDate: selectedLotDetails.invoice_date || prev.invoiceDate,
+        }));
+        setErrors((prev) => {
+            const next = { ...prev };
+            if (selectedLotDetails.variety) delete next.variety;
+            if (selectedLotDetails.invoice_no) delete next.invoiceNo;
+            if (selectedLotDetails.invoice_date) delete next.invoiceDate;
+            return next;
+        });
+    }, [selectedLotDetails]);
 
     const buildPayload = () => ({
         entry_id:        entryId || undefined,

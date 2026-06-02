@@ -2,6 +2,8 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } 
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSimplexStudyMachineNames } from "@/apis/simplex";
+import SearchableSelect from "@/components/SearchableSelect";
+import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import { submitSimplexStudyReport } from "@/store/slices/simplex";
 
 const today = new Date().toISOString().split("T")[0];
@@ -136,6 +138,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const [errors, setErrors] = useState({ form: {}, matrix: {} });
   const [portalReady, setPortalReady] = useState(false);
   const [simplexNoOptions, setSimplexNoOptions] = useState(simplexOptions);
+  const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("simplex");
 
   useEffect(() => {
     setPortalReady(true);
@@ -369,7 +372,17 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     { label: "Total Spindles", field: "ttSpdl", type: "text" },
     { label: "Running Spindles", field: "runningSpdl", type: "readonly", value: calculatedRunningSpdl || "0" },
     { label: "Idle Spindles", field: "ideals", type: "text", placeholder: "Lorem Ipsum" },
-    { label: "Sider Name", field: "sName", type: "text" },
+    {
+      label: "Sider Name",
+      field: "sName",
+      type: "employee",
+      options: employeeOptions,
+      placeholder: loadingEmployeeOptions
+        ? "Loading employees..."
+        : employeeOptionsError
+          ? "Type employee name"
+          : "Select Employee",
+    },
   ];
 
   const tableSection = (
@@ -586,6 +599,15 @@ const buildStudyPayload = () => ({
                     </option>
                   ))}
                 </select>
+              ) : type === "employee" ? (
+                <SearchableSelect
+                  className={`${topFieldClass}${errorClass(errors.form?.[field])}`}
+                  value={fieldValue}
+                  onChange={(nextValue) => handleFormChange(field, nextValue)}
+                  options={options}
+                  placeholder={placeholder}
+                  ariaLabel={label}
+                />
               ) : (
                 <input
                   type={type === "readonly" ? "text" : type}
