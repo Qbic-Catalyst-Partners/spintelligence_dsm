@@ -92,6 +92,49 @@ const buildAutoconerEndpoints = (path) => [
 
 const silentRequestConfig = { skipGlobalErrorModal: true };
 
+export const normalizeAutoconerCountOptions = (payload = {}) => {
+  const optionRows = Array.isArray(payload?.options?.count_name)
+    ? payload.options.count_name
+    : Array.isArray(payload?.options)
+      ? payload.options
+      : [];
+  const rows = [
+    ...(Array.isArray(payload?.count_options) ? payload.count_options : []),
+    ...(Array.isArray(payload?.count_names) ? payload.count_names : []),
+    ...(Array.isArray(payload?.counts) ? payload.counts : []),
+    ...(Array.isArray(payload?.data) ? payload.data : []),
+    ...(Array.isArray(payload) ? payload : []),
+    ...optionRows,
+  ];
+
+  const seen = new Set();
+  return rows
+    .map((item) => {
+      if (item && typeof item === "object") {
+        const label = String(
+          item.count_name ??
+            item.countName ??
+            item.cntname ??
+            item.name ??
+            item.label ??
+            item.text ??
+            item.value ??
+            ""
+        ).trim();
+        const code = String(item.count_code ?? item.countCode ?? item.cntcode ?? item.code ?? "").trim();
+        return label ? { value: label, label, name: label, code, count_code: code, count_name: label } : null;
+      }
+
+      const label = String(item || "").trim();
+      return label ? { value: label, label, name: label, code: "", count_code: "", count_name: label } : null;
+    })
+    .filter((item) => {
+      if (!item || seen.has(item.value)) return false;
+      seen.add(item.value);
+      return true;
+    });
+};
+
 const postAutoconer = async (path, payload, fallbackMessage) => {
   return postAutoconerCandidates(path, [payload], fallbackMessage);
 };
@@ -200,13 +243,16 @@ export const fetchAutoconerCountWiseCuts = async () =>
     suppressFailure: true,
   });
 
-export const fetchAutoconerCountMaster = async ({ search = "" } = {}) =>
-  getAutoconer(
-    "master/counts",
+export const fetchAutoconerCountMaster = async ({ search = "" } = {}) => {
+  const response = await getAutoconerPathCandidates(
+    ["master/count-dropdown", "master/counts", "master/count-names", "count-master", "master-data"],
     { search },
     "Unable to fetch Autoconer count master.",
     { suppressFailure: true }
   );
+
+  return normalizeAutoconerCountOptions(response);
+};
 
 export const fetchAutoconerMachineMaster = async ({ search = "" } = {}) =>
   getAutoconer(

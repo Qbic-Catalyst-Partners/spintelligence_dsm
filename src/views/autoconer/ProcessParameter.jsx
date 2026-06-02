@@ -9,6 +9,7 @@ import {
   submitAutoconerProcessParameter,
   updateAutoconerProcessParameter,
 } from "@/apis/autoconer";
+import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -213,15 +214,18 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions();
 
   const countOptions = useMemo(
     () =>
       buildProcessParameterOptions(
-        PROCESS_PARAMETER_COUNT_OPTIONS,
+        masterCountOptions.length
+          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+          : PROCESS_PARAMETER_COUNT_OPTIONS,
         versions.map((version) => version?.data?.countName),
         form.countName
       ),
-    [form.countName, versions]
+    [form.countName, masterCountOptions, versions]
   );
 
   const consigneeOptions = useMemo(
@@ -507,7 +511,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
               value={form.countName}
               onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
-              placeholder="Search or select count name"
+              placeholder={
+                loadingCountOptions
+                  ? "Loading count names..."
+                  : countOptionsError
+                    ? "Search or type count name"
+                    : "Search or select count name"
+              }
               ariaLabel="Count Name"
             />
           </div>

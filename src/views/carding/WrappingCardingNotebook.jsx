@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useState, forwardRef } from "react";
 import CustomInput from "@/components/CustomInput";
 import SearchableSelect from "@/components/SearchableSelect";
+import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import {
   fetchCardingMasterMachines,
   fetchWrappingCardingNotebookEntries,
@@ -47,6 +48,7 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
   const [entries, setEntries] = useState([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("carding");
 
   const loadEntries = async () => {
     try {
@@ -192,7 +194,23 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
             ariaLabel="Shift"
           />
         </div>
-        <CustomInput label="User" value={form.user} onChange={(value) => setField("user", value)} error={errors.user} />
+        <div className={styles["card-form-group"]}>
+          <label>User</label>
+          <SearchableSelect
+            className={errors.user ? styles["field-error"] : ""}
+            value={form.user}
+            onChange={(value) => setField("user", value)}
+            options={employeeOptions}
+            placeholder={
+              loadingEmployeeOptions
+                ? "Loading employees..."
+                : employeeOptionsError
+                  ? "Type employee name"
+                  : "Select Employee"
+            }
+            ariaLabel="User"
+          />
+        </div>
       </div>
       <div className={styles["card-row"]}>
         <CustomInput label="Std. Hank" value={form.stdHank} onChange={(value) => setField("stdHank", value)} error={errors.stdHank} />

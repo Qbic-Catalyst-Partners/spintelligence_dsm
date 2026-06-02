@@ -41,7 +41,18 @@ const DRAW_FRAME_UQC_MASTER_DEPARTMENT_ENDPOINTS = [
 ];
 const DRAW_FRAME_UQC_MASTER_MC_NO_ENDPOINTS = [
     "/drawframe/uqc/master/mc-nos",
+    "/drawframe/uqc/master/machine-nos",
+    "/drawframe/uqc/master/machine-numbers",
     "/drawframe/master/mc-nos",
+    "/drawframe/master/machine-nos",
+    "/drawframe/master/machine-numbers",
+];
+const DRAW_FRAME_MACHINE_MASTER_ENDPOINTS = [
+    "/drawframe/master/mc-nos",
+    "/drawframe/master/machine-nos",
+    "/drawframe/master/machine-numbers",
+    "/drawframe/uqc/master/mc-nos",
+    "/drawframe/uqc/master/machine-nos",
 ];
 
 const emitFetchSuccess = () => {
@@ -76,6 +87,30 @@ const uniqueStrings = (values) =>
             .filter(Boolean)
     ));
 
+const cleanMcNoLabel = (value) =>
+    String(value || "")
+        .trim()
+        .replace(/^\d+\s*\/\s*/, "");
+
+const uniqueOptions = (options = []) => {
+    const seen = new Set();
+    return options
+        .map((option) => {
+            if (!option || typeof option !== "object") {
+                const value = String(option || "").trim();
+                return value ? { value, label: cleanMcNoLabel(value) || value } : null;
+            }
+            const value = String(option.value ?? option.mc_no ?? option.text ?? option.label ?? "").trim();
+            const label = cleanMcNoLabel(option.label ?? option.text ?? option.mc_name ?? option.machine_number ?? value);
+            return value ? { value, label: label || value } : null;
+        })
+        .filter((option) => {
+            if (!option || seen.has(option.value)) return false;
+            seen.add(option.value);
+            return true;
+        });
+};
+
 const normalizeOptionRows = (rows = []) =>
     rows
         .map((row) => {
@@ -105,6 +140,76 @@ const mapRowsToValues = (rows = [], keys = []) =>
         (Array.isArray(rows) ? rows : [])
             .map((row) => pickFirstValue(row, keys))
     );
+
+const normalizeMachineMasterRows = (payload = {}) => {
+    const options = payload.options || payload.dropdown_options || {};
+    const optionRows = [
+        ...(Array.isArray(options) ? options : []),
+        ...(Array.isArray(options.mc_no) ? options.mc_no : []),
+        ...(Array.isArray(options.mc_nos) ? options.mc_nos : []),
+        ...(Array.isArray(options.machine_no) ? options.machine_no : []),
+        ...(Array.isArray(options.machine_nos) ? options.machine_nos : []),
+        ...(Array.isArray(options.machine_number) ? options.machine_number : []),
+        ...(Array.isArray(options.machine_numbers) ? options.machine_numbers : []),
+        ...(Array.isArray(options.machines) ? options.machines : []),
+    ];
+    const rows = [
+        ...optionRows,
+        ...(Array.isArray(payload.data) ? payload.data : []),
+        ...(Array.isArray(payload.mc_nos) ? payload.mc_nos : []),
+        ...(Array.isArray(payload.mc_no_values) ? payload.mc_no_values : []),
+        ...(Array.isArray(payload.machine_nos) ? payload.machine_nos : []),
+        ...(Array.isArray(payload.machine_numbers) ? payload.machine_numbers : []),
+        ...(Array.isArray(payload.machines) ? payload.machines : []),
+        ...(Array.isArray(payload.values) ? payload.values : []),
+        ...(Array.isArray(payload.names) ? payload.names : []),
+    ];
+
+    return rows
+        .map((row) => {
+            const mcNo = String(
+                row?.value ??
+                    row?.full_mc_no ??
+                    row?.fullMcNo ??
+                    row?.mc_full_no ??
+                    row?.mc_no_full ??
+                    row?.mc_no ??
+                    row?.mcNo ??
+                    row?.machine_no ??
+                    row?.machineNo ??
+                    row?.machine_number ??
+                    row?.machineNumber ??
+                    row?.mccode ??
+                    row?.text ??
+                    row?.label ??
+                    row ??
+                    ""
+            ).trim();
+            const rawMachineName = String(
+                row?.mc_name ??
+                    row?.mcName ??
+                    row?.machine_name ??
+                    row?.machineName ??
+                    row?.machine_number ??
+                    row?.machineNumber ??
+                    row?.label ??
+                    row?.text ??
+                    row?.value ??
+                    mcNo
+            ).trim();
+            const machineName = cleanMcNoLabel(rawMachineName || mcNo);
+            return mcNo || machineName
+                ? {
+                    mc_no: mcNo || machineName,
+                    mc_name: machineName || cleanMcNoLabel(mcNo),
+                    machine_number: machineName || cleanMcNoLabel(mcNo),
+                    value: mcNo || machineName,
+                    label: machineName || cleanMcNoLabel(mcNo),
+                }
+                : null;
+        })
+        .filter(Boolean);
+};
 
 const fetchFirstDropdownPayload = async (endpoints, params) => {
     let lastError;
@@ -308,7 +413,7 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
         try {
             const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
             const payload = response?.data || {};
-            const options = payload.options || {};
+            const options = payload.options || payload.dropdown_options || {};
             const optionShifts = normalizeOptionRows(options.shift || options.shifts);
             const optionVarieties = normalizeOptionRows(options.variety || options.varieties);
             const optionDepartments = normalizeOptionRows(options.department || options.departments);
@@ -324,6 +429,7 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
                 ...(Array.isArray(payload.varieties)
                     ? mapRowsToValues(payload.varieties, [
                         "variety_name",
+                        "prep_variety_name",
                         "VARIETY_NAME",
                         "variety",
                         "VARIETY",
@@ -332,6 +438,7 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
                     : []),
                 ...mapRowsToValues(payload.data, [
                     "variety_name",
+                    "prep_variety_name",
                     "VARIETY_NAME",
                     "variety",
                     "VARIETY",
@@ -365,12 +472,10 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
                 ...optionDepartments.map((row) => row.value),
             ]);
 
-            const mcNos = uniqueStrings([
+            const mcNos = uniqueOptions([
+                ...normalizeMachineMasterRows(payload),
+                ...optionMcNos,
                 ...(Array.isArray(payload.mc_no_values) ? payload.mc_no_values : []),
-                ...(Array.isArray(payload.mc_nos)
-                    ? payload.mc_nos.map((row) => row?.mc_name || row?.mc_no || row?.value || row)
-                    : []),
-                ...optionMcNos.map((row) => row.value),
             ]);
 
             const dropdown = {
@@ -385,8 +490,10 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
                 dropdown.varietyNames = uniqueStrings([
                     ...(Array.isArray(varietyPayload?.names) ? varietyPayload.names : []),
                     ...(Array.isArray(varietyPayload?.variety_names) ? varietyPayload.variety_names : []),
+                    ...(Array.isArray(varietyPayload?.prep_variety_names) ? varietyPayload.prep_variety_names : []),
                     ...mapRowsToValues(varietyPayload?.data, [
                         "variety_name",
+                        "prep_variety_name",
                         "VARIETY_NAME",
                         "variety",
                         "VARIETY",
@@ -414,11 +521,11 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
 
             if (!dropdown.mcNos.length) {
                 const mcNoPayload = await fetchFirstDropdownPayload(DRAW_FRAME_UQC_MASTER_MC_NO_ENDPOINTS, params).catch(() => null);
-                dropdown.mcNos = uniqueStrings([
+                dropdown.mcNos = uniqueOptions([
+                    ...normalizeMachineMasterRows(mcNoPayload),
                     ...(Array.isArray(mcNoPayload?.names) ? mcNoPayload.names : []),
                     ...(Array.isArray(mcNoPayload?.mc_no_values) ? mcNoPayload.mc_no_values : []),
-                    ...(Array.isArray(mcNoPayload?.mc_nos) ? mapRowsToValues(mcNoPayload.mc_nos, ["mc_no", "mc_name", "value"]) : []),
-                    ...mapRowsToValues(mcNoPayload?.data, ["mc_no", "mc_name", "mccode", "value"]),
+                    ...(Array.isArray(mcNoPayload?.mc_nos) ? mcNoPayload.mc_nos : []),
                 ]);
             }
 
@@ -469,8 +576,24 @@ export const fetchDrawFrameFinisherEntries = async ({ page = 1, limit = 10 } = {
 
 export const fetchDrawFrameMachineMaster = async ({ prefix = "" } = {}) => {
     const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : "";
-    const candidateUrls = [MACHINE_MASTER_BASE_URL, MACHINE_MASTER_FALLBACK_URL];
     let lastError = null;
+
+    for (const endpoint of DRAW_FRAME_MACHINE_MASTER_ENDPOINTS) {
+        try {
+            const response = await apiConfig.get(
+                endpoint,
+                { prefix, mc_no_prefix: prefix, machine_prefix: prefix },
+                { skipGlobalErrorModal: true }
+            );
+            const rows = normalizeMachineMasterRows(response?.data);
+            if (rows.length) return rows;
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status && error.response.status !== 404) break;
+        }
+    }
+
+    const candidateUrls = [MACHINE_MASTER_BASE_URL, MACHINE_MASTER_FALLBACK_URL];
 
     for (const baseUrl of candidateUrls) {
         try {
@@ -486,9 +609,12 @@ export const fetchDrawFrameMachineMaster = async ({ prefix = "" } = {}) => {
                 continue;
             }
             if (Array.isArray(data?.data)) return data.data;
+            const normalizedRows = normalizeMachineMasterRows(data);
+            if (normalizedRows.length) return normalizedRows;
             if (Array.isArray(data?.machine_numbers)) {
                 return data.machine_numbers.map((machineNumber) => ({
                     machine_number: String(machineNumber || "").trim(),
+                    mc_name: cleanMcNoLabel(machineNumber),
                 }));
             }
             return [];

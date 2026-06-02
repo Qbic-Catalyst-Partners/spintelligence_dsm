@@ -9,6 +9,7 @@ import {
   submitCardingProcessParameterEntry,
   updateCardingProcessParameterEntry,
 } from "@/apis/carding";
+import useCardingCountOptions from "@/hooks/useCardingCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -305,9 +306,12 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useCardingCountOptions("qc-header");
 
   const countOptions = buildProcessParameterOptions(
-    PROCESS_PARAMETER_COUNT_OPTIONS,
+    masterCountOptions.length
+      ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+      : PROCESS_PARAMETER_COUNT_OPTIONS,
     versions.map((version) => version?.data?.countName),
     form.countName
   );
@@ -567,7 +571,13 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
                 value={form.countName}
                 onChange={(value) => handleFieldChange("countName", value)}
                 options={countOptions}
-                placeholder="Search or select count name"
+                placeholder={
+                  loadingCountOptions
+                    ? "Loading count names..."
+                    : countOptionsError
+                      ? "Search or type count name"
+                      : "Search or select count name"
+                }
                 ariaLabel="Count Name"
               />
             </div>

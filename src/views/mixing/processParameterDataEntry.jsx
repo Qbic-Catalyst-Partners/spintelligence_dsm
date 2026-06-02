@@ -6,6 +6,7 @@ import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
 import { getMixingProcessParameterEntries } from "@/apis/mixing";
+import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import { clearMixingState, submitProcessParameter, updateProcessParameter } from "@/store/slices/mixing";
 import {
   buildProcessParameterOptions,
@@ -350,6 +351,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [isMounted, setIsMounted] = useState(false);
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useMixingCountOptions();
 
   const loadVersions = async () => {
     setLoadingVersions(true);
@@ -384,7 +386,9 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const countOptions = buildProcessParameterOptions(
-    PROCESS_PARAMETER_COUNT_OPTIONS,
+    masterCountOptions.length
+      ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+      : PROCESS_PARAMETER_COUNT_OPTIONS,
     versions.map((version) => version?.data?.countName),
     form.countName
   );
@@ -557,7 +561,13 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
             value={form.countName}
             onChange={(value) => handleFieldChange("countName", value)}
             options={countOptions}
-            placeholder="Search or select count name"
+            placeholder={
+              loadingCountOptions
+                ? "Loading count names..."
+                : countOptionsError
+                  ? "Search or type count name"
+                  : "Search or select count name"
+            }
             ariaLabel="Count Name"
           />
         </div>

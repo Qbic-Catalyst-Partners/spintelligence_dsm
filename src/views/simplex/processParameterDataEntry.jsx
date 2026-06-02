@@ -9,6 +9,7 @@ import {
   submitSimplexProcessParameterEntry,
   updateSimplexProcessParameterEntry,
 } from "@/apis/simplex";
+import useSimplexCountOptions from "@/hooks/useSimplexCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -288,15 +289,18 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isMounted, setIsMounted] = useState(false);
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useSimplexCountOptions("process_parameter");
 
   const countOptions = useMemo(
     () =>
       buildProcessParameterOptions(
-        PROCESS_PARAMETER_COUNT_OPTIONS,
+        masterCountOptions.length
+          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+          : PROCESS_PARAMETER_COUNT_OPTIONS,
         versions.map((version) => version?.data?.countName),
         form.countName
       ),
-    [form.countName, versions]
+    [form.countName, masterCountOptions, versions]
   );
 
   const consigneeOptions = useMemo(
@@ -530,7 +534,13 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
               value={form.countName}
               onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
-              placeholder="Search or select count name"
+              placeholder={
+                loadingCountOptions
+                  ? "Loading count names..."
+                  : countOptionsError
+                    ? "Search or type count name"
+                    : "Search or select count name"
+              }
               ariaLabel="Count Name"
             />
           </div>

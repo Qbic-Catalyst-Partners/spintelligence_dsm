@@ -26,6 +26,11 @@ const extractErrorMessage = (error, fallbackMessage) => {
 const uniqueStrings = (values = []) =>
   Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
 
+const cleanMcNoLabel = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^\d+\s*\/\s*/, "");
+
 const normalizeOptionRows = (rows = []) =>
   (Array.isArray(rows) ? rows : [])
     .map((row) => {
@@ -105,16 +110,86 @@ const normalizeMcNoRows = (rows = []) =>
     .map((row) => {
       if (typeof row === "string") {
         const mcNo = row.trim();
-        return mcNo ? { mc_no: mcNo, mc_name: "", dept_code: "", dept_name: "" } : null;
+        return mcNo
+          ? {
+              mc_no: mcNo,
+              mc_name: cleanMcNoLabel(mcNo),
+              dept_code: "",
+              dept_name: "",
+              value: mcNo,
+              label: cleanMcNoLabel(mcNo),
+            }
+          : null;
       }
 
-      const mcNo = String(row?.mc_no ?? row?.mccode ?? row?.MCCODE ?? row?.value ?? "").trim();
-      const mcName = String(row?.mc_name ?? row?.mcname ?? row?.MCNAME ?? row?.label ?? row?.text ?? "").trim();
+      const mcNo = String(
+        row?.value ??
+          row?.full_mc_no ??
+          row?.fullMcNo ??
+          row?.mc_full_no ??
+          row?.mc_no_full ??
+          row?.mc_no ??
+          row?.mccode ??
+          row?.MCCODE ??
+          ""
+      ).trim();
+      const mcName = cleanMcNoLabel(
+        row?.label ??
+          row?.text ??
+          row?.mc_name ??
+          row?.mcname ??
+          row?.MCNAME ??
+          mcNo
+      );
       const deptCode = String(row?.dept_code ?? row?.department_code ?? row?.DEPTCODE ?? "").trim();
       const deptName = String(row?.dept_name ?? row?.deptname ?? row?.DEPTNAME ?? "").trim();
-      return mcNo ? { mc_no: mcNo, mc_name: mcName, dept_code: deptCode, dept_name: deptName } : null;
+      return mcNo
+        ? {
+            mc_no: mcNo,
+            mc_name: mcName,
+            dept_code: deptCode,
+            dept_name: deptName,
+            value: mcNo,
+            label: mcName,
+          }
+        : null;
     })
     .filter(Boolean);
+
+const normalizeCountRows = (rows = []) =>
+  (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      if (typeof row === "string") {
+        const countName = row.trim();
+        return countName ? { count_code: "", count_name: countName, value: countName, label: countName } : null;
+      }
+
+      const countCode = String(row?.count_code ?? row?.countCode ?? row?.cntcode ?? row?.code ?? "").trim();
+      const countName = String(
+        row?.count_name ?? row?.countName ?? row?.cntname ?? row?.name ?? row?.text ?? row?.label ?? row?.value ?? ""
+      ).trim();
+      return countName ? { count_code: countCode, count_name: countName, value: countName, label: countName } : null;
+    })
+    .filter(Boolean);
+
+const normalizeCountPayload = (payload = {}) => {
+  const options = payload.options || {};
+  const rows = [
+    ...(Array.isArray(options.count_name) ? options.count_name : []),
+    ...(Array.isArray(options.count_names) ? options.count_names : []),
+    ...(Array.isArray(payload.count_options) ? payload.count_options : []),
+    ...(Array.isArray(payload.count_names) ? payload.count_names : []),
+    ...(Array.isArray(payload.counts) ? payload.counts : []),
+    ...(Array.isArray(payload.data) ? payload.data : []),
+    ...(Array.isArray(payload) ? payload : []),
+  ];
+  const seen = new Set();
+  return normalizeCountRows(rows).filter((row) => {
+    if (seen.has(row.count_name)) return false;
+    seen.add(row.count_name);
+    return true;
+  });
+};
 
 const mergeDepartmentRows = (...groups) => {
   const seen = new Set();
@@ -254,7 +329,7 @@ export const fetchSimplexUqcMasterDropdown = async ({
     try {
       const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
       const payload = response?.data || {};
-      const options = payload.options || {};
+      const options = payload.options || payload.dropdown_options || {};
       const optionShifts = normalizeOptionRows(options.shift || options.shifts);
       const optionVarieties = normalizeOptionRows(options.variety || options.varieties);
       const optionDepartments = normalizeOptionRows(options.department || options.departments);
@@ -283,6 +358,7 @@ export const fetchSimplexUqcMasterDropdown = async ({
           ...(Array.isArray(payload.varieties)
             ? mapRowsToValues(payload.varieties, [
                 "variety_name",
+                "prep_variety_name",
                 "VARIETY_NAME",
                 "variety",
                 "VARIETY",
@@ -291,6 +367,7 @@ export const fetchSimplexUqcMasterDropdown = async ({
             : []),
           ...mapRowsToValues(payload.data, [
             "variety_name",
+            "prep_variety_name",
             "VARIETY_NAME",
             "variety",
             "VARIETY",
@@ -319,10 +396,12 @@ export const fetchSimplexUqcMasterDropdown = async ({
           params
         ).catch(() => null);
         dropdown.varietyNames = uniqueStrings([
-          ...(Array.isArray(varietyPayload?.names) ? varietyPayload.names : []),
-          ...(Array.isArray(varietyPayload?.variety_names) ? varietyPayload.variety_names : []),
+         ...(Array.isArray(varietyPayload?.names) ? varietyPayload.names : []),
+         ...(Array.isArray(varietyPayload?.variety_names) ? varietyPayload.variety_names : []),
+          ...(Array.isArray(varietyPayload?.prep_variety_names) ? varietyPayload.prep_variety_names : []),
           ...mapRowsToValues(varietyPayload?.data, [
             "variety_name",
+            "prep_variety_name",
             "VARIETY_NAME",
             "variety",
             "VARIETY",
@@ -382,4 +461,33 @@ export const fetchSimplexStudyMachineNames = async ({ prefix = "" } = {}) => {
   }
 
   throw new Error(extractErrorMessage(lastError, "Unable to fetch Simplex No options."));
+};
+
+export const fetchSimplexCountOptions = async ({ prefix = "", screen = "master" } = {}) => {
+  const screenEndpoints = {
+    process_parameter: ["/simplex/process_parameter/master/count-dropdown"],
+    master: ["/simplex/master/count-dropdown", "/simplex/master/counts", "/simplex/master/count-names"],
+  };
+  const endpoints = [
+    ...(screenEndpoints[screen] || screenEndpoints.master),
+    "/simplex/master/count-dropdown",
+    "/simplex/master/counts",
+    "/simplex/master/count-names",
+  ];
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.get(endpoint, { prefix, count_prefix: prefix }, { skipGlobalErrorModal: true });
+      const options = normalizeCountPayload(response?.data || {});
+      if (options.length || endpoint === endpoints[endpoints.length - 1]) return options;
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status && error.response.status !== 404) {
+        throw new Error(extractErrorMessage(error, "Unable to fetch Simplex count options."));
+      }
+    }
+  }
+
+  throw new Error(extractErrorMessage(lastError, "Unable to fetch Simplex count options."));
 };

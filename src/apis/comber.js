@@ -46,6 +46,55 @@ const normalizeOptionValue = (row) => {
     return { value, label: value };
 };
 
+const normalizeCountPayload = (payload = {}) => {
+    const options = payload.options || {};
+    const rows = [
+        ...(Array.isArray(options.count_name) ? options.count_name : []),
+        ...(Array.isArray(options.count_names) ? options.count_names : []),
+        ...(Array.isArray(payload.count_options) ? payload.count_options : []),
+        ...(Array.isArray(payload.count_names) ? payload.count_names : []),
+        ...(Array.isArray(payload.counts) ? payload.counts : []),
+        ...(Array.isArray(payload.data) ? payload.data : []),
+        ...(Array.isArray(payload) ? payload : []),
+    ];
+    const seen = new Set();
+    return rows
+        .map((row) => {
+            if (row && typeof row === "object") {
+                const countName = String(row.count_name ?? row.countName ?? row.cntname ?? row.name ?? row.text ?? row.label ?? row.value ?? "").trim();
+                const countCode = String(row.count_code ?? row.countCode ?? row.cntcode ?? row.code ?? "").trim();
+                return countName ? { count_code: countCode, count_name: countName, value: countName, label: countName } : null;
+            }
+            const countName = String(row || "").trim();
+            return countName ? { count_code: "", count_name: countName, value: countName, label: countName } : null;
+        })
+        .filter((row) => {
+            if (!row || seen.has(row.count_name)) return false;
+            seen.add(row.count_name);
+            return true;
+        });
+};
+
+export const fetchComberCountOptions = async ({ prefix = "" } = {}) => {
+    const endpoints = ["/comber/master/count-dropdown", "/comber/master/counts", "/comber/master/count-names"];
+    let lastError = null;
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await apiConfig.get(endpoint, { prefix, count_prefix: prefix }, { skipGlobalErrorModal: true });
+            const options = normalizeCountPayload(response?.data || {});
+            if (options.length || endpoint === endpoints[endpoints.length - 1]) return options;
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status && error.response.status !== 404) {
+                throw new Error(extractApiError(error, "Unable to fetch Comber count options."));
+            }
+        }
+    }
+
+    throw new Error(extractApiError(lastError || {}, "Unable to fetch Comber count options."));
+};
+
 export const submitRibbonLapCVDataEntry = async (payload) => {
     try {
         const response = await apiConfig.post("/comber/lap-cv", payload);
@@ -94,13 +143,30 @@ export const fetchComberMasterVarieties = async ({ prefix = "" } = {}) => {
     try {
         const response = await apiConfig.get("/comber/master/varieties", { prefix });
         const payload = response?.data;
-        const namesList = Array.isArray(payload?.names) ? payload.names : [];
+        const namesList = Array.isArray(payload?.names)
+            ? payload.names
+            : Array.isArray(payload?.variety_names)
+                ? payload.variety_names
+                : Array.isArray(payload?.prep_variety_names)
+                    ? payload.prep_variety_names
+                    : [];
         if (namesList.length) {
             return uniqueStrings(namesList);
         }
 
-        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        return uniqueStrings(rows.map((row) => row?.variety_name || row?.name || row));
+        const optionGroups = payload?.options || payload?.dropdown_options || {};
+        const optionRows = [
+            ...(Array.isArray(optionGroups) ? optionGroups : []),
+            ...(Array.isArray(optionGroups.variety) ? optionGroups.variety : []),
+            ...(Array.isArray(optionGroups.varieties) ? optionGroups.varieties : []),
+        ];
+        const rows = [
+            ...(Array.isArray(payload?.data) ? payload.data : []),
+            ...(Array.isArray(payload?.varieties) ? payload.varieties : []),
+            ...(Array.isArray(payload) ? payload : []),
+            ...optionRows,
+        ];
+        return uniqueStrings(rows.map((row) => row?.variety_name || row?.prep_variety_name || row?.variety || row?.name || row?.text || row?.label || row?.value || row));
     } catch (error) {
         throw new Error(extractApiError(error, "Unable to fetch variety options."));
     }
@@ -125,7 +191,7 @@ export const fetchComberUqcMasterDropdown = async ({
         });
 
         const payload = response?.data || {};
-        const optionGroups = payload.options || {};
+        const optionGroups = payload.options || payload.dropdown_options || {};
 
         const shiftOptions = normalizeOptionRows(optionGroups.shift);
         const shifts = Array.isArray(payload.shifts) && payload.shifts.length
@@ -141,7 +207,7 @@ export const fetchComberUqcMasterDropdown = async ({
             ? payload.varieties
                 .map((row) => ({
                     var_code: String(row?.var_code || "").trim(),
-                    variety_name: String(row?.variety_name || row?.name || row || "").trim(),
+                    variety_name: String(row?.variety_name || row?.prep_variety_name || row?.variety || row?.name || row || "").trim(),
                 }))
                 .filter((row) => row.variety_name)
             : normalizeOptionRows(optionGroups.variety).map((row) => ({

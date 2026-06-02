@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
 import FibreDataEntry from "./mixing/fibreDataEntry";
 import CustomInput from "@/components/CustomInput";
+import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import AfisDataEntry from "./mixing/afisDataEntry";
 import MoistureDataEntry from "./mixing/moistureDataEntry";
@@ -15,6 +16,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
+import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 
 const mixingDepartmentTypes = [
     {
@@ -71,6 +73,7 @@ function Mixing() {
     const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
+    const [selectedLotDetails, setSelectedLotDetails] = useState(null);
     const [mixingValue, setMixingValue] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
@@ -83,6 +86,10 @@ function Mixing() {
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
     const isProcessParameter = selectedTypeName === "Process Parameter";
+    const shouldLoadLots = selectedType?.needsLotNo !== false && selectedTypeName !== "Openness Data Entry";
+    const { lotOptions, lotOptionsError, loadingLotOptions } = useMixingLotOptions(
+        shouldLoadLots ? selectedTypeName : ""
+    );
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Mixing",
         typeName: selectedTypeName,
@@ -108,20 +115,41 @@ function Mixing() {
     const handleTypeChange = (value) => {
         setSelectedTypeName(value);
         setLotNo("");
+        setSelectedLotDetails(null);
         setMixingValue("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
     };
 
+    const handleLotChange = (value) => {
+        setLotNo(value);
+        setSelectedLotDetails(lotOptions.find((lot) => lot.lot_no === value || lot.value === value) || null);
+        setHeaderErrors((prev) => {
+            if (!prev.lotNo) return prev;
+            const next = { ...prev };
+            delete next.lotNo;
+            return next;
+        });
+    };
+
     const handleClear = () => {
         setDate(getCurrentDate());
         setLotNo("");
+        setSelectedLotDetails(null);
         setMixingValue("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
     };
+
+    useEffect(() => {
+        if (!lotNo) {
+            setSelectedLotDetails(null);
+            return;
+        }
+        setSelectedLotDetails(lotOptions.find((lot) => lot.lot_no === lotNo || lot.value === lotNo) || null);
+    }, [lotNo, lotOptions]);
 
     const buildHeaderPreview = () => {
         const list = [
@@ -269,13 +297,29 @@ function Mixing() {
                                     />
 
                                     {selectedType?.needsLotNo !== false && (
-                                        <CustomInput
-                                            label="Lot No"
-                                            placeholder="Enter Lot Number"
-                                            value={lotNo}
-                                            onChange={(value) => setLotNo(value)}
-                                            error={headerErrors.lotNo}
-                                        />
+                                        <div className="flex flex-col gap-1.5 min-w-0 w-full">
+                                            <label className="text-[14px] font-semibold text-slate-700 truncate">
+                                                Lot No
+                                            </label>
+                                            <SearchableSelect
+                                                className={`w-full h-9.5 px-3 py-2 rounded-lg text-[14px] focus:outline-none transition-colors ${
+                                                    headerErrors.lotNo
+                                                        ? "border border-red-500 focus:ring-2 focus:ring-red-400 focus:border-red-500"
+                                                        : "border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                                                }`}
+                                                value={lotNo}
+                                                onChange={handleLotChange}
+                                                options={lotOptions}
+                                                placeholder={
+                                                    loadingLotOptions
+                                                        ? "Loading lots..."
+                                                        : lotOptionsError
+                                                            ? "Type lot number"
+                                                            : "Select Lot Number"
+                                                }
+                                                ariaLabel="Lot No"
+                                            />
+                                        </div>
                                     )}
                                 </div>
 
@@ -285,6 +329,7 @@ function Mixing() {
                                         date={date}
                                         entryId={entryId}
                                         lotNo={lotNo}
+                                        selectedLotDetails={selectedLotDetails}
                                         mixing={mixingValue}
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}

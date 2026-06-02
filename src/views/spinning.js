@@ -14,8 +14,10 @@ import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import {
     fetchSpinningCotsCheckingMachines,
+    fetchSpinningBottomApronEmployeeNames,
     fetchSpinningCountChangeDropdown,
     fetchSpinningCountChangeRfNos,
+    fetchSpinningMachineNumberOptions,
     fetchSpinningRingFrameCheckerNames,
     fetchSpinningRingFrameShifts,
 } from "@/apis/spinning";
@@ -91,6 +93,11 @@ const getMachineText = (value) => {
         value.rf_no ??
         value.rf_name ??
         value.checker_name ??
+        value.employee_name ??
+        value.user_name ??
+        value.operator_name ??
+        value.employee_code ??
+        value.employee_name ??
         value.shift_name ??
         value.shift_code ??
         value.text ??
@@ -120,15 +127,21 @@ const normalizeMachineOptions = (payload) => {
                                     ? payload.rf_nos
                                     : Array.isArray(payload?.names)
                                         ? payload.names
-                                        : Array.isArray(payload?.checker_names)
+                                        : Array.isArray(payload?.employee_names)
+                                            ? payload.employee_names
+                                            : Array.isArray(payload?.checker_names)
                                             ? payload.checker_names
-                                            : Array.isArray(payload?.check_names)
-                                                ? payload.check_names
-                                                : Array.isArray(payload?.shift_names)
-                                                    ? payload.shift_names
-                                                    : Array.isArray(payload?.shift_codes)
-                                                        ? payload.shift_codes
-                                                        : [];
+                                            : Array.isArray(payload?.user_names)
+                                                    ? payload.user_names
+                                                    : Array.isArray(payload?.operator_names)
+                                                        ? payload.operator_names
+                                                        : Array.isArray(payload?.check_names)
+                                                            ? payload.check_names
+                                                            : Array.isArray(payload?.shift_names)
+                                                                ? payload.shift_names
+                                                                : Array.isArray(payload?.shift_codes)
+                                                                    ? payload.shift_codes
+                                                                    : [];
 
     return rows
         .map((row) => {
@@ -140,6 +153,11 @@ const normalizeMachineOptions = (payload) => {
                 row?.machineno ??
                 row?.rf_no ??
                 row?.checker_name ??
+                row?.employee_name ??
+                row?.user_name ??
+                row?.operator_name ??
+                row?.employee_code ??
+                row?.employee_name ??
                 row?.shift_code ??
                 row?.shift_name ??
                 row?.text ??
@@ -150,6 +168,10 @@ const normalizeMachineOptions = (payload) => {
                 row?.label ??
                 row?.text ??
                 row?.checker_name ??
+                row?.employee_name ??
+                row?.user_name ??
+                row?.operator_name ??
+                row?.employee_name ??
                 row?.shift_name ??
                 row?.shift_code ??
                 row?.mc_name ??
@@ -260,6 +282,8 @@ function SpinningDepartment() {
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
+    const [spinningMachineOptions, setSpinningMachineOptions] = useState([]);
+    const [bottomApronEmployeeOptions, setBottomApronEmployeeOptions] = useState([]);
     const [countChangeRfOptions, setCountChangeRfOptions] = useState([]);
     const [countChangeCountNameFromOptions, setCountChangeCountNameFromOptions] = useState(
         []
@@ -273,7 +297,9 @@ function SpinningDepartment() {
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
     const fallbackMachineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"].map((value) => ({ value, label: value }));
-    const employees = ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
+    const employees = bottomApronEmployeeOptions.length
+        ? bottomApronEmployeeOptions.map((option) => option.label || option.value).filter(Boolean)
+        : ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
     const selectedCheckingOption = checkingOptions.find((item) => item.name === checkingType) || null;
     const SelectedComponent = selectedCheckingOption?.component ?? null;
     const isProcessParameter = checkingType === "Process Parameter";
@@ -281,12 +307,17 @@ function SpinningDepartment() {
     const isCountChange = checkingType === "Count Change";
     const isRingFrame = checkingType === "Ring Frame Log Book";
     const isWheelChange = checkingType === "Wheel Change";
+    const isBottomApronChecking = checkingType === "Bottom Apron Checking";
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Spinning",
         typeName: checkingType,
         config: getSpinningEntryConfig(checkingType),
     });
-    const machineOptions = isCotsChecking && cotsMachineOptions.length ? cotsMachineOptions : fallbackMachineOptions;
+    const machineOptions = isCotsChecking && cotsMachineOptions.length
+        ? cotsMachineOptions
+        : spinningMachineOptions.length
+            ? spinningMachineOptions
+            : fallbackMachineOptions;
     const machineSelectOptions = machineOptions;
     const countChangeRfSelectOptions = countChangeRfOptions;
     const countChangeCountNameFromSelectOptions = countChangeCountNameFromOptions;
@@ -330,6 +361,57 @@ function SpinningDepartment() {
             isMounted = false;
         };
     }, [isCotsChecking]);
+
+    useEffect(() => {
+        if (isCotsChecking || isCountChange || isRingFrame || isProcessParameter || isWheelChange) {
+            setSpinningMachineOptions([]);
+            return;
+        }
+
+        const screenMap = {
+            "Lycra Missing": "lycra-missing",
+            "Lycra Centering": "lycra-centering",
+            "RSM & Lycrasensor Checking Online": "rsm-lycra-online",
+            "RSM & Lycrasensor Checking Offline": "rsm-lycra-offline",
+        };
+        let isMounted = true;
+
+        fetchSpinningMachineNumberOptions({ screen: screenMap[checkingType] || "master" })
+            .then((payload) => {
+                if (!isMounted) return;
+                const options = normalizeMachineOptions(payload).filter((option) => option.value);
+                setSpinningMachineOptions(options);
+            })
+            .catch(() => {
+                if (isMounted) setSpinningMachineOptions([]);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [checkingType, isCotsChecking, isCountChange, isProcessParameter, isRingFrame, isWheelChange]);
+
+    useEffect(() => {
+        if (!isBottomApronChecking) {
+            setBottomApronEmployeeOptions([]);
+            return;
+        }
+
+        let isMounted = true;
+        fetchSpinningBottomApronEmployeeNames()
+            .then((payload) => {
+                if (!isMounted) return;
+                const options = normalizeMachineOptions(payload).filter((option) => option.value);
+                setBottomApronEmployeeOptions(options);
+            })
+            .catch(() => {
+                if (isMounted) setBottomApronEmployeeOptions([]);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isBottomApronChecking]);
 
     useEffect(() => {
         if (!isCountChange) return;

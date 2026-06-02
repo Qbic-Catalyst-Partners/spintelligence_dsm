@@ -9,6 +9,7 @@ import {
   spinningProcessParameterDataEntry,
   updateSpinningProcessParameterEntry,
 } from "@/apis/spinning";
+import useSpinningCountOptions from "@/hooks/useSpinningCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -336,9 +337,12 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useSpinningCountOptions("master");
 
   const countOptions = buildProcessParameterOptions(
-    PROCESS_PARAMETER_COUNT_OPTIONS,
+    masterCountOptions.length
+      ? masterCountOptions.map((option) => option.label || option.value)
+      : PROCESS_PARAMETER_COUNT_OPTIONS,
     versions.map((version) => version?.data?.countName),
     form.countName
   );
@@ -550,7 +554,13 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
             value={form.countName}
             onChange={(value) => handleFieldChange("countName", value)}
             options={countOptions}
-            placeholder="Search or select count name"
+            placeholder={
+              loadingCountOptions
+                ? "Loading count names..."
+                : countOptionsError
+                  ? "Search or type count name"
+                  : "Search or select count name"
+            }
             ariaLabel="Count Name"
           />
         </div>
