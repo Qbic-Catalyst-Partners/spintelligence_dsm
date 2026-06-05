@@ -197,7 +197,7 @@ export default function RolesPermissions() {
 
                 {/* FILTER BAR */}
                 <div className={styles["Filter-bar"]}>
-                    <div className={styles["Search-box"]}>
+                    <div className={`${styles["Search-box"]} ${styles["dark-filter-control"]}`}>
                         <IoMdSearch className={styles["search-icon"]} />
                         <input
                             placeholder="Search roles..."
@@ -207,16 +207,24 @@ export default function RolesPermissions() {
                     </div>
 
                     <div className={styles["filter-right"]}>
-                        <div className={styles["filter-select-wrapper"]}>
-                            <select value={selectedRoleFilter} onChange={(e) => setSelectedRoleFilter(e.target.value)}>
+                        <div className={`${styles["filter-select-wrapper"]} ${styles["dark-filter-control"]}`}>
+                            <select
+                                className={styles["dark-filter-control"]}
+                                value={selectedRoleFilter}
+                                onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                            >
                                 <option value="">Role</option>
                                 {roleFilterOptions.map((roleName) => (
                                     <option key={roleName} value={roleName}>{roleName}</option>
                                 ))}
                             </select>
                         </div>
-                        <div className={styles["filter-select-wrapper"]}>
-                            <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                        <div className={`${styles["filter-select-wrapper"]} ${styles["dark-filter-control"]}`}>
+                            <select
+                                className={styles["dark-filter-control"]}
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                            >
                                 <option value="">Status</option>
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>

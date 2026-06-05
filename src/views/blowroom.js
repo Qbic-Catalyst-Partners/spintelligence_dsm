@@ -13,6 +13,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const blowroomTypes = [
@@ -124,6 +125,16 @@ function BlowRoom() {
     setShowPreview(false);
     try {
       await childRef.current?.submit?.();
+      await recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Blow Room",
+        notebookName: selectedTypeName,
+        entryId,
+        lotNo,
+        childRef,
+        previewItems,
+        user,
+      });
       await reserveEntryId();
       setShowSuccess(true);
     } catch (e) {

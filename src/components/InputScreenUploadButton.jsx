@@ -8,6 +8,7 @@ export default function InputScreenUploadButton({
   returnTo = "",
   docType = "hvi",
   inspectionType = "",
+  screenName = "",
 }) {
   const router = useRouter();
   const handleClick = () => {
@@ -17,6 +18,7 @@ export default function InputScreenUploadButton({
     if (returnTo) q.set("returnTo", returnTo);
     if (docType) q.set("docType", docType);
     if (inspectionType) q.set("inspection_type", inspectionType);
+    if (screenName) q.set("screen", screenName);
     router.push(`/ocr-machine?${q.toString()}`);
   };
 

@@ -242,10 +242,18 @@
 }
 
 .statisticsTopFilters {
-  display: grid;
-  justify-items: start;
-  gap: 12px;
+  width: 100%;
   margin: 0 0 24px;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 18px 26px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  box-sizing: border-box;
 }
 
 .statisticsCustomDates {
@@ -425,7 +433,7 @@
 .statChartDay {
   fill: #1f2937;
   font-size: 6px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .statChartGrid {
@@ -435,6 +443,7 @@
 
 .statChartArea {
   fill: #dfe5f4;
+  stroke: none;
 }
 
 .statChartLine {
@@ -446,7 +455,7 @@
 .statChartPoint {
   fill: #ffffff;
   stroke: #4b64ad;
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 
 .statisticsError {
@@ -495,9 +504,13 @@
 
 .performanceControlsLeft {
   display: grid;
-  grid-template-columns: repeat(2, 166px);
+  grid-template-columns: repeat(4, 166px);
   gap: 10px;
   align-items: end;
+}
+
+.statisticsControlsLeft {
+  grid-template-columns: repeat(3, 166px);
 }
 
 .performanceControlsRight {
@@ -869,11 +882,15 @@
 :global(:root[data-theme="dark"]) .statisticsTitle,
 :global(:root[data-theme="dark"]) .statisticsDateField span,
 :global(:root[data-theme="dark"]) .performanceSelectField span,
-:global(:root[data-theme="dark"]) .statChartHead strong,
+:global(:root[data-theme="dark"]) .statChartHead strong {
+  color: #ffffff;
+}
+
 :global(:root[data-theme="dark"]) .statChartTick,
 :global(:root[data-theme="dark"]) .statChartDay {
-  color: #ffffff;
-  fill: #ffffff;
+  color: #cbd5e1;
+  fill: #cbd5e1;
+  font-weight: 400;
 }
 
 :global(:root[data-theme="dark"]) .statisticsFilterCard,
@@ -885,6 +902,31 @@
   border-color: #5f5f5f;
   background: #3b3b3b;
   box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .statChartCard {
+  background: #000000;
+}
+
+:global(:root[data-theme="dark"]) .statChartGrid {
+  stroke: rgba(226, 232, 240, 0.22) !important;
+}
+
+:global(:root[data-theme="dark"]) .statChartArea {
+  fill: rgba(54, 84, 132, 0.78) !important;
+  stroke: none !important;
+}
+
+:global(:root[data-theme="dark"]) .statChartLine {
+  fill: none !important;
+  stroke: #7ea2ff !important;
+  stroke-width: 2.5;
+}
+
+:global(:root[data-theme="dark"]) .statChartPoint {
+  fill: #000000 !important;
+  stroke: #7ea2ff !important;
+  stroke-width: 1.5;
 }
 
 :global(:root[data-theme="dark"]) .performancePanel {
@@ -972,7 +1014,8 @@
   .departmentFilterCard { grid-template-columns: 1fr; }
   .performanceFilterCard { grid-template-columns: 1fr; }
   .performanceControlsCard { align-items: stretch; flex-direction: column; }
-  .performanceControlsLeft { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .performanceControlsLeft,
+  .statisticsControlsLeft { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .performanceControlsRight { justify-items: start; }
   .statisticsGrid { grid-template-columns: 1fr; }
   .performanceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -986,6 +1029,7 @@
   .statChartHead { grid-template-columns: 1fr; }
   .statChartHead { grid-template-columns: 1fr; }
   .performanceControlsLeft,
+  .statisticsControlsLeft,
   .performanceCustomDates,
   .statisticsCustomDates { grid-template-columns: 1fr; }
   .performanceCustomDates .statisticsDateField { width: 220px; }

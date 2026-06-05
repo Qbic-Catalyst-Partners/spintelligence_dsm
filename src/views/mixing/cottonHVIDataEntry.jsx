@@ -17,7 +17,7 @@ const initialForm = {
 };
 
 const NUMERIC_FIELDS = new Set([
-    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd', 'colourGrade',
+    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd',
 ]);
 
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
@@ -85,11 +85,12 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         invisible_loss_percentage: Number(formData.invisibleLossPercent) || 0,
         trash_content_percentage: Number(formData.trashContentPercent) || 0,
         rd:              Number(formData.rd)          || 0,
-        colour_grade:    Number(formData.colourGrade) || 0,
+        colour_grade:    formData.colourGrade,
     });
 
     const handleSubmit = async () => {
-        await dispatch(submitCottonHVI(buildPayload())).unwrap();
+        const payload = buildPayload();
+        await dispatch(submitCottonHVI(payload)).unwrap();
 
         try {
             await createThresholdViolationTickets({

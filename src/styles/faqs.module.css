@@ -1,0 +1,280 @@
+.page {
+    min-height: calc(100dvh - 72px);
+    padding: 28px clamp(18px, 4vw, 48px) 44px;
+    background: #f4f5f7;
+    color: #111827;
+    box-sizing: border-box;
+}
+
+.title {
+    margin: 0 0 22px;
+    color: #111827;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 36px;
+    align-items: start;
+}
+
+.sidebar {
+    display: grid;
+    gap: 24px;
+}
+
+.categoryList,
+.questionForm,
+.faqSection {
+    border: 1px solid #dbe1ea;
+    border-radius: 8px;
+    background: #ffffff;
+    box-sizing: border-box;
+}
+
+.categoryList {
+    overflow: hidden;
+}
+
+.categoryList button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 40px;
+    border: 0;
+    border-bottom: 1px solid #dbe1ea;
+    background: #ffffff;
+    color: #111827;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.categoryList button:last-child {
+    border-bottom: 0;
+}
+
+.categoryList button:hover,
+.categoryList .activeCategory {
+    background: #4056a8;
+    color: #ffffff;
+}
+
+.questionForm {
+    display: grid;
+    gap: 14px;
+    padding: 18px;
+}
+
+.questionForm h2,
+.faqSection h2 {
+    margin: 0;
+    color: #111827;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.questionForm label {
+    display: grid;
+    gap: 8px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.questionForm input,
+.questionForm select,
+.questionForm textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid #dbe7f5;
+    border-radius: 6px;
+    background: #f8fbff;
+    color: #0f172a;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.questionForm input,
+.questionForm select {
+    height: 38px;
+    padding: 0 12px;
+}
+
+.questionForm textarea {
+    resize: vertical;
+    min-height: 92px;
+    padding: 10px 12px;
+    line-height: 1.45;
+}
+
+.questionForm input::placeholder,
+.questionForm textarea::placeholder {
+    color: #9aa5b1;
+}
+
+.questionForm button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 38px;
+    border: 0;
+    border-radius: 6px;
+    background: #4056a8;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.questionForm button svg {
+    width: 15px;
+    height: 15px;
+}
+
+.faqList {
+    display: grid;
+    gap: 16px;
+    padding-bottom: 24px;
+}
+
+.faqSection {
+    padding: 24px;
+}
+
+.questions {
+    display: grid;
+    margin-top: 18px;
+}
+
+.questionItem {
+    border-bottom: 1px solid #d1d5db;
+}
+
+.questionItem:last-child {
+    border-bottom: 0;
+}
+
+.questionItem > button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+    min-height: 42px;
+    border: 0;
+    background: transparent;
+    color: #111827;
+    padding: 0;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.questionItem > button svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    color: #64748b;
+    transition: transform 0.2s ease;
+}
+
+.openIcon {
+    transform: rotate(180deg);
+}
+
+.questionItem p {
+    margin: -2px 0 14px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+:global(:root[data-theme="dark"]) .page {
+    background: var(--background);
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .title,
+:global(:root[data-theme="dark"]) .questionForm h2,
+:global(:root[data-theme="dark"]) .faqSection h2,
+:global(:root[data-theme="dark"]) .questionItem > button,
+:global(:root[data-theme="dark"]) .questionForm label {
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .categoryList,
+:global(:root[data-theme="dark"]) .questionForm,
+:global(:root[data-theme="dark"]) .faqSection {
+    border-color: var(--border-color);
+    background: var(--surface);
+}
+
+:global(:root[data-theme="dark"]) .categoryList button {
+    border-bottom-color: var(--border-color);
+    background: var(--surface);
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .categoryList button:hover,
+:global(:root[data-theme="dark"]) .categoryList .activeCategory {
+    background: #4056a8;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .questionForm input,
+:global(:root[data-theme="dark"]) .questionForm select,
+:global(:root[data-theme="dark"]) .questionForm textarea {
+    border-color: #3b3b3b;
+    background-color: #3b3b3b;
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .questionForm input::placeholder,
+:global(:root[data-theme="dark"]) .questionForm textarea::placeholder {
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .questionItem {
+    border-bottom-color: var(--border-color);
+}
+
+:global(:root[data-theme="dark"]) .questionItem p,
+:global(:root[data-theme="dark"]) .questionItem > button svg {
+    color: #dbe4f0;
+}
+
+@media (max-width: 980px) {
+    .layout {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+}
+
+@media (max-width: 620px) {
+    .page {
+        padding: 22px 16px 36px;
+    }
+
+    .title {
+        font-size: 26px;
+    }
+
+    .faqSection {
+        padding: 18px;
+    }
+}

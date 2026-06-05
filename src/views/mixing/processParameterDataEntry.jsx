@@ -541,7 +541,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Type</label>
           <select
-            className={topFieldClass}
+            className={`${topFieldClass} dfk-type-select`}
             value={selectedTypeName}
             onChange={(event) => onTypeChange?.(event.target.value)}
           >

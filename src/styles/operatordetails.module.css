@@ -63,12 +63,19 @@
   color: #101828;
 }
 
-.ticket-card,
-.timeline-card-wrap {
+.ticket-card {
   background: #ffffff;
   border: 1px solid #ebebeb;
   border-radius: 14px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+}
+
+.timeline-card-wrap {
+  background: #000000;
+  border: 1px solid #000000;
+  border-radius: 14px;
+  box-shadow: none;
+  color: #ffffff;
 }
 
 .ticket-card {
@@ -350,12 +357,14 @@
   width: 18px;
   height: 18px;
   object-fit: contain;
+  background: #000000;
 }
 
 .timeline-comment-icon {
   width: 18px;
   height: 18px;
   color: #4d58b3;
+  background: #000000;
 }
 
 .timeline-line {
@@ -526,13 +535,33 @@
 }
 
 :global(:root[data-theme="dark"]) .ticket-card,
-:global(:root[data-theme="dark"]) .timeline-card-wrap,
 :global(:root[data-theme="dark"]) .mobile-ticket-card,
 :global(:root[data-theme="dark"]) .popup-modal {
   border-color: #5f5f5f;
   background: #3b3b3b;
   color: #ffffff;
   box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .timeline-card-wrap {
+  border-color: #000000;
+  background: #000000;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .timeline-title,
+:global(:root[data-theme="dark"]) .timeline-list,
+:global(:root[data-theme="dark"]) .timeline-item,
+:global(:root[data-theme="dark"]) .timeline-time,
+:global(:root[data-theme="dark"]) .timeline-rail,
+:global(:root[data-theme="dark"]) .timeline-content {
+  background: transparent;
+}
+
+:global(:root[data-theme="dark"]) .timeline-icon,
+:global(:root[data-theme="dark"]) .timeline-comment-icon {
+  background: #000000;
 }
 
 :global(:root[data-theme="dark"]) .ticket-id,

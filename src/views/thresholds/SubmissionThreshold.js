@@ -508,6 +508,32 @@ export default function SubmissionThreshold() {
   }, [canAccessPage, dispatch, isHydrated, router]);
 
   useEffect(() => {
+    if (!router.isReady || !availableDepartments.length) return;
+
+    const departmentSlug = String(router.query.department || "").trim();
+    const subDepartmentSlug = String(router.query.subDepartment || "").trim();
+    const screenName = String(router.query.screenName || "").trim();
+    if (!departmentSlug && !subDepartmentSlug && !screenName) return;
+
+    const matchedDepartment = availableDepartments.find((item) => item.slug === departmentSlug);
+    const matchedSubDepartment = matchedDepartment?.subDepartments?.find(
+      (item) => item.slug === subDepartmentSlug
+    );
+
+    setActiveTab("new");
+    setSelectedDepartmentSlug(matchedDepartment?.slug || "");
+    setRules((current) => [
+      {
+        ...(current[0] || createRule()),
+        subDepartmentSlug: matchedSubDepartment?.slug || "",
+        screenName,
+      },
+    ]);
+    setError("Create a submission threshold first before creating an acknowledgement threshold.");
+    setMessage("");
+  }, [availableDepartments, router.isReady, router.query.department, router.query.screenName, router.query.subDepartment]);
+
+  useEffect(() => {
     const handleOutsideClick = (event) => {
       const actionMenu = event.target.closest("[data-submission-menu]");
       if (!actionMenu) {
