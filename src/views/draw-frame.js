@@ -28,6 +28,7 @@ import uPercentStyles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { formatEntryId } from "@/utils/entryIds";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
@@ -1324,6 +1325,30 @@ function DrawFrame() {
         })
       ).then((result) => {
         if (submitDrawFrameUqcInspection.fulfilled.match(result)) {
+          recordSubmittedNotebook({
+            department: "Quality Control",
+            subDepartment: "Draw Frame",
+            notebookName: form.type,
+            entryId,
+            previewItems: buildPreviewItems,
+            user,
+            extra: {
+              submitted_fields: {
+                entry_id: entryId,
+                entry_type: form.type,
+                entry_date: uPercentForm.date,
+                shift: uPercentForm.shift,
+                variety: uPercentForm.variety,
+                department: uPercentForm.department,
+                mc_no: uPercentForm.mcNo,
+                u_percent: uPercentForm.uPercent,
+                cvm: uPercentForm.cvm,
+                cvm_1m: uPercentForm.oneMeterCvm,
+                cvm_3m: uPercentForm.threeMeterCvm,
+                remarks: uPercentForm.remarks,
+              },
+            },
+          }).catch((error) => console.error("Submitted notebook creation failed:", error));
           dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
         }
       });
@@ -1339,6 +1364,23 @@ function DrawFrame() {
           rawRows: aPercentRawOcrRows,
           meta: aPercentMeta,
         }));
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: buildPreviewItems,
+          user,
+          extra: {
+            submitted_fields: buildAPercentPayload({
+              entryId,
+              file: aPercentFile,
+              rows: aPercentOcrRows,
+              rawRows: aPercentRawOcrRows,
+              meta: aPercentMeta,
+            }),
+          },
+        });
         reserveEntryId();
         setShowSuccess(true);
       } catch (submitError) {
@@ -1386,7 +1428,24 @@ function DrawFrame() {
           },
         };
 
-    dispatch(isCots ? submitDrawFrameCotsInspection(payload) : submitDrawFrameYarnCvInspection(payload));
+    dispatch(isCots ? submitDrawFrameCotsInspection(payload) : submitDrawFrameYarnCvInspection(payload))
+      .then((result) => {
+        const fulfilled = isCots
+          ? submitDrawFrameCotsInspection.fulfilled.match(result)
+          : submitDrawFrameYarnCvInspection.fulfilled.match(result);
+        if (!fulfilled) return;
+        recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: buildPreviewItems,
+          user,
+          extra: {
+            submitted_fields: payload,
+          },
+        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+      });
   };
 
   const openPreview = () => {

@@ -206,7 +206,9 @@ export const submitDrawFrameUqcInspection = async (payload) => {
 export const submitDrawFrameAPercentInspection = async (payload) => {
     const endpoints = [
         "/drawframe/a-percent",
+        "/api/drawframe/a-percent",
         "/drawframe/a-percent-inspection",
+        "/api/drawframe/a-percent-inspection",
         "/drawframe/wrapping/a-percent",
         "/drawframe/wrapping/drawframe/a-percent",
     ];
@@ -230,29 +232,53 @@ export const submitWrappingOcrPercentInspection = async (docType, payload) => {
     const endpointMap = {
         strech: [
             "/drawframe/stretch-percent",
+            "/api/drawframe/stretch-percent",
             "/drawframe/stretch-percent-inspection",
+            "/api/drawframe/stretch-percent-inspection",
             "/drawframe/wrapping/stretch-percent",
             "/drawframe/wrapping/stretch-percentage",
             "/drawframe/wrapping/drawframe/stretch-percent",
         ],
         stretch: [
             "/drawframe/stretch-percent",
+            "/api/drawframe/stretch-percent",
             "/drawframe/stretch-percent-inspection",
+            "/api/drawframe/stretch-percent-inspection",
             "/drawframe/wrapping/stretch-percent",
             "/drawframe/wrapping/stretch-percentage",
             "/drawframe/wrapping/drawframe/stretch-percent",
         ],
         noils: [
             "/drawframe/comber-noil-percent",
+            "/api/drawframe/comber-noil-percent",
             "/drawframe/noil-percent",
+            "/api/drawframe/noil-percent",
             "/drawframe/wrapping/comber-noil-percent",
             "/drawframe/wrapping/noil-percent",
         ],
         noil: [
             "/drawframe/comber-noil-percent",
+            "/api/drawframe/comber-noil-percent",
             "/drawframe/noil-percent",
+            "/api/drawframe/noil-percent",
             "/drawframe/wrapping/comber-noil-percent",
             "/drawframe/wrapping/noil-percent",
+        ],
+        a_percent: [
+            "/drawframe/a-percent",
+            "/api/drawframe/a-percent",
+            "/drawframe/a-percent-inspection",
+            "/api/drawframe/a-percent-inspection",
+            "/drawframe/wrapping/a-percent",
+            "/drawframe/wrapping/drawframe/a-percent",
+        ],
+        "a-percent": [
+            "/drawframe/a-percent",
+            "/api/drawframe/a-percent",
+            "/drawframe/a-percent-inspection",
+            "/api/drawframe/a-percent-inspection",
+            "/drawframe/wrapping/a-percent",
+            "/drawframe/wrapping/drawframe/a-percent",
         ],
     };
     const endpoints = endpointMap[normalizedDocType] || endpointMap.strech;

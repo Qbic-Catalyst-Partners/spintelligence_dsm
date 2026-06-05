@@ -154,28 +154,28 @@
 }
 
 .confirm {
-  background: #2563eb;
+  background: #3d539f;
   color: #fff;
-  border: 1px solid #2563eb;
+  border: 1px solid #3d539f;
 }
 
 .confirm:hover {
-  background: #1d4ed8;
+  background: #34488e;
 }
 
 :global(:root[data-theme="dark"]) .confirm,
 :global(html[data-theme="dark"]) .confirm,
 :global(body[data-theme="dark"]) .confirm {
-  background: #2563eb !important;
-  border-color: #2563eb !important;
+  background: #3d539f !important;
+  border-color: #3d539f !important;
   color: #ffffff !important;
 }
 
 :global(:root[data-theme="dark"]) .confirm:hover,
 :global(html[data-theme="dark"]) .confirm:hover,
 :global(body[data-theme="dark"]) .confirm:hover {
-  background: #1d4ed8 !important;
-  border-color: #1d4ed8 !important;
+  background: #34488e !important;
+  border-color: #34488e !important;
 }
 
 @media (max-width: 768px) {

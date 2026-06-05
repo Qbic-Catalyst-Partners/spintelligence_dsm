@@ -18,6 +18,7 @@ import {
   getSimplexUqcEntries,
 } from "@/store/slices/simplex";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 const simplexTypes = [
@@ -123,6 +124,15 @@ function Simplex() {
     setShowPreview(false);
     const ok = await childRef.current?.submit?.();
     if (ok) {
+      await recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Simplex",
+        notebookName: selectedTypeName,
+        entryId,
+        childRef,
+        previewItems,
+        user,
+      });
       await reserveEntryId();
       setShowSuccess(true);
     }

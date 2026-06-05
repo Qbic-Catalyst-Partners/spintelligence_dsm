@@ -22,6 +22,7 @@ import styles from "@/styles/autoconer.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { clearAutoconerState } from "@/store/slices/autoconer";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const autoconerTypes = [
@@ -137,6 +138,16 @@ function Autoconer() {
         ? await registeredActions.submit()
         : false;
     if (ok) {
+      await recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Autoconer",
+        notebookName: selectedType,
+        entryId,
+        childRef,
+        registeredActions,
+        previewItems,
+        user,
+      });
       await reserveEntryId();
       setShowSuccess(true);
     }

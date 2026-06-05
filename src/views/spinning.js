@@ -21,6 +21,7 @@ import {
 } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
 
@@ -678,15 +679,38 @@ function SpinningDepartment() {
         return payload;
     };
 
-    const confirmSubmit = () => {
+    const confirmSubmit = async () => {
         if (isProcessParameter) {
             setShowPreview(false);
-            childRef.current?.submit?.();
+            const ok = await childRef.current?.submit?.();
+            if (ok === false) return;
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Spinning",
+                notebookName: checkingType,
+                entryId,
+                childRef,
+                previewItems,
+                user,
+            });
             return;
         }
         const payload = buildPayload();
         setShowPreview(false);
-        dispatch(submitSpinningRecord({ type: checkingType, payload }));
+        const result = await dispatch(submitSpinningRecord({ type: checkingType, payload }));
+        if (submitSpinningRecord.fulfilled.match(result)) {
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Spinning",
+                notebookName: checkingType,
+                entryId,
+                previewItems,
+                user,
+                extra: {
+                    submitted_fields: payload,
+                },
+            });
+        }
     };
 
     const handleGenerateCountChangeRows = () => {

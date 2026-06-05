@@ -5,6 +5,7 @@ import { submitWrappingOcrPercentInspection } from "@/apis/draw-frame";
 import { runOcrForDocument, runOcrJsonForDocument } from "@/apis/ocrApi";
 import styles from "@/styles/draw-frame.module.css";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
+import { buildWrappingOcrPayload } from "@/utils/wrappingOcrPayload";
 
 const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
 
@@ -162,6 +163,56 @@ const prepareOcrRows = (sourceRows = [], docType) => {
   }
 
   return prepared;
+};
+
+const buildOcrPreviewItems = ({ docType, file, rows = [], config }) => {
+  const items = [
+    { label: "PDF File", value: file?.name || "-" },
+    { label: "OCR Rows", value: rows.length ? String(rows.length) : "-" },
+  ];
+  const addValue = (label, value) => {
+    items.push({ label, value: value || "-" });
+  };
+  const addMetaValues = (metaRow, prefix = "") => {
+    config.metaFields.forEach((field) => {
+      if (field === "Table No" && prefix) return;
+      addValue(`${prefix}${field}`, getAliasedValue(metaRow, field));
+    });
+  };
+  const addRowValues = (row, rowLabel, columns) => {
+    columns.forEach((field) => {
+      addValue(`${rowLabel} - ${field}`, getAliasedValue(row, field));
+    });
+  };
+
+  if (docType === "strech") {
+    Object.entries(groupByTableNo(rows)).forEach(([tableNo, groupRows]) => {
+      const metaRow = groupRows.find((row) => rowKindIs(row, "Meta")) || {};
+      addMetaValues(metaRow, `Table ${tableNo} `);
+      groupRows.filter((row) => rowKindIs(row, "Sample")).forEach((row, index) => {
+        const sampleNo = getAliasedValue(row, "Sample No") || String(index + 1);
+        addRowValues(row, `Table ${tableNo} Sample ${sampleNo}`, config.sampleColumns);
+      });
+      groupRows.filter((row) => rowKindIs(row, "Summary")).forEach((row, index) => {
+        const label = getAliasedValue(row, "Label") || String(index + 1);
+        addRowValues(row, `Table ${tableNo} Summary ${label}`, config.summaryColumns);
+      });
+    });
+    return items;
+  }
+
+  const metaRow = rows.find((row) => rowKindIs(row, "Meta")) || {};
+  addMetaValues(metaRow);
+  rows.filter((row) => rowKindIs(row, "Sample")).forEach((row, index) => {
+    const sampleNo = getAliasedValue(row, "Sample No") || String(index + 1);
+    addRowValues(row, `Sample ${sampleNo}`, config.sampleColumns);
+  });
+  rows.filter((row) => rowKindIs(row, "Summary")).forEach((row, index) => {
+    const label = getAliasedValue(row, "Label") || String(index + 1);
+    addRowValues(row, `Summary ${label}`, config.summaryColumns);
+  });
+
+  return items;
 };
 
 function OcrFieldInput({ value, onChange, readOnly = false }) {
@@ -477,10 +528,7 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
     return Object.keys(nextErrors).length === 0;
   };
 
-  const getPreviewData = () => [
-    { label: "PDF File", value: file?.name || "-" },
-    { label: "OCR Rows", value: rows.length ? String(rows.length) : "-" },
-  ];
+  const getPreviewData = () => buildOcrPreviewItems({ docType, file, rows, config });
 
   useImperativeHandle(ref, () => ({
     clear,
