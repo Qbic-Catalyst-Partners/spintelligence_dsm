@@ -30,6 +30,7 @@ import { fetchAnalysisRankingApi, fetchL1AnalysisApi, fetchL2AnalysisApi } from 
 import { fetchUsersAPI } from "@/apis/userApi";
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
+import { notifyAdminAction } from "@/utils/adminActionNotifications";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
@@ -1806,6 +1807,10 @@ function ReportsPage() {
       setScheduledReports((currentSchedules) =>
         currentSchedules.filter((schedule) => getScheduleRecordId(schedule) !== scheduleId)
       );
+      notifyAdminAction({
+        title: "Report schedule deleted",
+        body: "A scheduled report was deleted.",
+      });
     } catch (deleteError) {
       emitGlobalFailureModal({
         message: deleteError?.response?.data?.message || deleteError.message || "Schedule could not be deleted.",
@@ -1846,7 +1851,13 @@ function ReportsPage() {
     return `${header}\n${body}`;
   };
 
-  const handleExportCsv = () => downloadFile("report.csv", buildCsv(), "text/csv;charset=utf-8");
+  const handleExportCsv = () => {
+    downloadFile("report.csv", buildCsv(), "text/csv;charset=utf-8");
+    notifyAdminAction({
+      title: "Report CSV exported",
+      body: `${department} / ${subDepartment} / ${reportType} report was exported as CSV.`,
+    });
+  };
 
   const handleExportExcel = () => {
     const tableRows = exportRows
@@ -1859,6 +1870,10 @@ function ReportsPage() {
       .map((field) => `<th>${field.label}</th>`)
       .join("")}</tr></thead><tbody>${tableRows}</tbody></table>`;
     downloadFile("report.xls", table, "application/vnd.ms-excel;charset=utf-8");
+    notifyAdminAction({
+      title: "Report Excel exported",
+      body: `${department} / ${subDepartment} / ${reportType} report was exported as Excel.`,
+    });
   };
 
   const handleExportPdf = () => {
@@ -1903,6 +1918,10 @@ function ReportsPage() {
     popup.document.close();
     popup.focus();
     popup.print();
+    notifyAdminAction({
+      title: "Report PDF exported",
+      body: `${department} / ${subDepartment} / ${reportType} report was exported as PDF.`,
+    });
   };
 
   return (

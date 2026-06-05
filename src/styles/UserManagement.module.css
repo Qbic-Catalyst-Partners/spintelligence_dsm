@@ -182,6 +182,7 @@ background: #F6F7F8;
   position: relative;
   flex: 0 1 170px;
   min-width: 0;
+  border-radius: 8px;
 }
 
 /* SELECT */
@@ -189,8 +190,11 @@ background: #F6F7F8;
   width: 100%;
   padding: 0 38px 0 38px;
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   cursor: pointer;
   color: #0f172a;
+  line-height: 40px;
 }
 
 /* ICON INSIDE SELECT */
@@ -223,6 +227,7 @@ background: #F6F7F8;
   font-size: 16px;
   color: #94a3b8;
   pointer-events: none;
+  z-index: 1;
 }
 
 /* CLEAR BUTTON */
@@ -318,8 +323,8 @@ background: #F6F7F8;
 }
 
 .roleBadge {
-  background: #e0f2fe;
-  color: #0284c7;
+  background: transparent;
+  color: #334155;
 }
 
 .levelBadge {
@@ -841,7 +846,17 @@ border-radius: 15px;
 }
 
 :global(:root[data-theme="dark"]) .inputWrapper .inputWithIcon {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  border: 1px solid #5f5f5f !important;
   border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) .selectChevron {
+  color: #ffffff !important;
+  opacity: 1;
 }
 
 :global(:root[data-theme="dark"]) .searchBox input {
@@ -852,10 +867,11 @@ border-radius: 15px;
 }
 
 :global(:root[data-theme="dark"]) .roleBadge {
-  background: #1d4f91 !important;
-  background-color: #1d4f91 !important;
+  background: transparent !important;
+  background-color: transparent !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
+  border-color: transparent !important;
 }
 
 :global(:root[data-theme="dark"]) .levelBadge {

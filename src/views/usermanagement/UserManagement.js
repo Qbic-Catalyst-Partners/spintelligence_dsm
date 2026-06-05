@@ -92,8 +92,11 @@ export default function UserManagement() {
 
   // STATUS TOGGLE
   const updateUserStatus = async (id, status) => {
-    const newStatus = status === "Active" ? "Inactive" : "Active";
-    await updateStatusAPI(id, newStatus);
+    const newStatus = String(status || "").toLowerCase() === "active" ? "Inactive" : "Active";
+    const response = await updateStatusAPI(id, newStatus);
+    if (!response?.ok) {
+      throw new Error("Account status could not be updated.");
+    }
     dispatch(fetchUsers());
   };
 

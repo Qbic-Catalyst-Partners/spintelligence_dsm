@@ -108,7 +108,7 @@ function SearchableSelect({
       />
       <button
         type="button"
-        className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-slate-400"
+        className="combo-arrow absolute right-3 top-1/2 flex -translate-y-1/2 appearance-none items-center justify-center border-0 bg-transparent p-0 text-slate-400 shadow-none"
         onClick={() => {
           if (disabled) return;
           setIsOpen((current) => {

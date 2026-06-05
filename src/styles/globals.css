@@ -617,6 +617,60 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
   -webkit-text-fill-color: #ffffff !important;
 }
 
+.app-shell-content select:not([multiple]),
+.app-shell-content select:not([multiple]):focus,
+.app-shell-content select:not([multiple]):hover,
+select.dfk-type-select,
+select.dfk-type-select:focus,
+select.dfk-type-select:hover {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: var(--dfk-type-select-arrow) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 18px 18px !important;
+  padding-right: 2.5rem !important;
+}
+
+.app-shell-content select::-ms-expand,
+select.dfk-type-select::-ms-expand {
+  display: none;
+}
+
+:root[data-theme="dark"] .app-shell-content select:not([multiple]),
+:root[data-theme="dark"] .app-shell-content select:not([multiple]):focus,
+:root[data-theme="dark"] .app-shell-content select:not([multiple]):hover {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: var(--dfk-type-select-arrow) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 18px 18px !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .app-shell-content .combo-arrow,
+:root[data-theme="dark"] .app-shell-content .combo-arrow:hover,
+:root[data-theme="dark"] .app-shell-content .combo-arrow:focus {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .combo-arrow,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .combo-arrow:hover,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .combo-arrow:focus {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
 :root[data-theme="dark"] .app-shell-content select.dfk-type-select,
 :root[data-theme="dark"] .app-shell-content select.dfk-type-select:focus,
 :root[data-theme="dark"] .app-shell-content select.dfk-type-select:hover,
@@ -721,6 +775,32 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
   -webkit-text-fill-color: #ffffff !important;
 }
 
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple]),
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple]):hover,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple]):focus,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple]):disabled {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-color: #3b3b3b !important;
+  background-image: var(--dfk-type-select-arrow) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 18px 18px !important;
+  border-color: #5f5f5f !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  box-shadow: none !important;
+  padding-right: 2.5rem !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple]) option {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
 /* Final hard overrides for consistent dark mode across all department input screens. */
 :root[data-theme="dark"][data-input-screen="true"]:not([data-input-department="autoconer"]) .app-shell-content :is(
   [role="switch"],
@@ -776,6 +856,15 @@ input[type="date"].hide-date-picker-icon::-webkit-inner-spin-button {
   background-color: #3b3b3b !important;
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
+}
+
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple])[style*="background" i],
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content select:not([multiple])[style*="background-color" i] {
+  background-color: #3b3b3b !important;
+  background-image: var(--dfk-type-select-arrow) !important;
+  background-position: right 12px center !important;
+  background-repeat: no-repeat !important;
+  background-size: 18px 18px !important;
 }
 
 /* Keep OCR upload button blue across all screens/themes. */

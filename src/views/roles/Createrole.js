@@ -107,12 +107,12 @@ export default function CreateRole() {
           </div>
 
           <div className={styles["rolepage-cardscreen"]}>
-            <div className={styles["rolepage-screenheader"]}>
-              <div className={styles["rolepage-screentitle"]}>
+            <div className={`${styles["rolepage-screenheader"]} ${styles["rolepage-accessbar"]}`}>
+              <div className={`${styles["rolepage-screentitle"]} ${styles["rolepage-accesslabel"]}`}>
                 <img src="/Screen.png" />
                 Screen Access
               </div>
-              <div className={styles["rolepage-selectallrow"]}>
+              <div className={styles["rolepage-allaccessrow"]}>
                 <input
                   type="checkbox"
                   className={styles["checkbox"]}
@@ -146,7 +146,10 @@ export default function CreateRole() {
           >
             Cancel
           </button>
-          <button className={styles["rolepage-btnsave"]} onClick={handleCreateRole}>
+          <button
+            className={`${styles["rolepage-btnsave"]} create-role-submit-button`}
+            onClick={handleCreateRole}
+          >
             Create Role
           </button>
         </div>
