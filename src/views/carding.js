@@ -20,6 +20,7 @@ import brWasteStyles from "@/styles/brWasteStudyEntry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
@@ -160,6 +161,16 @@ function Carding() {
         setShowPreview(false);
         const ok = await childRef.current?.submit?.();
         if (ok) {
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Carding",
+                notebookName: selectedType,
+                entryId,
+                lotNo,
+                childRef,
+                previewItems,
+                user,
+            });
             await reserveEntryId();
             setShowSuccess(true);
         }

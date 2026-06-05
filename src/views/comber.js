@@ -13,6 +13,7 @@ import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
 import { clearComberState, submitComberUqc } from "@/store/slices/comber";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 
@@ -110,6 +111,15 @@ function Comber() {
         try {
             const ok = await childRef.current?.submit?.();
             if (ok) {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Comber",
+                    notebookName: selectedType,
+                    entryId,
+                    childRef,
+                    previewItems,
+                    user,
+                });
                 await reserveEntryId();
                 setShowSuccess(true);
             }

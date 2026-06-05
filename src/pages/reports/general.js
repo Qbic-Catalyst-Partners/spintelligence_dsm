@@ -87,6 +87,34 @@ const downloadFile = (filename, content, type) => {
   window.URL.revokeObjectURL(url);
 };
 
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+const loadExcelJS = async () => {
+  const excelJSImport = await import("exceljs");
+  return excelJSImport?.default || excelJSImport;
+};
+
+const getWorksheetName = (name, index, usedNames) => {
+  const fallbackName = `Report ${index + 1}`;
+  const baseName =
+    String(name || fallbackName)
+      .replace(/[:\\/?*[\]]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 31) || fallbackName;
+  let sheetName = baseName;
+  let suffix = 2;
+
+  while (usedNames.has(sheetName)) {
+    const suffixText = ` ${suffix}`;
+    sheetName = `${baseName.slice(0, 31 - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+
+  usedNames.add(sheetName);
+  return sheetName;
+};
+
 export default function GeneralReport() {
   const router = useRouter();
   const [fromDate, setFromDate] = useState(toInputDate(today));
@@ -278,20 +306,39 @@ export default function GeneralReport() {
     downloadFile(getReportFilename("csv"), lines.join("\r\n"), "text/csv;charset=utf-8");
   };
 
-  const handleExportExcel = () => {
-    const sectionsHtml = reportSections
-      .map((section) => {
-        const headerCells = section.fields.map((field) => `<th>${escapeHtml(field.label)}</th>`).join("");
-        const bodyRows = section.rows.length
-          ? section.rows
-              .map((row) => `<tr>${section.fields.map((field) => `<td>${escapeHtml(getCellValue(row, field))}</td>`).join("")}</tr>`)
-              .join("")
-          : `<tr><td colspan="${Math.max(section.fields.length, 1)}">No data stored for the selected date.</td></tr>`;
-        return `<h2>${escapeHtml(section.typeName)}</h2><table><thead><tr>${headerCells || "<th>Report Data</th>"}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-      })
-      .join("<br />");
-    const html = `<!doctype html><html><head><meta charset="utf-8" /></head><body>${sectionsHtml}</body></html>`;
-    downloadFile(getReportFilename("xls"), html, "application/vnd.ms-excel;charset=utf-8");
+  const handleExportExcel = async () => {
+    try {
+      const ExcelJS = await loadExcelJS();
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Spintelligence";
+      const usedSheetNames = new Set();
+
+      reportSections.forEach((section, index) => {
+        const fields = section.fields.length ? section.fields : [{ key: "__report_data", label: "Report Data" }];
+        const sheet = workbook.addWorksheet(getWorksheetName(section.typeName, index, usedSheetNames));
+        sheet.addRow(fields.map((field) => field.label));
+
+        if (section.rows.length && section.fields.length) {
+          section.rows.forEach((row) => {
+            sheet.addRow(fields.map((field) => getCellValue(row, field)));
+          });
+        } else {
+          sheet.addRow(["No data stored for the selected date."]);
+        }
+
+        sheet.getRow(1).font = { bold: true };
+        sheet.columns = fields.map((field) => ({
+          header: field.label,
+          key: field.key,
+          width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
+        }));
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      downloadFile(getReportFilename("xlsx"), buffer, XLSX_MIME);
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const handleExportPdf = () => {

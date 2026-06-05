@@ -15,6 +15,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 
@@ -189,9 +190,24 @@ function Mixing() {
         setShowPreview(true);
     };
 
-    const confirmSubmit = () => {
+    const confirmSubmit = async () => {
         setShowPreview(false);
-        childRef.current?.submit?.();
+        try {
+            const ok = await childRef.current?.submit?.();
+            if (ok === false) return;
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                notebookName: selectedTypeName,
+                entryId,
+                lotNo,
+                childRef,
+                previewItems,
+                user,
+            });
+        } catch (error) {
+            console.error("Submitted notebook creation failed:", error);
+        }
     };
 
     const handleSuccessClose = () => {
@@ -208,8 +224,17 @@ function Mixing() {
         if (!raw) return;
         try {
             const payload = JSON.parse(raw);
-            if (payload?.screen === "mixing" && payload?.docType && (payload?.result || payload?.values)) {
-                setSelectedTypeName(payload.docType === "afis" ? "AFIS Data Entry" : "Cotton HVI Data Entry");
+            if (payload?.screen && payload?.docType && (payload?.result || payload?.values)) {
+                const normalizedScreen = String(payload.screen || "").trim().toLowerCase();
+                const matchingType = mixingDepartmentTypes.find((item) =>
+                    item.name.toLowerCase() === normalizedScreen ||
+                    item.aliases.some((alias) => alias.toLowerCase() === normalizedScreen)
+                );
+                if (matchingType) {
+                    setSelectedTypeName(matchingType.name);
+                } else {
+                    setSelectedTypeName(payload.docType === "afis" ? "AFIS Data Entry" : "Cotton HVI Data Entry");
+                }
                 setPendingOcrValues(payload.result || payload.values);
             }
         } catch {}
@@ -257,7 +282,12 @@ function Mixing() {
                                     <span className="text-[#3d539f] text-xl leading-none">&#8801;&#9998;</span>
                                     <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
                                 </div>
-                                <InputScreenUploadButton disabled={ocrBusy} returnTo="/mixing" docType={selectedTypeName === "AFIS Data Entry" ? "afis" : "hvi"} />
+                                <InputScreenUploadButton
+                                    disabled={ocrBusy}
+                                    returnTo="/mixing"
+                                    docType={selectedTypeName === "AFIS Data Entry" ? "afis" : "hvi"}
+                                    screenName={selectedTypeName}
+                                />
                             </div>
 
                             <div className="flex flex-col gap-4">

@@ -242,10 +242,18 @@
 }
 
 .statisticsTopFilters {
-  display: grid;
-  justify-items: start;
-  gap: 12px;
+  width: 100%;
   margin: 0 0 24px;
+  border: 1px solid #d9dde5;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 18px 26px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  box-sizing: border-box;
 }
 
 .statisticsCustomDates {
@@ -496,9 +504,13 @@
 
 .performanceControlsLeft {
   display: grid;
-  grid-template-columns: repeat(2, 166px);
+  grid-template-columns: repeat(4, 166px);
   gap: 10px;
   align-items: end;
+}
+
+.statisticsControlsLeft {
+  grid-template-columns: repeat(3, 166px);
 }
 
 .performanceControlsRight {
@@ -1002,7 +1014,8 @@
   .departmentFilterCard { grid-template-columns: 1fr; }
   .performanceFilterCard { grid-template-columns: 1fr; }
   .performanceControlsCard { align-items: stretch; flex-direction: column; }
-  .performanceControlsLeft { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .performanceControlsLeft,
+  .statisticsControlsLeft { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .performanceControlsRight { justify-items: start; }
   .statisticsGrid { grid-template-columns: 1fr; }
   .performanceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1016,6 +1029,7 @@
   .statChartHead { grid-template-columns: 1fr; }
   .statChartHead { grid-template-columns: 1fr; }
   .performanceControlsLeft,
+  .statisticsControlsLeft,
   .performanceCustomDates,
   .statisticsCustomDates { grid-template-columns: 1fr; }
   .performanceCustomDates .statisticsDateField { width: 220px; }

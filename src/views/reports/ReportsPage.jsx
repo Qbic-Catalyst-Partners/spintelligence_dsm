@@ -804,6 +804,13 @@ const downloadFile = (filename, content, type) => {
   URL.revokeObjectURL(url);
 };
 
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+const loadExcelJS = async () => {
+  const excelJSImport = await import("exceljs");
+  return excelJSImport?.default || excelJSImport;
+};
+
 const escapePdfText = (value) =>
   String(value ?? "")
     .replace(/[^\x20-\x7E]/g, " ")
@@ -1859,21 +1866,37 @@ function ReportsPage() {
     });
   };
 
-  const handleExportExcel = () => {
-    const tableRows = exportRows
-      .map(
-        (row) =>
-          `<tr>${selectedFields.map((field) => `<td>${getCellValue(row, field)}</td>`).join("")}</tr>`
-      )
-      .join("");
-    const table = `<table><thead><tr>${selectedFields
-      .map((field) => `<th>${field.label}</th>`)
-      .join("")}</tr></thead><tbody>${tableRows}</tbody></table>`;
-    downloadFile("report.xls", table, "application/vnd.ms-excel;charset=utf-8");
-    notifyAdminAction({
-      title: "Report Excel exported",
-      body: `${department} / ${subDepartment} / ${reportType} report was exported as Excel.`,
-    });
+  const handleExportExcel = async () => {
+    try {
+      const ExcelJS = await loadExcelJS();
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Spintelligence";
+      const sheet = workbook.addWorksheet("Report");
+      const fields = selectedFields.length ? selectedFields : [{ key: "__report_data", label: "Report Data" }];
+
+      sheet.addRow(fields.map((field) => field.label));
+      if (exportRows.length && selectedFields.length) {
+        exportRows.forEach((row) => {
+          sheet.addRow(fields.map((field) => getCellValue(row, field)));
+        });
+      } else {
+        sheet.addRow(["No report details found."]);
+      }
+
+      sheet.getRow(1).font = { bold: true };
+      sheet.columns = fields.map((field) => ({
+        header: field.label,
+        key: field.key,
+        width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
+      }));
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      downloadFile("report.xlsx", buffer, XLSX_MIME);
+    } catch (error) {
+      emitGlobalFailureModal({
+        message: error.message || "Excel export failed.",
+      });
+    }
   };
 
   const handleExportPdf = () => {

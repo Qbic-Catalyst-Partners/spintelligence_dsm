@@ -1,0 +1,10 @@
+
+> spintelligence-frontend-beta1@0.1.0 dev
+> next dev --port 3002
+
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3002
+- Network:       http://192.168.1.13:3002
+- Environments: .env.local, .env
+✓ Ready in 1097ms
+[?25h

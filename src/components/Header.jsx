@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiBell,
-    FiBookOpen,
+    FiBriefcase,
     FiCalendar,
     FiCheck,
     FiChevronDown,
@@ -32,6 +32,7 @@ import {
     hasReportAccess,
     hasSubDepartmentAccess,
     isFullAccessUser,
+    isSubmittedNotebookManagerUser,
     isSupervisorNavUser,
     routeDepartmentMap,
 } from "@/utils/accessControl";
@@ -55,8 +56,9 @@ const sidebarLinks = [
     { href: "/departments/quality-control", label: "Sub-department", icon: FiGrid, section: "departments" },
     { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
     { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
+    { href: "/statistics-analysis", label: "Analytics Hub", icon: FiCalendar, section: "calendars" },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
-    { href: "/l1-analysis", label: "Insights & Analytics", icon: FiCalendar, section: "calendars" },
+    { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
     { href: "/reports", label: "Reports", icon: FiFileText, section: "reports" },
     { href: "/activity-log", label: "Activity Log", icon: FiClock },
     { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true, section: "thresholds" },
@@ -84,9 +86,15 @@ const ticketingLinks = [
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
+const managementHubLinks = [
+    { href: "/submitted-notebooks", label: "Submitted Notebooks" },
+    { href: "/submitted-notebook-threshold", label: "Submission Threshold" },
+];
 const analyticsHubLinks = [
-    { href: "/l1-analysis", label: "Statistics Analytics" },
-    { href: "/l2-analysis", label: "Team Performance" },
+    { href: "/statistics-analysis", label: "Statistics Analytics" },
+    { href: "/l1-analysis", label: "Team Performance" },
+    { href: "/l1-analysis", label: "L1 Team Performance" },
+    { href: "/l2-analysis", label: "L2 Team Performance" },
 ];
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
@@ -107,8 +115,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
     const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+    const [isManagementHubOpen, setIsManagementHubOpen] = useState(false);
     const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
-    const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
+    const [isAnalyticsHubOpen, setIsAnalyticsHubOpen] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -120,6 +129,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
+    const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
     const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const defaultTicketingRoute = getDefaultTicketingRoute(user);
@@ -158,7 +168,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         if (link.section === "tickets") {
             return hasTicketingHubAccess || visibleHrefSet.has("/operator");
         }
-        if (link.section === "calendars") {
+        if (link.section === "management") {
+            return hasSubmittedNotebookAccess;
+        }
+        if (link.section === "teamPerformance") {
             return hasAnalyticsHubAccess || visibleHrefSet.has("/l1-analysis") || visibleHrefSet.has("/l2-analysis");
         }
 
@@ -241,6 +254,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return currentPath === "/ticket-calendar-l2";
         }
 
+        if (href === "/submitted-notebooks") {
+            return currentPath === "/submitted-notebooks";
+        }
+
+        if (href === "/submitted-notebook-threshold") {
+            return currentPath === "/submitted-notebook-threshold";
+        }
+
         if (href === "/settings") {
             return currentPath === "/settings" || currentPath.startsWith("/settings/");
         }
@@ -281,6 +302,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             const nextIsOpen = !isOpen;
             if (nextIsOpen && router.asPath?.split("?")[0] !== defaultTicketingRoute) {
                 router.push(defaultTicketingRoute);
+            }
+            return nextIsOpen;
+        });
+    };
+    const handleManagementHubClick = () => {
+        setIsManagementHubOpen((isOpen) => {
+            const nextIsOpen = !isOpen;
+            if (nextIsOpen && router.asPath?.split("?")[0] !== "/submitted-notebooks") {
+                router.push("/submitted-notebooks");
             }
             return nextIsOpen;
         });
@@ -442,7 +472,12 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/ticket-calendar" ||
             currentPath === "/ticket-calendar-l2"
         );
-        setOpenAnalyticsHub(
+        setIsManagementHubOpen(
+            currentPath === "/submitted-notebooks" ||
+            currentPath === "/submitted-notebook-threshold"
+        );
+        setIsAnalyticsHubOpen(
+            currentPath === "/statistics-analysis" ||
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );
@@ -502,7 +537,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         const currentPath = router.asPath?.split("?")[0] || router.pathname;
                         const isThresholdGroup = link.section === "thresholds";
                         const isTicketingGroup = link.section === "tickets";
+                        const isManagementGroup = link.section === "management";
                         const isReportsGroup = link.section === "reports";
+                        const isAnalyticsHubGroup = link.section === "calendars";
                         const isThresholdGroupActive = isThresholdGroup && (
                             currentPath === "/threshold-values" ||
                             currentPath.startsWith("/threshold-values/") ||
@@ -514,10 +551,19 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath.startsWith("/operator/") ||
                             currentPath === "/operatordash" ||
                             currentPath.startsWith("/operatordetail") ||
-                            currentPath === "/supervisordashboard" ||
-                            currentPath === "/supervisordetails" ||
-                            currentPath === "/ticket-calendar" ||
-                            currentPath === "/ticket-calendar-l2"
+            currentPath === "/supervisordashboard" ||
+            currentPath === "/supervisordetails" ||
+            currentPath === "/ticket-calendar" ||
+            currentPath === "/ticket-calendar-l2"
+        );
+                        const isManagementGroupActive = isManagementGroup && (
+                            currentPath === "/submitted-notebooks" ||
+                            currentPath === "/submitted-notebook-threshold"
+                        );
+                        const isAnalyticsHubGroupActive = isAnalyticsHubGroup && (
+                            currentPath === "/statistics-analysis" ||
+                            currentPath === "/l1-analysis" ||
+                            currentPath === "/l2-analysis"
                         );
                         const isReportsGroupActive = isReportsGroup && (
                             currentPath === "/reports" ||
@@ -528,9 +574,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                 ? isThresholdGroupActive
                                 : isTicketingGroup
                                     ? isTicketingGroupActive
-                                    : isReportsGroup
-                                        ? isReportsGroupActive
-                                    : isActiveLink(link.href))
+                                    : isManagementGroup
+                                        ? isManagementGroupActive
+                                        : isAnalyticsHubGroup
+                                            ? isAnalyticsHubGroupActive
+                                            : isReportsGroup
+                                                ? isReportsGroupActive
+                                                : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
                         }`;
@@ -674,24 +724,55 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                 </div>
                             );
                         }
-                        if (link.section === "calendars" && hasFullAccess) {
+                        if (link.section === "management" && hasSubmittedNotebookAccess) {
                             return (
                                 <div key={link.href} className={styles["side-nav-group"]}>
                                     <button
                                         type="button"
                                         className={`${linkClassName} ${styles["side-nav-button"]}`}
-                                        aria-expanded={openAnalyticsHub}
-                                        title={isSidebarCollapsed ? "Analytics Hub" : undefined}
-                                        onClick={() => setOpenAnalyticsHub((v) => !v)}
+                                        aria-expanded={isManagementHubOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={handleManagementHubClick}
                                     >
-                                        <FiCalendar className={styles["side-nav-icon"]} />
-                                        <span className={styles["side-nav-label"]}>Analytics Hub</span>
-                                        <FiChevronDown className={`${styles["department-chevron"]} ${openAnalyticsHub ? styles["department-chevron-open"] : ""}`} />
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isManagementHubOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
-                                    <div className={`${styles["side-subnav"]} ${openAnalyticsHub ? styles["side-subnav-open"] : ""}`}>
+                                    <div className={`${styles["side-subnav"]} ${isManagementHubOpen ? styles["side-subnav-open"] : ""}`}>
+                                        {managementHubLinks.map((managementLink) => (
+                                            <Link
+                                                key={managementLink.href}
+                                                href={managementLink.href}
+                                                className={`${styles["side-subnav-link"]} ${isActiveLink(managementLink.href) ? styles["side-subnav-active"] : ""}`}
+                                            >
+                                                {managementLink.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        }
+                        if (link.section === "calendars" && hasAnalyticsHubAccess) {
+                            return (
+                                <div key={link.href} className={styles["side-nav-group"]}>
+                                    <button
+                                        type="button"
+                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
+                                        aria-expanded={isAnalyticsHubOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={() => {
+                                            setIsAnalyticsHubOpen((v) => !v);
+                                            if (!isAnalyticsHubOpen && router.asPath?.split("?")[0] !== "/statistics-analysis") {
+                                                router.push("/statistics-analysis");
+                                            }
+                                        }}
+                                    >
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isAnalyticsHubOpen ? styles["department-chevron-open"] : ""}`} />
+                                    </button>
+                                    <div className={`${styles["side-subnav"]} ${isAnalyticsHubOpen ? styles["side-subnav-open"] : ""}`}>
                                         {analyticsHubLinks.map((item) => (
                                             <Link
-                                                key={item.href}
+                                                key={`${item.href}-${item.label}`}
                                                 href={item.href}
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
                                             >
