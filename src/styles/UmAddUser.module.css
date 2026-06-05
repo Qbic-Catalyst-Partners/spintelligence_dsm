@@ -165,20 +165,20 @@
 
 
 .security {
- 
   width: 467px;
-  height: 144px;
+  min-height: 144px;
 
   margin: 0 24px 20px 24px;
   background: #F8FAFC;
 
-  padding: 14px 16px;
+  padding: 16px 18px 18px;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
+  box-sizing: border-box;
 
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 /* TITLE */
@@ -187,19 +187,19 @@
   font-weight: 600;
   color: #3D539F;
 
-  margin-bottom: 10px;
+  margin: 0 0 14px;
   letter-spacing: 0.5px;
+  line-height: 1;
 }
 
 /* LIST */
 .securityList {
   list-style: none;
-  padding: 0;
   margin: 0;
   background: transparent;
   border: none;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 0 10px;
   box-shadow: none;
 }
 
@@ -209,10 +209,15 @@
   gap: 8px;
   font-size: 12px;
   color: #64748b;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  line-height: 1.2;
   background: transparent;
   border: none;
   box-shadow: none;
+}
+
+.securityList li:last-child {
+  margin-bottom: 0;
 }
 
 /* ICON */
@@ -303,9 +308,15 @@
 :global(:root[data-theme="dark"]) .topNavbar,
 :global(:root[data-theme="dark"]) .card,
 :global(:root[data-theme="dark"]) .cardHeader,
-:global(:root[data-theme="dark"]) .security,
 :global(:root[data-theme="dark"]) .footer {
   background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .security {
+  background: transparent;
   border-color: #5f5f5f;
   color: #ffffff;
   box-shadow: none;
@@ -323,10 +334,10 @@
 }
 
 :global(:root[data-theme="dark"]) .securityList {
-  background: #3b3b3b !important;
-  background-color: #3b3b3b !important;
-  border: 1px solid #5f5f5f !important;
-  border-color: #5f5f5f !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-color: transparent !important;
 }
 
 :global(:root[data-theme="dark"]) .securityList li {

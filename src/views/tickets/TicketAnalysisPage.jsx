@@ -293,7 +293,7 @@ function MiniAreaChart({ title, values, labels }) {
         <path d={linePath} className={styles.statChartLine} />
         {points.map((point, index) => (
           <g key={`${title}-${index}`}>
-            <circle cx={point.x} cy={point.y} r="4" className={styles.statChartPoint} />
+            <circle cx={point.x} cy={point.y} r="2.25" className={styles.statChartPoint} />
             <text x={point.x} y="144" textAnchor="middle" className={styles.statChartDay}>{labels[index]}</text>
           </g>
         ))}

@@ -972,6 +972,10 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
 
   const linePolyline = useMemo(() => lineChartPoints.map((point) => `${point.x},${point.y}`).join(" "), [lineChartPoints]);
   const lineArea = `${lineChartPoints[0]?.x || 0},100 ${linePolyline} ${lineChartPoints[lineChartPoints.length - 1]?.x || 100},100`;
+  const visibleLinePoints = useMemo(
+    () => lineChartPoints.filter((point) => lineChartPoints.length <= 8 || point.value > 0),
+    [lineChartPoints]
+  );
 
   return (
     <article className={`${styles.referenceChartCard} ${styles.referenceLineCard}`}>
@@ -999,7 +1003,7 @@ function PerformanceLineCard({ widget, data, activeMode, setActiveMode }) {
             <polygon points={lineArea} />
             <polyline points={linePolyline} />
           </svg>
-          {lineChartPoints.map((point, idx) => (
+          {visibleLinePoints.map((point, idx) => (
             <span
               key={`${point.label}-${idx}`}
               className={styles.referenceLinePoint}

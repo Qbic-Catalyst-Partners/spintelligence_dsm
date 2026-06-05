@@ -1,16 +1,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiBell,
+    FiBookOpen,
     FiCalendar,
+    FiCheck,
     FiChevronDown,
     FiChevronLeft,
+    FiClock,
     FiFileText,
     FiGrid,
     FiHeadphones,
+    FiHelpCircle,
     FiHome,
     FiLogOut,
     FiMoon,
@@ -33,11 +37,14 @@ import {
 } from "@/utils/accessControl";
 import { useThemeMode } from "@/utils/useThemeMode";
 import {
-    fetchAnalysisNotificationsApi,
     fetchAnalysisSubscriptionsApi,
-    markAnalysisNotificationReadApi,
     saveAnalysisSubscriptionApi,
 } from "@/apis/analysisApi";
+import {
+    fetchNotificationsApi,
+    markAllNotificationsReadApi,
+    markNotificationReadApi,
+} from "@/apis/notificationsApi";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -51,6 +58,7 @@ const sidebarLinks = [
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/l1-analysis", label: "Insights & Analytics", icon: FiCalendar, section: "calendars" },
     { href: "/reports", label: "Reports", icon: FiFileText, section: "reports" },
+    { href: "/activity-log", label: "Activity Log", icon: FiClock },
     { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true, section: "thresholds" },
     { href: "/settings", label: "Settings", icon: FiSettings, admin: true, section: "settings" },
 ];
@@ -102,7 +110,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
     const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-    const [analysisNotifications, setAnalysisNotifications] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
     const [analysisSubscribed, setAnalysisSubscribed] = useState(true);
     const [notificationsLoading, setNotificationsLoading] = useState(false);
     const notificationMenuRef = useRef(null);
@@ -177,6 +186,23 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         : ticketingLinks;
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
+
+    const loadNotifications = useCallback(async ({ showLoading = false } = {}) => {
+        if (!user?.id) return;
+        if (showLoading) setNotificationsLoading(true);
+
+        try {
+            const notificationsRes = await fetchNotificationsApi({ page: 1, limit: 20 });
+            const rows = Array.isArray(notificationsRes?.notifications) ? notificationsRes.notifications : [];
+            setNotifications(rows);
+            setNotificationUnreadCount(Number(notificationsRes?.unread_count) || rows.filter((item) => item?.is_unread).length);
+        } catch {
+            setNotifications([]);
+            setNotificationUnreadCount(0);
+        } finally {
+            if (showLoading) setNotificationsLoading(false);
+        }
+    }, [user?.id]);
 
     const isActiveLink = (href) => {
         if (!href) {
@@ -287,7 +313,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         let mounted = true;
         setNotificationsLoading(true);
 
-        Promise.all([fetchAnalysisNotificationsApi(), fetchAnalysisSubscriptionsApi()])
+        Promise.all([fetchNotificationsApi({ page: 1, limit: 20 }), fetchAnalysisSubscriptionsApi()])
             .then(([notificationsRes, subscriptionsRes]) => {
                 if (!mounted) return;
                 const rows = Array.isArray(notificationsRes?.notifications) ? notificationsRes.notifications : [];
@@ -295,12 +321,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                 const activeSubscription = subscriptions.find(
                     (item) => String(item?.channel || "").toLowerCase() === "app_push" && item?.is_active !== false
                 );
-                setAnalysisNotifications(rows);
+                setNotifications(rows);
+                setNotificationUnreadCount(Number(notificationsRes?.unread_count) || rows.filter((item) => item?.is_unread).length);
                 setAnalysisSubscribed(Boolean(activeSubscription));
             })
             .catch(() => {
                 if (!mounted) return;
-                setAnalysisNotifications([]);
+                setNotifications([]);
+                setNotificationUnreadCount(0);
             })
             .finally(() => {
                 if (mounted) setNotificationsLoading(false);
@@ -311,15 +339,66 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         };
     }, [user?.id]);
 
-    const unreadCount = analysisNotifications.filter((item) => !item?.is_read).length;
+    useEffect(() => {
+        if (!user?.id) return undefined;
+        const intervalId = window.setInterval(() => {
+            loadNotifications();
+        }, 30000);
 
-    const handleMarkNotificationRead = async (notificationId) => {
-        if (!notificationId) return;
+        return () => window.clearInterval(intervalId);
+    }, [loadNotifications, user?.id]);
+
+    useEffect(() => {
+        if (isNotificationsOpen) {
+            loadNotifications({ showLoading: true });
+        }
+    }, [isNotificationsOpen, loadNotifications]);
+
+    useEffect(() => {
+        if (!user?.id) return undefined;
+
+        const handleAdminNotificationCreated = () => {
+            loadNotifications();
+        };
+
+        window.addEventListener("admin-notification-created", handleAdminNotificationCreated);
+        return () => window.removeEventListener("admin-notification-created", handleAdminNotificationCreated);
+    }, [loadNotifications, user?.id]);
+
+    const unreadCount = notificationUnreadCount;
+
+    const handleMarkNotificationRead = async (notification) => {
+        if (!notification?.id || !notification?.source) return;
+        const targetUrl = notification?.link_url || "/activity-log";
         try {
-            await markAnalysisNotificationReadApi(notificationId);
-            setAnalysisNotifications((current) =>
-                current.map((item) => (item.id === notificationId ? { ...item, is_read: true } : item))
+            await markNotificationReadApi({ source: notification.source, id: notification.id });
+            setNotifications((current) =>
+                current.map((item) => (
+                    item.id === notification.id && item.source === notification.source
+                        ? { ...item, is_unread: false, status: "READ", read_at: item.read_at || new Date().toISOString() }
+                        : item
+                ))
             );
+            setNotificationUnreadCount((current) => Math.max(0, current - (notification?.is_unread ? 1 : 0)));
+            setIsNotificationsOpen(false);
+            router.push(targetUrl);
+        } catch {
+            // no-op for non-blocking UX
+        }
+    };
+
+    const handleMarkAllNotificationsRead = async () => {
+        try {
+            await markAllNotificationsReadApi();
+            setNotifications((current) =>
+                current.map((item) => ({
+                    ...item,
+                    is_unread: false,
+                    status: "READ",
+                    read_at: item.read_at || new Date().toISOString(),
+                }))
+            );
+            setNotificationUnreadCount(0);
         } catch {
             // no-op for non-blocking UX
         }
@@ -662,23 +741,32 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     {isNotificationsOpen && (
                         <div className={styles["notification-dropdown"]}>
                             <div className={styles["notification-header"]}>
-                                <strong>Analysis Notifications</strong>
-                                <button type="button" onClick={handleToggleAnalysisSubscription}>
-                                    {analysisSubscribed ? "Mute" : "Unmute"}
-                                </button>
+                                <strong>Notifications</strong>
+                                <div className={styles["notification-actions"]}>
+                                    <button type="button" onClick={handleMarkAllNotificationsRead} disabled={!unreadCount}>
+                                        <FiCheck />
+                                        <span>Read all</span>
+                                    </button>
+                                    <button type="button" onClick={handleToggleAnalysisSubscription}>
+                                        {analysisSubscribed ? "Mute" : "Unmute"}
+                                    </button>
+                                </div>
                             </div>
                             {notificationsLoading ? (
                                 <p className={styles["notification-empty"]}>Loading...</p>
-                            ) : analysisNotifications.length ? (
+                            ) : notifications.length ? (
                                 <div className={styles["notification-list"]}>
-                                    {analysisNotifications.slice(0, 12).map((item) => (
+                                    {notifications.slice(0, 12).map((item) => (
                                         <button
                                             type="button"
-                                            key={item.id}
-                                            className={`${styles["notification-item"]} ${item?.is_read ? styles["notification-read"] : ""}`}
-                                            onClick={() => handleMarkNotificationRead(item.id)}
+                                            key={`${item.source}-${item.id}`}
+                                            className={`${styles["notification-item"]} ${item?.is_unread ? "" : styles["notification-read"]}`}
+                                            onClick={() => handleMarkNotificationRead(item)}
                                         >
-                                            <span className={styles["notification-title"]}>{item?.title || "Notification"}</span>
+                                            <span className={styles["notification-item-header"]}>
+                                                <span className={styles["notification-title"]}>{item?.title || "Notification"}</span>
+                                                <span className={styles["notification-source"]}>{item?.source === "ticket" ? "Ticket" : "Analysis"}</span>
+                                            </span>
                                             <span className={styles["notification-body"]}>{item?.body || "-"}</span>
                                         </button>
                                     ))}
@@ -719,6 +807,28 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
                     {isProfileMenuOpen && (
                         <div className={styles["profile-dropdown"]}>
+                            <button
+                                type="button"
+                                className={styles["profile-dropdown-button"]}
+                                onClick={() => {
+                                    setIsProfileMenuOpen(false);
+                                    router.push("/glossary");
+                                }}
+                            >
+                                <FiBookOpen />
+                                <span>Glossary</span>
+                            </button>
+                            <button
+                                type="button"
+                                className={styles["profile-dropdown-button"]}
+                                onClick={() => {
+                                    setIsProfileMenuOpen(false);
+                                    router.push("/faqs");
+                                }}
+                            >
+                                <FiHelpCircle />
+                                <span>FAQs</span>
+                            </button>
                             <button type="button" className={styles["logout-button"]} onClick={handleLogout}>
                                 <FiLogOut />
                                 <span>Logout</span>

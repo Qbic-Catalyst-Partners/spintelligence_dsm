@@ -425,7 +425,7 @@
 .statChartDay {
   fill: #1f2937;
   font-size: 6px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .statChartGrid {
@@ -435,6 +435,7 @@
 
 .statChartArea {
   fill: #dfe5f4;
+  stroke: none;
 }
 
 .statChartLine {
@@ -446,7 +447,7 @@
 .statChartPoint {
   fill: #ffffff;
   stroke: #4b64ad;
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 
 .statisticsError {
@@ -869,11 +870,15 @@
 :global(:root[data-theme="dark"]) .statisticsTitle,
 :global(:root[data-theme="dark"]) .statisticsDateField span,
 :global(:root[data-theme="dark"]) .performanceSelectField span,
-:global(:root[data-theme="dark"]) .statChartHead strong,
+:global(:root[data-theme="dark"]) .statChartHead strong {
+  color: #ffffff;
+}
+
 :global(:root[data-theme="dark"]) .statChartTick,
 :global(:root[data-theme="dark"]) .statChartDay {
-  color: #ffffff;
-  fill: #ffffff;
+  color: #cbd5e1;
+  fill: #cbd5e1;
+  font-weight: 400;
 }
 
 :global(:root[data-theme="dark"]) .statisticsFilterCard,
@@ -885,6 +890,31 @@
   border-color: #5f5f5f;
   background: #3b3b3b;
   box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .statChartCard {
+  background: #000000;
+}
+
+:global(:root[data-theme="dark"]) .statChartGrid {
+  stroke: rgba(226, 232, 240, 0.22) !important;
+}
+
+:global(:root[data-theme="dark"]) .statChartArea {
+  fill: rgba(54, 84, 132, 0.78) !important;
+  stroke: none !important;
+}
+
+:global(:root[data-theme="dark"]) .statChartLine {
+  fill: none !important;
+  stroke: #7ea2ff !important;
+  stroke-width: 2.5;
+}
+
+:global(:root[data-theme="dark"]) .statChartPoint {
+  fill: #000000 !important;
+  stroke: #7ea2ff !important;
+  stroke-width: 1.5;
 }
 
 :global(:root[data-theme="dark"]) .performancePanel {
