@@ -17,6 +17,7 @@ import {
   fetchL1AnalysisApi,
   fetchL2AnalysisApi,
   fetchStatisticsAnalyticsApi,
+  fetchTeamPerformanceOptionsApi,
 } from "@/apis/analysisApi";
 import { getSubmissionTickets } from "@/apis/operatorApi";
 import styles from "@/styles/ticketCalendar.module.css";
@@ -143,6 +144,33 @@ const periodToBackendPeriod = {
 };
 const formatMetricPercent = (value) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}%`;
 const normalizeLookup = (value) => String(value || "").trim().toLowerCase();
+const optionLabel = (item) =>
+  String(
+    item?.label ||
+      item?.name ||
+      item?.title ||
+      item?.notebook ||
+      item?.input_screen ||
+      item?.machine_name ||
+      item?.employee_name ||
+      item?.user_name ||
+      item ||
+      ""
+  ).trim();
+const optionValue = (item) =>
+  String(item?.value || item?.slug || item?.id || item?.employee_id || optionLabel(item)).trim();
+const normalizeOptions = (value) => {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return rows
+    .map((item) => ({ label: optionLabel(item), value: optionValue(item) }))
+    .filter((item) => {
+      const key = normalizeLookup(item.value || item.label);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
 const formatShortDay = (date) =>
   date.toLocaleDateString("en-US", { weekday: "short" });
 const formatShortDate = (date) =>
@@ -344,6 +372,11 @@ function TeamPerformanceFilter({
   setInputField,
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
+  const backendDepartments = normalizeOptions(options?.departments);
+  const backendSubDepartments = normalizeOptions(options?.sub_departments || options?.subDepartments);
+  const departmentOptions = backendDepartments.length
+    ? backendDepartments
+    : departmentDirectory.map((department) => ({ label: department.name, value: department.slug }));
   const subDepartments = selectedDepartment?.subDepartments || [];
   const notebookOptions = selectedDepartmentSlug && selectedSubDepartmentSlug
     ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
@@ -375,9 +408,9 @@ function TeamPerformanceFilter({
           <span>Department</span>
           <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
             <option value="">All Departments</option>
-            {departmentDirectory.map((department) => (
-              <option key={department.slug} value={department.slug}>
-                {department.name}
+            {departmentOptions.map((department) => (
+              <option key={department.value} value={department.value}>
+                {department.label}
               </option>
             ))}
           </select>
@@ -390,9 +423,9 @@ function TeamPerformanceFilter({
             disabled={!selectedDepartmentSlug}
           >
             <option value="">All Sub Departments</option>
-            {subDepartments.map((subDepartment) => (
-              <option key={subDepartment.slug} value={subDepartment.slug}>
-                {subDepartment.name}
+            {subDepartmentOptions.map((subDepartment) => (
+              <option key={subDepartment.value} value={subDepartment.value}>
+                {subDepartment.label}
               </option>
             ))}
           </select>
@@ -611,6 +644,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   const [inputField, setInputField] = useState("");
   const [submissionTickets, setSubmissionTickets] = useState([]);
   const [submissionError, setSubmissionError] = useState("");
+  const [teamOptions, setTeamOptions] = useState({});
   const [performanceApiData, setPerformanceApiData] = useState({
     l1: null,
     l2: null,
@@ -626,13 +660,21 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   } = useSelector((state) => state.supervisor) || {};
   const { users } = useSelector((state) => state.users) || {};
   const selectedDepartment = useMemo(
-    () => departmentDirectory.find((department) => department.slug === selectedDepartmentSlug) || null,
+    () =>
+      departmentDirectory.find(
+        (department) =>
+          department.slug === selectedDepartmentSlug ||
+          normalizeLookup(department.name) === normalizeLookup(selectedDepartmentSlug)
+      ) || (selectedDepartmentSlug ? { name: selectedDepartmentSlug, slug: selectedDepartmentSlug } : null),
     [selectedDepartmentSlug]
   );
   const selectedSubDepartment = useMemo(
     () =>
       selectedDepartment?.subDepartments?.find((subDepartment) => subDepartment.slug === selectedSubDepartmentSlug) ||
-      null,
+      selectedDepartment?.subDepartments?.find(
+        (subDepartment) => normalizeLookup(subDepartment.name) === normalizeLookup(selectedSubDepartmentSlug)
+      ) ||
+      (selectedSubDepartmentSlug ? { name: selectedSubDepartmentSlug, slug: selectedSubDepartmentSlug } : null),
     [selectedDepartment, selectedSubDepartmentSlug]
   );
 
@@ -743,6 +785,24 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
 
   useEffect(() => {
     if (mode !== "L1" && mode !== "L2") return undefined;
+
+    let isMounted = true;
+    fetchTeamPerformanceOptionsApi()
+      .then((response) => {
+        if (!isMounted) return;
+        setTeamOptions(response?.options || response?.data || response || {});
+      })
+      .catch(() => {
+        if (isMounted) setTeamOptions({});
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "L2") return undefined;
 
     let isMounted = true;
     const isCustomPeriod = performanceFilterMode === "custom";
@@ -1127,7 +1187,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     const l2ApiMetrics = performanceApiData.l2?.metrics;
     const topRanking = performanceApiData.ranking?.[0];
 
-    if (!selectedDepartment && !selectedSubDepartment && (l1ApiMetrics || l2ApiMetrics || topRanking)) {
+    if (l1ApiMetrics || l2ApiMetrics || topRanking) {
       return {
         l1Submission: [
           { label: "Allocated Submission", value: Number(l1ApiMetrics?.allocated_submissions || 0) },

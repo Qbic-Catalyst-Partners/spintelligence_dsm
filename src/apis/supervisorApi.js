@@ -142,6 +142,19 @@ export const fetchTicketTimelineApi = async (ticketId) => {
   }
 };
 
+export const fetchL2TicketPreviewApi = async (ticketId) => {
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const response = await requestSupervisorApi("get", `/tickets/${encodeId}/l2-preview`);
+    return response?.data || {};
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(error.response.data.message || "Failed to fetch L2 ticket preview");
+    }
+    throw new Error(error.message || "Failed to fetch L2 ticket preview");
+  }
+};
+
 export const assignSupervisorEmployeeApi = async (payload) => {
   const response = await requestSupervisorApi("post", "/assign", payload || {});
   return response?.data || {};

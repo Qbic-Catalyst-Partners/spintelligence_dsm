@@ -9,7 +9,7 @@ import {
   fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
-import { fetchTicketTimelineApi } from "../../apis/supervisorApi";
+import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -44,6 +44,45 @@ const buildTimelineIcon = (title) => {
   return { icon: "/awaiting.png", alt: "Updated" };
 };
 
+const fieldsToObject = (fields) => {
+  if (!Array.isArray(fields)) return {};
+  return fields.reduce((acc, field) => {
+    const key = String(field?.parameter || field?.name || field?.field_name || field?.label || "").trim();
+    if (!key) return acc;
+    acc[key] = field?.value ?? field?.actual_value ?? field?.submitted_value ?? "-";
+    return acc;
+  }, {});
+};
+
+const fieldLabel = (item) =>
+  String(item?.label || item?.name || item?.parameter || item?.field_name || item || "").trim();
+
+const buildPreviewTicket = (preview) => {
+  const source = preview?.ticket || preview?.data?.ticket || preview?.data || preview;
+  if (!source || typeof source !== "object") return source;
+
+  const submittedFields = preview?.submitted_notebook_fields || preview?.submitted_fields || preview?.data?.submitted_notebook_fields;
+  const thresholdFields = preview?.threshold_fields || preview?.data?.threshold_fields;
+  const parameters = preview?.parameters || preview?.data?.parameters;
+  const actualFromFields = fieldsToObject(submittedFields);
+  const thresholdFromFields = fieldsToObject(thresholdFields);
+  const parameterNames = Array.isArray(parameters)
+    ? parameters.map((item) => fieldLabel(item)).filter(Boolean)
+    : Object.keys({ ...actualFromFields, ...thresholdFromFields });
+
+  return {
+    ...source,
+    submitted_notebook_fields: submittedFields || source.submitted_notebook_fields,
+    notifications: preview?.notifications || preview?.data?.notifications || source.notifications,
+    endpoint_hints: preview?.endpoint_hints || preview?.data?.endpoint_hints || source.endpoint_hints,
+    actual_value: Object.keys(actualFromFields).length ? actualFromFields : source.actual_value,
+    threshold_value: Object.keys(thresholdFromFields).length ? thresholdFromFields : source.threshold_value,
+    parameter_name: parameterNames.length ? parameterNames : source.parameter_name,
+    violation_details: preview?.violation_details || preview?.data?.violation_details || source.violation_details,
+    submitted_user: preview?.submitted_user || preview?.data?.submitted_user || source.submitted_user,
+  };
+};
+
 export default function SupervisorDetails() {
   const router = useRouter();
   const { ticketId } = router.query;
@@ -55,6 +94,7 @@ export default function SupervisorDetails() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
+  const [l2Preview, setL2Preview] = useState(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
@@ -71,12 +111,15 @@ export default function SupervisorDetails() {
   }, [requestedTicketId, tickets]);
 
   const ticket = useMemo(() => {
+    const previewSource = buildPreviewTicket(l2Preview);
+    const previewMatches =
+      previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = detailMatches ? detailSource : dashboardTicket;
+    const source = previewMatches ? previewSource : detailMatches ? detailSource : dashboardTicket;
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
@@ -112,6 +155,39 @@ export default function SupervisorDetails() {
       }
     };
     loadTimeline();
+    return () => {
+      mounted = false;
+    };
+  }, [requestedTicketId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPreview = async () => {
+      if (!requestedTicketId) return;
+      try {
+        const response = await fetchL2TicketPreviewApi(requestedTicketId);
+        if (!mounted) return;
+        setL2Preview(response || null);
+        const previewTimeline = response?.timeline || response?.data?.timeline;
+        if (Array.isArray(previewTimeline)) {
+          setTimelineItems(
+            previewTimeline.map((event) => {
+              const iconMeta = buildTimelineIcon(event?.title || event?.action);
+              return {
+                time: formatDateTime(event?.at || event?.created_at || event?.time),
+                title: event?.title || event?.action || "Updated",
+                description: event?.detail || event?.description || event?.action || "-",
+                icon: iconMeta.icon,
+                alt: iconMeta.alt,
+              };
+            })
+          );
+        }
+      } catch {
+        if (mounted) setL2Preview(null);
+      }
+    };
+    loadPreview();
     return () => {
       mounted = false;
     };
