@@ -206,7 +206,7 @@ function Mixing() {
                 user,
             });
         } catch (error) {
-            console.error("Submitted notebook creation failed:", error);
+            console.warn("Submitted notebook creation failed:", error?.message || error);
         }
     };
 

@@ -35,6 +35,7 @@ export const recordSubmittedNotebook = async ({
     department,
     sub_department: subDepartment,
     notebook_name: notebookName,
+    screen_name: inputScreen || notebookName,
     input_screen: inputScreen || notebookName,
     entry_id: entryId || submittedFields.entry_id || submittedFields.entryId,
     lot_no: lotNo || submittedFields.lot_no || submittedFields.lotNo,

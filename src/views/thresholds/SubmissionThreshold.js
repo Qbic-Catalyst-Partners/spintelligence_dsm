@@ -529,7 +529,7 @@ export default function SubmissionThreshold() {
         screenName,
       },
     ]);
-    setError("Create a submission threshold first before creating an acknowledgement threshold.");
+    setError("");
     setMessage("");
   }, [availableDepartments, router.isReady, router.query.department, router.query.screenName, router.query.subDepartment]);
 

@@ -22,6 +22,8 @@ import {
 
 export default function operatorboard() {
     const authUser = useSelector((state) => state.auth?.user);
+    const authToken = useSelector((state) => state.auth?.token);
+    const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
     const [ticketData, setTicketData] = useState([]);
     const [submissionTicketData, setSubmissionTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -44,13 +46,20 @@ export default function operatorboard() {
     const ITEMS_PER_PAGE = 6;
 
     useEffect(() => {
+        if (!isAuthHydrated) {
+            return;
+        }
+        if (!authToken) {
+            setLoading(false);
+            return;
+        }
         if (shouldUseSupervisorDashboard) {
             router.replace("/supervisordashboard");
             return;
         }
         fetchTickets();
         fetchSubmissionTickets();
-    }, [shouldUseSupervisorDashboard]);
+    }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
 
     if (shouldUseSupervisorDashboard) {
         return null;
@@ -93,7 +102,7 @@ export default function operatorboard() {
 
             setTicketData(formattedData);
         } catch (error) {
-            console.error("Error fetching tickets:", error);
+            console.warn("Operator tickets request failed:", error?.message || error);
             setError(error.message || "Failed to fetch tickets.");
         } finally {
             setLoading(false);
@@ -139,7 +148,7 @@ export default function operatorboard() {
 
             setSubmissionTicketData(formattedData);
         } catch (submissionError) {
-            console.error("Error fetching submission tickets:", submissionError);
+            console.warn("Submission tickets request failed:", submissionError?.message || submissionError);
         }
     };
 
@@ -169,7 +178,7 @@ export default function operatorboard() {
     };
 
     useEffect(() => {
-        if (shouldUseSupervisorDashboard || typeof window === "undefined") return;
+        if (!isAuthHydrated || !authToken || shouldUseSupervisorDashboard || typeof window === "undefined") return;
 
         const refreshFromServer = () => {
             fetchTickets();
@@ -188,7 +197,7 @@ export default function operatorboard() {
             window.removeEventListener("focus", refreshFromServer);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [shouldUseSupervisorDashboard]);
+    }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
 
     if (loading) return <p>Loading tickets...</p>;
     if (error) return <p>{error}</p>;

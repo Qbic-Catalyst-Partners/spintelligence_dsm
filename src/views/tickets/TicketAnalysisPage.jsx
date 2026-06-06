@@ -370,6 +370,7 @@ function TeamPerformanceFilter({
   setNotebook,
   inputField,
   setInputField,
+  options = {},
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const backendDepartments = normalizeOptions(options?.departments);
@@ -378,6 +379,13 @@ function TeamPerformanceFilter({
     ? backendDepartments
     : departmentDirectory.map((department) => ({ label: department.name, value: department.slug }));
   const subDepartments = selectedDepartment?.subDepartments || [];
+  const localSubDepartmentOptions = subDepartments.map((subDepartment) => ({
+    label: subDepartment.name,
+    value: subDepartment.slug,
+  }));
+  const subDepartmentOptions = backendSubDepartments.length
+    ? backendSubDepartments
+    : localSubDepartmentOptions;
   const notebookOptions = selectedDepartmentSlug && selectedSubDepartmentSlug
     ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
     : [];
@@ -1365,6 +1373,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setNotebook={setNotebook}
           inputField={inputField}
           setInputField={setInputField}
+          options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
@@ -1413,6 +1422,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setNotebook={setNotebook}
           inputField={inputField}
           setInputField={setInputField}
+          options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}

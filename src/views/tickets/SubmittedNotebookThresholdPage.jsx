@@ -8,7 +8,6 @@ import {
   fetchNotebookAcknowledgementThresholdsAPI,
   saveNotebookAcknowledgementThresholdAPI,
 } from "@/apis/notebookAcknowledgementThresholdApi";
-import { fetchSubmissionFrequencyConfigsAPI } from "@/apis/submissionFrequencyApi";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isSubmittedNotebookManagerUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
@@ -91,12 +90,6 @@ const formatTimestamp = (value) => {
 
 const getActiveValue = (item) => item?.is_active ?? item?.isActive ?? true;
 
-const normalizeMatchValue = (value) =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
 export default function SubmittedNotebookThresholdPage() {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -107,7 +100,6 @@ export default function SubmittedNotebookThresholdPage() {
 
   const [activeTab, setActiveTab] = useState("new");
   const [thresholds, setThresholds] = useState([]);
-  const [submissionThresholds, setSubmissionThresholds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -172,16 +164,11 @@ export default function SubmittedNotebookThresholdPage() {
     if (!canAccessPage) return;
     setLoading(true);
     try {
-      const [acknowledgementRows, submissionRows] = await Promise.all([
-        fetchNotebookAcknowledgementThresholdsAPI(),
-        fetchSubmissionFrequencyConfigsAPI(),
-      ]);
+      const acknowledgementRows = await fetchNotebookAcknowledgementThresholdsAPI();
       setThresholds(acknowledgementRows);
-      setSubmissionThresholds(submissionRows);
       setError("");
     } catch (err) {
       setThresholds([]);
-      setSubmissionThresholds([]);
       setError(err?.message || "Unable to load acknowledgement thresholds.");
     } finally {
       setLoading(false);
@@ -252,26 +239,6 @@ export default function SubmittedNotebookThresholdPage() {
 
       const selectedL2 = resolveUser(users, rule.approvalL2);
       if (!selectedL2) throw new Error("Please select an L2 approver.");
-
-      const hasSubmissionThreshold = submissionThresholds.some((item) => {
-        const screenName = item?.screen_name || item?.notebook || item?.input_screen || "";
-        return (
-          normalizeMatchValue(item?.department) === normalizeMatchValue(selectedDepartment.name) &&
-          normalizeMatchValue(item?.sub_department) === normalizeMatchValue(selectedSubDepartment.name) &&
-          normalizeMatchValue(screenName) === normalizeMatchValue(rule.screenName) &&
-          getActiveValue(item)
-        );
-      });
-
-      if (!hasSubmissionThreshold) {
-        const params = new URLSearchParams({
-          department: selectedDepartment.slug,
-          subDepartment: selectedSubDepartment.slug,
-          screenName: rule.screenName,
-        });
-        router.push(`/submission-threshold?${params.toString()}`);
-        return;
-      }
 
       const payload = {
         screen_name: rule.screenName,

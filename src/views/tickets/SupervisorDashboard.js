@@ -12,6 +12,7 @@ import {
   isSupervisorVisibleTicket,
   SUPERVISOR_VISIBLE_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
+import { transformTicket } from "../../utils/ticketTransformer";
 
 const ITEMS_PER_PAGE = 6;
 
@@ -42,7 +43,9 @@ export default function SupervisorDashboard() {
         ? tickets.data
         : [];
 
-  const safeTickets = applyStoredTicketStatuses(sourceTickets).filter(isSupervisorVisibleTicket);
+  const safeTickets = applyStoredTicketStatuses(sourceTickets)
+    .filter(isSupervisorVisibleTicket)
+    .map(transformTicket);
 
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
@@ -98,7 +101,7 @@ export default function SupervisorDashboard() {
   ];
   const uniqueNotebookTypes = [
     ...new Set(
-      sourceTickets
+      safeTickets
         .map((t) => t.notebook_type || t.notebookType || t.notebook)
         .filter(Boolean)
     ),
@@ -263,10 +266,16 @@ export default function SupervisorDashboard() {
                 <th>OPERATOR</th>
                 <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
                 <th>PARAMETER</th>
-                {activeTicketingView === "submission" && (
+                {activeTicketingView === "submission" ? (
                   <>
                     <th>FREQUENCY</th>
                     <th>OCCURRENCES</th>
+                  </>
+                ) : (
+                  <>
+                    <th>ACTUAL</th>
+                    <th>STANDARD</th>
+                    <th>THRESHOLD</th>
                   </>
                 )}
                 <th>SEVERITY</th>
@@ -277,9 +286,11 @@ export default function SupervisorDashboard() {
             <tbody>
               {pageData.length > 0 ? (
                 pageData.map((t, i) => {
-                  const primaryParam = Array.isArray(t.parameter_name)
-                    ? t.parameter_name[0] || "-"
-                    : t.parameter_name || "-";
+                  const primaryParam = t.parameter || (
+                    Array.isArray(t.parameter_name)
+                      ? t.parameter_name[0] || "-"
+                      : t.parameter_name || "-"
+                  );
 
                   return (
                     <tr
@@ -293,10 +304,16 @@ export default function SupervisorDashboard() {
                       <td>{t.user_name}</td>
                       <td>{t.machine_name}</td>
                       <td>{primaryParam}</td>
-                      {activeTicketingView === "submission" && (
+                      {activeTicketingView === "submission" ? (
                         <>
                           <td>{t.frequency || t.submission_frequency || t.check_frequency || "-"}</td>
                           <td>{t.occurrences || t.occurrence_count || t.count || "-"}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{t.actual ?? "-"}</td>
+                          <td>{t.standard ?? "-"}</td>
+                          <td>{t.threshold ?? "-"}</td>
                         </>
                       )}
                       <td>
@@ -326,7 +343,7 @@ export default function SupervisorDashboard() {
               ) : (
                 <tr>
                   <td
-                    colSpan={activeTicketingView === "submission" ? "9" : "7"}
+                    colSpan={activeTicketingView === "submission" ? "9" : "10"}
                     style={{ textAlign: "center", padding: "24px" }}
                   >
                     No tickets found
@@ -381,10 +398,12 @@ export default function SupervisorDashboard() {
         </div>
 
         <div className={styles["sup-mobile-cards"]}>
-          {filteredTickets.map((t, i) => {
-            const primaryParam = Array.isArray(t.parameter_name)
-              ? t.parameter_name[0] || "-"
-              : t.parameter_name || "-";
+          {displayTickets.map((t, i) => {
+            const primaryParam = t.parameter || (
+              Array.isArray(t.parameter_name)
+                ? t.parameter_name[0] || "-"
+                : t.parameter_name || "-"
+            );
 
             return (
               <div
@@ -422,9 +441,13 @@ export default function SupervisorDashboard() {
                   </div>
 
                   <div>
-                    <div className={styles["sup-small-label"]}>Machine</div>
+                    <div className={styles["sup-small-label"]}>
+                      {activeTicketingView === "submission" ? "Frequency" : "Actual"}
+                    </div>
                     <div className={styles["sup-actual-value"]}>
-                      {t.machine_name || "-"}
+                      {activeTicketingView === "submission"
+                        ? t.frequency || t.submission_frequency || t.check_frequency || "-"
+                        : t.actual ?? "-"}
                     </div>
                   </div>
                 </div>

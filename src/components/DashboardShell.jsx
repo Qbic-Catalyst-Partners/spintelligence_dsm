@@ -5,7 +5,6 @@ import { useSelector } from "react-redux";
 import {
     FiBarChart2,
     FiBell,
-    FiClock,
     FiFileText,
     FiHome,
     FiLayers,
@@ -28,7 +27,6 @@ const dashboardLinks = [
     { label: "Roles & Permissions", href: "/rolespermission", icon: FiShield, adminOnly: true },
     { label: "L1 Ticketing System", href: "/operator", icon: FiFileText },
     { label: "Reports", href: "/reports", icon: FiBarChart2, adminOnly: true },
-    { label: "Activity Log", href: "/activity-log", icon: FiClock },
     { label: "Threshold", href: "/threshold-values", icon: FiSliders, adminOnly: true },
     { label: "Settings", href: "/settings", icon: FiSettings },
 ];

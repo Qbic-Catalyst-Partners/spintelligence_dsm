@@ -16,22 +16,27 @@ const buildSubmittedNotebookPayload = (payload = {}) => {
 
     return {
         ...payload,
+        screen_name: payload.screen_name || payload.screenName || payload.input_screen || payload.notebook_name,
         submitted_fields: submittedFields,
         submittedFields,
-        input_fields: submittedFields,
-        inputFields: submittedFields,
-        fields: submittedFields,
-        form_data: submittedFields,
-        formData: submittedFields,
-        payload: submittedFields,
     };
 };
 
 export const createSubmittedNotebookApi = async (payload = {}) => {
-    const response = await apiConfig.post("/submitted-notebooks", buildSubmittedNotebookPayload(payload), {
-        skipGlobalSuccessModal: true,
-    });
-    return response.data;
+    try {
+        const response = await apiConfig.post("/submitted-notebooks", buildSubmittedNotebookPayload(payload), {
+            skipGlobalSuccessModal: true,
+            skipGlobalErrorModal: true,
+        });
+        return response.data;
+    } catch (error) {
+        const status = error?.response?.status;
+        const message =
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Failed to create submitted notebook.";
+        throw new Error(status ? `${message} (${status})` : message);
+    }
 };
 
 export const fetchSubmittedNotebooksApi = async (params = {}) => {
