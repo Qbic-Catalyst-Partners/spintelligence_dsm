@@ -9,6 +9,20 @@ const previewItemsToPayload = (items = []) =>
     return acc;
   }, {});
 
+const cleanPayloadValue = (value) => {
+  if (value === undefined || value === null) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") return JSON.stringify(value);
+  return value;
+};
+
+const cleanObject = (value = {}) =>
+  Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => String(key || "").trim())
+      .map(([key, item]) => [key, cleanPayloadValue(item)])
+  );
+
 export const recordSubmittedNotebook = async ({
   department,
   subDepartment,
@@ -31,21 +45,31 @@ export const recordSubmittedNotebook = async ({
     return null;
   }
 
-  return createSubmittedNotebookApi({
-    department,
-    sub_department: subDepartment,
-    notebook_name: notebookName,
-    input_screen: inputScreen || notebookName,
-    entry_id: entryId || submittedFields.entry_id || submittedFields.entryId,
-    lot_no: lotNo || submittedFields.lot_no || submittedFields.lotNo,
-    operator_name: user?.full_name || user?.fullName || user?.name || user?.username || user?.email,
-    submitted_by_name: user?.full_name || user?.fullName || user?.name || user?.username || user?.email,
-    submitted_by_user_id: user?.id || user?.employee_id || user?.employeeId,
-    submitted_fields: {
-      entry_id: entryId || submittedFields.entry_id || submittedFields.entryId,
-      lot_no: lotNo || submittedFields.lot_no || submittedFields.lotNo,
-      ...submittedFields,
-    },
-    ...extra,
-  });
+  const cleanedFields = cleanObject(submittedFields);
+  const operatorName = user?.full_name || user?.fullName || user?.name || user?.username || user?.email || "";
+  const resolvedEntryId = entryId || cleanedFields.entry_id || cleanedFields.entryId || "";
+  const resolvedLotNo = lotNo || cleanedFields.lot_no || cleanedFields.lotNo || "";
+
+  try {
+    return await createSubmittedNotebookApi({
+      department,
+      sub_department: subDepartment,
+      notebook_name: notebookName,
+      input_screen: inputScreen || notebookName,
+      entry_id: resolvedEntryId,
+      lot_no: resolvedLotNo,
+      operator_name: operatorName,
+      submitted_by_name: operatorName,
+      submitted_by_user_id: user?.id || user?.employee_id || user?.employeeId || "",
+      submitted_fields: {
+        entry_id: resolvedEntryId,
+        lot_no: resolvedLotNo,
+        ...cleanedFields,
+      },
+      ...extra,
+    });
+  } catch (error) {
+    console.warn("Submitted notebook record could not be created.", error?.response?.data || error?.message);
+    return null;
+  }
 };

@@ -29,6 +29,7 @@ const buildSubmittedNotebookPayload = (payload = {}) => {
 
 export const createSubmittedNotebookApi = async (payload = {}) => {
     const response = await apiConfig.post("/submitted-notebooks", buildSubmittedNotebookPayload(payload), {
+        skipGlobalErrorModal: true,
         skipGlobalSuccessModal: true,
     });
     return response.data;

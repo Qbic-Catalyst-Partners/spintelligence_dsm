@@ -338,34 +338,16 @@ function TeamPerformanceFilter({
   setSelectedDepartmentSlug,
   selectedSubDepartmentSlug,
   setSelectedSubDepartmentSlug,
-  notebook,
-  setNotebook,
-  inputField,
-  setInputField,
+  users,
+  selectedUserId,
+  setSelectedUserId,
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const subDepartments = selectedDepartment?.subDepartments || [];
-  const notebookOptions = selectedDepartmentSlug && selectedSubDepartmentSlug
-    ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
-    : [];
-  const inputFieldOptions = notebook ? getThresholdFieldsForScreen(notebook) : [];
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
     setSelectedSubDepartmentSlug("");
-    setNotebook("");
-    setInputField("");
-  };
-
-  const handleSubDepartmentChange = (event) => {
-    setSelectedSubDepartmentSlug(event.target.value);
-    setNotebook("");
-    setInputField("");
-  };
-
-  const handleNotebookChange = (event) => {
-    setNotebook(event.target.value);
-    setInputField("");
   };
 
   return (
@@ -386,7 +368,7 @@ function TeamPerformanceFilter({
           <span>Sub Department</span>
           <select
             value={selectedSubDepartmentSlug}
-            onChange={handleSubDepartmentChange}
+            onChange={(event) => setSelectedSubDepartmentSlug(event.target.value)}
             disabled={!selectedDepartmentSlug}
           >
             <option value="">All Sub Departments</option>
@@ -398,25 +380,17 @@ function TeamPerformanceFilter({
           </select>
         </label>
         <label className={styles.performanceSelectField}>
-          <span>Notebook</span>
-          <select value={notebook} onChange={handleNotebookChange} disabled={!selectedSubDepartmentSlug}>
-            <option value="">All Notebooks</option>
-            {notebookOptions.map((screen) => (
-              <option key={screen} value={screen}>
-                {screen}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className={styles.performanceSelectField}>
-          <span>Input Field</span>
-          <select value={inputField} onChange={(event) => setInputField(event.target.value)} disabled={!notebook}>
-            <option value="">All Values</option>
-            {inputFieldOptions.map((field) => (
-              <option key={field} value={field}>
-                {field}
-              </option>
-            ))}
+          <span>User</span>
+          <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
+            <option value="">All Users</option>
+            {(Array.isArray(users) ? users : []).map((user) => {
+              const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
+              return (
+                <option key={`${userId}-${user?.name || userId}`} value={userId}>
+                  {user?.name || userId}
+                </option>
+              );
+            })}
           </select>
         </label>
       </div>
@@ -472,22 +446,40 @@ function StatisticsAnalysisFilter({
   setSelectedDepartmentSlug,
   selectedSubDepartmentSlug,
   setSelectedSubDepartmentSlug,
-  users,
-  selectedUserId,
-  setSelectedUserId,
+  notebook,
+  setNotebook,
+  inputField,
+  setInputField,
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const subDepartments = selectedDepartment?.subDepartments || [];
+  const notebookOptions = selectedDepartmentSlug && selectedSubDepartmentSlug
+    ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
+    : [];
+  const inputFieldOptions = notebook ? getThresholdFieldsForScreen(notebook) : [];
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
     setSelectedSubDepartmentSlug("");
+    setNotebook("");
+    setInputField("");
+  };
+
+  const handleSubDepartmentChange = (event) => {
+    setSelectedSubDepartmentSlug(event.target.value);
+    setNotebook("");
+    setInputField("");
+  };
+
+  const handleNotebookChange = (event) => {
+    setNotebook(event.target.value);
+    setInputField("");
   };
 
   return (
     <section className={styles.statisticsTopFilters}>
-      <div className={`${styles.performanceControlsLeft} ${styles.statisticsControlsLeft}`}>
-        <label className={styles.performanceSelectField}>
+      <div className={`${styles.performanceControlsLeft} ${styles.statisticsControlsLeft}`} style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
           <span>Department</span>
           <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
             <option value="">All Departments</option>
@@ -498,11 +490,11 @@ function StatisticsAnalysisFilter({
             ))}
           </select>
         </label>
-        <label className={styles.performanceSelectField}>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
           <span>Sub Department</span>
           <select
             value={selectedSubDepartmentSlug}
-            onChange={(event) => setSelectedSubDepartmentSlug(event.target.value)}
+            onChange={handleSubDepartmentChange}
             disabled={!selectedDepartmentSlug}
           >
             <option value="">All Sub Departments</option>
@@ -513,18 +505,26 @@ function StatisticsAnalysisFilter({
             ))}
           </select>
         </label>
-        <label className={styles.performanceSelectField}>
-          <span>User</span>
-          <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
-            <option value="">All Users</option>
-            {(Array.isArray(users) ? users : []).map((user) => {
-              const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
-              return (
-                <option key={`${userId}-${user?.name || userId}`} value={userId}>
-                  {user?.name || userId}
-                </option>
-              );
-            })}
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
+          <span>Notebook</span>
+          <select value={notebook} onChange={handleNotebookChange} disabled={!selectedSubDepartmentSlug}>
+            <option value="">All Notebooks</option>
+            {notebookOptions.map((screen) => (
+              <option key={screen} value={screen}>
+                {screen}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
+          <span>Input Field</span>
+          <select value={inputField} onChange={(event) => setInputField(event.target.value)} disabled={!notebook}>
+            <option value="">All Values</option>
+            {inputFieldOptions.map((field) => (
+              <option key={field} value={field}>
+                {field}
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -1263,9 +1263,10 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setSelectedDepartmentSlug={setSelectedDepartmentSlug}
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
-          users={users}
-          selectedUserId={selectedUserId}
-          setSelectedUserId={setSelectedUserId}
+          notebook={notebook}
+          setNotebook={setNotebook}
+          inputField={inputField}
+          setInputField={setInputField}
         />
         {statisticsApiData.loading && <p className={styles.statisticsError}>Fetching statistics analytics...</p>}
         {statisticsApiData.error && <p className={styles.statisticsError}>{statisticsApiData.error}</p>}
@@ -1301,10 +1302,9 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setSelectedDepartmentSlug={setSelectedDepartmentSlug}
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
-          notebook={notebook}
-          setNotebook={setNotebook}
-          inputField={inputField}
-          setInputField={setInputField}
+          users={users}
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
@@ -1349,10 +1349,8 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
           users={users}
-          notebook={notebook}
-          setNotebook={setNotebook}
-          inputField={inputField}
-          setInputField={setInputField}
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}

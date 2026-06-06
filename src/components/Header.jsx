@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiBell,
+    FiBookOpen,
     FiBriefcase,
     FiCalendar,
     FiCheck,
