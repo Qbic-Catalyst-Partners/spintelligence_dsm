@@ -195,6 +195,8 @@ function Mixing() {
         try {
             const ok = await childRef.current?.submit?.();
             if (ok === false) return;
+            await reserveEntryId();
+            setShowSuccess(true);
             await recordSubmittedNotebook({
                 department: "Quality Control",
                 subDepartment: "Mixing",
@@ -206,7 +208,7 @@ function Mixing() {
                 user,
             });
         } catch (error) {
-            console.error("Submitted notebook creation failed:", error);
+            console.error("Mixing save failed:", error?.response?.data || error?.message || error);
         }
     };
 

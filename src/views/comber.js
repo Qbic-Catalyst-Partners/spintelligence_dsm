@@ -153,13 +153,22 @@ function Comber() {
         try {
             const ok = await childRef.current?.submit?.();
             if (ok) {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Comber",
+                    notebookName: selectedType,
+                    entryId,
+                    childRef,
+                    previewItems,
+                    user,
+                });
                 await reserveEntryId();
                 setShowSuccess(true);
             }
         } catch (e) {
             // child handles errors
         }
-    }, [reserveEntryId]);
+    }, [entryId, previewItems, reserveEntryId, selectedType, user]);
 
     return (
         <div className={styles["cb-page"]}>

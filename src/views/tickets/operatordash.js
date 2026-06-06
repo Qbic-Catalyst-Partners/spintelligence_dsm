@@ -25,7 +25,8 @@ export default function operatorboard() {
     const [ticketData, setTicketData] = useState([]);
     const [submissionTicketData, setSubmissionTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const [thresholdError, setThresholdError] = useState("");
+    const [submissionError, setSubmissionError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
     const [showManualTicket, setShowManualTicket] = useState(false);
     const [statusUpdatingId, setStatusUpdatingId] = useState("");
@@ -58,7 +59,7 @@ export default function operatorboard() {
 
     const fetchTickets = async () => {
         try {
-            setError("");
+            setThresholdError("");
             const response = await getOperatorTickets({ _ts: Date.now() });
 
             const ticketsArray = Array.isArray(response)
@@ -94,7 +95,8 @@ export default function operatorboard() {
             setTicketData(formattedData);
         } catch (error) {
             console.error("Error fetching tickets:", error);
-            setError(error.message || "Failed to fetch tickets.");
+            setTicketData([]);
+            setThresholdError(error.message || "Failed to fetch threshold tickets.");
         } finally {
             setLoading(false);
         }
@@ -102,6 +104,7 @@ export default function operatorboard() {
 
     const fetchSubmissionTickets = async () => {
         try {
+            setSubmissionError("");
             const response = await getSubmissionTickets({ page: 1, limit: 200, _ts: Date.now() });
             const ticketsArray = Array.isArray(response)
                 ? response
@@ -140,6 +143,8 @@ export default function operatorboard() {
             setSubmissionTicketData(formattedData);
         } catch (submissionError) {
             console.error("Error fetching submission tickets:", submissionError);
+            setSubmissionTicketData([]);
+            setSubmissionError(submissionError.message || "Failed to fetch submission tickets.");
         }
     };
 
@@ -151,7 +156,7 @@ export default function operatorboard() {
             await updateOperatorTicketStatus(ticketId, nextStatus);
             await fetchTickets();
         } catch (updateError) {
-            setError(updateError.message || "Failed to update ticket status.");
+            setThresholdError(updateError.message || "Failed to update ticket status.");
         } finally {
             setStatusUpdatingId("");
         }
@@ -191,9 +196,9 @@ export default function operatorboard() {
     }, [shouldUseSupervisorDashboard]);
 
     if (loading) return <p>Loading tickets...</p>;
-    if (error) return <p>{error}</p>;
 
     const activeDataSource = activeTicketingView === "submission" ? submissionTicketData : ticketData;
+    const activeError = activeTicketingView === "submission" ? submissionError : thresholdError;
 
     const filteredTickets = activeDataSource.filter((t) => {
         const created = new Date(t.rawCreatedAt);
@@ -285,6 +290,26 @@ export default function operatorboard() {
                     Submission Ticket
                 </button>
             </div>
+
+            {activeError && (
+                <div
+                    role="alert"
+                    style={{
+                        margin: "0 0 16px",
+                        padding: "12px 14px",
+                        border: "1px solid #f6c2c2",
+                        borderRadius: 6,
+                        background: "#fff5f5",
+                        color: "#9f1d1d",
+                        fontSize: 14,
+                    }}
+                >
+                    {activeTicketingView === "threshold"
+                        ? "Threshold tickets could not be loaded. The backend returned: "
+                        : "Submission tickets could not be loaded. The backend returned: "}
+                    {activeError}
+                </div>
+            )}
 
             {/* DESKTOP FILTERS */}
             <div className={styles.filtrs}>
