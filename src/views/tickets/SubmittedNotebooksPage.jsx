@@ -529,6 +529,135 @@ const getNotebookSourceEndpoint = (notebook) => {
     return "";
 };
 
+const getNotebookScreenName = (notebook) => {
+    const payload = getPayload(notebook);
+    return (
+        notebook?.notebook_name ||
+        notebook?.notebookName ||
+        notebook?.input_screen ||
+        notebook?.inputScreen ||
+        notebook?.title ||
+        payload?.notebook_name ||
+        payload?.notebookName ||
+        payload?.title ||
+        payload?.input_screen ||
+        payload?.inputScreen ||
+        ""
+    );
+};
+
+const inferDepartmentByScreenName = (screenName) => {
+    const normalized = normalizeLookupValue(screenName);
+    if (!normalized) return null;
+
+    if (
+        normalized.includes("cotton") ||
+        normalized.includes("hvi") ||
+        normalized.includes("fibre") ||
+        normalized.includes("fiber") ||
+        normalized.includes("afis") ||
+        normalized.includes("moisture") ||
+        normalized.includes("openness")
+    ) {
+        return { department: "Quality Control", subDepartment: "Mixing" };
+    }
+
+    if (
+        normalized.includes("blow room") ||
+        normalized.includes("blowroom") ||
+        normalized.includes("drop test") ||
+        normalized.includes("br waste") ||
+        normalized.includes("sync")
+    ) {
+        return { department: "Quality Control", subDepartment: "Blow Room" };
+    }
+
+    if (
+        normalized.includes("card") ||
+        normalized.includes("nati") ||
+        normalized.includes("wheelchange") ||
+        normalized.includes("card thick")
+    ) {
+        return { department: "Quality Control", subDepartment: "Carding" };
+    }
+
+    if (normalized.includes("ribbon") || normalized.includes("comber")) {
+        return { department: "Quality Control", subDepartment: "Comber" };
+    }
+
+    if (normalized.includes("draw frame") || normalized.includes("breaker") || normalized.includes("finisher")) {
+        return { department: "Quality Control", subDepartment: "Draw Frame" };
+    }
+
+    if (normalized.includes("simplex")) {
+        return { department: "Quality Control", subDepartment: "Simplex" };
+    }
+
+    if (normalized.includes("spinning") || normalized.includes("ring frame") || normalized.includes("wheel change") || normalized.includes("speed checking") || normalized.includes("bottom apron")) {
+        return { department: "Quality Control", subDepartment: "Spinning" };
+    }
+
+    if (normalized.includes("autoconer") || normalized.includes("rewinding") || normalized.includes("cone")) {
+        return { department: "Quality Control", subDepartment: "Autoconer" };
+    }
+
+    return null;
+};
+
+const resolveNotebookDepartment = (notebook) => {
+    const payload = getPayload(notebook);
+    const explicitDepartment =
+        notebook?.department ||
+        notebook?.department_name ||
+        notebook?.departmentName ||
+        payload?.department ||
+        payload?.department_name ||
+        payload?.departmentName ||
+        "";
+    const explicitSubDepartment =
+        notebook?.sub_department ||
+        notebook?.subDepartment ||
+        notebook?.sub_department_name ||
+        notebook?.subDepartmentName ||
+        payload?.sub_department ||
+        payload?.subDepartment ||
+        payload?.sub_department_name ||
+        payload?.subDepartmentName ||
+        "";
+    const screenName = getNotebookScreenName(notebook);
+    const inferred = inferDepartmentByScreenName(screenName);
+
+    if (inferred) {
+        const normalizedExplicitSub = normalizeLookupValue(explicitSubDepartment);
+        const normalizedExplicitDept = normalizeLookupValue(explicitDepartment);
+
+        if (!normalizedExplicitDept && !normalizedExplicitSub) {
+            return inferred;
+        }
+
+        if (
+            inferred.subDepartment === "Mixing" &&
+            normalizedExplicitSub &&
+            !["mixing", "mixing department"].includes(normalizedExplicitSub)
+        ) {
+            return inferred;
+        }
+
+        if (
+            inferred.subDepartment === "Blow Room" &&
+            normalizedExplicitSub &&
+            !["blow room", "blowroom"].includes(normalizedExplicitSub)
+        ) {
+            return inferred;
+        }
+    }
+
+    return {
+        department: explicitDepartment || "Quality Control",
+        subDepartment: explicitSubDepartment || "Mixing Department",
+    };
+};
+
 const findMatchingSourceEntry = (rows, notebook) => {
     const entryId = String(notebook?.entry_id || notebook?.entryId || "").trim();
     const lotNo = String(notebook?.lot_no || notebook?.lotNo || "").trim();
@@ -771,6 +900,7 @@ const SubmittedNotebooksPage = () => {
     };
 
     const selectedFields = buildFieldCards(selectedNotebook);
+    const selectedNotebookDepartment = selectedNotebook ? resolveNotebookDepartment(selectedNotebook) : { department: "Quality Control", subDepartment: "Mixing Department" };
 
     return (
         <section className={styles.page}>
@@ -847,8 +977,7 @@ const SubmittedNotebooksPage = () => {
                                     {selectedNotebook?.notebook_name || selectedNotebook?.notebook || selectedNotebook?.title || "Cotton HVI Data Entry"}
                                 </h2>
                                 <p>
-                                    {selectedNotebook?.department || "Quality Control"} &gt;{" "}
-                                    {selectedNotebook?.sub_department || selectedNotebook?.subDepartment || "Mixing Department"}
+                                    {selectedNotebookDepartment.department} &gt; {selectedNotebookDepartment.subDepartment}
                                 </p>
                             </div>
                             <div className={styles.modalMeta}>

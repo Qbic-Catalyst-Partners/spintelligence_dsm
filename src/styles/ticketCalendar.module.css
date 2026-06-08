@@ -470,16 +470,16 @@
 
 .performancePage {
   background: #f7f5f4;
-  padding: 26px 30px 70px;
+  padding: 0 30px 54px;
   width: 100%;
   box-sizing: border-box;
 }
 
 .performanceTitle,
 .performanceSubTitle {
-  margin: 0 0 16px;
+  margin: 0 0 14px;
   color: #151a24;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -489,9 +489,9 @@
 
 .performanceControlsCard {
   width: 100%;
-  margin: 0 0 14px;
+  margin: 0 0 26px;
   border: 1px solid #d9dde5;
-  border-radius: 6px;
+  border-radius: 5px;
   background: #ffffff;
   padding: 18px 26px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
@@ -507,6 +507,10 @@
   grid-template-columns: repeat(4, 166px);
   gap: 10px;
   align-items: end;
+}
+
+.performanceControlsCompact {
+  grid-template-columns: repeat(2, 176px);
 }
 
 .statisticsControlsLeft {
@@ -584,19 +588,19 @@
 
 .performanceSelectField span {
   color: #121826;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
-  text-align: center;
+  text-align: left;
 }
 
 .performanceSelectField select {
-  height: 38px;
+  height: 34px;
   border: 1px solid #e4e9f2;
   border-radius: 4px;
   background: #f8fbff;
   color: #202636;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   outline: none;
 }
@@ -623,18 +627,36 @@
 
 .performancePanel {
   width: 100%;
-  margin: 0 0 12px;
-  border: 1px solid #d9dde5;
-  border-radius: 5px;
-  background: #eeeeee;
-  padding: 10px;
+  margin: 0 0 28px;
+  border: none;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 20px;
   box-sizing: border-box;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+}
+
+.performancePanelSection {
+  margin-bottom: 24px;
+}
+
+.performancePanelSection:last-child {
+  margin-bottom: 0;
+}
+
+.performancePanelSectionTitle {
+  margin: 0 0 16px 0;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 0 0 12px 0;
+  border-bottom: 1px solid #e3e8f0;
 }
 
 .performanceGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
 .performanceRanking {
@@ -645,12 +667,27 @@
   gap: 10px;
 }
 
+.performanceStatsSection {
+  margin: 0 0 34px;
+}
+
+.performanceStatsSectionPlain {
+  margin-top: 44px;
+}
+
+.performanceStatsTitle {
+  margin: 0 0 12px 8px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .performanceMetricCard {
-  min-height: 112px;
+  min-height: 92px;
   border: 1px solid #d9dde5;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #ffffff;
-  padding: 18px 15px 14px;
+  padding: 15px 14px 14px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -659,31 +696,205 @@
 
 .performanceMetricHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.performanceMetricHead span {
+.performanceMetricHead > span:first-child {
   color: #172033;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.25;
 }
 
-.performanceMetricHead svg {
+.performanceMetricIcon {
   flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: #e8edff;
+  color: #4d5bff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.performanceMetricIcon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.performanceMetricSuccess .performanceMetricIcon {
+  background: #d9f7df;
+  color: #16a34a;
+}
+
+.performanceMetricDanger .performanceMetricIcon {
+  background: #ffe7e7;
+  color: #ef4444;
+}
+
+.performanceMetricWarning .performanceMetricIcon {
+  background: #fff0cf;
+  color: #f59e0b;
+}
+
+.performanceMetricInfo .performanceMetricIcon {
+  background: #e8edff;
   color: #435aa6;
 }
 
 .performanceMetricCard strong {
-  margin-top: 18px;
+  margin-top: 10px;
   color: #172033;
-  font-size: 27px;
+  font-size: 26px;
   font-weight: 800;
   line-height: 1;
+}
+
+.performanceTeamCard {
+  overflow: hidden;
+  border: 1px solid #d9dde5;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
+}
+
+.performanceTeamHeader {
+  padding: 18px 22px;
+  border-bottom: 1px solid #e5e9f1;
+}
+
+.performanceTeamHeader h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.performanceTeamHeader svg {
+  width: 15px;
+  height: 15px;
+}
+
+.performanceTeamTableWrap {
+  overflow: auto;
+}
+
+.performanceTeamTable {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.performanceTeamTable th,
+.performanceTeamTable td {
+  padding: 14px 22px;
+  border-bottom: 1px solid #e6e9ef;
+  color: #172033;
+  font-size: 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.performanceTeamTable th {
+  background: #f8f9fe;
+  color: #283044;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.performanceTeamTable th:nth-child(3),
+.performanceTeamTable th:nth-child(4),
+.performanceTeamTable th:nth-child(5),
+.performanceTeamTable td:nth-child(3),
+.performanceTeamTable td:nth-child(4),
+.performanceTeamTable td:nth-child(5) {
+  text-align: center;
+}
+
+.performanceTeamTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.performanceRankBadge {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #172033;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.performanceRankPodium {
+  background: #ffe28a;
+  color: #b37a00;
+}
+
+.performanceMemberCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.performanceAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dce8ff;
+  color: #506182;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.performanceCompleted {
+  color: #16a34a !important;
+}
+
+.performancePending {
+  color: #ef4444 !important;
+}
+
+.performanceRateCell {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 44px;
+  align-items: center;
+  gap: 14px;
+  min-width: 168px;
+}
+
+.performanceRateTrack {
+  height: 5px;
+  border-radius: 999px;
+  background: #edf0f7;
+  overflow: hidden;
+}
+
+.performanceRateTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #3b2eea;
+}
+
+.performanceEmptyCell {
+  padding: 26px 22px !important;
+  color: #667085 !important;
+  text-align: center !important;
 }
 
 .performancePanelTitle {
@@ -870,12 +1081,16 @@
 
 :global(:root[data-theme="dark"]) .performanceTitle,
 :global(:root[data-theme="dark"]) .performanceSubTitle,
+:global(:root[data-theme="dark"]) .performanceStatsTitle,
+:global(:root[data-theme="dark"]) .performanceTeamHeader h2,
 :global(:root[data-theme="dark"]) .performancePanelTitle,
-:global(:root[data-theme="dark"]) .performanceMetricHead span,
+:global(:root[data-theme="dark"]) .performanceMetricHead > span:first-child,
 :global(:root[data-theme="dark"]) .performanceMetricCard strong,
 :global(:root[data-theme="dark"]) .datePopoverHeader strong,
 :global(:root[data-theme="dark"]) .performanceTable th,
-:global(:root[data-theme="dark"]) .performanceTable td {
+:global(:root[data-theme="dark"]) .performanceTable td,
+:global(:root[data-theme="dark"]) .performanceTeamTable th,
+:global(:root[data-theme="dark"]) .performanceTeamTable td {
   color: #ffffff;
 }
 
@@ -898,10 +1113,30 @@
 :global(:root[data-theme="dark"]) .performanceFilterCard,
 :global(:root[data-theme="dark"]) .performanceControlsCard,
 :global(:root[data-theme="dark"]) .statChartCard,
-:global(:root[data-theme="dark"]) .performanceMetricCard {
+:global(:root[data-theme="dark"]) .performanceMetricCard,
+:global(:root[data-theme="dark"]) .performanceTeamCard {
   border-color: #5f5f5f;
   background: #3b3b3b;
   box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .performanceTeamHeader,
+:global(:root[data-theme="dark"]) .performanceTeamTable th,
+:global(:root[data-theme="dark"]) .performanceTeamTable td {
+  border-bottom-color: #4a4a4a;
+}
+
+:global(:root[data-theme="dark"]) .performanceTeamTable th {
+  background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .performanceAvatar {
+  background: #242424;
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .performanceRateTrack {
+  background: #242424;
 }
 
 :global(:root[data-theme="dark"]) .statChartCard {

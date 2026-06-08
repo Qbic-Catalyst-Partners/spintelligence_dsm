@@ -42,8 +42,8 @@ const requestAnalysisApi = async (path, payload = {}, method = "get") => {
 export const fetchL1AnalysisApi = (params = {}) => requestAnalysisApi("/l1", params);
 export const fetchL2AnalysisApi = (params = {}) => requestAnalysisApi("/l2", params);
 export const fetchAnalysisRankingApi = (params = {}) => requestAnalysisApi("/ranking", params);
-export const fetchTeamPerformanceOptionsApi = (params = {}) =>
-  requestAnalysisApi("/team-performance/options", params);
+export const fetchTeamPerformanceAnalysisApi = (params = {}) =>
+  requestAnalysisApi("/team-performance", params);
 export const saveAnalysisSnapshotApi = (payload = {}) => requestAnalysisApi("/snapshot", payload, "post");
 export const fetchAnalysisNotificationsApi = () => requestAnalysisApi("/notifications");
 export const markAnalysisNotificationReadApi = (id) => requestAnalysisApi(`/notifications/${id}/read`, {}, "patch");

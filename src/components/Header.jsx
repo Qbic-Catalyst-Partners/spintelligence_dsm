@@ -94,9 +94,13 @@ const managementHubLinks = [
 ];
 const analyticsHubLinks = [
     { href: "/statistics-analysis", label: "Statistics Analytics" },
-    { href: "/l1-analysis", label: "Team Performance" },
-    { href: "/l1-analysis", label: "L1 Team Performance" },
-    { href: "/l2-analysis", label: "L2 Team Performance" },
+    {
+        label: "Team Performance",
+        children: [
+            { href: "/l1-analysis", label: "L1 Team Performance" },
+            { href: "/l2-analysis", label: "L2 Team Performance" },
+        ],
+    },
 ];
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
@@ -120,6 +124,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isManagementHubOpen, setIsManagementHubOpen] = useState(false);
     const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
     const [isAnalyticsHubOpen, setIsAnalyticsHubOpen] = useState(false);
+    const [isTeamPerformanceOpen, setIsTeamPerformanceOpen] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
@@ -488,6 +493,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );
+        setIsTeamPerformanceOpen(
+            currentPath === "/l1-analysis" ||
+            currentPath === "/l2-analysis"
+        );
         setIsThresholdMenuOpen(
             currentPath === "/threshold-values" ||
             currentPath.startsWith("/threshold-values/") ||
@@ -778,15 +787,46 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         <FiChevronDown className={`${styles["department-chevron"]} ${isAnalyticsHubOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
                                     <div className={`${styles["side-subnav"]} ${isAnalyticsHubOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {analyticsHubLinks.map((item) => (
-                                            <Link
-                                                key={`${item.href}-${item.label}`}
-                                                href={item.href}
-                                                className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
-                                            >
-                                                {item.label}
-                                            </Link>
-                                        ))}
+                                        {analyticsHubLinks.map((item) => {
+                                            if (item.children) {
+                                                const isTeamPerformanceActive = item.children.some((child) => isActiveLink(child.href));
+
+                                                return (
+                                                    <div key={item.label} className={styles["side-subnav-group"]}>
+                                                        <button
+                                                            type="button"
+                                                            className={`${styles["side-subnav-link"]} ${styles["side-subnav-button"]} ${isTeamPerformanceActive ? styles["side-subnav-active"] : ""}`}
+                                                            aria-expanded={isTeamPerformanceOpen}
+                                                            onClick={() => setIsTeamPerformanceOpen((isOpen) => !isOpen)}
+                                                        >
+                                                            <span>{item.label}</span>
+                                                            <FiChevronDown className={`${styles["side-subnav-chevron"]} ${isTeamPerformanceOpen ? styles["department-chevron-open"] : ""}`} />
+                                                        </button>
+                                                        <div className={`${styles["side-nested-subnav"]} ${isTeamPerformanceOpen ? styles["side-nested-subnav-open"] : ""}`}>
+                                                            {item.children.map((child) => (
+                                                                <Link
+                                                                    key={child.href}
+                                                                    href={child.href}
+                                                                    className={`${styles["side-subnav-link"]} ${styles["side-nested-subnav-link"]} ${isActiveLink(child.href) ? styles["side-subnav-active"] : ""}`}
+                                                                >
+                                                                    {child.label}
+                                                                </Link>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <Link
+                                                    key={`${item.href}-${item.label}`}
+                                                    href={item.href}
+                                                    className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
+                                                >
+                                                    {item.label}
+                                                </Link>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );
