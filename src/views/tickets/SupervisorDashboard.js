@@ -12,6 +12,7 @@ import {
   isSupervisorVisibleTicket,
   SUPERVISOR_VISIBLE_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
+import { isSubmissionTicketRecord, transformTicket } from "../../utils/ticketTransformer";
 
 const ITEMS_PER_PAGE = 6;
 
@@ -42,7 +43,9 @@ export default function SupervisorDashboard() {
         ? tickets.data
         : [];
 
-  const safeTickets = applyStoredTicketStatuses(sourceTickets).filter(isSupervisorVisibleTicket);
+  const safeTickets = applyStoredTicketStatuses(sourceTickets)
+    .filter(isSupervisorVisibleTicket)
+    .map(transformTicket);
 
   const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
@@ -98,27 +101,18 @@ export default function SupervisorDashboard() {
   ];
   const uniqueNotebookTypes = [
     ...new Set(
-      sourceTickets
+      safeTickets
         .map((t) => t.notebook_type || t.notebookType || t.notebook)
         .filter(Boolean)
     ),
   ];
 
-  const thresholdTickets = filteredTickets.filter((ticket) =>
-    String(ticket.notebook_type || ticket.notebookType || ticket.notebook || "")
-      .toLowerCase()
-      .includes("threshold")
-  );
-  const submissionTickets = filteredTickets.filter(
-    (ticket) =>
-      !String(ticket.notebook_type || ticket.notebookType || ticket.notebook || "")
-        .toLowerCase()
-        .includes("threshold")
-  );
+  const submissionTickets = filteredTickets.filter(isSubmissionTicketRecord);
+  const thresholdTickets = filteredTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
   const displayTickets =
     activeTicketingView === "threshold"
-      ? (thresholdTickets.length ? thresholdTickets : filteredTickets)
-      : (submissionTickets.length ? submissionTickets : filteredTickets);
+      ? thresholdTickets
+      : submissionTickets;
 
   const totalPages = Math.max(
     1,
@@ -131,6 +125,14 @@ export default function SupervisorDashboard() {
     const id = ticketId?.startsWith("#") ? ticketId : `#${ticketId}`;
     router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}`);
   };
+
+  const getTicketNotebookLabel = (ticket) =>
+    ticket?.notebook ||
+    ticket?.notebook_type ||
+    ticket?.notebookType ||
+    ticket?.machine_name ||
+    ticket?.machine ||
+    "Unknown";
 
   if (isLoading) return <p>Loading...</p>;
   if (error) return <p>{error}</p>;
@@ -263,10 +265,16 @@ export default function SupervisorDashboard() {
                 <th>OPERATOR</th>
                 <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
                 <th>PARAMETER</th>
-                {activeTicketingView === "submission" && (
+                {activeTicketingView === "submission" ? (
                   <>
                     <th>FREQUENCY</th>
                     <th>OCCURRENCES</th>
+                  </>
+                ) : (
+                  <>
+                    <th>ACTUAL</th>
+                    <th>STANDARD</th>
+                    <th>THRESHOLD</th>
                   </>
                 )}
                 <th>SEVERITY</th>
@@ -277,9 +285,11 @@ export default function SupervisorDashboard() {
             <tbody>
               {pageData.length > 0 ? (
                 pageData.map((t, i) => {
-                  const primaryParam = Array.isArray(t.parameter_name)
-                    ? t.parameter_name[0] || "-"
-                    : t.parameter_name || "-";
+                  const primaryParam = t.parameter || (
+                    Array.isArray(t.parameter_name)
+                      ? t.parameter_name[0] || "-"
+                      : t.parameter_name || "-"
+                  );
 
                   return (
                     <tr
@@ -291,12 +301,18 @@ export default function SupervisorDashboard() {
                         {t.ticket_id}
                       </td>
                       <td>{t.user_name}</td>
-                      <td>{t.machine_name}</td>
+                      <td>{getTicketNotebookLabel(t)}</td>
                       <td>{primaryParam}</td>
-                      {activeTicketingView === "submission" && (
+                      {activeTicketingView === "submission" ? (
                         <>
                           <td>{t.frequency || t.submission_frequency || t.check_frequency || "-"}</td>
                           <td>{t.occurrences || t.occurrence_count || t.count || "-"}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{t.actual ?? "-"}</td>
+                          <td>{t.standard ?? "-"}</td>
+                          <td>{t.threshold ?? "-"}</td>
                         </>
                       )}
                       <td>
@@ -326,7 +342,7 @@ export default function SupervisorDashboard() {
               ) : (
                 <tr>
                   <td
-                    colSpan={activeTicketingView === "submission" ? "9" : "7"}
+                    colSpan={activeTicketingView === "submission" ? "9" : "10"}
                     style={{ textAlign: "center", padding: "24px" }}
                   >
                     No tickets found
@@ -381,10 +397,12 @@ export default function SupervisorDashboard() {
         </div>
 
         <div className={styles["sup-mobile-cards"]}>
-          {filteredTickets.map((t, i) => {
-            const primaryParam = Array.isArray(t.parameter_name)
-              ? t.parameter_name[0] || "-"
-              : t.parameter_name || "-";
+          {displayTickets.map((t, i) => {
+            const primaryParam = t.parameter || (
+              Array.isArray(t.parameter_name)
+                ? t.parameter_name[0] || "-"
+                : t.parameter_name || "-"
+            );
 
             return (
               <div
@@ -397,7 +415,7 @@ export default function SupervisorDashboard() {
                 <div className={styles["sup-card-top"]}>
                   <div>
                     <div className={styles["sup-card-title"]}>
-                      {t.ticket_id} | {t.machine_name || "-"}
+                      {t.ticket_id} | {getTicketNotebookLabel(t)}
                     </div>
                     <div className={styles["sup-card-date"]}>
                       {formatDateTime(t.created_at)}
@@ -422,9 +440,13 @@ export default function SupervisorDashboard() {
                   </div>
 
                   <div>
-                    <div className={styles["sup-small-label"]}>Machine</div>
+                    <div className={styles["sup-small-label"]}>
+                      {activeTicketingView === "submission" ? "Frequency" : "Actual"}
+                    </div>
                     <div className={styles["sup-actual-value"]}>
-                      {t.machine_name || "-"}
+                      {activeTicketingView === "submission"
+                        ? t.frequency || t.submission_frequency || t.check_frequency || "-"
+                        : t.actual ?? "-"}
                     </div>
                   </div>
                 </div>

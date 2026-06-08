@@ -63,8 +63,13 @@
 
 .categoryList button:hover,
 .categoryList .activeCategory {
-    background: #4056a8;
+    background: #243b64;
     color: #ffffff;
+}
+
+.adminQuestionPanel {
+    display: grid;
+    gap: 14px;
 }
 
 .questionForm {
@@ -123,6 +128,7 @@
     color: #9aa5b1;
 }
 
+.addQuestionButton,
 .questionForm button {
     display: inline-flex;
     align-items: center;
@@ -131,13 +137,31 @@
     height: 38px;
     border: 0;
     border-radius: 6px;
-    background: #4056a8;
+    background: #243b64;
     color: #ffffff;
     font-size: 13px;
     font-weight: 800;
     cursor: pointer;
 }
 
+.questionForm button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.formMessage {
+    margin: -2px 0 0;
+    color: #b91c1c;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.addQuestionButton {
+    width: 100%;
+}
+
+.addQuestionButton svg,
 .questionForm button svg {
     width: 15px;
     height: 15px;
@@ -232,7 +256,7 @@
 
 :global(:root[data-theme="dark"]) .categoryList button:hover,
 :global(:root[data-theme="dark"]) .categoryList .activeCategory {
-    background: #4056a8;
+    background: #243b64;
     color: #ffffff;
 }
 
@@ -256,6 +280,10 @@
 :global(:root[data-theme="dark"]) .questionItem p,
 :global(:root[data-theme="dark"]) .questionItem > button svg {
     color: #dbe4f0;
+}
+
+:global(:root[data-theme="dark"]) .formMessage {
+    color: #fca5a5;
 }
 
 @media (max-width: 980px) {

@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
-import { FiArrowRight, FiChevronDown, FiSend } from "react-icons/fi";
+import { useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
+import { FiArrowRight, FiChevronDown, FiPlus, FiSend } from "react-icons/fi";
+import { createFaqEntryApi, fetchFaqEntriesApi } from "@/apis/helpContentApi";
+import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "@/styles/faqs.module.css";
 
 const faqSections = [
@@ -109,22 +112,110 @@ const faqSections = [
 const categories = ["Getting Started", "Departments", "Notebooks", "Ticketing Systems", "Threshold"];
 
 function FAQs() {
+    const user = useSelector((state) => state.auth?.user);
+    const canManageQuestions = isFullAccessUser(user);
+    const [sections, setSections] = useState(faqSections);
     const [activeSection, setActiveSection] = useState("Getting Started");
     const [openQuestion, setOpenQuestion] = useState("Getting Started-0");
+    const [isQuestionFormOpen, setIsQuestionFormOpen] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [formMessage, setFormMessage] = useState("");
     const [formValues, setFormValues] = useState({
         name: "",
         category: "Getting Started",
         question: "",
+        answer: "",
     });
 
-    const visibleSections = useMemo(() => {
-        if (activeSection === "Getting Started") return faqSections;
-        return faqSections.filter((section) => section.title === activeSection);
-    }, [activeSection]);
+    useEffect(() => {
+        let ignore = false;
 
-    const handleSubmit = (event) => {
+        const loadFaqs = async () => {
+            try {
+                const entries = await fetchFaqEntriesApi({ page: 1, limit: 200 });
+                if (!ignore && entries.length) {
+                    setSections((current) => {
+                        const next = current.map((section) => ({ ...section, questions: [...section.questions] }));
+                        entries.forEach((entry) => {
+                            const category = entry?.category || "Getting Started";
+                            const question = String(entry?.question || entry?.title || "").trim();
+                            const answer = String(entry?.answer || entry?.description || "").trim();
+                            if (!question || !answer) return;
+
+                            let section = next.find((item) => item.title === category);
+                            if (!section) {
+                                section = { title: category, questions: [] };
+                                next.push(section);
+                            }
+
+                            const alreadyExists = section.questions.some(
+                                (item) => item.question.toLowerCase() === question.toLowerCase()
+                            );
+                            if (!alreadyExists) {
+                                section.questions.push({ question, answer });
+                            }
+                        });
+                        return next;
+                    });
+                }
+            } catch (error) {
+                // Keep the bundled FAQ content available if the backend route is not configured yet.
+            }
+        };
+
+        loadFaqs();
+        return () => {
+            ignore = true;
+        };
+    }, []);
+
+    const visibleSections = useMemo(() => {
+        if (activeSection === "Getting Started") return sections;
+        return sections.filter((section) => section.title === activeSection);
+    }, [activeSection, sections]);
+
+    const handleSubmit = async (event) => {
         event.preventDefault();
-        setFormValues({ name: "", category: "Getting Started", question: "" });
+        if (!canManageQuestions || submitting) return;
+
+        const question = formValues.question.trim();
+        const answer = formValues.answer.trim();
+        const category = formValues.category;
+
+        if (!question || !answer) {
+            setFormMessage("Question and answer are required.");
+            return;
+        }
+
+        setSubmitting(true);
+        setFormMessage("");
+
+        try {
+            await createFaqEntryApi({
+                name: formValues.name.trim() || user?.full_name || user?.name || "Admin",
+                category,
+                question,
+                answer,
+            });
+        } catch (error) {
+            setFormMessage(error?.response?.data?.message || error?.message || "Unable to save FAQ.");
+            setSubmitting(false);
+            return;
+        }
+
+        let newQuestionIndex = 0;
+        setSections((current) =>
+            current.map((section) => {
+                if (section.title !== category) return section;
+                newQuestionIndex = section.questions.length;
+                return { ...section, questions: [...section.questions, { question, answer }] };
+            })
+        );
+        setActiveSection(category);
+        setOpenQuestion(`${category}-${newQuestionIndex}`);
+        setFormValues({ name: "", category: "Getting Started", question: "", answer: "" });
+        setIsQuestionFormOpen(false);
+        setSubmitting(false);
     };
 
     return (
@@ -150,44 +241,69 @@ function FAQs() {
                         ))}
                     </div>
 
-                    <form className={styles.questionForm} onSubmit={handleSubmit}>
-                        <h2>Ask a Question</h2>
-                        <label>
-                            <span>Name</span>
-                            <input
-                                type="text"
-                                value={formValues.name}
-                                placeholder="Your name"
-                                onChange={(event) => setFormValues((current) => ({ ...current, name: event.target.value }))}
-                            />
-                        </label>
-                        <label>
-                            <span>Category</span>
-                            <select
-                                value={formValues.category}
-                                onChange={(event) => setFormValues((current) => ({ ...current, category: event.target.value }))}
+                    {canManageQuestions && (
+                        <div className={styles.adminQuestionPanel}>
+                            <button
+                                type="button"
+                                className={styles.addQuestionButton}
+                                onClick={() => setIsQuestionFormOpen((current) => !current)}
                             >
-                                {categories.map((category) => (
-                                    <option key={category} value={category}>
-                                        {category}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        <label>
-                            <span>Question</span>
-                            <textarea
-                                value={formValues.question}
-                                placeholder="Type your question"
-                                rows={4}
-                                onChange={(event) => setFormValues((current) => ({ ...current, question: event.target.value }))}
-                            />
-                        </label>
-                        <button type="submit">
-                            <FiSend />
-                            <span>Submit</span>
-                        </button>
-                    </form>
+                                <FiPlus />
+                                <span>Add Question</span>
+                            </button>
+
+                            {isQuestionFormOpen && (
+                                <form className={styles.questionForm} onSubmit={handleSubmit}>
+                                    <h2>Add Question</h2>
+                                    <label>
+                                        <span>Name</span>
+                                        <input
+                                            type="text"
+                                            value={formValues.name}
+                                            placeholder="Your name"
+                                            onChange={(event) => setFormValues((current) => ({ ...current, name: event.target.value }))}
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Category</span>
+                                        <select
+                                            value={formValues.category}
+                                            onChange={(event) => setFormValues((current) => ({ ...current, category: event.target.value }))}
+                                        >
+                                            {categories.map((category) => (
+                                                <option key={category} value={category}>
+                                                    {category}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <span>Question</span>
+                                        <textarea
+                                            value={formValues.question}
+                                            placeholder="Type your question"
+                                            rows={4}
+                                            onChange={(event) => setFormValues((current) => ({ ...current, question: event.target.value }))}
+                                        />
+                                    </label>
+                                    <label>
+                                        <span>Answer</span>
+                                        <textarea
+                                            value={formValues.answer}
+                                            placeholder="Type the answer"
+                                            rows={5}
+                                            onChange={(event) => setFormValues((current) => ({ ...current, answer: event.target.value }))}
+                                        />
+                                    </label>
+                                    {formMessage && <p className={styles.formMessage}>{formMessage}</p>}
+                                    <button type="submit" disabled={submitting}>
+                                        <FiSend />
+                                        <span>{submitting ? "Saving..." : "Submit"}</span>
+                                    </button>
+                                </form>
+                            )}
+                        </div>
+                    )}
                 </aside>
 
                 <section className={styles.faqList} aria-label="Frequently asked questions">

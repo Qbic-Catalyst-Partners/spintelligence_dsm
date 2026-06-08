@@ -1,5 +1,29 @@
 import apiConfig from "@/apis/apiConfig";
 
+const stripL1ApprovalFields = (value = {}) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+
+    return Object.fromEntries(
+        Object.entries(value).filter(([key]) => {
+            const normalizedKey = String(key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+            return ![
+                "approval_l1",
+                "approval_l1_name",
+                "approval_l1_names",
+                "approval_l1_id",
+                "approval_l1_ids",
+                "approval_l1_user_id",
+                "approval_l1_user_ids",
+                "l1_approver",
+                "l1_approver_name",
+                "l1_approver_names",
+                "l1_approver_user_id",
+                "l1_approver_user_ids",
+            ].includes(normalizedKey);
+        })
+    );
+};
+
 const buildSubmittedNotebookPayload = (payload = {}) => {
     const submittedFields =
         payload.submitted_fields ||
@@ -11,19 +35,38 @@ const buildSubmittedNotebookPayload = (payload = {}) => {
         null;
 
     if (!submittedFields || typeof submittedFields !== "object") {
-        return payload;
+        return {
+            ...stripL1ApprovalFields(payload),
+            acknowledgement_ticket_level: payload.acknowledgement_ticket_level || "L2",
+            acknowledgement_target_level: payload.acknowledgement_target_level || "L2",
+            acknowledgement_ticket_type: payload.acknowledgement_ticket_type || "L2_SUBMISSION",
+            create_l1_acknowledgement_ticket: false,
+            create_l2_acknowledgement_ticket: true,
+            skip_l1_acknowledgement_ticket: true,
+            ticket_level: payload.ticket_level || "L2",
+            target_level: payload.target_level || "L2",
+            approval_l1: "",
+            approval_l1_name: "",
+            approval_l1_user_id: "",
+        };
     }
 
     return {
-        ...payload,
-        submitted_fields: submittedFields,
-        submittedFields,
-        input_fields: submittedFields,
-        inputFields: submittedFields,
-        fields: submittedFields,
-        form_data: submittedFields,
-        formData: submittedFields,
-        payload: submittedFields,
+        ...stripL1ApprovalFields(payload),
+        screen_name: payload.screen_name || payload.screenName || payload.input_screen || payload.notebook_name,
+        acknowledgement_ticket_level: payload.acknowledgement_ticket_level || "L2",
+        acknowledgement_target_level: payload.acknowledgement_target_level || "L2",
+        acknowledgement_ticket_type: payload.acknowledgement_ticket_type || "L2_SUBMISSION",
+        create_l1_acknowledgement_ticket: false,
+        create_l2_acknowledgement_ticket: true,
+        skip_l1_acknowledgement_ticket: true,
+        ticket_level: payload.ticket_level || "L2",
+        target_level: payload.target_level || "L2",
+        approval_l1: "",
+        approval_l1_name: "",
+        approval_l1_user_id: "",
+        submitted_fields: stripL1ApprovalFields(submittedFields),
+        submittedFields: stripL1ApprovalFields(submittedFields),
     };
 };
 

@@ -16,6 +16,9 @@ import {
   formatStandardValue,
   getTicketParameterNames,
   getTicketValueForParameter,
+  isNotebookAcknowledgementParameterName,
+  isSubmissionFrequencyParameterName,
+  isSubmissionTicketRecord,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
 import {
@@ -270,21 +273,44 @@ export default function SupervisorDetails() {
   if (error && !ticket) return <p className={styles.loading}>{error}</p>;
   if (!ticket) return <p className={styles.loading}>No ticket found</p>;
 
-  const parameterNames = getTicketParameterNames(ticket);
+  const isSubmissionTicket = isSubmissionTicketRecord(ticket) ||
+    String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const rawParameterNames = getTicketParameterNames(ticket);
+  const submissionParameterNames = rawParameterNames.filter(
+    (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)
+  );
+  const parameterNames = (isSubmissionTicket
+    ? (submissionParameterNames.length ? submissionParameterNames : ["ACKNOWLEDGEMENT"])
+    : rawParameterNames
+  ).filter((key) => {
+    if (!/^\d+$/.test(String(key || "").trim())) return true;
+
+    const actual = getTicketValueForParameter(ticket?.actual_value, key);
+    const standard = formatStandardValue(getTicketValueForParameter(ticket?.threshold_value, key));
+    const threshold = formatThresholdValue(getTicketValueForParameter(ticket?.threshold_value, key));
+
+    return [actual, standard, threshold].some(
+      (value) => String(value ?? "").trim() && String(value ?? "").trim() !== "-"
+    );
+  });
   const visibleParameterNames = expanded ? parameterNames : parameterNames.slice(0, 1);
   const displayTicketId = formatTicketIdForDisplay(ticket.ticket_id || requestedTicketId);
   const statusClassName = styles[toClassKey(ticket.status)] || "";
-  const isSubmissionTicket =
-    String(parameterNames?.[0] || "").toLowerCase().includes("submission_frequency") ||
-    String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
-  const submissionFrequency = ticket?.frequency || ticket?.threshold_value?.expected_frequency || "-";
+  const submissionFrequency =
+    ticket?.frequency ||
+    ticket?.submission_frequency ||
+    ticket?.check_frequency ||
+    ticket?.threshold_value?.expected_frequency ||
+    "-";
   const submissionOccurrences =
     ticket?.occurrences ??
+    ticket?.occurrence_count ??
+    ticket?.count ??
     ticket?.violation_details?.checks?.expected_occurrences ??
     ticket?.violation_details?.checks?.actual_occurrences ??
     "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
-  const machineName = ticket.machine_name || ticket.notebook || "Unknown machine";
+  const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
   const machineDetailText =
     ticket.description ||
     (isSubmissionTicket
@@ -453,7 +479,7 @@ export default function SupervisorDetails() {
             <tbody>
               {visibleParameterNames.map((key, i) => (
                 <tr key={i}>
-                  <td>{ticket.machine_name || ticket.notebook || "-"}</td>
+                  <td>{ticket.notebook || ticket.machine_name || "-"}</td>
                   <td>{key.toUpperCase()}</td>
                   <td style={{ color: "#CA0000" }}>
                     {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
@@ -619,7 +645,7 @@ export default function SupervisorDetails() {
           <div className={styles.row}>
             <div>
               <span>NOTEBOOK TYPE</span>
-              <p>{ticket.machine_name || ticket.notebook || "-"}</p>
+              <p>{ticket.notebook || ticket.machine_name || "-"}</p>
             </div>
 
             <div>

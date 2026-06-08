@@ -369,6 +369,7 @@ function TeamPerformanceFilter({
   users,
   selectedUserId,
   setSelectedUserId,
+  options = {},
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const backendDepartments = normalizeOptions(options?.departments);
@@ -377,6 +378,9 @@ function TeamPerformanceFilter({
     ? backendDepartments
     : departmentDirectory.map((department) => ({ label: department.name, value: department.slug }));
   const subDepartments = selectedDepartment?.subDepartments || [];
+  const subDepartmentOptions = backendSubDepartments.length
+    ? backendSubDepartments
+    : subDepartments.map((subDepartment) => ({ label: subDepartment.name, value: subDepartment.slug }));
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
@@ -1365,6 +1369,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           users={users}
           selectedUserId={selectedUserId}
           setSelectedUserId={setSelectedUserId}
+          options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
@@ -1411,6 +1416,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           users={users}
           selectedUserId={selectedUserId}
           setSelectedUserId={setSelectedUserId}
+          options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}

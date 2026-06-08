@@ -232,24 +232,32 @@ const reportSources = {
 };
 
 const optionNameKeys = [
-  "name",
-  "label",
-  "value",
-  "department",
   "department_name",
   "departmentName",
-  "sub_department",
-  "subDepartment",
   "sub_department_name",
   "subDepartmentName",
-  "input_screen",
-  "inputScreen",
   "screen_name",
   "screenName",
+  "input_screen_name",
+  "inputScreenName",
+  "notebook_name",
+  "notebookName",
+  "display_name",
+  "displayName",
+  "title",
+  "name",
+  "label",
+  "text",
+  "department",
+  "sub_department",
+  "subDepartment",
+  "input_screen",
+  "inputScreen",
   "field_name",
   "fieldName",
   "input_field",
   "inputField",
+  "value",
   "key",
 ];
 
@@ -285,6 +293,13 @@ const toOptionText = (value) => {
   return text ? text : "";
 };
 
+const isNumericOnlyText = (value) => /^\d+$/.test(String(value ?? "").trim());
+
+const isReadableReportOption = (value) => {
+  const text = toOptionText(value);
+  return Boolean(text && !isNumericOnlyText(text));
+};
+
 const normalizeOptionList = (value) => {
   if (Array.isArray(value)) {
     return value.flatMap(normalizeOptionList);
@@ -292,14 +307,14 @@ const normalizeOptionList = (value) => {
 
   if (typeof value === "string" || typeof value === "number") {
     const option = toOptionText(value);
-    return option ? [option] : [];
+    return isReadableReportOption(option) ? [option] : [];
   }
 
   if (!value || typeof value !== "object") return [];
 
   for (const key of optionNameKeys) {
     const option = toOptionText(value[key]);
-    if (option) return [option];
+    if (isReadableReportOption(option)) return [option];
   }
 
   const nestedOptions = nestedOptionKeys.flatMap((key) => normalizeOptionList(value[key]));
@@ -307,7 +322,7 @@ const normalizeOptionList = (value) => {
 
   return Object.keys(value)
     .map(toOptionText)
-    .filter(Boolean);
+    .filter(isReadableReportOption);
 };
 
 const getFirstOptionList = (source, keys) => {
@@ -318,7 +333,7 @@ const getFirstOptionList = (source, keys) => {
   return [];
 };
 
-const uniqueOptions = (options) => Array.from(new Set(normalizeOptionList(options)));
+const uniqueOptions = (options) => Array.from(new Set(normalizeOptionList(options).filter(isReadableReportOption)));
 
 const catalogDepartments = departmentDirectory.map((item) => item.name);
 
@@ -368,6 +383,33 @@ const getReportSource = (departmentName, subDepartmentName, typeName) => {
   const subDepartmentKey = getReportSubDepartmentKey(departmentName, subDepartmentName);
   const typeKey = getReportTypeKey(departmentName, subDepartmentName, typeName);
   return reportSources[departmentKey]?.[subDepartmentKey]?.[typeKey];
+};
+
+const normalizeReportSelection = ({ departmentName, subDepartmentName, typeName }) => {
+  const departmentKey = getReportDepartmentKey(departmentName);
+  const subDepartmentKey = getReportSubDepartmentKey(departmentKey, subDepartmentName);
+  const typeKey = getReportTypeKey(departmentKey, subDepartmentKey, typeName);
+
+  return {
+    department: isReadableReportOption(departmentKey) ? departmentKey : "Quality Control",
+    subDepartment: isReadableReportOption(subDepartmentKey) ? subDepartmentKey : "Mixing",
+    reportType: isReadableReportOption(typeKey) ? typeKey : "Cotton HVI Data Entry",
+  };
+};
+
+const normalizeReportSchedule = (schedule = {}) => {
+  const canonical = normalizeReportSelection({
+    departmentName: schedule.department,
+    subDepartmentName: schedule.subDepartment || schedule.sub_department,
+    typeName: schedule.reportType || schedule.report_type || schedule.input_screen,
+  });
+
+  return {
+    ...schedule,
+    department: canonical.department,
+    subDepartment: canonical.subDepartment,
+    reportType: canonical.reportType,
+  };
 };
 
 const getCatalogSubDepartments = (selectedDepartment) =>
@@ -1262,7 +1304,7 @@ function ReportsPage() {
       try {
         const schedules = await fetchReportSchedulesAPI(reportOwnerKey);
         if (isActive) {
-          setScheduledReports(schedules);
+          setScheduledReports(schedules.map(normalizeReportSchedule));
         }
       } catch {
         if (isActive) {
@@ -1321,16 +1363,21 @@ function ReportsPage() {
         const reportFetcher =
           reportSource?.fetcher ||
           (reportSource?.endpoint ? fetchEndpointRows.bind(null, reportSource.endpoint) : null);
+        const canonicalReport = normalizeReportSelection({
+          departmentName: department,
+          subDepartmentName: subDepartment,
+          typeName: reportType,
+        });
 
         const baseReportParams = {
           start_date: startDate,
           end_date: endDate,
-          department,
-          subDepartment,
-          sub_department: subDepartment,
-          reportType,
-          report_type: reportType,
-          input_screen: reportType,
+          department: canonicalReport.department,
+          subDepartment: canonicalReport.subDepartment,
+          sub_department: canonicalReport.subDepartment,
+          reportType: canonicalReport.reportType,
+          report_type: canonicalReport.reportType,
+          input_screen: canonicalReport.reportType,
         };
         const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
 
@@ -1543,20 +1590,21 @@ function ReportsPage() {
   };
 
   const loadScheduleRows = async (schedule) => {
+    const normalizedSchedule = normalizeReportSchedule(schedule);
     const scheduleSource =
-      accessibleReportSources[schedule.department]?.[schedule.subDepartment]?.[schedule.reportType];
+      accessibleReportSources[normalizedSchedule.department]?.[normalizedSchedule.subDepartment]?.[normalizedSchedule.reportType];
     const reportFetcher =
       scheduleSource?.fetcher ||
       (scheduleSource?.endpoint ? fetchEndpointRows.bind(null, scheduleSource.endpoint) : null);
     const baseScheduleParams = {
-      start_date: schedule.startDate,
-      end_date: schedule.endDate,
-      department: schedule.department,
-      subDepartment: schedule.subDepartment,
-      sub_department: schedule.subDepartment,
-      reportType: schedule.reportType,
-      report_type: schedule.reportType,
-      input_screen: schedule.reportType,
+      start_date: normalizedSchedule.startDate,
+      end_date: normalizedSchedule.endDate,
+      department: normalizedSchedule.department,
+      subDepartment: normalizedSchedule.subDepartment,
+      sub_department: normalizedSchedule.subDepartment,
+      reportType: normalizedSchedule.reportType,
+      report_type: normalizedSchedule.reportType,
+      input_screen: normalizedSchedule.reportType,
     };
     const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseScheduleParams, ...params });
     let scheduleRows = [];
@@ -1571,10 +1619,11 @@ function ReportsPage() {
       scheduleRows = await fetchAllReportRows(generalReportFetcher, baseScheduleParams);
     }
 
-    return filterRowsByScheduleDate(schedule, scheduleRows);
+    return filterRowsByScheduleDate(normalizedSchedule, scheduleRows);
   };
 
   const buildScheduleMailPayload = (schedule, reportRows = filteredRows) => {
+    const normalizedSchedule = normalizeReportSchedule(schedule);
     const reportFields = schedule.selectedFields?.length ? schedule.selectedFields : selectedFields;
     const otherRecipientProfiles = schedule.sendToOthers
       ? (schedule.recipientUsers || [])
@@ -1597,9 +1646,9 @@ function ReportsPage() {
     );
 
     const report = {
-      department: schedule.department,
-      subDepartment: schedule.subDepartment,
-      reportType: schedule.reportType,
+      department: normalizedSchedule.department,
+      subDepartment: normalizedSchedule.subDepartment,
+      reportType: normalizedSchedule.reportType,
       dateRange: {
         from: schedule.startDate || startDate,
         to: schedule.endDate || endDate,
@@ -1627,9 +1676,9 @@ function ReportsPage() {
         <p>I hope you are doing well.</p>
         <p>Please find attached the scheduled report <strong>${schedule.name}</strong> for your review.</p>
         <p>
-          <strong>Department:</strong> ${schedule.department}<br />
-          <strong>Sub Department:</strong> ${schedule.subDepartment}<br />
-          <strong>Type:</strong> ${schedule.reportType}<br />
+          <strong>Department:</strong> ${normalizedSchedule.department}<br />
+          <strong>Sub Department:</strong> ${normalizedSchedule.subDepartment}<br />
+          <strong>Type:</strong> ${normalizedSchedule.reportType}<br />
           <strong>Date Range:</strong> ${report.dateRange.from} to ${report.dateRange.to}<br />
           <strong>Total Rows:</strong> ${report.totalRows}
         </p>
@@ -1640,7 +1689,7 @@ function ReportsPage() {
 
     return {
       schedule: {
-        ...schedule,
+        ...normalizedSchedule,
         active: typeof schedule.active === "boolean" ? schedule.active : true,
       },
       mailPayload: {
@@ -1661,12 +1710,17 @@ function ReportsPage() {
   };
 
   const handleSaveSchedule = async () => {
+    const canonicalReport = normalizeReportSelection({
+      departmentName: department,
+      subDepartmentName: subDepartment,
+      typeName: reportType,
+    });
     const schedule = {
       id: editingScheduleId || `${Date.now()}`,
-      name: scheduleReportName.trim() || `${subDepartment} - ${reportType}`,
-      department,
-      subDepartment,
-      reportType,
+      name: scheduleReportName.trim() || `${canonicalReport.subDepartment} - ${canonicalReport.reportType}`,
+      department: canonicalReport.department,
+      subDepartment: canonicalReport.subDepartment,
+      reportType: canonicalReport.reportType,
       startDate,
       endDate,
       dateFilterActive,
@@ -1845,6 +1899,12 @@ function ReportsPage() {
   };
 
   const exportRows = filteredRows;
+  const activeReportDisplay = normalizeReportSelection({
+    departmentName: department,
+    subDepartmentName: subDepartment,
+    typeName: reportType,
+  });
+  const activeReportDisplayText = `${activeReportDisplay.department} / ${activeReportDisplay.subDepartment} / ${activeReportDisplay.reportType}`;
 
   const buildCsv = () => {
     const header = selectedFields.map((field) => field.label).join(",");
@@ -1862,7 +1922,7 @@ function ReportsPage() {
     downloadFile("report.csv", buildCsv(), "text/csv;charset=utf-8");
     notifyAdminAction({
       title: "Report CSV exported",
-      body: `${department} / ${subDepartment} / ${reportType} report was exported as CSV.`,
+      body: `${activeReportDisplayText} report was exported as CSV.`,
     });
   };
 
@@ -1925,7 +1985,7 @@ function ReportsPage() {
           </style>
         </head>
         <body>
-          <h1>${escapeHtmlText(department)} - ${escapeHtmlText(subDepartment)} - ${escapeHtmlText(reportType)}</h1>
+          <h1>${escapeHtmlText(activeReportDisplay.department)} - ${escapeHtmlText(activeReportDisplay.subDepartment)} - ${escapeHtmlText(activeReportDisplay.reportType)}</h1>
           <table>
             <thead><tr>${selectedFields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("")}</tr></thead>
             <tbody>${exportRows
@@ -1943,7 +2003,7 @@ function ReportsPage() {
     popup.print();
     notifyAdminAction({
       title: "Report PDF exported",
-      body: `${department} / ${subDepartment} / ${reportType} report was exported as PDF.`,
+      body: `${activeReportDisplayText} report was exported as PDF.`,
     });
   };
 
@@ -2077,7 +2137,7 @@ function ReportsPage() {
 
           <section className={styles.contentGrid}>
             <aside className={styles.availableCard}>
-              <h2>{subDepartment} - {reportType}</h2>
+              <h2>{activeReportDisplay.subDepartment} - {activeReportDisplay.reportType}</h2>
               <h3>Available Fields</h3>
               <p>Drag or click the fields to add to report</p>
               <div className={styles.fieldList}>
@@ -2208,6 +2268,7 @@ function ReportsPage() {
             {scheduledReports.length ? (
               scheduledReports.map((schedule) => {
                 const scheduleId = getScheduleRecordId(schedule);
+                const displaySchedule = normalizeReportSchedule(schedule);
 
                 return (
                 <div className={styles.scheduledItem} key={scheduleId}>
@@ -2221,7 +2282,7 @@ function ReportsPage() {
                     <div className={styles.scheduledMeta}>
                       <span><FiClock /> {getScheduleTiming(schedule)}</span>
                       <span><FiUsers /> {getScheduleRecipient(schedule)}</span>
-                      <span><FiFilter /> {schedule.department} / {schedule.subDepartment} / {schedule.reportType}</span>
+                      <span><FiFilter /> {displaySchedule.department} / {displaySchedule.subDepartment} / {displaySchedule.reportType}</span>
                     </div>
                   </div>
                   <div className={styles.scheduledActions}>

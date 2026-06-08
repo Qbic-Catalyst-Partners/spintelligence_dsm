@@ -13,6 +13,9 @@ import {
   formatStandardValue,
   getTicketParameterNames,
   getTicketValueForParameter,
+  isNotebookAcknowledgementParameterName,
+  isSubmissionFrequencyParameterName,
+  isSubmissionTicketRecord,
 } from "@/utils/ticketTransformer";
 import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketStatus";
 
@@ -123,9 +126,18 @@ export default function TicketDetails() {
         });
   };
 
-  
+  const rawParameterNames = getTicketParameterNames(resolvedTicket);
+  const isSubmissionTicket = isSubmissionTicketRecord(resolvedTicket) ||
+    String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const submissionParameterNames = rawParameterNames.filter(
+    (param) => isSubmissionFrequencyParameterName(param) || isNotebookAcknowledgementParameterName(param)
+  );
+  const displayParameterNames = isSubmissionTicket
+    ? (submissionParameterNames.length ? submissionParameterNames : ["ACKNOWLEDGEMENT"])
+    : rawParameterNames;
+
   const parameterMap =
-    getTicketParameterNames(resolvedTicket).map((param) => ({
+    displayParameterNames.map((param) => ({
       name: param,
       actual: getTicketValueForParameter(resolvedTicket?.actual_value, param),
       standard: formatStandardValue(
@@ -134,7 +146,13 @@ export default function TicketDetails() {
       threshold: formatThresholdValue(
         getTicketValueForParameter(resolvedTicket?.threshold_value, param)
       ),
-    }));
+    })).filter((item) => {
+      if (!/^\d+$/.test(String(item.name || "").trim())) return true;
+
+      return [item.actual, item.standard, item.threshold].some(
+        (value) => String(value ?? "").trim() && String(value ?? "").trim() !== "-"
+      );
+    });
 
   const visibleRows = expanded ? parameterMap : parameterMap.slice(0, 1);
   const mobileParameterRows = expanded ? parameterMap : parameterMap.slice(0, 3);
@@ -142,9 +160,6 @@ export default function TicketDetails() {
   const severityClassName = resolvedTicket ? styles[toClassKey(resolvedTicket.severity)] || "" : "";
   const displayTicketId = formatTicketIdForDisplay(resolvedTicket?.ticket_id || ticketId);
   const machineName = resolvedTicket?.machine_name || resolvedTicket?.notebook || "Unknown machine";
-  const isSubmissionTicket =
-    String(parameterMap?.[0]?.name || "").toLowerCase().includes("submission_frequency") ||
-    String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
   const machineDetailText =
     resolvedTicket?.description ||
     (isSubmissionTicket

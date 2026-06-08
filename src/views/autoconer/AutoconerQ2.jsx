@@ -8,6 +8,7 @@ import {
   submitAutoconerQ2Entry,
   updateAutoconerQ2Entry,
 } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/AutoconerQ2.module.css";
@@ -570,18 +571,14 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
 
           <div className={styles.fieldGroup}>
             <label>Consignee Name</label>
-            <select
+            <SearchableSelect
               className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
               value={form.consigneeName}
-              onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
-            >
-              <option value="">Select Consignee Name</option>
-              {consigneeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => handleFieldChange("consigneeName", value)}
+              options={consigneeOptions}
+              placeholder="Search or enter consignee name"
+              ariaLabel="Consignee Name"
+            />
           </div>
 
           <div className={styles.fieldGroup}>

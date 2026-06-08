@@ -22,8 +22,11 @@ import {
 
 export default function operatorboard() {
     const authUser = useSelector((state) => state.auth?.user);
+    const authToken = useSelector((state) => state.auth?.token);
+    const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
     const [ticketData, setTicketData] = useState([]);
-    const [submissionTicketData, setSubmissionTicketData] = useState([]);
+    const [apiSubmissionTicketData, setApiSubmissionTicketData] = useState([]);
+    const [operatorSubmissionTicketData, setOperatorSubmissionTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [thresholdError, setThresholdError] = useState("");
     const [submissionError, setSubmissionError] = useState("");
@@ -44,14 +47,64 @@ export default function operatorboard() {
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 6;
 
+    const formatSubmissionTicket = (ticket) => {
+        const transformedTicket = transformTicket(ticket);
+        return {
+            id: transformedTicket.ticket_id || ticket.ticket_id,
+            machine:
+                ticket.notebook ||
+                transformedTicket.notebook ||
+                transformedTicket.machine_name ||
+                "Unknown",
+            notebookType:
+                ticket.notebook ||
+                transformedTicket.notebook_type ||
+                transformedTicket.notebookType ||
+                transformedTicket.notebook ||
+                "Submission",
+            parameter:
+                ticket.parameter ||
+                transformedTicket.parameter ||
+                ticket.parameter_name?.[0] ||
+                "submission_frequency",
+            actual: "-",
+            standard: "-",
+            threshold: "-",
+            frequency:
+                ticket.frequency ||
+                transformedTicket.frequency ||
+                transformedTicket.submission_frequency ||
+                transformedTicket.check_frequency ||
+                "-",
+            occurrences:
+                ticket.occurrences ??
+                ticket.configured_occurrences ??
+                transformedTicket.occurrences ??
+                transformedTicket.occurrence_count ??
+                transformedTicket.count ??
+                "-",
+            severity: ticket.severity || transformedTicket.severity || "High",
+            status: transformedTicket.status,
+            rawCreatedAt: transformedTicket.rawCreatedAt,
+            createdAt: transformedTicket.createdAt,
+        };
+    };
+
     useEffect(() => {
+        if (!isAuthHydrated) {
+            return;
+        }
+        if (!authToken) {
+            setLoading(false);
+            return;
+        }
         if (shouldUseSupervisorDashboard) {
             router.replace("/supervisordashboard");
             return;
         }
         fetchTickets();
         fetchSubmissionTickets();
-    }, [shouldUseSupervisorDashboard]);
+    }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
 
     if (shouldUseSupervisorDashboard) {
         return null;
@@ -66,8 +119,11 @@ export default function operatorboard() {
                 ? response
                 : response?.data || response?.tickets || [];
 
-            const formattedData = applyStoredTicketStatuses(ticketsArray)
-                .filter((ticket) => !isSubmissionTicketRecord(ticket))
+            const normalizedTickets = applyStoredTicketStatuses(ticketsArray);
+            const thresholdTickets = normalizedTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
+            const submissionTickets = normalizedTickets.filter(isSubmissionTicketRecord);
+
+            const formattedData = thresholdTickets
                 .map((ticket) => {
                     const transformedTicket = transformTicket(ticket);
 
@@ -93,9 +149,11 @@ export default function operatorboard() {
                 });
 
             setTicketData(formattedData);
+            setOperatorSubmissionTicketData(submissionTickets.map(formatSubmissionTicket));
         } catch (error) {
             console.error("Error fetching tickets:", error);
             setTicketData([]);
+            setOperatorSubmissionTicketData([]);
             setThresholdError(error.message || "Failed to fetch threshold tickets.");
         } finally {
             setLoading(false);
@@ -110,40 +168,12 @@ export default function operatorboard() {
                 ? response
                 : response?.data || response?.tickets || [];
 
-            const formattedData = ticketsArray.map((ticket) => {
-                const createdDate = new Date(ticket.created_at);
-                return {
-                    id: ticket.ticket_id,
-                    machine: ticket.notebook || ticket.machine_name || "Unknown",
-                    notebookType: ticket.notebook || "Submission",
-                    parameter: ticket.parameter || ticket.parameter_name?.[0] || "submission_frequency",
-                    actual: "-",
-                    standard: "-",
-                    threshold: "-",
-                    frequency: ticket.frequency || "-",
-                    occurrences: ticket.occurrences ?? ticket.configured_occurrences ?? "-",
-                    severity: ticket.severity || "High",
-                    status:
-                        ticket.status ??
-                        ticket.ticket_status ??
-                        ticket.current_status ??
-                        ticket.state ??
-                        "",
-                    rawCreatedAt: createdDate,
-                    createdAt: createdDate.toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true,
-                    }),
-                };
-            });
+            const formattedData = ticketsArray.map(formatSubmissionTicket);
 
-            setSubmissionTicketData(formattedData);
+            setApiSubmissionTicketData(formattedData);
         } catch (submissionError) {
             console.error("Error fetching submission tickets:", submissionError);
-            setSubmissionTicketData([]);
+            setApiSubmissionTicketData([]);
             setSubmissionError(submissionError.message || "Failed to fetch submission tickets.");
         }
     };
@@ -174,7 +204,7 @@ export default function operatorboard() {
     };
 
     useEffect(() => {
-        if (shouldUseSupervisorDashboard || typeof window === "undefined") return;
+        if (!isAuthHydrated || !authToken || shouldUseSupervisorDashboard || typeof window === "undefined") return;
 
         const refreshFromServer = () => {
             fetchTickets();
@@ -193,10 +223,18 @@ export default function operatorboard() {
             window.removeEventListener("focus", refreshFromServer);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [shouldUseSupervisorDashboard]);
+    }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
 
     if (loading) return <p>Loading tickets...</p>;
 
+    const submissionTicketData = [
+        ...apiSubmissionTicketData,
+        ...operatorSubmissionTicketData.filter(
+            (operatorTicket) =>
+                operatorTicket?.id &&
+                !apiSubmissionTicketData.some((apiTicket) => apiTicket?.id === operatorTicket.id)
+        ),
+    ];
     const activeDataSource = activeTicketingView === "submission" ? submissionTicketData : ticketData;
     const activeError = activeTicketingView === "submission" ? submissionError : thresholdError;
 

@@ -1,15 +1,15 @@
 .page {
     min-height: calc(100dvh - 72px);
-    padding: 28px 22px 64px;
+    padding: 24px 22px 56px;
     background: #f8f6f6;
     color: #111827;
     box-sizing: border-box;
 }
 
 .title {
-    margin: 0 0 28px;
+    margin: 0 0 24px;
     color: #111827;
-    font-size: 30px;
+    font-size: 26px;
     font-weight: 800;
     line-height: 1.15;
 }
@@ -22,20 +22,28 @@
     box-sizing: border-box;
 }
 
+.filterHeader,
+.timelineHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
 .filterTitle,
 .timelineTitle {
     margin: 0;
     color: #111827;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 800;
     line-height: 1.25;
 }
 
 .filterGrid {
     display: grid;
-    grid-template-columns: minmax(190px, 1.4fr) minmax(170px, 0.9fr) minmax(150px, 0.85fr) minmax(150px, 0.75fr) minmax(150px, 0.75fr);
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
     gap: 14px;
-    margin-top: 26px;
+    margin-top: 22px;
     align-items: end;
 }
 
@@ -44,7 +52,7 @@
     gap: 9px;
     min-width: 0;
     color: #334155;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
 }
 
@@ -52,12 +60,13 @@
 .field select {
     width: 100%;
     min-width: 0;
-    height: 40px;
+    height: 38px;
     border: 1px solid #dbe7f7;
     border-radius: 8px;
     background-color: #f8fbff;
     color: #0f172a;
     font: inherit;
+    font-size: 13px;
     font-weight: 500;
     outline: none;
     box-sizing: border-box;
@@ -69,6 +78,11 @@
 
 .field select {
     padding: 0 40px 0 14px;
+}
+
+.field select:disabled {
+    color: #64748b;
+    cursor: wait;
 }
 
 .field input::placeholder {
@@ -107,12 +121,68 @@
     padding-right: 34px;
 }
 
+.primaryButton,
+.secondaryButton,
+.pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.primaryButton {
+    min-width: 104px;
+    height: 38px;
+    justify-self: start;
+    border: 1px solid #243b64;
+    background: #243b64;
+    color: #ffffff;
+}
+
+.secondaryButton {
+    min-width: 72px;
+    height: 34px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+}
+
+.primaryButton svg,
+.pagination button svg {
+    width: 15px;
+    height: 15px;
+}
+
 .timeline {
-    margin-top: 40px;
+    margin-top: 34px;
+}
+
+.resultCount {
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.errorState {
+    margin-top: 18px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #991b1b;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .tableWrap {
-    margin-top: 36px;
+    margin-top: 28px;
     overflow-x: auto;
 }
 
@@ -122,14 +192,14 @@
     border-collapse: separate;
     border-spacing: 0;
     color: #000000;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .table th {
     background: #d1d1d1;
-    padding: 14px 16px;
+    padding: 12px 14px;
     color: #000000;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
     line-height: 1.2;
     text-align: left;
@@ -142,12 +212,11 @@
 
 .table th:last-child {
     border-radius: 0 8px 8px 0;
-    text-align: center;
 }
 
 .table td {
     border-bottom: 1px solid #d1d5db;
-    padding: 18px 16px;
+    padding: 15px 14px;
     color: #000000;
     font-weight: 500;
     line-height: 1.25;
@@ -164,26 +233,36 @@
     white-space: nowrap;
 }
 
-.table td:last-child {
-    text-align: center;
+.stateCell {
+    height: 112px;
+    color: #64748b !important;
+    font-size: 14px;
+    font-weight: 700 !important;
+    text-align: center !important;
 }
 
-.actionButton {
-    display: inline-flex;
+.pagination {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: #555555;
-    cursor: pointer;
+    justify-content: flex-end;
+    gap: 14px;
+    margin-top: 22px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 800;
 }
 
-.actionButton svg {
-    width: 18px;
-    height: 18px;
+.pagination button {
+    min-width: 98px;
+    min-height: 36px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 :global(:root[data-theme="dark"]) .page {
@@ -213,12 +292,24 @@
     color: var(--foreground);
 }
 
+:global(:root[data-theme="dark"]) .secondaryButton,
+:global(:root[data-theme="dark"]) .pagination button {
+    border-color: var(--border-color);
+    background: var(--surface);
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .primaryButton {
+    border-color: #243b64;
+    background: #243b64;
+    color: #ffffff;
+}
+
 :global(:root[data-theme="dark"]) .field input::placeholder {
     color: #cbd5e1;
 }
 
-:global(:root[data-theme="dark"]) .control svg,
-:global(:root[data-theme="dark"]) .actionButton {
+:global(:root[data-theme="dark"]) .control svg {
     color: var(--foreground);
 }
 
@@ -236,9 +327,15 @@
     color: var(--foreground);
 }
 
+:global(:root[data-theme="dark"]) .resultCount,
+:global(:root[data-theme="dark"]) .pagination,
+:global(:root[data-theme="dark"]) .stateCell {
+    color: #cbd5e1 !important;
+}
+
 @media (max-width: 1180px) {
     .filterGrid {
-        grid-template-columns: repeat(3, minmax(160px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     }
 }
 
@@ -248,7 +345,7 @@
     }
 
     .title {
-        font-size: 26px;
+        font-size: 23px;
     }
 
     .filters {
@@ -258,6 +355,20 @@
     .filterGrid {
         grid-template-columns: 1fr;
         gap: 16px;
+    }
+
+    .filterHeader,
+    .timelineHeader,
+    .pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .secondaryButton,
+    .primaryButton,
+    .pagination button {
+        width: 100%;
+        justify-self: stretch;
     }
 
     .tableWrap {

@@ -79,7 +79,7 @@ function AppShell({ Component, pageProps }) {
     { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/reports/custom", label: "Reports" },
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },
-    { href: "/submitted-notebook-threshold", label: "Submission Threshold" },
+    { href: "/submitted-notebook-threshold", label: "Submitted Notebooks Threshold" },
     { href: "/ticket-calendar", label: "Ticket Calendar" },
     { href: "/settings", label: "Settings" },
   ];
