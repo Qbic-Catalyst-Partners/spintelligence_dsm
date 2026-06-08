@@ -6,6 +6,9 @@ const normalizeThresholdList = (data) => {
   if (Array.isArray(data?.configs)) return data.configs;
   if (Array.isArray(data?.rows)) return data.rows;
   if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.thresholds)) return data.data.thresholds;
+  if (Array.isArray(data?.data?.configs)) return data.data.configs;
+  if (Array.isArray(data?.data?.rows)) return data.data.rows;
   return [];
 };
 

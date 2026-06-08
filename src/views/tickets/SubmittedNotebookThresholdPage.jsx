@@ -28,6 +28,8 @@ const buildExistingFilters = () => ({
   status: "",
 });
 
+const PENDING_ACK_THRESHOLD_STORAGE_KEY = "submittedNotebookPendingAcknowledgementThresholds";
+
 const normalizeLookupValue = (value) => String(value ?? "").trim().toLowerCase();
 
 const getUserDisplayName = (user) =>
@@ -75,6 +77,32 @@ const resolveUser = (users, value) => {
 const getThresholdId = (item) =>
   item?.id || item?.threshold_id || item?.thresholdId || item?._id || "";
 
+const getThresholdDepartment = (item) => item?.department || item?.department_name || item?.departmentName || "";
+
+const getThresholdSubDepartment = (item) =>
+  item?.sub_department || item?.subDepartment || item?.sub_department_name || item?.subDepartmentName || "";
+
+const getThresholdScreenName = (item) =>
+  item?.screen_name || item?.screenName || item?.notebook || item?.notebook_name || item?.notebookName || item?.input_screen || item?.inputScreen || "";
+
+const getThresholdAckHours = (item) =>
+  item?.acknowledge_within_hours ??
+  item?.acknowledgeWithinHours ??
+  item?.ack_hours ??
+  item?.ackHours ??
+  item?.acknowledgement_hours ??
+  item?.acknowledgementHours ??
+  "";
+
+const getThresholdL2 = (item) =>
+  item?.approval_l2_name ||
+  item?.approvalL2Name ||
+  item?.l2_approver_name ||
+  item?.l2ApproverName ||
+  item?.approval_l2 ||
+  item?.approvalL2 ||
+  "-";
+
 const formatTimestamp = (value) => {
   if (!value) return "-";
   const date = new Date(value);
@@ -89,6 +117,12 @@ const formatTimestamp = (value) => {
 };
 
 const getActiveValue = (item) => item?.is_active ?? item?.isActive ?? true;
+
+const normalizeMatchValue = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
 export default function SubmittedNotebookThresholdPage() {
   const dispatch = useDispatch();
@@ -129,29 +163,29 @@ export default function SubmittedNotebookThresholdPage() {
   const inactiveThresholds = thresholds.filter((item) => !getActiveValue(item)).length;
 
   const existingDepartmentOptions = Array.from(
-    new Set(thresholds.map((item) => item.department).filter(Boolean))
+    new Set(thresholds.map((item) => getThresholdDepartment(item)).filter(Boolean))
   ).sort((left, right) => left.localeCompare(right));
   const existingSubDepartmentOptions = Array.from(
     new Set(
       thresholds
-        .filter((item) => !existingFilters.department || item.department === existingFilters.department)
-        .map((item) => item.sub_department)
+        .filter((item) => !existingFilters.department || getThresholdDepartment(item) === existingFilters.department)
+        .map((item) => getThresholdSubDepartment(item))
         .filter(Boolean)
     )
   ).sort((left, right) => left.localeCompare(right));
   const existingNotebookOptions = Array.from(
     new Set(
       thresholds
-        .filter((item) => !existingFilters.department || item.department === existingFilters.department)
-        .filter((item) => !existingFilters.subDepartment || item.sub_department === existingFilters.subDepartment)
-        .map((item) => item.screen_name || item.notebook || item.input_screen)
+        .filter((item) => !existingFilters.department || getThresholdDepartment(item) === existingFilters.department)
+        .filter((item) => !existingFilters.subDepartment || getThresholdSubDepartment(item) === existingFilters.subDepartment)
+        .map((item) => getThresholdScreenName(item))
         .filter(Boolean)
     )
   ).sort((left, right) => left.localeCompare(right));
   const filteredThresholds = thresholds.filter((item) => {
-    const screenName = item.screen_name || item.notebook || item.input_screen || "";
-    if (existingFilters.department && item.department !== existingFilters.department) return false;
-    if (existingFilters.subDepartment && item.sub_department !== existingFilters.subDepartment) return false;
+    const screenName = getThresholdScreenName(item);
+    if (existingFilters.department && getThresholdDepartment(item) !== existingFilters.department) return false;
+    if (existingFilters.subDepartment && getThresholdSubDepartment(item) !== existingFilters.subDepartment) return false;
     if (existingFilters.screenName && screenName !== existingFilters.screenName) return false;
     if (existingFilters.status) {
       const statusValue = getActiveValue(item) ? "active" : "inactive";
@@ -164,12 +198,19 @@ export default function SubmittedNotebookThresholdPage() {
     if (!canAccessPage) return;
     setLoading(true);
     try {
-      const acknowledgementRows = await fetchNotebookAcknowledgementThresholdsAPI();
+      const [acknowledgementRows, submissionRows] = await Promise.all([
+        fetchNotebookAcknowledgementThresholdsAPI(),
+        fetchSubmissionFrequencyConfigsAPI(),
+      ]);
       setThresholds(acknowledgementRows);
+      setSubmissionThresholds(submissionRows);
       setError("");
+      return mergedAcknowledgementRows;
     } catch (err) {
       setThresholds([]);
+      setSubmissionThresholds([]);
       setError(err?.message || "Unable to load acknowledgement thresholds.");
+      return pendingRows;
     } finally {
       setLoading(false);
     }
@@ -214,11 +255,13 @@ export default function SubmittedNotebookThresholdPage() {
     });
   };
 
-  const resetForm = () => {
+  const resetForm = ({ preserveFeedback = false } = {}) => {
     setSelectedDepartmentSlug("");
     setRule(createRule());
-    setMessage("");
-    setError("");
+    if (!preserveFeedback) {
+      setMessage("");
+      setError("");
+    }
   };
 
   const handleSave = async (event) => {
@@ -240,7 +283,33 @@ export default function SubmittedNotebookThresholdPage() {
       const selectedL2 = resolveUser(users, rule.approvalL2);
       if (!selectedL2) throw new Error("Please select an L2 approver.");
 
+      const hasSubmissionThreshold = submissionThresholds.some((item) => {
+        const screenName = item?.screen_name || item?.notebook || item?.input_screen || "";
+        return (
+          normalizeMatchValue(item?.department) === normalizeMatchValue(selectedDepartment.name) &&
+          normalizeMatchValue(item?.sub_department) === normalizeMatchValue(selectedSubDepartment.name) &&
+          normalizeMatchValue(screenName) === normalizeMatchValue(rule.screenName) &&
+          getActiveValue(item)
+        );
+      });
+
+      if (!hasSubmissionThreshold) {
+        const params = new URLSearchParams({
+          department: selectedDepartment.slug,
+          subDepartment: selectedSubDepartment.slug,
+          screenName: rule.screenName,
+        });
+        router.push(`/submission-threshold?${params.toString()}`);
+        return;
+      }
+
       const payload = {
+        ...(existingThresholdId
+          ? {
+              id: existingThresholdId,
+              threshold_id: existingThresholdId,
+            }
+          : {}),
         screen_name: rule.screenName,
         department: selectedDepartment.name,
         sub_department: selectedSubDepartment.name,
@@ -251,10 +320,23 @@ export default function SubmittedNotebookThresholdPage() {
       };
 
       const response = await saveNotebookAcknowledgementThresholdAPI(payload);
+      const savedThreshold = {
+        ...(existingThreshold || {}),
+        ...getSavedThresholdFromResponse(response, payload),
+        updated_at: new Date().toISOString(),
+      };
+      writePendingThresholdRows(mergeThresholdRow(readPendingThresholdRows(), savedThreshold));
       setMessage(response?.message || "Submitted notebook threshold saved successfully.");
       setActiveTab("existing");
-      resetForm();
-      await loadThresholds();
+      setExistingFilters(buildExistingFilters());
+      resetForm({ preserveFeedback: true });
+      const reloadedThresholds = await loadThresholds();
+      setThresholds((currentThresholds) =>
+        mergeThresholdRow(
+          reloadedThresholds.length ? reloadedThresholds : mergeThresholdRows(currentThresholds, readPendingThresholdRows()),
+          savedThreshold
+        )
+      );
     } catch (err) {
       setError(
         err?.response?.data?.message ||
@@ -545,20 +627,14 @@ export default function SubmittedNotebookThresholdPage() {
                       filteredThresholds.map((item, index) => {
                         const rowKey =
                           getThresholdId(item) ||
-                          `${item.screen_name}-${item.sub_department}-${index}`;
+                          `${getThresholdScreenName(item)}-${getThresholdSubDepartment(item)}-${index}`;
                         return (
                           <tr key={rowKey}>
-                            <td>{item.department || "-"}</td>
-                            <td>{item.sub_department || "-"}</td>
-                            <td>{item.screen_name || item.notebook || item.input_screen || "-"}</td>
-                            <td>
-                              {item.acknowledge_within_hours ??
-                                item.acknowledgeWithinHours ??
-                                item.ack_hours ??
-                                "-"}{" "}
-                              Hrs
-                            </td>
-                            <td>{item.approval_l2_name || item.approval_l2 || "-"}</td>
+                            <td>{getThresholdDepartment(item) || "-"}</td>
+                            <td>{getThresholdSubDepartment(item) || "-"}</td>
+                            <td>{getThresholdScreenName(item) || "-"}</td>
+                            <td>{getThresholdAckHours(item) || "-"} Hrs</td>
+                            <td>{getThresholdL2(item)}</td>
                             <td>
                               <span
                                 className={`${styles.statusBadge} ${
@@ -568,7 +644,7 @@ export default function SubmittedNotebookThresholdPage() {
                                 {getActiveValue(item) ? "Active" : "Inactive"}
                               </span>
                             </td>
-                            <td>{formatTimestamp(item.created_at || item.createdAt)}</td>
+                            <td>{formatTimestamp(item.created_at || item.createdAt || item.created_on || item.createdOn)}</td>
                           </tr>
                         );
                       })
