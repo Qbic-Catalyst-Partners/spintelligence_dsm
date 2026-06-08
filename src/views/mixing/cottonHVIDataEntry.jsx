@@ -63,8 +63,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         });
     }, [selectedLotDetails]);
 
-    const buildPayload = () => ({
-        entry_id:        entryId || undefined,
+    const buildPayload = (overrideEntryId) => ({
+        entry_id:        overrideEntryId || entryId || undefined,
         inspection_date: date,
         lot_no:          lotNo,
         variety:         formData.variety,
@@ -88,8 +88,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         colour_grade:    formData.colourGrade,
     });
 
-    const handleSubmit = async () => {
-        const payload = buildPayload();
+    const handleSubmit = async (overrideEntryId) => {
+        const payload = buildPayload(overrideEntryId);
         await dispatch(submitCottonHVI(payload)).unwrap();
 
         try {
@@ -120,6 +120,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         } catch (ticketError) {
             console.error("Threshold ticket generation failed:", ticketError);
         }
+
+        return true;
     };
 
     const handleClear = () => {

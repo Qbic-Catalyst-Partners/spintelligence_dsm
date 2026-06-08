@@ -94,6 +94,15 @@ const META_FIELD_KEYS = new Set([
     "operatorname",
     "submitted_by_name",
     "submittedbyname",
+    "submitted_by_user_id",
+    "submittedbyuserid",
+    "submitted_user_id",
+    "submitteduserid",
+    "user_id",
+    "userid",
+    "status",
+    "updated_at",
+    "updatedat",
     "department",
     "sub_department",
     "subdepartment",
@@ -101,6 +110,15 @@ const META_FIELD_KEYS = new Set([
     "notebookname",
     "input_screen",
     "inputscreen",
+    "title",
+    "approval_l1",
+    "approvall1",
+    "approval_l2",
+    "approvall2",
+    "acknowledged_at",
+    "acknowledgedat",
+    "acknowledged_by",
+    "acknowledgedby",
 ]);
 
 const getNotebookId = (notebook) =>
@@ -126,14 +144,14 @@ const parseJsonValue = (value) => {
     }
 };
 
-const findSubmittedFieldsPayload = (value, seen = new Set()) => {
+const findSubmittedFieldsPayload = (value, seen = new Set(), allowRootPayload = true) => {
     const parsed = parseJsonValue(value);
 
     if (!parsed || typeof parsed !== "object") return parsed;
     if (seen.has(parsed)) return {};
     seen.add(parsed);
 
-    if (Array.isArray(parsed)) return parsed.length ? parsed : {};
+    if (Array.isArray(parsed)) return parsed.length && allowRootPayload ? parsed : {};
 
     const directKeys = [
         "submitted_fields",
@@ -154,23 +172,36 @@ const findSubmittedFieldsPayload = (value, seen = new Set()) => {
         const candidate = parseJsonValue(parsed?.[key]);
         if (Array.isArray(candidate) && candidate.length) return candidate;
         if (candidate && typeof candidate === "object" && Object.keys(candidate).length) {
-            const nested = findSubmittedFieldsPayload(candidate, seen);
+            const nested = findSubmittedFieldsPayload(candidate, seen, true);
             if (Array.isArray(nested) && nested.length) return nested;
             if (nested && typeof nested === "object" && Object.keys(nested).length) return nested;
         }
     }
 
     if (parsed.data && typeof parsed.data === "object") {
-        const nested = findSubmittedFieldsPayload(parsed.data, seen);
+        const nested = findSubmittedFieldsPayload(parsed.data, seen, false);
         if (Array.isArray(nested) && nested.length) return nested;
         if (nested && typeof nested === "object" && Object.keys(nested).length) return nested;
     }
 
-    return parsed;
+    if (!allowRootPayload) return {};
+
+    const hasNonMetaValues = Object.entries(parsed).some(([key, item]) => {
+        const value = parseJsonValue(item);
+        return (
+            !META_FIELD_KEYS.has(normalizeKey(key)) &&
+            value !== undefined &&
+            value !== null &&
+            value !== "" &&
+            (typeof value !== "object" || value instanceof Date)
+        );
+    });
+
+    return hasNonMetaValues ? parsed : {};
 };
 
 const getPayload = (notebook) => {
-    const payload = findSubmittedFieldsPayload(notebook);
+    const payload = findSubmittedFieldsPayload(notebook, new Set(), false);
     if (Array.isArray(payload) && payload.length) return payload;
     if (payload && typeof payload === "object" && Object.keys(payload).length) return payload;
     return {};
@@ -287,6 +318,17 @@ const isNotebookForUser = (notebook, user) => {
 
     const userValues = getUserIdentityValues(user);
     return userValues.some((userValue) => approverValues.includes(userValue));
+};
+
+const isNotebookPendingAcknowledgement = (notebook) => {
+    if (notebook?.acknowledged_at || notebook?.acknowledgedAt || notebook?.acknowledged_by || notebook?.acknowledgedBy) {
+        return false;
+    }
+
+    const status = normalizeLookupValue(notebook?.status || notebook?.ack_status || notebook?.ackStatus);
+    if (!status) return true;
+
+    return !["acknowledged", "ack", "completed", "closed", "approved"].includes(status);
 };
 
 const buildSubmittedNotebookQuery = (user) =>
@@ -427,7 +469,14 @@ const buildFieldCards = (notebook) => {
     });
 
     Object.entries(payload || {}).forEach(([key, value]) => {
-        if (usedKeys.has(key) || value === undefined || value === null || value === "" || typeof value === "object") {
+        if (
+            usedKeys.has(key) ||
+            META_FIELD_KEYS.has(normalizeKey(key)) ||
+            value === undefined ||
+            value === null ||
+            value === "" ||
+            typeof value === "object"
+        ) {
             return;
         }
         fields.push({ key, label: FIELD_LABELS[key] || formatTitle(key), value });
@@ -458,8 +507,9 @@ const SubmittedNotebooksPage = () => {
                 rows = normalizeList(fallbackData);
             }
 
-            const filteredRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
-            setNotebooks(filteredRows.length || !rows.length ? filteredRows : rows);
+            const userRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
+            const scopedRows = userRows.length || !rows.length ? userRows : rows;
+            setNotebooks(scopedRows.filter(isNotebookPendingAcknowledgement));
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || "Unable to load submitted notebooks.");
         } finally {
@@ -518,6 +568,9 @@ const SubmittedNotebooksPage = () => {
         setAcknowledgingId(id);
         try {
             await acknowledgeSubmittedNotebookApi(id);
+            setNotebooks((currentNotebooks) =>
+                currentNotebooks.filter((notebook) => getNotebookId(notebook) !== id)
+            );
             setSelectedNotebook(null);
             await loadNotebooks();
         } finally {

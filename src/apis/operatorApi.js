@@ -27,12 +27,14 @@ const getOperatorApiErrorMessage = (error, fallbackMessage) => {
 // GET Operator Tickets
 export const getOperatorTickets = async (params = {}) => {
   try {
-    const response = await apiConfig.get("/operator-tickets", params);
+    const response = await apiConfig.get("/operator-tickets", params, {
+      skipGlobalErrorModal: true,
+    });
     return response.data;
   } catch (error) {
     if (error.response && error.response.data) {
       throw new Error(
-        getOperatorApiErrorMessage(error, "Failed to fetch operator tickets.")
+        error.response.data.message || "Failed to fetch operator tickets."
       );
     }
     if (error.request) {

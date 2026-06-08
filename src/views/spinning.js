@@ -63,6 +63,7 @@ export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
 const RING_FRAME_RF_TOTAL = 24;
+const COTS_SIDE_MAX = 650;
 const RING_FRAME_TOTAL_FIELDS = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6"];
 const SPINNING_ENTRY_ID_CONFIG = {
     "Process Parameter": { prefix: "SNP", width: 4, routePath: "/spinning/qc" },

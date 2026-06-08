@@ -23,20 +23,11 @@ const buildSubmittedNotebookPayload = (payload = {}) => {
 };
 
 export const createSubmittedNotebookApi = async (payload = {}) => {
-    try {
-        const response = await apiConfig.post("/submitted-notebooks", buildSubmittedNotebookPayload(payload), {
-            skipGlobalSuccessModal: true,
-            skipGlobalErrorModal: true,
-        });
-        return response.data;
-    } catch (error) {
-        const status = error?.response?.status;
-        const message =
-            error?.response?.data?.message ||
-            error?.response?.data?.error ||
-            "Failed to create submitted notebook.";
-        throw new Error(status ? `${message} (${status})` : message);
-    }
+    const response = await apiConfig.post("/submitted-notebooks", buildSubmittedNotebookPayload(payload), {
+        skipGlobalErrorModal: true,
+        skipGlobalSuccessModal: true,
+    });
+    return response.data;
 };
 
 export const fetchSubmittedNotebooksApi = async (params = {}) => {
