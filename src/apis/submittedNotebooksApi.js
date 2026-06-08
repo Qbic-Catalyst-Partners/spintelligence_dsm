@@ -51,9 +51,15 @@ const buildSubmittedNotebookPayload = (payload = {}) => {
         };
     }
 
+    const strippedFields = stripL1ApprovalFields(submittedFields);
+    const l2Approver = payload.approval_l2 || payload.approvalL2 || payload.l2_approver || payload.l2Approver || "";
+
     return {
         ...stripL1ApprovalFields(payload),
+        notebook: payload.notebook || payload.notebook_name || payload.notebookName || payload.input_screen || payload.inputScreen,
         screen_name: payload.screen_name || payload.screenName || payload.input_screen || payload.notebook_name,
+        submitted_payload: strippedFields,
+        fields: strippedFields,
         acknowledgement_ticket_level: payload.acknowledgement_ticket_level || "L2",
         acknowledgement_target_level: payload.acknowledgement_target_level || "L2",
         acknowledgement_ticket_type: payload.acknowledgement_ticket_type || "L2_SUBMISSION",
@@ -65,8 +71,15 @@ const buildSubmittedNotebookPayload = (payload = {}) => {
         approval_l1: "",
         approval_l1_name: "",
         approval_l1_user_id: "",
-        submitted_fields: stripL1ApprovalFields(submittedFields),
-        submittedFields: stripL1ApprovalFields(submittedFields),
+        ...(l2Approver
+            ? {
+                approval_l2_employee_id: l2Approver,
+                l2_approver_employee_id: l2Approver,
+                assigned_l2: l2Approver,
+            }
+            : {}),
+        submitted_fields: strippedFields,
+        submittedFields: strippedFields,
     };
 };
 

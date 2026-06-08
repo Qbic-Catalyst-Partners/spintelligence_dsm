@@ -124,6 +124,73 @@ const normalizeMatchValue = (value) =>
     .toLowerCase()
     .replace(/\s+/g, " ");
 
+const readPendingThresholdRows = () => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const parsedRows = JSON.parse(
+      window.localStorage.getItem(PENDING_ACK_THRESHOLD_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(parsedRows) ? parsedRows : [];
+  } catch {
+    return [];
+  }
+};
+
+const writePendingThresholdRows = (rows) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      PENDING_ACK_THRESHOLD_STORAGE_KEY,
+      JSON.stringify(rows.slice(0, 20))
+    );
+  } catch {
+    // Best-effort cache only; the backend remains the source of truth.
+  }
+};
+
+const getSavedThresholdFromResponse = (response, fallbackPayload) => {
+  const candidate =
+    response?.acknowledgement_threshold ||
+    response?.threshold ||
+    response?.config ||
+    response?.row ||
+    response?.data?.acknowledgement_threshold ||
+    response?.data?.threshold ||
+    response?.data?.config ||
+    response?.data?.row ||
+    response?.data;
+
+  return candidate && typeof candidate === "object" && !Array.isArray(candidate)
+    ? { ...fallbackPayload, ...candidate }
+    : fallbackPayload;
+};
+
+const isSameThreshold = (left, right) => {
+  const leftId = getThresholdId(left);
+  const rightId = getThresholdId(right);
+
+  if (leftId && rightId) return String(leftId) === String(rightId);
+
+  return (
+    normalizeMatchValue(getThresholdDepartment(left)) === normalizeMatchValue(getThresholdDepartment(right)) &&
+    normalizeMatchValue(getThresholdSubDepartment(left)) === normalizeMatchValue(getThresholdSubDepartment(right)) &&
+    normalizeMatchValue(getThresholdScreenName(left)) === normalizeMatchValue(getThresholdScreenName(right))
+  );
+};
+
+const mergeThresholdRow = (rows, row) => {
+  if (!row) return rows;
+  const index = rows.findIndex((item) => isSameThreshold(item, row));
+  if (index === -1) return [row, ...rows];
+
+  return rows.map((item, itemIndex) => (itemIndex === index ? { ...item, ...row } : item));
+};
+
+const mergeThresholdRows = (rows, nextRows) =>
+  nextRows.reduce((mergedRows, row) => mergeThresholdRow(mergedRows, row), rows);
+
 export default function SubmittedNotebookThresholdPage() {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -198,17 +265,17 @@ export default function SubmittedNotebookThresholdPage() {
     if (!canAccessPage) return;
     setLoading(true);
     try {
-      const [acknowledgementRows, submissionRows] = await Promise.all([
-        fetchNotebookAcknowledgementThresholdsAPI(),
-        fetchSubmissionFrequencyConfigsAPI(),
-      ]);
-      setThresholds(acknowledgementRows);
-      setSubmissionThresholds(submissionRows);
+      const acknowledgementRows = await fetchNotebookAcknowledgementThresholdsAPI();
+      const mergedAcknowledgementRows = mergeThresholdRows(
+        acknowledgementRows,
+        readPendingThresholdRows()
+      );
+      setThresholds(mergedAcknowledgementRows);
       setError("");
       return mergedAcknowledgementRows;
     } catch (err) {
-      setThresholds([]);
-      setSubmissionThresholds([]);
+      const pendingRows = readPendingThresholdRows();
+      setThresholds(pendingRows);
       setError(err?.message || "Unable to load acknowledgement thresholds.");
       return pendingRows;
     } finally {
@@ -283,25 +350,14 @@ export default function SubmittedNotebookThresholdPage() {
       const selectedL2 = resolveUser(users, rule.approvalL2);
       if (!selectedL2) throw new Error("Please select an L2 approver.");
 
-      const hasSubmissionThreshold = submissionThresholds.some((item) => {
-        const screenName = item?.screen_name || item?.notebook || item?.input_screen || "";
-        return (
-          normalizeMatchValue(item?.department) === normalizeMatchValue(selectedDepartment.name) &&
-          normalizeMatchValue(item?.sub_department) === normalizeMatchValue(selectedSubDepartment.name) &&
-          normalizeMatchValue(screenName) === normalizeMatchValue(rule.screenName) &&
-          getActiveValue(item)
-        );
-      });
-
-      if (!hasSubmissionThreshold) {
-        const params = new URLSearchParams({
-          department: selectedDepartment.slug,
-          subDepartment: selectedSubDepartment.slug,
-          screenName: rule.screenName,
-        });
-        router.push(`/submission-threshold?${params.toString()}`);
-        return;
-      }
+      const existingThreshold = thresholds.find((item) =>
+        isSameThreshold(item, {
+          screen_name: rule.screenName,
+          department: selectedDepartment.name,
+          sub_department: selectedSubDepartment.name,
+        })
+      );
+      const existingThresholdId = getThresholdId(existingThreshold);
 
       const payload = {
         ...(existingThresholdId

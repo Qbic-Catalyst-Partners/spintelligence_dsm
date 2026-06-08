@@ -197,6 +197,12 @@ function Mixing() {
             if (ok === false) return;
             await reserveEntryId();
             setShowSuccess(true);
+        } catch (error) {
+            console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
+            return;
+        }
+
+        try {
             await recordSubmittedNotebook({
                 department: "Quality Control",
                 subDepartment: "Mixing",
@@ -208,7 +214,7 @@ function Mixing() {
                 user,
             });
         } catch (error) {
-            console.error("Mixing save failed:", error?.response?.data || error?.message || error);
+            console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
     };
 

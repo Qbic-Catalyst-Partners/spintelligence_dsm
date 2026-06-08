@@ -83,6 +83,7 @@ const settingsLinks = [
 const ticketingLinks = [
     { href: "/operator", label: "L1 Ticketing System" },
     { href: "/supervisordashboard", label: "L2 Ticketing System" },
+    { href: "/l3-ticketing", label: "L3 Ticketing System" },
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
@@ -195,7 +196,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     );
     const visibleTicketingLinks = hasSupervisorNavAccess
         ? ticketingLinks.filter((link) =>
-            link.href === "/supervisordashboard" || link.href === "/ticket-calendar-l2"
+            link.href === "/supervisordashboard" || link.href === "/ticket-calendar-l2" || link.href === "/l3-ticketing"
         )
         : ticketingLinks;
     const currentPath = router.asPath?.split("?")[0] || router.pathname;

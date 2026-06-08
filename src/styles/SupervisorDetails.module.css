@@ -300,12 +300,12 @@ font-weight: 700;
   flex: 1;
   min-height: 300px;
   min-width: 360px;
-  background: #000000;
+  background: #ffffff;
   padding: 16px 20px 22px;
-  border: 1px solid #000000;
+  border: 1px solid #e5e7eb;
   border-radius: 14px;
-  box-shadow: none;
-  color: #ffffff;
+  box-shadow: 0 0 20px rgba(15, 23, 42, 0.05);
+  color: #1f2937;
 }
 
 .timelineHeader {
@@ -323,7 +323,7 @@ font-weight: 700;
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #ffffff;
+  color: #111827;
 }
 
 .item {
@@ -361,7 +361,7 @@ font-weight: 700;
   height: 18px;
   margin-top: 0;
   z-index: 1;
-  background: #000000;
+  background: #ffffff;
   object-fit: contain;
 }
 
@@ -397,19 +397,19 @@ font-weight: 700;
   margin: 0;
   font-size: 14px;
   font-weight: 400;
-  color: #cbd5e1;
+  color: #64748b;
   line-height: 1.5;
 }
 
 .item p {
   margin: 0;
-  color: #cbd5e1;
+  color: #64748b;
   font-size: 14px;
   line-height: 1.45;
 }
 
 .item p b {
-  color: #ffffff;
+  color: #111827;
   font-weight: 700;
 }
 
@@ -940,12 +940,12 @@ background: #CA0000;
  /* ================= TIMELINE CARD ================= */
 
 .timelineCard {
-  background: #000000;
+  background: #ffffff;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid #000000;
-  box-shadow: none;
-  color: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 0 14px rgba(15, 23, 42, 0.05);
+  color: #1f2937;
   margin-bottom: 12px;
   box-sizing: border-box;
 }
@@ -961,7 +961,7 @@ background: #CA0000;
   margin: 0;
   font-size: 12px;
   font-weight: 700;
-  color: #ffffff;
+  color: #111827;
 }
 
 /* wrapper */
@@ -996,7 +996,7 @@ background: #CA0000;
   object-fit: contain;
   margin-top: 0;
   z-index: 2;
-  background: #000000;
+  background: #ffffff;
 }
 
 /* ================= CONNECTING LINE ================= */
@@ -1016,13 +1016,13 @@ background: #CA0000;
 
 .content b {
   font-size: 10px;
-  color: #ffffff;
+  color: #111827;
 }
 
 .content p {
   font-size: 8px;
   line-height: 1.45;
-  color: #cbd5e1;
+  color: #64748b;
   margin: 3px 0 0;
 }
 

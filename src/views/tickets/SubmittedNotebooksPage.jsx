@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import {
     acknowledgeSubmittedNotebookApi,
@@ -6,6 +6,7 @@ import {
     fetchSubmittedNotebooksApi,
 } from "@/apis/submittedNotebooksApi";
 import apiConfig from "@/apis/apiConfig";
+import { fetchUsersAPI } from "@/apis/userApi";
 import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "@/styles/submittedNotebooks.module.css";
 
@@ -74,6 +75,14 @@ const normalizeLookupValue = (value) =>
         .toLowerCase()
         .replace(/\s+/g, " ");
 
+const normalizeUserList = (data) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.users)) return data.users;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.rows)) return data.rows;
+    return [];
+};
+
 const META_FIELD_KEYS = new Set([
     "id",
     "_id",
@@ -122,6 +131,16 @@ const META_FIELD_KEYS = new Set([
     "acknowledgedby",
 ]);
 
+const ACKNOWLEDGEMENT_TIME_KEYS = new Set([
+    "ack_time",
+    "acknowledgement_time",
+    "acknowledgementtime",
+    "acknowledge_time",
+    "acknowledgetime",
+    "acknowledged_at",
+    "acknowledgedat",
+]);
+
 const getNotebookId = (notebook) =>
     notebook?.id ||
     notebook?.submitted_notebook_id ||
@@ -159,6 +178,10 @@ const findSubmittedFieldsPayload = (value, seen = new Set(), allowRootPayload = 
         "submittedFields",
         "submitted_fields_json",
         "submittedFieldsJson",
+        "submitted_payload",
+        "submittedPayload",
+        "submitted_payload_json",
+        "submittedPayloadJson",
         "input_fields",
         "inputFields",
         "fields",
@@ -343,7 +366,119 @@ const buildSubmittedNotebookQuery = (user) =>
         }).filter(([, value]) => String(value || "").trim())
     );
 
-const getNotebookSupervisorName = (notebook) => {
+const serializeQuery = (query) =>
+    Object.entries(query || {})
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+        .map(([key, value]) => `${key}:${String(value || "").trim()}`)
+        .join("|");
+
+const getUserDisplayName = (user) => String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
+
+const resolveUserName = (users, value) => {
+    const normalizedValue = normalizeLookupValue(value);
+
+    if (!normalizedValue) {
+        return "";
+    }
+
+    const matchedUser = users.find((userItem) => {
+        const candidateValues = [
+            userItem?.id,
+            userItem?.employeeId,
+            userItem?.employee_id,
+            userItem?.emp_id,
+            userItem?.name,
+            userItem?.full_name,
+            userItem?.fullName,
+            userItem?.username,
+            userItem?.email,
+        ];
+
+        return candidateValues.some((candidate) => normalizeLookupValue(candidate) === normalizedValue);
+    });
+
+    return getUserDisplayName(matchedUser) || String(value ?? "").trim();
+};
+
+const resolveDisplayValues = (users, candidates) => {
+    for (const candidate of candidates) {
+        const labels = normalizeNameList(candidate)
+            .map((value) => resolveUserName(users, value))
+            .filter(Boolean);
+
+        if (labels.length) {
+            return labels;
+        }
+    }
+
+    return [];
+};
+
+const getNotebookSupervisorName = (notebook, users = []) => {
+    const names = resolveDisplayValues(users, [
+        ...normalizeNameList(notebook?.approval_l2_name),
+        ...normalizeNameList(notebook?.approval_l2_names),
+        ...normalizeNameList(notebook?.approvalL2Name),
+        ...normalizeNameList(notebook?.approvalL2Names),
+        ...normalizeNameList(notebook?.approved_by_name),
+        ...normalizeNameList(notebook?.approvedByName),
+        ...normalizeNameList(notebook?.supervisor_name),
+        ...normalizeNameList(notebook?.supervisorName),
+        ...normalizeNameList(notebook?.l2_supervisor_name),
+        ...normalizeNameList(notebook?.l2SupervisorName),
+        ...normalizeNameList(notebook?.l2_approver_name),
+        ...normalizeNameList(notebook?.l2_approver_names),
+        ...normalizeNameList(notebook?.l2ApproverName),
+        ...normalizeNameList(notebook?.l2ApproverNames),
+        ...normalizeNameList(notebook?.created_by_name),
+        ...normalizeNameList(notebook?.createdByName),
+        ...normalizeNameList(notebook?.updated_by_name),
+        ...normalizeNameList(notebook?.updatedByName),
+    ]);
+    if (names.length) return names[0];
+
+    const ids = resolveDisplayValues(users, [
+        ...normalizeNameList(notebook?.approval_l2),
+        ...normalizeNameList(notebook?.approval_l2_user_id),
+        ...normalizeNameList(notebook?.approval_l2_user_ids),
+        ...normalizeNameList(notebook?.l2_approver_user_id),
+        ...normalizeNameList(notebook?.l2_approver_user_ids),
+    ]);
+    if (ids.length) return ids[0];
+
+    const rawNames = [
+        ...normalizeNameList(notebook?.approval_l2_name),
+        ...normalizeNameList(notebook?.approval_l2_names),
+        ...normalizeNameList(notebook?.approvalL2Name),
+        ...normalizeNameList(notebook?.approvalL2Names),
+        ...normalizeNameList(notebook?.approved_by_name),
+        ...normalizeNameList(notebook?.approvedByName),
+        ...normalizeNameList(notebook?.supervisor_name),
+        ...normalizeNameList(notebook?.supervisorName),
+        ...normalizeNameList(notebook?.l2_supervisor_name),
+        ...normalizeNameList(notebook?.l2SupervisorName),
+        ...normalizeNameList(notebook?.l2_approver_name),
+        ...normalizeNameList(notebook?.l2_approver_names),
+        ...normalizeNameList(notebook?.l2ApproverName),
+        ...normalizeNameList(notebook?.l2ApproverNames),
+        ...normalizeNameList(notebook?.created_by_name),
+        ...normalizeNameList(notebook?.createdByName),
+        ...normalizeNameList(notebook?.updated_by_name),
+        ...normalizeNameList(notebook?.updatedByName),
+    ];
+    if (rawNames.length) return rawNames[0];
+
+    const rawIds = [
+        ...normalizeNameList(notebook?.approval_l2),
+        ...normalizeNameList(notebook?.approval_l2_user_id),
+        ...normalizeNameList(notebook?.approval_l2_user_ids),
+        ...normalizeNameList(notebook?.l2_approver_user_id),
+        ...normalizeNameList(notebook?.l2_approver_user_ids),
+    ];
+    return rawIds[0] || "--";
+};
+
+const getNotebookL2ApprovalName = (notebook) => {
     const names = [
         ...normalizeNameList(notebook?.approval_l2_name),
         ...normalizeNameList(notebook?.approval_l2_names),
@@ -352,14 +487,7 @@ const getNotebookSupervisorName = (notebook) => {
         ...normalizeNameList(notebook?.l2ApproverName),
         ...normalizeNameList(notebook?.l2ApproverNames),
     ];
-    if (names.length) return names[0];
-
-    const ids = [
-        ...normalizeNameList(notebook?.approval_l2),
-        ...normalizeNameList(notebook?.approval_l2_user_id),
-        ...normalizeNameList(notebook?.l2_approver_user_id),
-    ];
-    return ids[0] || "--";
+    return names[0] || "--";
 };
 
 const normalizeSourceRows = (data) => {
@@ -386,6 +514,7 @@ const getNotebookSourceEndpoint = (notebook) => {
     const name = normalizeKey(
         notebook?.notebook_name ||
         notebook?.notebookName ||
+        notebook?.notebook ||
         notebook?.input_screen ||
         notebook?.inputScreen ||
         notebook?.title
@@ -491,6 +620,16 @@ const buildFieldCards = (notebook) => {
     });
 
     Object.entries(payload || {}).forEach(([key, value]) => {
+        if (ACKNOWLEDGEMENT_TIME_KEYS.has(normalizeKey(key))) {
+            fields.push({
+                key: "approval_l2_name",
+                label: "L2 Approval Name",
+                value: getNotebookL2ApprovalName(notebook),
+            });
+            usedKeys.add(key);
+            return;
+        }
+
         if (
             usedKeys.has(key) ||
             META_FIELD_KEYS.has(normalizeKey(key)) ||
@@ -515,12 +654,22 @@ const SubmittedNotebooksPage = () => {
     const [isDetailLoading, setIsDetailLoading] = useState(false);
     const [error, setError] = useState("");
     const [acknowledgingId, setAcknowledgingId] = useState(null);
+    const [users, setUsers] = useState([]);
+    const lastLoadKeyRef = useRef("");
+    const inFlightLoadKeyRef = useRef("");
 
     const loadNotebooks = async () => {
+        const query = buildSubmittedNotebookQuery(user);
+        const loadKey = serializeQuery(query);
+
+        if (inFlightLoadKeyRef.current === loadKey || lastLoadKeyRef.current === loadKey) {
+            return;
+        }
+
+        inFlightLoadKeyRef.current = loadKey;
         setIsLoading(true);
         setError("");
         try {
-            const query = buildSubmittedNotebookQuery(user);
             const data = await fetchSubmittedNotebooksApi(query);
             let rows = normalizeList(data);
 
@@ -531,9 +680,11 @@ const SubmittedNotebooksPage = () => {
 
             const userRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
             setNotebooks(userRows.filter(isNotebookPendingAcknowledgement));
+            lastLoadKeyRef.current = loadKey;
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || "Unable to load submitted notebooks.");
         } finally {
+            inFlightLoadKeyRef.current = "";
             setIsLoading(false);
         }
     };
@@ -541,6 +692,26 @@ const SubmittedNotebooksPage = () => {
     useEffect(() => {
         loadNotebooks();
     }, [user?.id, user?.employee_id, user?.employeeId, user?.full_name, user?.fullName, user?.name]);
+
+    useEffect(() => {
+        let active = true;
+
+        const loadUsers = async () => {
+            try {
+                const data = await fetchUsersAPI();
+                if (!active) return;
+                setUsers(normalizeUserList(data));
+            } catch {
+                if (active) setUsers([]);
+            }
+        };
+
+        loadUsers();
+
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const groupedNotebooks = useMemo(() => {
         const groups = new Map();
@@ -618,11 +789,11 @@ const SubmittedNotebooksPage = () => {
                                 {group.rows.map((notebook, index) => {
                                     const id = getNotebookId(notebook) || `${group.label}-${index}`;
                                     const payload = getPayload(notebook);
-                                    const title = notebook?.notebook_name || notebook?.notebookName || notebook?.title || payload?.notebook_name || "Cotton HVI";
+                                    const title = notebook?.notebook_name || notebook?.notebookName || notebook?.notebook || notebook?.title || payload?.notebook_name || "Cotton HVI";
                                     const department = notebook?.department || payload?.department || "Quality Control";
                                     const subDepartment = notebook?.sub_department || notebook?.subDepartment || payload?.sub_department || "Mixing Department";
                                     const operator = notebook?.operator_name || notebook?.operatorName || notebook?.submitted_by_name || notebook?.submittedByName || "John Doe";
-                                    const supervisor = getNotebookSupervisorName(notebook);
+                                    const supervisor = getNotebookSupervisorName(notebook, users);
                                     const createdAt = getCreatedDate(notebook);
 
                                     return (
@@ -673,7 +844,7 @@ const SubmittedNotebooksPage = () => {
                         <div className={styles.modalHeader}>
                             <div>
                                 <h2 id="submitted-notebook-title">
-                                    {selectedNotebook?.notebook_name || selectedNotebook?.title || "Cotton HVI Data Entry"}
+                                    {selectedNotebook?.notebook_name || selectedNotebook?.notebook || selectedNotebook?.title || "Cotton HVI Data Entry"}
                                 </h2>
                                 <p>
                                     {selectedNotebook?.department || "Quality Control"} &gt;{" "}
@@ -683,7 +854,7 @@ const SubmittedNotebooksPage = () => {
                             <div className={styles.modalMeta}>
                                 <span>
                                     <small>Supervisor</small>
-                                    <strong>{getNotebookSupervisorName(selectedNotebook)}</strong>
+                                    <strong>{getNotebookSupervisorName(selectedNotebook, users)}</strong>
                                 </span>
                                 <span>
                                     <small>Operator</small>
