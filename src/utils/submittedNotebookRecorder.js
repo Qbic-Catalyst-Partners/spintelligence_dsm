@@ -23,6 +23,30 @@ const cleanObject = (value = {}) =>
       .map(([key, item]) => [key, cleanPayloadValue(item)])
   );
 
+const removeL1ApprovalFields = (value = {}) => {
+  if (!value || typeof value !== "object") return {};
+
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => {
+      const normalizedKey = String(key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      return !(
+        normalizedKey === "approval_l1" ||
+        normalizedKey === "approval_l1_name" ||
+        normalizedKey === "approval_l1_names" ||
+        normalizedKey === "approval_l1_id" ||
+        normalizedKey === "approval_l1_ids" ||
+        normalizedKey === "approval_l1_user_id" ||
+        normalizedKey === "approval_l1_user_ids" ||
+        normalizedKey === "l1_approver" ||
+        normalizedKey === "l1_approver_name" ||
+        normalizedKey === "l1_approver_names" ||
+        normalizedKey === "l1_approver_user_id" ||
+        normalizedKey === "l1_approver_user_ids"
+      );
+    })
+  );
+};
+
 export const recordSubmittedNotebook = async ({
   department,
   subDepartment,
@@ -45,7 +69,8 @@ export const recordSubmittedNotebook = async ({
     return null;
   }
 
-  const cleanedFields = cleanObject(submittedFields);
+  const cleanedFields = removeL1ApprovalFields(cleanObject(submittedFields));
+  const cleanedExtra = removeL1ApprovalFields(extra);
   const operatorName = user?.full_name || user?.fullName || user?.name || user?.username || user?.email || "";
   const resolvedEntryId = entryId || cleanedFields.entry_id || cleanedFields.entryId || "";
   const resolvedLotNo = lotNo || cleanedFields.lot_no || cleanedFields.lotNo || "";
@@ -61,12 +86,23 @@ export const recordSubmittedNotebook = async ({
       operator_name: operatorName,
       submitted_by_name: operatorName,
       submitted_by_user_id: user?.id || user?.employee_id || user?.employeeId || "",
+      ...cleanedExtra,
+      acknowledgement_ticket_level: "L2",
+      acknowledgement_target_level: "L2",
+      acknowledgement_ticket_type: "L2_SUBMISSION",
+      create_l1_acknowledgement_ticket: false,
+      create_l2_acknowledgement_ticket: true,
+      skip_l1_acknowledgement_ticket: true,
+      ticket_level: "L2",
+      target_level: "L2",
       submitted_fields: {
         entry_id: resolvedEntryId,
         lot_no: resolvedLotNo,
         ...cleanedFields,
       },
-      ...extra,
+      approval_l1: "",
+      approval_l1_name: "",
+      approval_l1_user_id: "",
     });
   } catch (error) {
     console.warn("Submitted notebook record could not be created.", error?.response?.data || error?.message);
