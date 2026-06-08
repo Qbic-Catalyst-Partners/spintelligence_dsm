@@ -6,6 +6,7 @@ import {
     fetchSubmittedNotebooksApi,
 } from "@/apis/submittedNotebooksApi";
 import apiConfig from "@/apis/apiConfig";
+import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "@/styles/submittedNotebooks.module.css";
 
 const FIELD_LABELS = {
@@ -313,8 +314,10 @@ const getNotebookApproverValues = (notebook) =>
         .filter(Boolean);
 
 const isNotebookForUser = (notebook, user) => {
+    if (isFullAccessUser(user)) return true;
+
     const approverValues = getNotebookApproverValues(notebook);
-    if (!approverValues.length) return true;
+    if (!approverValues.length) return false;
 
     const userValues = getUserIdentityValues(user);
     return userValues.some((userValue) => approverValues.includes(userValue));
@@ -339,6 +342,25 @@ const buildSubmittedNotebookQuery = (user) =>
             l2_approver_user_id: user?.id || user?.employee_id || user?.employeeId || "",
         }).filter(([, value]) => String(value || "").trim())
     );
+
+const getNotebookSupervisorName = (notebook) => {
+    const names = [
+        ...normalizeNameList(notebook?.approval_l2_name),
+        ...normalizeNameList(notebook?.approval_l2_names),
+        ...normalizeNameList(notebook?.l2_approver_name),
+        ...normalizeNameList(notebook?.l2_approver_names),
+        ...normalizeNameList(notebook?.l2ApproverName),
+        ...normalizeNameList(notebook?.l2ApproverNames),
+    ];
+    if (names.length) return names[0];
+
+    const ids = [
+        ...normalizeNameList(notebook?.approval_l2),
+        ...normalizeNameList(notebook?.approval_l2_user_id),
+        ...normalizeNameList(notebook?.l2_approver_user_id),
+    ];
+    return ids[0] || "--";
+};
 
 const normalizeSourceRows = (data) => {
     const rows = normalizeList(data);
@@ -508,8 +530,7 @@ const SubmittedNotebooksPage = () => {
             }
 
             const userRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
-            const scopedRows = userRows.length || !rows.length ? userRows : rows;
-            setNotebooks(scopedRows.filter(isNotebookPendingAcknowledgement));
+            setNotebooks(userRows.filter(isNotebookPendingAcknowledgement));
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || "Unable to load submitted notebooks.");
         } finally {
@@ -582,7 +603,6 @@ const SubmittedNotebooksPage = () => {
 
     return (
         <section className={styles.page}>
-            <div className={styles.breadcrumb}>Home &gt; Dashboard &gt; Comber Notebook QC</div>
             <h1 className={styles.title}>Submitted Notebooks</h1>
 
             {isLoading ? (
@@ -602,6 +622,7 @@ const SubmittedNotebooksPage = () => {
                                     const department = notebook?.department || payload?.department || "Quality Control";
                                     const subDepartment = notebook?.sub_department || notebook?.subDepartment || payload?.sub_department || "Mixing Department";
                                     const operator = notebook?.operator_name || notebook?.operatorName || notebook?.submitted_by_name || notebook?.submittedByName || "John Doe";
+                                    const supervisor = getNotebookSupervisorName(notebook);
                                     const createdAt = getCreatedDate(notebook);
 
                                     return (
@@ -616,6 +637,10 @@ const SubmittedNotebooksPage = () => {
                                                 <span>{department} &gt; {subDepartment}</span>
                                             </span>
                                             <span className={styles.rowMeta}>
+                                                <span>
+                                                    <small>Supervisor</small>
+                                                    <strong>{supervisor}</strong>
+                                                </span>
                                                 <span>
                                                     <small>Operator</small>
                                                     <strong>{operator}</strong>
@@ -656,6 +681,10 @@ const SubmittedNotebooksPage = () => {
                                 </p>
                             </div>
                             <div className={styles.modalMeta}>
+                                <span>
+                                    <small>Supervisor</small>
+                                    <strong>{getNotebookSupervisorName(selectedNotebook)}</strong>
+                                </span>
                                 <span>
                                     <small>Operator</small>
                                     <strong>{selectedNotebook?.operator_name || selectedNotebook?.submitted_by_name || "John Doe"}</strong>
