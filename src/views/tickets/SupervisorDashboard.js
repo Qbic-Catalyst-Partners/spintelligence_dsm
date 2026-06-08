@@ -12,7 +12,7 @@ import {
   isSupervisorVisibleTicket,
   SUPERVISOR_VISIBLE_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
-import { transformTicket } from "../../utils/ticketTransformer";
+import { isSubmissionTicketRecord, transformTicket } from "../../utils/ticketTransformer";
 
 const ITEMS_PER_PAGE = 6;
 
@@ -107,21 +107,12 @@ export default function SupervisorDashboard() {
     ),
   ];
 
-  const thresholdTickets = filteredTickets.filter((ticket) =>
-    String(ticket.notebook_type || ticket.notebookType || ticket.notebook || "")
-      .toLowerCase()
-      .includes("threshold")
-  );
-  const submissionTickets = filteredTickets.filter(
-    (ticket) =>
-      !String(ticket.notebook_type || ticket.notebookType || ticket.notebook || "")
-        .toLowerCase()
-        .includes("threshold")
-  );
+  const submissionTickets = filteredTickets.filter(isSubmissionTicketRecord);
+  const thresholdTickets = filteredTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
   const displayTickets =
     activeTicketingView === "threshold"
-      ? (thresholdTickets.length ? thresholdTickets : filteredTickets)
-      : (submissionTickets.length ? submissionTickets : filteredTickets);
+      ? thresholdTickets
+      : submissionTickets;
 
   const totalPages = Math.max(
     1,
@@ -134,6 +125,14 @@ export default function SupervisorDashboard() {
     const id = ticketId?.startsWith("#") ? ticketId : `#${ticketId}`;
     router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}`);
   };
+
+  const getTicketNotebookLabel = (ticket) =>
+    ticket?.notebook ||
+    ticket?.notebook_type ||
+    ticket?.notebookType ||
+    ticket?.machine_name ||
+    ticket?.machine ||
+    "Unknown";
 
   if (isLoading) return <p>Loading...</p>;
   if (error) return <p>{error}</p>;
@@ -302,7 +301,7 @@ export default function SupervisorDashboard() {
                         {t.ticket_id}
                       </td>
                       <td>{t.user_name}</td>
-                      <td>{t.machine_name}</td>
+                      <td>{getTicketNotebookLabel(t)}</td>
                       <td>{primaryParam}</td>
                       {activeTicketingView === "submission" ? (
                         <>
@@ -416,7 +415,7 @@ export default function SupervisorDashboard() {
                 <div className={styles["sup-card-top"]}>
                   <div>
                     <div className={styles["sup-card-title"]}>
-                      {t.ticket_id} | {t.machine_name || "-"}
+                      {t.ticket_id} | {getTicketNotebookLabel(t)}
                     </div>
                     <div className={styles["sup-card-date"]}>
                       {formatDateTime(t.created_at)}

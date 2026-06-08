@@ -18,6 +18,17 @@ const tryParseJsonObject = (value) => {
 export const isSubmissionFrequencyParameterName = (parameterName) =>
   getTicketParameterKey(parameterName) === "submission_frequency";
 
+export const isNotebookAcknowledgementParameterName = (parameterName) => {
+  const parameterKey = getTicketParameterKey(parameterName).replace(/[\s-]+/g, "_");
+  return (
+    parameterKey === "pending_acknowledgement" ||
+    parameterKey === "acknowledgement_pending" ||
+    parameterKey === "notebook_acknowledgement" ||
+    parameterKey === "submitted_notebook_acknowledgement" ||
+    parameterKey.includes("acknowledgement")
+  );
+};
+
 export const formatTicketIdForDisplay = (ticketId) => {
   const rawId = String(ticketId || "").trim();
   if (!rawId) return "-";
@@ -82,7 +93,28 @@ export const isSubmissionTicketRecord = (ticket) => {
     return true;
   }
 
-  return getTicketParameterNames(ticket).some(isSubmissionFrequencyParameterName);
+  const statusText = String(
+    ticket?.status ||
+    ticket?.ticket_status ||
+    ticket?.current_status ||
+    ticket?.state ||
+    ""
+  ).toLowerCase();
+  const descriptionText = String(ticket?.description || ticket?.message || "").toLowerCase();
+
+  if (
+    statusText.includes("pending acknowledgement") ||
+    descriptionText.includes("pending acknowledgement") ||
+    descriptionText.includes("acknowledgement")
+  ) {
+    return true;
+  }
+
+  return getTicketParameterNames(ticket).some(
+    (parameterName) =>
+      isSubmissionFrequencyParameterName(parameterName) ||
+      isNotebookAcknowledgementParameterName(parameterName)
+  );
 };
 
 export const getTicketValueForParameter = (source, parameterName) => {
