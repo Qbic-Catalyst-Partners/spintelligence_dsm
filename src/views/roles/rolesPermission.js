@@ -13,13 +13,14 @@ import { FaIdCardClip } from "react-icons/fa6";
 import { BsExclamationCircle } from "react-icons/bs";
 import { FiX } from "react-icons/fi";
 import { updateRoleAPI } from "../../apis/rolesPermission";
-import { fetchRoles, deleteRole } from "../../store/slices/rolesSlice";
+import { fetchRoles, deleteRole, clearError } from "../../store/slices/rolesSlice";
 
 export default function RolesPermissions() {
     const router = useRouter();
     const dispatch = useDispatch();
 
     const { roles: rolesData, loading, error } = useSelector(state => state.roles);
+    const { token, isHydrated } = useSelector(state => state.auth);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedRoleFilter, setSelectedRoleFilter] = useState("");
@@ -30,14 +31,20 @@ export default function RolesPermissions() {
 
     const ITEMS_PER_PAGE = 5;
     const [currentPage, setCurrentPage] = useState(1);
+    const roleRows = Array.isArray(rolesData) ? rolesData : [];
 
     // FETCH ROLES
     useEffect(() => {
+        if (!isHydrated || !token) {
+            return;
+        }
+
+        dispatch(clearError());
         dispatch(fetchRoles({ page: 1, limit: 100 }));
-    }, [dispatch]);
+    }, [dispatch, isHydrated, token]);
 
     // Transform roles data
-    const transformedRolesData = rolesData.map((role) => ({
+    const transformedRolesData = roleRows.map((role) => ({
         ...role,
         status: typeof role.status === "boolean" ? (role.status ? "Active" : "Inactive") : role.status,
         screen_count: role.screen_count ?? "0/0",
@@ -134,7 +141,8 @@ export default function RolesPermissions() {
         return () => window.removeEventListener("click", closeMenu);
     }, []);
 
-    if (loading) return <p>Loading roles...</p>;
+    if (!isHydrated || (token && loading)) return <p>Loading roles...</p>;
+    if (!token) return null;
     if (error) return <p>{error}</p>;
 
     return (
@@ -160,7 +168,7 @@ export default function RolesPermissions() {
                         </div>
                         <div>
                             <p>TOTAL ROLES</p>
-                            <h3>{rolesData.length}</h3>
+                            <h3>{roleRows.length}</h3>
                         </div>
                     </div>
 
@@ -170,7 +178,7 @@ export default function RolesPermissions() {
                         </div>
                         <div>
                             <p>ASSIGNED USERS</p>
-                            <h3>{rolesData.reduce((sum, r) => sum + Number(r.users ?? 0), 0)}</h3>
+                            <h3>{roleRows.reduce((sum, r) => sum + Number(r.users ?? 0), 0)}</h3>
                         </div>
                     </div>
 

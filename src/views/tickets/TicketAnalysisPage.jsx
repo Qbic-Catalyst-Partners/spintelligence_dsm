@@ -4,19 +4,20 @@ import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
 import {
   FiAward,
+  FiAlertTriangle,
   FiCalendar,
   FiCheckCircle,
   FiClock,
-  FiList,
-  FiRefreshCw,
   FiTarget,
   FiTrendingUp,
+  FiUsers,
 } from "react-icons/fi";
 import {
   fetchAnalysisRankingApi,
   fetchL1AnalysisApi,
   fetchL2AnalysisApi,
   fetchStatisticsAnalyticsApi,
+  fetchTeamPerformanceAnalysisApi,
 } from "@/apis/analysisApi";
 import { getSubmissionTickets } from "@/apis/operatorApi";
 import styles from "@/styles/ticketCalendar.module.css";
@@ -341,6 +342,7 @@ function TeamPerformanceFilter({
   users,
   selectedUserId,
   setSelectedUserId,
+  showUserFilter = true,
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const subDepartments = selectedDepartment?.subDepartments || [];
@@ -352,7 +354,7 @@ function TeamPerformanceFilter({
 
   return (
     <section className={styles.performanceControlsCard}>
-      <div className={styles.performanceControlsLeft}>
+      <div className={`${styles.performanceControlsLeft} ${!showUserFilter ? styles.performanceControlsCompact : ""}`}>
         <label className={styles.performanceSelectField}>
           <span>Department</span>
           <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
@@ -379,20 +381,22 @@ function TeamPerformanceFilter({
             ))}
           </select>
         </label>
-        <label className={styles.performanceSelectField}>
-          <span>User</span>
-          <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
-            <option value="">All Users</option>
-            {(Array.isArray(users) ? users : []).map((user) => {
-              const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
-              return (
-                <option key={`${userId}-${user?.name || userId}`} value={userId}>
-                  {user?.name || userId}
-                </option>
-              );
-            })}
-          </select>
-        </label>
+        {showUserFilter && (
+          <label className={styles.performanceSelectField}>
+            <span>User</span>
+            <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
+              <option value="">All Users</option>
+              {(Array.isArray(users) ? users : []).map((user) => {
+                const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
+                return (
+                  <option key={`${userId}-${user?.name || userId}`} value={userId}>
+                    {user?.name || userId}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+        )}
       </div>
 
       <div className={styles.performanceControlsRight}>
@@ -568,25 +572,151 @@ function StatisticsAnalysisFilter({
 }
 
 const metricIcons = [
-  { match: "allocated", icon: FiList },
-  { match: "on time", icon: FiCheckCircle },
-  { match: "delayed", icon: FiClock },
-  { match: "reworked", icon: FiRefreshCw },
-  { match: "efficiency", icon: FiTrendingUp },
-  { match: "approval", icon: FiTarget },
+  { match: "allocated", icon: FiCheckCircle },
+  { match: "on time", icon: FiTrendingUp },
+  { match: "delayed", icon: FiAlertTriangle },
+  { match: "reworked", icon: FiClock },
+  { match: "efficiency", icon: FiTarget },
+  { match: "approval", icon: FiCheckCircle },
   { match: "ranking", icon: FiAward },
 ];
 
+const metricTones = [
+  { match: "on time", className: "performanceMetricSuccess" },
+  { match: "delayed", className: "performanceMetricDanger" },
+  { match: "reworked", className: "performanceMetricWarning" },
+  { match: "efficiency", className: "performanceMetricInfo" },
+  { match: "approval", className: "performanceMetricInfo" },
+  { match: "allocated", className: "performanceMetricInfo" },
+];
+
 function MetricCard({ label, value }) {
-  const Icon = metricIcons.find((item) => label.toLowerCase().includes(item.match))?.icon || FiTarget;
+  const normalizedLabel = label.toLowerCase();
+  const Icon = metricIcons.find((item) => normalizedLabel.includes(item.match))?.icon || FiTarget;
+  const toneClass = metricTones.find((item) => normalizedLabel.includes(item.match))?.className;
   return (
-    <article className={styles.performanceMetricCard}>
+    <article className={`${styles.performanceMetricCard} ${toneClass ? styles[toneClass] : ""}`}>
       <div className={styles.performanceMetricHead}>
         <span>{label}</span>
-        <Icon />
+        <span className={styles.performanceMetricIcon}>
+          <Icon />
+        </span>
       </div>
       <strong>{value}</strong>
     </article>
+  );
+}
+
+const getCompletionRate = (row) => {
+  if (row?.completion_rate !== undefined && row?.completion_rate !== null) {
+    const rate = Number(row.completion_rate);
+    return Number.isFinite(rate) ? Math.round(rate * 10) / 10 : 0;
+  }
+  const total = Number(row?.total || 0);
+  const completed = Number(row?.completed || 0);
+  return total ? Math.round((completed / total) * 1000) / 10 : 0;
+};
+
+const formatCompletionRate = (rate) => `${Number(rate.toFixed(1)).toString()}%`;
+
+const getMemberName = (employee) => {
+  const value = String(employee || "").trim();
+  if (!value) return "-";
+  const hyphenIndex = value.indexOf("-");
+  return hyphenIndex > -1 ? value.slice(hyphenIndex + 1).trim() || value : value;
+};
+
+const getInitial = (name) => String(name || "-").trim().charAt(0).toUpperCase() || "-";
+
+const normalizeTeamMemberPerformanceRow = (row, index) => {
+  const name = row?.name || row?.full_name || getMemberName(row?.employee);
+  const total = Number(row?.total_tasks ?? row?.total ?? 0);
+  const completed = Number(row?.completed ?? 0);
+  const pending = Number(row?.pending ?? row?.inprogress ?? Math.max(0, total - completed));
+
+  return {
+    ...row,
+    rank: Number(row?.rank || index + 1),
+    employee: row?.employee || name,
+    name,
+    total,
+    completed,
+    pending,
+    completion_rate:
+      row?.completion_rate !== undefined && row?.completion_rate !== null
+        ? Number(row.completion_rate)
+        : total
+          ? (completed / total) * 100
+          : 0,
+  };
+};
+
+function TeamMembersPerformanceTable({ rows }) {
+  const normalizedRows = rows.map(normalizeTeamMemberPerformanceRow);
+
+  return (
+    <section className={styles.performanceTeamCard}>
+      <div className={styles.performanceTeamHeader}>
+        <h2>
+          <FiUsers />
+          <span>Team Members Performance</span>
+        </h2>
+      </div>
+      <div className={styles.performanceTeamTableWrap}>
+        <table className={styles.performanceTeamTable}>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Name</th>
+              <th>Total Tasks</th>
+              <th>Completed</th>
+              <th>Pending</th>
+              <th>Completion Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {normalizedRows.length ? (
+              normalizedRows.map((row, index) => {
+                const memberName = row.name || getMemberName(row.employee);
+                const rate = getCompletionRate(row);
+                return (
+                  <tr key={`${row.employee}-${index}`}>
+                    <td>
+                      <span className={`${styles.performanceRankBadge} ${index < 3 ? styles.performanceRankPodium : ""}`}>
+                        {row.rank || index + 1}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={styles.performanceMemberCell}>
+                        <span className={styles.performanceAvatar}>{getInitial(memberName)}</span>
+                        <span>{memberName}</span>
+                      </span>
+                    </td>
+                    <td>{row.total}</td>
+                    <td className={styles.performanceCompleted}>{row.completed}</td>
+                    <td className={styles.performancePending}>{row.pending}</td>
+                    <td>
+                      <span className={styles.performanceRateCell}>
+                        <span className={styles.performanceRateTrack}>
+                          <span style={{ width: `${Math.min(100, Math.max(0, rate))}%` }} />
+                        </span>
+                        <span>{formatCompletionRate(rate)}</span>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td className={styles.performanceEmptyCell} colSpan="6">
+                  No team performance records found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -615,6 +745,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     l1: null,
     l2: null,
     ranking: [],
+    teamMembers: [],
     loading: false,
     error: "",
   });
@@ -747,6 +878,19 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     let isMounted = true;
     const isCustomPeriod = performanceFilterMode === "custom";
     const period = isCustomPeriod ? "custom" : periodToBackendPeriod[activePeriod] || "month";
+    const selectedUserRecord = (Array.isArray(users) ? users : []).find((user) => {
+      const candidates = [
+        user?.id,
+        user?.user_id,
+        user?.userId,
+        user?.employeeId,
+        user?.employee_id,
+        user?.emp_id,
+      ];
+      return candidates.some((value) => normalizeLookup(value) === normalizeLookup(selectedUserId));
+    });
+    const selectedUserApiId =
+      selectedUserRecord?.id || selectedUserRecord?.user_id || selectedUserRecord?.userId || selectedUserId;
     const params = {
       period,
       ...(isCustomPeriod ? { start_date: fromDate, end_date: toDate } : {}),
@@ -754,24 +898,45 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       ...(selectedSubDepartment
         ? { sub_department: selectedSubDepartment.name, sub_department_slug: selectedSubDepartment.slug }
         : {}),
-      ...(selectedUserId ? { user_id: selectedUserId, employee_id: selectedUserId } : {}),
+      ...(selectedUserId ? { user_id: selectedUserApiId, employee_id: selectedUserId } : {}),
       ...(notebook ? { input_screen: notebook } : {}),
       ...(inputField ? { input_field: inputField } : {}),
     };
 
     setPerformanceApiData((current) => ({ ...current, loading: true, error: "" }));
 
-    Promise.all([
-      fetchL1AnalysisApi(params),
-      fetchL2AnalysisApi(params),
-      fetchAnalysisRankingApi(params),
-    ])
-      .then(([l1, l2, ranking]) => {
+    const fetchLegacyPerformanceData = () =>
+      Promise.all([
+        fetchL1AnalysisApi(params),
+        fetchL2AnalysisApi(params),
+        fetchAnalysisRankingApi(params),
+      ]).then(([l1, l2, ranking]) => ({
+        l1,
+        l2,
+        ranking: Array.isArray(ranking?.ranking) ? ranking.ranking : [],
+        teamMembers: [],
+      }));
+
+    fetchTeamPerformanceAnalysisApi(params)
+      .then((response) => ({
+        l1: response?.l1 || null,
+        l2: response?.l2 || null,
+        ranking: Array.isArray(response?.ranking) ? response.ranking : [],
+        teamMembers: Array.isArray(response?.team_members_performance) ? response.team_members_performance : [],
+      }))
+      .catch((error) => {
+        if (error?.response?.status === 404) {
+          return fetchLegacyPerformanceData();
+        }
+        throw error;
+      })
+      .then((nextData) => {
         if (!isMounted) return;
         setPerformanceApiData({
-          l1,
-          l2,
-          ranking: Array.isArray(ranking?.ranking) ? ranking.ranking : [],
+          l1: nextData.l1,
+          l2: nextData.l2,
+          ranking: nextData.ranking,
+          teamMembers: nextData.teamMembers,
           loading: false,
           error: "",
         });
@@ -788,7 +953,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     return () => {
       isMounted = false;
     };
-  }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, selectedUserId, notebook, inputField, toDate]);
+  }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, selectedUserId, notebook, inputField, toDate, users]);
 
   useEffect(() => {
     if (mode !== "Stats") return undefined;
@@ -1123,11 +1288,28 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     ];
   }, [activePeriod, filteredFetchedTickets, selectedValueKind, statisticsApiData.cards, toDate]);
   const performanceMetrics = useMemo(() => {
-    const l1ApiMetrics = performanceApiData.l1?.metrics;
-    const l2ApiMetrics = performanceApiData.l2?.metrics;
+    const l1SubmissionStats = performanceApiData.l1?.submission_stats;
+    const l1TicketingStats = performanceApiData.l1?.ticketing_stats;
+    const l1ApiMetrics = {
+      ...(l1SubmissionStats || {}),
+      ...(l1TicketingStats || {}),
+      ...(performanceApiData.l1?.metrics || {}),
+    };
+    const l2ApprovalStats = performanceApiData.l2?.approval_stats;
+    const l2ApiMetrics = {
+      ...(l2ApprovalStats || {}),
+      ...(performanceApiData.l2?.metrics || {}),
+    };
+    const hasApiMetrics = Boolean(
+      l1SubmissionStats ||
+      l1TicketingStats ||
+      performanceApiData.l1?.metrics ||
+      l2ApprovalStats ||
+      performanceApiData.l2?.metrics
+    );
     const topRanking = performanceApiData.ranking?.[0];
 
-    if (!selectedDepartment && !selectedSubDepartment && (l1ApiMetrics || l2ApiMetrics || topRanking)) {
+    if (hasApiMetrics || topRanking) {
       return {
         l1Submission: [
           { label: "Allocated Submission", value: Number(l1ApiMetrics?.allocated_submissions || 0) },
@@ -1229,12 +1411,13 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     performanceApiData.l1,
     performanceApiData.l2,
     performanceApiData.ranking,
-    selectedDepartment,
-    selectedSubDepartment,
     toDate,
     userIdByName,
   ]);
   const visibleRows = useMemo(() => {
+    if (mode === "L1" && performanceApiData.teamMembers.length) {
+      return performanceApiData.teamMembers;
+    }
     if (mode !== "L1") return analytics.rows;
     const thresholdRows = analytics.rows.filter((row) =>
       String(row.employee || "").toLowerCase().includes("threshold")
@@ -1244,7 +1427,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     );
     if (activeSystem === "threshold") return thresholdRows.length ? thresholdRows : analytics.rows;
     return submissionRows.length ? submissionRows : analytics.rows;
-  }, [activeSystem, analytics.rows, mode]);
+  }, [activeSystem, analytics.rows, mode, performanceApiData.teamMembers]);
 
   if (isStatsMode) {
     return (
@@ -1308,25 +1491,23 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
-        <section className={styles.performancePanel}>
+        <section className={styles.performanceStatsSection}>
+          <h2 className={styles.performanceStatsTitle}>Submission Stats</h2>
           <div className={styles.performanceGrid}>
             {performanceMetrics.l1Submission.map((metric) => (
               <MetricCard key={metric.label} label={metric.label} value={metric.value} />
             ))}
           </div>
         </section>
-        <section className={styles.performancePanel}>
+        <section className={styles.performanceStatsSection}>
+          <h2 className={styles.performanceStatsTitle}>Ticketing Stats</h2>
           <div className={styles.performanceGrid}>
             {performanceMetrics.l1Resolution.map((metric) => (
               <MetricCard key={metric.label} label={metric.label} value={metric.value} />
             ))}
           </div>
         </section>
-        <div className={styles.performanceRanking}>
-          {performanceMetrics.l1Ranking.map((metric) => (
-            <MetricCard key={metric.label} label={metric.label} value={metric.value} />
-          ))}
-        </div>
+        <TeamMembersPerformanceTable rows={visibleRows} />
       </section>
     );
   }
@@ -1334,7 +1515,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   if (mode === "L2") {
     return (
       <section className={`${styles.page} ${styles.performancePage}`}>
-        <h1 className={styles.performanceTitle}>L2 Team Performance Analysis</h1>
+        <h1 className={styles.performanceTitle}>L2 - Team Performance Analysis</h1>
         <TeamPerformanceFilter
           activePeriod={activePeriod}
           setActivePeriod={handlePeriodChange}
@@ -1354,7 +1535,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
-        <section className={styles.performancePanel}>
+        <section className={`${styles.performanceStatsSection} ${styles.performanceStatsSectionPlain}`}>
           <div className={styles.performanceGrid}>
             {performanceMetrics.l2Approvals.map((metric) => (
               <MetricCard key={metric.label} label={metric.label} value={metric.value} />

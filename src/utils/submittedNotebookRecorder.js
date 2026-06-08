@@ -1,4 +1,7 @@
 import { createSubmittedNotebookApi } from "@/apis/submittedNotebooksApi";
+import { fetchNotebookAcknowledgementThresholdsAPI } from "@/apis/notebookAcknowledgementThresholdApi";
+import { fetchSubmissionFrequencyConfigsAPI } from "@/apis/submissionFrequencyApi";
+import { enrichSubmittedNotebookWithAssignment } from "@/utils/submittedNotebookAssignment";
 
 const previewItemsToPayload = (items = []) =>
   items.reduce((acc, item) => {
@@ -22,6 +25,17 @@ const cleanObject = (value = {}) =>
       .filter(([key]) => String(key || "").trim())
       .map(([key, item]) => [key, cleanPayloadValue(item)])
   );
+
+const fetchSubmittedNotebookAssignmentThresholds = async () => {
+  const results = await Promise.allSettled([
+    fetchNotebookAcknowledgementThresholdsAPI(),
+    fetchSubmissionFrequencyConfigsAPI(),
+  ]);
+
+  return results.flatMap((result) => (
+    result.status === "fulfilled" && Array.isArray(result.value) ? result.value : []
+  ));
+};
 
 export const recordSubmittedNotebook = async ({
   department,
@@ -51,7 +65,7 @@ export const recordSubmittedNotebook = async ({
   const resolvedLotNo = lotNo || cleanedFields.lot_no || cleanedFields.lotNo || "";
 
   try {
-    return await createSubmittedNotebookApi({
+    const basePayload = {
       department,
       sub_department: subDepartment,
       notebook_name: notebookName,
@@ -67,7 +81,9 @@ export const recordSubmittedNotebook = async ({
         ...cleanedFields,
       },
       ...extra,
-    });
+    };
+    const thresholds = await fetchSubmittedNotebookAssignmentThresholds();
+    return await createSubmittedNotebookApi(enrichSubmittedNotebookWithAssignment(basePayload, thresholds));
   } catch (error) {
     console.warn("Submitted notebook record could not be created.", error?.response?.data || error?.message);
     return null;

@@ -3,6 +3,19 @@ import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 
 let authToken = null;
+const AUTH_TOKEN_STORAGE_KEY = "token";
+
+const getStoredAuthToken = () => {
+    if (typeof window === "undefined") {
+        return "";
+    }
+
+    return (
+        window.sessionStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ||
+        window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) ||
+        ""
+    );
+};
 
 const resolvedBaseUrl = (
     process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
@@ -115,8 +128,11 @@ const buildRequestConfig = (options = {}) => {
 // Request interceptor to automatically add the Bearer token and any other globally required headers
 axiosInstance.interceptors.request.use(
     (config) => {
-        if (authToken) {
-            config.headers.Authorization = `Bearer ${authToken}`;
+        const token = authToken || getStoredAuthToken();
+        if (token) {
+            authToken = token;
+            config.headers = config.headers || {};
+            config.headers.Authorization = `Bearer ${token}`;
         }
         return config;
     },

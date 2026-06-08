@@ -1178,7 +1178,7 @@ export default function SubmissionThreshold() {
                               {item.is_active ? "Active" : "Inactive"}
                             </span>
                           </td>
-                          <td>{formatTimestamp(item.created_at)}</td>
+                          <td>{formatTimestamp(item.created_at || item.createdAt)}</td>
                           <td>
                             <div className={styles.actionMenuWrap} data-submission-menu="true">
                               <button
