@@ -4,6 +4,7 @@ import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 
 import {
+  fetchAutoconerConsigneeMaster,
   fetchAutoconerQ2Entries,
   submitAutoconerQ2Entry,
   updateAutoconerQ2Entry,
@@ -131,6 +132,9 @@ const displaySavedValue = (value) => {
   const normalized = String(value ?? "").trim();
   return normalized && normalized !== "-" ? normalized : "0";
 };
+
+const uniqueOptions = (values) =>
+  Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
 
 const parseNumberValue = (value, decimals = 2) => {
   const parsed = Number(String(value ?? "").trim());
@@ -265,42 +269,21 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { countOptions: masterCountOptions } = useAutoconerCountOptions();
+  const { countOptions: masterCountOptions } = useAutoconerCountOptions("process-parameter");
+  const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
 
-  const countOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          masterCountOptions
-            .map((option) => String(option?.count_name || option?.label || option?.value || "").trim())
-            .filter(Boolean)
-            .concat(
-              versions
-            .map((version) => String(version?.data?.countName || "").trim())
-            .filter(Boolean)
-            )
-            .concat(String(form.countName || "").trim() ? [String(form.countName || "").trim()] : [])
-        )
-      ),
-    [form.countName, masterCountOptions, versions]
-  );
+  const countOptions = useMemo(() => {
+    const masterValues = masterCountOptions.map(
+      (option) => option?.count_name || option?.label || option?.value
+    );
+    const savedValues = versions.map((version) => version?.data?.countName);
+    return uniqueOptions([...masterValues, ...savedValues, form.countName]);
+  }, [form.countName, masterCountOptions, versions]);
 
-  const consigneeOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          versions
-            .map((version) => String(version?.data?.consigneeName || "").trim())
-            .filter(Boolean)
-            .concat(
-              String(form.consigneeName || "").trim()
-                ? [String(form.consigneeName || "").trim()]
-                : []
-            )
-        )
-      ),
-    [form.consigneeName, versions]
-  );
+  const consigneeOptions = useMemo(() => {
+    const savedValues = versions.map((version) => version?.data?.consigneeName);
+    return uniqueOptions([...masterConsigneeOptions, ...savedValues, form.consigneeName]);
+  }, [form.consigneeName, masterConsigneeOptions, versions]);
 
   const loadVersions = async () => {
     setLoadingVersions(true);
@@ -337,6 +320,18 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
 
   useEffect(() => {
     loadVersions();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadConsigneeOptions = async () => {
+      const options = await fetchAutoconerConsigneeMaster({ screen: "process-parameter" });
+      if (active) setMasterConsigneeOptions(Array.isArray(options) ? options : []);
+    };
+    loadConsigneeOptions();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {

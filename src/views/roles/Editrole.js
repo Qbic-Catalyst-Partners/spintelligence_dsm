@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { RiIdCardFill } from "react-icons/ri";
+import { getAccessibleScreensByRole } from "@/apis/login";
 
 import {
     fetchRoleById,
+    fetchRoles,
     fetchScreens,
     updateRole
 } from "../../store/slices/rolesSlice";
@@ -17,29 +19,169 @@ export default function EditRole() {
     const dispatch = useDispatch();
     const { id } = router.query;
 
-    const { currentRole, screens } = useSelector((state) => state.roles);
+    const { currentRole, screens, roles } = useSelector((state) => state.roles);
 
     const [usersCount, setUsersCount] = useState(0);
     const [roleName, setRoleName] = useState("");
     const [description, setDescription] = useState("");
     const [selectedScreens, setSelectedScreens] = useState([]);
     const [roleUpdatedAt, setRoleUpdatedAt] = useState("");
+    const [draftRole, setDraftRole] = useState(null);
+    const [roleAccess, setRoleAccess] = useState(null);
+
+    const normalizeLookup = (value) =>
+        String(value || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "");
+
+    const collectScreenRefs = (value) => {
+        if (!value) return [];
+        if (Array.isArray(value)) return value.flatMap(collectScreenRefs);
+
+        if (typeof value === "string" || typeof value === "number") {
+            return [{ id: value, name: value }];
+        }
+
+        if (typeof value !== "object") return [];
+
+        const mapRefs = Object.entries(value)
+            .filter(([, entryValue]) => entryValue === true || entryValue === "true" || entryValue === 1 || Array.isArray(entryValue))
+            .flatMap(([entryKey, entryValue]) =>
+                Array.isArray(entryValue) ? collectScreenRefs(entryValue) : [{ name: entryKey }]
+            );
+
+        const directRef = {
+            id: value.id ?? value.screen_id ?? value.screenId ?? value.screen?.id ?? value.screen?.screen_id,
+            name:
+                value.name ??
+                value.screen_name ??
+                value.screenName ??
+                value.screen?.name ??
+                value.screen?.screen_name,
+        };
+
+        return [
+            directRef,
+            ...mapRefs,
+            ...collectScreenRefs(value.screens),
+            ...collectScreenRefs(value.accessibleScreens),
+            ...collectScreenRefs(value.accessible_screens),
+            ...collectScreenRefs(value.screen_names),
+            ...collectScreenRefs(value.screenNames),
+            ...collectScreenRefs(value.permissions),
+            ...collectScreenRefs(value.screen_access),
+            ...collectScreenRefs(value.access),
+        ];
+    };
+
+    const resolveScreenIds = (role, availableScreens = []) => {
+        const source =
+            role?.screen_ids ||
+            role?.screenIds ||
+            role?.screens ||
+            role?.screen_names ||
+            role?.screenNames ||
+            role?.permissions ||
+            role?.screen_access ||
+            role?.access ||
+            [];
+
+        const refs = collectScreenRefs(source);
+        const available = Array.isArray(availableScreens) ? availableScreens : [];
+
+        return refs
+            .map((screen) => {
+                const explicitId = screen.id;
+                if (explicitId !== null && explicitId !== undefined && available.some((item) => String(item.id) === String(explicitId))) {
+                    return explicitId;
+                }
+
+                const screenKey = normalizeLookup(screen.name || explicitId);
+                const matched = available.find(
+                    (item) => normalizeLookup(item.name) === screenKey || normalizeLookup(item.screen_name) === screenKey
+                );
+                return matched?.id ?? explicitId;
+            })
+            .filter((screenId) => screenId !== null && screenId !== undefined)
+            .map(String)
+            .filter((screenId, index, list) => list.indexOf(screenId) === index);
+    };
+
+    const getRoleRecord = (payload) => {
+        if (Array.isArray(payload)) return payload[0] || null;
+        return payload?.role || payload?.data?.role || payload?.data || payload;
+    };
+
+    const getRoleId = (role) => role?.id ?? role?.role_id ?? role?.roleId;
+
+    const findLoadedRole = () =>
+        (Array.isArray(roles) ? roles : []).find((role) => String(getRoleId(role)) === String(id)) || null;
+
+    const hasScreenAccess = (role) =>
+        Boolean(
+            role?.screen_ids?.length ||
+            role?.screenIds?.length ||
+            role?.screens?.length ||
+            role?.accessibleScreens?.length ||
+            role?.accessible_screens?.length ||
+            role?.screen_names?.length ||
+            role?.screenNames?.length ||
+            role?.permissions?.length ||
+            role?.screen_access?.length ||
+            role?.access?.length ||
+            (role?.permissions && typeof role.permissions === "object" && Object.keys(role.permissions).length) ||
+            (role?.screen_access && typeof role.screen_access === "object" && Object.keys(role.screen_access).length) ||
+            (role?.access && typeof role.access === "object" && Object.keys(role.access).length)
+        );
+
+    useEffect(() => {
+        if (!id || typeof window === "undefined") return;
+        try {
+            const stored = JSON.parse(window.sessionStorage.getItem("editRoleDraft") || "null");
+            if (stored && String(getRoleId(stored)) === String(id)) {
+                setDraftRole(stored);
+            }
+        } catch {
+            setDraftRole(null);
+        }
+    }, [id]);
+
+    const toApiScreenId = (screenId) => {
+        const numericId = Number(screenId);
+        return Number.isNaN(numericId) ? screenId : numericId;
+    };
 
     useEffect(() => {
         if (!id) return;
         dispatch(fetchRoleById(id));
+        dispatch(fetchRoles({ page: 1, limit: 100 }));
         dispatch(fetchScreens());
+
+        getAccessibleScreensByRole(id)
+            .then((payload) => setRoleAccess(payload))
+            .catch(() => setRoleAccess(null));
     }, [id, dispatch]);
 
     useEffect(() => {
-        if (currentRole) {
-            setRoleName(currentRole.name || "");
-            setDescription(currentRole.description || "");
-            setSelectedScreens(currentRole.screen_ids || []);
-            setRoleUpdatedAt(currentRole.updated_at || "");
-            setUsersCount(currentRole.users_count || 0);
+        const detailRole = getRoleRecord(currentRole);
+        const listRole = findLoadedRole();
+        const role = detailRole || listRole || draftRole;
+        const accessRole = roleAccess
+            ? {
+                access: roleAccess?.access || roleAccess?.data?.access || roleAccess,
+                accessibleScreens: roleAccess?.accessibleScreens || roleAccess?.accessible_screens || roleAccess?.data?.accessibleScreens || roleAccess?.data?.accessible_screens,
+            }
+            : null;
+        const screenRole = [accessRole, detailRole, listRole, draftRole].find(hasScreenAccess) || role;
+        if (role) {
+            setRoleName(detailRole?.role_name || detailRole?.name || listRole?.role_name || listRole?.name || draftRole?.role_name || draftRole?.name || "");
+            setDescription(detailRole?.description ?? listRole?.description ?? draftRole?.description ?? "");
+            setSelectedScreens(resolveScreenIds(screenRole, screens));
+            setRoleUpdatedAt(detailRole?.updated_at || detailRole?.updatedAt || listRole?.updated_at || listRole?.updatedAt || draftRole?.updated_at || draftRole?.updatedAt || "");
+            setUsersCount(detailRole?.users_count ?? detailRole?.usersCount ?? detailRole?.users ?? listRole?.users_count ?? listRole?.usersCount ?? listRole?.users ?? draftRole?.users_count ?? draftRole?.usersCount ?? draftRole?.users ?? 0);
         }
-    }, [currentRole]);
+    }, [currentRole, screens, roles, id, draftRole, roleAccess]);
 
     const handleUpdateRole = async () => {
         try {
@@ -47,7 +189,7 @@ export default function EditRole() {
                 name: roleName,
                 description,
                 status: true,
-                screen_ids: [...new Set(selectedScreens)],
+                screen_ids: [...new Set(selectedScreens)].map(toApiScreenId),
             };
 
             await dispatch(updateRole({ id, payload })).unwrap();
@@ -119,30 +261,35 @@ export default function EditRole() {
                     </div>
 
                     <div className={styles["edit-module-grid"]}>
-                        {screens.map((screen) => (
-                            <label
-                                key={screen.id}
-                                className={`${styles["edit-module-item"]} ${selectedScreens.includes(screen.id)
-                                    ? styles["active-module"]
-                                    : ""
-                                    }`}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={selectedScreens.includes(screen.id)}
-                                    onChange={() => {
-                                        if (selectedScreens.includes(screen.id)) {
-                                            setSelectedScreens(
-                                                selectedScreens.filter((screenId) => screenId !== screen.id)
-                                            );
-                                        } else {
-                                            setSelectedScreens([...selectedScreens, screen.id]);
-                                        }
-                                    }}
-                                />
-                                {toTitleCase(screen.name)}
-                            </label>
-                        ))}
+                        {screens.map((screen) => {
+                            const screenId = String(screen.id);
+                            const isSelected = selectedScreens.includes(screenId);
+
+                            return (
+                                <label
+                                    key={screen.id}
+                                    className={`${styles["edit-module-item"]} ${isSelected
+                                        ? styles["active-module"]
+                                        : ""
+                                        }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => {
+                                            if (isSelected) {
+                                                setSelectedScreens(
+                                                    selectedScreens.filter((selectedScreenId) => selectedScreenId !== screenId)
+                                                );
+                                            } else {
+                                                setSelectedScreens([...selectedScreens, screenId]);
+                                            }
+                                        }}
+                                    />
+                                    {toTitleCase(screen.name)}
+                                </label>
+                            );
+                        })}
                     </div>
                 </div>
             </div>

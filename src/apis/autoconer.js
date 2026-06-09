@@ -135,6 +135,43 @@ export const normalizeAutoconerCountOptions = (payload = {}) => {
     });
 };
 
+export const normalizeAutoconerTextOptions = (payload = {}, keys = []) => {
+  const optionRows = Array.isArray(payload?.options)
+    ? payload.options
+    : Object.values(payload?.options || {}).flatMap((value) => (Array.isArray(value) ? value : []));
+  const rows = [
+    ...(Array.isArray(payload?.data) ? payload.data : []),
+    ...(Array.isArray(payload?.values) ? payload.values : []),
+    ...(Array.isArray(payload?.items) ? payload.items : []),
+    ...(Array.isArray(payload) ? payload : []),
+    ...optionRows,
+  ];
+
+  const seen = new Set();
+  return rows
+    .map((item) => {
+      if (item && typeof item === "object") {
+        const label = String(
+          keys.map((key) => item?.[key]).find((value) => String(value || "").trim()) ??
+            item.name ??
+            item.label ??
+            item.text ??
+            item.value ??
+            ""
+        ).trim();
+        return label || null;
+      }
+
+      const label = String(item || "").trim();
+      return label || null;
+    })
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+};
+
 const postAutoconer = async (path, payload, fallbackMessage) => {
   return postAutoconerCandidates(path, [payload], fallbackMessage);
 };
@@ -243,15 +280,58 @@ export const fetchAutoconerCountWiseCuts = async () =>
     suppressFailure: true,
   });
 
-export const fetchAutoconerCountMaster = async ({ search = "" } = {}) => {
+export const fetchAutoconerCountMaster = async ({ search = "", screen = "" } = {}) => {
+  const normalizedScreen = String(screen || "").trim();
   const response = await getAutoconerPathCandidates(
-    ["master/count-dropdown", "master/counts", "master/count-names", "count-master", "master-data"],
+    [
+      ...(normalizedScreen
+        ? [
+            `${normalizedScreen}/master/count-names`,
+            `${normalizedScreen}/master/count-dropdown`,
+            `${normalizedScreen}/master/counts`,
+            `${normalizedScreen}/master-data`,
+          ]
+        : []),
+      "master/count-dropdown",
+      "master/counts",
+      "master/count-names",
+      "count-master",
+      "master-data",
+    ],
     { search },
     "Unable to fetch Autoconer count master.",
     { suppressFailure: true }
   );
 
   return normalizeAutoconerCountOptions(response);
+};
+
+export const fetchAutoconerConsigneeMaster = async ({ search = "", screen = "" } = {}) => {
+  const normalizedScreen = String(screen || "").trim();
+  const response = await getAutoconerPathCandidates(
+    [
+      ...(normalizedScreen
+        ? [
+            `${normalizedScreen}/master/consignee-dropdown`,
+            `${normalizedScreen}/master/consignees`,
+            `${normalizedScreen}/master-data`,
+          ]
+        : []),
+      "master/consignees",
+      "master/consignee-dropdown",
+      "master-data",
+    ],
+    { search },
+    "Unable to fetch Autoconer consignee master.",
+    { suppressFailure: true }
+  );
+
+  return normalizeAutoconerTextOptions(response, [
+    "consignee_name",
+    "consigneeName",
+    "consignee",
+    "name",
+  ]);
 };
 
 export const fetchAutoconerMachineMaster = async ({ search = "" } = {}) =>

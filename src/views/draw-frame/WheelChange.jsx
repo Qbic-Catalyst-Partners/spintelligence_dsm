@@ -54,7 +54,7 @@ const TD7_ROWS = [
   { key: "blendPercent", label: "Blend %" },
   { key: "delHank", label: "Del-Hank" },
   { key: "feedHank", label: "Feed Hank" },
-  { key: "noOfEnds", label: "No. of Ends" },    v   
+  { key: "noOfEnds", label: "No. of Ends" },
   { key: "speed", label: "Speed" },
   { key: "totalDraftFormula", label: "Total Draft (Formula)", darkInput: true },
   { key: "totalDraftGear", label: "Total Draft from G1/G2 Combination" },

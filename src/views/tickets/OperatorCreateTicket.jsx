@@ -36,7 +36,6 @@ const COTTON_HVI_NUMERIC_FIELDS = new Set([
   "Yellow + B",
   "Trash",
   "RD",
-  "Colour Grade",
 ]);
 
 const DATE_FIELDS = new Set(["Date", "Entry Date", "Invoice Date", "Inspection Date", "Record Date"]);

@@ -474,17 +474,15 @@
   box-sizing: border-box;
 }
 
-.filter-select-wrapper::after {
-  content: "";
+.select-chevron {
   position: absolute;
   right: 14px;
   top: 50%;
-  width: 7px;
-  height: 7px;
-  border-right: 2px solid #64748b;
-  border-bottom: 2px solid #64748b;
-  transform: translateY(-65%) rotate(45deg);
+  width: 16px;
+  height: 16px;
+  color: #64748b;
   pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .status {
@@ -518,6 +516,9 @@
   font-weight: 600;
   border: 1px solid #e2e8f0;
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none;
   cursor: pointer;
 }
 
@@ -1047,10 +1048,6 @@
   border: 1px solid rgba(255, 255, 255, 0.62) !important;
   background: #3b3b3b !important;
   box-shadow: none !important;
-}
-
-:global(:root[data-theme="dark"]) .filter-select-wrapper::after {
-  border-color: #ffffff;
 }
 
 :global(:root[data-theme="dark"]) .Search-box.dark-filter-control {

@@ -28,7 +28,7 @@ export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
 const today = new Date().toISOString().split("T")[0];
 const BLOWROOM_ENTRY_ID_CONFIG = {
   "Blow Room Sync": { prefix: "BRS", width: 4, routePath: "/blowroom/sync" },
-  "Process Parameter": { prefix: "BPP", width: 4, routePath: "/blowroom/process-parameters" },
+  "Process Parameter": { prefix: "PP", width: 4, routePath: "/blowroom/header" },
   "BR Waste Study Entry": { prefix: "BWS", width: 4, routePath: "/blowroom/br-waste-study" },
   "Drop Test Data Entry": { prefix: "BDT", width: 4, routePath: "/blowroom/drop-test" },
 };

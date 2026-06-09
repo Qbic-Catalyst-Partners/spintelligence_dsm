@@ -98,7 +98,13 @@ const fetchGeneralReportDataRows = async (params = {}) => {
   return response.data;
 };
 
+const ANALYSIS_DEPARTMENT = "Analysis";
+const TEAM_PERFORMANCE_SUB_DEPARTMENT = "Team Performance";
+const TEAM_PERFORMANCE_REPORT_TYPE = "Team Performance Analysis";
+
 const formatAnalysisPercent = (value) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}%`;
+
+const isAnalysisDepartment = (departmentName) => matchesLookup(departmentName, ANALYSIS_DEPARTMENT);
 
 const getAnalysisDateParams = (params = {}) => {
   const startDate = params.start_date || params.startDate;
@@ -114,7 +120,7 @@ const getAnalysisDateParams = (params = {}) => {
     : { period: "month" };
   return {
     ...base,
-    ...(department ? { department } : {}),
+    ...(department && !isAnalysisDepartment(department) ? { department } : {}),
     ...(subDepartment ? { sub_department: subDepartment } : {}),
   };
 };
@@ -365,6 +371,7 @@ const getReportDepartmentKey = (departmentName) =>
 
 const getReportSubDepartmentKey = (departmentName, subDepartmentName) => {
   const departmentKey = getReportDepartmentKey(departmentName);
+  if (isAnalysisDepartment(departmentKey)) return TEAM_PERFORMANCE_SUB_DEPARTMENT;
   return (
     Object.keys(reportSources[departmentKey] || {}).find((key) => matchesLookup(key, subDepartmentName)) ||
     findCatalogSubDepartment(departmentName, subDepartmentName)?.name ||
@@ -390,6 +397,17 @@ const normalizeReportSelection = ({ departmentName, subDepartmentName, typeName 
   const subDepartmentKey = getReportSubDepartmentKey(departmentKey, subDepartmentName);
   const typeKey = getReportTypeKey(departmentKey, subDepartmentKey, typeName);
 
+  if (isAnalysisDepartment(departmentKey)) {
+    const selectedSubDepartment = isReadableReportOption(subDepartmentName)
+      ? subDepartmentName
+      : TEAM_PERFORMANCE_SUB_DEPARTMENT;
+    return {
+      department: ANALYSIS_DEPARTMENT,
+      subDepartment: selectedSubDepartment,
+      reportType: TEAM_PERFORMANCE_REPORT_TYPE,
+    };
+  }
+
   return {
     department: isReadableReportOption(departmentKey) ? departmentKey : "Quality Control",
     subDepartment: isReadableReportOption(subDepartmentKey) ? subDepartmentKey : "Mixing",
@@ -414,6 +432,15 @@ const normalizeReportSchedule = (schedule = {}) => {
 
 const getCatalogSubDepartments = (selectedDepartment) =>
   findCatalogDepartment(selectedDepartment)?.subDepartments?.map((item) => item.name) || [];
+
+const getStatisticsSubDepartmentOptions = () =>
+  uniqueOptions(
+    departmentDirectory
+      .filter((department) => department.enabled)
+      .flatMap((department) => department.subDepartments || [])
+      .filter((subDepartment) => subDepartment.enabled)
+      .map((subDepartment) => subDepartment.name)
+  );
 
 const getDepartmentSlugByName = (departmentName) =>
   findCatalogDepartment(departmentName)?.slug || "";
@@ -820,6 +847,47 @@ const toReportField = (fieldName) => {
   };
 };
 
+const reportFieldAliases = {
+  "Span Length (2.5%)": ["span_length", "spanLength"],
+  "Invisible Loss %": ["invisible_loss_percentage", "invisible_loss_percent", "invisibleLossPercent"],
+  "Trash Content %": ["trash_content_percentage", "trash_content_percent", "trashContentPercent"],
+  "Yellow + B": ["yellow_b", "yellowB"],
+  TrCnt: ["trcnt", "tr_cnt", "trCnt"],
+  TrAr: ["trar", "tr_ar", "trAr"],
+  TrID: ["trid", "tr_id", "trID"],
+  "Colour Grade": ["colour_grade", "color_grade", "colourGrade", "colorGrade"],
+  "U%": ["u_percent", "uPercent"],
+  "CV%": ["cv_percent", "cvPercent"],
+};
+
+const getCanonicalReportFieldKey = (field) => {
+  const fieldKey = String(field?.key || field?.label || "").trim();
+  const matchedAlias = Object.entries(reportFieldAliases).find(([label, aliases]) =>
+    [label, ...aliases].some((candidate) => normalizeLookupKey(candidate) === normalizeLookupKey(fieldKey))
+  );
+  return matchedAlias ? normalizeLookupKey(matchedAlias[0]) : normalizeLookupKey(fieldKey);
+};
+
+const getReportFieldValue = (row, field) => {
+  const keys = [
+    field?.key,
+    field?.label,
+    ...(reportFieldAliases[field?.label] || []),
+    ...(reportFieldAliases[field?.key] || []),
+  ].filter(Boolean);
+
+  for (const key of keys) {
+    if (row?.[key] !== null && typeof row?.[key] !== "undefined" && row?.[key] !== "") return row[key];
+    const target = normalizeLookupKey(key);
+    const matchedKey = Object.keys(row || {}).find((rowKey) => normalizeLookupKey(rowKey) === target);
+    if (matchedKey && row[matchedKey] !== null && typeof row[matchedKey] !== "undefined" && row[matchedKey] !== "") {
+      return row[matchedKey];
+    }
+  }
+
+  return null;
+};
+
 const getCellValue = (row, field) => {
   if (
     field.key === "inspection_date" ||
@@ -827,10 +895,10 @@ const getCellValue = (row, field) => {
     field.key === "invoice_date" ||
     field.key === "entry_date"
   ) {
-    return formatDate(row?.[field.key] || getRowDate(row));
+    return formatDate(getReportFieldValue(row, field) || getRowDate(row));
   }
 
-  const value = row?.[field.key];
+  const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
@@ -1097,9 +1165,16 @@ function ReportsPage() {
     [accessByDepartment, authUser]
   );
   const departments = Object.keys(accessibleReportSources);
-  const subDepartments = Object.keys(accessibleReportSources[department] || {});
-  const reportTypes = Object.keys(accessibleReportSources[department]?.[subDepartment] || {});
-  const selectedReportSource = accessibleReportSources[department]?.[subDepartment]?.[reportType];
+  const isTeamPerformanceReport = isAnalysisDepartment(department);
+  const subDepartments = isTeamPerformanceReport
+    ? getStatisticsSubDepartmentOptions()
+    : Object.keys(accessibleReportSources[department] || {});
+  const reportTypes = isTeamPerformanceReport
+    ? Object.keys(accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
+    : Object.keys(accessibleReportSources[department]?.[subDepartment] || {});
+  const selectedReportSource = isTeamPerformanceReport
+    ? accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT]?.[TEAM_PERFORMANCE_REPORT_TYPE]
+    : accessibleReportSources[department]?.[subDepartment]?.[reportType];
 
   const getUserId = (user) =>
     String(user?.id || user?.user_id || user?.userId || user?.employeeId || user?.employee_id || user?.email || "");
@@ -1147,11 +1222,15 @@ function ReportsPage() {
 
   useEffect(() => {
     const nextDepartment = departments.includes(department) ? department : (departments[0] || "");
-    const nextSubDepartments = Object.keys(accessibleReportSources[nextDepartment] || {});
+    const nextSubDepartments = isAnalysisDepartment(nextDepartment)
+      ? getStatisticsSubDepartmentOptions()
+      : Object.keys(accessibleReportSources[nextDepartment] || {});
     const nextSubDepartment = nextSubDepartments.includes(subDepartment)
       ? subDepartment
       : (nextSubDepartments[0] || "");
-    const nextReportTypes = Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
+    const nextReportTypes = isAnalysisDepartment(nextDepartment)
+      ? Object.keys(accessibleReportSources[nextDepartment]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
+      : Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
     const nextReportType = nextReportTypes.includes(reportType) ? reportType : (nextReportTypes[0] || "");
 
     if (nextDepartment !== department) setDepartment(nextDepartment);
@@ -1169,7 +1248,7 @@ function ReportsPage() {
     const sourceFields = [...configuredFields, ...inferFields(rows)].filter(
       (field, index, list) =>
         field?.key &&
-        index === list.findIndex((item) => normalizeLookupKey(item?.key || item?.label) === normalizeLookupKey(field.key || field.label))
+        index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
     );
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
     return sourceFields.filter((field) => !selectedKeys.has(field.key));
@@ -1230,6 +1309,13 @@ function ReportsPage() {
     let isMounted = true;
     const loadSubDepartments = async () => {
       if (!department) return;
+      if (isAnalysisDepartment(department)) {
+        const nextSubDepartments = getStatisticsSubDepartmentOptions();
+        const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
+        setBuilderOptions((current) => ({ ...current, sub_departments: nextSubDepartments, input_screens: [], input_fields: [] }));
+        setSubDepartment(nextSubDepartment);
+        return;
+      }
       try {
         const response = await fetchBuilderOptions({ department });
         if (!isMounted) return;
@@ -1255,6 +1341,15 @@ function ReportsPage() {
     let isMounted = true;
     const loadScreens = async () => {
       if (!department || !subDepartment) return;
+      if (isAnalysisDepartment(department)) {
+        setBuilderOptions((current) => ({
+          ...current,
+          input_screens: [TEAM_PERFORMANCE_REPORT_TYPE],
+          input_fields: [],
+        }));
+        setReportType(TEAM_PERFORMANCE_REPORT_TYPE);
+        return;
+      }
       try {
         const response = await fetchBuilderOptions({ department, sub_department: subDepartment });
         if (!isMounted) return;
@@ -2044,9 +2139,14 @@ function ReportsPage() {
                   value={department}
                   onChange={(event) => {
                     const nextDepartment = event.target.value;
-                    const nextSubDepartment = Object.keys(accessibleReportSources[nextDepartment] || {})[0] || "";
-                    const nextReportType =
-                      Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {})[0] || "";
+                    const nextSubDepartments = isAnalysisDepartment(nextDepartment)
+                      ? getStatisticsSubDepartmentOptions()
+                      : Object.keys(accessibleReportSources[nextDepartment] || {});
+                    const nextSubDepartment = nextSubDepartments[0] || "";
+                    const nextReportTypes = isAnalysisDepartment(nextDepartment)
+                      ? Object.keys(accessibleReportSources[nextDepartment]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
+                      : Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
+                    const nextReportType = nextReportTypes[0] || "";
 
                     setDepartment(nextDepartment);
                     setSubDepartment(nextSubDepartment);
@@ -2066,7 +2166,11 @@ function ReportsPage() {
                   onChange={(event) => {
                     const nextSubDepartment = event.target.value;
                     setSubDepartment(nextSubDepartment);
-                    setReportType(Object.keys(accessibleReportSources[department]?.[nextSubDepartment] || {})[0] || "");
+                    setReportType(
+                      isTeamPerformanceReport
+                        ? TEAM_PERFORMANCE_REPORT_TYPE
+                        : Object.keys(accessibleReportSources[department]?.[nextSubDepartment] || {})[0] || ""
+                    );
                   }}
                 >
                   {subDepartments.map((option) => (
