@@ -19,6 +19,7 @@ const allowedDevOrigins = (() => {
 const nextConfig = {
   output: "export",
   reactStrictMode: true,
+  images: { unoptimized: true },
   allowedDevOrigins,
   async rewrites() {
     return [
