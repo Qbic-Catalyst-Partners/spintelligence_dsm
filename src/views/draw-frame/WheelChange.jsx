@@ -1,14 +1,31 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
 
 const LINE_TYPES = ["Breaker", "Finisher"];
-const WHEEL_CHANGE_TYPES = ["Type 1 (HSR)", "Type 2 (TD7)", "Type 3 (TD9)"];
+const WHEEL_CHANGE_TYPES = [
+  "Type 1 (SB20)",
+  "Type 2 (TD7)",
+  "Type 3 (TD9)",
+  "Type 1 (LRSB)",
+  "Type 2 (D40)",
+  "Type 3 (D50/D55)",
+  "Type 4 (LDF3S)",
+];
+const WHEEL_CHANGE_TYPES_BY_LINE = {
+  Breaker: ["Type 1 (SB20)", "Type 2 (TD7)", "Type 3 (TD9)"],
+  Finisher: ["Type 1 (LRSB)", "Type 2 (D40)", "Type 3 (D50/D55)", "Type 4 (LDF3S)"],
+};
 const WHEEL_CHANGE_API_TYPES = {
-  "Type 1 (HSR)": "type1",
+  "Type 1 (SB20)": "type1",
   "Type 2 (TD7)": "type2",
   "Type 3 (TD9)": "type3",
+  "Type 1 (LRSB)": "finisher_type1_lrsb",
+  "Type 2 (D40)": "type2_d40",
+  "Type 3 (D50/D55)": "type3_d50_d55",
+  "Type 4 (LDF3S)": "type4_ldf3s",
 };
 const DRAFT_STORAGE_KEY = "draw_frame_wheel_change_last_values";
 
@@ -49,13 +66,107 @@ const TD7_ROWS = [
   { key: "bottomRollerBack", label: "Bottom Roller Setting Back Zone", inputType: "select" },
 ];
 
+const FINISHER_TYPE_1_LRSB_ROWS = [
+  { key: "lrsbMixing", label: "Mixing" },
+  { key: "lrsbBlendPercent", label: "Blend %" },
+  { key: "lrsbDelHank", label: "Del-Hank" },
+  { key: "lrsbFeedHank", label: "Feed Hank" },
+  { key: "lrsbNoOfEnds", label: "No. of Ends" },
+  { key: "lrsbSpeed", label: "Speed" },
+  { key: "lrsbTotalDraft", label: "Total Draft", darkInput: true },
+  { key: "lrsbTotalDraftConstant", label: "Total Draft Constant", darkInput: true },
+  { key: "lrsbNw1", label: "NW1", inputType: "select" },
+  { key: "lrsbNw2", label: "NW2", inputType: "select" },
+  { key: "lrsbBreakDraft", label: "Break Draft", darkInput: true },
+  { key: "lrsbBackRollerPulley", label: "Back Roller Pulley Dia (W4)", inputType: "select" },
+  { key: "lrsbMiddleRollerPulley", label: "Middle Roller Pulley (VV)", inputType: "select" },
+  { key: "lrsbCreelTensionDraft", label: "Creel Tension (W1) /Creel Draft", inputType: "select" },
+  { key: "lrsbWebTensionDraft", label: "Web Tension Wheel (W3) / Web Tension Draft", inputType: "select" },
+  { key: "lrsbBottomRollerFront", label: "Bottom Roller Setting Front Zone / Gauge in MM", inputType: "select" },
+  { key: "lrsbBottomRollerBack", label: "Bottom Roller Setting Back Zone / Gauge in MM", inputType: "select" },
+  { key: "lrsbScanningRoller", label: "Scanning Roller in mm", inputType: "select" },
+  { key: "lrsbScanningRollerLower", label: "Scanning Roller Load (kg)", inputType: "select" },
+  { key: "lrsbSilverFunnel", label: "Silver Funnel", inputType: "select" },
+  { key: "lrsbWebGuideTube", label: "Web Guide Tube Dia", inputType: "select" },
+  { key: "lrsbSliverWireSize", label: "Insert Bore Dia", inputType: "select" },
+  { key: "lrsbTrumpet", label: "Trumpet", inputType: "select" },
+];
+
+const TYPE_2_D40_ROWS = [
+  { key: "d40Mixing", label: "Mixing" },
+  { key: "d40BlendPercent", label: "Blend %" },
+  { key: "d40DelHank", label: "Del-Hank" },
+  { key: "d40FeedHank", label: "Feed Hank" },
+  { key: "d40NoOfEnds", label: "No. of Ends" },
+  { key: "d40Speed", label: "Speed" },
+  { key: "d40TotalDraft", label: "Total Draft", darkInput: true },
+  { key: "d40TotalDraftConstant", label: "Total Draft Constant", darkInput: true },
+  { key: "d40Nw1", label: "NW1", inputType: "select" },
+  { key: "d40Nw2", label: "NW2", inputType: "select" },
+  { key: "d40BreakDraft", label: "Break Draft Wheel (W4) / Break Draft (VV)", inputType: "select" },
+  { key: "d40CreelTensionDraft", label: "Creel Tension (W1) / Creel Draft", inputType: "select" },
+  { key: "d40WebTensionDraft", label: "Web Tension Wheel (W3) / Web Tension Draft", inputType: "select" },
+  { key: "d40WebTensionPulley", label: "Feed Tension wheel (W8) / Feed Tension Draft", inputType: "select" },
+  { key: "d40BottomRollerFront", label: "Bottom Roller Setting Front Zone", inputType: "select" },
+  { key: "d40BottomRollerBack", label: "Bottom Roller Setting Back Zone", inputType: "select" },
+  { key: "d40ScanningRoller", label: "Scanning Roller in mm", inputType: "select" },
+  { key: "d40Trumpet", label: "Trumpet", inputType: "select" },
+];
+
+const TYPE_3_D50_D55_ROWS = [
+  { key: "d50Mixing", label: "Mixing" },
+  { key: "d50BlendPercent", label: "Blend %" },
+  { key: "d50DelHank", label: "Del-Hank" },
+  { key: "d50FeedHank", label: "Feed Hank" },
+  { key: "d50NoOfEnds", label: "No. of Ends" },
+  { key: "d50Speed", label: "Speed" },
+  { key: "d50TotalDraft", label: "Total Draft", darkInput: true },
+  { key: "d50BreakDraft", label: "Break Draft Wheel (W4) / Break Draft", inputType: "select" },
+  { key: "d50CreelTensionDraft", label: "Creel Tension (W1) / Creel Draft", inputType: "select" },
+  { key: "d50WebTensionDraft", label: "Web Tension Wheel (W3) / Web Tension Draft", inputType: "select" },
+  { key: "d50FeedTensionDraft", label: "Feed Tension Wheel (W8) / Feed Tension Draft", inputType: "select" },
+  { key: "d50BottomRollerFront", label: "Bottom Roller Setting Front Zone", inputType: "select" },
+  { key: "d50BottomRollerBack", label: "Bottom Roller Setting Back Zone", inputType: "select" },
+  { key: "d50ScanningRoller", label: "Scanning Roller in mm", inputType: "select" },
+  { key: "d50Trumpet", label: "Trumpet", inputType: "select" },
+];
+
+const TYPE_4_LDF3S_ROWS = [
+  { key: "ldf3sMixing", label: "Mixing" },
+  { key: "ldf3sBlendPercent", label: "Blend %" },
+  { key: "ldf3sDelHank", label: "Del-Hank" },
+  { key: "ldf3sFeedHank", label: "Feed Hank" },
+  { key: "ldf3sNoOfEnds", label: "No. of Ends" },
+  { key: "ldf3sSpeed", label: "Speed" },
+  { key: "ldf3sTotalDraft", label: "Total Draft", darkInput: true },
+  { key: "ldf3sBreakDraft", label: "Break Draft Wheel / Break Draft", inputType: "select" },
+  { key: "ldf3sCreelTensionDraft", label: "Creel Tension (W1) / Creel Draft", inputType: "select" },
+  { key: "ldf3sWebTensionDraft", label: "Web Tension Wheel (W3) / Web Tension Draft", inputType: "select" },
+  { key: "ldf3sFeedTensionDraft", label: "Feed Tension Wheel (W8) / Feed Tension Draft", inputType: "select" },
+  { key: "ldf3sBottomRollerFront", label: "Bottom Roller Setting Front Zone / Gauge in MM", inputType: "select" },
+  { key: "ldf3sBottomRollerBack", label: "Bottom Roller Setting Back Zone / Gauge in MM", inputType: "select" },
+  { key: "ldf3sScanningRoller", label: "Scanning Roller in mm", inputType: "select" },
+  { key: "ldf3sTrumpet", label: "Trumpet", inputType: "select" },
+];
+
 const ROWS_BY_TYPE = {
-  "Type 1 (HSR)": TYPE_1_ROWS,
+  "Type 1 (SB20)": TYPE_1_ROWS,
   "Type 2 (TD7)": TD7_ROWS,
   "Type 3 (TD9)": TD7_ROWS,
+  "Type 1 (LRSB)": FINISHER_TYPE_1_LRSB_ROWS,
+  "Type 2 (D40)": TYPE_2_D40_ROWS,
+  "Type 3 (D50/D55)": TYPE_3_D50_D55_ROWS,
+  "Type 4 (LDF3S)": TYPE_4_LDF3S_ROWS,
 };
 
-const ALL_ROWS = [...TYPE_1_ROWS, ...TD7_ROWS];
+const ALL_ROWS = [
+  ...TYPE_1_ROWS,
+  ...TD7_ROWS,
+  ...FINISHER_TYPE_1_LRSB_ROWS,
+  ...TYPE_2_D40_ROWS,
+  ...TYPE_3_D50_D55_ROWS,
+  ...TYPE_4_LDF3S_ROWS,
+];
 
 const getTodayDate = () => new Date().toISOString().split("T")[0];
 
@@ -70,6 +181,87 @@ const getTextValue = (value) => String(value ?? "").trim();
 const parseNumericValue = (value) => {
   const parsed = Number.parseFloat(String(value ?? "").trim());
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeApiWheelChangeType = (value) => {
+  const text = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (text === "type1") return "Type 1 (SB20)";
+  if (text === "type2") return "Type 2 (TD7)";
+  if (text === "type3") return "Type 3 (TD9)";
+  if (text === "finisher_type1_lrsb" || text === "finishertype1(lrsb)" || text === "finishertype1lrsb") {
+    return "Type 1 (LRSB)";
+  }
+  if (text === "type2_d40" || text === "type2(d40)" || text === "type2d40") return "Type 2 (D40)";
+  if (text === "type3_d50_d55" || text === "type3(d50/d55)" || text === "type3d50d55") return "Type 3 (D50/D55)";
+  if (text === "type4_ldf3s" || text === "type4(ldf3s)" || text === "type4ldf3s") return "Type 4 (LDF3S)";
+  return "";
+};
+
+const normalizeParameters = (parameters) => {
+  if (!parameters) return {};
+  if (Array.isArray(parameters)) {
+    return parameters.reduce((acc, item) => {
+      if (!item || typeof item !== "object") return acc;
+      if (item.key) {
+        acc[item.key] = item;
+        return acc;
+      }
+      Object.assign(acc, normalizeParameters(item));
+      return acc;
+    }, {});
+  }
+  const source = parameters;
+  if (!source || typeof source !== "object") return {};
+  if (source.rows && typeof source.rows === "object" && !Array.isArray(source.rows)) {
+    return source.rows;
+  }
+  return source;
+};
+
+const buildValuesFromParameters = (parameters) => {
+  const nextValues = createValues();
+  const rows = normalizeParameters(parameters);
+
+  Object.entries(rows).forEach(([key, rowValue]) => {
+    if (!nextValues[key]) return;
+    if (rowValue && typeof rowValue === "object" && !Array.isArray(rowValue)) {
+      nextValues[key] = {
+        existing: String(rowValue.proposed ?? rowValue.existing ?? ""),
+        proposed: "",
+      };
+      return;
+    }
+    nextValues[key] = {
+      existing: String(rowValue ?? ""),
+      proposed: "",
+    };
+  });
+
+  return nextValues;
+};
+
+const pickSavedRows = (entry) => {
+  if (Array.isArray(entry?.parameters) && entry.parameters.length) return entry.parameters;
+  if (entry?.parameters && !Array.isArray(entry.parameters)) return entry.parameters;
+  if (entry?.rows) return entry.rows;
+  return [];
+};
+
+const extractLatestEntry = (payload) => {
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.rows)
+      ? payload.rows
+      : Array.isArray(payload)
+        ? payload
+        : [];
+  return rows[0] || null;
+};
+
+const toInputDate = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value).slice(0, 10) : date.toISOString().split("T")[0];
 };
 
 const InspectionEntryIcon = () => (
@@ -112,8 +304,12 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   const activeRows = useMemo(
-    () => ROWS_BY_TYPE[wheelChangeType] || TYPE_1_ROWS,
+    () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
     [wheelChangeType]
+  );
+  const availableWheelChangeTypes = useMemo(
+    () => WHEEL_CHANGE_TYPES_BY_LINE[lineType] || [],
+    [lineType]
   );
 
   useEffect(() => {
@@ -148,6 +344,32 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       })
     );
   }, [date, draftLoaded, lineType, values, wheelChangeType]);
+
+  const loadLatestSaved = async () => {
+    const payload = await fetchDrawFrameWheelChangeEntries({ page: 1, limit: 1 });
+    const latest = extractLatestEntry(payload);
+    if (!latest) return null;
+
+    const savedWheelChangeType =
+      WHEEL_CHANGE_TYPES.includes(latest.wheel_change_type_label)
+        ? latest.wheel_change_type_label
+        : normalizeApiWheelChangeType(latest.wheel_change_type);
+    const savedLineType = String(latest.line_type || "");
+
+    setWheelChangeType(savedWheelChangeType);
+    setLineType(savedLineType);
+    setDate(toInputDate(latest.entry_date || latest.date || latest.created_at) || getTodayDate());
+    setValues(buildValuesFromParameters(pickSavedRows(latest)));
+    setErrors({});
+    return latest;
+  };
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    loadLatestSaved().catch(() => {
+      // Keep the local draft when the backend has no saved entry yet.
+    });
+  }, [draftLoaded]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -245,16 +467,21 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       line_type: lineType,
       wheel_change_type: WHEEL_CHANGE_API_TYPES[wheelChangeType] || wheelChangeType,
       wheel_change_type_label: wheelChangeType,
+      entry_date: date || getTodayDate(),
       date: date || getTodayDate(),
+      parameters: [],
       rows: {},
     };
 
     activeRows.forEach((row) => {
-      payload.rows[row.key] = {
+      const parameter = {
+        key: row.key,
         label: row.label,
         existing: getTextValue(values[row.key]?.existing),
         proposed: getTextValue(values[row.key]?.proposed),
       };
+      payload.rows[row.key] = parameter;
+      payload.parameters.push(parameter);
     });
 
     return payload;
@@ -277,6 +504,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     validate,
     getPayload,
     getPreviewData,
+    loadLatestSaved,
   }));
 
   const renderControl = (row, column) => {
@@ -337,7 +565,11 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
               className={`${styles.topInput} ${errors.lineType ? styles.errorInput : ""}`}
               value={lineType}
               onChange={(event) => {
-                setLineType(event.target.value);
+                const nextLineType = event.target.value;
+                setLineType(nextLineType);
+                if (!WHEEL_CHANGE_TYPES_BY_LINE[nextLineType]?.includes(wheelChangeType)) {
+                  setWheelChangeType("");
+                }
                 clearFieldError("lineType");
               }}
             >
@@ -355,13 +587,15 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
             <select
               className={`${styles.topInput} ${errors.wheelChangeType ? styles.errorInput : ""}`}
               value={wheelChangeType}
+              disabled={!lineType}
               onChange={(event) => {
-                setWheelChangeType(event.target.value);
+                const nextWheelChangeType = event.target.value;
+                setWheelChangeType(nextWheelChangeType);
                 clearFieldError("wheelChangeType");
               }}
             >
-              <option value="">Select wheel change type</option>
-              {WHEEL_CHANGE_TYPES.map((item) => (
+              <option value="">{lineType ? "Select wheel change type" : "Select line type first"}</option>
+              {availableWheelChangeTypes.map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>

@@ -129,6 +129,26 @@ export const rejectTicketApi = async (ticketId, reason) => {
   }
 };
 
+export const acknowledgeTicketApi = async (ticketId) => {
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const response = await requestSupervisorApi(
+      "patch",
+      `/tickets/acknowledge?ticketId=${encodeId}`,
+      { status: "ACKNOWLEDGED" }
+    );
+
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(
+        error.response.data.message || "Failed to acknowledge ticket"
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
 export const fetchTicketTimelineApi = async (ticketId) => {
   try {
     const encodeId = encodeURIComponent(formatTicketId(ticketId));

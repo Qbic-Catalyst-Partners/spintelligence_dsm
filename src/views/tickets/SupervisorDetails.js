@@ -5,6 +5,7 @@ import { BsThreeDotsVertical } from "react-icons/bs";
 import styles from "../../styles/SupervisorDetails.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import {
+  acknowledgeTicket,
   approveTicket,
   fetchTicketDetails,
   rejectTicket,
@@ -84,6 +85,12 @@ const buildPreviewTicket = (preview) => {
     violation_details: preview?.violation_details || preview?.data?.violation_details || source.violation_details,
     submitted_user: preview?.submitted_user || preview?.data?.submitted_user || source.submitted_user,
   };
+};
+
+const isAcknowledgeActionTicket = (ticket) => {
+  const actionMode = String(ticket?.action_mode || ticket?.actionMode || "").trim().toUpperCase();
+  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
+  return actionMode === "ACKNOWLEDGE" || ticketType.includes("ACKNOWLEDG");
 };
 
 export default function SupervisorDetails() {
@@ -233,6 +240,16 @@ export default function SupervisorDetails() {
     }
   };
 
+  const handleAcknowledge = async () => {
+    try {
+      await dispatch(acknowledgeTicket(ticket.ticket_id)).unwrap();
+      setStoredTicketStatus(ticket.ticket_id, "Closed");
+      router.push("/supervisordashboard");
+    } catch (err) {
+      alert(err);
+    }
+  };
+
   const handleCopyTicketId = async () => {
     try {
       await navigator.clipboard.writeText(displayTicketId);
@@ -310,6 +327,7 @@ export default function SupervisorDetails() {
     ticket?.violation_details?.checks?.actual_occurrences ??
     "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
+  const isAcknowledgeTicket = isAcknowledgeActionTicket(ticket);
   const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
   const machineDetailText =
     ticket.description ||
@@ -445,21 +463,33 @@ export default function SupervisorDetails() {
               </div>
 
               <div className={styles.actions}>
-                <button
-                  className={styles.reject}
-                  onClick={() => setShowRejectModal(true)}
-                  disabled={isClosedTicket || actionLoading}
-                >
-                  Reject
-                </button>
+                {isAcknowledgeTicket ? (
+                  <button
+                    className={styles.accept}
+                    onClick={handleAcknowledge}
+                    disabled={isClosedTicket || actionLoading}
+                  >
+                    Acknowledge
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className={styles.reject}
+                      onClick={() => setShowRejectModal(true)}
+                      disabled={isClosedTicket || actionLoading}
+                    >
+                      Reject
+                    </button>
 
-                <button
-                  className={styles.accept}
-                  onClick={handleApprove}
-                  disabled={isClosedTicket || actionLoading}
-                >
-                  Accept
-                </button>
+                    <button
+                      className={styles.accept}
+                      onClick={handleApprove}
+                      disabled={isClosedTicket || actionLoading}
+                    >
+                      Accept
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -735,21 +765,33 @@ export default function SupervisorDetails() {
         </div>
 
         <div className={styles.actions}>
-          <button
-            className={styles.reject}
-            onClick={() => setShowRejectModal(true)}
-            disabled={isClosedTicket || actionLoading}
-          >
-            Reject
-          </button>
+          {isAcknowledgeTicket ? (
+            <button
+              className={styles.accept}
+              onClick={handleAcknowledge}
+              disabled={isClosedTicket || actionLoading}
+            >
+              Acknowledge
+            </button>
+          ) : (
+            <>
+              <button
+                className={styles.reject}
+                onClick={() => setShowRejectModal(true)}
+                disabled={isClosedTicket || actionLoading}
+              >
+                Reject
+              </button>
 
-          <button
-            className={styles.accept}
-            onClick={handleApprove}
-            disabled={isClosedTicket || actionLoading}
-          >
-            Accept
-          </button>
+              <button
+                className={styles.accept}
+                onClick={handleApprove}
+                disabled={isClosedTicket || actionLoading}
+              >
+                Accept
+              </button>
+            </>
+          )}
         </div>
 
         {showRejectModal && (

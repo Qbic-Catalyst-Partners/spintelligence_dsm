@@ -17,6 +17,7 @@ import {
   fetchDrawFrameUqcMasterDropdown,
   submitDrawFrameAPercentInspection,
 } from "@/apis/draw-frame";
+import { submitDrawFrameWheelChangeEntry } from "@/apis/drawFrameWheelChange";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -655,6 +656,7 @@ function DrawFrame() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [wheelChangeSaving, setWheelChangeSaving] = useState(false);
   const [entrySeq, setEntrySeq] = useState(1);
   const cvMachineDropdownRef = useRef(null);
   const wheelChangeRef = useRef(null);
@@ -1403,19 +1405,31 @@ function DrawFrame() {
     if (isWheelChangeEntry) {
       const payload = wheelChangeRef.current?.getPayload?.() || {};
       const wheelChangePreviewItems = wheelChangeRef.current?.getPreviewData?.() || [];
-      await recordSubmittedNotebook({
-        department: "Quality Control",
-        subDepartment: "Draw Frame",
-        notebookName: form.type,
-        entryId,
-        previewItems: wheelChangePreviewItems,
-        user,
-        extra: {
-          submitted_fields: payload,
-        },
-      }).catch((error) => console.error("Submitted notebook creation failed:", error));
-      reserveEntryId();
-      setShowSuccess(true);
+      setWheelChangeSaving(true);
+      try {
+        await submitDrawFrameWheelChangeEntry(payload);
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: wheelChangePreviewItems,
+          user,
+          extra: {
+            submitted_fields: payload,
+          },
+        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+        reserveEntryId();
+        await wheelChangeRef.current?.loadLatestSaved?.();
+        setShowSuccess(true);
+      } catch (submitError) {
+        setErrors((current) => ({
+          ...current,
+          wheelChange: submitError?.message || "Unable to save draw frame wheel change data.",
+        }));
+      } finally {
+        setWheelChangeSaving(false);
+      }
       return;
     }
 
@@ -1530,14 +1544,15 @@ function DrawFrame() {
               />
 
               {error ? <p className={styles.messageError}>{error}</p> : null}
+              {errors.wheelChange ? <p className={styles.messageError}>{errors.wheelChange}</p> : null}
             </div>
 
             <Footer
               onBack={() => router.push("/departments/quality-control")}
               onClear={handleClear}
               onSave={openPreview}
-              saveLabel={actionLoading ? "Submitting..." : "Save Record"}
-              disabled={actionLoading}
+              saveLabel={actionLoading || wheelChangeSaving ? "Submitting..." : "Save Record"}
+              disabled={actionLoading || wheelChangeSaving}
             />
           </div>
         ) : isAPercentEntry ? (

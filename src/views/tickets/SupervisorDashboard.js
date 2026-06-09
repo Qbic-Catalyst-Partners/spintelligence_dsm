@@ -45,6 +45,9 @@ const REVIEW_STATUS_FILTER_OPTIONS = [
 ];
 
 const isAcknowledgementReviewTicket = (ticket) => {
+  const actionMode = normalizeText(ticket?.action_mode || ticket?.actionMode).toUpperCase();
+  if (actionMode === "ACKNOWLEDGE") return true;
+
   const parameterNames = Array.isArray(ticket?.parameter_name)
     ? ticket.parameter_name
     : [ticket?.parameter_name, ticket?.parameter].filter(Boolean);
@@ -506,19 +509,33 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                           <td>{getReviewSubDepartment(t)}</td>
                           <td>{getReviewL2(t)}</td>
                           <td>{getTicketNotebookLabel(t)}</td>
-                          <td onClick={(event) => event.stopPropagation()}>
-                            <select
-                              className={styles["status-select"]}
-                              value={t.status}
-                              disabled={statusUpdatingId === t.ticket_id}
-                              onChange={(event) => handleStatusChange(t.ticket_id, event.target.value)}
-                            >
-                              {getDisplayStatusOptions(t.status).map((option) => (
-                                <option key={option} value={option}>
-                                  {getOperatorStatusLabel(option)}
-                                </option>
-                              ))}
-                            </select>
+                          <td>
+                            {String(t?.action_mode || t?.actionMode || "").trim().toUpperCase() === "ACKNOWLEDGE" ? (
+                              <span
+                                className={`${styles["status-badge"]} ${
+                                  styles[`status-${getStatusClassKey(t.status)}`] ||
+                                  styles[getStatusClassKey(t.status).replace(/-/g, "_")] ||
+                                  ""
+                                }`}
+                              >
+                                {getSupervisorStatusLabel(t.status)}
+                              </span>
+                            ) : (
+                              <span onClick={(event) => event.stopPropagation()}>
+                                <select
+                                  className={styles["status-select"]}
+                                  value={t.status}
+                                  disabled={statusUpdatingId === t.ticket_id}
+                                  onChange={(event) => handleStatusChange(t.ticket_id, event.target.value)}
+                                >
+                                  {getDisplayStatusOptions(t.status).map((option) => (
+                                    <option key={option} value={option}>
+                                      {getOperatorStatusLabel(option)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </span>
+                            )}
                           </td>
                           <td>{formatDateTime(t.created_at)}</td>
                         </>
@@ -701,21 +718,28 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
                 <div className={styles["sup-card-bottom"]}>
                   {activeTicketingView === "review" ? (
-                    <div className={styles["status-text"]} onClick={(event) => event.stopPropagation()}>
-                      <span className={styles["status-dot"]} />
-                      <select
-                        className={styles["mobile-status-select"]}
-                        value={t.status}
-                        disabled={statusUpdatingId === t.ticket_id}
-                        onChange={(event) => handleStatusChange(t.ticket_id, event.target.value)}
-                      >
-                        {getDisplayStatusOptions(t.status).map((option) => (
-                          <option key={option} value={option}>
-                            {getOperatorStatusLabel(option)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    String(t?.action_mode || t?.actionMode || "").trim().toUpperCase() === "ACKNOWLEDGE" ? (
+                      <div className={styles["status-text"]}>
+                        <span className={styles["status-dot"]} />
+                        {getSupervisorStatusLabel(t.status)}
+                      </div>
+                    ) : (
+                      <div className={styles["status-text"]} onClick={(event) => event.stopPropagation()}>
+                        <span className={styles["status-dot"]} />
+                        <select
+                          className={styles["mobile-status-select"]}
+                          value={t.status}
+                          disabled={statusUpdatingId === t.ticket_id}
+                          onChange={(event) => handleStatusChange(t.ticket_id, event.target.value)}
+                        >
+                          {getDisplayStatusOptions(t.status).map((option) => (
+                            <option key={option} value={option}>
+                              {getOperatorStatusLabel(option)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )
                   ) : (
                     <div
                       className={`${styles["status-text"]} ${
