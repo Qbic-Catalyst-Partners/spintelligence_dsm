@@ -92,8 +92,11 @@ export default function UserManagement() {
 
   // STATUS TOGGLE
   const updateUserStatus = async (id, status) => {
-    const newStatus = status === "Active" ? "Inactive" : "Active";
-    await updateStatusAPI(id, newStatus);
+    const newStatus = String(status || "").toLowerCase() === "active" ? "Inactive" : "Active";
+    const response = await updateStatusAPI(id, newStatus);
+    if (!response?.ok) {
+      throw new Error("Account status could not be updated.");
+    }
     dispatch(fetchUsers());
   };
 
@@ -101,6 +104,14 @@ export default function UserManagement() {
     const file = event.target.files?.[0];
 
     if (!file) {
+      return;
+    }
+
+    const fileName = file.name?.toLowerCase() || "";
+    if (!fileName.endsWith(".csv")) {
+      setUploadMessage("Please upload a CSV file.");
+      setUploadError(true);
+      event.target.value = "";
       return;
     }
 
@@ -134,23 +145,13 @@ export default function UserManagement() {
     uploadInputRef.current?.click();
   };
 
-  const getUniqueOptions = (values = []) =>
-    Array.from(
-      new Set(
-        (Array.isArray(values) ? values : [])
-          .map((value) => String(value || "").trim())
-          .filter(Boolean)
-      )
-    ).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+  const escapeCsvValue = (value) => {
+    const text = String(value ?? "");
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
 
-  const downloadBulkUploadTemplate = async () => {
+  const downloadBulkUploadTemplate = () => {
     try {
-      const excelJSImport = await (new Function("m", "return import(m)"))("exceljs");
-      const ExcelJS = excelJSImport?.default || excelJSImport;
-      const workbook = new ExcelJS.Workbook();
-      const templateSheet = workbook.addWorksheet("Users Template");
-      const optionsSheet = workbook.addWorksheet("Options");
-
       const headers = [
         "first_name",
         "last_name",
@@ -176,98 +177,14 @@ export default function UserManagement() {
         "1992-05-12",
       ];
 
-      templateSheet.addRow(headers);
-      templateSheet.addRow(sampleRow);
-      templateSheet.views = [{ state: "frozen", ySplit: 1 }];
-      templateSheet.autoFilter = "A1:J1";
-
-      const columnWidths = [16, 16, 30, 16, 18, 18, 20, 20, 10, 14];
-      headers.forEach((_, index) => {
-        const column = templateSheet.getColumn(index + 1);
-        column.width = columnWidths[index];
-        templateSheet.getCell(1, index + 1).font = { bold: true };
-        templateSheet.getCell(1, index + 1).fill = {
-          type: "pattern",
-          pattern: "solid",
-          fgColor: { argb: "FFEAF2FF" },
-        };
-        templateSheet.getCell(1, index + 1).alignment = { vertical: "middle", horizontal: "center" };
-      });
-
-      const roleOptions = getUniqueOptions([
-        ...roles.map((role) => role?.role_name),
-        ...users.map((user) => user?.role),
-        "Admin",
-      ]);
-      const departmentOptions = getUniqueOptions([
-        ...departments.map((department) => department?.name),
-        ...users.map((user) => user?.department || user?.dept),
-        "IT",
-      ]);
-      const designationOptions = getUniqueOptions([
-        ...users.map((user) => user?.designation || user?.designation_name),
-        "Administrator",
-      ]);
-      const levelOptions = getUniqueOptions([
-        ...users.map((user) => user?.level),
-        "L1",
-        "L2",
-      ]);
-
-      const addValidationOptions = (optionColumn, targetColumn, heading, options) => {
-        const safeOptions = getUniqueOptions(options);
-        if (!safeOptions.length) {
-          return;
-        }
-
-        optionsSheet.getCell(`${optionColumn}1`).value = heading;
-        safeOptions.forEach((option, index) => {
-          optionsSheet.getCell(`${optionColumn}${index + 2}`).value = option;
-        });
-
-        const lastRow = safeOptions.length + 1;
-        const formula = `Options!$${optionColumn}$2:$${optionColumn}$${lastRow}`;
-        for (let row = 2; row <= 1000; row += 1) {
-          templateSheet.getCell(`${targetColumn}${row}`).dataValidation = {
-            type: "list",
-            allowBlank: true,
-            showErrorMessage: true,
-            errorStyle: "stop",
-            errorTitle: "Invalid value",
-            error: `Select a valid ${heading.toLowerCase()} from the dropdown list.`,
-            formulae: [formula],
-          };
-        }
-      };
-
-      addValidationOptions("A", "F", "Role", roleOptions);
-      addValidationOptions("B", "G", "Department", departmentOptions);
-      addValidationOptions("C", "H", "Designation", designationOptions);
-      addValidationOptions("D", "I", "Level", levelOptions);
-
-      for (let row = 2; row <= 1000; row += 1) {
-        templateSheet.getCell(`J${row}`).dataValidation = {
-          type: "date",
-          operator: "between",
-          allowBlank: true,
-          showErrorMessage: true,
-          errorStyle: "stop",
-          errorTitle: "Invalid date",
-          error: "Use date in YYYY-MM-DD format.",
-          formulae: [new Date(1900, 0, 1), new Date(2100, 11, 31)],
-        };
-      }
-
-      optionsSheet.state = "veryHidden";
-
-      const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      });
+      const csv = [headers, sampleRow]
+        .map((row) => row.map(escapeCsvValue).join(","))
+        .join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "usermanagement_template.xlsx");
+      link.setAttribute("download", "usermanagement_template.csv");
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -385,7 +302,7 @@ export default function UserManagement() {
               ref={uploadInputRef}
               type="file"
               hidden
-              accept=".xlsx,.xls,.csv"
+              accept=".csv,text/csv"
               onChange={handleBulkUpload}
             />
 
@@ -741,7 +658,7 @@ export default function UserManagement() {
                 <h2>Bulk Upload Users</h2>
               </div>
               <p className={styles.modalText}>
-                Download the Excel template, keep the same columns, choose dropdown values, then upload.
+                Download the CSV template, keep the same columns, then upload.
               </p>
 
               <div className={styles.modalActions}>

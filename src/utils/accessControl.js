@@ -45,6 +45,9 @@ export const isFullAccessUser = (user) =>
 export const isSupervisorNavUser = (user) =>
   isSupervisorEmployeeKey(getEmployeeKey(user));
 
+export const isSubmittedNotebookManagerUser = (user) =>
+  isFullAccessUser(user) || isSupervisorNavUser(user);
+
 export const isDashboardManagerUser = (user) =>
   Boolean(getEmployeeKey(user)) && DASHBOARD_MANAGER_EMPLOYEE_IDS.includes(getEmployeeKey(user));
 
@@ -63,6 +66,7 @@ export const routeDepartmentMap = {
   "/simplex": "Simplex",
   "/spinning": "Spinning",
   "/autoconer": "Autoconer",
+  "/departments/quality-control/wrapping": "Wrapping",
 };
 
 export const buildAccessibleDepartmentSet = (accessByDepartment) => {

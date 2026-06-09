@@ -10,12 +10,14 @@ import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
+import WheelChange from "@/views/draw-frame/WheelChange";
 import {
   fetchDrawFrameCotsMachineMaster,
   fetchDrawFrameMachineMaster,
   fetchDrawFrameUqcMasterDropdown,
   submitDrawFrameAPercentInspection,
 } from "@/apis/draw-frame";
+import { submitDrawFrameWheelChangeEntry } from "@/apis/drawFrameWheelChange";
 import {
   clearDrawFrameState,
   fetchDrawFrameCotsEntries,
@@ -29,6 +31,7 @@ import uPercentStyles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { formatEntryId } from "@/utils/entryIds";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
@@ -50,6 +53,7 @@ const primaryTypeOptions = [
     aliases: ["PP - Finisher Drawing", "Finisher Drawing"],
   },
   { id: 6, name: "A%", aliases: ["A%", "A Percent", "A% Data Entry"] },
+  { id: 7, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"] },
 ];
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
@@ -62,6 +66,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "PP - Breaker Drawing": { prefix: "DRB", width: 4, routePath: "/drawframe/header" },
   "PP - Finisher Drawing": { prefix: "DRF", width: 4, routePath: "/drawframe/finisher" },
   "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },
+  "Wheel Change": { prefix: "DWC", width: 4, routePath: "/drawframe/wheel-change" },
 };
 
 const getDrawFrameEntryConfig = (type = "") =>
@@ -76,6 +81,17 @@ const getDrawFrameUniqueId = (sequence, type = "") => {
   });
 };
 
+const STATIC_BR_COTS_MACHINE_NAMES = [
+  "BR 01(SB20)",
+  "BR 02(TD 7-1)",
+  "BR 03(TD 7-2)",
+  "BR 04(TD 7-3)",
+  "BR 05(TD 7-4)",
+  "BR 06(TD 7-5)",
+  "BR 07(TD 7-6)",
+  "BR 08(TD 7-6)",
+  "BR 09(TD 7-6)",
+];
 const STATIC_FR_MACHINE_NAMES = ["FR (HSR 1000-2)", "FR (HSR 1000-1)"];
 
 const processTypeOptions = ["Breaker", "Finisher"];
@@ -129,7 +145,10 @@ const A_PERCENT_META_FIELDS = [
   { key: "process", label: "Process" },
   { key: "remark", label: "Remark" },
 ];
-const BREAKER_PREFIX = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIX || "DFB").trim().toUpperCase();
+const BREAKER_PREFIXES = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIXES || "DFB,BR")
+  .split(",")
+  .map((v) => v.trim().toUpperCase())
+  .filter(Boolean);
 const FINISHER_PREFIXES = String(
   process.env.NEXT_PUBLIC_DRAWFRAME_FINISHER_PREFIXES || "DFF,FR"
 )
@@ -151,10 +170,17 @@ const createMachineEntry = (machineName = "") => ({
 });
 
 const matchesCotsTypePrefix = (machineName, processType) => {
-  const normalized = String(machineName || "").trim().toUpperCase();
+  const normalized = String(machineName || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
   if (!normalized) return false;
-  if (processType === "Breaker") return normalized.startsWith(BREAKER_PREFIX);
-  if (processType === "Finisher") return FINISHER_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+  if (processType === "Breaker") {
+    return BREAKER_PREFIXES.some((prefix) => normalized.startsWith(prefix.replace(/[^A-Z0-9]+/g, "")));
+  }
+  if (processType === "Finisher") {
+    return FINISHER_PREFIXES.some((prefix) => normalized.startsWith(prefix.replace(/[^A-Z0-9]+/g, "")));
+  }
   return true;
 };
 
@@ -651,8 +677,10 @@ function DrawFrame() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [wheelChangeSaving, setWheelChangeSaving] = useState(false);
   const [entrySeq, setEntrySeq] = useState(1);
   const cvMachineDropdownRef = useRef(null);
+  const wheelChangeRef = useRef(null);
   const aPercentFileInputRef = useRef(null);
   const [machineNameOptions, setMachineNameOptions] = useState([]);
   const [yarnCvMachineOptions, setYarnCvMachineOptions] = useState([]);
@@ -685,6 +713,7 @@ function DrawFrame() {
   );
   const isUPercentEntry = form.type === "U% Data Entry";
   const isAPercentEntry = form.type === "A%";
+  const isWheelChangeEntry = form.type === "Wheel Change";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
   const { entryId, reserveEntryId } = useDatabaseEntryId({
@@ -747,6 +776,11 @@ function DrawFrame() {
     let isMounted = true;
 
     const loadCotsMachineNames = async () => {
+      if (form.processType === "Breaker") {
+        setMachineNameOptions([...STATIC_BR_COTS_MACHINE_NAMES]);
+        return;
+      }
+
       try {
         const machines = await fetchDrawFrameCotsMachineMaster({ subType: form.processType });
         const rawNames = machines
@@ -793,7 +827,9 @@ function DrawFrame() {
               : fallbackNames;
           setMachineNameOptions(nextFallbackNames);
         } catch (_fallbackError) {
-          setMachineNameOptions(form.processType === "Finisher" ? [...STATIC_FR_MACHINE_NAMES] : []);
+          setMachineNameOptions(
+            form.processType === "Finisher" ? [...STATIC_FR_MACHINE_NAMES] : [...STATIC_BR_COTS_MACHINE_NAMES]
+          );
         }
       }
     };
@@ -1087,6 +1123,7 @@ function DrawFrame() {
       remarks: "",
     });
     setErrors({});
+    wheelChangeRef.current?.clear?.();
     dispatch(clearDrawFrameState());
   };
 
@@ -1171,6 +1208,10 @@ function DrawFrame() {
         setAPercentOcrMessage("Please run OCR before saving A% data.");
       }
       return isValid;
+    }
+
+    if (isWheelChangeEntry) {
+      return wheelChangeRef.current?.validate?.() ?? true;
     }
 
     if (isHeaderEntry) {
@@ -1273,6 +1314,8 @@ function DrawFrame() {
       items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
       items.push({ label: "Sample Rows", value: aPercentOcrRows.filter((row) => !A_PERCENT_SUMMARY_ROWS.has(row.sampleNo)).length });
       items.push({ label: "Summary Rows", value: aPercentOcrRows.filter((row) => A_PERCENT_SUMMARY_ROWS.has(row.sampleNo)).length });
+    } else if (isWheelChangeEntry) {
+      items.push(...(wheelChangeRef.current?.getPreviewData?.() || []));
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
       items.push({ label: "S. No.", value: form.serialNumber });
@@ -1298,7 +1341,7 @@ function DrawFrame() {
       items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
-  }, [aPercentFile, aPercentOcrRows, entryId, form, isHeaderEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
+  }, [aPercentFile, aPercentOcrRows, entryId, form, isHeaderEntry, isWheelChangeEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = async () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
@@ -1323,6 +1366,30 @@ function DrawFrame() {
         })
       ).then((result) => {
         if (submitDrawFrameUqcInspection.fulfilled.match(result)) {
+          recordSubmittedNotebook({
+            department: "Quality Control",
+            subDepartment: "Draw Frame",
+            notebookName: form.type,
+            entryId,
+            previewItems: buildPreviewItems,
+            user,
+            extra: {
+              submitted_fields: {
+                entry_id: entryId,
+                entry_type: form.type,
+                entry_date: uPercentForm.date,
+                shift: uPercentForm.shift,
+                variety: uPercentForm.variety,
+                department: uPercentForm.department,
+                mc_no: uPercentForm.mcNo,
+                u_percent: uPercentForm.uPercent,
+                cvm: uPercentForm.cvm,
+                cvm_1m: uPercentForm.oneMeterCvm,
+                cvm_3m: uPercentForm.threeMeterCvm,
+                remarks: uPercentForm.remarks,
+              },
+            },
+          }).catch((error) => console.error("Submitted notebook creation failed:", error));
           dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
         }
       });
@@ -1338,10 +1405,58 @@ function DrawFrame() {
           rawRows: aPercentRawOcrRows,
           meta: aPercentMeta,
         }));
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: buildPreviewItems,
+          user,
+          extra: {
+            submitted_fields: buildAPercentPayload({
+              entryId,
+              file: aPercentFile,
+              rows: aPercentOcrRows,
+              rawRows: aPercentRawOcrRows,
+              meta: aPercentMeta,
+            }),
+          },
+        });
         reserveEntryId();
         setShowSuccess(true);
       } catch (submitError) {
         setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
+      }
+      return;
+    }
+
+    if (isWheelChangeEntry) {
+      const payload = wheelChangeRef.current?.getPayload?.() || {};
+      const wheelChangePreviewItems = wheelChangeRef.current?.getPreviewData?.() || [];
+      setWheelChangeSaving(true);
+      try {
+        await submitDrawFrameWheelChangeEntry(payload);
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: wheelChangePreviewItems,
+          user,
+          extra: {
+            submitted_fields: payload,
+          },
+        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+        reserveEntryId();
+        await wheelChangeRef.current?.loadLatestSaved?.();
+        setShowSuccess(true);
+      } catch (submitError) {
+        setErrors((current) => ({
+          ...current,
+          wheelChange: submitError?.message || "Unable to save draw frame wheel change data.",
+        }));
+      } finally {
+        setWheelChangeSaving(false);
       }
       return;
     }
@@ -1385,12 +1500,29 @@ function DrawFrame() {
           },
         };
 
-    dispatch(isCots ? submitDrawFrameCotsInspection(payload) : submitDrawFrameYarnCvInspection(payload));
+    dispatch(isCots ? submitDrawFrameCotsInspection(payload) : submitDrawFrameYarnCvInspection(payload))
+      .then((result) => {
+        const fulfilled = isCots
+          ? submitDrawFrameCotsInspection.fulfilled.match(result)
+          : submitDrawFrameYarnCvInspection.fulfilled.match(result);
+        if (!fulfilled) return;
+        recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: buildPreviewItems,
+          user,
+          extra: {
+            submitted_fields: payload,
+          },
+        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+      });
   };
 
   const openPreview = () => {
     if (!validate()) return;
-    setPreviewItems(buildPreviewItems);
+    setPreviewItems(isWheelChangeEntry ? wheelChangeRef.current?.getPreviewData?.() || [] : buildPreviewItems);
     setShowPreview(true);
   };
 
@@ -1428,6 +1560,29 @@ function DrawFrame() {
             selectedType={form.type}
             onTypeChange={(value) => handleFormChange("type", value)}
           />
+        ) : isWheelChangeEntry ? (
+          <div className={`${styles.card} ${styles.inspectionCard}`}>
+            <div className={styles.cardBody}>
+              <WheelChange
+                ref={wheelChangeRef}
+                selectedTypeName={form.type}
+                typeOptions={typeOptions}
+                entryId={entryId}
+                onTypeChange={(value) => handleFormChange("type", value)}
+              />
+
+              {error ? <p className={styles.messageError}>{error}</p> : null}
+              {errors.wheelChange ? <p className={styles.messageError}>{errors.wheelChange}</p> : null}
+            </div>
+
+            <Footer
+              onBack={() => router.push("/departments/quality-control")}
+              onClear={handleClear}
+              onSave={openPreview}
+              saveLabel={actionLoading || wheelChangeSaving ? "Submitting..." : "Save Record"}
+              disabled={actionLoading || wheelChangeSaving}
+            />
+          </div>
         ) : isAPercentEntry ? (
           <div className={styles.aPercentWrap}>
             <div className={`${styles.field} ${styles.aPercentTypeField}`}>

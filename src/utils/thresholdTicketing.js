@@ -167,6 +167,15 @@ const getSeverity = (actualValue, minValue, maxValue, toleranceSpan) => {
   return "Low";
 };
 
+const isThresholdLookupUnavailable = (error) => {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    message.includes("network error") ||
+    message.includes("unable to reach") ||
+    message.includes("thresholds/list")
+  );
+};
+
 export const createThresholdViolationTickets = async ({
   department,
   subDepartment,
@@ -175,19 +184,30 @@ export const createThresholdViolationTickets = async ({
   values = [],
 }) => {
   const { userId, userName } = getCurrentTicketUser();
-  let thresholds = await fetchThresholdsAPI({
-    department,
-    sub_department: subDepartment,
-    input_screen: screenName,
-    machine_name: machineName,
-  });
+  let thresholds = [];
 
-  if ((!Array.isArray(thresholds) || thresholds.length === 0) && machineName) {
+  try {
     thresholds = await fetchThresholdsAPI({
       department,
       sub_department: subDepartment,
       input_screen: screenName,
+      machine_name: machineName,
     });
+
+    if ((!Array.isArray(thresholds) || thresholds.length === 0) && machineName) {
+      thresholds = await fetchThresholdsAPI({
+        department,
+        sub_department: subDepartment,
+        input_screen: screenName,
+      });
+    }
+  } catch (error) {
+    if (isThresholdLookupUnavailable(error)) {
+      console.warn("Threshold lookup skipped:", error);
+      return [];
+    }
+
+    throw error;
   }
 
   if (!Array.isArray(thresholds) || thresholds.length === 0) {

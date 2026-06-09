@@ -5,17 +5,21 @@ import { BsThreeDotsVertical } from "react-icons/bs";
 import styles from "../../styles/SupervisorDetails.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import {
+  acknowledgeTicket,
   approveTicket,
   fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
-import { fetchTicketTimelineApi } from "../../apis/supervisorApi";
+import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
   getTicketParameterNames,
   getTicketValueForParameter,
+  isNotebookAcknowledgementParameterName,
+  isSubmissionFrequencyParameterName,
+  isSubmissionTicketRecord,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
 import {
@@ -44,6 +48,51 @@ const buildTimelineIcon = (title) => {
   return { icon: "/awaiting.png", alt: "Updated" };
 };
 
+const fieldsToObject = (fields) => {
+  if (!Array.isArray(fields)) return {};
+  return fields.reduce((acc, field) => {
+    const key = String(field?.parameter || field?.name || field?.field_name || field?.label || "").trim();
+    if (!key) return acc;
+    acc[key] = field?.value ?? field?.actual_value ?? field?.submitted_value ?? "-";
+    return acc;
+  }, {});
+};
+
+const fieldLabel = (item) =>
+  String(item?.label || item?.name || item?.parameter || item?.field_name || item || "").trim();
+
+const buildPreviewTicket = (preview) => {
+  const source = preview?.ticket || preview?.data?.ticket || preview?.data || preview;
+  if (!source || typeof source !== "object") return source;
+
+  const submittedFields = preview?.submitted_notebook_fields || preview?.submitted_fields || preview?.data?.submitted_notebook_fields;
+  const thresholdFields = preview?.threshold_fields || preview?.data?.threshold_fields;
+  const parameters = preview?.parameters || preview?.data?.parameters;
+  const actualFromFields = fieldsToObject(submittedFields);
+  const thresholdFromFields = fieldsToObject(thresholdFields);
+  const parameterNames = Array.isArray(parameters)
+    ? parameters.map((item) => fieldLabel(item)).filter(Boolean)
+    : Object.keys({ ...actualFromFields, ...thresholdFromFields });
+
+  return {
+    ...source,
+    submitted_notebook_fields: submittedFields || source.submitted_notebook_fields,
+    notifications: preview?.notifications || preview?.data?.notifications || source.notifications,
+    endpoint_hints: preview?.endpoint_hints || preview?.data?.endpoint_hints || source.endpoint_hints,
+    actual_value: Object.keys(actualFromFields).length ? actualFromFields : source.actual_value,
+    threshold_value: Object.keys(thresholdFromFields).length ? thresholdFromFields : source.threshold_value,
+    parameter_name: parameterNames.length ? parameterNames : source.parameter_name,
+    violation_details: preview?.violation_details || preview?.data?.violation_details || source.violation_details,
+    submitted_user: preview?.submitted_user || preview?.data?.submitted_user || source.submitted_user,
+  };
+};
+
+const isAcknowledgeActionTicket = (ticket) => {
+  const actionMode = String(ticket?.action_mode || ticket?.actionMode || "").trim().toUpperCase();
+  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
+  return actionMode === "ACKNOWLEDGE" || ticketType.includes("ACKNOWLEDG");
+};
+
 export default function SupervisorDetails() {
   const router = useRouter();
   const { ticketId } = router.query;
@@ -55,6 +104,8 @@ export default function SupervisorDetails() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
+  const [l2Preview, setL2Preview] = useState(null);
+  const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
@@ -71,23 +122,29 @@ export default function SupervisorDetails() {
   }, [requestedTicketId, tickets]);
 
   const ticket = useMemo(() => {
+    const previewSource = buildPreviewTicket(l2Preview);
+    const previewMatches =
+      previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = detailMatches ? detailSource : dashboardTicket;
+    const source = previewMatches ? previewSource : detailMatches ? detailSource : dashboardTicket;
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
+    if (!l2PreviewLoaded) return;
+
     if (
+      !l2Preview &&
       !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dashboardTicket, dispatch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   useEffect(() => {
     let mounted = true;
@@ -112,6 +169,42 @@ export default function SupervisorDetails() {
       }
     };
     loadTimeline();
+    return () => {
+      mounted = false;
+    };
+  }, [requestedTicketId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPreview = async () => {
+      if (!requestedTicketId) return;
+      setL2PreviewLoaded(false);
+      try {
+        const response = await fetchL2TicketPreviewApi(requestedTicketId);
+        if (!mounted) return;
+        setL2Preview(response || null);
+        const previewTimeline = response?.timeline || response?.data?.timeline;
+        if (Array.isArray(previewTimeline)) {
+          setTimelineItems(
+            previewTimeline.map((event) => {
+              const iconMeta = buildTimelineIcon(event?.title || event?.action);
+              return {
+                time: formatDateTime(event?.at || event?.created_at || event?.time),
+                title: event?.title || event?.action || "Updated",
+                description: event?.detail || event?.description || event?.action || "-",
+                icon: iconMeta.icon,
+                alt: iconMeta.alt,
+              };
+            })
+          );
+        }
+      } catch {
+        if (mounted) setL2Preview(null);
+      } finally {
+        if (mounted) setL2PreviewLoaded(true);
+      }
+    };
+    loadPreview();
     return () => {
       mounted = false;
     };
@@ -148,6 +241,16 @@ export default function SupervisorDetails() {
       setStoredTicketStatus(ticket.ticket_id, "Reopened");
       setShowRejectModal(false);
       setReason("");
+      router.push("/supervisordashboard");
+    } catch (err) {
+      alert(err);
+    }
+  };
+
+  const handleAcknowledge = async () => {
+    try {
+      await dispatch(acknowledgeTicket(ticket.ticket_id)).unwrap();
+      setStoredTicketStatus(ticket.ticket_id, "Closed");
       router.push("/supervisordashboard");
     } catch (err) {
       alert(err);
@@ -194,21 +297,45 @@ export default function SupervisorDetails() {
   if (error && !ticket) return <p className={styles.loading}>{error}</p>;
   if (!ticket) return <p className={styles.loading}>No ticket found</p>;
 
-  const parameterNames = getTicketParameterNames(ticket);
+  const isSubmissionTicket = isSubmissionTicketRecord(ticket) ||
+    String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const rawParameterNames = getTicketParameterNames(ticket);
+  const submissionParameterNames = rawParameterNames.filter(
+    (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)
+  );
+  const parameterNames = (isSubmissionTicket
+    ? (submissionParameterNames.length ? submissionParameterNames : ["ACKNOWLEDGEMENT"])
+    : rawParameterNames
+  ).filter((key) => {
+    if (!/^\d+$/.test(String(key || "").trim())) return true;
+
+    const actual = getTicketValueForParameter(ticket?.actual_value, key);
+    const standard = formatStandardValue(getTicketValueForParameter(ticket?.threshold_value, key));
+    const threshold = formatThresholdValue(getTicketValueForParameter(ticket?.threshold_value, key));
+
+    return [actual, standard, threshold].some(
+      (value) => String(value ?? "").trim() && String(value ?? "").trim() !== "-"
+    );
+  });
   const visibleParameterNames = expanded ? parameterNames : parameterNames.slice(0, 1);
   const displayTicketId = formatTicketIdForDisplay(ticket.ticket_id || requestedTicketId);
   const statusClassName = styles[toClassKey(ticket.status)] || "";
-  const isSubmissionTicket =
-    String(parameterNames?.[0] || "").toLowerCase().includes("submission_frequency") ||
-    String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
-  const submissionFrequency = ticket?.frequency || ticket?.threshold_value?.expected_frequency || "-";
+  const submissionFrequency =
+    ticket?.frequency ||
+    ticket?.submission_frequency ||
+    ticket?.check_frequency ||
+    ticket?.threshold_value?.expected_frequency ||
+    "-";
   const submissionOccurrences =
     ticket?.occurrences ??
+    ticket?.occurrence_count ??
+    ticket?.count ??
     ticket?.violation_details?.checks?.expected_occurrences ??
     ticket?.violation_details?.checks?.actual_occurrences ??
     "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
-  const machineName = ticket.machine_name || ticket.notebook || "Unknown machine";
+  const isAcknowledgeTicket = isAcknowledgeActionTicket(ticket);
+  const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
   const machineDetailText =
     ticket.description ||
     (isSubmissionTicket
@@ -343,21 +470,33 @@ export default function SupervisorDetails() {
               </div>
 
               <div className={styles.actions}>
-                <button
-                  className={styles.reject}
-                  onClick={() => setShowRejectModal(true)}
-                  disabled={isClosedTicket || actionLoading}
-                >
-                  Reject
-                </button>
+                {isAcknowledgeTicket ? (
+                  <button
+                    className={styles.accept}
+                    onClick={handleAcknowledge}
+                    disabled={isClosedTicket || actionLoading}
+                  >
+                    Acknowledge
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className={styles.reject}
+                      onClick={() => setShowRejectModal(true)}
+                      disabled={isClosedTicket || actionLoading}
+                    >
+                      Reject
+                    </button>
 
-                <button
-                  className={styles.accept}
-                  onClick={handleApprove}
-                  disabled={isClosedTicket || actionLoading}
-                >
-                  Accept
-                </button>
+                    <button
+                      className={styles.accept}
+                      onClick={handleApprove}
+                      disabled={isClosedTicket || actionLoading}
+                    >
+                      Accept
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -377,7 +516,7 @@ export default function SupervisorDetails() {
             <tbody>
               {visibleParameterNames.map((key, i) => (
                 <tr key={i}>
-                  <td>{ticket.machine_name || ticket.notebook || "-"}</td>
+                  <td>{ticket.notebook || ticket.machine_name || "-"}</td>
                   <td>{key.toUpperCase()}</td>
                   <td style={{ color: "#CA0000" }}>
                     {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
@@ -543,7 +682,7 @@ export default function SupervisorDetails() {
           <div className={styles.row}>
             <div>
               <span>NOTEBOOK TYPE</span>
-              <p>{ticket.machine_name || ticket.notebook || "-"}</p>
+              <p>{ticket.notebook || ticket.machine_name || "-"}</p>
             </div>
 
             <div>
@@ -633,21 +772,33 @@ export default function SupervisorDetails() {
         </div>
 
         <div className={styles.actions}>
-          <button
-            className={styles.reject}
-            onClick={() => setShowRejectModal(true)}
-            disabled={isClosedTicket || actionLoading}
-          >
-            Reject
-          </button>
+          {isAcknowledgeTicket ? (
+            <button
+              className={styles.accept}
+              onClick={handleAcknowledge}
+              disabled={isClosedTicket || actionLoading}
+            >
+              Acknowledge
+            </button>
+          ) : (
+            <>
+              <button
+                className={styles.reject}
+                onClick={() => setShowRejectModal(true)}
+                disabled={isClosedTicket || actionLoading}
+              >
+                Reject
+              </button>
 
-          <button
-            className={styles.accept}
-            onClick={handleApprove}
-            disabled={isClosedTicket || actionLoading}
-          >
-            Accept
-          </button>
+              <button
+                className={styles.accept}
+                onClick={handleApprove}
+                disabled={isClosedTicket || actionLoading}
+              >
+                Accept
+              </button>
+            </>
+          )}
         </div>
 
         {showRejectModal && (

@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import {
   fetchSupervisorTicketsApi,
   fetchTicketDetailsApi,
+  acknowledgeTicketApi,
   approveTicketApi,
   rejectTicketApi,
 } from "../../apis/supervisorApi";
@@ -9,9 +10,9 @@ import {
 // ✅ FETCH ALL TICKETS
 export const fetchSupervisorTickets = createAsyncThunk(
   "supervisor/fetchTickets",
-  async (_, { rejectWithValue }) => {
+  async (params = {}, { rejectWithValue }) => {
     try {
-      const data = await fetchSupervisorTicketsApi();
+      const data = await fetchSupervisorTicketsApi(params);
       return data;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -51,6 +52,18 @@ export const rejectTicket = createAsyncThunk(
   async ({ ticketId, reason }, { rejectWithValue }) => {
     try {
       const data = await rejectTicketApi(ticketId, reason);
+      return data;
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const acknowledgeTicket = createAsyncThunk(
+  "supervisor/acknowledgeTicket",
+  async (ticketId, { rejectWithValue }) => {
+    try {
+      const data = await acknowledgeTicketApi(ticketId);
       return data;
     } catch (error) {
       return rejectWithValue(error.message);
@@ -160,6 +173,31 @@ const supervisorSlice = createSlice({
         );
       })
       .addCase(rejectTicket.rejected, (state, action) => {
+        state.actionLoading = false;
+        state.error = action.payload;
+      })
+
+      // ACKNOWLEDGE REVIEW TICKET
+      .addCase(acknowledgeTicket.pending, (state) => {
+        state.actionLoading = true;
+        state.error = null;
+      })
+      .addCase(acknowledgeTicket.fulfilled, (state) => {
+        state.actionLoading = false;
+
+        if (state.ticket) {
+          state.ticket.status = "Closed";
+          state.ticket.action_mode = "ACKNOWLEDGE";
+        }
+
+        const currentTickets = Array.isArray(state.tickets) ? state.tickets : [];
+        state.tickets = currentTickets.map((t) =>
+          t.ticket_id === state.ticket?.ticket_id
+            ? { ...t, status: "Closed", action_mode: "ACKNOWLEDGE" }
+            : t
+        );
+      })
+      .addCase(acknowledgeTicket.rejected, (state, action) => {
         state.actionLoading = false;
         state.error = action.payload;
       });

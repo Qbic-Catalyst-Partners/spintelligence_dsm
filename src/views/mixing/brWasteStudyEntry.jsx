@@ -59,6 +59,14 @@ const TYPE_1_MAX_ENTRIES = 10;
 const TYPE_3_MAX_ENTRIES = 10;
 const WASTE_KG_MAX_TYPES = 5;
 
+const getTotalWastePercent = (wasteKgRows) =>
+    (Array.isArray(wasteKgRows) ? wasteKgRows : []).reduce(
+        (sum, row) => sum + (Number(row.wasteKgPercent) || 0),
+        0
+    );
+
+const formatWastePercent = (value) => (Number(value) > 0 ? Number(value).toFixed(2) : "0.00");
+
 const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
     const selectedTypeRows = formData.studyType === "Type 3"
         ? type3Rows
@@ -125,9 +133,9 @@ const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2R
 
     return {
         type: entryTypeLabel,
-        entry_id: formData.brWasteId || entryId || null,
+        entry_id: entryId || formData.brWasteId || null,
         lot_no: lotNo || null,
-        waste_study_id: formData.brWasteId || entryId || null,
+        waste_study_id: entryId || formData.brWasteId || null,
         date,
         variety: formData.variety || null,
         study_type: formData.studyType,
@@ -136,7 +144,7 @@ const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2R
         waste_type: "Overall",
         waste_kg: totalWasteKg || null,
         waste_percent: averageWastePercent || null,
-        overall_percent: Number(overallWaste) || null,
+        overall_percent: Number(overallWaste || getTotalWastePercent(wasteKgRows)) || null,
         remarks: remarks || null,
         type_rows,
         waste_rows,
@@ -201,7 +209,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         const studyType = entry?.study_type || "";
 
         setFormData({
-            brWasteId: entry?.waste_study_id || entry?.entry_id || "",
+            brWasteId: entryId || entry?.waste_study_id || entry?.entry_id || "",
             variety: entry?.variety || "",
             cardingProduction: entry?.carding_production_kg == null ? "" : String(entry.carding_production_kg),
             studyType,
@@ -424,6 +432,10 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         });
     };
 
+    useEffect(() => {
+        setOverallWaste(formatWastePercent(getTotalWastePercent(wasteKgRows)));
+    }, [wasteKgRows]);
+
     const applyWasteKgCount = () => {
         const n = Math.min(WASTE_KG_MAX_TYPES, Math.max(1, parseInt(wasteKgCountInput) || 1));
         setWasteKgRows((prev) => {
@@ -442,7 +454,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                 return { ...row, wasteKgPercent: percent };
             })
         );
-        setOverallWaste(total > 0 ? total.toFixed(2) : "0.00");
+        setOverallWaste(formatWastePercent(total));
     };
 
     useEffect(() => {

@@ -13,14 +13,32 @@ const getApiErrorMessage = (error, fallbackMessage) =>
   error?.response?.data?.error ||
   fallbackMessage;
 
+const getOperatorApiErrorMessage = (error, fallbackMessage) => {
+  const status = error?.response?.status;
+  const backendMessage = getApiErrorMessage(error, fallbackMessage);
+
+  if (status) {
+    return `${backendMessage} (${status})`;
+  }
+
+  return backendMessage;
+};
+
+const isFallbackStatusUpdateError = (status) =>
+  [400, 404, 405, 422].includes(Number(status));
+
 // GET Operator Tickets
 export const getOperatorTickets = async (params = {}) => {
   try {
-    const response = await apiConfig.get("/operator-tickets", params);
+    const response = await apiConfig.get("/operator-tickets", params, {
+      skipGlobalErrorModal: true,
+    });
     return response.data;
   } catch (error) {
     if (error.response && error.response.data) {
-      throw new Error(error.response.data.message || "Failed to fetch operator tickets.");
+      throw new Error(
+        error.response.data.message || "Failed to fetch operator tickets."
+      );
     }
     if (error.request) {
       throw new Error(
@@ -236,8 +254,18 @@ export const updateOperatorTicketStatus = async (ticketId, status) => {
   const formattedId = String(ticketId || "").startsWith("#")
     ? String(ticketId)
     : `#${ticketId}`;
+  const rawId = formattedId.replace(/^#/, "");
   const encodedId = encodeURIComponent(formattedId);
+  const encodedRawId = encodeURIComponent(rawId);
   const normalizedStatus = String(status || "").trim().toLowerCase();
+  const statusPayloads = [
+    { status },
+    { ticket_status: status },
+    { ticket_id: formattedId, status },
+    { ticket_id: rawId, status },
+    { id: formattedId, status },
+    { id: rawId, status },
+  ];
 
   // Primary path for this backend: submit endpoint drives Open/Reopened -> In Progress.
   if (
@@ -266,13 +294,31 @@ export const updateOperatorTicketStatus = async (ticketId, status) => {
       },
     },
     {
+      method: "put",
+      url: `/operator-tickets/submit/${encodedRawId}`,
+      data: {
+        operator_comment: "Submitted from dashboard status update.",
+        comment: "Submitted from dashboard status update.",
+      },
+    },
+    {
       method: "patch",
       url: `/operator-tickets/status/${encodedId}`,
       data: { status },
     },
     {
+      method: "patch",
+      url: `/operator-tickets/status/${encodedRawId}`,
+      data: { status },
+    },
+    {
       method: "put",
       url: `/operator-tickets/status/${encodedId}`,
+      data: { status },
+    },
+    {
+      method: "put",
+      url: `/operator-tickets/status/${encodedRawId}`,
       data: { status },
     },
     {
@@ -281,13 +327,28 @@ export const updateOperatorTicketStatus = async (ticketId, status) => {
       data: { status },
     },
     {
+      method: "patch",
+      url: `/operator-tickets/${encodedRawId}/status`,
+      data: { status },
+    },
+    {
       method: "put",
       url: `/operator-tickets/${encodedId}/status`,
       data: { status },
     },
     {
+      method: "put",
+      url: `/operator-tickets/${encodedRawId}/status`,
+      data: { status },
+    },
+    {
       method: "patch",
       url: `/operator-tickets/${encodedId}`,
+      data: { status },
+    },
+    {
+      method: "patch",
+      url: `/operator-tickets/${encodedRawId}`,
       data: { status },
     },
     {
@@ -296,35 +357,24 @@ export const updateOperatorTicketStatus = async (ticketId, status) => {
       data: { status },
     },
     {
-      method: "patch",
-      url: `/operator-tickets/update-status`,
-      data: { ticket_id: formattedId, status },
-    },
-    {
       method: "put",
-      url: `/operator-tickets/update-status`,
-      data: { ticket_id: formattedId, status },
+      url: `/operator-tickets/${encodedRawId}`,
+      data: { status },
     },
-    {
-      method: "post",
-      url: `/operator-tickets/update-status`,
-      data: { ticket_id: formattedId, status },
-    },
-    {
-      method: "patch",
-      url: `/operator-tickets/status`,
-      data: { ticket_id: formattedId, status },
-    },
-    {
-      method: "put",
-      url: `/operator-tickets/status`,
-      data: { ticket_id: formattedId, status },
-    },
-    {
-      method: "post",
-      url: `/operator-tickets/status`,
-      data: { ticket_id: formattedId, status },
-    },
+    ...["patch", "put", "post"].flatMap((method) =>
+      statusPayloads.map((data) => ({
+        method,
+        url: `/operator-tickets/update-status`,
+        data,
+      }))
+    ),
+    ...["patch", "put", "post"].flatMap((method) =>
+      statusPayloads.map((data) => ({
+        method,
+        url: `/operator-tickets/status`,
+        data,
+      }))
+    ),
   ];
 
   let lastError = null;
@@ -337,9 +387,11 @@ export const updateOperatorTicketStatus = async (ticketId, status) => {
       return response.data;
     } catch (error) {
       lastError = error;
-      if (error?.response?.status !== 404) {
+      if (!isFallbackStatusUpdateError(error?.response?.status)) {
         throw new Error(
-          error?.response?.data?.message || "Failed to update ticket status."
+          error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            "Failed to update ticket status."
         );
       }
     }

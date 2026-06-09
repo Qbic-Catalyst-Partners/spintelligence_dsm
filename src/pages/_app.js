@@ -16,6 +16,7 @@ import {
   hasReportAccess,
   hasRouteAccess,
   isFullAccessUser,
+  isSubmittedNotebookManagerUser,
   routeDepartmentMap,
 } from "@/utils/accessControl";
 import { store } from '../store';
@@ -47,6 +48,8 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/operatordetail") ||
     router.pathname === "/supervisordashboard" ||
     router.pathname === "/supervisordetails" ||
+    router.pathname === "/submitted-notebooks" ||
+    router.pathname === "/submitted-notebook-threshold" ||
     router.pathname === "/ticket-calendar" ||
     router.pathname === "/ticket-calendar-l2" ||
     router.pathname === "/l1-analysis" ||
@@ -64,6 +67,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/editrole");
   const isReportsFlow = router.pathname === "/reports" || router.pathname.startsWith("/reports/");
   const canAccessManagementFlow = isFullAccessUser(user);
+  const canAccessSubmittedNotebooks = isSubmittedNotebookManagerUser(user);
   const defaultTicketingRoute = getDefaultTicketingRoute(user);
   const defaultTicketingLabel = getDefaultTicketingLabel(user);
   const managementNavLinks = [
@@ -74,6 +78,8 @@ function AppShell({ Component, pageProps }) {
     { href: "/threshold-values", label: "Threshold Values" },
     { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/reports/custom", label: "Reports" },
+    { href: "/submitted-notebooks", label: "Submitted Notebooks" },
+    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
     { href: "/ticket-calendar", label: "Ticket Calendar" },
     { href: "/settings", label: "Settings" },
   ];
@@ -83,6 +89,7 @@ function AppShell({ Component, pageProps }) {
     ? [
         { href: "/", label: "Home" },
         { href: defaultTicketingRoute, label: defaultTicketingLabel },
+        { href: "/submitted-notebooks", label: "Submitted Notebooks" },
         { href: "/ticket-calendar", label: "Analytic" },
       ]
       : undefined;
@@ -155,6 +162,15 @@ function AppShell({ Component, pageProps }) {
       return;
     }
 
+    if (
+      token &&
+      (router.pathname === "/submitted-notebooks" || router.pathname === "/submitted-notebook-threshold") &&
+      !canAccessSubmittedNotebooks
+    ) {
+      router.replace("/");
+      return;
+    }
+
     if (token && isAdminFlow && !canAccessManagementFlow) {
       router.replace("/");
       return;
@@ -163,7 +179,7 @@ function AppShell({ Component, pageProps }) {
     if (token && !isAdminFlow && !isReportsFlow && !hasRouteAccess(router.pathname, accessByDepartment, user)) {
       router.replace("/");
     }
-  }, [accessByDepartment, canAccessManagementFlow, isAdminFlow, isHomeFlow, isHydrated, isReportsFlow, router, token, user]);
+  }, [accessByDepartment, canAccessManagementFlow, canAccessSubmittedNotebooks, isAdminFlow, isHomeFlow, isHydrated, isReportsFlow, router, token, user]);
 
   return (
     <>

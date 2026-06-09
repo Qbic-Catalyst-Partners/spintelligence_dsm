@@ -1,0 +1,322 @@
+.page {
+    min-height: calc(100vh - 72px);
+    padding: 20px clamp(18px, 4vw, 54px) 44px;
+    background: #f4f6f9;
+    color: #111827;
+}
+
+.breadcrumb {
+    margin-bottom: 18px;
+    color: #718096;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.title {
+    margin: 0 0 24px;
+    color: #111827;
+    font-size: 26px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.groups {
+    display: grid;
+    gap: 28px;
+    max-width: 1180px;
+}
+
+.group {
+    display: grid;
+    gap: 10px;
+}
+
+.groupTitle {
+    margin: 0;
+    padding-left: 20px;
+    color: #111827;
+    font-size: 15px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.list {
+    display: grid;
+    gap: 8px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    min-height: 74px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 14px 22px;
+    text-align: left;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+    cursor: pointer;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.row:hover {
+    border-color: #cdd6f6;
+    box-shadow: 0 6px 16px rgba(44, 62, 128, 0.1);
+    transform: translateY(-1px);
+}
+
+.rowMain {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.rowMain strong {
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.15;
+    font-weight: 800;
+}
+
+.rowMain span {
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.rowMeta {
+    display: flex;
+    align-items: center;
+    gap: 38px;
+    min-width: 320px;
+}
+
+.rowMeta span,
+.modalMeta span {
+    display: grid;
+    gap: 4px;
+}
+
+.rowMeta small,
+.modalMeta small,
+.fieldCard small {
+    color: #7b8494;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.rowMeta strong,
+.modalMeta strong {
+    color: #111827;
+    font-size: 13px;
+    line-height: 1.1;
+    font-weight: 800;
+}
+
+.emptyState {
+    width: 100%;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 28px;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 86px 24px 28px;
+    background: rgba(0, 0, 0, 0.58);
+}
+
+.modal {
+    display: flex;
+    flex-direction: column;
+    width: min(820px, 100%);
+    max-height: min(76vh, 620px);
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 32px 42px 30px;
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.26);
+}
+
+.modalHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 32px;
+    align-items: start;
+    margin-bottom: 28px;
+}
+
+.modalHeader h2 {
+    margin: 0 0 8px;
+    color: #111827;
+    font-size: 15px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.modalHeader p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.modalMeta {
+    display: flex;
+    align-items: flex-start;
+    gap: 36px;
+}
+
+.fieldGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    gap: 14px 18px;
+    overflow-y: auto;
+    max-height: 360px;
+    margin: 0 -8px 26px 0;
+    padding-right: 8px;
+}
+
+.fieldCard {
+    min-height: 72px;
+    border: 1px solid #e4e8ef;
+    border-radius: 6px;
+    background: #f4f6f8;
+    padding: 12px 14px;
+    overflow: hidden;
+}
+
+.fieldCard strong {
+    display: block;
+    margin-top: 9px;
+    color: #111827;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+}
+
+.ackButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 118px;
+    min-height: 34px;
+    margin: 0 auto;
+    border: none;
+    border-radius: 6px;
+    background: #4056a8;
+    color: #ffffff;
+    padding: 0 18px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.ackButton:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+:global(:root[data-theme="dark"]) .page {
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+:global(:root[data-theme="dark"]) .title,
+:global(:root[data-theme="dark"]) .groupTitle,
+:global(:root[data-theme="dark"]) .rowMain strong,
+:global(:root[data-theme="dark"]) .rowMeta strong,
+:global(:root[data-theme="dark"]) .modalHeader h2,
+:global(:root[data-theme="dark"]) .modalMeta strong,
+:global(:root[data-theme="dark"]) .fieldCard strong {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .row,
+:global(:root[data-theme="dark"]) .modal,
+:global(:root[data-theme="dark"]) .emptyState {
+    border-color: #334155;
+    background: #111827;
+}
+
+:global(:root[data-theme="dark"]) .fieldCard {
+    border-color: #334155;
+    background: #1f2937;
+}
+
+:global(:root[data-theme="dark"]) .rowMain span,
+:global(:root[data-theme="dark"]) .modalHeader p,
+:global(:root[data-theme="dark"]) .breadcrumb,
+:global(:root[data-theme="dark"]) .emptyState {
+    color: #94a3b8;
+}
+
+@media (max-width: 860px) {
+    .row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .rowMeta,
+    .modalMeta {
+        width: 100%;
+        justify-content: space-between;
+        gap: 18px;
+    }
+
+    .modal {
+        max-height: 82vh;
+        padding: 26px 22px 28px;
+    }
+
+    .modalHeader {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .fieldGrid {
+        max-height: 420px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .page {
+        padding: 18px 14px 34px;
+    }
+
+    .title {
+        font-size: 22px;
+    }
+
+    .overlay {
+        padding: 72px 12px 18px;
+    }
+
+    .fieldGrid {
+        max-height: 52vh;
+        grid-template-columns: 1fr;
+    }
+}

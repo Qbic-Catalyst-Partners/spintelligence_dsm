@@ -1,0 +1,258 @@
+.page {
+  min-height: calc(100vh - 88px);
+  padding: 28px clamp(18px, 3vw, 40px) 48px;
+  background: #f6f8fb;
+  color: #172033;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.header p,
+.item p,
+.status,
+.empty {
+  margin: 6px 0 0;
+  color: #647086;
+  line-height: 1.55;
+}
+
+.tabs,
+.toolbar,
+.editor,
+.item {
+  border: 1px solid #dce3ee;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(23, 32, 51, 0.06);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.tabs button,
+.refreshButton,
+.addButton,
+.secondaryButton,
+.editorActions button,
+.rowActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #cfd8e6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #243047;
+  min-height: 40px;
+  padding: 0 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tabs button {
+  min-width: 128px;
+}
+
+.tabs button svg,
+.refreshButton svg,
+.addButton svg,
+.secondaryButton svg,
+.editorActions button svg,
+.rowActions button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tabs .activeTab,
+.addButton,
+.editorActions button:first-child {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+  min-height: 42px;
+  border: 1px solid #cfd8e6;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f9fbfe;
+}
+
+.searchBox input,
+.editor input,
+.editor textarea {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #172033;
+  font: inherit;
+}
+
+.editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.editor input,
+.editor textarea {
+  min-height: 42px;
+  border: 1px solid #cfd8e6;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ffffff;
+}
+
+.editor textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.editorRow,
+.editorActions {
+  display: flex;
+  gap: 10px;
+}
+
+.editorRow > * {
+  flex: 1;
+}
+
+.contentList {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.item h2 {
+  margin: 4px 0 0;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.kicker {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rowActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.rowActions button {
+  width: 40px;
+  padding: 0;
+}
+
+.readItem {
+  opacity: 0.72;
+}
+
+.error {
+  margin: 14px 0 0;
+  color: #b42318;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .header,
+  .toolbar,
+  .item,
+  .editorRow,
+  .editorActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tabs button {
+    flex: 1 1 140px;
+  }
+
+  .rowActions {
+    justify-content: flex-start;
+  }
+}
+
+:global(:root[data-theme="dark"]) .page {
+  background: #101725;
+  color: #eef4ff;
+}
+
+:global(:root[data-theme="dark"]) .tabs,
+:global(:root[data-theme="dark"]) .toolbar,
+:global(:root[data-theme="dark"]) .editor,
+:global(:root[data-theme="dark"]) .item {
+  border-color: #25334a;
+  background: #162033;
+}
+
+:global(:root[data-theme="dark"]) .header p,
+:global(:root[data-theme="dark"]) .item p,
+:global(:root[data-theme="dark"]) .status,
+:global(:root[data-theme="dark"]) .empty {
+  color: #a7b4c8;
+}
+
+:global(:root[data-theme="dark"]) .tabs button,
+:global(:root[data-theme="dark"]) .refreshButton,
+:global(:root[data-theme="dark"]) .secondaryButton,
+:global(:root[data-theme="dark"]) .rowActions button {
+  border-color: #34445f;
+  background: #1c2940;
+  color: #eef4ff;
+}
+
+:global(:root[data-theme="dark"]) .searchBox,
+:global(:root[data-theme="dark"]) .editor input,
+:global(:root[data-theme="dark"]) .editor textarea {
+  border-color: #34445f;
+  background: #111a2b;
+  color: #eef4ff;
+}

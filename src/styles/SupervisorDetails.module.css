@@ -302,9 +302,10 @@ font-weight: 700;
   min-width: 360px;
   background: #ffffff;
   padding: 16px 20px 22px;
-  border: 1px solid #ebebeb;
+  border: 1px solid #e5e7eb;
   border-radius: 14px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 0 20px rgba(15, 23, 42, 0.05);
+  color: #1f2937;
 }
 
 .timelineHeader {
@@ -396,13 +397,13 @@ font-weight: 700;
   margin: 0;
   font-size: 14px;
   font-weight: 400;
-  color: #667085;
+  color: #64748b;
   line-height: 1.5;
 }
 
 .item p {
   margin: 0;
-  color: #374151;
+  color: #64748b;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -627,8 +628,6 @@ background: #CA0000;
 
 :global(:root[data-theme="dark"]) .navbar,
 :global(:root[data-theme="dark"]) .card,
-:global(:root[data-theme="dark"]) .timeline,
-:global(:root[data-theme="dark"]) .timelineCard,
 :global(:root[data-theme="dark"]) .resolution,
 :global(:root[data-theme="dark"]) .resolutionCard,
 :global(:root[data-theme="dark"]) .modalBox,
@@ -637,6 +636,25 @@ background: #CA0000;
   background: #3b3b3b;
   color: #ffffff;
   box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .timeline,
+:global(:root[data-theme="dark"]) .timelineCard {
+  border-color: #5f5f5f;
+  background: #000000;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .timelineHeader,
+:global(:root[data-theme="dark"]) .item,
+:global(:root[data-theme="dark"]) .itemContent,
+:global(:root[data-theme="dark"]) .itemContent > div,
+:global(:root[data-theme="dark"]) .timelineWrap,
+:global(:root[data-theme="dark"]) .timelineItem,
+:global(:root[data-theme="dark"]) .iconCol,
+:global(:root[data-theme="dark"]) .content {
+  background: transparent;
 }
 
 :global(:root[data-theme="dark"]) .cardTop h2,
@@ -701,7 +719,11 @@ background: #CA0000;
 }
 
 :global(:root[data-theme="dark"]) .timelineIcon {
-  background: #3b3b3b;
+  background: #000000;
+}
+
+:global(:root[data-theme="dark"]) .iconCol img {
+  background: #000000;
 }
 
 :global(:root[data-theme="dark"]) .modalOverlay {
@@ -921,8 +943,9 @@ background: #CA0000;
   background: #ffffff;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid #dbe3ef;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 0 14px rgba(15, 23, 42, 0.05);
+  color: #1f2937;
   margin-bottom: 12px;
   box-sizing: border-box;
 }
@@ -938,7 +961,7 @@ background: #CA0000;
   margin: 0;
   font-size: 12px;
   font-weight: 700;
-  color: #000000;
+  color: #111827;
 }
 
 /* wrapper */
@@ -973,6 +996,7 @@ background: #CA0000;
   object-fit: contain;
   margin-top: 0;
   z-index: 2;
+  background: #ffffff;
 }
 
 /* ================= CONNECTING LINE ================= */
@@ -998,7 +1022,7 @@ background: #CA0000;
 .content p {
   font-size: 8px;
   line-height: 1.45;
-  color: #667085;
+  color: #64748b;
   margin: 3px 0 0;
 }
 

@@ -47,6 +47,102 @@ const requestSupervisorApi = async (method, path, data, params) => {
   throw lastError || new Error("Supervisor API route not found");
 };
 
+const isAllTicketRequest = (params = {}) =>
+  Boolean(
+    params?.include_all ||
+      params?.all_users ||
+      params?.all_tickets ||
+      String(params?.scope || "").trim().toLowerCase() === "all"
+  );
+
+const normalizeTicketList = (payload) => {
+  const tickets = Array.isArray(payload)
+    ? payload
+    : payload?.data || payload?.tickets || [];
+
+  return Array.isArray(tickets) ? tickets : [];
+};
+
+const getTicketKey = (ticket) =>
+  String(
+    ticket?.ticket_id ||
+      ticket?.ticketId ||
+      ticket?.id ||
+      ticket?._id ||
+      ""
+  ).trim();
+
+const mergeTicketPayloads = (...payloads) => {
+  const merged = [];
+  const seen = new Set();
+
+  payloads.flatMap(normalizeTicketList).forEach((ticket) => {
+    const key = getTicketKey(ticket);
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    merged.push(ticket);
+  });
+
+  return merged;
+};
+
+const fetchOptionalTicketFeed = async (endpoint, params) => {
+  try {
+    const response = await apiConfig.get(endpoint, params, {
+      skipGlobalErrorModal: true,
+    });
+    return response?.data || {};
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return [];
+    }
+    throw error;
+  }
+};
+
+const fetchOptionalSupervisorTickets = async (params) => {
+  try {
+    const response = await requestSupervisorApi("get", "/tickets", null, params);
+    return response?.data || {};
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return [];
+    }
+    return [];
+  }
+};
+
+const fetchOptionalUsers = async () => {
+  try {
+    const response = await apiConfig.get(
+      "/users",
+      { page: 1, limit: 1000 },
+      { skipGlobalErrorModal: true }
+    );
+    const payload = response?.data || {};
+    const users = Array.isArray(payload)
+      ? payload
+      : payload?.users || payload?.data || [];
+
+    return Array.isArray(users) ? users : [];
+  } catch {
+    return [];
+  }
+};
+
+const getUserIdentityKeys = (user) =>
+  [
+    user?.employee_id,
+    user?.employeeId,
+    user?.emp_id,
+    user?.empId,
+    user?.id,
+    user?.user_id,
+    user?.userId,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
 // ✅ FETCH ALL SUPERVISOR TICKETS
 export const fetchSupervisorTicketsApi = async (params = {}) => {
   try {
@@ -129,6 +225,26 @@ export const rejectTicketApi = async (ticketId, reason) => {
   }
 };
 
+export const acknowledgeTicketApi = async (ticketId) => {
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const response = await requestSupervisorApi(
+      "patch",
+      `/tickets/acknowledge?ticketId=${encodeId}`,
+      { status: "ACKNOWLEDGED" }
+    );
+
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(
+        error.response.data.message || "Failed to acknowledge ticket"
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
 export const fetchTicketTimelineApi = async (ticketId) => {
   try {
     const encodeId = encodeURIComponent(formatTicketId(ticketId));
@@ -139,6 +255,19 @@ export const fetchTicketTimelineApi = async (ticketId) => {
       throw new Error(error.response.data.message || "Failed to fetch ticket timeline");
     }
     throw new Error(error.message || "Server error occurred");
+  }
+};
+
+export const fetchL2TicketPreviewApi = async (ticketId) => {
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const response = await requestSupervisorApi("get", `/tickets/${encodeId}/l2-preview`);
+    return response?.data || {};
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(error.response.data.message || "Failed to fetch L2 ticket preview");
+    }
+    throw new Error(error.message || "Failed to fetch L2 ticket preview");
   }
 };
 

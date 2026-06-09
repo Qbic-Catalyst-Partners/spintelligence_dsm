@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "r
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import { fetchSpinningWheelChangeDropdown, fetchSpinningWheelChangeRfNos } from "@/apis/spinning";
-import { sanitizeIntegerInput } from "@/utils/inputValidation";
+import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];

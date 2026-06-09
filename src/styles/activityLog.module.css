@@ -1,0 +1,377 @@
+.page {
+    min-height: calc(100dvh - 72px);
+    padding: 24px 22px 56px;
+    background: #f8f6f6;
+    color: #111827;
+    box-sizing: border-box;
+}
+
+.title {
+    margin: 0 0 24px;
+    color: #111827;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.filters {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 22px 24px 20px;
+    box-sizing: border-box;
+}
+
+.filterHeader,
+.timelineHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.filterTitle,
+.timelineTitle {
+    margin: 0;
+    color: #111827;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.filterGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    margin-top: 22px;
+    align-items: end;
+}
+
+.field {
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.field input,
+.field select {
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    border: 1px solid #dbe7f7;
+    border-radius: 8px;
+    background-color: #f8fbff;
+    color: #0f172a;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.field input {
+    padding: 0 12px;
+}
+
+.field select {
+    padding: 0 40px 0 14px;
+}
+
+.field select:disabled {
+    color: #64748b;
+    cursor: wait;
+}
+
+.field input::placeholder {
+    color: #9ca3af;
+}
+
+.control {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.control svg {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    color: #8ca0bd;
+    pointer-events: none;
+}
+
+.searchControl svg:first-child {
+    left: 12px;
+}
+
+.dateControl svg:last-child {
+    right: 12px;
+}
+
+.searchControl input {
+    padding-left: 38px;
+    padding-right: 12px;
+}
+
+.dateControl input {
+    padding-left: 12px;
+    padding-right: 34px;
+}
+
+.primaryButton,
+.secondaryButton,
+.pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.primaryButton {
+    min-width: 104px;
+    height: 38px;
+    justify-self: start;
+    border: 1px solid #243b64;
+    background: #243b64;
+    color: #ffffff;
+}
+
+.secondaryButton {
+    min-width: 72px;
+    height: 34px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+}
+
+.primaryButton svg,
+.pagination button svg {
+    width: 15px;
+    height: 15px;
+}
+
+.timeline {
+    margin-top: 34px;
+}
+
+.resultCount {
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.errorState {
+    margin-top: 18px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #991b1b;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.tableWrap {
+    margin-top: 28px;
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #000000;
+    font-size: 11px;
+}
+
+.table th {
+    background: #d1d1d1;
+    padding: 12px 14px;
+    color: #000000;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.table th:first-child {
+    border-radius: 8px 0 0 8px;
+}
+
+.table th:last-child {
+    border-radius: 0 8px 8px 0;
+}
+
+.table td {
+    border-bottom: 1px solid #d1d5db;
+    padding: 15px 14px;
+    color: #000000;
+    font-weight: 500;
+    line-height: 1.25;
+    vertical-align: middle;
+}
+
+.table th:nth-child(4),
+.table td:nth-child(4) {
+    width: 40%;
+}
+
+.table th:nth-child(5),
+.table td:nth-child(5) {
+    white-space: nowrap;
+}
+
+.stateCell {
+    height: 112px;
+    color: #64748b !important;
+    font-size: 14px;
+    font-weight: 700 !important;
+    text-align: center !important;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    margin-top: 22px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.pagination button {
+    min-width: 98px;
+    min-height: 36px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #111827;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+:global(:root[data-theme="dark"]) .page {
+    background: var(--background);
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .title,
+:global(:root[data-theme="dark"]) .filterTitle,
+:global(:root[data-theme="dark"]) .timelineTitle {
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .filters {
+    border-color: var(--border-color);
+    background: var(--surface);
+}
+
+:global(:root[data-theme="dark"]) .field {
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .field input,
+:global(:root[data-theme="dark"]) .field select {
+    border-color: #3b3b3b;
+    background-color: #3b3b3b;
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .secondaryButton,
+:global(:root[data-theme="dark"]) .pagination button {
+    border-color: var(--border-color);
+    background: var(--surface);
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .primaryButton {
+    border-color: #243b64;
+    background: #243b64;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .field input::placeholder {
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .control svg {
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .table {
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .table th {
+    background: #1e293b;
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .table td {
+    border-bottom-color: var(--border-color);
+    color: var(--foreground);
+}
+
+:global(:root[data-theme="dark"]) .resultCount,
+:global(:root[data-theme="dark"]) .pagination,
+:global(:root[data-theme="dark"]) .stateCell {
+    color: #cbd5e1 !important;
+}
+
+@media (max-width: 1180px) {
+    .filterGrid {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+}
+
+@media (max-width: 760px) {
+    .page {
+        padding: 22px 16px 44px;
+    }
+
+    .title {
+        font-size: 23px;
+    }
+
+    .filters {
+        padding: 18px;
+    }
+
+    .filterGrid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .filterHeader,
+    .timelineHeader,
+    .pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .secondaryButton,
+    .primaryButton,
+    .pagination button {
+        width: 100%;
+        justify-self: stretch;
+    }
+
+    .tableWrap {
+        margin-top: 24px;
+    }
+}

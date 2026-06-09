@@ -15,7 +15,7 @@ const initialForm = {
 };
 
 const NUMERIC_FIELDS = new Set([
-    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd', 'colourGrade',
+    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd',
 ]);
 
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
@@ -60,7 +60,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         });
     }, [selectedLotDetails]);
 
-    const buildPayload = () => ({
+    const buildPayload = (overrideEntryId) => ({
+        entry_id:        overrideEntryId || entryId || undefined,
         inspection_date: date,
         lot_no:          lotNo,
         variety:         formData.variety,
@@ -81,11 +82,12 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         invisible_loss_percentage: Number(formData.invisibleLossPercent) || 0,
         trash_content_percentage: Number(formData.trashContentPercent) || 0,
         rd:              Number(formData.rd)          || 0,
-        colour_grade:    Number(formData.colourGrade) || 0,
+        colour_grade:    String(formData.colourGrade || "").trim(),
     });
 
-    const handleSubmit = async () => {
-        await dispatch(submitCottonHVI(buildPayload())).unwrap();
+    const handleSubmit = async (overrideEntryId) => {
+        const payload = buildPayload(overrideEntryId);
+        await dispatch(submitCottonHVI(payload)).unwrap();
 
         try {
             await createThresholdViolationTickets({
@@ -115,6 +117,8 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         } catch (ticketError) {
             console.error("Threshold ticket generation failed:", ticketError);
         }
+
+        return true;
     };
 
     const handleClear = () => {

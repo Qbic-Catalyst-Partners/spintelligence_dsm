@@ -93,6 +93,7 @@ export default function OcrMachinePage() {
   const queryMcName = typeof router.query.mc_name === "string" ? router.query.mc_name : "";
   const queryInspectionType = typeof router.query.inspection_type === "string" ? router.query.inspection_type : "";
   const queryInspectionDate = typeof router.query.inspection_date === "string" ? router.query.inspection_date : "";
+  const queryScreen = typeof router.query.screen === "string" ? router.query.screen : "";
   const [meta, setMeta] = useState({
     mc_name: "",
     inspection_type: "",
@@ -151,11 +152,12 @@ export default function OcrMachinePage() {
   }, [file, loading, rows.length]);
 
   const docTypeLabel = useMemo(() => {
+    if (queryScreen) return queryScreen;
     if (docType !== "bwc") return DOC_TYPES.find((d) => d.value === docType)?.label || "HVI Data Entry";
     const inspection = (meta.inspection_type || queryInspectionType || "").trim();
     if (!inspection) return "Between & Within Card Data Entry";
     return `${inspection} Card Data Entry`;
-  }, [docType, meta.inspection_type, queryInspectionType]);
+  }, [docType, meta.inspection_type, queryInspectionType, queryScreen]);
 
   const runOcr = async () => {
     if (!file) return;
@@ -389,11 +391,12 @@ export default function OcrMachinePage() {
                       ? `/departments/quality-control/wrapping?docType=${encodeURIComponent(docType)}`
                       : docType === "afis" ? "/mixing?type=AFIS%20Data%20Entry" : "/mixing?type=Cotton%20HVI%20Data%20Entry";
                     const target = returnTo || fallbackTarget;
-                    const normalizedScreen = target.replace(/^\/+/, "").toLowerCase();
+                    const normalizedScreen = queryScreen || target.replace(/^\/+/, "").toLowerCase();
+                    const screenValue = queryScreen || (target.startsWith("/mixing") ? "Cotton HVI Data Entry" : normalizedScreen);
                     window.localStorage.setItem(
                       "ocr_prefill",
                       JSON.stringify({
-                        screen: normalizedScreen,
+                        screen: screenValue,
                         docType,
                         values: docType === "bwc"
                           ? {
@@ -407,7 +410,8 @@ export default function OcrMachinePage() {
                         result: { json_output: rows },
                       })
                     );
-                    router.push(target);
+                    const returnTarget = returnTo === "/mixing" && queryScreen ? `/mixing?type=${encodeURIComponent(queryScreen)}` : target;
+                    router.push(returnTarget);
                   }}
                   style={{ border: "none", background: "#445bb2", color: "#fff", borderRadius: 8, padding: "8px 18px", fontWeight: 700 }}
                 >

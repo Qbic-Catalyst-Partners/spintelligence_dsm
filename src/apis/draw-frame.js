@@ -311,7 +311,9 @@ export const submitDrawFrameUqcInspection = async (payload) => {
 export const submitDrawFrameAPercentInspection = async (payload) => {
     const endpoints = [
         "/drawframe/a-percent",
+        "/api/drawframe/a-percent",
         "/drawframe/a-percent-inspection",
+        "/api/drawframe/a-percent-inspection",
         "/drawframe/wrapping/a-percent",
         "/drawframe/wrapping/drawframe/a-percent",
     ];
@@ -335,29 +337,53 @@ export const submitWrappingOcrPercentInspection = async (docType, payload) => {
     const endpointMap = {
         strech: [
             "/drawframe/stretch-percent",
+            "/api/drawframe/stretch-percent",
             "/drawframe/stretch-percent-inspection",
+            "/api/drawframe/stretch-percent-inspection",
             "/drawframe/wrapping/stretch-percent",
             "/drawframe/wrapping/stretch-percentage",
             "/drawframe/wrapping/drawframe/stretch-percent",
         ],
         stretch: [
             "/drawframe/stretch-percent",
+            "/api/drawframe/stretch-percent",
             "/drawframe/stretch-percent-inspection",
+            "/api/drawframe/stretch-percent-inspection",
             "/drawframe/wrapping/stretch-percent",
             "/drawframe/wrapping/stretch-percentage",
             "/drawframe/wrapping/drawframe/stretch-percent",
         ],
         noils: [
             "/drawframe/comber-noil-percent",
+            "/api/drawframe/comber-noil-percent",
             "/drawframe/noil-percent",
+            "/api/drawframe/noil-percent",
             "/drawframe/wrapping/comber-noil-percent",
             "/drawframe/wrapping/noil-percent",
         ],
         noil: [
             "/drawframe/comber-noil-percent",
+            "/api/drawframe/comber-noil-percent",
             "/drawframe/noil-percent",
+            "/api/drawframe/noil-percent",
             "/drawframe/wrapping/comber-noil-percent",
             "/drawframe/wrapping/noil-percent",
+        ],
+        a_percent: [
+            "/drawframe/a-percent",
+            "/api/drawframe/a-percent",
+            "/drawframe/a-percent-inspection",
+            "/api/drawframe/a-percent-inspection",
+            "/drawframe/wrapping/a-percent",
+            "/drawframe/wrapping/drawframe/a-percent",
+        ],
+        "a-percent": [
+            "/drawframe/a-percent",
+            "/api/drawframe/a-percent",
+            "/drawframe/a-percent-inspection",
+            "/api/drawframe/a-percent-inspection",
+            "/drawframe/wrapping/a-percent",
+            "/drawframe/wrapping/drawframe/a-percent",
         ],
     };
     const endpoints = endpointMap[normalizedDocType] || endpointMap.strech;
@@ -562,6 +588,62 @@ export const submitDrawFrameFinisherEntry = async (payload) => {
         return response.data;
     } catch (error) {
         throw new Error(extractApiError(error, "Failed to create draw frame finisher entry"));
+    }
+};
+
+export const submitDrawFrameWheelChangeEntry = async (payload) => {
+    const normalizedType = String(payload?.wheel_change_type || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+    const endpointMap = {
+        type1: "/drawframe/wheel-change/type1",
+        type2: "/drawframe/wheel-change/type2",
+        type3: "/drawframe/wheel-change/type3",
+        finisher_type1_lrsb: "/drawframe/wheel-change/finisher-type1-lrsb",
+        type2_d40: "/drawframe/wheel-change/type2-d40",
+        type3_d50_d55: "/drawframe/wheel-change/type3-d50-d55",
+        type4_ldf3s: "/drawframe/wheel-change/type4-ldf3s",
+    };
+    const endpoint = endpointMap[normalizedType] || "/drawframe/wheel-change";
+
+    try {
+        const response = await apiConfig.post(endpoint, payload);
+        return response.data;
+    } catch (error) {
+        throw new Error(extractApiError(error, "Failed to create draw frame wheel change entry"));
+    }
+};
+
+export const fetchDrawFrameWheelChangeEntries = async ({
+    page = 1,
+    limit = 1,
+    wheelChangeType = "",
+} = {}) => {
+    const normalizedType = String(wheelChangeType || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+    const endpointMap = {
+        type1: "/drawframe/wheel-change/type1",
+        type2: "/drawframe/wheel-change/type2",
+        type3: "/drawframe/wheel-change/type3",
+        finisher_type1_lrsb: "/drawframe/wheel-change/finisher-type1-lrsb",
+        type2_d40: "/drawframe/wheel-change/type2-d40",
+        type3_d50_d55: "/drawframe/wheel-change/type3-d50-d55",
+        type4_ldf3s: "/drawframe/wheel-change/type4-ldf3s",
+    };
+    const endpoint = endpointMap[normalizedType] || "/drawframe/wheel-change";
+
+    try {
+        const response = await apiConfig.get(endpoint, {
+            page,
+            limit,
+            wheel_change_type: normalizedType || undefined,
+        }, { skipGlobalErrorModal: true });
+        return response.data;
+    } catch (error) {
+        throw new Error(extractApiError(error, "Failed to fetch draw frame wheel change entries"));
     }
 };
 

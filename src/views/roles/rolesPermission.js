@@ -11,15 +11,16 @@ import { MdAdd } from "react-icons/md";
 import { FaIdCard, FaExclamationTriangle } from "react-icons/fa";
 import { FaIdCardClip } from "react-icons/fa6";
 import { BsExclamationCircle } from "react-icons/bs";
-import { FiX } from "react-icons/fi";
+import { FiChevronDown, FiX } from "react-icons/fi";
 import { updateRoleAPI } from "../../apis/rolesPermission";
-import { fetchRoles, deleteRole } from "../../store/slices/rolesSlice";
+import { fetchRoles, deleteRole, clearError } from "../../store/slices/rolesSlice";
 
 export default function RolesPermissions() {
     const router = useRouter();
     const dispatch = useDispatch();
 
     const { roles: rolesData, loading, error } = useSelector(state => state.roles);
+    const { token, isHydrated } = useSelector(state => state.auth);
 
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedRoleFilter, setSelectedRoleFilter] = useState("");
@@ -30,15 +31,22 @@ export default function RolesPermissions() {
 
     const ITEMS_PER_PAGE = 5;
     const [currentPage, setCurrentPage] = useState(1);
+    const roleRows = Array.isArray(rolesData) ? rolesData : [];
 
     // FETCH ROLES
     useEffect(() => {
+        if (!isHydrated || !token) {
+            return;
+        }
+
+        dispatch(clearError());
         dispatch(fetchRoles({ page: 1, limit: 100 }));
-    }, [dispatch]);
+    }, [dispatch, isHydrated, token]);
 
     // Transform roles data
-    const transformedRolesData = rolesData.map((role) => ({
+    const transformedRolesData = roleRows.map((role) => ({
         ...role,
+        id: role.id ?? role.role_id ?? role.roleId,
         status: typeof role.status === "boolean" ? (role.status ? "Active" : "Inactive") : role.status,
         screen_count: role.screen_count ?? "0/0",
     }));
@@ -134,7 +142,8 @@ export default function RolesPermissions() {
         return () => window.removeEventListener("click", closeMenu);
     }, []);
 
-    if (loading) return <p>Loading roles...</p>;
+    if (!isHydrated || (token && loading)) return <p>Loading roles...</p>;
+    if (!token) return null;
     if (error) return <p>{error}</p>;
 
     return (
@@ -160,7 +169,7 @@ export default function RolesPermissions() {
                         </div>
                         <div>
                             <p>TOTAL ROLES</p>
-                            <h3>{rolesData.length}</h3>
+                            <h3>{roleRows.length}</h3>
                         </div>
                     </div>
 
@@ -170,7 +179,7 @@ export default function RolesPermissions() {
                         </div>
                         <div>
                             <p>ASSIGNED USERS</p>
-                            <h3>{rolesData.reduce((sum, r) => sum + Number(r.users ?? 0), 0)}</h3>
+                            <h3>{roleRows.reduce((sum, r) => sum + Number(r.users ?? 0), 0)}</h3>
                         </div>
                     </div>
 
@@ -197,7 +206,7 @@ export default function RolesPermissions() {
 
                 {/* FILTER BAR */}
                 <div className={styles["Filter-bar"]}>
-                    <div className={styles["Search-box"]}>
+                    <div className={`${styles["Search-box"]} ${styles["dark-filter-control"]}`}>
                         <IoMdSearch className={styles["search-icon"]} />
                         <input
                             placeholder="Search roles..."
@@ -207,20 +216,30 @@ export default function RolesPermissions() {
                     </div>
 
                     <div className={styles["filter-right"]}>
-                        <div className={styles["filter-select-wrapper"]}>
-                            <select value={selectedRoleFilter} onChange={(e) => setSelectedRoleFilter(e.target.value)}>
+                        <div className={`${styles["filter-select-wrapper"]} ${styles["dark-filter-control"]}`}>
+                            <select
+                                className={styles["dark-filter-control"]}
+                                value={selectedRoleFilter}
+                                onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                            >
                                 <option value="">Role</option>
                                 {roleFilterOptions.map((roleName) => (
                                     <option key={roleName} value={roleName}>{roleName}</option>
                                 ))}
                             </select>
+                            <FiChevronDown className={styles["select-chevron"]} aria-hidden="true" />
                         </div>
-                        <div className={styles["filter-select-wrapper"]}>
-                            <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                        <div className={`${styles["filter-select-wrapper"]} ${styles["dark-filter-control"]}`}>
+                            <select
+                                className={styles["dark-filter-control"]}
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                            >
                                 <option value="">Status</option>
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
                             </select>
+                            <FiChevronDown className={styles["select-chevron"]} aria-hidden="true" />
                         </div>
                         <button
                             className={styles["clear-Btn"]} onClick={handleClearFilters}>
@@ -287,7 +306,15 @@ export default function RolesPermissions() {
                                                 <div className={styles["action-menu"]}>
                                                     <div
                                                         className={styles["menu-item"]}
-                                                        onClick={() => router.push(`/editrole/${role.id}`)}
+                                                        onClick={() => {
+                                                            if (typeof window !== "undefined") {
+                                                                window.sessionStorage.setItem(
+                                                                    "editRoleDraft",
+                                                                    JSON.stringify(role)
+                                                                );
+                                                            }
+                                                            router.push(`/editrole/${role.id}`);
+                                                        }}
                                                     >
                                                         Edit
                                                     </div>

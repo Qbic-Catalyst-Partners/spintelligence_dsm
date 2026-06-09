@@ -92,7 +92,10 @@ const parseNumberValue = (value, decimals = 2) => {
 };
 
 const getEntryId = (entry) =>
-  String(entry?.br_id ?? entry?.id ?? entry?._id ?? entry?.process_parameter_id ?? "");
+  String(entry?.br_id ?? entry?.id ?? entry?._id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? "");
+
+const getDisplayEntryId = (entry) =>
+  String(entry?.display_entry_id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? entry?.br_code ?? "");
 
 const mapApiEntryToVersion = (entry) => ({
   id: getEntryId(entry),
@@ -100,7 +103,7 @@ const mapApiEntryToVersion = (entry) => ({
   label: formatDisplayDate(entry?.creation_date),
   data: {
     versionId: getEntryId(entry),
-    paramId: entry?.br_code || "",
+    paramId: getDisplayEntryId(entry),
     type: "Process Parameter",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",

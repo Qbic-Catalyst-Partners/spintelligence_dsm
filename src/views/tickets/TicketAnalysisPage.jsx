@@ -4,26 +4,31 @@ import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
 import {
   FiAward,
+  FiAlertTriangle,
   FiCalendar,
   FiCheckCircle,
   FiClock,
-  FiList,
-  FiRefreshCw,
   FiTarget,
   FiTrendingUp,
+  FiUsers,
 } from "react-icons/fi";
 import {
   fetchAnalysisRankingApi,
   fetchL1AnalysisApi,
   fetchL2AnalysisApi,
   fetchStatisticsAnalyticsApi,
+  fetchTeamPerformanceAnalysisApi,
+  fetchTeamPerformanceOptionsApi,
 } from "@/apis/analysisApi";
 import { getSubmissionTickets } from "@/apis/operatorApi";
 import styles from "@/styles/ticketCalendar.module.css";
 import { fetchOperatorTickets } from "@/store/slices/operatorSlice";
 import { fetchSupervisorTickets } from "@/store/slices/supervisorSlice";
+import { fetchUsers } from "@/store/slices/userSlice";
 import { applyStoredTicketStatuses } from "@/utils/ticketStatus";
 import { departmentDirectory } from "@/views/departments/data";
+import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
+import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 
 // Utility functions (copied from TicketCalendarPage)
 const getEmpId = (ticket) => ticket?.employee_id || ticket?.emp_id || ticket?.employeeId || "";
@@ -112,9 +117,25 @@ const standardDeviation = (values) => {
   const variance = values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length;
   return Math.sqrt(variance);
 };
-const scaleSeries = (values) => {
+const getScaledPoints = (values) => {
   const max = Math.max(1, ...values);
   return values.map((value) => clampPercent((value / max) * 84 + 12));
+};
+const detectValueKind = (fieldName) => {
+  const value = String(fieldName || "").toLowerCase();
+  if (value.includes("%") || value.includes("percent") || value.includes("efficiency") || value.includes("rate")) {
+    return "percent";
+  }
+  if (value.includes("count") || value.includes("tickets") || value.includes("submission") || value.includes("approval")) {
+    return "number";
+  }
+  return "decimal";
+};
+const formatAxisValue = (value, valueKind = "decimal") => {
+  const number = Number(value || 0);
+  if (valueKind === "percent") return `${Number(number.toFixed(1)).toString()}%`;
+  if (valueKind === "number") return String(Math.round(number));
+  return Number(number.toFixed(2)).toString();
 };
 const periodToBackendPeriod = {
   "1D": "today",
@@ -124,6 +145,33 @@ const periodToBackendPeriod = {
 };
 const formatMetricPercent = (value) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}%`;
 const normalizeLookup = (value) => String(value || "").trim().toLowerCase();
+const optionLabel = (item) =>
+  String(
+    item?.label ||
+      item?.name ||
+      item?.title ||
+      item?.notebook ||
+      item?.input_screen ||
+      item?.machine_name ||
+      item?.employee_name ||
+      item?.user_name ||
+      item ||
+      ""
+  ).trim();
+const optionValue = (item) =>
+  String(item?.value || item?.slug || item?.id || item?.employee_id || optionLabel(item)).trim();
+const normalizeOptions = (value) => {
+  const rows = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return rows
+    .map((item) => ({ label: optionLabel(item), value: optionValue(item) }))
+    .filter((item) => {
+      const key = normalizeLookup(item.value || item.label);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
 const formatShortDay = (date) =>
   date.toLocaleDateString("en-US", { weekday: "short" });
 const formatShortDate = (date) =>
@@ -267,8 +315,10 @@ function DatePickerField({ label, value, onChange }) {
   );
 }
 
-function MiniAreaChart({ title, values, labels }) {
-  const points = values.map((value, index) => ({
+function MiniAreaChart({ title, values, labels, valueKind }) {
+  const scaledValues = getScaledPoints(values);
+  const maxValue = Math.max(1, ...values.map((value) => Number(value || 0)));
+  const points = scaledValues.map((value, index) => ({
     x: values.length === 1 ? 180 : 28 + (index / Math.max(1, values.length - 1)) * 314,
     y: 118 - value,
   }));
@@ -285,7 +335,9 @@ function MiniAreaChart({ title, values, labels }) {
       <svg className={styles.statChartSvg} viewBox="0 20 360 130" role="img" aria-label={`${title} chart`}>
         {[0, 25, 50, 75, 100].map((tick) => (
           <g key={tick}>
-            <text x="4" y={132 - tick} className={styles.statChartTick}>{tick}%</text>
+            <text x="4" y={132 - tick} className={styles.statChartTick}>
+              {formatAxisValue((tick / 100) * maxValue, valueKind)}
+            </text>
             <line x1="28" x2="342" y1={132 - tick} y2={132 - tick} className={styles.statChartGrid} />
           </g>
         ))}
@@ -293,7 +345,7 @@ function MiniAreaChart({ title, values, labels }) {
         <path d={linePath} className={styles.statChartLine} />
         {points.map((point, index) => (
           <g key={`${title}-${index}`}>
-            <circle cx={point.x} cy={point.y} r="4" className={styles.statChartPoint} />
+            <circle cx={point.x} cy={point.y} r="2.25" className={styles.statChartPoint} />
             <text x={point.x} y="144" textAnchor="middle" className={styles.statChartDay}>{labels[index]}</text>
           </g>
         ))}
@@ -315,9 +367,26 @@ function TeamPerformanceFilter({
   setSelectedDepartmentSlug,
   selectedSubDepartmentSlug,
   setSelectedSubDepartmentSlug,
+  users,
+  selectedUserId,
+  setSelectedUserId,
+  options = {},
+  showUserFilter = true,
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
-  const subDepartments = selectedDepartment?.subDepartments || [];
+  const backendDepartments = normalizeOptions(options?.departments);
+  const departmentOptions = backendDepartments.length
+    ? backendDepartments
+    : departmentDirectory.map((department) => ({ label: department.name, value: department.slug }));
+  const qualityControlSubDepartments =
+    departmentDirectory.find((department) => department.slug === "quality-control")?.subDepartments || [];
+  const subDepartments = selectedDepartment?.subDepartments?.length
+    ? selectedDepartment.subDepartments
+    : qualityControlSubDepartments;
+  const subDepartmentOptions = subDepartments.map((subDepartment) => ({
+    label: subDepartment.name,
+    value: subDepartment.slug,
+  }));
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
@@ -326,14 +395,14 @@ function TeamPerformanceFilter({
 
   return (
     <section className={styles.performanceControlsCard}>
-      <div className={styles.performanceControlsLeft}>
+      <div className={`${styles.performanceControlsLeft} ${!showUserFilter ? styles.performanceControlsCompact : ""}`}>
         <label className={styles.performanceSelectField}>
           <span>Department</span>
           <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
             <option value="">All Departments</option>
-            {departmentDirectory.map((department) => (
-              <option key={department.slug} value={department.slug}>
-                {department.name}
+            {departmentOptions.map((department) => (
+              <option key={department.value} value={department.value}>
+                {department.label}
               </option>
             ))}
           </select>
@@ -343,16 +412,31 @@ function TeamPerformanceFilter({
           <select
             value={selectedSubDepartmentSlug}
             onChange={(event) => setSelectedSubDepartmentSlug(event.target.value)}
-            disabled={!selectedDepartmentSlug}
           >
             <option value="">All Sub Departments</option>
-            {subDepartments.map((subDepartment) => (
-              <option key={subDepartment.slug} value={subDepartment.slug}>
-                {subDepartment.name}
+            {subDepartmentOptions.map((subDepartment) => (
+              <option key={subDepartment.value} value={subDepartment.value}>
+                {subDepartment.label}
               </option>
             ))}
           </select>
         </label>
+        {showUserFilter && (
+          <label className={styles.performanceSelectField}>
+            <span>User</span>
+            <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
+              <option value="">All Users</option>
+              {(Array.isArray(users) ? users : []).map((user) => {
+                const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
+                return (
+                  <option key={`${userId}-${user?.name || userId}`} value={userId}>
+                    {user?.name || userId}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+        )}
       </div>
 
       <div className={styles.performanceControlsRight}>
@@ -402,10 +486,100 @@ function StatisticsAnalysisFilter({
   setFromDate,
   toDate,
   setToDate,
+  selectedDepartmentSlug,
+  setSelectedDepartmentSlug,
+  selectedSubDepartmentSlug,
+  setSelectedSubDepartmentSlug,
+  notebook,
+  setNotebook,
+  inputField,
+  setInputField,
 }) {
+  const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
+  const subDepartments = selectedDepartment?.subDepartments || [];
+  const notebookOptions = selectedDepartmentSlug && selectedSubDepartmentSlug
+    ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
+    : [];
+  const inputFieldOptions = notebook ? getThresholdFieldsForScreen(notebook) : [];
+
+  const handleDepartmentChange = (event) => {
+    setSelectedDepartmentSlug(event.target.value);
+    setSelectedSubDepartmentSlug("");
+    setNotebook("");
+    setInputField("");
+  };
+
+  const handleSubDepartmentChange = (event) => {
+    setSelectedSubDepartmentSlug(event.target.value);
+    setNotebook("");
+    setInputField("");
+  };
+
+  const handleNotebookChange = (event) => {
+    setNotebook(event.target.value);
+    setInputField("");
+  };
+
   return (
-    <div className={styles.statisticsTopFilters}>
-      <div className={styles.performanceModeToggle}>
+    <section className={styles.statisticsTopFilters}>
+      <div className={`${styles.performanceControlsLeft} ${styles.statisticsControlsLeft}`} style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
+          <span>Department</span>
+          <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
+            <option value="">All Departments</option>
+            {departmentDirectory.map((department) => (
+              <option key={department.slug} value={department.slug}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
+          <span>Sub Department</span>
+          <select
+            value={selectedSubDepartmentSlug}
+            onChange={handleSubDepartmentChange}
+            disabled={!selectedDepartmentSlug}
+          >
+            <option value="">All Sub Departments</option>
+            {subDepartments.map((subDepartment) => (
+              <option key={subDepartment.slug} value={subDepartment.slug}>
+                {subDepartment.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
+          <span>Notebook</span>
+          <select value={notebook} onChange={handleNotebookChange} disabled={!selectedSubDepartmentSlug}>
+            <option value="">All Notebooks</option>
+            {notebookOptions.map((screen) => (
+              <option key={screen} value={screen}>
+                {screen}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
+          <span>Input Field</span>
+          <select
+            className={styles.statisticsInputFieldSelect}
+            value={inputField}
+            onChange={(event) => setInputField(event.target.value)}
+            disabled={!notebook}
+          >
+            <option value="">All Values</option>
+            {inputFieldOptions.map((field) => (
+              <option key={field} value={field}>
+                {field}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className={styles.performanceControlsRight}>
+        <div className={styles.performanceModeToggle}>
         {["current", "custom"].map((mode) => (
           <button
             key={mode}
@@ -438,29 +612,156 @@ function StatisticsAnalysisFilter({
         </div>
       )}
     </div>
+  </section>
   );
 }
 
 const metricIcons = [
-  { match: "allocated", icon: FiList },
-  { match: "on time", icon: FiCheckCircle },
-  { match: "delayed", icon: FiClock },
-  { match: "reworked", icon: FiRefreshCw },
-  { match: "efficiency", icon: FiTrendingUp },
-  { match: "approval", icon: FiTarget },
+  { match: "allocated", icon: FiCheckCircle },
+  { match: "on time", icon: FiTrendingUp },
+  { match: "delayed", icon: FiAlertTriangle },
+  { match: "reworked", icon: FiClock },
+  { match: "efficiency", icon: FiTarget },
+  { match: "approval", icon: FiCheckCircle },
   { match: "ranking", icon: FiAward },
 ];
 
+const metricTones = [
+  { match: "on time", className: "performanceMetricSuccess" },
+  { match: "delayed", className: "performanceMetricDanger" },
+  { match: "reworked", className: "performanceMetricWarning" },
+  { match: "efficiency", className: "performanceMetricInfo" },
+  { match: "approval", className: "performanceMetricInfo" },
+  { match: "allocated", className: "performanceMetricInfo" },
+];
+
 function MetricCard({ label, value }) {
-  const Icon = metricIcons.find((item) => label.toLowerCase().includes(item.match))?.icon || FiTarget;
+  const normalizedLabel = label.toLowerCase();
+  const Icon = metricIcons.find((item) => normalizedLabel.includes(item.match))?.icon || FiTarget;
+  const toneClass = metricTones.find((item) => normalizedLabel.includes(item.match))?.className;
   return (
-    <article className={styles.performanceMetricCard}>
+    <article className={`${styles.performanceMetricCard} ${toneClass ? styles[toneClass] : ""}`}>
       <div className={styles.performanceMetricHead}>
         <span>{label}</span>
-        <Icon />
+        <span className={styles.performanceMetricIcon}>
+          <Icon />
+        </span>
       </div>
       <strong>{value}</strong>
     </article>
+  );
+}
+
+const getCompletionRate = (row) => {
+  if (row?.completion_rate !== undefined && row?.completion_rate !== null) {
+    const rate = Number(row.completion_rate);
+    return Number.isFinite(rate) ? Math.round(rate * 10) / 10 : 0;
+  }
+  const total = Number(row?.total || 0);
+  const completed = Number(row?.completed || 0);
+  return total ? Math.round((completed / total) * 1000) / 10 : 0;
+};
+
+const formatCompletionRate = (rate) => `${Number(rate.toFixed(1)).toString()}%`;
+
+const getMemberName = (employee) => {
+  const value = String(employee || "").trim();
+  if (!value) return "-";
+  const hyphenIndex = value.indexOf("-");
+  return hyphenIndex > -1 ? value.slice(hyphenIndex + 1).trim() || value : value;
+};
+
+const getInitial = (name) => String(name || "-").trim().charAt(0).toUpperCase() || "-";
+
+const normalizeTeamMemberPerformanceRow = (row, index) => {
+  const name = row?.name || row?.full_name || getMemberName(row?.employee);
+  const total = Number(row?.total_tasks ?? row?.total ?? 0);
+  const completed = Number(row?.completed ?? 0);
+  const pending = Number(row?.pending ?? row?.inprogress ?? Math.max(0, total - completed));
+
+  return {
+    ...row,
+    rank: Number(row?.rank || index + 1),
+    employee: row?.employee || name,
+    name,
+    total,
+    completed,
+    pending,
+    completion_rate:
+      row?.completion_rate !== undefined && row?.completion_rate !== null
+        ? Number(row.completion_rate)
+        : total
+          ? (completed / total) * 100
+          : 0,
+  };
+};
+
+function TeamMembersPerformanceTable({ rows }) {
+  const normalizedRows = rows.map(normalizeTeamMemberPerformanceRow);
+
+  return (
+    <section className={styles.performanceTeamCard}>
+      <div className={styles.performanceTeamHeader}>
+        <h2>
+          <FiUsers />
+          <span>Team Members Performance</span>
+        </h2>
+      </div>
+      <div className={styles.performanceTeamTableWrap}>
+        <table className={styles.performanceTeamTable}>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Name</th>
+              <th>Total Tasks</th>
+              <th>Completed</th>
+              <th>Pending</th>
+              <th>Completion Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {normalizedRows.length ? (
+              normalizedRows.map((row, index) => {
+                const memberName = row.name || getMemberName(row.employee);
+                const rate = getCompletionRate(row);
+                return (
+                  <tr key={`${row.employee}-${index}`}>
+                    <td>
+                      <span className={`${styles.performanceRankBadge} ${index < 3 ? styles.performanceRankPodium : ""}`}>
+                        {row.rank || index + 1}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={styles.performanceMemberCell}>
+                        <span className={styles.performanceAvatar}>{getInitial(memberName)}</span>
+                        <span>{memberName}</span>
+                      </span>
+                    </td>
+                    <td>{row.total}</td>
+                    <td className={styles.performanceCompleted}>{row.completed}</td>
+                    <td className={styles.performancePending}>{row.pending}</td>
+                    <td>
+                      <span className={styles.performanceRateCell}>
+                        <span className={styles.performanceRateTrack}>
+                          <span style={{ width: `${Math.min(100, Math.max(0, rate))}%` }} />
+                        </span>
+                        <span>{formatCompletionRate(rate)}</span>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td className={styles.performanceEmptyCell} colSpan="6">
+                  No team performance records found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -480,12 +781,17 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   const [toDate, setToDate] = useState(toInputDate(new Date()));
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
   const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [notebook, setNotebook] = useState("");
+  const [inputField, setInputField] = useState("");
   const [submissionTickets, setSubmissionTickets] = useState([]);
   const [submissionError, setSubmissionError] = useState("");
+  const [teamOptions, setTeamOptions] = useState({});
   const [performanceApiData, setPerformanceApiData] = useState({
     l1: null,
     l2: null,
     ranking: [],
+    teamMembers: [],
     loading: false,
     error: "",
   });
@@ -497,15 +803,67 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   } = useSelector((state) => state.supervisor) || {};
   const { users } = useSelector((state) => state.users) || {};
   const selectedDepartment = useMemo(
-    () => departmentDirectory.find((department) => department.slug === selectedDepartmentSlug) || null,
+    () =>
+      departmentDirectory.find(
+        (department) =>
+          department.slug === selectedDepartmentSlug ||
+          normalizeLookup(department.name) === normalizeLookup(selectedDepartmentSlug)
+      ) || (selectedDepartmentSlug ? { name: selectedDepartmentSlug, slug: selectedDepartmentSlug } : null),
     [selectedDepartmentSlug]
   );
   const selectedSubDepartment = useMemo(
     () =>
       selectedDepartment?.subDepartments?.find((subDepartment) => subDepartment.slug === selectedSubDepartmentSlug) ||
-      null,
+      selectedDepartment?.subDepartments?.find(
+        (subDepartment) => normalizeLookup(subDepartment.name) === normalizeLookup(selectedSubDepartmentSlug)
+      ) ||
+      (selectedSubDepartmentSlug ? { name: selectedSubDepartmentSlug, slug: selectedSubDepartmentSlug } : null),
     [selectedDepartment, selectedSubDepartmentSlug]
   );
+
+  useEffect(() => {
+    const departmentParam = String(router.query?.department || process.env.NEXT_PUBLIC_STATS_DEPARTMENT || "").trim();
+    const subDepartmentParam = String(
+      router.query?.sub_department || process.env.NEXT_PUBLIC_STATS_SUB_DEPARTMENT || ""
+    ).trim();
+    const userIdParam = String(router.query?.user_id || "").trim();
+    const notebookParam = String(router.query?.input_screen || process.env.NEXT_PUBLIC_STATS_INPUT_SCREEN || "").trim();
+    const inputFieldParam = String(router.query?.input_field || process.env.NEXT_PUBLIC_STATS_INPUT_FIELD || "").trim();
+
+    if (departmentParam) {
+      const foundDepartment = departmentDirectory.find(
+        (department) =>
+          normalizeLookup(department.slug) === normalizeLookup(departmentParam) ||
+          normalizeLookup(department.name) === normalizeLookup(departmentParam)
+      );
+      if (foundDepartment) {
+        setSelectedDepartmentSlug(foundDepartment.slug);
+      }
+    }
+
+    if (subDepartmentParam) {
+      const foundSubDepartment = departmentDirectory
+        .flatMap((department) => department.subDepartments || [])
+        .find(
+          (subDepartment) =>
+            normalizeLookup(subDepartment.slug) === normalizeLookup(subDepartmentParam) ||
+            normalizeLookup(subDepartment.name) === normalizeLookup(subDepartmentParam)
+        );
+      if (foundSubDepartment) {
+        setSelectedSubDepartmentSlug(foundSubDepartment.slug);
+      }
+    }
+
+    if (userIdParam) {
+      setSelectedUserId(userIdParam);
+    }
+    if (notebookParam) {
+      setNotebook(notebookParam);
+    }
+    if (inputFieldParam) {
+      setInputField(inputFieldParam);
+    }
+  }, [router.query]);
 
   const handlePeriodChange = (period) => {
     const end = normalizeDateEnd(toDate) || new Date();
@@ -534,6 +892,12 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   };
 
   useEffect(() => {
+    dispatch(fetchUsers());
+
+    if (mode === "Stats") {
+      return undefined;
+    }
+
     dispatch(fetchOperatorTickets());
     dispatch(fetchSupervisorTickets());
 
@@ -560,7 +924,25 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     return () => {
       isMounted = false;
     };
-  }, [dispatch]);
+  }, [dispatch, mode]);
+
+  useEffect(() => {
+    if (mode !== "L1" && mode !== "L2") return undefined;
+
+    let isMounted = true;
+    fetchTeamPerformanceOptionsApi()
+      .then((response) => {
+        if (!isMounted) return;
+        setTeamOptions(response?.options || response?.data || response || {});
+      })
+      .catch(() => {
+        if (isMounted) setTeamOptions({});
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "L2") return undefined;
@@ -568,6 +950,19 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     let isMounted = true;
     const isCustomPeriod = performanceFilterMode === "custom";
     const period = isCustomPeriod ? "custom" : periodToBackendPeriod[activePeriod] || "month";
+    const selectedUserRecord = (Array.isArray(users) ? users : []).find((user) => {
+      const candidates = [
+        user?.id,
+        user?.user_id,
+        user?.userId,
+        user?.employeeId,
+        user?.employee_id,
+        user?.emp_id,
+      ];
+      return candidates.some((value) => normalizeLookup(value) === normalizeLookup(selectedUserId));
+    });
+    const selectedUserApiId =
+      selectedUserRecord?.id || selectedUserRecord?.user_id || selectedUserRecord?.userId || selectedUserId;
     const params = {
       period,
       ...(isCustomPeriod ? { start_date: fromDate, end_date: toDate } : {}),
@@ -575,21 +970,45 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       ...(selectedSubDepartment
         ? { sub_department: selectedSubDepartment.name, sub_department_slug: selectedSubDepartment.slug }
         : {}),
+      ...(selectedUserId ? { user_id: selectedUserApiId, employee_id: selectedUserId } : {}),
+      ...(notebook ? { input_screen: notebook } : {}),
+      ...(inputField ? { input_field: inputField } : {}),
     };
 
     setPerformanceApiData((current) => ({ ...current, loading: true, error: "" }));
 
-    Promise.all([
-      fetchL1AnalysisApi(params),
-      fetchL2AnalysisApi(params),
-      fetchAnalysisRankingApi(params),
-    ])
-      .then(([l1, l2, ranking]) => {
+    const fetchLegacyPerformanceData = () =>
+      Promise.all([
+        fetchL1AnalysisApi(params),
+        fetchL2AnalysisApi(params),
+        fetchAnalysisRankingApi(params),
+      ]).then(([l1, l2, ranking]) => ({
+        l1,
+        l2,
+        ranking: Array.isArray(ranking?.ranking) ? ranking.ranking : [],
+        teamMembers: [],
+      }));
+
+    fetchTeamPerformanceAnalysisApi(params)
+      .then((response) => ({
+        l1: response?.l1 || null,
+        l2: response?.l2 || null,
+        ranking: Array.isArray(response?.ranking) ? response.ranking : [],
+        teamMembers: Array.isArray(response?.team_members_performance) ? response.team_members_performance : [],
+      }))
+      .catch((error) => {
+        if (error?.response?.status === 404) {
+          return fetchLegacyPerformanceData();
+        }
+        throw error;
+      })
+      .then((nextData) => {
         if (!isMounted) return;
         setPerformanceApiData({
-          l1,
-          l2,
-          ranking: Array.isArray(ranking?.ranking) ? ranking.ranking : [],
+          l1: nextData.l1,
+          l2: nextData.l2,
+          ranking: nextData.ranking,
+          teamMembers: nextData.teamMembers,
           loading: false,
           error: "",
         });
@@ -606,18 +1025,19 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     return () => {
       isMounted = false;
     };
-  }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, toDate]);
+  }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, selectedUserId, notebook, inputField, toDate, users]);
 
   useEffect(() => {
-    if (mode !== "L1") return undefined;
+    if (mode !== "Stats") return undefined;
 
-    const department = String(router.query?.department || process.env.NEXT_PUBLIC_STATS_DEPARTMENT || "").trim();
-    const subDepartment = String(
+    const department = selectedDepartment?.name || String(router.query?.department || process.env.NEXT_PUBLIC_STATS_DEPARTMENT || "").trim();
+  const subDepartment = selectedSubDepartment?.name || String(
       router.query?.sub_department || process.env.NEXT_PUBLIC_STATS_SUB_DEPARTMENT || ""
     ).trim();
-    const inputScreen = String(router.query?.input_screen || process.env.NEXT_PUBLIC_STATS_INPUT_SCREEN || "").trim();
-    const inputField = String(router.query?.input_field || process.env.NEXT_PUBLIC_STATS_INPUT_FIELD || "").trim();
-    const canFetchFromApi = department && subDepartment && inputScreen && inputField;
+    const userId = selectedUserId || String(router.query?.user_id || "").trim();
+    const isCustomPeriod = performanceFilterMode === "custom";
+    const period = isCustomPeriod ? "custom" : periodToBackendPeriod[activePeriod] || "month";
+    const canFetchFromApi = department && subDepartment;
 
     if (!canFetchFromApi) {
       setStatisticsApiData((current) => ({
@@ -634,9 +1054,9 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     fetchStatisticsAnalyticsApi({
       department,
       sub_department: subDepartment,
-      input_screen: inputScreen,
-      input_field: inputField,
-      period: activePeriod,
+      period,
+      ...(isCustomPeriod ? { start_date: fromDate, end_date: toDate } : {}),
+      ...(userId ? { user_id: userId, employee_id: userId } : {}),
     })
       .then((response) => {
         if (!mounted) return;
@@ -649,10 +1069,20 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       })
       .catch((error) => {
         if (!mounted) return;
+        const message = error?.response?.data?.message || error.message || "Failed to fetch statistics analytics.";
+        if (/input_screen.*input_field.*required/i.test(message)) {
+          setStatisticsApiData({
+            cards: null,
+            loading: false,
+            error: "",
+            filter: null,
+          });
+          return;
+        }
         setStatisticsApiData({
           cards: null,
           loading: false,
-          error: error?.response?.data?.message || error.message || "Failed to fetch statistics analytics.",
+          error: message,
           filter: null,
         });
       });
@@ -660,7 +1090,19 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     return () => {
       mounted = false;
     };
-  }, [activePeriod, mode, router.query?.department, router.query?.input_field, router.query?.input_screen, router.query?.sub_department]);
+  }, [
+    activePeriod,
+    mode,
+    router.query?.department,
+    router.query?.sub_department,
+    router.query?.user_id,
+    selectedDepartment,
+    selectedSubDepartment,
+    selectedUserId,
+    fromDate,
+    performanceFilterMode,
+    toDate,
+  ]);
 
   const allTickets = useMemo(
     () => Array.isArray(tickets) ? tickets : [],
@@ -700,7 +1142,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   }, [users]);
   const matchesDepartmentFilters = useMemo(
     () => (ticket) => {
-      if (!selectedDepartment && !selectedSubDepartment) return true;
+      if (!selectedDepartment && !selectedSubDepartment && !selectedUserId) return true;
       const employeeId = resolveTicketEmpId(ticket, userIdByName);
       const user = userById.get(employeeId);
       const ticketDepartment =
@@ -727,9 +1169,14 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       ) {
         return false;
       }
+      if (selectedUserId) {
+        if (!employeeId || normalizeLookup(employeeId) !== normalizeLookup(selectedUserId)) {
+          return false;
+        }
+      }
       return true;
     },
-    [selectedDepartment, selectedSubDepartment, userById, userIdByName]
+    [selectedDepartment, selectedSubDepartment, selectedUserId, userById, userIdByName]
   );
   const modeTickets = useMemo(() => {
     const filteredTickets = combinedTickets.filter((t) =>
@@ -836,6 +1283,8 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   }, [filteredModeTickets, mode, userIdByName]);
 
   const isL2 = mode === "L2";
+  const isStatsMode = mode === "Stats";
+  const selectedValueKind = useMemo(() => detectValueKind(inputField), [inputField]);
   const filteredFetchedTickets = useMemo(() => {
     const start = normalizeDateStart(fromDate);
     const end = normalizeDateEnd(toDate);
@@ -858,7 +1307,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
         const points = Array.isArray(cards?.[key]) ? cards[key] : [];
         const labels = points.map((point) => String(point?.label || "-"));
         const rawValues = points.map((point) => Number(point?.value ?? 0));
-        return { title, labels, values: scaleSeries(rawValues) };
+        return { title, labels, values: rawValues, valueKind: selectedValueKind };
       });
 
       if (apiSeries.some((series) => series.labels.length > 0)) {
@@ -902,20 +1351,37 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     const labels = buckets.map((bucket) => bucket.label);
 
     return [
-      { title: "Mean", labels, values: scaleSeries(runningMeans) },
-      { title: "Median", labels, values: scaleSeries(runningMedians) },
-      { title: "Standard Deviation", labels, values: scaleSeries(runningDeviation) },
-      { title: "Average", labels, values: scaleSeries(completionRates) },
-      { title: "Outlier", labels, values: scaleSeries(outlierScores) },
-      { title: "Min & Max", labels, values: scaleSeries(minMaxSpread) },
+      { title: "Mean", labels, values: runningMeans, valueKind: selectedValueKind },
+      { title: "Median", labels, values: runningMedians, valueKind: selectedValueKind },
+      { title: "Standard Deviation", labels, values: runningDeviation, valueKind: selectedValueKind },
+      { title: "Average", labels, values: completionRates, valueKind: selectedValueKind },
+      { title: "Outlier", labels, values: outlierScores, valueKind: selectedValueKind },
+      { title: "Min & Max", labels, values: minMaxSpread, valueKind: selectedValueKind },
     ];
-  }, [activePeriod, filteredFetchedTickets, statisticsApiData.cards, toDate]);
+  }, [activePeriod, filteredFetchedTickets, selectedValueKind, statisticsApiData.cards, toDate]);
   const performanceMetrics = useMemo(() => {
-    const l1ApiMetrics = performanceApiData.l1?.metrics;
-    const l2ApiMetrics = performanceApiData.l2?.metrics;
+    const l1SubmissionStats = performanceApiData.l1?.submission_stats;
+    const l1TicketingStats = performanceApiData.l1?.ticketing_stats;
+    const l1ApiMetrics = {
+      ...(l1SubmissionStats || {}),
+      ...(l1TicketingStats || {}),
+      ...(performanceApiData.l1?.metrics || {}),
+    };
+    const l2ApprovalStats = performanceApiData.l2?.approval_stats;
+    const l2ApiMetrics = {
+      ...(l2ApprovalStats || {}),
+      ...(performanceApiData.l2?.metrics || {}),
+    };
+    const hasApiMetrics = Boolean(
+      l1SubmissionStats ||
+      l1TicketingStats ||
+      performanceApiData.l1?.metrics ||
+      l2ApprovalStats ||
+      performanceApiData.l2?.metrics
+    );
     const topRanking = performanceApiData.ranking?.[0];
 
-    if (!selectedDepartment && !selectedSubDepartment && (l1ApiMetrics || l2ApiMetrics || topRanking)) {
+    if (l1ApiMetrics || l2ApiMetrics || topRanking) {
       return {
         l1Submission: [
           { label: "Allocated Submission", value: Number(l1ApiMetrics?.allocated_submissions || 0) },
@@ -1017,12 +1483,13 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     performanceApiData.l1,
     performanceApiData.l2,
     performanceApiData.ranking,
-    selectedDepartment,
-    selectedSubDepartment,
     toDate,
     userIdByName,
   ]);
   const visibleRows = useMemo(() => {
+    if (mode === "L1" && performanceApiData.teamMembers.length) {
+      return performanceApiData.teamMembers;
+    }
     if (mode !== "L1") return analytics.rows;
     const thresholdRows = analytics.rows.filter((row) =>
       String(row.employee || "").toLowerCase().includes("threshold")
@@ -1032,11 +1499,9 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     );
     if (activeSystem === "threshold") return thresholdRows.length ? thresholdRows : analytics.rows;
     return submissionRows.length ? submissionRows : analytics.rows;
-  }, [activeSystem, analytics.rows, mode]);
+  }, [activeSystem, analytics.rows, mode, performanceApiData.teamMembers]);
 
-  if (mode === "L1") {
-    const fetchError = operatorError || supervisorError || submissionError;
-
+  if (isStatsMode) {
     return (
       <section className={`${styles.page} ${styles.statisticsPage}`}>
         <h1 className={styles.statisticsTitle}>Statistic Analytics</h1>
@@ -1049,8 +1514,15 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setFromDate={setFromDate}
           toDate={toDate}
           setToDate={setToDate}
+          selectedDepartmentSlug={selectedDepartmentSlug}
+          setSelectedDepartmentSlug={setSelectedDepartmentSlug}
+          selectedSubDepartmentSlug={selectedSubDepartmentSlug}
+          setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
+          notebook={notebook}
+          setNotebook={setNotebook}
+          inputField={inputField}
+          setInputField={setInputField}
         />
-        {fetchError && <p className={styles.statisticsError}>{fetchError}</p>}
         {statisticsApiData.loading && <p className={styles.statisticsError}>Fetching statistics analytics...</p>}
         {statisticsApiData.error && <p className={styles.statisticsError}>{statisticsApiData.error}</p>}
         <section className={styles.statisticsGrid}>
@@ -1060,6 +1532,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
               title={chart.title}
               values={chart.values}
               labels={chart.labels}
+              valueKind={chart.valueKind}
             />
           ))}
         </section>
@@ -1067,10 +1540,10 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     );
   }
 
-  if (mode === "L2") {
+  if (mode === "L1") {
     return (
       <section className={`${styles.page} ${styles.performancePage}`}>
-        <h1 className={styles.performanceTitle}>L1 - Team Performance Analysis</h1>
+        <h1 className={styles.performanceTitle}>L1 Team Performance Analysis</h1>
         <TeamPerformanceFilter
           activePeriod={activePeriod}
           setActivePeriod={handlePeriodChange}
@@ -1084,29 +1557,38 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setSelectedDepartmentSlug={setSelectedDepartmentSlug}
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
+          users={users}
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
+          options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
         {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
-        <section className={styles.performancePanel}>
+        <section className={styles.performanceStatsSection}>
+          <h2 className={styles.performanceStatsTitle}>Submission Stats</h2>
           <div className={styles.performanceGrid}>
             {performanceMetrics.l1Submission.map((metric) => (
               <MetricCard key={metric.label} label={metric.label} value={metric.value} />
             ))}
           </div>
         </section>
-        <section className={styles.performancePanel}>
+        <section className={styles.performanceStatsSection}>
+          <h2 className={styles.performanceStatsTitle}>Ticketing Stats</h2>
           <div className={styles.performanceGrid}>
             {performanceMetrics.l1Resolution.map((metric) => (
               <MetricCard key={metric.label} label={metric.label} value={metric.value} />
             ))}
           </div>
         </section>
-        <div className={styles.performanceRanking}>
-          {performanceMetrics.l1Ranking.map((metric) => (
-            <MetricCard key={metric.label} label={metric.label} value={metric.value} />
-          ))}
-        </div>
-        <h2 className={styles.performanceSubTitle}>L2 - Team Performance Analysis</h2>
+        <TeamMembersPerformanceTable rows={visibleRows} />
+      </section>
+    );
+  }
+
+  if (mode === "L2") {
+    return (
+      <section className={`${styles.page} ${styles.performancePage}`}>
+        <h1 className={styles.performanceTitle}>L2 - Team Performance Analysis</h1>
         <TeamPerformanceFilter
           activePeriod={activePeriod}
           setActivePeriod={handlePeriodChange}
@@ -1120,8 +1602,14 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           setSelectedDepartmentSlug={setSelectedDepartmentSlug}
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
+          users={users}
+          selectedUserId={selectedUserId}
+          setSelectedUserId={setSelectedUserId}
+          options={teamOptions}
         />
-        <section className={styles.performancePanel}>
+        {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
+        {performanceApiData.error && <p className={styles.statisticsError}>{performanceApiData.error}</p>}
+        <section className={`${styles.performanceStatsSection} ${styles.performanceStatsSectionPlain}`}>
           <div className={styles.performanceGrid}>
             {performanceMetrics.l2Approvals.map((metric) => (
               <MetricCard key={metric.label} label={metric.label} value={metric.value} />

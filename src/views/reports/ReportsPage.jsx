@@ -30,6 +30,7 @@ import { fetchAnalysisRankingApi, fetchL1AnalysisApi, fetchL2AnalysisApi } from 
 import { fetchUsersAPI } from "@/apis/userApi";
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
+import { notifyAdminAction } from "@/utils/adminActionNotifications";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
@@ -97,7 +98,13 @@ const fetchGeneralReportDataRows = async (params = {}) => {
   return response.data;
 };
 
+const ANALYSIS_DEPARTMENT = "Analysis";
+const TEAM_PERFORMANCE_SUB_DEPARTMENT = "Team Performance";
+const TEAM_PERFORMANCE_REPORT_TYPE = "Team Performance Analysis";
+
 const formatAnalysisPercent = (value) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}%`;
+
+const isAnalysisDepartment = (departmentName) => matchesLookup(departmentName, ANALYSIS_DEPARTMENT);
 
 const getAnalysisDateParams = (params = {}) => {
   const startDate = params.start_date || params.startDate;
@@ -113,7 +120,7 @@ const getAnalysisDateParams = (params = {}) => {
     : { period: "month" };
   return {
     ...base,
-    ...(department ? { department } : {}),
+    ...(department && !isAnalysisDepartment(department) ? { department } : {}),
     ...(subDepartment ? { sub_department: subDepartment } : {}),
   };
 };
@@ -231,24 +238,32 @@ const reportSources = {
 };
 
 const optionNameKeys = [
-  "name",
-  "label",
-  "value",
-  "department",
   "department_name",
   "departmentName",
-  "sub_department",
-  "subDepartment",
   "sub_department_name",
   "subDepartmentName",
-  "input_screen",
-  "inputScreen",
   "screen_name",
   "screenName",
+  "input_screen_name",
+  "inputScreenName",
+  "notebook_name",
+  "notebookName",
+  "display_name",
+  "displayName",
+  "title",
+  "name",
+  "label",
+  "text",
+  "department",
+  "sub_department",
+  "subDepartment",
+  "input_screen",
+  "inputScreen",
   "field_name",
   "fieldName",
   "input_field",
   "inputField",
+  "value",
   "key",
 ];
 
@@ -284,6 +299,13 @@ const toOptionText = (value) => {
   return text ? text : "";
 };
 
+const isNumericOnlyText = (value) => /^\d+$/.test(String(value ?? "").trim());
+
+const isReadableReportOption = (value) => {
+  const text = toOptionText(value);
+  return Boolean(text && !isNumericOnlyText(text));
+};
+
 const normalizeOptionList = (value) => {
   if (Array.isArray(value)) {
     return value.flatMap(normalizeOptionList);
@@ -291,14 +313,14 @@ const normalizeOptionList = (value) => {
 
   if (typeof value === "string" || typeof value === "number") {
     const option = toOptionText(value);
-    return option ? [option] : [];
+    return isReadableReportOption(option) ? [option] : [];
   }
 
   if (!value || typeof value !== "object") return [];
 
   for (const key of optionNameKeys) {
     const option = toOptionText(value[key]);
-    if (option) return [option];
+    if (isReadableReportOption(option)) return [option];
   }
 
   const nestedOptions = nestedOptionKeys.flatMap((key) => normalizeOptionList(value[key]));
@@ -306,7 +328,7 @@ const normalizeOptionList = (value) => {
 
   return Object.keys(value)
     .map(toOptionText)
-    .filter(Boolean);
+    .filter(isReadableReportOption);
 };
 
 const getFirstOptionList = (source, keys) => {
@@ -317,7 +339,7 @@ const getFirstOptionList = (source, keys) => {
   return [];
 };
 
-const uniqueOptions = (options) => Array.from(new Set(normalizeOptionList(options)));
+const uniqueOptions = (options) => Array.from(new Set(normalizeOptionList(options).filter(isReadableReportOption)));
 
 const catalogDepartments = departmentDirectory.map((item) => item.name);
 
@@ -349,6 +371,7 @@ const getReportDepartmentKey = (departmentName) =>
 
 const getReportSubDepartmentKey = (departmentName, subDepartmentName) => {
   const departmentKey = getReportDepartmentKey(departmentName);
+  if (isAnalysisDepartment(departmentKey)) return TEAM_PERFORMANCE_SUB_DEPARTMENT;
   return (
     Object.keys(reportSources[departmentKey] || {}).find((key) => matchesLookup(key, subDepartmentName)) ||
     findCatalogSubDepartment(departmentName, subDepartmentName)?.name ||
@@ -369,8 +392,55 @@ const getReportSource = (departmentName, subDepartmentName, typeName) => {
   return reportSources[departmentKey]?.[subDepartmentKey]?.[typeKey];
 };
 
+const normalizeReportSelection = ({ departmentName, subDepartmentName, typeName }) => {
+  const departmentKey = getReportDepartmentKey(departmentName);
+  const subDepartmentKey = getReportSubDepartmentKey(departmentKey, subDepartmentName);
+  const typeKey = getReportTypeKey(departmentKey, subDepartmentKey, typeName);
+
+  if (isAnalysisDepartment(departmentKey)) {
+    const selectedSubDepartment = isReadableReportOption(subDepartmentName)
+      ? subDepartmentName
+      : TEAM_PERFORMANCE_SUB_DEPARTMENT;
+    return {
+      department: ANALYSIS_DEPARTMENT,
+      subDepartment: selectedSubDepartment,
+      reportType: TEAM_PERFORMANCE_REPORT_TYPE,
+    };
+  }
+
+  return {
+    department: isReadableReportOption(departmentKey) ? departmentKey : "Quality Control",
+    subDepartment: isReadableReportOption(subDepartmentKey) ? subDepartmentKey : "Mixing",
+    reportType: isReadableReportOption(typeKey) ? typeKey : "Cotton HVI Data Entry",
+  };
+};
+
+const normalizeReportSchedule = (schedule = {}) => {
+  const canonical = normalizeReportSelection({
+    departmentName: schedule.department,
+    subDepartmentName: schedule.subDepartment || schedule.sub_department,
+    typeName: schedule.reportType || schedule.report_type || schedule.input_screen,
+  });
+
+  return {
+    ...schedule,
+    department: canonical.department,
+    subDepartment: canonical.subDepartment,
+    reportType: canonical.reportType,
+  };
+};
+
 const getCatalogSubDepartments = (selectedDepartment) =>
   findCatalogDepartment(selectedDepartment)?.subDepartments?.map((item) => item.name) || [];
+
+const getStatisticsSubDepartmentOptions = () =>
+  uniqueOptions(
+    departmentDirectory
+      .filter((department) => department.enabled)
+      .flatMap((department) => department.subDepartments || [])
+      .filter((subDepartment) => subDepartment.enabled)
+      .map((subDepartment) => subDepartment.name)
+  );
 
 const getDepartmentSlugByName = (departmentName) =>
   findCatalogDepartment(departmentName)?.slug || "";
@@ -777,6 +847,47 @@ const toReportField = (fieldName) => {
   };
 };
 
+const reportFieldAliases = {
+  "Span Length (2.5%)": ["span_length", "spanLength"],
+  "Invisible Loss %": ["invisible_loss_percentage", "invisible_loss_percent", "invisibleLossPercent"],
+  "Trash Content %": ["trash_content_percentage", "trash_content_percent", "trashContentPercent"],
+  "Yellow + B": ["yellow_b", "yellowB"],
+  TrCnt: ["trcnt", "tr_cnt", "trCnt"],
+  TrAr: ["trar", "tr_ar", "trAr"],
+  TrID: ["trid", "tr_id", "trID"],
+  "Colour Grade": ["colour_grade", "color_grade", "colourGrade", "colorGrade"],
+  "U%": ["u_percent", "uPercent"],
+  "CV%": ["cv_percent", "cvPercent"],
+};
+
+const getCanonicalReportFieldKey = (field) => {
+  const fieldKey = String(field?.key || field?.label || "").trim();
+  const matchedAlias = Object.entries(reportFieldAliases).find(([label, aliases]) =>
+    [label, ...aliases].some((candidate) => normalizeLookupKey(candidate) === normalizeLookupKey(fieldKey))
+  );
+  return matchedAlias ? normalizeLookupKey(matchedAlias[0]) : normalizeLookupKey(fieldKey);
+};
+
+const getReportFieldValue = (row, field) => {
+  const keys = [
+    field?.key,
+    field?.label,
+    ...(reportFieldAliases[field?.label] || []),
+    ...(reportFieldAliases[field?.key] || []),
+  ].filter(Boolean);
+
+  for (const key of keys) {
+    if (row?.[key] !== null && typeof row?.[key] !== "undefined" && row?.[key] !== "") return row[key];
+    const target = normalizeLookupKey(key);
+    const matchedKey = Object.keys(row || {}).find((rowKey) => normalizeLookupKey(rowKey) === target);
+    if (matchedKey && row[matchedKey] !== null && typeof row[matchedKey] !== "undefined" && row[matchedKey] !== "") {
+      return row[matchedKey];
+    }
+  }
+
+  return null;
+};
+
 const getCellValue = (row, field) => {
   if (
     field.key === "inspection_date" ||
@@ -784,10 +895,10 @@ const getCellValue = (row, field) => {
     field.key === "invoice_date" ||
     field.key === "entry_date"
   ) {
-    return formatDate(row?.[field.key] || getRowDate(row));
+    return formatDate(getReportFieldValue(row, field) || getRowDate(row));
   }
 
-  const value = row?.[field.key];
+  const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
@@ -801,6 +912,13 @@ const downloadFile = (filename, content, type) => {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+};
+
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+const loadExcelJS = async () => {
+  const excelJSImport = await import("exceljs");
+  return excelJSImport?.default || excelJSImport;
 };
 
 const escapePdfText = (value) =>
@@ -1047,9 +1165,16 @@ function ReportsPage() {
     [accessByDepartment, authUser]
   );
   const departments = Object.keys(accessibleReportSources);
-  const subDepartments = Object.keys(accessibleReportSources[department] || {});
-  const reportTypes = Object.keys(accessibleReportSources[department]?.[subDepartment] || {});
-  const selectedReportSource = accessibleReportSources[department]?.[subDepartment]?.[reportType];
+  const isTeamPerformanceReport = isAnalysisDepartment(department);
+  const subDepartments = isTeamPerformanceReport
+    ? getStatisticsSubDepartmentOptions()
+    : Object.keys(accessibleReportSources[department] || {});
+  const reportTypes = isTeamPerformanceReport
+    ? Object.keys(accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
+    : Object.keys(accessibleReportSources[department]?.[subDepartment] || {});
+  const selectedReportSource = isTeamPerformanceReport
+    ? accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT]?.[TEAM_PERFORMANCE_REPORT_TYPE]
+    : accessibleReportSources[department]?.[subDepartment]?.[reportType];
 
   const getUserId = (user) =>
     String(user?.id || user?.user_id || user?.userId || user?.employeeId || user?.employee_id || user?.email || "");
@@ -1097,11 +1222,15 @@ function ReportsPage() {
 
   useEffect(() => {
     const nextDepartment = departments.includes(department) ? department : (departments[0] || "");
-    const nextSubDepartments = Object.keys(accessibleReportSources[nextDepartment] || {});
+    const nextSubDepartments = isAnalysisDepartment(nextDepartment)
+      ? getStatisticsSubDepartmentOptions()
+      : Object.keys(accessibleReportSources[nextDepartment] || {});
     const nextSubDepartment = nextSubDepartments.includes(subDepartment)
       ? subDepartment
       : (nextSubDepartments[0] || "");
-    const nextReportTypes = Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
+    const nextReportTypes = isAnalysisDepartment(nextDepartment)
+      ? Object.keys(accessibleReportSources[nextDepartment]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
+      : Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
     const nextReportType = nextReportTypes.includes(reportType) ? reportType : (nextReportTypes[0] || "");
 
     if (nextDepartment !== department) setDepartment(nextDepartment);
@@ -1119,7 +1248,7 @@ function ReportsPage() {
     const sourceFields = [...configuredFields, ...inferFields(rows)].filter(
       (field, index, list) =>
         field?.key &&
-        index === list.findIndex((item) => normalizeLookupKey(item?.key || item?.label) === normalizeLookupKey(field.key || field.label))
+        index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
     );
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
     return sourceFields.filter((field) => !selectedKeys.has(field.key));
@@ -1180,6 +1309,13 @@ function ReportsPage() {
     let isMounted = true;
     const loadSubDepartments = async () => {
       if (!department) return;
+      if (isAnalysisDepartment(department)) {
+        const nextSubDepartments = getStatisticsSubDepartmentOptions();
+        const nextSubDepartment = nextSubDepartments.includes(subDepartment) ? subDepartment : (nextSubDepartments[0] || "");
+        setBuilderOptions((current) => ({ ...current, sub_departments: nextSubDepartments, input_screens: [], input_fields: [] }));
+        setSubDepartment(nextSubDepartment);
+        return;
+      }
       try {
         const response = await fetchBuilderOptions({ department });
         if (!isMounted) return;
@@ -1205,6 +1341,15 @@ function ReportsPage() {
     let isMounted = true;
     const loadScreens = async () => {
       if (!department || !subDepartment) return;
+      if (isAnalysisDepartment(department)) {
+        setBuilderOptions((current) => ({
+          ...current,
+          input_screens: [TEAM_PERFORMANCE_REPORT_TYPE],
+          input_fields: [],
+        }));
+        setReportType(TEAM_PERFORMANCE_REPORT_TYPE);
+        return;
+      }
       try {
         const response = await fetchBuilderOptions({ department, sub_department: subDepartment });
         if (!isMounted) return;
@@ -1254,7 +1399,7 @@ function ReportsPage() {
       try {
         const schedules = await fetchReportSchedulesAPI(reportOwnerKey);
         if (isActive) {
-          setScheduledReports(schedules);
+          setScheduledReports(schedules.map(normalizeReportSchedule));
         }
       } catch {
         if (isActive) {
@@ -1313,16 +1458,21 @@ function ReportsPage() {
         const reportFetcher =
           reportSource?.fetcher ||
           (reportSource?.endpoint ? fetchEndpointRows.bind(null, reportSource.endpoint) : null);
+        const canonicalReport = normalizeReportSelection({
+          departmentName: department,
+          subDepartmentName: subDepartment,
+          typeName: reportType,
+        });
 
         const baseReportParams = {
           start_date: startDate,
           end_date: endDate,
-          department,
-          subDepartment,
-          sub_department: subDepartment,
-          reportType,
-          report_type: reportType,
-          input_screen: reportType,
+          department: canonicalReport.department,
+          subDepartment: canonicalReport.subDepartment,
+          sub_department: canonicalReport.subDepartment,
+          reportType: canonicalReport.reportType,
+          report_type: canonicalReport.reportType,
+          input_screen: canonicalReport.reportType,
         };
         const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
 
@@ -1535,20 +1685,21 @@ function ReportsPage() {
   };
 
   const loadScheduleRows = async (schedule) => {
+    const normalizedSchedule = normalizeReportSchedule(schedule);
     const scheduleSource =
-      accessibleReportSources[schedule.department]?.[schedule.subDepartment]?.[schedule.reportType];
+      accessibleReportSources[normalizedSchedule.department]?.[normalizedSchedule.subDepartment]?.[normalizedSchedule.reportType];
     const reportFetcher =
       scheduleSource?.fetcher ||
       (scheduleSource?.endpoint ? fetchEndpointRows.bind(null, scheduleSource.endpoint) : null);
     const baseScheduleParams = {
-      start_date: schedule.startDate,
-      end_date: schedule.endDate,
-      department: schedule.department,
-      subDepartment: schedule.subDepartment,
-      sub_department: schedule.subDepartment,
-      reportType: schedule.reportType,
-      report_type: schedule.reportType,
-      input_screen: schedule.reportType,
+      start_date: normalizedSchedule.startDate,
+      end_date: normalizedSchedule.endDate,
+      department: normalizedSchedule.department,
+      subDepartment: normalizedSchedule.subDepartment,
+      sub_department: normalizedSchedule.subDepartment,
+      reportType: normalizedSchedule.reportType,
+      report_type: normalizedSchedule.reportType,
+      input_screen: normalizedSchedule.reportType,
     };
     const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseScheduleParams, ...params });
     let scheduleRows = [];
@@ -1563,10 +1714,11 @@ function ReportsPage() {
       scheduleRows = await fetchAllReportRows(generalReportFetcher, baseScheduleParams);
     }
 
-    return filterRowsByScheduleDate(schedule, scheduleRows);
+    return filterRowsByScheduleDate(normalizedSchedule, scheduleRows);
   };
 
   const buildScheduleMailPayload = (schedule, reportRows = filteredRows) => {
+    const normalizedSchedule = normalizeReportSchedule(schedule);
     const reportFields = schedule.selectedFields?.length ? schedule.selectedFields : selectedFields;
     const otherRecipientProfiles = schedule.sendToOthers
       ? (schedule.recipientUsers || [])
@@ -1589,9 +1741,9 @@ function ReportsPage() {
     );
 
     const report = {
-      department: schedule.department,
-      subDepartment: schedule.subDepartment,
-      reportType: schedule.reportType,
+      department: normalizedSchedule.department,
+      subDepartment: normalizedSchedule.subDepartment,
+      reportType: normalizedSchedule.reportType,
       dateRange: {
         from: schedule.startDate || startDate,
         to: schedule.endDate || endDate,
@@ -1619,9 +1771,9 @@ function ReportsPage() {
         <p>I hope you are doing well.</p>
         <p>Please find attached the scheduled report <strong>${schedule.name}</strong> for your review.</p>
         <p>
-          <strong>Department:</strong> ${schedule.department}<br />
-          <strong>Sub Department:</strong> ${schedule.subDepartment}<br />
-          <strong>Type:</strong> ${schedule.reportType}<br />
+          <strong>Department:</strong> ${normalizedSchedule.department}<br />
+          <strong>Sub Department:</strong> ${normalizedSchedule.subDepartment}<br />
+          <strong>Type:</strong> ${normalizedSchedule.reportType}<br />
           <strong>Date Range:</strong> ${report.dateRange.from} to ${report.dateRange.to}<br />
           <strong>Total Rows:</strong> ${report.totalRows}
         </p>
@@ -1632,7 +1784,7 @@ function ReportsPage() {
 
     return {
       schedule: {
-        ...schedule,
+        ...normalizedSchedule,
         active: typeof schedule.active === "boolean" ? schedule.active : true,
       },
       mailPayload: {
@@ -1653,12 +1805,17 @@ function ReportsPage() {
   };
 
   const handleSaveSchedule = async () => {
+    const canonicalReport = normalizeReportSelection({
+      departmentName: department,
+      subDepartmentName: subDepartment,
+      typeName: reportType,
+    });
     const schedule = {
       id: editingScheduleId || `${Date.now()}`,
-      name: scheduleReportName.trim() || `${subDepartment} - ${reportType}`,
-      department,
-      subDepartment,
-      reportType,
+      name: scheduleReportName.trim() || `${canonicalReport.subDepartment} - ${canonicalReport.reportType}`,
+      department: canonicalReport.department,
+      subDepartment: canonicalReport.subDepartment,
+      reportType: canonicalReport.reportType,
       startDate,
       endDate,
       dateFilterActive,
@@ -1806,6 +1963,10 @@ function ReportsPage() {
       setScheduledReports((currentSchedules) =>
         currentSchedules.filter((schedule) => getScheduleRecordId(schedule) !== scheduleId)
       );
+      notifyAdminAction({
+        title: "Report schedule deleted",
+        body: "A scheduled report was deleted.",
+      });
     } catch (deleteError) {
       emitGlobalFailureModal({
         message: deleteError?.response?.data?.message || deleteError.message || "Schedule could not be deleted.",
@@ -1833,6 +1994,12 @@ function ReportsPage() {
   };
 
   const exportRows = filteredRows;
+  const activeReportDisplay = normalizeReportSelection({
+    departmentName: department,
+    subDepartmentName: subDepartment,
+    typeName: reportType,
+  });
+  const activeReportDisplayText = `${activeReportDisplay.department} / ${activeReportDisplay.subDepartment} / ${activeReportDisplay.reportType}`;
 
   const buildCsv = () => {
     const header = selectedFields.map((field) => field.label).join(",");
@@ -1846,19 +2013,45 @@ function ReportsPage() {
     return `${header}\n${body}`;
   };
 
-  const handleExportCsv = () => downloadFile("report.csv", buildCsv(), "text/csv;charset=utf-8");
+  const handleExportCsv = () => {
+    downloadFile("report.csv", buildCsv(), "text/csv;charset=utf-8");
+    notifyAdminAction({
+      title: "Report CSV exported",
+      body: `${activeReportDisplayText} report was exported as CSV.`,
+    });
+  };
 
-  const handleExportExcel = () => {
-    const tableRows = exportRows
-      .map(
-        (row) =>
-          `<tr>${selectedFields.map((field) => `<td>${getCellValue(row, field)}</td>`).join("")}</tr>`
-      )
-      .join("");
-    const table = `<table><thead><tr>${selectedFields
-      .map((field) => `<th>${field.label}</th>`)
-      .join("")}</tr></thead><tbody>${tableRows}</tbody></table>`;
-    downloadFile("report.xls", table, "application/vnd.ms-excel;charset=utf-8");
+  const handleExportExcel = async () => {
+    try {
+      const ExcelJS = await loadExcelJS();
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Spintelligence";
+      const sheet = workbook.addWorksheet("Report");
+      const fields = selectedFields.length ? selectedFields : [{ key: "__report_data", label: "Report Data" }];
+
+      sheet.addRow(fields.map((field) => field.label));
+      if (exportRows.length && selectedFields.length) {
+        exportRows.forEach((row) => {
+          sheet.addRow(fields.map((field) => getCellValue(row, field)));
+        });
+      } else {
+        sheet.addRow(["No report details found."]);
+      }
+
+      sheet.getRow(1).font = { bold: true };
+      sheet.columns = fields.map((field) => ({
+        header: field.label,
+        key: field.key,
+        width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
+      }));
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      downloadFile("report.xlsx", buffer, XLSX_MIME);
+    } catch (error) {
+      emitGlobalFailureModal({
+        message: error.message || "Excel export failed.",
+      });
+    }
   };
 
   const handleExportPdf = () => {
@@ -1887,7 +2080,7 @@ function ReportsPage() {
           </style>
         </head>
         <body>
-          <h1>${escapeHtmlText(department)} - ${escapeHtmlText(subDepartment)} - ${escapeHtmlText(reportType)}</h1>
+          <h1>${escapeHtmlText(activeReportDisplay.department)} - ${escapeHtmlText(activeReportDisplay.subDepartment)} - ${escapeHtmlText(activeReportDisplay.reportType)}</h1>
           <table>
             <thead><tr>${selectedFields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("")}</tr></thead>
             <tbody>${exportRows
@@ -1903,6 +2096,10 @@ function ReportsPage() {
     popup.document.close();
     popup.focus();
     popup.print();
+    notifyAdminAction({
+      title: "Report PDF exported",
+      body: `${activeReportDisplayText} report was exported as PDF.`,
+    });
   };
 
   return (
@@ -1942,9 +2139,14 @@ function ReportsPage() {
                   value={department}
                   onChange={(event) => {
                     const nextDepartment = event.target.value;
-                    const nextSubDepartment = Object.keys(accessibleReportSources[nextDepartment] || {})[0] || "";
-                    const nextReportType =
-                      Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {})[0] || "";
+                    const nextSubDepartments = isAnalysisDepartment(nextDepartment)
+                      ? getStatisticsSubDepartmentOptions()
+                      : Object.keys(accessibleReportSources[nextDepartment] || {});
+                    const nextSubDepartment = nextSubDepartments[0] || "";
+                    const nextReportTypes = isAnalysisDepartment(nextDepartment)
+                      ? Object.keys(accessibleReportSources[nextDepartment]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT] || {})
+                      : Object.keys(accessibleReportSources[nextDepartment]?.[nextSubDepartment] || {});
+                    const nextReportType = nextReportTypes[0] || "";
 
                     setDepartment(nextDepartment);
                     setSubDepartment(nextSubDepartment);
@@ -1964,7 +2166,11 @@ function ReportsPage() {
                   onChange={(event) => {
                     const nextSubDepartment = event.target.value;
                     setSubDepartment(nextSubDepartment);
-                    setReportType(Object.keys(accessibleReportSources[department]?.[nextSubDepartment] || {})[0] || "");
+                    setReportType(
+                      isTeamPerformanceReport
+                        ? TEAM_PERFORMANCE_REPORT_TYPE
+                        : Object.keys(accessibleReportSources[department]?.[nextSubDepartment] || {})[0] || ""
+                    );
                   }}
                 >
                   {subDepartments.map((option) => (
@@ -2035,7 +2241,7 @@ function ReportsPage() {
 
           <section className={styles.contentGrid}>
             <aside className={styles.availableCard}>
-              <h2>{subDepartment} - {reportType}</h2>
+              <h2>{activeReportDisplay.subDepartment} - {activeReportDisplay.reportType}</h2>
               <h3>Available Fields</h3>
               <p>Drag or click the fields to add to report</p>
               <div className={styles.fieldList}>
@@ -2166,6 +2372,7 @@ function ReportsPage() {
             {scheduledReports.length ? (
               scheduledReports.map((schedule) => {
                 const scheduleId = getScheduleRecordId(schedule);
+                const displaySchedule = normalizeReportSchedule(schedule);
 
                 return (
                 <div className={styles.scheduledItem} key={scheduleId}>
@@ -2179,7 +2386,7 @@ function ReportsPage() {
                     <div className={styles.scheduledMeta}>
                       <span><FiClock /> {getScheduleTiming(schedule)}</span>
                       <span><FiUsers /> {getScheduleRecipient(schedule)}</span>
-                      <span><FiFilter /> {schedule.department} / {schedule.subDepartment} / {schedule.reportType}</span>
+                      <span><FiFilter /> {displaySchedule.department} / {displaySchedule.subDepartment} / {displaySchedule.reportType}</span>
                     </div>
                   </div>
                   <div className={styles.scheduledActions}>

@@ -1,5 +1,17 @@
 import apiConfig, { resolvedBaseUrl } from "./apiConfig";
 
+const normalizeSubmissionFrequencyList = (data) => {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.configs)) return data.configs;
+  if (Array.isArray(data?.thresholds)) return data.thresholds;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.configs)) return data.data.configs;
+  if (Array.isArray(data?.data?.thresholds)) return data.data.thresholds;
+  if (Array.isArray(data?.data?.rows)) return data.data.rows;
+  return [];
+};
+
 export const fetchSubmissionFrequencyConfigsAPI = async () => {
   try {
     const response = await apiConfig.get(
@@ -7,7 +19,7 @@ export const fetchSubmissionFrequencyConfigsAPI = async () => {
       {},
       { skipGlobalSuccessModal: true }
     );
-    return Array.isArray(response?.data?.configs) ? response.data.configs : [];
+    return normalizeSubmissionFrequencyList(response?.data);
   } catch (error) {
     if (error.request) {
       throw new Error(

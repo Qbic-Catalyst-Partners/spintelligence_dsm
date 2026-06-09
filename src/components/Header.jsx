@@ -1,16 +1,21 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiBell,
+    FiBookOpen,
+    FiBriefcase,
     FiCalendar,
+    FiCheck,
     FiChevronDown,
     FiChevronLeft,
+    FiClock,
     FiFileText,
     FiGrid,
     FiHeadphones,
+    FiHelpCircle,
     FiHome,
     FiLogOut,
     FiMoon,
@@ -28,16 +33,20 @@ import {
     hasReportAccess,
     hasSubDepartmentAccess,
     isFullAccessUser,
+    isSubmittedNotebookManagerUser,
     isSupervisorNavUser,
     routeDepartmentMap,
 } from "@/utils/accessControl";
 import { useThemeMode } from "@/utils/useThemeMode";
 import {
-    fetchAnalysisNotificationsApi,
     fetchAnalysisSubscriptionsApi,
-    markAnalysisNotificationReadApi,
     saveAnalysisSubscriptionApi,
 } from "@/apis/analysisApi";
+import {
+    fetchNotificationsApi,
+    markAllNotificationsReadApi,
+    markNotificationReadApi,
+} from "@/apis/notificationsApi";
 import styles from "../styles/header.module.css";
 
 const defaultNavLinks = [];
@@ -48,8 +57,9 @@ const sidebarLinks = [
     { href: "/departments/quality-control", label: "Sub-department", icon: FiGrid, section: "departments" },
     { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
     { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
+    { href: "/statistics-analysis", label: "Analytics Hub", icon: FiCalendar, section: "calendars" },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
-    { href: "/l1-analysis", label: "Insights & Analytics", icon: FiCalendar, section: "calendars" },
+    { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
     { href: "/reports", label: "Reports", icon: FiFileText, section: "reports" },
     { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true, section: "thresholds" },
     { href: "/settings", label: "Settings", icon: FiSettings, admin: true, section: "settings" },
@@ -73,12 +83,24 @@ const settingsLinks = [
 const ticketingLinks = [
     { href: "/operator", label: "L1 Ticketing System" },
     { href: "/supervisordashboard", label: "L2 Ticketing System" },
+    { href: "/l3-ticketing", label: "L3 Ticketing System" },
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
+const managementHubLinks = [
+    { href: "/submitted-notebooks", label: "Submitted Notebooks" },
+    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
+    { href: "/activity-log", label: "Activity Log" },
+];
 const analyticsHubLinks = [
-    { href: "/l1-analysis", label: "Statistics Analytics" },
-    { href: "/l2-analysis", label: "Team Performance" },
+    { href: "/statistics-analysis", label: "Statistics Analytics" },
+    {
+        label: "Team Performance",
+        children: [
+            { href: "/l1-analysis", label: "L1 Team Performance" },
+            { href: "/l2-analysis", label: "L2 Team Performance" },
+        ],
+    },
 ];
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
@@ -99,10 +121,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
     const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+    const [isManagementHubOpen, setIsManagementHubOpen] = useState(false);
     const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
-    const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
+    const [isAnalyticsHubOpen, setIsAnalyticsHubOpen] = useState(false);
+    const [isTeamPerformanceOpen, setIsTeamPerformanceOpen] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-    const [analysisNotifications, setAnalysisNotifications] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
     const [analysisSubscribed, setAnalysisSubscribed] = useState(true);
     const [notificationsLoading, setNotificationsLoading] = useState(false);
     const notificationMenuRef = useRef(null);
@@ -111,6 +136,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
+    const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
     const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const defaultTicketingRoute = getDefaultTicketingRoute(user);
@@ -149,7 +175,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         if (link.section === "tickets") {
             return hasTicketingHubAccess || visibleHrefSet.has("/operator");
         }
-        if (link.section === "calendars") {
+        if (link.section === "management") {
+            return hasSubmittedNotebookAccess;
+        }
+        if (link.section === "teamPerformance") {
             return hasAnalyticsHubAccess || visibleHrefSet.has("/l1-analysis") || visibleHrefSet.has("/l2-analysis");
         }
 
@@ -170,13 +199,28 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = hasSupervisorNavAccess
-        ? ticketingLinks.filter((link) =>
-            link.href === "/supervisordashboard" || link.href === "/ticket-calendar-l2"
-        )
-        : ticketingLinks;
+    const visibleTicketingLinks = ticketingLinks.filter((link) =>
+        link.href !== "/l3-ticketing" && link.href !== "/ticket-calendar"
+    );
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
+
+    const loadNotifications = useCallback(async ({ showLoading = false } = {}) => {
+        if (!user?.id) return;
+        if (showLoading) setNotificationsLoading(true);
+
+        try {
+            const notificationsRes = await fetchNotificationsApi({ page: 1, limit: 20 });
+            const rows = Array.isArray(notificationsRes?.notifications) ? notificationsRes.notifications : [];
+            setNotifications(rows);
+            setNotificationUnreadCount(Number(notificationsRes?.unread_count) || rows.filter((item) => item?.is_unread).length);
+        } catch {
+            setNotifications([]);
+            setNotificationUnreadCount(0);
+        } finally {
+            if (showLoading) setNotificationsLoading(false);
+        }
+    }, [user?.id]);
 
     const isActiveLink = (href) => {
         if (!href) {
@@ -213,6 +257,18 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         if (href === "/ticket-calendar-l2") {
             return currentPath === "/ticket-calendar-l2";
+        }
+
+        if (href === "/submitted-notebooks") {
+            return currentPath === "/submitted-notebooks";
+        }
+
+        if (href === "/submitted-notebook-threshold") {
+            return currentPath === "/submitted-notebook-threshold";
+        }
+
+        if (href === "/activity-log") {
+            return currentPath === "/activity-log";
         }
 
         if (href === "/settings") {
@@ -259,6 +315,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return nextIsOpen;
         });
     };
+    const handleManagementHubClick = () => {
+        setIsManagementHubOpen((isOpen) => {
+            const nextIsOpen = !isOpen;
+            if (nextIsOpen && router.asPath?.split("?")[0] !== "/submitted-notebooks") {
+                router.push("/submitted-notebooks");
+            }
+            return nextIsOpen;
+        });
+    };
     const handleReportsClick = () => {
         setIsReportsMenuOpen((isOpen) => {
             const nextIsOpen = !isOpen;
@@ -287,7 +352,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         let mounted = true;
         setNotificationsLoading(true);
 
-        Promise.all([fetchAnalysisNotificationsApi(), fetchAnalysisSubscriptionsApi()])
+        Promise.all([fetchNotificationsApi({ page: 1, limit: 20 }), fetchAnalysisSubscriptionsApi()])
             .then(([notificationsRes, subscriptionsRes]) => {
                 if (!mounted) return;
                 const rows = Array.isArray(notificationsRes?.notifications) ? notificationsRes.notifications : [];
@@ -295,12 +360,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                 const activeSubscription = subscriptions.find(
                     (item) => String(item?.channel || "").toLowerCase() === "app_push" && item?.is_active !== false
                 );
-                setAnalysisNotifications(rows);
+                setNotifications(rows);
+                setNotificationUnreadCount(Number(notificationsRes?.unread_count) || rows.filter((item) => item?.is_unread).length);
                 setAnalysisSubscribed(Boolean(activeSubscription));
             })
             .catch(() => {
                 if (!mounted) return;
-                setAnalysisNotifications([]);
+                setNotifications([]);
+                setNotificationUnreadCount(0);
             })
             .finally(() => {
                 if (mounted) setNotificationsLoading(false);
@@ -311,15 +378,66 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         };
     }, [user?.id]);
 
-    const unreadCount = analysisNotifications.filter((item) => !item?.is_read).length;
+    useEffect(() => {
+        if (!user?.id) return undefined;
+        const intervalId = window.setInterval(() => {
+            loadNotifications();
+        }, 30000);
 
-    const handleMarkNotificationRead = async (notificationId) => {
-        if (!notificationId) return;
+        return () => window.clearInterval(intervalId);
+    }, [loadNotifications, user?.id]);
+
+    useEffect(() => {
+        if (isNotificationsOpen) {
+            loadNotifications({ showLoading: true });
+        }
+    }, [isNotificationsOpen, loadNotifications]);
+
+    useEffect(() => {
+        if (!user?.id) return undefined;
+
+        const handleAdminNotificationCreated = () => {
+            loadNotifications();
+        };
+
+        window.addEventListener("admin-notification-created", handleAdminNotificationCreated);
+        return () => window.removeEventListener("admin-notification-created", handleAdminNotificationCreated);
+    }, [loadNotifications, user?.id]);
+
+    const unreadCount = notificationUnreadCount;
+
+    const handleMarkNotificationRead = async (notification) => {
+        if (!notification?.id || !notification?.source) return;
+        const targetUrl = notification?.link_url || "/activity-log";
         try {
-            await markAnalysisNotificationReadApi(notificationId);
-            setAnalysisNotifications((current) =>
-                current.map((item) => (item.id === notificationId ? { ...item, is_read: true } : item))
+            await markNotificationReadApi({ source: notification.source, id: notification.id });
+            setNotifications((current) =>
+                current.map((item) => (
+                    item.id === notification.id && item.source === notification.source
+                        ? { ...item, is_unread: false, status: "READ", read_at: item.read_at || new Date().toISOString() }
+                        : item
+                ))
             );
+            setNotificationUnreadCount((current) => Math.max(0, current - (notification?.is_unread ? 1 : 0)));
+            setIsNotificationsOpen(false);
+            router.push(targetUrl);
+        } catch {
+            // no-op for non-blocking UX
+        }
+    };
+
+    const handleMarkAllNotificationsRead = async () => {
+        try {
+            await markAllNotificationsReadApi();
+            setNotifications((current) =>
+                current.map((item) => ({
+                    ...item,
+                    is_unread: false,
+                    status: "READ",
+                    read_at: item.read_at || new Date().toISOString(),
+                }))
+            );
+            setNotificationUnreadCount(0);
         } catch {
             // no-op for non-blocking UX
         }
@@ -363,7 +481,17 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/ticket-calendar" ||
             currentPath === "/ticket-calendar-l2"
         );
-        setOpenAnalyticsHub(
+        setIsManagementHubOpen(
+            currentPath === "/submitted-notebooks" ||
+            currentPath === "/submitted-notebook-threshold" ||
+            currentPath === "/activity-log"
+        );
+        setIsAnalyticsHubOpen(
+            currentPath === "/statistics-analysis" ||
+            currentPath === "/l1-analysis" ||
+            currentPath === "/l2-analysis"
+        );
+        setIsTeamPerformanceOpen(
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );
@@ -423,7 +551,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         const currentPath = router.asPath?.split("?")[0] || router.pathname;
                         const isThresholdGroup = link.section === "thresholds";
                         const isTicketingGroup = link.section === "tickets";
+                        const isManagementGroup = link.section === "management";
                         const isReportsGroup = link.section === "reports";
+                        const isAnalyticsHubGroup = link.section === "calendars";
                         const isThresholdGroupActive = isThresholdGroup && (
                             currentPath === "/threshold-values" ||
                             currentPath.startsWith("/threshold-values/") ||
@@ -435,10 +565,20 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath.startsWith("/operator/") ||
                             currentPath === "/operatordash" ||
                             currentPath.startsWith("/operatordetail") ||
-                            currentPath === "/supervisordashboard" ||
-                            currentPath === "/supervisordetails" ||
-                            currentPath === "/ticket-calendar" ||
-                            currentPath === "/ticket-calendar-l2"
+            currentPath === "/supervisordashboard" ||
+            currentPath === "/supervisordetails" ||
+            currentPath === "/ticket-calendar" ||
+            currentPath === "/ticket-calendar-l2"
+        );
+                        const isManagementGroupActive = isManagementGroup && (
+                            currentPath === "/submitted-notebooks" ||
+                            currentPath === "/submitted-notebook-threshold" ||
+                            currentPath === "/activity-log"
+                        );
+                        const isAnalyticsHubGroupActive = isAnalyticsHubGroup && (
+                            currentPath === "/statistics-analysis" ||
+                            currentPath === "/l1-analysis" ||
+                            currentPath === "/l2-analysis"
                         );
                         const isReportsGroupActive = isReportsGroup && (
                             currentPath === "/reports" ||
@@ -449,9 +589,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                 ? isThresholdGroupActive
                                 : isTicketingGroup
                                     ? isTicketingGroupActive
-                                    : isReportsGroup
-                                        ? isReportsGroupActive
-                                    : isActiveLink(link.href))
+                                    : isManagementGroup
+                                        ? isManagementGroupActive
+                                        : isAnalyticsHubGroup
+                                            ? isAnalyticsHubGroupActive
+                                            : isReportsGroup
+                                                ? isReportsGroupActive
+                                                : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
                         }`;
@@ -595,30 +739,92 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                 </div>
                             );
                         }
-                        if (link.section === "calendars" && hasFullAccess) {
+                        if (link.section === "management" && hasSubmittedNotebookAccess) {
                             return (
                                 <div key={link.href} className={styles["side-nav-group"]}>
                                     <button
                                         type="button"
                                         className={`${linkClassName} ${styles["side-nav-button"]}`}
-                                        aria-expanded={openAnalyticsHub}
-                                        title={isSidebarCollapsed ? "Analytics Hub" : undefined}
-                                        onClick={() => setOpenAnalyticsHub((v) => !v)}
+                                        aria-expanded={isManagementHubOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={handleManagementHubClick}
                                     >
-                                        <FiCalendar className={styles["side-nav-icon"]} />
-                                        <span className={styles["side-nav-label"]}>Analytics Hub</span>
-                                        <FiChevronDown className={`${styles["department-chevron"]} ${openAnalyticsHub ? styles["department-chevron-open"] : ""}`} />
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isManagementHubOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
-                                    <div className={`${styles["side-subnav"]} ${openAnalyticsHub ? styles["side-subnav-open"] : ""}`}>
-                                        {analyticsHubLinks.map((item) => (
+                                    <div className={`${styles["side-subnav"]} ${isManagementHubOpen ? styles["side-subnav-open"] : ""}`}>
+                                        {managementHubLinks.map((managementLink) => (
                                             <Link
-                                                key={item.href}
-                                                href={item.href}
-                                                className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
+                                                key={managementLink.href}
+                                                href={managementLink.href}
+                                                className={`${styles["side-subnav-link"]} ${isActiveLink(managementLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
-                                                {item.label}
+                                                {managementLink.label}
                                             </Link>
                                         ))}
+                                    </div>
+                                </div>
+                            );
+                        }
+                        if (link.section === "calendars" && hasAnalyticsHubAccess) {
+                            return (
+                                <div key={link.href} className={styles["side-nav-group"]}>
+                                    <button
+                                        type="button"
+                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
+                                        aria-expanded={isAnalyticsHubOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={() => {
+                                            setIsAnalyticsHubOpen((v) => !v);
+                                            if (!isAnalyticsHubOpen && router.asPath?.split("?")[0] !== "/statistics-analysis") {
+                                                router.push("/statistics-analysis");
+                                            }
+                                        }}
+                                    >
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isAnalyticsHubOpen ? styles["department-chevron-open"] : ""}`} />
+                                    </button>
+                                    <div className={`${styles["side-subnav"]} ${isAnalyticsHubOpen ? styles["side-subnav-open"] : ""}`}>
+                                        {analyticsHubLinks.map((item) => {
+                                            if (item.children) {
+                                                const isTeamPerformanceActive = item.children.some((child) => isActiveLink(child.href));
+
+                                                return (
+                                                    <div key={item.label} className={styles["side-subnav-group"]}>
+                                                        <button
+                                                            type="button"
+                                                            className={`${styles["side-subnav-link"]} ${styles["side-subnav-button"]} ${isTeamPerformanceActive ? styles["side-subnav-active"] : ""}`}
+                                                            aria-expanded={isTeamPerformanceOpen}
+                                                            onClick={() => setIsTeamPerformanceOpen((isOpen) => !isOpen)}
+                                                        >
+                                                            <span>{item.label}</span>
+                                                            <FiChevronDown className={`${styles["side-subnav-chevron"]} ${isTeamPerformanceOpen ? styles["department-chevron-open"] : ""}`} />
+                                                        </button>
+                                                        <div className={`${styles["side-nested-subnav"]} ${isTeamPerformanceOpen ? styles["side-nested-subnav-open"] : ""}`}>
+                                                            {item.children.map((child) => (
+                                                                <Link
+                                                                    key={child.href}
+                                                                    href={child.href}
+                                                                    className={`${styles["side-subnav-link"]} ${styles["side-nested-subnav-link"]} ${isActiveLink(child.href) ? styles["side-subnav-active"] : ""}`}
+                                                                >
+                                                                    {child.label}
+                                                                </Link>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return (
+                                                <Link
+                                                    key={`${item.href}-${item.label}`}
+                                                    href={item.href}
+                                                    className={`${styles["side-subnav-link"]} ${isActiveLink(item.href) ? styles["side-subnav-active"] : ""}`}
+                                                >
+                                                    {item.label}
+                                                </Link>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );
@@ -662,23 +868,32 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     {isNotificationsOpen && (
                         <div className={styles["notification-dropdown"]}>
                             <div className={styles["notification-header"]}>
-                                <strong>Analysis Notifications</strong>
-                                <button type="button" onClick={handleToggleAnalysisSubscription}>
-                                    {analysisSubscribed ? "Mute" : "Unmute"}
-                                </button>
+                                <strong>Notifications</strong>
+                                <div className={styles["notification-actions"]}>
+                                    <button type="button" onClick={handleMarkAllNotificationsRead} disabled={!unreadCount}>
+                                        <FiCheck />
+                                        <span>Read all</span>
+                                    </button>
+                                    <button type="button" onClick={handleToggleAnalysisSubscription}>
+                                        {analysisSubscribed ? "Mute" : "Unmute"}
+                                    </button>
+                                </div>
                             </div>
                             {notificationsLoading ? (
                                 <p className={styles["notification-empty"]}>Loading...</p>
-                            ) : analysisNotifications.length ? (
+                            ) : notifications.length ? (
                                 <div className={styles["notification-list"]}>
-                                    {analysisNotifications.slice(0, 12).map((item) => (
+                                    {notifications.slice(0, 12).map((item) => (
                                         <button
                                             type="button"
-                                            key={item.id}
-                                            className={`${styles["notification-item"]} ${item?.is_read ? styles["notification-read"] : ""}`}
-                                            onClick={() => handleMarkNotificationRead(item.id)}
+                                            key={`${item.source}-${item.id}`}
+                                            className={`${styles["notification-item"]} ${item?.is_unread ? "" : styles["notification-read"]}`}
+                                            onClick={() => handleMarkNotificationRead(item)}
                                         >
-                                            <span className={styles["notification-title"]}>{item?.title || "Notification"}</span>
+                                            <span className={styles["notification-item-header"]}>
+                                                <span className={styles["notification-title"]}>{item?.title || "Notification"}</span>
+                                                <span className={styles["notification-source"]}>{item?.source === "ticket" ? "Ticket" : "Analysis"}</span>
+                                            </span>
                                             <span className={styles["notification-body"]}>{item?.body || "-"}</span>
                                         </button>
                                     ))}
@@ -719,6 +934,28 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
                     {isProfileMenuOpen && (
                         <div className={styles["profile-dropdown"]}>
+                            <button
+                                type="button"
+                                className={styles["profile-dropdown-button"]}
+                                onClick={() => {
+                                    setIsProfileMenuOpen(false);
+                                    router.push("/glossary");
+                                }}
+                            >
+                                <FiFileText />
+                                <span>Glossary</span>
+                            </button>
+                            <button
+                                type="button"
+                                className={styles["profile-dropdown-button"]}
+                                onClick={() => {
+                                    setIsProfileMenuOpen(false);
+                                    router.push("/faqs");
+                                }}
+                            >
+                                <FiHelpCircle />
+                                <span>FAQs</span>
+                            </button>
                             <button type="button" className={styles["logout-button"]} onClick={handleLogout}>
                                 <FiLogOut />
                                 <span>Logout</span>

@@ -10,9 +10,9 @@ const getAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const emitFetchSuccess = () => {
+const emitFetchSuccess = (message = "Data Submitted") => {
   emitGlobalSuccessModal({
-    message: "Data Submitted",
+    message,
   });
 };
 
@@ -70,7 +70,7 @@ export const deleteUserAPI = async (id) => {
       ...getAuthHeaders(),
     },
   });
-  if (res.ok) emitFetchSuccess();
+  if (res.ok) emitFetchSuccess(`Account ${String(status || "").toLowerCase()}`);
   return res;
 };
 

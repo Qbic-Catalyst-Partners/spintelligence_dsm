@@ -13,6 +13,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const blowroomTypes = [
@@ -27,7 +28,7 @@ export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
 const today = new Date().toISOString().split("T")[0];
 const BLOWROOM_ENTRY_ID_CONFIG = {
   "Blow Room Sync": { prefix: "BRS", width: 4, routePath: "/blowroom/sync" },
-  "Process Parameter": { prefix: "BPP", width: 4, routePath: "/blowroom/process-parameters" },
+  "Process Parameter": { prefix: "PP", width: 4, routePath: "/blowroom/header" },
   "BR Waste Study Entry": { prefix: "BWS", width: 4, routePath: "/blowroom/br-waste-study" },
   "Drop Test Data Entry": { prefix: "BDT", width: 4, routePath: "/blowroom/drop-test" },
 };
@@ -124,6 +125,16 @@ function BlowRoom() {
     setShowPreview(false);
     try {
       await childRef.current?.submit?.();
+      await recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Blow Room",
+        notebookName: selectedTypeName,
+        entryId,
+        lotNo,
+        childRef,
+        previewItems,
+        user,
+      });
       await reserveEntryId();
       setShowSuccess(true);
     } catch (e) {

@@ -86,7 +86,7 @@ const rolesSlice = createSlice({
     });
 
     createReducerHelpers(builder, fetchScreens, (state, action) => {
-      state.screens = action.payload;
+      state.screens = action.payload.screens || action.payload;
     });
 
     createReducerHelpers(builder, fetchDepartments, (state, action) => {
