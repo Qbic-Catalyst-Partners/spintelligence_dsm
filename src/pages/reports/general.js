@@ -29,6 +29,12 @@ const titleCase = (value) =>
     .trim()
     .replace(/\b\w/g, (match) => match.toUpperCase());
 
+const normalizeLookup = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
 const inferFields = (rows) =>
   Array.from(
     new Set(
@@ -43,8 +49,51 @@ const toField = (fieldName) => {
   return label ? { key: label, label } : null;
 };
 
+const REPORT_FIELD_ALIASES = {
+  "Span Length (2.5%)": ["span_length", "spanLength"],
+  "Invisible Loss %": ["invisible_loss_percentage", "invisible_loss_percent", "invisibleLossPercent"],
+  "Trash Content %": ["trash_content_percentage", "trash_content_percent", "trashContentPercent"],
+  "Yellow + B": ["yellow_b", "yellowB"],
+  "TrCnt": ["trcnt", "tr_cnt", "trCnt"],
+  "TrAr": ["trar", "tr_ar", "trAr"],
+  "TrID": ["trid", "tr_id", "trID"],
+  "Colour Grade": ["colour_grade", "color_grade", "colourGrade", "colorGrade"],
+  "U%": ["u_percent", "uPercent"],
+  "CV%": ["cv_percent", "cvPercent"],
+};
+
+const getCanonicalFieldKey = (field) => {
+  const fieldKey = String(field?.key || field?.label || "").trim();
+  const matchedAlias = Object.entries(REPORT_FIELD_ALIASES).find(([label, aliases]) =>
+    [label, ...aliases].some((candidate) => normalizeLookup(candidate) === normalizeLookup(fieldKey))
+  );
+  return matchedAlias ? normalizeLookup(matchedAlias[0]) : normalizeLookup(fieldKey);
+};
+
+const uniqueReportFields = (fields) =>
+  (Array.isArray(fields) ? fields : []).filter((field, index, list) => {
+    const key = getCanonicalFieldKey(field);
+    return key && index === list.findIndex((item) => getCanonicalFieldKey(item) === key);
+  });
+
+const getReportFieldValue = (row, field) => {
+  const keys = [
+    field?.key,
+    field?.label,
+    ...(REPORT_FIELD_ALIASES[field?.label] || []),
+    ...(REPORT_FIELD_ALIASES[field?.key] || []),
+  ].filter(Boolean);
+
+  for (const key of keys) {
+    const value = getDashboardFieldValue(row, key);
+    if (value !== null && typeof value !== "undefined" && value !== "") return value;
+  }
+
+  return null;
+};
+
 const getCellValue = (row, field) => {
-  const value = getDashboardFieldValue(row, field.key);
+  const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
@@ -52,7 +101,7 @@ const getCellValue = (row, field) => {
 
 const getFieldsForType = (typeName, typeRows) => {
   const catalogFields = getThresholdFieldsForScreen(typeName).map(toField).filter(Boolean);
-  return catalogFields.length ? catalogFields : inferFields(typeRows);
+  return uniqueReportFields(catalogFields.length ? catalogFields : inferFields(typeRows));
 };
 
 const sanitizeFilenamePart = (value) =>

@@ -44,9 +44,13 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         if (!validate()) return;
         try {
             for (let i = 0; i < tufts.length; i++) {
+                const tuftEntryId = `${entryId || "BDT"}-${String(i + 1).padStart(2, "0")}`;
                 await dispatch(saveBlowroomDropTest({
-                    entry_id: `${entryId || "BDT"}-${String(i + 1).padStart(2, "0")}`,
+                    entry_id: tuftEntryId,
                     drop_id: entryId,
+                    dropId: entryId,
+                    drop_test_id: entryId,
+                    display_entry_id: tuftEntryId,
                     date,
                     variety: formData.variety,
                     blend: formData.blend,
@@ -312,7 +316,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
 
                             <div className={styles['mixxx-row']}>
                                 <div className={styles['mixx-group']}>
-                                    <label>Diff (Display Wt. - Actual Wt.)</label>
+                                    <label>Diff (Actual Wt. - Display Wt.)</label>
                                     <input
                                         className={styles['mixx-input']}
                                         value={tuft.diff}

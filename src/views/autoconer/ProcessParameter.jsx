@@ -5,6 +5,7 @@ import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import SearchableSelect from "@/components/SearchableSelect";
 
 import {
+  fetchAutoconerConsigneeMaster,
   fetchAutoconerProcessParameters,
   submitAutoconerProcessParameter,
   updateAutoconerProcessParameter,
@@ -214,7 +215,8 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions();
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("process-parameter");
+  const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
 
   const countOptions = useMemo(
     () =>
@@ -232,10 +234,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     () =>
       buildProcessParameterOptions(
         PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
-        versions.map((version) => version?.data?.consigneeName),
+        [
+          ...masterConsigneeOptions,
+          ...versions.map((version) => version?.data?.consigneeName),
+        ],
         form.consigneeName
       ),
-    [form.consigneeName, versions]
+    [form.consigneeName, masterConsigneeOptions, versions]
   );
 
   const loadVersions = async () => {
@@ -277,6 +282,18 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   useEffect(() => {
     loadVersions();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadConsigneeOptions = async () => {
+      const options = await fetchAutoconerConsigneeMaster({ screen: "process-parameter" });
+      if (active) setMasterConsigneeOptions(Array.isArray(options) ? options : []);
+    };
+    loadConsigneeOptions();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {

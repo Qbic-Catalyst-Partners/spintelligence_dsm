@@ -67,7 +67,7 @@ function Carding() {
     );
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-    const [currentDateLabel, setCurrentDateLabel] = useState("");
+    const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const typeOptions = filterOptionsByDepartmentAccess(
         cardingDepartmentTypes,
         accessByDepartment,
@@ -181,7 +181,7 @@ function Carding() {
             <div className={styles["card-container"]}>
                 <div className={styles["card-header"]}>
                     <h1>Quality Control - Carding Notebook</h1>
-          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
+          <div className="mt-2 text-right text-base font-bold text-slate-800 dark:text-white">Current Date: {currentDateLabel}</div>
                 </div>
 
                 <div className={styles["card-shell"]}>

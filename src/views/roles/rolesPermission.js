@@ -11,7 +11,7 @@ import { MdAdd } from "react-icons/md";
 import { FaIdCard, FaExclamationTriangle } from "react-icons/fa";
 import { FaIdCardClip } from "react-icons/fa6";
 import { BsExclamationCircle } from "react-icons/bs";
-import { FiX } from "react-icons/fi";
+import { FiChevronDown, FiX } from "react-icons/fi";
 import { updateRoleAPI } from "../../apis/rolesPermission";
 import { fetchRoles, deleteRole, clearError } from "../../store/slices/rolesSlice";
 
@@ -46,6 +46,7 @@ export default function RolesPermissions() {
     // Transform roles data
     const transformedRolesData = roleRows.map((role) => ({
         ...role,
+        id: role.id ?? role.role_id ?? role.roleId,
         status: typeof role.status === "boolean" ? (role.status ? "Active" : "Inactive") : role.status,
         screen_count: role.screen_count ?? "0/0",
     }));
@@ -226,6 +227,7 @@ export default function RolesPermissions() {
                                     <option key={roleName} value={roleName}>{roleName}</option>
                                 ))}
                             </select>
+                            <FiChevronDown className={styles["select-chevron"]} aria-hidden="true" />
                         </div>
                         <div className={`${styles["filter-select-wrapper"]} ${styles["dark-filter-control"]}`}>
                             <select
@@ -237,6 +239,7 @@ export default function RolesPermissions() {
                                 <option value="active">Active</option>
                                 <option value="inactive">Inactive</option>
                             </select>
+                            <FiChevronDown className={styles["select-chevron"]} aria-hidden="true" />
                         </div>
                         <button
                             className={styles["clear-Btn"]} onClick={handleClearFilters}>
@@ -303,7 +306,15 @@ export default function RolesPermissions() {
                                                 <div className={styles["action-menu"]}>
                                                     <div
                                                         className={styles["menu-item"]}
-                                                        onClick={() => router.push(`/editrole/${role.id}`)}
+                                                        onClick={() => {
+                                                            if (typeof window !== "undefined") {
+                                                                window.sessionStorage.setItem(
+                                                                    "editRoleDraft",
+                                                                    JSON.stringify(role)
+                                                                );
+                                                            }
+                                                            router.push(`/editrole/${role.id}`);
+                                                        }}
                                                     >
                                                         Edit
                                                     </div>

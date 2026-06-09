@@ -375,14 +375,18 @@ function TeamPerformanceFilter({
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const backendDepartments = normalizeOptions(options?.departments);
-  const backendSubDepartments = normalizeOptions(options?.sub_departments || options?.subDepartments);
   const departmentOptions = backendDepartments.length
     ? backendDepartments
     : departmentDirectory.map((department) => ({ label: department.name, value: department.slug }));
-  const subDepartments = selectedDepartment?.subDepartments || [];
-  const subDepartmentOptions = backendSubDepartments.length
-    ? backendSubDepartments
-    : subDepartments.map((subDepartment) => ({ label: subDepartment.name, value: subDepartment.slug }));
+  const qualityControlSubDepartments =
+    departmentDirectory.find((department) => department.slug === "quality-control")?.subDepartments || [];
+  const subDepartments = selectedDepartment?.subDepartments?.length
+    ? selectedDepartment.subDepartments
+    : qualityControlSubDepartments;
+  const subDepartmentOptions = subDepartments.map((subDepartment) => ({
+    label: subDepartment.name,
+    value: subDepartment.slug,
+  }));
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
@@ -408,7 +412,6 @@ function TeamPerformanceFilter({
           <select
             value={selectedSubDepartmentSlug}
             onChange={(event) => setSelectedSubDepartmentSlug(event.target.value)}
-            disabled={!selectedDepartmentSlug}
           >
             <option value="">All Sub Departments</option>
             {subDepartmentOptions.map((subDepartment) => (
@@ -559,7 +562,12 @@ function StatisticsAnalysisFilter({
         </label>
         <label className={styles.performanceSelectField} style={{ flex: 1, minWidth: "160px" }}>
           <span>Input Field</span>
-          <select value={inputField} onChange={(event) => setInputField(event.target.value)} disabled={!notebook}>
+          <select
+            className={styles.statisticsInputFieldSelect}
+            value={inputField}
+            onChange={(event) => setInputField(event.target.value)}
+            disabled={!notebook}
+          >
             <option value="">All Values</option>
             {inputFieldOptions.map((field) => (
               <option key={field} value={field}>

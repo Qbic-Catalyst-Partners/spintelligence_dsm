@@ -81,6 +81,17 @@ const getDrawFrameUniqueId = (sequence, type = "") => {
   });
 };
 
+const STATIC_BR_COTS_MACHINE_NAMES = [
+  "BR 01(SB20)",
+  "BR 02(TD 7-1)",
+  "BR 03(TD 7-2)",
+  "BR 04(TD 7-3)",
+  "BR 05(TD 7-4)",
+  "BR 06(TD 7-5)",
+  "BR 07(TD 7-6)",
+  "BR 08(TD 7-6)",
+  "BR 09(TD 7-6)",
+];
 const STATIC_FR_MACHINE_NAMES = ["FR (HSR 1000-2)", "FR (HSR 1000-1)"];
 
 const processTypeOptions = ["Breaker", "Finisher"];
@@ -134,7 +145,10 @@ const A_PERCENT_META_FIELDS = [
   { key: "process", label: "Process" },
   { key: "remark", label: "Remark" },
 ];
-const BREAKER_PREFIX = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIX || "DFB").trim().toUpperCase();
+const BREAKER_PREFIXES = String(process.env.NEXT_PUBLIC_DRAWFRAME_BREAKER_PREFIXES || "DFB,BR")
+  .split(",")
+  .map((v) => v.trim().toUpperCase())
+  .filter(Boolean);
 const FINISHER_PREFIXES = String(
   process.env.NEXT_PUBLIC_DRAWFRAME_FINISHER_PREFIXES || "DFF,FR"
 )
@@ -156,10 +170,17 @@ const createMachineEntry = (machineName = "") => ({
 });
 
 const matchesCotsTypePrefix = (machineName, processType) => {
-  const normalized = String(machineName || "").trim().toUpperCase();
+  const normalized = String(machineName || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
   if (!normalized) return false;
-  if (processType === "Breaker") return normalized.startsWith(BREAKER_PREFIX);
-  if (processType === "Finisher") return FINISHER_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+  if (processType === "Breaker") {
+    return BREAKER_PREFIXES.some((prefix) => normalized.startsWith(prefix.replace(/[^A-Z0-9]+/g, "")));
+  }
+  if (processType === "Finisher") {
+    return FINISHER_PREFIXES.some((prefix) => normalized.startsWith(prefix.replace(/[^A-Z0-9]+/g, "")));
+  }
   return true;
 };
 
@@ -755,6 +776,11 @@ function DrawFrame() {
     let isMounted = true;
 
     const loadCotsMachineNames = async () => {
+      if (form.processType === "Breaker") {
+        setMachineNameOptions([...STATIC_BR_COTS_MACHINE_NAMES]);
+        return;
+      }
+
       try {
         const machines = await fetchDrawFrameCotsMachineMaster({ subType: form.processType });
         const rawNames = machines
@@ -801,7 +827,9 @@ function DrawFrame() {
               : fallbackNames;
           setMachineNameOptions(nextFallbackNames);
         } catch (_fallbackError) {
-          setMachineNameOptions(form.processType === "Finisher" ? [...STATIC_FR_MACHINE_NAMES] : []);
+          setMachineNameOptions(
+            form.processType === "Finisher" ? [...STATIC_FR_MACHINE_NAMES] : [...STATIC_BR_COTS_MACHINE_NAMES]
+          );
         }
       }
     };

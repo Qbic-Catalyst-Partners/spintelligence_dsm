@@ -245,12 +245,12 @@
   width: 100%;
   margin: 0 0 24px;
   border: 1px solid #d9dde5;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #ffffff;
-  padding: 18px 26px;
+  padding: 20px 26px;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.035);
   display: flex;
-  align-items: end;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
   box-sizing: border-box;
@@ -515,6 +515,7 @@
 
 .statisticsControlsLeft {
   grid-template-columns: repeat(3, 166px);
+  align-items: end;
 }
 
 .performanceControlsRight {
@@ -583,24 +584,24 @@
 
 .performanceSelectField {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 
 .performanceSelectField span {
   color: #121826;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   text-align: left;
 }
 
 .performanceSelectField select {
-  height: 34px;
+  height: 42px;
   border: 1px solid #e4e9f2;
-  border-radius: 4px;
+  border-radius: 8px;
   background: #f8fbff;
   color: #202636;
-  padding: 0 12px;
-  font-size: 11px;
+  padding: 0 38px 0 14px;
+  font-size: 12px;
   font-weight: 700;
   outline: none;
 }
@@ -1109,6 +1110,7 @@
 }
 
 :global(:root[data-theme="dark"]) .statisticsFilterCard,
+:global(:root[data-theme="dark"]) .statisticsTopFilters,
 :global(:root[data-theme="dark"]) .departmentFilterCard,
 :global(:root[data-theme="dark"]) .performanceFilterCard,
 :global(:root[data-theme="dark"]) .performanceControlsCard,
@@ -1118,6 +1120,12 @@
   border-color: #5f5f5f;
   background: #3b3b3b;
   box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .statisticsTopFilters {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 :global(:root[data-theme="dark"]) .performanceTeamHeader,
@@ -1194,13 +1202,20 @@
 
 :global(:root[data-theme="dark"]) .performanceModeToggle,
 :global(:root[data-theme="dark"]) .performanceCurrentFilters {
-  background: #242424;
+  border: 1px solid #303030;
+  background: #171717;
 }
 
 :global(:root[data-theme="dark"]) .statisticsPeriod button,
 :global(:root[data-theme="dark"]) .performanceModeToggle button,
 :global(:root[data-theme="dark"]) .performanceCurrentFilters button {
-  color: #cbd5e1;
+  color: #e5e7eb;
+}
+
+:global(:root[data-theme="dark"]) .performanceModeToggle .performanceModeActive,
+:global(:root[data-theme="dark"]) .performanceCurrentFilters .statisticsPeriodActive {
+  background: #435aa6 !important;
+  color: #ffffff !important;
 }
 
 :global(:root[data-theme="dark"]) .statisticsDateField input {
@@ -1210,10 +1225,52 @@
 }
 
 :global(:root[data-theme="dark"]) .performanceSelectField select {
-  border-color: #5f5f5f;
-  background: #242424;
+  border-color: transparent;
+  background: #000000;
   color: #ffffff;
 }
+
+:global(:root[data-theme="dark"]) .performanceSelectField select:disabled {
+  border-color: transparent;
+  background: #000000;
+  color: #9ca3af;
+  opacity: 1;
+}
+
+:global(:root[data-theme="dark"]) .statisticsPage .performanceSelectField select,
+:global(:root[data-theme="dark"]) .statisticsPage .performanceSelectField select:disabled {
+  border-color: transparent !important;
+  background-color: #3b3b3b !important;
+  color: #ffffff;
+  box-shadow: none !important;
+}
+
+:global(:root[data-theme="dark"]) .statisticsPage .performanceSelectField {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:global(:root[data-theme="dark"]) .statisticsPage .performanceSelectField span {
+  display: inline-block;
+  width: max-content;
+  background: #000000 !important;
+  padding-right: 8px;
+}
+
+:global(:root[data-theme="dark"]) .statisticsPage .performanceSelectField select:disabled {
+  color: #9ca3af;
+}
+
+:global(:root[data-theme="dark"]) .statisticsPage .performanceSelectField select option {
+  background: #000000;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .statisticsPage .statisticsInputFieldSelect,
+:global(:root[data-theme="dark"]) .statisticsPage .statisticsInputFieldSelect:disabled {
+  background-color: #3b3b3b !important;
+}
+
 
 :global(:root[data-theme="dark"]) .dateTrigger,
 :global(:root[data-theme="dark"]) .dateWeekdays span {

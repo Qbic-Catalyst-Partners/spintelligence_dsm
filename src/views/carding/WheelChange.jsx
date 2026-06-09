@@ -7,7 +7,11 @@ import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
-import { fetchCardingMasterMachines, submitCardingChangeControlEntry } from "@/apis/carding";
+import {
+  fetchCardingChangeControlEntries,
+  fetchCardingMasterMachines,
+  submitCardingChangeControlEntry,
+} from "@/apis/carding";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -44,6 +48,26 @@ const trimValue = (value) => String(value ?? "").trim();
 const isNumericValue = (value) => hasValue(value) && Number.isFinite(Number(value));
 const getPayloadValue = (_row, value) => trimValue(value);
 
+const extractLatestEntry = (payload) => {
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.rows)
+      ? payload.rows
+      : Array.isArray(payload)
+        ? payload
+        : [];
+  return rows[0] || null;
+};
+
+const buildExistingValuesFromEntry = (entry) =>
+  parameterRows.reduce((record, row) => {
+    record[row.key] = {
+      existing: trimValue(entry?.[`${row.field}_proposed`] ?? entry?.[`${row.field}_existing`] ?? ""),
+      proposed: "",
+    };
+    return record;
+  }, {});
+
 function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
   const [testNo, setTestNo] = useState("");
@@ -59,6 +83,19 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [showSuccess, setShowSuccess] = useState(false);
   const [cdgOptions, setCdgOptions] = useState(DEFAULT_CDG_OPTIONS);
 
+  const loadLatestSaved = async () => {
+    const payload = await fetchCardingChangeControlEntries({ page: 1, limit: 1 });
+    const latest = extractLatestEntry(payload);
+    if (!latest) return null;
+
+    setCdoNo(trimValue(latest.cdg_no_proposed ?? latest.cdo_no ?? ""));
+    setProposedCdgNo("");
+    setValues(buildExistingValuesFromEntry(latest));
+    setRemarks("");
+    setErrors({});
+    return latest;
+  };
+
   useEffect(() => {
     const loadMachines = async () => {
       try {
@@ -69,6 +106,12 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       }
     };
     loadMachines();
+  }, []);
+
+  useEffect(() => {
+    loadLatestSaved().catch(() => {
+      // Keep an empty form when there is no previous Wheel Change entry yet.
+    });
   }, []);
 
   const previewItems = useMemo(
@@ -176,7 +219,15 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setEntryDate(getTodayDate());
     setCdoNo("");
     setProposedCdgNo("");
-    setValues(createValues());
+    setValues((current) =>
+      parameterRows.reduce((record, row) => {
+        record[row.key] = {
+          existing: current[row.key]?.existing || "",
+          proposed: "",
+        };
+        return record;
+      }, {})
+    );
     setRemarks("");
     setErrors({});
     setMessage("");
@@ -193,7 +244,9 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       await submitCardingChangeControlEntry(buildPayload());
       setShowPreview(false);
       setShowSuccess(true);
-      handleClear();
+      setTestNo("");
+      setEntryDate(getTodayDate());
+      await loadLatestSaved();
     } catch (error) {
       setShowPreview(false);
       setMessage(error?.response?.data?.message || error?.message || "Wheel Change could not be submitted.");

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchAutoconerCountMaster } from "@/apis/autoconer";
 
-const useAutoconerCountOptions = () => {
+const useAutoconerCountOptions = (screen = "") => {
   const [countOptions, setCountOptions] = useState([]);
   const [countOptionsError, setCountOptionsError] = useState("");
   const [loadingCountOptions, setLoadingCountOptions] = useState(false);
@@ -12,7 +12,7 @@ const useAutoconerCountOptions = () => {
     const loadCountOptions = async () => {
       setLoadingCountOptions(true);
       try {
-        const options = await fetchAutoconerCountMaster();
+        const options = await fetchAutoconerCountMaster({ screen });
         if (!active) return;
         setCountOptions(Array.isArray(options) ? options : []);
         setCountOptionsError("");
@@ -30,7 +30,7 @@ const useAutoconerCountOptions = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [screen]);
 
   return { countOptions, countOptionsError, loadingCountOptions };
 };

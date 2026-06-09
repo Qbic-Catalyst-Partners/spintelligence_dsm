@@ -199,11 +199,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = hasSupervisorNavAccess
-        ? ticketingLinks.filter((link) =>
-            link.href === "/supervisordashboard" || link.href === "/ticket-calendar-l2" || link.href === "/l3-ticketing"
-        )
-        : ticketingLinks;
+    const visibleTicketingLinks = ticketingLinks.filter((link) =>
+        link.href !== "/l3-ticketing" && link.href !== "/ticket-calendar"
+    );
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
