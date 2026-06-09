@@ -105,6 +105,7 @@ export default function SupervisorDetails() {
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
   const [l2Preview, setL2Preview] = useState(null);
+  const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
@@ -134,13 +135,16 @@ export default function SupervisorDetails() {
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
+    if (!l2PreviewLoaded) return;
+
     if (
+      !l2Preview &&
       !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dashboardTicket, dispatch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   useEffect(() => {
     let mounted = true;
@@ -174,6 +178,7 @@ export default function SupervisorDetails() {
     let mounted = true;
     const loadPreview = async () => {
       if (!requestedTicketId) return;
+      setL2PreviewLoaded(false);
       try {
         const response = await fetchL2TicketPreviewApi(requestedTicketId);
         if (!mounted) return;
@@ -195,6 +200,8 @@ export default function SupervisorDetails() {
         }
       } catch {
         if (mounted) setL2Preview(null);
+      } finally {
+        if (mounted) setL2PreviewLoaded(true);
       }
     };
     loadPreview();

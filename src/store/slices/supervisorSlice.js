@@ -10,9 +10,9 @@ import {
 // ✅ FETCH ALL TICKETS
 export const fetchSupervisorTickets = createAsyncThunk(
   "supervisor/fetchTickets",
-  async (_, { rejectWithValue }) => {
+  async (params = {}, { rejectWithValue }) => {
     try {
-      const data = await fetchSupervisorTicketsApi();
+      const data = await fetchSupervisorTicketsApi(params);
       return data;
     } catch (error) {
       return rejectWithValue(error.message);

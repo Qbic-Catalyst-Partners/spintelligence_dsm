@@ -89,7 +89,7 @@ const ticketingLinks = [
 ];
 const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },
-    { href: "/submitted-notebook-threshold", label: "Submitted Notebooks Threshold" },
+    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
     { href: "/activity-log", label: "Activity Log" },
 ];
 const analyticsHubLinks = [
