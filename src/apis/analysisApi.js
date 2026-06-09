@@ -44,6 +44,8 @@ export const fetchL2AnalysisApi = (params = {}) => requestAnalysisApi("/l2", par
 export const fetchAnalysisRankingApi = (params = {}) => requestAnalysisApi("/ranking", params);
 export const fetchTeamPerformanceAnalysisApi = (params = {}) =>
   requestAnalysisApi("/team-performance", params);
+export const fetchTeamPerformanceOptionsApi = () =>
+  requestAnalysisApi("/team-performance/options");
 export const saveAnalysisSnapshotApi = (payload = {}) => requestAnalysisApi("/snapshot", payload, "post");
 export const fetchAnalysisNotificationsApi = () => requestAnalysisApi("/notifications");
 export const markAnalysisNotificationReadApi = (id) => requestAnalysisApi(`/notifications/${id}/read`, {}, "patch");

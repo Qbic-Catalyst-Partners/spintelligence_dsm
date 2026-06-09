@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import { runOcrForDocument } from "@/apis/ocrApi";
 
 const wrappingTypes = ["Carding", "Drawing", "Simplex"];
+export const WRAPPING_INPUT_SCREEN_COUNT = wrappingTypes.length;
 const MACHINE_FIELDS = [
   "S.No",
   "Date",

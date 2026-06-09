@@ -407,18 +407,31 @@
 .rolepage-btnsave {
   min-height: 40px;
   padding: 8px 18px;
-  background: #197FE6;
-  color: #fff;
+  background: #197FE6 !important;
+  background-color: #197FE6 !important;
+  color: #fff !important;
   border-radius: 6px;
-  border: 1px solid #197FE6;
+  border: 1px solid #197FE6 !important;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+:global(.create-role-submit-button) {
+  background: #197FE6 !important;
+  background-color: #197FE6 !important;
+  border-color: #197FE6 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
 }
 
 .rolepage-btnsave:hover,
-.rolepage-btnsave:focus {
+.rolepage-btnsave:focus,
+:global(.create-role-submit-button:hover),
+:global(.create-role-submit-button:focus) {
   background: #126dcc;
+  background-color: #126dcc;
   border-color: #126dcc;
 }
 

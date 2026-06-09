@@ -867,6 +867,34 @@ select.dfk-type-select::-ms-expand {
   background-size: 18px 18px !important;
 }
 
+/* Keep Create Role submit button blue across role screens/themes. */
+.create-role-submit-button,
+.create-role-submit-button:hover,
+.create-role-submit-button:focus,
+:root[data-theme="dark"] .app-shell-content .create-role-submit-button,
+:root[data-theme="dark"] .app-shell-content .create-role-submit-button:hover,
+:root[data-theme="dark"] .app-shell-content .create-role-submit-button:focus,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .create-role-submit-button,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .create-role-submit-button:hover,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .create-role-submit-button:focus {
+  background: #197FE6 !important;
+  background-color: #197FE6 !important;
+  border-color: #197FE6 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+.create-role-submit-button:hover,
+.create-role-submit-button:focus,
+:root[data-theme="dark"] .app-shell-content .create-role-submit-button:hover,
+:root[data-theme="dark"] .app-shell-content .create-role-submit-button:focus,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .create-role-submit-button:hover,
+:root[data-theme="dark"][data-input-screen="true"] .app-shell-content .create-role-submit-button:focus {
+  background: #126dcc !important;
+  background-color: #126dcc !important;
+  border-color: #126dcc !important;
+}
+
 /* Keep OCR upload button blue across all screens/themes. */
 .upload-btn,
 .upload-btn:hover,

@@ -54,7 +54,7 @@ const TD7_ROWS = [
   { key: "blendPercent", label: "Blend %" },
   { key: "delHank", label: "Del-Hank" },
   { key: "feedHank", label: "Feed Hank" },
-  { key: "noOfEnds", label: "No. of Ends" },
+  { key: "noOfEnds", label: "No. of Ends" },    v   
   { key: "speed", label: "Speed" },
   { key: "totalDraftFormula", label: "Total Draft (Formula)", darkInput: true },
   { key: "totalDraftGear", label: "Total Draft from G1/G2 Combination" },
@@ -240,6 +240,12 @@ const buildValuesFromParameters = (parameters) => {
   return nextValues;
 };
 
+const getApiWheelChangeType = (wheelChangeType = "") =>
+  WHEEL_CHANGE_API_TYPES[wheelChangeType] || wheelChangeType;
+
+const getLineTypeForWheelChangeType = (wheelChangeType = "") =>
+  Object.entries(WHEEL_CHANGE_TYPES_BY_LINE).find(([, types]) => types.includes(wheelChangeType))?.[0] || "";
+
 const pickSavedRows = (entry) => {
   if (Array.isArray(entry?.parameters) && entry.parameters.length) return entry.parameters;
   if (entry?.parameters && !Array.isArray(entry.parameters)) return entry.parameters;
@@ -345,8 +351,13 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     );
   }, [date, draftLoaded, lineType, values, wheelChangeType]);
 
-  const loadLatestSaved = async () => {
-    const payload = await fetchDrawFrameWheelChangeEntries({ page: 1, limit: 1 });
+  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType) => {
+    const apiWheelChangeType = getApiWheelChangeType(requestedWheelChangeType);
+    const payload = await fetchDrawFrameWheelChangeEntries({
+      page: 1,
+      limit: 1,
+      wheelChangeType: apiWheelChangeType,
+    });
     const latest = extractLatestEntry(payload);
     if (!latest) return null;
 
@@ -354,9 +365,11 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       WHEEL_CHANGE_TYPES.includes(latest.wheel_change_type_label)
         ? latest.wheel_change_type_label
         : normalizeApiWheelChangeType(latest.wheel_change_type);
-    const savedLineType = String(latest.line_type || "");
+    const savedLineType =
+      String(latest.line_type || "") ||
+      getLineTypeForWheelChangeType(savedWheelChangeType || requestedWheelChangeType);
 
-    setWheelChangeType(savedWheelChangeType);
+    setWheelChangeType(savedWheelChangeType || requestedWheelChangeType);
     setLineType(savedLineType);
     setDate(toInputDate(latest.entry_date || latest.date || latest.created_at) || getTodayDate());
     setValues(buildValuesFromParameters(pickSavedRows(latest)));
@@ -370,6 +383,13 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       // Keep the local draft when the backend has no saved entry yet.
     });
   }, [draftLoaded]);
+
+  useEffect(() => {
+    if (!draftLoaded || !wheelChangeType) return;
+    loadLatestSaved(wheelChangeType).catch(() => {
+      // Keep current values when this wheel-change type has no saved entry yet.
+    });
+  }, [draftLoaded, wheelChangeType]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -465,7 +485,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       entry_id: entryId,
       type: selectedTypeName,
       line_type: lineType,
-      wheel_change_type: WHEEL_CHANGE_API_TYPES[wheelChangeType] || wheelChangeType,
+      wheel_change_type: getApiWheelChangeType(wheelChangeType),
       wheel_change_type_label: wheelChangeType,
       entry_date: date || getTodayDate(),
       date: date || getTodayDate(),

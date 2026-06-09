@@ -17,6 +17,7 @@ import {
   fetchL1AnalysisApi,
   fetchL2AnalysisApi,
   fetchStatisticsAnalyticsApi,
+  fetchTeamPerformanceAnalysisApi,
   fetchTeamPerformanceOptionsApi,
 } from "@/apis/analysisApi";
 import { getSubmissionTickets } from "@/apis/operatorApi";
@@ -370,6 +371,7 @@ function TeamPerformanceFilter({
   selectedUserId,
   setSelectedUserId,
   options = {},
+  showUserFilter = true,
 }) {
   const selectedDepartment = departmentDirectory.find((department) => department.slug === selectedDepartmentSlug);
   const backendDepartments = normalizeOptions(options?.departments);
