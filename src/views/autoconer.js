@@ -22,6 +22,7 @@ import styles from "@/styles/autoconer.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { clearAutoconerState } from "@/store/slices/autoconer";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 const autoconerTypes = [
   { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameter },
@@ -39,39 +40,25 @@ const autoconerTypes = [
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
-const AUTOCONER_ENTRY_SEQ_KEY = "autoconer_entry_sequence";
 const AUTOCONER_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "AP", storageKey: "autoconer_entry_sequence_process_parameter", width: 4 },
-  "PP - Autoconer Q2": { prefix: "A2", storageKey: "autoconer_entry_sequence_q2", width: 4 },
-  "PP - Autoconer Q3": { prefix: "A3", storageKey: "autoconer_entry_sequence_q3", width: 4 },
-  "Rewinding Study": { prefix: "ARW", storageKey: "autoconer_entry_sequence_rewinding" },
-  "Cone Density": { prefix: "ACD", storageKey: "autoconer_entry_sequence_cone_density" },
-  "Cone Packing Audit": { prefix: "ACP", storageKey: "autoconer_entry_sequence_cone_packing" },
-  "Lycra Checking": { prefix: "ALC", storageKey: "autoconer_entry_sequence_lycra_checking" },
-  "Count Wise Cuts Record": { prefix: "ACC", storageKey: "autoconer_entry_sequence_count_wise_cuts" },
-  "Splice Strength": { prefix: "ASS", storageKey: "autoconer_entry_sequence_splice_strength" },
-  "Drum wise Appearance": { prefix: "ADA", storageKey: "autoconer_entry_sequence_drum_appearance" },
-  "CSP Parameter Entries": { prefix: "ACS", storageKey: "autoconer_entry_sequence_csp_entries" },
-  "U% Parameter Entries": { prefix: "AUP", storageKey: "autoconer_entry_sequence_u_percent_entries" },
+  "Process Parameter": { prefix: "APP", width: 4, routePath: "/autoconer/process-parameters" },
+  "PP - Autoconer Q2": { prefix: "AQD", width: 4, routePath: "/autoconer/q2" },
+  "PP - Autoconer Q3": { prefix: "AQT", width: 4, routePath: "/autoconer/q3" },
+  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/rewinding-study" },
+  "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
+  "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
+  "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking" },
+  "Count Wise Cuts Record": { prefix: "ACW", width: 4, routePath: "/autoconer/count-wise-cuts" },
+  "Splice Strength": { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength" },
+  "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise-appearance" },
+  "CSP Parameter Entries": { prefix: "ACS", width: 4, routePath: "/autoconer/parameter-entries/pending-csp" },
+  "U% Parameter Entries": { prefix: "AUP", width: 4, routePath: "/autoconer/parameter-entries/pending-quality" },
 };
 
 const getAutoconerEntryConfig = (typeName) =>
   AUTOCONER_ENTRY_ID_CONFIG[typeName] || {
     prefix: "ACR",
-    storageKey: AUTOCONER_ENTRY_SEQ_KEY,
   };
-
-const getAutoconerEntryId = (seq, typeName) => {
-  const { prefix, width = 3 } = getAutoconerEntryConfig(typeName);
-  return `#${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(width, "0")}`;
-};
-
-const readAutoconerEntrySequence = (typeName) => {
-  if (typeof window === "undefined") return 1;
-  const { storageKey } = getAutoconerEntryConfig(typeName);
-  const stored = Number(window.localStorage.getItem(storageKey) || "1");
-  return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
 
 function Autoconer() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -96,15 +83,6 @@ function Autoconer() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
-  const [entrySeq, setEntrySeq] = useState(1);
-  const incrementEntrySequence = () => {
-    const nextSeq = entrySeq + 1;
-    setEntrySeq(nextSeq);
-    if (typeof window !== "undefined") {
-      const { storageKey } = getAutoconerEntryConfig(selectedType);
-      window.localStorage.setItem(storageKey, String(nextSeq));
-    }
-  };
   const selectedType = useMemo(
     () => typeOptions.find((item) => item.name === checkingType)?.name || "",
     [checkingType, typeOptions]
@@ -113,6 +91,11 @@ function Autoconer() {
     () => typeOptions.find((item) => item.name === checkingType)?.component || null,
     [checkingType, typeOptions]
   );
+  const { entryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Autoconer",
+    typeName: selectedType,
+    config: getAutoconerEntryConfig(selectedType),
+  });
   const isFooterHistoryType =
     selectedType === "Process Parameter" ||
     selectedType === "PP - Autoconer Q2" ||
@@ -153,7 +136,7 @@ function Autoconer() {
         ? await registeredActions.submit()
         : false;
     if (ok) {
-      incrementEntrySequence();
+      await reserveEntryId();
       setShowSuccess(true);
     }
   };
@@ -171,15 +154,6 @@ function Autoconer() {
       setCheckingType(typeOptions[0]?.name || "");
     }
   }, [checkingType, typeOptions]);
-
-  useEffect(() => {
-    if (!selectedType) {
-      setEntrySeq(1);
-      return;
-    }
-    setEntrySeq(readAutoconerEntrySequence(selectedType));
-  }, [selectedType]);
-
   return (
     <div className={styles.page}>
       <div className={styles.container}>
@@ -203,7 +177,7 @@ function Autoconer() {
                 onTypeChange={handleTypeChange}
                 types={typeOptions}
                 typeOptions={typeOptions.map((type) => type.name)}
-                entryId={getAutoconerEntryId(entrySeq, selectedType)}
+                entryId={entryId}
                 tablePortalTargetId="autoconer-table-slot"
                 savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}
                 postFooterPortalTargetId="autoconer-post-footer-slot"

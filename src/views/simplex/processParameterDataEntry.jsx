@@ -9,6 +9,7 @@ import {
   submitSimplexProcessParameterEntry,
   updateSimplexProcessParameterEntry,
 } from "@/apis/simplex";
+import useSimplexCountOptions from "@/hooks/useSimplexCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -47,7 +48,7 @@ const createDefaultForm = () => ({
 const cloneForm = (form) => ({ ...form });
 
 const topFieldClass =
-  "w-full h-[38px] px-3 py-2 border border-[#dbe4f0] rounded-lg !bg-[#F1F5F9] text-[14px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors dark:!bg-[#3b3b3b] dark:!border-[#5f5f5f] dark:!text-white";
+  "process-parameter-input w-full h-[38px] px-3 py-2 border border-[#dbe4f0] rounded-lg bg-[#F1F5F9] text-[14px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors";
 
 const fieldDefs = [
   { key: "machineNo", label: "Machine No." },
@@ -288,15 +289,18 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isMounted, setIsMounted] = useState(false);
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useSimplexCountOptions("process_parameter");
 
   const countOptions = useMemo(
     () =>
       buildProcessParameterOptions(
-        PROCESS_PARAMETER_COUNT_OPTIONS,
+        masterCountOptions.length
+          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+          : PROCESS_PARAMETER_COUNT_OPTIONS,
         versions.map((version) => version?.data?.countName),
         form.countName
       ),
-    [form.countName, versions]
+    [form.countName, masterCountOptions, versions]
   );
 
   const consigneeOptions = useMemo(
@@ -530,7 +534,13 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
               value={form.countName}
               onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
-              placeholder="Search or select count name"
+              placeholder={
+                loadingCountOptions
+                  ? "Loading count names..."
+                  : countOptionsError
+                    ? "Search or type count name"
+                    : "Search or select count name"
+              }
               ariaLabel="Count Name"
             />
           </div>

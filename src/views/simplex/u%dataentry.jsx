@@ -1,14 +1,9 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import {
-  STATIC_DEPARTMENT_OPTIONS,
-  STATIC_MC_NO_OPTIONS,
-  STATIC_SHIFT_OPTIONS,
-  STATIC_VARIETY_OPTIONS,
-} from "@/views/carding/u%dataentry";
+import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { getSimplexUqcEntries, submitSimplexUqc } from "@/store/slices/simplex";
 
 const initialForm = () => ({
@@ -26,8 +21,9 @@ const initialForm = () => ({
 
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
 const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
-const DEPARTMENT_OPTIONS = ["FR Drawing"];
-const MC_NO_OPTIONS = ["FR DSS-1"];
+const DEPARTMENT_OPTIONS = [{ dept_code: "", dept_name: "FR Drawing" }];
+const MC_NO_OPTIONS = [{ mc_no: "FR DSS-1", mc_name: "FR DSS-1", value: "FR DSS-1", label: "FR DSS-1", dept_code: "", dept_name: "" }];
+const VARIETY_OPTIONS = ["WPSF 0.90"];
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   { selectedTypeName, onTypeChange, typeOptions = [], entryId = "" },
@@ -39,6 +35,38 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     ...initialForm(),
   });
   const [errors, setErrors] = useState({});
+  const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
+  const [varietyOptions, setVarietyOptions] = useState(VARIETY_OPTIONS);
+  const [departmentOptions, setDepartmentOptions] = useState(DEPARTMENT_OPTIONS);
+  const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchSimplexUqcMasterDropdown()
+      .then((dropdown) => {
+        if (!active) return;
+        if (dropdown.shifts?.length) setShiftOptions(dropdown.shifts);
+        if (dropdown.varietyNames?.length) setVarietyOptions(dropdown.varietyNames);
+        if (dropdown.departments?.length) {
+          setDepartmentOptions(dropdown.departments);
+        } else if (dropdown.departmentNames?.length) {
+          setDepartmentOptions(dropdown.departmentNames.map((deptName) => ({ dept_code: "", dept_name: deptName })));
+        }
+        if (dropdown.mcNos?.length) setMcNoOptions(dropdown.mcNos);
+      })
+      .catch(() => {
+        if (!active) return;
+        setShiftOptions(SHIFT_OPTIONS);
+        setVarietyOptions(VARIETY_OPTIONS);
+        setDepartmentOptions(DEPARTMENT_OPTIONS);
+        setMcNoOptions(MC_NO_OPTIONS);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -158,7 +186,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             value={form.shift}
             onChange={(value) => handleChange("shift", value)}
             className={errors.shift ? styles.errorField : ""}
-            options={SHIFT_OPTIONS}
+            options={shiftOptions}
             placeholder="Select"
             ariaLabel="Shift"
           />
@@ -170,7 +198,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             value={form.variety}
             onChange={(value) => handleChange("variety", value)}
             className={errors.variety ? styles.errorField : ""}
-            options={["WPSF 0.90"]}
+            options={varietyOptions}
             placeholder="Select"
           />
         </div>
@@ -181,7 +209,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             value={form.department}
             onChange={(value) => handleChange("department", value)}
             className={errors.department ? styles.errorField : ""}
-            options={DEPARTMENT_OPTIONS}
+            options={departmentOptions.map((item) => item.dept_name)}
             placeholder="Select Department"
             ariaLabel="Department"
           />
@@ -193,7 +221,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             value={form.mc_no}
             onChange={(value) => handleChange("mc_no", value)}
             className={errors.mc_no ? styles.errorField : ""}
-            options={MC_NO_OPTIONS}
+            options={mcNoOptions.map((item) => ({
+              value: item.value || item.mc_no,
+              label: item.label || item.mc_name || item.mc_no,
+            }))}
             placeholder="Select MC No."
             ariaLabel="MC No."
           />

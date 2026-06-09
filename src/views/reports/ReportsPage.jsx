@@ -88,6 +88,15 @@ const fetchEndpointRows = async (endpoint, params = {}) => {
   return response.data;
 };
 
+const fetchGeneralReportDataRows = async (params = {}) => {
+  const response = await apiConfig.get(
+    "/reports/general-report/data",
+    { page: 1, limit: 500, ...params },
+    { skipGlobalErrorModal: true }
+  );
+  return response.data;
+};
+
 const formatAnalysisPercent = (value) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}%`;
 
 const getAnalysisDateParams = (params = {}) => {
@@ -1305,14 +1314,29 @@ function ReportsPage() {
           reportSource?.fetcher ||
           (reportSource?.endpoint ? fetchEndpointRows.bind(null, reportSource.endpoint) : null);
 
-        if (!reportFetcher) {
-          throw new Error("No report API configured for the selected type.");
-        }
-
-        const nextRows = await fetchAllReportRows(reportFetcher, {
+        const baseReportParams = {
           start_date: startDate,
           end_date: endDate,
-        });
+          department,
+          subDepartment,
+          sub_department: subDepartment,
+          reportType,
+          report_type: reportType,
+          input_screen: reportType,
+        };
+        const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
+
+        let nextRows = [];
+        if (reportFetcher) {
+          try {
+            nextRows = await fetchAllReportRows(reportFetcher, baseReportParams);
+          } catch (directError) {
+            nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams);
+          }
+        } else {
+          nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams);
+        }
+
         if (isActive && requestIdRef.current === requestId) {
           setRows(nextRows);
           setSelectedFields([]);
@@ -1516,15 +1540,29 @@ function ReportsPage() {
     const reportFetcher =
       scheduleSource?.fetcher ||
       (scheduleSource?.endpoint ? fetchEndpointRows.bind(null, scheduleSource.endpoint) : null);
-
-    if (!reportFetcher) {
-      throw new Error("This user does not have access to the scheduled report screen.");
-    }
-
-    const scheduleRows = await fetchAllReportRows(reportFetcher, {
+    const baseScheduleParams = {
       start_date: schedule.startDate,
       end_date: schedule.endDate,
-    });
+      department: schedule.department,
+      subDepartment: schedule.subDepartment,
+      sub_department: schedule.subDepartment,
+      reportType: schedule.reportType,
+      report_type: schedule.reportType,
+      input_screen: schedule.reportType,
+    };
+    const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseScheduleParams, ...params });
+    let scheduleRows = [];
+
+    if (reportFetcher) {
+      try {
+        scheduleRows = await fetchAllReportRows(reportFetcher, baseScheduleParams);
+      } catch (directError) {
+        scheduleRows = await fetchAllReportRows(generalReportFetcher, baseScheduleParams);
+      }
+    } else {
+      scheduleRows = await fetchAllReportRows(generalReportFetcher, baseScheduleParams);
+    }
+
     return filterRowsByScheduleDate(schedule, scheduleRows);
   };
 

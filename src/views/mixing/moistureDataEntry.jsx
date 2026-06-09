@@ -11,7 +11,7 @@ import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
 
-const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, selectedTypeName }, ref) {
+const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
@@ -53,6 +53,23 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
             setMoistureValues(Array(10).fill(''));
         }
     }, [actionSuccess, dispatch]);
+
+    useEffect(() => {
+        if (!selectedLotDetails && !lotNo) return;
+        setFormData((prev) => ({
+            ...prev,
+            partyLotNo: selectedLotDetails?.lot_no || lotNo || prev.partyLotNo,
+            variety: selectedLotDetails?.variety || prev.variety,
+            prNo: selectedLotDetails?.invoice_no || prev.prNo,
+        }));
+        setErrors((prev) => {
+            const next = { ...prev };
+            if (selectedLotDetails?.lot_no || lotNo) delete next.partyLotNo;
+            if (selectedLotDetails?.variety) delete next.variety;
+            if (selectedLotDetails?.invoice_no) delete next.prNo;
+            return next;
+        });
+    }, [lotNo, selectedLotDetails]);
 
     const buildPayload = () => ({
         entry_id:        entryId || undefined,

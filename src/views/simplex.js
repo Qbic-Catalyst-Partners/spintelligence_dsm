@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import PdfOcrTableEntry from "@/components/PdfOcrTableEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "@/views/simplex/processParameterDataEntry";
@@ -17,37 +18,28 @@ import {
   getSimplexUqcEntries,
 } from "@/store/slices/simplex";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 const simplexTypes = [
   { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
   { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
+  { id: 4, name: "Stretch %", aliases: ["Stretch %", "Stretch Percent", "Stretch Percentage"] },
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
-const SIMPLEX_ENTRY_SEQ_KEY = "simplex_entry_sequence";
 const SIMPLEX_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "SPP", storageKey: "simplex_entry_sequence_process_parameter" },
-  "SMXCots Change Data Entry": { prefix: "SCC", storageKey: "simplex_entry_sequence_smx_cots_change" },
-  "SMX Breaks Study Report": { prefix: "SBS", storageKey: "simplex_entry_sequence_breaks_study" },
-  "U% Data Entry": { prefix: "SUP", storageKey: "simplex_entry_sequence_u_percent" },
+  "Process Parameter": { prefix: "SPP", width: 4, routePath: "/simplex/process_parameter" },
+  "SMXCots Change Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
+  "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/study" },
+  "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
+  "Stretch %": { prefix: "STP",  },
+  "Wrapping Simplex Notebook": { prefix: "WSX" },
 };
 
 const getSimplexEntryConfig = (typeName) =>
-  SIMPLEX_ENTRY_ID_CONFIG[typeName] || { prefix: "SIM", storageKey: SIMPLEX_ENTRY_SEQ_KEY };
-
-const getSimplexEntryId = (seq, typeName) => {
-  const { prefix } = getSimplexEntryConfig(typeName);
-  return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
-
-const readSimplexEntrySequence = (typeName) => {
-  if (typeof window === "undefined") return 1;
-  const { storageKey } = getSimplexEntryConfig(typeName);
-  const stored = Number(window.localStorage.getItem(storageKey) || "1");
-  return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
+  SIMPLEX_ENTRY_ID_CONFIG[typeName] || { prefix: "SIM" };
 
 function Simplex() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -72,15 +64,6 @@ function Simplex() {
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
-  const [entrySeq, setEntrySeq] = useState(1);
-  const incrementEntrySequence = () => {
-    const nextSeq = entrySeq + 1;
-    setEntrySeq(nextSeq);
-    if (typeof window !== "undefined") {
-      const { storageKey } = getSimplexEntryConfig(selectedTypeName);
-      window.localStorage.setItem(storageKey, String(nextSeq));
-    }
-  };
   const { uqcEntries = [], cotsChangeEntries = [], listLoading } = useSelector(
     (state) => state.simplex ?? {}
   );
@@ -89,7 +72,13 @@ function Simplex() {
     () => typeOptions.find((item) => item.name === selectedTypeName) || null,
     [selectedTypeName, typeOptions]
   );
+  const { entryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Simplex",
+    typeName: selectedTypeName,
+    config: getSimplexEntryConfig(selectedTypeName),
+  });
   const SelectedComponent = selectedType?.component ?? null;
+  const isStretchPercent = selectedTypeName === "Stretch %";
   const entryTableTheme = {
     surface: isDarkMode ? "#050505" : "#fff",
     header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -103,12 +92,6 @@ function Simplex() {
     muted: isDarkMode ? "#ffffff" : "#64748b",
     accent: isDarkMode ? "#93c5fd" : "#1976d2",
   };
-
-  useEffect(() => {
-    if (!selectedTypeName) return;
-    setEntrySeq(readSimplexEntrySequence(selectedTypeName));
-  }, [selectedTypeName]);
-
   useEffect(() => {
     if (!typeOptions.some((item) => item.name === selectedTypeName)) {
       setSelectedTypeName(typeOptions[0]?.name || "");
@@ -140,7 +123,7 @@ function Simplex() {
     setShowPreview(false);
     const ok = await childRef.current?.submit?.();
     if (ok) {
-      incrementEntrySequence();
+      await reserveEntryId();
       setShowSuccess(true);
     }
   };
@@ -173,7 +156,7 @@ function Simplex() {
                     </span>
                     <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
                   </div>
-                  <InputScreenUploadButton />
+                  {selectedTypeName !== "Stretch %" ? <InputScreenUploadButton /> : null}
                 </div>
                 <div className="mb-6 h-px bg-slate-100" />
               </>
@@ -187,14 +170,24 @@ function Simplex() {
 
 
   
-            {SelectedComponent ? (
+            {isStretchPercent ? (
+              <PdfOcrTableEntry
+                ref={childRef}
+                selectedType={selectedTypeName}
+                onTypeChange={setSelectedTypeName}
+                typeOptions={typeOptions}
+                docType="strech"
+                tableTitle="Stretch PDF Values"
+                entryId={entryId}
+              />
+            ) : SelectedComponent ? (
               <SelectedComponent
                 key={selectedTypeName}
                 ref={childRef}
                 selectedTypeName={selectedTypeName}
                 onTypeChange={setSelectedTypeName}
                 typeOptions={typeOptions.map((type) => type.name)}
-                entryId={getSimplexEntryId(entrySeq, selectedTypeName)}
+                entryId={entryId}
                 tablePortalTargetId="simplex-report-table-slot"
               />
             ) : (

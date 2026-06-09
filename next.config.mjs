@@ -20,7 +20,22 @@ const nextConfig = {
   output: "export",
   reactStrictMode: true,
   allowedDevOrigins,
-  images: { unoptimized: true },
+  async rewrites() {
+    return [
+      {
+        source: "/operator/:ticketId",
+        destination: "/operatordetail?ticketId=:ticketId",
+      },
+      {
+        source: "/operatordetail/:ticketId",
+        destination: "/operatordetail?ticketId=:ticketId",
+      },
+      {
+        source: "/ocr-machine/api/ocr-json",
+        destination: "/api/ocr-machine/ocr-json",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

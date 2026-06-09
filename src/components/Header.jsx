@@ -64,6 +64,7 @@ const departmentLinks = [
     { href: "/simplex", label: "Simplex", department: "Simplex" },
     { href: "/spinning", label: "Spinning", department: "Spinning" },
     { href: "/autoconer", label: "Autoconer", department: "Autoconer" },
+    { href: "/departments/quality-control/wrapping", label: "Wrapping", department: "Wrapping" },
 ];
 
 const settingsLinks = [
@@ -83,6 +84,10 @@ const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
 ];
+const reportLinks = [
+    { href: "/reports/general", label: "General Report" },
+    { href: "/reports/custom", label: "Custom Report" },
+];
 
 const Header = ({ navLinks = defaultNavLinks }) => {
     const router = useRouter();
@@ -94,6 +99,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
     const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+    const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
     const [openAnalyticsHub, setOpenAnalyticsHub] = useState(false);
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
     const [analysisNotifications, setAnalysisNotifications] = useState([]);
@@ -253,6 +259,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return nextIsOpen;
         });
     };
+    const handleReportsClick = () => {
+        setIsReportsMenuOpen((isOpen) => {
+            const nextIsOpen = !isOpen;
+            if (nextIsOpen && !router.asPath?.split("?")[0]?.startsWith("/reports")) {
+                router.push("/reports/custom");
+            }
+            return nextIsOpen;
+        });
+    };
     useEffect(() => {
         const handlePointerDown = (event) => {
             if (!profileMenuRef.current?.contains(event.target)) {
@@ -359,6 +374,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath.startsWith("/submission-threshold/")
         );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
+        setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
     }, [router.asPath, router.pathname]);
 
     return (
@@ -407,6 +423,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         const currentPath = router.asPath?.split("?")[0] || router.pathname;
                         const isThresholdGroup = link.section === "thresholds";
                         const isTicketingGroup = link.section === "tickets";
+                        const isReportsGroup = link.section === "reports";
                         const isThresholdGroupActive = isThresholdGroup && (
                             currentPath === "/threshold-values" ||
                             currentPath.startsWith("/threshold-values/") ||
@@ -423,11 +440,17 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/ticket-calendar" ||
                             currentPath === "/ticket-calendar-l2"
                         );
+                        const isReportsGroupActive = isReportsGroup && (
+                            currentPath === "/reports" ||
+                            currentPath.startsWith("/reports/")
+                        );
                         const linkClassName = `${styles["side-nav-link"]} ${
                             (isThresholdGroup
                                 ? isThresholdGroupActive
                                 : isTicketingGroup
                                     ? isTicketingGroupActive
+                                    : isReportsGroup
+                                        ? isReportsGroupActive
                                     : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
@@ -510,6 +533,34 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(thresholdLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
                                                 {thresholdLink.label}
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        if (link.section === "reports") {
+                            return (
+                                <div key={link.href} className={styles["side-nav-group"]}>
+                                    <button
+                                        type="button"
+                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
+                                        aria-expanded={isReportsMenuOpen}
+                                        title={isSidebarCollapsed ? link.label : undefined}
+                                        onClick={handleReportsClick}
+                                    >
+                                        {content}
+                                        <FiChevronDown className={`${styles["department-chevron"]} ${isReportsMenuOpen ? styles["department-chevron-open"] : ""}`} />
+                                    </button>
+                                    <div className={`${styles["side-subnav"]} ${isReportsMenuOpen ? styles["side-subnav-open"] : ""}`}>
+                                        {reportLinks.map((reportLink) => (
+                                            <Link
+                                                key={reportLink.href}
+                                                href={reportLink.href}
+                                                className={`${styles["side-subnav-link"]} ${isActiveLink(reportLink.href) ? styles["side-subnav-active"] : ""}`}
+                                            >
+                                                {reportLink.label}
                                             </Link>
                                         ))}
                                     </div>

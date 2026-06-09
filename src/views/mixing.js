@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
 import FibreDataEntry from "./mixing/fibreDataEntry";
 import CustomInput from "@/components/CustomInput";
+import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import AfisDataEntry from "./mixing/afisDataEntry";
 import MoistureDataEntry from "./mixing/moistureDataEntry";
@@ -14,6 +15,8 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
+import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 
 const mixingDepartmentTypes = [
     {
@@ -40,29 +43,17 @@ const mixingDepartmentTypes = [
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
 
 const getCurrentDate = () => new Date().toISOString().split("T")[0];
-const MIXING_ENTRY_SEQ_KEY = "mixing_entry_sequence";
 const MIXING_ENTRY_ID_CONFIG = {
-    "Cotton HVI Data Entry": { prefix: "COT", storageKey: "mixing_entry_sequence_cotton_hvi" },
-    "Fibre Data Entry": { prefix: "FIB", storageKey: "mixing_entry_sequence_fibre" },
-    "AFIS Data Entry": { prefix: "AFI", storageKey: "mixing_entry_sequence_afis" },
-    "Moisture Data Entry": { prefix: "MOI", storageKey: "mixing_entry_sequence_moisture" },
-    "Openness Data Entry": { prefix: "OPN", storageKey: "mixing_entry_sequence_openness" },
+    "Cotton HVI Data Entry": { prefix: "COT", width: 4, routePath: "/mixing/cotton-hvi" },
+    "Fibre Data Entry": { prefix: "FIB", width: 4, routePath: "/mixing/fibre" },
+    "AFIS Data Entry": { prefix: "AFI", width: 4, routePath: "/mixing/afis" },
+    "Moisture Data Entry": { prefix: "MOI", width: 4, routePath: "/mixing/moisture" },
+    "Openness Data Entry": { prefix: "OPN", width: 4, routePath: "/mixing/openness" },
+    "Process Parameter": { prefix: "MIX", width: 4, routePath: "/mixing/qc" },
 };
 
 const getEntryConfigForType = (typeName) =>
-    MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX", storageKey: MIXING_ENTRY_SEQ_KEY };
-
-const getEntryIdFromSeq = (seq, typeName) => {
-    const { prefix } = getEntryConfigForType(typeName);
-    return `${prefix}-${String(Math.max(1, Number(seq) || 1)).padStart(3, "0")}`;
-};
-
-const readEntrySequence = (typeName) => {
-    if (typeof window === "undefined") return 1;
-    const { storageKey } = getEntryConfigForType(typeName);
-    const stored = Number(window.localStorage.getItem(storageKey) || "1");
-    return Number.isFinite(stored) && stored > 0 ? stored : 1;
-};
+    MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX" };
 
 function Mixing() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -81,28 +72,29 @@ function Mixing() {
     );
     const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
-    const [entrySeq, setEntrySeq] = useState(1);
     const [lotNo, setLotNo] = useState("");
+    const [selectedLotDetails, setSelectedLotDetails] = useState(null);
     const [mixingValue, setMixingValue] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
-    const [ocrBusy, setOcrBusy] = useState(false);
+    const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
-    const incrementEntrySequence = () => {
-        const nextSeq = entrySeq + 1;
-        setEntrySeq(nextSeq);
-        if (typeof window !== "undefined") {
-            const { storageKey } = getEntryConfigForType(selectedTypeName);
-            window.localStorage.setItem(storageKey, String(nextSeq));
-        }
-    };
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
     const isProcessParameter = selectedTypeName === "Process Parameter";
+    const shouldLoadLots = selectedType?.needsLotNo !== false && selectedTypeName !== "Openness Data Entry";
+    const { lotOptions, lotOptionsError, loadingLotOptions } = useMixingLotOptions(
+        shouldLoadLots ? selectedTypeName : ""
+    );
+    const { entryId, reserveEntryId } = useDatabaseEntryId({
+        department: "Mixing",
+        typeName: selectedTypeName,
+        config: getEntryConfigForType(selectedTypeName),
+    });
 
     useEffect(() => {
         if (!typeOptions.some((item) => item.name === selectedTypeName)) {
@@ -112,7 +104,7 @@ function Mixing() {
 
     useEffect(() => {
         if (actionSuccess) {
-            incrementEntrySequence();
+            reserveEntryId();
             setShowSuccess(true);
         }
     }, [actionSuccess]);
@@ -120,34 +112,50 @@ function Mixing() {
     useEffect(() => {
         setDate(getCurrentDate());
     }, [router.asPath]);
-
-    useEffect(() => {
-        setEntrySeq(readEntrySequence(selectedTypeName));
-    }, [selectedTypeName]);
-
     const handleTypeChange = (value) => {
         setSelectedTypeName(value);
         setLotNo("");
+        setSelectedLotDetails(null);
         setMixingValue("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
+    };
+
+    const handleLotChange = (value) => {
+        setLotNo(value);
+        setSelectedLotDetails(lotOptions.find((lot) => lot.lot_no === value || lot.value === value) || null);
+        setHeaderErrors((prev) => {
+            if (!prev.lotNo) return prev;
+            const next = { ...prev };
+            delete next.lotNo;
+            return next;
+        });
     };
 
     const handleClear = () => {
         setDate(getCurrentDate());
         setLotNo("");
+        setSelectedLotDetails(null);
         setMixingValue("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
     };
 
+    useEffect(() => {
+        if (!lotNo) {
+            setSelectedLotDetails(null);
+            return;
+        }
+        setSelectedLotDetails(lotOptions.find((lot) => lot.lot_no === lotNo || lot.value === lotNo) || null);
+    }, [lotNo, lotOptions]);
+
     const buildHeaderPreview = () => {
         const list = [
             { label: "Type", value: selectedTypeName },
         ];
-        if (!isProcessParameter) list.push({ label: "Entry ID", value: getEntryIdFromSeq(entrySeq, selectedTypeName) });
+        if (!isProcessParameter) list.push({ label: "Entry ID", value: entryId });
         if (selectedType?.needsLotNo !== false) {
             list.push({ label: "Lot No", value: lotNo });
         }
@@ -283,19 +291,35 @@ function Mixing() {
 
                                     <CustomInput
                                         label="Entry ID"
-                                        value={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                                        value={entryId}
                                         onChange={() => {}}
                                         disabled
                                     />
 
                                     {selectedType?.needsLotNo !== false && (
-                                        <CustomInput
-                                            label="Lot No"
-                                            placeholder="Enter Lot Number"
-                                            value={lotNo}
-                                            onChange={(value) => setLotNo(value)}
-                                            error={headerErrors.lotNo}
-                                        />
+                                        <div className="flex flex-col gap-1.5 min-w-0 w-full">
+                                            <label className="text-[14px] font-semibold text-slate-700 truncate">
+                                                Lot No
+                                            </label>
+                                            <SearchableSelect
+                                                className={`w-full h-9.5 px-3 py-2 rounded-lg text-[14px] focus:outline-none transition-colors ${
+                                                    headerErrors.lotNo
+                                                        ? "border border-red-500 focus:ring-2 focus:ring-red-400 focus:border-red-500"
+                                                        : "border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                                                }`}
+                                                value={lotNo}
+                                                onChange={handleLotChange}
+                                                options={lotOptions}
+                                                placeholder={
+                                                    loadingLotOptions
+                                                        ? "Loading lots..."
+                                                        : lotOptionsError
+                                                            ? "Type lot number"
+                                                            : "Select Lot Number"
+                                                }
+                                                ariaLabel="Lot No"
+                                            />
+                                        </div>
                                     )}
                                 </div>
 
@@ -303,8 +327,9 @@ function Mixing() {
                                     <SelectedComponent
                                         ref={childRef}
                                         date={date}
-                                        entryId={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                                        entryId={entryId}
                                         lotNo={lotNo}
+                                        selectedLotDetails={selectedLotDetails}
                                         mixing={mixingValue}
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}
@@ -322,7 +347,7 @@ function Mixing() {
                         <SelectedComponent
                             ref={childRef}
                             date={date}
-                            entryId={getEntryIdFromSeq(entrySeq, selectedTypeName)}
+                            entryId={entryId}
                             lotNo={lotNo}
                             mixing={mixingValue}
                             selectedTypeName={selectedTypeName}

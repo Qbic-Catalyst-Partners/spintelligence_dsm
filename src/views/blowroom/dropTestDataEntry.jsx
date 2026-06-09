@@ -19,7 +19,7 @@ const emptyTuft = () => ({
 const initialForm = { variety: '', blend: '' };
 
 const DropTestDataEntry = forwardRef(function DropTestDataEntry(
-    { date, entryId, lotNo, selectedTypeName, onTypeChange, onDateChange, onLotNoChange, typeOptions = [] },
+    { date, entryId, selectedTypeName, onTypeChange, onDateChange, typeOptions = [] },
     ref
 ) {
     const dispatch = useDispatch();
@@ -46,7 +46,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
             for (let i = 0; i < tufts.length; i++) {
                 await dispatch(saveBlowroomDropTest({
                     entry_id: `${entryId || "BDT"}-${String(i + 1).padStart(2, "0")}`,
-                    drop_id: lotNo,
+                    drop_id: entryId,
                     date,
                     variety: formData.variety,
                     blend: formData.blend,
@@ -75,7 +75,6 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const validate = () => {
         const nextErrors = {};
         if (!date) nextErrors.date = true;
-        if (!lotNo) nextErrors.lotNo = true;
         ["variety","blend"].forEach((k)=>{ if (!String(formData[k]||"").trim()) nextErrors[k]=true; });
         if (!numTufts || Number(numTufts) <=0) nextErrors.numTufts = true;
         tufts.forEach((tuft, idx)=>{
@@ -94,7 +93,6 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         getPreviewData: () => {
             const header = [
                 { label: "Type", value: selectedTypeName || "Drop Test Data Entry" },
-                { label: "Drop ID", value: lotNo },
                 { label: "Entry ID", value: entryId || "-" },
                 { label: "Variety", value: formData.variety },
                 { label: "Blend", value: formData.blend },
@@ -185,16 +183,6 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                             <option key={option.id || option.name} value={option.name}>{option.displayName ?? option.name}</option>
                         ))}
                     </select>
-                </div>
-
-                <div className={styles['mixx-group']}>
-                    <label>Drop ID</label>
-                    <input
-                        className={`${styles['mixx-input']} ${errors.lotNo ? styles['mixx-error'] : ''}`}
-                        value={lotNo}
-                        placeholder="Auto Generated"
-                        onChange={e => onLotNoChange?.(e.target.value)}
-                    />
                 </div>
 
                 <div className={styles['mixx-group']}>

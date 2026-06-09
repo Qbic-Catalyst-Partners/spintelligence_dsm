@@ -50,7 +50,7 @@ const TYPE_CONFIG = {
         placeholder: "Select Consignee Name",
         required: true,
       },
-      { key: "creationDate", label: "Unique", control: "entry-id-display", required: true },
+      { key: "creationDate", label: "Entry ID", control: "entry-id-display", required: true },
     ],
     middleRow: [
       { key: "make", label: "Make", required: true },
@@ -124,7 +124,7 @@ const TYPE_CONFIG = {
         placeholder: "Select Consignee Name",
         required: true,
       },
-      { key: "creationDate", label: "Unique", control: "entry-id-display", required: true },
+      { key: "creationDate", label: "Entry ID", control: "entry-id-display", required: true },
     ],
     middleRow: [
       { key: "make", label: "Make", required: true },

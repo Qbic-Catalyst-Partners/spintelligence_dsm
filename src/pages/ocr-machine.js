@@ -2,25 +2,82 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+const OCR_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || "").replace(/\/+$/, "");
+const OCR_ENDPOINT = OCR_BASE ? `${OCR_BASE}/ocr-machine/api/ocr` : "/api/ocr-machine/ocr";
 
 const DOC_TYPES = [
   { label: "HVI Data Entry", value: "hvi" },
   { label: "AFIS Data Entry", value: "afis" },
   { label: "Between & Within Card Data Entry", value: "bwc" },
+  { label: "Carding Wrapping", value: "carding" },
+  { label: "Drawing Wrapping", value: "drawing" },
+  { label: "Simplex Wrapping", value: "simplex" },
+];
+const MACHINE_DOC_TYPES = new Set(["carding", "drawing", "simplex"]);
+const MACHINE_FIELDS = [
+  "S.No",
+  "Date",
+  "ID",
+  "Mac Name",
+  "Shift",
+  "Std. Hank",
+  "Avg. Hank",
+  "SD",
+  "CV",
+  "User",
+  "Remark",
 ];
 
+const BWC_ENTRY_COUNT = 100;
+const BWC_SUBMIT_ENTRY_COUNT = 100;
 const BWC_FIELDS = [
-  "Sample Weight 1",
-  "Sample Weight 2",
-  "Sample Weight 3",
-  "Sample Weight 4",
-  "Sample Weight 5",
-  "Hank 1",
-  "Hank 2",
-  "Hank 3",
-  "Hank 4",
-  "Hank 5",
+  ...Array.from({ length: BWC_ENTRY_COUNT }, (_, i) => `Sample Weight ${i + 1}`),
+  ...Array.from({ length: BWC_ENTRY_COUNT }, (_, i) => `Hank ${i + 1}`),
 ];
+
+const getBwcReviewFields = (count) =>
+  Array.from({ length: Math.min(Math.max(1, Number(count) || 1), BWC_ENTRY_COUNT) }, (_, i) => [
+    `Sample Weight ${i + 1}`,
+    `Hank ${i + 1}`,
+  ]).flat();
+
+function countBwcEntries(values = {}) {
+  let count = 0;
+  for (let i = 1; i <= BWC_ENTRY_COUNT; i += 1) {
+    const sampleWeight = String(values[`Sample Weight ${i}`] || "").trim();
+    const hank = String(values[`Hank ${i}`] || "").trim();
+    if (sampleWeight || hank) count = i;
+  }
+  return count;
+}
+
+function normalizeBwcValues(source = {}) {
+  const values = {};
+  BWC_FIELDS.forEach((field) => {
+    values[field] = source[field] ?? "";
+  });
+
+  const sampleValues = [];
+  for (let i = 1; i <= BWC_ENTRY_COUNT; i += 1) {
+    const value = String(values[`Sample Weight ${i}`] || "").trim();
+    if (!value) break;
+    sampleValues.push(value);
+  }
+
+  const hasHankValues = Array.from({ length: BWC_ENTRY_COUNT }, (_, i) =>
+    String(values[`Hank ${i + 1}`] || "").trim()
+  ).some(Boolean);
+
+  if (!hasHankValues && sampleValues.length > 1 && sampleValues.length % 2 === 0) {
+    const half = sampleValues.length / 2;
+    for (let i = 1; i <= BWC_ENTRY_COUNT; i += 1) {
+      values[`Sample Weight ${i}`] = i <= half ? sampleValues[i - 1] : "";
+      values[`Hank ${i}`] = i <= half ? sampleValues[half + i - 1] : "";
+    }
+  }
+
+  return values;
+}
 
 export default function OcrMachinePage() {
   const router = useRouter();
@@ -43,7 +100,7 @@ export default function OcrMachinePage() {
   });
   const [isDark, setIsDark] = useState(false);
   const inferredDocType = useMemo(() => {
-    if (requestedDocType === "afis" || requestedDocType === "hvi" || requestedDocType === "bwc") return requestedDocType;
+    if (requestedDocType === "afis" || requestedDocType === "hvi" || requestedDocType === "bwc" || MACHINE_DOC_TYPES.has(requestedDocType)) return requestedDocType;
     const haystack = [
       returnTo,
       typeof router.query.type === "string" ? router.query.type : "",
@@ -53,6 +110,9 @@ export default function OcrMachinePage() {
       .join(" ")
       .toLowerCase();
     if (haystack.includes("between") && haystack.includes("within") && haystack.includes("card")) return "bwc";
+    if (haystack.includes("carding")) return "carding";
+    if (haystack.includes("drawing")) return "drawing";
+    if (haystack.includes("simplex")) return "simplex";
     if (haystack.includes("afis")) return "afis";
     return "hvi";
   }, [requestedDocType, returnTo, router.query.screen, router.query.type, router.query.type_category]);
@@ -107,7 +167,7 @@ export default function OcrMachinePage() {
       const form = new FormData();
       form.append("file", file);
       form.append("doc_type", docType);
-      const ocrUrl = `${API_BASE}/ocr-machine/api/ocr`;
+      const ocrUrl = OCR_ENDPOINT;
       const res = await fetch(ocrUrl, { method: "POST", body: form });
       if (!res.ok) {
         const errorText = await res.text();
@@ -154,18 +214,21 @@ export default function OcrMachinePage() {
       setRows(parsed);
       const first = parsed[0] || {};
       if (docType === "bwc") {
-        const bwcValues = {};
-        BWC_FIELDS.forEach((field) => {
-          bwcValues[field] = first[field] ?? "";
-        });
-        setFormValues(bwcValues);
+        setFormValues(normalizeBwcValues(first));
+      } else if (MACHINE_DOC_TYPES.has(docType)) {
+        setFormValues(
+          MACHINE_FIELDS.reduce((acc, field) => {
+            acc[field] = first[field] ?? "";
+            return acc;
+          }, {})
+        );
       } else {
         setFormValues(first);
       }
     } catch (e) {
       const isNetworkFailure = e instanceof TypeError && /fetch/i.test(e.message || "");
       const msg = isNetworkFailure
-        ? `Network error calling ${API_BASE}/ocr-machine/api/ocr. Check NEXT_PUBLIC_API_URL and backend availability.`
+        ? `Network error calling ${OCR_ENDPOINT}. Check backend availability.`
         : e.message || "OCR failed";
       setLogs((prev) => [...prev, msg]);
     } finally {
@@ -307,7 +370,7 @@ export default function OcrMachinePage() {
                 </div>
               ) : null}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-                {(docType === "bwc" ? BWC_FIELDS : Object.keys(formValues)).map((key) => (
+                {(docType === "bwc" ? getBwcReviewFields(countBwcEntries(formValues)) : MACHINE_DOC_TYPES.has(docType) ? MACHINE_FIELDS : Object.keys(formValues)).map((key) => (
                   <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>{key}</span>
                     <input
@@ -322,7 +385,9 @@ export default function OcrMachinePage() {
                 <button onClick={() => { setRows([]); setFormValues({}); }} style={{ border: `1px solid ${colors.cancelBorder}`, background: colors.cancelBg, color: colors.cancelText, borderRadius: 8, padding: "8px 20px", fontWeight: 600 }}>Cancel</button>
                 <button
                   onClick={() => {
-                    const fallbackTarget = docType === "afis" ? "/mixing?type=AFIS%20Data%20Entry" : "/mixing?type=Cotton%20HVI%20Data%20Entry";
+                    const fallbackTarget = MACHINE_DOC_TYPES.has(docType)
+                      ? `/departments/quality-control/wrapping?docType=${encodeURIComponent(docType)}`
+                      : docType === "afis" ? "/mixing?type=AFIS%20Data%20Entry" : "/mixing?type=Cotton%20HVI%20Data%20Entry";
                     const target = returnTo || fallbackTarget;
                     const normalizedScreen = target.replace(/^\/+/, "").toLowerCase();
                     window.localStorage.setItem(
@@ -330,7 +395,15 @@ export default function OcrMachinePage() {
                       JSON.stringify({
                         screen: normalizedScreen,
                         docType,
-                        values: docType === "bwc" ? { ...formValues, "Machine Name": meta.mc_name, "Inspection Type": meta.inspection_type, "Inspection Date": meta.inspection_date } : formValues,
+                        values: docType === "bwc"
+                          ? {
+                              ...formValues,
+                              "Machine Name": meta.mc_name,
+                              "Inspection Type": meta.inspection_type,
+                              "Inspection Date": meta.inspection_date,
+                              num_entries: Math.min(countBwcEntries(formValues), BWC_SUBMIT_ENTRY_COUNT),
+                            }
+                          : formValues,
                         result: { json_output: rows },
                       })
                     );

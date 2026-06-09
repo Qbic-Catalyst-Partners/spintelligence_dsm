@@ -48,7 +48,6 @@ export const thresholdScreenCatalog = {
             "Count Change",
             "Ring Frame Log Book",
             "Speed Checking",
-            "Lycra Missing",
             "Bottom Apron Checking",
             "Lycra Centering",
             "RSM & Lycrasensor Checking Online",
