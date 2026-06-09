@@ -90,10 +90,15 @@ const META_FIELD_KEYS = new Set([
     "entryid",
     "submitted_notebook_id",
     "submittednotebookid",
+    "notebook_submission_id",
+    "notebooksubmissionid",
+    "notebookSubmissionId",
     "notebook_id",
     "notebookid",
+    "notebookId",
     "submission_id",
     "submissionid",
+    "submissionId",
     "created_at",
     "createdat",
     "submitted_at",
@@ -116,6 +121,7 @@ const META_FIELD_KEYS = new Set([
     "department",
     "sub_department",
     "subdepartment",
+    "notebook",
     "notebook_name",
     "notebookname",
     "input_screen",
@@ -123,8 +129,119 @@ const META_FIELD_KEYS = new Set([
     "title",
     "approval_l1",
     "approvall1",
+    "approval_l1_name",
+    "approvall1name",
+    "approvalL1Name",
+    "approval_l1_names",
+    "approvall1names",
+    "approvalL1Names",
+    "approval_l1_user_id",
+    "approvall1userid",
+    "approvalL1UserId",
+    "approval_l1_user_ids",
+    "approvall1userids",
+    "approvalL1UserIds",
     "approval_l2",
     "approvall2",
+    "approval_l2_name",
+    "approvall2name",
+    "approvalL2Name",
+    "approval_l2_names",
+    "approvall2names",
+    "approvalL2Names",
+    "approval_l2_employee_id",
+    "approvall2employeeid",
+    "approvalL2EmployeeId",
+    "approval_l2_user_id",
+    "approvall2userid",
+    "approvalL2UserId",
+    "approval_l2_user_ids",
+    "approvall2userids",
+    "approvalL2UserIds",
+    "approval_l3",
+    "approvall3",
+    "approval_l3_name",
+    "approvall3name",
+    "approvalL3Name",
+    "approval_l3_names",
+    "approvall3names",
+    "approvalL3Names",
+    "approval_l3_user_id",
+    "approvall3userid",
+    "approvalL3UserId",
+    "approval_l3_user_ids",
+    "approvall3userids",
+    "approvalL3UserIds",
+    "l1_approver",
+    "l1approver",
+    "l1_approver_name",
+    "l1approvername",
+    "l1_approver_names",
+    "l1approvernames",
+    "l1_approver_user_id",
+    "l1approveruserid",
+    "l1_approver_user_ids",
+    "l1approveruserids",
+    "l2_approver",
+    "l2approver",
+    "l2_approver_name",
+    "l2approvername",
+    "l2_approver_names",
+    "l2approvernames",
+    "l2_approver_employee_id",
+    "l2approveremployeeid",
+    "l2ApproverEmployeeId",
+    "l2_approver_user_id",
+    "l2approveruserid",
+    "l2ApproverUserId",
+    "l2_approver_user_ids",
+    "l2approveruserids",
+    "l2ApproverUserIds",
+    "l3_approver",
+    "l3approver",
+    "l3_approver_name",
+    "l3approvername",
+    "l3_approver_names",
+    "l3approvernames",
+    "l3_approver_user_id",
+    "l3approveruserid",
+    "l3ApproverUserId",
+    "l3_approver_user_ids",
+    "l3approveruserids",
+    "l3ApproverUserIds",
+    "assigned_l1",
+    "assignedl1",
+    "assigned_l1_users",
+    "assignedl1users",
+    "assignedL1Users",
+    "assigned_l2",
+    "assignedl2",
+    "assignedL2",
+    "assigned_l2_users",
+    "assignedl2users",
+    "assignedL2Users",
+    "assigned_l3",
+    "assignedl3",
+    "assignedL3",
+    "assigned_l3_users",
+    "assignedl3users",
+    "assignedL3Users",
+    "ticket_level",
+    "ticketlevel",
+    "target_level",
+    "targetlevel",
+    "acknowledgement_ticket_level",
+    "acknowledgementticketlevel",
+    "acknowledgement_target_level",
+    "acknowledgementtargetlevel",
+    "acknowledgement_ticket_type",
+    "acknowledgementtickettype",
+    "create_l1_acknowledgement_ticket",
+    "createl1acknowledgementticket",
+    "create_l2_acknowledgement_ticket",
+    "createl2acknowledgementticket",
+    "skip_l1_acknowledgement_ticket",
+    "skipl1acknowledgementticket",
     "acknowledged_at",
     "acknowledgedat",
     "acknowledged_by",
@@ -139,6 +256,28 @@ const ACKNOWLEDGEMENT_TIME_KEYS = new Set([
     "acknowledgetime",
     "acknowledged_at",
     "acknowledgedat",
+]);
+
+const PAYLOAD_CONTAINER_KEYS = new Set([
+    "submitted_fields",
+    "submittedfields",
+    "submitted_notebook_fields",
+    "submittednotebookfields",
+    "submitted_fields_json",
+    "submittedfieldsjson",
+    "submitted_payload",
+    "submittedpayload",
+    "submitted_payload_json",
+    "submittedpayloadjson",
+    "input_fields",
+    "inputfields",
+    "fields",
+    "form_data",
+    "formdata",
+    "payload",
+    "notebook_payload",
+    "notebookpayload",
+    "data",
 ]);
 
 const getNotebookId = (notebook) =>
@@ -176,6 +315,8 @@ const findSubmittedFieldsPayload = (value, seen = new Set(), allowRootPayload = 
     const directKeys = [
         "submitted_fields",
         "submittedFields",
+        "submitted_notebook_fields",
+        "submittedNotebookFields",
         "submitted_fields_json",
         "submittedFieldsJson",
         "submitted_payload",
@@ -229,6 +370,63 @@ const getPayload = (notebook) => {
     if (Array.isArray(payload) && payload.length) return payload;
     if (payload && typeof payload === "object" && Object.keys(payload).length) return payload;
     return {};
+};
+
+const getDisplayValue = (value) => {
+    const parsed = parseJsonValue(value);
+    if (parsed === undefined || parsed === null || parsed === "") return "";
+    if (parsed instanceof Date) return parsed.toISOString();
+    if (Array.isArray(parsed) || (parsed && typeof parsed === "object")) {
+        return JSON.stringify(parsed);
+    }
+    return parsed;
+};
+
+const addDisplayField = (fields, usedKeys, key, value, label = "") => {
+    const normalizedKey = normalizeKey(key);
+    if (
+        !normalizedKey ||
+        META_FIELD_KEYS.has(normalizedKey) ||
+        PAYLOAD_CONTAINER_KEYS.has(normalizedKey) ||
+        usedKeys.has(normalizedKey)
+    ) {
+        return;
+    }
+
+    const displayValue = getDisplayValue(value);
+    if (displayValue === "") return;
+
+    usedKeys.add(normalizedKey);
+    fields.push({
+        key,
+        label: label || FIELD_LABELS[key] || formatTitle(key),
+        value: displayValue,
+    });
+};
+
+const flattenDisplayFields = (value, fields, usedKeys, prefix = "") => {
+    const parsed = parseJsonValue(value);
+    if (!parsed || typeof parsed !== "object") {
+        if (prefix) addDisplayField(fields, usedKeys, prefix, parsed);
+        return;
+    }
+
+    if (Array.isArray(parsed)) {
+        if (prefix) addDisplayField(fields, usedKeys, prefix, parsed);
+        return;
+    }
+
+    Object.entries(parsed).forEach(([key, item]) => {
+        const nextKey = prefix ? `${prefix}_${key}` : key;
+        const parsedItem = parseJsonValue(item);
+
+        if (Array.isArray(parsedItem) || (parsedItem && typeof parsedItem === "object" && !(parsedItem instanceof Date))) {
+            addDisplayField(fields, usedKeys, nextKey, parsedItem);
+            return;
+        }
+
+        addDisplayField(fields, usedKeys, nextKey, parsedItem);
+    });
 };
 
 const getCreatedDate = (notebook) =>
@@ -305,6 +503,32 @@ const normalizeNameList = (value) => {
     return value === undefined || value === null || value === "" ? [] : [String(value).trim()];
 };
 
+const normalizeIdentityList = (value) => {
+    const parsed = parseJsonValue(value);
+
+    if (Array.isArray(parsed)) {
+        return parsed.flatMap((item) => normalizeIdentityList(item));
+    }
+
+    if (parsed && typeof parsed === "object") {
+        return [
+            parsed.id,
+            parsed.employee_id,
+            parsed.employeeId,
+            parsed.emp_id,
+            parsed.full_name,
+            parsed.fullName,
+            parsed.name,
+            parsed.username,
+            parsed.email,
+        ]
+            .map((item) => String(item ?? "").trim())
+            .filter(Boolean);
+    }
+
+    return normalizeNameList(parsed);
+};
+
 const getUserIdentityValues = (user) =>
     [
         user?.id,
@@ -322,16 +546,21 @@ const getUserIdentityValues = (user) =>
 
 const getNotebookApproverValues = (notebook) =>
     [
-        ...normalizeNameList(notebook?.approval_l2),
-        ...normalizeNameList(notebook?.approval_l2_name),
-        ...normalizeNameList(notebook?.approval_l2_names),
-        ...normalizeNameList(notebook?.approval_l2_user_id),
-        ...normalizeNameList(notebook?.approval_l2_user_ids),
-        ...normalizeNameList(notebook?.l2_approver_user_id),
-        ...normalizeNameList(notebook?.l2_approver_user_ids),
-        ...normalizeNameList(notebook?.l2ApproverUserIds),
-        ...normalizeNameList(notebook?.l2_approver_names),
-        ...normalizeNameList(notebook?.l2ApproverNames),
+        ...normalizeIdentityList(notebook?.approval_l2),
+        ...normalizeIdentityList(notebook?.approval_l2_name),
+        ...normalizeIdentityList(notebook?.approval_l2_names),
+        ...normalizeIdentityList(notebook?.approval_l2_user_id),
+        ...normalizeIdentityList(notebook?.approval_l2_user_ids),
+        ...normalizeIdentityList(notebook?.approvalL2UserIds),
+        ...normalizeIdentityList(notebook?.l2_approver_user_id),
+        ...normalizeIdentityList(notebook?.l2_approver_user_ids),
+        ...normalizeIdentityList(notebook?.l2ApproverUserIds),
+        ...normalizeIdentityList(notebook?.l2_approver_names),
+        ...normalizeIdentityList(notebook?.l2ApproverNames),
+        ...normalizeIdentityList(notebook?.assigned_l2),
+        ...normalizeIdentityList(notebook?.assigned_l2_users),
+        ...normalizeIdentityList(notebook?.assignedL2),
+        ...normalizeIdentityList(notebook?.assignedL2Users),
     ]
         .map(normalizeLookupValue)
         .filter(Boolean);
@@ -357,20 +586,57 @@ const isNotebookPendingAcknowledgement = (notebook) => {
     return !["acknowledged", "ack", "completed", "closed", "approved"].includes(status);
 };
 
-const buildSubmittedNotebookQuery = (user) =>
-    Object.fromEntries(
+const buildSubmittedNotebookQuery = (user) => {
+    if (isFullAccessUser(user)) return {};
+
+    return Object.fromEntries(
         Object.entries({
             approval_l2: user?.employee_id || user?.employeeId || user?.id || "",
             approval_l2_name: user?.full_name || user?.fullName || user?.name || "",
             l2_approver_user_id: user?.id || user?.employee_id || user?.employeeId || "",
         }).filter(([, value]) => String(value || "").trim())
     );
+};
 
 const serializeQuery = (query) =>
     Object.entries(query || {})
         .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
         .map(([key, value]) => `${key}:${String(value || "").trim()}`)
         .join("|");
+
+const getUserLoadKey = (user) =>
+    [
+        user?.id,
+        user?.employee_id,
+        user?.employeeId,
+        user?.emp_id,
+        user?.full_name,
+        user?.fullName,
+        user?.name,
+        user?.username,
+        user?.role,
+        user?.role_name,
+        user?.roleName,
+    ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join("|");
+
+const mergeNotebookRows = (...rowGroups) => {
+    const seen = new Set();
+    const rows = [];
+
+    rowGroups.flat().forEach((row) => {
+        if (!row || typeof row !== "object") return;
+        const id = String(getNotebookId(row) || row?.notebook_submission_id || row?.notebookSubmissionId || "").trim();
+        const key = id || JSON.stringify(row);
+        if (seen.has(key)) return;
+        seen.add(key);
+        rows.push(row);
+    });
+
+    return rows;
+};
 
 const getUserDisplayName = (user) => String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
 
@@ -590,14 +856,15 @@ const buildFieldCards = (notebook) => {
                     item.actual_value ??
                     item.submitted_value;
 
-                if (value === undefined || value === null || value === "" || typeof value === "object") {
+                const displayValue = getDisplayValue(value);
+                if (displayValue === "") {
                     return null;
                 }
 
                 return {
                     key,
                     label: item.label || FIELD_LABELS[key] || formatTitle(key),
-                    value,
+                    value: displayValue,
                 };
             })
             .filter(Boolean);
@@ -614,7 +881,7 @@ const buildFieldCards = (notebook) => {
             if (!payloadHasDisplayValues && META_FIELD_KEYS.has(normalizeKey(key))) {
                 return;
             }
-            usedKeys.add(key);
+            usedKeys.add(normalizeKey(key));
             fields.push({ key, label: FIELD_LABELS[key] || formatTitle(key), value });
         }
     });
@@ -626,28 +893,33 @@ const buildFieldCards = (notebook) => {
                 label: "L2 Approval Name",
                 value: getNotebookL2ApprovalName(notebook),
             });
-            usedKeys.add(key);
+            usedKeys.add(normalizeKey(key));
             return;
         }
 
         if (
-            usedKeys.has(key) ||
+            usedKeys.has(normalizeKey(key)) ||
             META_FIELD_KEYS.has(normalizeKey(key)) ||
             value === undefined ||
             value === null ||
-            value === "" ||
-            typeof value === "object"
+            value === ""
         ) {
             return;
         }
-        fields.push({ key, label: FIELD_LABELS[key] || formatTitle(key), value });
+        addDisplayField(fields, usedKeys, key, value);
     });
+
+    flattenDisplayFields(payload, fields, usedKeys);
+    if (notebook && typeof notebook === "object") {
+        flattenDisplayFields(notebook, fields, usedKeys);
+    }
 
     return fields;
 };
 
 const SubmittedNotebooksPage = () => {
     const user = useSelector((state) => state.auth?.user);
+    const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
     const [notebooks, setNotebooks] = useState([]);
     const [selectedNotebook, setSelectedNotebook] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -659,8 +931,12 @@ const SubmittedNotebooksPage = () => {
     const inFlightLoadKeyRef = useRef("");
 
     const loadNotebooks = async () => {
+        if (!isAuthHydrated) {
+            return;
+        }
+
         const query = buildSubmittedNotebookQuery(user);
-        const loadKey = serializeQuery(query);
+        const loadKey = `${getUserLoadKey(user)}::${serializeQuery(query)}`;
 
         if (inFlightLoadKeyRef.current === loadKey || lastLoadKeyRef.current === loadKey) {
             return;
@@ -673,9 +949,9 @@ const SubmittedNotebooksPage = () => {
             const data = await fetchSubmittedNotebooksApi(query);
             let rows = normalizeList(data);
 
-            if (!rows.length && Object.keys(query).length) {
+            if (Object.keys(query).length) {
                 const fallbackData = await fetchSubmittedNotebooksApi();
-                rows = normalizeList(fallbackData);
+                rows = mergeNotebookRows(rows, normalizeList(fallbackData));
             }
 
             const userRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
@@ -691,7 +967,7 @@ const SubmittedNotebooksPage = () => {
 
     useEffect(() => {
         loadNotebooks();
-    }, [user?.id, user?.employee_id, user?.employeeId, user?.full_name, user?.fullName, user?.name]);
+    }, [isAuthHydrated, user?.id, user?.employee_id, user?.employeeId, user?.emp_id, user?.full_name, user?.fullName, user?.name, user?.username, user?.role, user?.role_name, user?.roleName]);
 
     useEffect(() => {
         let active = true;

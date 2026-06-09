@@ -55,6 +55,41 @@ const toParameterList = (value) => {
   return [];
 };
 
+const fieldLabel = (item) =>
+  String(item?.label || item?.name || item?.parameter || item?.field_name || item || "").trim();
+
+const fieldsToObject = (fields, valueKeys = ["value", "actual_value", "submitted_value"]) => {
+  if (!Array.isArray(fields)) return {};
+
+  return fields.reduce((acc, field) => {
+    const key = fieldLabel(field);
+    if (!key) return acc;
+
+    const valueKey = valueKeys.find((candidate) =>
+      field?.[candidate] !== undefined && field?.[candidate] !== null
+    );
+    acc[key] = valueKey
+      ? field[valueKey]
+      : {
+          standard_value: field?.standard_value,
+          plus_threshold: field?.plus_threshold,
+          minus_threshold: field?.minus_threshold,
+          upper_threshold: field?.upper_threshold,
+          lower_threshold: field?.lower_threshold,
+        };
+    return acc;
+  }, {});
+};
+
+const firstDisplayValue = (...values) => {
+  for (const value of values) {
+    if (value !== undefined && value !== null && String(value).trim() && String(value).trim() !== "-") {
+      return value;
+    }
+  }
+  return "-";
+};
+
 const getObjectKeys = (value) => {
   const normalized = tryParseJsonObject(value);
   if (!normalized || typeof normalized !== "object" || Array.isArray(normalized)) {
@@ -67,9 +102,24 @@ export const getTicketParameterNames = (ticket) => {
   const fromParameterName = toParameterList(ticket?.parameter_name);
   const fromActualValue = getObjectKeys(ticket?.actual_value);
   const fromThresholdValue = getObjectKeys(ticket?.threshold_value);
+  const fromSubmittedFields = [
+    ...(Array.isArray(ticket?.submitted_notebook_fields) ? ticket.submitted_notebook_fields : []),
+    ...(Array.isArray(ticket?.submitted_fields) ? ticket.submitted_fields : []),
+  ].map(fieldLabel);
+  const fromThresholdFields = (Array.isArray(ticket?.threshold_fields) ? ticket.threshold_fields : [])
+    .map(fieldLabel);
+  const fromParameters = (Array.isArray(ticket?.parameters) ? ticket.parameters : [])
+    .map(fieldLabel);
 
   const seen = new Set();
-  return [...fromParameterName, ...fromActualValue, ...fromThresholdValue].filter((name) => {
+  return [
+    ...fromParameterName,
+    ...fromActualValue,
+    ...fromThresholdValue,
+    ...fromSubmittedFields,
+    ...fromThresholdFields,
+    ...fromParameters,
+  ].filter((name) => {
     const normalized = getTicketParameterKey(name);
     if (!normalized || seen.has(normalized)) {
       return false;
@@ -185,12 +235,42 @@ export const formatStandardValue = (value) => {
 
 export const transformTicket = (ticket) => {
   const createdDate = new Date(ticket.created_at);
+  const submittedFields = ticket?.submitted_notebook_fields || ticket?.submitted_fields;
+  const actualValue = Object.keys(fieldsToObject(submittedFields)).length
+    ? fieldsToObject(submittedFields)
+    : ticket.actual_value;
+  const thresholdValue = Object.keys(fieldsToObject(ticket?.threshold_fields, [
+    "threshold_value",
+    "value",
+    "standard_value",
+    "actual_value",
+  ])).length
+    ? fieldsToObject(ticket?.threshold_fields, [
+        "threshold_value",
+        "value",
+        "standard_value",
+        "actual_value",
+      ])
+    : ticket.threshold_value;
   const parameterNames = getTicketParameterNames(ticket);
   const parameter = parameterNames[0] || "-";
-  const actual = getTicketValueForParameter(ticket.actual_value, parameter);
-  const thresholdSource = getTicketValueForParameter(ticket.threshold_value, parameter);
-  const threshold = formatThresholdValue(thresholdSource);
-  const standard = formatStandardValue(thresholdSource);
+  const actual = firstDisplayValue(
+    getTicketValueForParameter(actualValue, parameter),
+    ticket?.actual,
+    ticket?.actualValue
+  );
+  const thresholdSource = getTicketValueForParameter(thresholdValue, parameter);
+  const threshold = firstDisplayValue(
+    formatThresholdValue(thresholdSource),
+    ticket?.threshold,
+    ticket?.thresholdValue
+  );
+  const standard = firstDisplayValue(
+    formatStandardValue(thresholdSource),
+    ticket?.standard,
+    ticket?.standard_value,
+    ticket?.standardValue
+  );
 
   const resolvedStatus =
     ticket?.status ??
@@ -215,8 +295,8 @@ export const transformTicket = (ticket) => {
     standard,
     threshold,
 
-    actual_value: ticket.actual_value,
-    threshold_value: ticket.threshold_value,
+    actual_value: actualValue,
+    threshold_value: thresholdValue,
 
     severity: ticket.severity,
     status: resolvedStatus,

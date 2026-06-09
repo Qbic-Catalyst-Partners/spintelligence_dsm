@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
 import { MdFilterList } from "react-icons/md";
 import { updateOperatorTicketStatus } from "../../apis/operatorApi";
+import { acknowledgeTicketApi } from "../../apis/supervisorApi";
 import {
   applyStoredTicketStatuses,
   getStatusClassKey,
@@ -14,6 +15,9 @@ import {
   isSupervisorVisibleTicket,
   SUPERVISOR_VISIBLE_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
+import {
+  isFullAccessUser,
+} from "../../utils/accessControl";
 import {
   isNotebookAcknowledgementParameterName,
   isSubmissionTicketRecord,
@@ -35,6 +39,51 @@ const formatDateTime = (dateString) => {
 };
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase();
+const parseMaybeJson = (value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || !["{", "["].includes(trimmed[0])) return value;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+};
+
+const firstText = (...values) => {
+  for (const value of values) {
+    const parsed = parseMaybeJson(value);
+
+    if (Array.isArray(parsed)) {
+      const nested = firstText(...parsed);
+      if (nested) return nested;
+      continue;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const nested = firstText(
+        parsed.full_name,
+        parsed.fullName,
+        parsed.name,
+        parsed.user_name,
+        parsed.userName,
+        parsed.employee_name,
+        parsed.employeeName,
+        parsed.employee_id,
+        parsed.employeeId,
+        parsed.id
+      );
+      if (nested) return nested;
+      continue;
+    }
+
+    const text = String(parsed ?? "").trim();
+    if (text) return text;
+  }
+
+  return "";
+};
 
 const REVIEW_STATUS_FILTER_OPTIONS = [
   "Pending Approval",
@@ -48,6 +97,21 @@ const isAcknowledgementReviewTicket = (ticket) => {
   const actionMode = normalizeText(ticket?.action_mode || ticket?.actionMode).toUpperCase();
   if (actionMode === "ACKNOWLEDGE") return true;
 
+  const violationDetails = parseMaybeJson(ticket?.violation_details || ticket?.violationDetails);
+  const violationTicketType = violationDetails && typeof violationDetails === "object"
+    ? violationDetails.ticket_type || violationDetails.ticketType
+    : "";
+  const violationActionType = violationDetails && typeof violationDetails === "object"
+    ? violationDetails.action_type || violationDetails.actionType
+    : "";
+  const violationText = normalizeText(
+    [
+      violationTicketType,
+      violationActionType,
+      violationDetails && typeof violationDetails === "object" ? violationDetails.category : "",
+      violationDetails && typeof violationDetails === "object" ? violationDetails.reason : "",
+    ].join(" ")
+  );
   const parameterNames = Array.isArray(ticket?.parameter_name)
     ? ticket.parameter_name
     : [ticket?.parameter_name, ticket?.parameter].filter(Boolean);
@@ -62,15 +126,22 @@ const isAcknowledgementReviewTicket = (ticket) => {
       ticket?.machine_name,
       ticket?.description,
       ticket?.message,
+      ticket?.ticket_reason,
+      ticket?.ticketReason,
     ].join(" ")
   );
+  const isReviewType = normalizeText(ticket?.ticket_type || ticket?.ticketType) === "review";
   const statusText = normalizeText(
     ticket?.status || ticket?.ticket_status || ticket?.current_status || ticket?.state
   );
 
   return (
+    isReviewType ||
+    violationText.includes("notebook_ack_overdue") ||
+    violationText.includes("acknowledge_only") ||
     typeText.includes("acknowledge") ||
     typeText.includes("acknowledgement") ||
+    typeText.includes("missing_value") ||
     statusText.includes("pending approval") ||
     statusText.includes("pending acknowledgement") ||
     parameterNames.some(isNotebookAcknowledgementParameterName)
@@ -78,34 +149,47 @@ const isAcknowledgementReviewTicket = (ticket) => {
 };
 
 const getReviewSubDepartment = (ticket) =>
-  ticket?.sub_department ||
-  ticket?.subDepartment ||
-  ticket?.sub_department_name ||
-  ticket?.subDepartmentName ||
-  ticket?.department ||
-  "-";
+  firstText(
+    ticket?.sub_department,
+    ticket?.subDepartment,
+    ticket?.sub_department_name,
+    ticket?.subDepartmentName,
+    ticket?.management_field,
+    ticket?.managementField,
+    ticket?.department
+  ) || "-";
 
 const getReviewL2 = (ticket) =>
-  ticket?.approval_l2_name ||
-  ticket?.approvalL2Name ||
-  ticket?.l2_approver_name ||
-  ticket?.l2ApproverName ||
-  ticket?.l2_name ||
-  ticket?.assigned_l2_name ||
-  ticket?.approval_l2 ||
-  ticket?.l2_approver ||
-  "-";
+  firstText(
+    ticket?.l2_approvers,
+    ticket?.l2Approvers,
+    ticket?.approval_l2_name,
+    ticket?.approvalL2Name,
+    ticket?.l2_approver_name,
+    ticket?.l2ApproverName,
+    ticket?.l2_name,
+    ticket?.assigned_l2_name,
+    ticket?.approval_l2_user_ids,
+    ticket?.approvalL2UserIds,
+    ticket?.approval_l2,
+    ticket?.l2_approver
+  ) || "-";
 
 const getReviewL3 = (ticket) =>
-  ticket?.approval_l3_name ||
-  ticket?.approvalL3Name ||
-  ticket?.l3_approver_name ||
-  ticket?.l3ApproverName ||
-  ticket?.l3_name ||
-  ticket?.assigned_l3_name ||
-  ticket?.approval_l3 ||
-  ticket?.l3_approver ||
-  getReviewL2(ticket);
+  firstText(
+    ticket?.l3_approvers,
+    ticket?.l3Approvers,
+    ticket?.approval_l3_name,
+    ticket?.approvalL3Name,
+    ticket?.l3_approver_name,
+    ticket?.l3ApproverName,
+    ticket?.l3_name,
+    ticket?.assigned_l3_name,
+    ticket?.approval_l3_user_ids,
+    ticket?.approvalL3UserIds,
+    ticket?.approval_l3,
+    ticket?.l3_approver
+  ) || getReviewL2(ticket);
 
 export default function SupervisorDashboard({ mode = "L2" }) {
   const dispatch = useDispatch();
@@ -114,6 +198,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
   const { tickets, isLoading, error } =
     useSelector((state) => state.supervisor) || {};
+  const authUser = useSelector((state) => state.auth?.user);
+  const isAdminUser = isFullAccessUser(authUser);
+  const isReviewOnlyL3Mode = isL3Mode;
 
   const sourceTickets = Array.isArray(tickets)
     ? tickets
@@ -124,10 +211,18 @@ export default function SupervisorDashboard({ mode = "L2" }) {
         : [];
 
   const safeTickets = applyStoredTicketStatuses(sourceTickets)
-    .filter(isSupervisorVisibleTicket)
+    .filter((ticket) => isAdminUser || isSupervisorVisibleTicket(ticket))
     .map(transformTicket);
+  const supervisorTicketQuery = isAdminUser
+    ? {
+        include_all: true,
+        all_users: true,
+        all_tickets: true,
+        scope: "all",
+      }
+    : {};
 
-  const [status, setStatus] = useState(isL3Mode ? "Pending Approval" : "");
+  const [status, setStatus] = useState(isReviewOnlyL3Mode ? "Pending Approval" : "");
   const [severity, setSeverity] = useState("");
   const [operator, setOperator] = useState("");
   const [notebookType, setNotebookType] = useState("");
@@ -136,22 +231,22 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
-  const [activeTicketingView, setActiveTicketingView] = useState(isL3Mode ? "review" : "threshold");
+  const [activeTicketingView, setActiveTicketingView] = useState(isReviewOnlyL3Mode ? "review" : "threshold");
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
 
   useEffect(() => {
-    dispatch(fetchSupervisorTickets());
-  }, [dispatch]);
+    dispatch(fetchSupervisorTickets(supervisorTicketQuery));
+  }, [dispatch, isAdminUser]);
 
   useEffect(() => {
-    if (!isL3Mode) return;
+    if (!isReviewOnlyL3Mode) return;
     setActiveTicketingView("review");
     setStatus("Pending Approval");
     setSeverity("");
     setOperator("");
     setNotebookType("");
     setPage(1);
-  }, [isL3Mode]);
+  }, [isReviewOnlyL3Mode]);
 
   const filteredTickets = safeTickets.filter((t) => {
     const ticketDate = t.created_at ? new Date(t.created_at) : null;
@@ -211,6 +306,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const uniqueReviewL3Users = [
     ...new Set(reviewSourceTickets.map(getReviewL3).filter((value) => value && value !== "-")),
   ];
+  const statusFilterOptions = activeTicketingView === "review"
+    ? REVIEW_STATUS_FILTER_OPTIONS
+    : SUPERVISOR_VISIBLE_STATUS_OPTIONS;
 
   const reviewTickets = filteredTickets.filter(isAcknowledgementReviewTicket);
   const submissionTickets = filteredTickets.filter(
@@ -236,8 +334,13 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}`);
   };
 
+  const handleDashboardTicketClick = (ticket) => {
+    if (activeTicketingView === "review" || isAcknowledgementReviewTicket(ticket)) return;
+    handleTicketClick(ticket.ticket_id);
+  };
+
   const selectTicketingView = (view) => {
-    if (isL3Mode && view !== "review") return;
+    if (isReviewOnlyL3Mode && view !== "review") return;
     setActiveTicketingView(view);
     setPage(1);
     setStatus(view === "review" ? "Pending Approval" : "");
@@ -246,13 +349,24 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     setNotebookType("");
   };
 
-  const handleStatusChange = async (ticketId, nextStatus) => {
+  const handleStatusChange = async (ticketId, nextStatus, ticket = null) => {
     if (!ticketId || !nextStatus) return;
+    if (String(ticket?.status || "").trim().toLowerCase() === String(nextStatus || "").trim().toLowerCase()) return;
 
     try {
       setStatusUpdatingId(ticketId);
-      await updateOperatorTicketStatus(ticketId, nextStatus);
-      await dispatch(fetchSupervisorTickets());
+      const normalizedStatus = String(nextStatus || "").trim().toLowerCase();
+      const shouldAcknowledge =
+        ticket &&
+        isAcknowledgementReviewTicket(ticket) &&
+        ["submit", "closed", "acknowledged", "ack"].includes(normalizedStatus);
+
+      if (shouldAcknowledge) {
+        await acknowledgeTicketApi(ticketId);
+      } else {
+        await updateOperatorTicketStatus(ticketId, nextStatus);
+      }
+      await dispatch(fetchSupervisorTickets(supervisorTicketQuery));
     } catch (updateError) {
       // Keep the current table visible; the global API layer already surfaces failures.
       console.error("Failed to update ticket status:", updateError);
@@ -287,7 +401,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     <div className={styles["sup-page"]}>
       <div className={styles["sup-content"]}>
         <h1 className={styles["sup-title"]}>{mode} Ticketing Dashboard</h1>
-        {!isL3Mode ? (
+        {!isReviewOnlyL3Mode ? (
           <div className={styles["ticketing-toggle"]}>
             <button
               type="button"
@@ -332,10 +446,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
               onChange={(e) => setStatus(e.target.value)}
             >
               <option value="">All</option>
-              {(activeTicketingView === "review"
-                ? REVIEW_STATUS_FILTER_OPTIONS
-                : SUPERVISOR_VISIBLE_STATUS_OPTIONS
-              ).map((option) => (
+              {statusFilterOptions.map((option) => (
                 <option key={option} value={option}>{getSupervisorStatusLabel(option)}</option>
               ))}
             </select>
@@ -499,7 +610,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                     <tr
                       key={`${t.ticket_id}-${i}`}
                       className={styles["sup-table-row"]}
-                      onClick={() => handleTicketClick(t.ticket_id)}
+                      onClick={() => handleDashboardTicketClick(t)}
                     >
                       <td className={styles["sup-ticket-link"]}>
                         {t.ticket_id}
@@ -510,7 +621,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                           <td>{getReviewL2(t)}</td>
                           <td>{getTicketNotebookLabel(t)}</td>
                           <td>
-                            {String(t?.action_mode || t?.actionMode || "").trim().toUpperCase() === "ACKNOWLEDGE" ? (
+                            {isReviewOnlyL3Mode ? (
                               <span
                                 className={`${styles["status-badge"]} ${
                                   styles[`status-${getStatusClassKey(t.status)}`] ||
@@ -526,7 +637,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                                   className={styles["status-select"]}
                                   value={t.status}
                                   disabled={statusUpdatingId === t.ticket_id}
-                                  onChange={(event) => handleStatusChange(t.ticket_id, event.target.value)}
+                                  onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
                                 >
                                   {getDisplayStatusOptions(t.status).map((option) => (
                                     <option key={option} value={option}>
@@ -673,7 +784,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                 className={`${styles["sup-mobile-card"]} ${
                   getSupervisorStatusLabel(t.status) === "Closed" ? styles["sup-muted"] : ""
                 }`}
-                onClick={() => handleTicketClick(t.ticket_id)}
+                onClick={() => handleDashboardTicketClick(t)}
               >
                 <div className={styles["sup-card-top"]}>
                   <div>
@@ -718,8 +829,12 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
                 <div className={styles["sup-card-bottom"]}>
                   {activeTicketingView === "review" ? (
-                    String(t?.action_mode || t?.actionMode || "").trim().toUpperCase() === "ACKNOWLEDGE" ? (
-                      <div className={styles["status-text"]}>
+                    isReviewOnlyL3Mode ? (
+                      <div
+                        className={`${styles["status-text"]} ${
+                          styles[getStatusClassKey(t.status).replace(/-/g, "_")]
+                        }`}
+                      >
                         <span className={styles["status-dot"]} />
                         {getSupervisorStatusLabel(t.status)}
                       </div>
@@ -730,7 +845,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                           className={styles["mobile-status-select"]}
                           value={t.status}
                           disabled={statusUpdatingId === t.ticket_id}
-                          onChange={(event) => handleStatusChange(t.ticket_id, event.target.value)}
+                          onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
                         >
                           {getDisplayStatusOptions(t.status).map((option) => (
                             <option key={option} value={option}>
@@ -740,6 +855,22 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                         </select>
                       </div>
                     )
+                  ) : isAcknowledgementReviewTicket(t) ? (
+                    <div className={styles["status-text"]} onClick={(event) => event.stopPropagation()}>
+                      <span className={styles["status-dot"]} />
+                      <select
+                        className={styles["mobile-status-select"]}
+                        value={t.status}
+                        disabled={statusUpdatingId === t.ticket_id}
+                        onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
+                      >
+                        {getDisplayStatusOptions(t.status).map((option) => (
+                          <option key={option} value={option}>
+                            {getOperatorStatusLabel(option)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   ) : (
                     <div
                       className={`${styles["status-text"]} ${
@@ -750,7 +881,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                       {getSupervisorStatusLabel(t.status)}
                     </div>
                   )}
-                  <div className={styles["details-link"]}>Details &gt;</div>
+                  {activeTicketingView === "review" || isAcknowledgementReviewTicket(t) ? null : (
+                    <div className={styles["details-link"]}>Details &gt;</div>
+                  )}
                 </div>
               </div>
             );
@@ -779,10 +912,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                     onChange={(e) => setStatus(e.target.value)}
                   >
                     <option value="">All</option>
-                    {(activeTicketingView === "review"
-                      ? REVIEW_STATUS_FILTER_OPTIONS
-                      : SUPERVISOR_VISIBLE_STATUS_OPTIONS
-                    ).map((option) => (
+                    {statusFilterOptions.map((option) => (
                       <option key={option} value={option}>{getSupervisorStatusLabel(option)}</option>
                     ))}
                   </select>
@@ -885,7 +1015,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                   <button
                     className={styles["reset-btn"]}
                     onClick={() => {
-                      setStatus(isL3Mode ? "Pending Approval" : "");
+                      setStatus(isReviewOnlyL3Mode ? "Pending Approval" : "");
                       setSeverity("");
                       setOperator("");
                       setNotebookType("");
@@ -911,3 +1041,5 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     </div>
   );
 }
+
+
