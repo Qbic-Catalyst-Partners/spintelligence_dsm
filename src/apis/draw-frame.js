@@ -591,6 +591,62 @@ export const submitDrawFrameFinisherEntry = async (payload) => {
     }
 };
 
+export const submitDrawFrameWheelChangeEntry = async (payload) => {
+    const normalizedType = String(payload?.wheel_change_type || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+    const endpointMap = {
+        type1: "/drawframe/wheel-change/type1",
+        type2: "/drawframe/wheel-change/type2",
+        type3: "/drawframe/wheel-change/type3",
+        finisher_type1_lrsb: "/drawframe/wheel-change/finisher-type1-lrsb",
+        type2_d40: "/drawframe/wheel-change/type2-d40",
+        type3_d50_d55: "/drawframe/wheel-change/type3-d50-d55",
+        type4_ldf3s: "/drawframe/wheel-change/type4-ldf3s",
+    };
+    const endpoint = endpointMap[normalizedType] || "/drawframe/wheel-change";
+
+    try {
+        const response = await apiConfig.post(endpoint, payload);
+        return response.data;
+    } catch (error) {
+        throw new Error(extractApiError(error, "Failed to create draw frame wheel change entry"));
+    }
+};
+
+export const fetchDrawFrameWheelChangeEntries = async ({
+    page = 1,
+    limit = 1,
+    wheelChangeType = "",
+} = {}) => {
+    const normalizedType = String(wheelChangeType || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_");
+    const endpointMap = {
+        type1: "/drawframe/wheel-change/type1",
+        type2: "/drawframe/wheel-change/type2",
+        type3: "/drawframe/wheel-change/type3",
+        finisher_type1_lrsb: "/drawframe/wheel-change/finisher-type1-lrsb",
+        type2_d40: "/drawframe/wheel-change/type2-d40",
+        type3_d50_d55: "/drawframe/wheel-change/type3-d50-d55",
+        type4_ldf3s: "/drawframe/wheel-change/type4-ldf3s",
+    };
+    const endpoint = endpointMap[normalizedType] || "/drawframe/wheel-change";
+
+    try {
+        const response = await apiConfig.get(endpoint, {
+            page,
+            limit,
+            wheel_change_type: normalizedType || undefined,
+        }, { skipGlobalErrorModal: true });
+        return response.data;
+    } catch (error) {
+        throw new Error(extractApiError(error, "Failed to fetch draw frame wheel change entries"));
+    }
+};
+
 export const fetchDrawFrameFinisherEntries = async ({ page = 1, limit = 10 } = {}) => {
     try {
         const response = await apiConfig.get("/drawframe/finisher", { page, limit });
