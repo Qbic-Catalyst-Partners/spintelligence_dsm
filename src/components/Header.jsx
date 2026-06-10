@@ -199,9 +199,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = ticketingLinks.filter((link) =>
-        link.href !== "/l3-ticketing" && link.href !== "/ticket-calendar"
-    );
+    const visibleTicketingLinks = ticketingLinks;
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -249,6 +247,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         if (href === "/supervisordashboard") {
             return currentPath === "/supervisordashboard" || currentPath === "/supervisordetails";
+        }
+
+        if (href === "/l3-ticketing") {
+            return currentPath === "/l3-ticketing";
         }
 
         if (href === "/ticket-calendar") {
@@ -478,6 +480,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath.startsWith("/operatordetail") ||
             currentPath === "/supervisordashboard" ||
             currentPath === "/supervisordetails" ||
+            currentPath === "/l3-ticketing" ||
             currentPath === "/ticket-calendar" ||
             currentPath === "/ticket-calendar-l2"
         );
@@ -565,11 +568,12 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath.startsWith("/operator/") ||
                             currentPath === "/operatordash" ||
                             currentPath.startsWith("/operatordetail") ||
-            currentPath === "/supervisordashboard" ||
-            currentPath === "/supervisordetails" ||
-            currentPath === "/ticket-calendar" ||
-            currentPath === "/ticket-calendar-l2"
-        );
+                            currentPath === "/supervisordashboard" ||
+                            currentPath === "/supervisordetails" ||
+                            currentPath === "/l3-ticketing" ||
+                            currentPath === "/ticket-calendar" ||
+                            currentPath === "/ticket-calendar-l2"
+                        );
                         const isManagementGroupActive = isManagementGroup && (
                             currentPath === "/submitted-notebooks" ||
                             currentPath === "/submitted-notebook-threshold" ||

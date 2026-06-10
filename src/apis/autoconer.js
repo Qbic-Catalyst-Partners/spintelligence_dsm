@@ -92,6 +92,35 @@ const buildAutoconerEndpoints = (path) => [
 
 const silentRequestConfig = { skipGlobalErrorModal: true };
 
+const AUTOCONER_MASTER_SCREEN_PATHS = {
+  "process-parameter": ["process-parameter"],
+  "process-parameters": ["process-parameter"],
+  process: ["process-parameter"],
+  q2: ["q2", "pp-autoconer-q2"],
+  "autoconer-q2": ["q2", "pp-autoconer-q2"],
+  autoconerq2inspection: ["q2", "pp-autoconer-q2"],
+  "pp-q2": ["q2", "pp-autoconer-q2"],
+  ppq2: ["q2", "pp-autoconer-q2"],
+  "pp-autoconer-q2": ["pp-autoconer-q2", "q2"],
+  ppautoconerq2: ["pp-autoconer-q2", "q2"],
+  q3: ["q3", "pp-autoconer-q3"],
+  "autoconer-q3": ["q3", "pp-autoconer-q3"],
+  autoconerq3inspection: ["q3", "pp-autoconer-q3"],
+  "pp-q3": ["q3", "pp-autoconer-q3"],
+  ppq3: ["q3", "pp-autoconer-q3"],
+  "pp-autoconer-q3": ["pp-autoconer-q3", "q3"],
+  ppautoconerq3: ["pp-autoconer-q3", "q3"],
+};
+
+const getAutoconerMasterScreenPaths = (screen = "") => {
+  const normalizedScreen = String(screen || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+
+  return AUTOCONER_MASTER_SCREEN_PATHS[normalizedScreen] || (normalizedScreen ? [normalizedScreen] : []);
+};
+
 export const normalizeAutoconerCountOptions = (payload = {}) => {
   const optionRows = Array.isArray(payload?.options?.count_name)
     ? payload.options.count_name
@@ -281,17 +310,15 @@ export const fetchAutoconerCountWiseCuts = async () =>
   });
 
 export const fetchAutoconerCountMaster = async ({ search = "", screen = "" } = {}) => {
-  const normalizedScreen = String(screen || "").trim();
+  const screenPaths = getAutoconerMasterScreenPaths(screen);
   const response = await getAutoconerPathCandidates(
     [
-      ...(normalizedScreen
-        ? [
-            `${normalizedScreen}/master/count-names`,
-            `${normalizedScreen}/master/count-dropdown`,
-            `${normalizedScreen}/master/counts`,
-            `${normalizedScreen}/master-data`,
-          ]
-        : []),
+      ...screenPaths.flatMap((screenPath) => [
+        `${screenPath}/master/count-names`,
+        `${screenPath}/master/count-dropdown`,
+        `${screenPath}/master/counts`,
+        `${screenPath}/master-data`,
+      ]),
       "master/count-dropdown",
       "master/counts",
       "master/count-names",
@@ -307,16 +334,14 @@ export const fetchAutoconerCountMaster = async ({ search = "", screen = "" } = {
 };
 
 export const fetchAutoconerConsigneeMaster = async ({ search = "", screen = "" } = {}) => {
-  const normalizedScreen = String(screen || "").trim();
+  const screenPaths = getAutoconerMasterScreenPaths(screen);
   const response = await getAutoconerPathCandidates(
     [
-      ...(normalizedScreen
-        ? [
-            `${normalizedScreen}/master/consignee-dropdown`,
-            `${normalizedScreen}/master/consignees`,
-            `${normalizedScreen}/master-data`,
-          ]
-        : []),
+      ...screenPaths.flatMap((screenPath) => [
+        `${screenPath}/master/consignee-dropdown`,
+        `${screenPath}/master/consignees`,
+        `${screenPath}/master-data`,
+      ]),
       "master/consignees",
       "master/consignee-dropdown",
       "master-data",

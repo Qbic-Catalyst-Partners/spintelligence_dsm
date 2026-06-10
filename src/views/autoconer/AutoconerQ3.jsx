@@ -11,6 +11,11 @@ import {
 } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
+import {
+  buildProcessParameterOptions,
+  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+  PROCESS_PARAMETER_COUNT_OPTIONS,
+} from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/AutoconerQ2.module.css";
 
@@ -138,9 +143,6 @@ const displaySavedValue = (value) => {
   const normalized = String(value ?? "").trim();
   return normalized && normalized !== "-" ? normalized : "0";
 };
-
-const uniqueOptions = (values) =>
-  Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
 
 const parseNumberValue = (value, decimals = 2) => {
   const parsed = Number(String(value ?? "").trim());
@@ -281,21 +283,33 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { countOptions: masterCountOptions } = useAutoconerCountOptions("process-parameter");
+  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("q3");
   const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
 
-  const countOptions = useMemo(() => {
-    const masterValues = masterCountOptions.map(
-      (option) => option?.count_name || option?.label || option?.value
-    );
-    const savedValues = versions.map((version) => version?.data?.countName);
-    return uniqueOptions([...masterValues, ...savedValues, form.countName]);
-  }, [form.countName, masterCountOptions, versions]);
+  const countOptions = useMemo(
+    () =>
+      buildProcessParameterOptions(
+        masterCountOptions.length
+          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+          : PROCESS_PARAMETER_COUNT_OPTIONS,
+        versions.map((version) => version?.data?.countName),
+        form.countName
+      ),
+    [form.countName, masterCountOptions, versions]
+  );
 
-  const consigneeOptions = useMemo(() => {
-    const savedValues = versions.map((version) => version?.data?.consigneeName);
-    return uniqueOptions([...masterConsigneeOptions, ...savedValues, form.consigneeName]);
-  }, [form.consigneeName, masterConsigneeOptions, versions]);
+  const consigneeOptions = useMemo(
+    () =>
+      buildProcessParameterOptions(
+        PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+        [
+          ...masterConsigneeOptions,
+          ...versions.map((version) => version?.data?.consigneeName),
+        ],
+        form.consigneeName
+      ),
+    [form.consigneeName, masterConsigneeOptions, versions]
+  );
 
   const loadVersions = async () => {
     setLoadingVersions(true);
@@ -337,7 +351,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   useEffect(() => {
     let active = true;
     const loadConsigneeOptions = async () => {
-      const options = await fetchAutoconerConsigneeMaster({ screen: "process-parameter" });
+      const options = await fetchAutoconerConsigneeMaster({ screen: "q3" });
       if (active) setMasterConsigneeOptions(Array.isArray(options) ? options : []);
     };
     loadConsigneeOptions();
@@ -562,18 +576,20 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
 
           <div className={styles.fieldGroup}>
             <label>Count Name</label>
-            <select
+            <SearchableSelect
               className={`${styles.field}${errors.countName ? ` ${styles.errorField}` : ""}`}
               value={form.countName}
-              onChange={(event) => handleFieldChange("countName", event.target.value)}
-            >
-              <option value="">Select Count Name</option>
-              {countOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => handleFieldChange("countName", value)}
+              options={countOptions}
+              placeholder={
+                loadingCountOptions
+                  ? "Loading count names..."
+                  : countOptionsError
+                    ? "Search or type count name"
+                    : "Search or select count name"
+              }
+              ariaLabel="Count Name"
+            />
           </div>
 
           <div className={styles.fieldGroup}>

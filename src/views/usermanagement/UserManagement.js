@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import styles from "../../styles/UserManagement.module.css";
 import { exportUsers } from "../../store/slices/userSlice";
 import {
+  MdBusiness,
   MdOutlineFileDownload,
   MdOutlineFileUpload,
   MdOutlinePersonAddAlt,
@@ -361,7 +362,7 @@ export default function UserManagement() {
 
           {/* DEPARTMENT SELECT */}
           <div className={styles.inputWrapper}>
-            <img src="/dept.png" className={styles.selectIcon} alt="department icon" />
+            <MdBusiness className={styles.filterSvgIcon} />
             <select
               className={styles.inputWithIcon}
               value={selectedDept}
