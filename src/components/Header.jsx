@@ -199,7 +199,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = ticketingLinks;
+    const visibleTicketingLinks = hasFullAccess
+        ? ticketingLinks
+        : ticketingLinks.filter((link) => link.href !== "/l3-ticketing");
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
