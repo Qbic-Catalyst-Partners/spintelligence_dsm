@@ -1055,6 +1055,7 @@ const SubmittedNotebooksPage = () => {
     const [isDetailLoading, setIsDetailLoading] = useState(false);
     const [error, setError] = useState("");
     const [acknowledgingId, setAcknowledgingId] = useState(null);
+    const [showAcknowledgeConfirm, setShowAcknowledgeConfirm] = useState(false);
     const [users, setUsers] = useState([]);
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
@@ -1131,6 +1132,7 @@ const SubmittedNotebooksPage = () => {
     const openNotebook = async (notebook) => {
         const id = getNotebookId(notebook);
         setSelectedNotebook(notebook);
+        setShowAcknowledgeConfirm(false);
 
         setIsDetailLoading(true);
         try {
@@ -1169,10 +1171,16 @@ const SubmittedNotebooksPage = () => {
                 currentNotebooks.filter((notebook) => getNotebookId(notebook) !== id)
             );
             setSelectedNotebook(null);
+            setShowAcknowledgeConfirm(false);
             await loadNotebooks();
         } finally {
             setAcknowledgingId(null);
         }
+    };
+
+    const requestAcknowledgeConfirmation = () => {
+        if (!getNotebookId(selectedNotebook)) return;
+        setShowAcknowledgeConfirm(true);
     };
 
     const selectedFields = buildFieldCards(selectedNotebook);
@@ -1239,7 +1247,14 @@ const SubmittedNotebooksPage = () => {
             )}
 
             {selectedNotebook && (
-                <div className={styles.overlay} role="presentation" onClick={() => setSelectedNotebook(null)}>
+                <div
+                    className={styles.overlay}
+                    role="presentation"
+                    onClick={() => {
+                        setSelectedNotebook(null);
+                        setShowAcknowledgeConfirm(false);
+                    }}
+                >
                     <div
                         className={styles.modal}
                         role="dialog"
@@ -1291,10 +1306,42 @@ const SubmittedNotebooksPage = () => {
                             type="button"
                             className={styles.ackButton}
                             disabled={Boolean(acknowledgingId)}
-                            onClick={handleAcknowledge}
+                            onClick={requestAcknowledgeConfirmation}
                         >
                             {acknowledgingId ? "Acknowledging..." : "Acknowledge"}
                         </button>
+
+                        {showAcknowledgeConfirm ? (
+                            <div className={styles.confirmOverlay} role="presentation">
+                                <div
+                                    className={styles.confirmDialog}
+                                    role="alertdialog"
+                                    aria-modal="true"
+                                    aria-labelledby="acknowledge-confirm-title"
+                                    onClick={(event) => event.stopPropagation()}
+                                >
+                                    <h3 id="acknowledge-confirm-title">Are you sure you have viewed the full details?</h3>
+                                    <div className={styles.confirmActions}>
+                                        <button
+                                            type="button"
+                                            className={styles.confirmNoButton}
+                                            disabled={Boolean(acknowledgingId)}
+                                            onClick={() => setShowAcknowledgeConfirm(false)}
+                                        >
+                                            No
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={styles.confirmYesButton}
+                                            disabled={Boolean(acknowledgingId)}
+                                            onClick={handleAcknowledge}
+                                        >
+                                            Yes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             )}
