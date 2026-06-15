@@ -18,6 +18,7 @@ import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
+import { fetchMixingLotDetails } from "@/apis/mixing";
 
 const mixingDepartmentTypes = [
     {
@@ -65,6 +66,7 @@ function Mixing() {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const currentDate = getCurrentDate();
+    const lotDetailsFetchKeyRef = useRef("");
     const typeOptions = filterOptionsByDepartmentAccess(
         mixingDepartmentTypes,
         accessByDepartment,
@@ -151,6 +153,33 @@ function Mixing() {
         }
         setSelectedLotDetails(lotOptions.find((lot) => lot.lot_no === lotNo || lot.value === lotNo) || null);
     }, [lotNo, lotOptions]);
+
+    useEffect(() => {
+        if (!lotNo || !selectedTypeName) return undefined;
+        const hasAutofillDetails =
+            selectedLotDetails?.variety ||
+            selectedLotDetails?.invoice_no ||
+            selectedLotDetails?.invoice_date;
+        if (hasAutofillDetails) return undefined;
+        const fetchKey = `${selectedTypeName}:${lotNo}`;
+        if (lotDetailsFetchKeyRef.current === fetchKey) return undefined;
+        lotDetailsFetchKeyRef.current = fetchKey;
+
+        let active = true;
+        fetchMixingLotDetails({ screenName: selectedTypeName, lotNo })
+            .then((details) => {
+                if (active && details) {
+                    setSelectedLotDetails(details);
+                }
+            })
+            .catch((error) => {
+                console.warn("Unable to fetch selected lot details:", error?.message || error);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [lotNo, selectedTypeName, selectedLotDetails]);
 
     const buildHeaderPreview = () => {
         const list = [

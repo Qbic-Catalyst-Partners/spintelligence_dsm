@@ -48,6 +48,14 @@ export const fetchMixingMasterVarieties = async ({ prefix = "" } = {}) => {
     };
 
     const endpoints = [
+        '/mixing/wheel-change/master/varieties',
+        '/mixing/wheel-change/dropdown',
+        '/mixing/wheel-change/mixings',
+        '/mixing/wheel-change/mixing-dropdown',
+        '/mixing/change-control/master/varieties',
+        '/mixing/change-control/dropdown',
+        '/mixing/change-control/mixings',
+        '/mixing/change-control/mixing-dropdown',
         '/mixing/master/varieties',
         '/carding/master/varieties',
         '/comber/master/varieties',
@@ -81,13 +89,17 @@ export const fetchMixingMasterVarieties = async ({ prefix = "" } = {}) => {
 };
 
 const normalizeLotRows = (payload) => {
-    const rows = Array.isArray(payload?.lots)
-        ? payload.lots
-        : Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload)
-                ? payload
-                : [];
+    const optionRows = [
+        ...(Array.isArray(payload?.options?.lot_no) ? payload.options.lot_no : []),
+        ...(Array.isArray(payload?.options?.lot) ? payload.options.lot : []),
+        ...(Array.isArray(payload?.options) ? payload.options : []),
+    ];
+    const rows = [
+        ...(Array.isArray(payload?.lots) ? payload.lots : []),
+        ...(Array.isArray(payload?.data) ? payload.data : []),
+        ...(Array.isArray(payload) ? payload : []),
+        ...optionRows,
+    ];
 
     const seen = new Set();
     return rows
@@ -98,7 +110,7 @@ const normalizeLotRows = (payload) => {
                 lot_no: lotNo,
                 value: lotNo,
                 label: lotNo,
-                variety: String(row?.variety ?? "").trim(),
+                variety: String(row?.variety ?? row?.variety_name ?? row?.varietyName ?? "").trim(),
                 lot_date: row?.lot_date || row?.date || "",
                 date: row?.date || row?.lot_date || "",
                 ref_no: String(row?.ref_no ?? row?.refno ?? "").trim(),
@@ -118,6 +130,7 @@ const normalizeLotRows = (payload) => {
 const MIXING_LOT_ENDPOINTS_BY_SCREEN = {
     "Cotton HVI Data Entry": [
         "/mixing/cotton-hvi/master/lot-dropdown",
+        "/mixing/cotton-hvi/master/dropdown",
         "/mixing/cotton-hvi/master/lots",
         "/mixing/cotton-hvi/lots",
     ],
@@ -172,6 +185,39 @@ export const fetchMixingLotOptions = async ({ screenName = "", prefix = "" } = {
         return [];
     } catch (error) {
         throw new Error(extractMixingApiError(error || lastError, "Unable to fetch mixing lot options."));
+    }
+};
+
+export const fetchMixingLotDetails = async ({ screenName = "", lotNo = "" } = {}) => {
+    const trimmedLotNo = String(lotNo || "").trim();
+    if (!trimmedLotNo) return null;
+
+    const endpoints = MIXING_LOT_ENDPOINTS_BY_SCREEN[screenName] || [
+        "/mixing/cotton-hvi/master/lot-dropdown",
+    ];
+    let lastError = null;
+
+    try {
+        for (const endpoint of endpoints) {
+            try {
+                const response = await apiConfig.get(
+                    endpoint,
+                    { lot_no: trimmedLotNo },
+                    { skipGlobalErrorModal: true }
+                );
+                const [lot] = normalizeLotRows(response?.data);
+                if (lot) return lot;
+            } catch (error) {
+                lastError = error;
+                if (error?.response?.status && error.response.status !== 404) {
+                    throw error;
+                }
+            }
+        }
+
+        return null;
+    } catch (error) {
+        throw new Error(extractMixingApiError(error || lastError, "Unable to fetch lot details."));
     }
 };
 
