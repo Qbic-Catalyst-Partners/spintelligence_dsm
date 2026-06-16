@@ -671,7 +671,6 @@ function DrawFrame() {
     date: today,
     shift: "General",
     processType: "Breaker",
-    serialNumber: "",
     machineNumber: "",
     remarks: "",
     readingCount: 5,
@@ -1267,7 +1266,6 @@ function DrawFrame() {
         machineErrors.push(errs);
       });
     } else {
-      if (!form.serialNumber.trim()) headerErrors.serialNumber = true;
       if (!form.date.trim()) headerErrors.date = true;
       if (!form.machineNumber.trim()) headerErrors.machineNumber = true;
       if (!form.remarks.trim()) headerErrors.remarks = true;
@@ -1346,7 +1344,6 @@ function DrawFrame() {
       items.push(...(wheelChangeRef.current?.getPreviewData?.() || []));
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
-      items.push({ label: "S. No.", value: form.serialNumber });
       items.push({ label: "Date", value: form.date });
       items.push({ label: "Machine Number", value: form.machineNumber });
       items.push({ label: "Remarks", value: form.remarks });
@@ -1511,7 +1508,6 @@ function DrawFrame() {
       : {
           entry_id: entryId,
           type: form.type,
-          s_no: form.serialNumber,
           entry_date: form.date,
           machine_number: form.machineNumber,
           remarks: form.remarks,
@@ -1917,15 +1913,6 @@ function DrawFrame() {
                 </>
               ) :(
                 <>
-                  <div className={styles.field}>
-                    <label className={styles.label}>S. No.</label>
-                    <input
-                      value={form.serialNumber}
-                      onChange={(e) => handleFormChange("serialNumber", e.target.value)}
-                      className={`${styles.input} ${errors.header?.serialNumber ? styles.inputError : ""}`}
-                    />
-                  </div>
-
                   <div className={styles.field}>
                     <label className={styles.label}>Entry ID</label>
                     <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />

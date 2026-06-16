@@ -17,7 +17,7 @@ export const STATIC_SHIFT_OPTIONS = [
 export const STATIC_DEPARTMENT_OPTIONS = [
   { dept_code: "BR", dept_name: "Br drawing" },
   { dept_code: "FR", dept_name: "Fr drawing" },
-  { dept_code: "CD", dept_name: "Carding" },
+  { dept_code: "CARDING", dept_name: "CARDING" },
   { dept_code: "SX", dept_name: "Simplx" },
   { dept_code: "CB", dept_name: "Comber" },
 ];
@@ -106,7 +106,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
     let active = true;
     (async () => {
       try {
-        const dropdownOptions = await fetchCardingUqcMasterDropdown();
+        const dropdownOptions = await fetchCardingUqcMasterDropdown({ department_code: "CARDING" });
         if (!active) return;
         const masterVarieties = dropdownOptions.varieties?.map((row) => row.variety_name).filter(Boolean) || [];
         const masterDepartments = dropdownOptions.departments || [];

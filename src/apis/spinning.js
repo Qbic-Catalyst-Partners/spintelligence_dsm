@@ -183,6 +183,7 @@ const normalizeCountNameOptionRows = (rows = []) => {
         row?.COUNT_NAME ??
         row?.COUNTNAME ??
         row?.variety_name ??
+        row?.prep_variety_name ??
         row?.variety ??
         row?.VARIETY_NAME ??
         row?.VARIETY ??
@@ -222,6 +223,8 @@ const normalizeCountNameOptions = (payload = {}) => {
         ...(Array.isArray(options.count_names) ? options.count_names : []),
         ...(Array.isArray(options.varieties) ? options.varieties : []),
         ...(Array.isArray(options.variety) ? options.variety : []),
+          ...(Array.isArray(options.prep_variety_names) ? options.prep_variety_names : []),
+          ...(Array.isArray(options.prep_varieties) ? options.prep_varieties : []),
       ];
   const rows = [
     ...optionValues,
@@ -231,7 +234,9 @@ const normalizeCountNameOptions = (payload = {}) => {
     ...(Array.isArray(payload.count_name_from) ? payload.count_name_from : []),
     ...(Array.isArray(payload.count_name_to) ? payload.count_name_to : []),
     ...(Array.isArray(payload.variety_names) ? payload.variety_names : []),
+      ...(Array.isArray(payload.prep_variety_names) ? payload.prep_variety_names : []),
     ...(Array.isArray(payload.varieties) ? payload.varieties : []),
+      ...(Array.isArray(payload.prep_varieties) ? payload.prep_varieties : []),
     ...(Array.isArray(payload.values) ? payload.values : []),
     ...(Array.isArray(payload.names) ? payload.names : []),
     ...(Array.isArray(payload.data) ? payload.data : []),
@@ -265,6 +270,8 @@ export const fetchSpinningCountChangeDropdown = async (params = {}) => {
     "/spinning/count-change/master/count-names",
     "/spinning/count-change/varieties",
     "/spinning/count-change/master/varieties",
+      "/spinning/wheel-change/master/varieties",
+      "/spinning/wheel-change/varieties",
   ];
   let lastError = null;
 

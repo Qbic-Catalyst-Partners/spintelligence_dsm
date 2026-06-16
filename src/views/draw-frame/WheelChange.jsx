@@ -565,6 +565,10 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     }`;
 
     if (row.inputType === "select") {
+      const selectOptions =
+        row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
+          ? prepVarietyOptions
+          : [];
       return (
         <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
           <option value="">Select</option>

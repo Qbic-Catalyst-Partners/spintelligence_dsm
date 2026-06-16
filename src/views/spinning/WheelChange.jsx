@@ -252,7 +252,17 @@ const WHEEL_CHANGE_PAYLOAD_ALIASES = {
 };
 
 const WHEEL_CHANGE_DROPDOWN_KEYS = {
-  countForm: ["count_from", "count_from_options", "varieties", "variety", "variety_names", "count_names"],
+  countForm: [
+    "count_from",
+    "count_from_options",
+    "varieties",
+    "variety",
+    "variety_names",
+    "prep_variety_names",
+    "prep_variety_name",
+    "prep_varieties",
+    "count_names",
+  ],
   rh: ["bdw", "bdw_options", "edw", "edw_options"],
   bdv: ["bdw", "bdw_options", "edw", "edw_options"],
   dca: ["dca", "dca_options"],
@@ -303,6 +313,7 @@ const getOptionText = (value) => {
     value.value ??
       value.label ??
       value.text ??
+          value.prep_variety_name ??
       value.rf_no ??
       value.rf_number ??
       value.r_f_no ??
@@ -444,6 +455,7 @@ const normalizeDropdownOptions = (rows) =>
               row?.code ??
               row?.name ??
               row?.variety_name ??
+                row?.prep_variety_name ??
               row?.count_name ??
               row?.text ??
               row

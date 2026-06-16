@@ -46,6 +46,27 @@ const normalizeOptionValue = (row) => {
     return { value, label: value };
 };
 
+const normalizeMachineRows = (rows = []) =>
+    rows
+        .map((row) => {
+            if (typeof row === "string") {
+                const value = row.trim();
+                return value ? { mc_no: value, mc_name: value, dept_code: "", dept_name: "" } : null;
+            }
+
+            const mcNo = String(row?.mc_no ?? row?.mcNo ?? row?.value ?? row?.machine_no ?? row?.machineNo ?? "").trim();
+            const mcName = String(row?.mc_name ?? row?.mcName ?? row?.label ?? row?.text ?? row?.machine_name ?? row?.machineName ?? mcNo ?? "").trim();
+            if (!mcNo && !mcName) return null;
+
+            return {
+                mc_no: mcNo || mcName,
+                mc_name: mcName || mcNo,
+                dept_code: String(row?.dept_code ?? row?.deptCode ?? "").trim(),
+                dept_name: String(row?.dept_name ?? row?.deptName ?? "").trim(),
+            };
+        })
+        .filter(Boolean);
+
 const normalizeCountPayload = (payload = {}) => {
     const options = payload.options || {};
     const rows = [
@@ -260,6 +281,72 @@ export const fetchComberUqcMasterDropdown = async ({
     } catch (error) {
         throw new Error(extractApiError(error, "Unable to fetch Comber U% dropdown options."));
     }
+};
+
+export const fetchComberRibbonLapMasterMcNos = async ({
+    prefix = "",
+    department = "Comber",
+    department_code = "COMBER",
+    include_all = true,
+    screen = "ribbon-lap",
+} = {}) => {
+    const screenEndpoints = {
+        "ribbon-lap": [
+            "/comber/ribbon-lap/master/mc-nos",
+            "/comber/ribbon-lap/master/machine-nos",
+            "/comber/ribbon-lap/master/machine-numbers",
+            "/comber/lap-cv/master/mc-nos",
+            "/comber/lap-cv/master/machine-nos",
+            "/comber/lap-cv/master/machine-numbers",
+            "/comber/master/mc-nos",
+            "/comber/master/machine-nos",
+            "/comber/master/machine-numbers",
+        ],
+        "lap-cv": [
+            "/comber/lap-cv/master/mc-nos",
+            "/comber/lap-cv/master/machine-nos",
+            "/comber/lap-cv/master/machine-numbers",
+            "/comber/master/mc-nos",
+            "/comber/master/machine-nos",
+            "/comber/master/machine-numbers",
+        ],
+        master: [
+            "/comber/master/mc-nos",
+            "/comber/master/machine-nos",
+            "/comber/master/machine-numbers",
+        ],
+    };
+
+    let lastError = null;
+    const endpoints = screenEndpoints[screen] || screenEndpoints["ribbon-lap"];
+    const params = {
+        prefix,
+        mc_no_prefix: prefix,
+        machine_prefix: prefix,
+        department,
+        department_code,
+        include_all,
+    };
+
+    for (const endpoint of endpoints) {
+        try {
+            const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
+            const payload = response?.data || {};
+            const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload) ? payload : [];
+            const options = normalizeMachineRows(rows);
+
+            if (options.length || endpoint === endpoints[endpoints.length - 1]) {
+                return options;
+            }
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status && error.response.status !== 404) {
+                throw new Error(extractApiError(error, "Unable to fetch Comber ribbon-lap machine options."));
+            }
+        }
+    }
+
+    throw new Error(extractApiError(lastError || {}, "Unable to fetch Comber ribbon-lap machine options."));
 };
 
 export const fetchComberNatiMasterMcNos = async ({

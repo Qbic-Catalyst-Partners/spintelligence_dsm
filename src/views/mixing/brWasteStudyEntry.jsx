@@ -1,10 +1,11 @@
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import SearchableSelect from '@/components/SearchableSelect';
 import useBlowroomMasterVarieties from '@/hooks/useBlowroomMasterVarieties';
+import useBlowroomMasterWasteTypes from '@/hooks/useBlowroomMasterWasteTypes';
 import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
-import { fetchBlowroomBrWasteApi } from '@/apis/blowroom';
+import { fetchBlowroomBrWasteApi, saveBlowroomMasterWasteType } from '@/apis/blowroom';
 import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
@@ -36,14 +37,6 @@ const TYPE_1_COLUMNS = [
     { key: "mcNo", label: "MC No" },
     { key: "mcProduction", label: "MC Production" },
 ];
-const WASTE_TYPE_OPTIONS = [
-    "Flat Strip",
-    "Under Grid",
-    "Mote Knife",
-    "Cylinder",
-    "Doffer",
-];
-
 const emptyType3Row = () =>
     TYPE_3_COLUMNS.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
 const emptyType2Row = () =>
@@ -182,6 +175,14 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [localSubmitTick, setLocalSubmitTick] = useState(0);
     const [machineOptions, setMachineOptions] = useState([]);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
+    const {
+        wasteTypeOptions,
+        wasteTypeOptionsError,
+        loadingWasteTypeOptions,
+        refreshWasteTypeOptions,
+    } = useBlowroomMasterWasteTypes();
+    const [wasteTypeSaveStatus, setWasteTypeSaveStatus] = useState({});
+    const wasteTypeAttemptRef = useRef({});
 
     const [type1CountInput, setType1CountInput] = useState('1');
     const [type2CountInput, setType2CountInput] = useState("1");
@@ -517,6 +518,48 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     }, [fetchMachineOptionsApi]);
 
     useEffect(() => {
+        const timers = [];
+
+        wasteKgRows.forEach((row, index) => {
+            const rawValue = String(row.wasteType || "").trim();
+            if (!rawValue) return;
+
+            const normalizedValue = rawValue.toLowerCase();
+            if (normalizedWasteTypes.has(normalizedValue)) return;
+            if (wasteTypeAttemptRef.current[index] === normalizedValue) return;
+            if (wasteTypeSaveStatus[normalizedValue]?.saving || wasteTypeSaveStatus[normalizedValue]?.saved) return;
+
+            const timer = setTimeout(async () => {
+                wasteTypeAttemptRef.current[index] = normalizedValue;
+                setWasteTypeSaveStatus((current) => ({
+                    ...current,
+                    [normalizedValue]: { saving: true, saved: false, error: "" },
+                }));
+
+                try {
+                    await saveBlowroomMasterWasteType(rawValue);
+                    await refreshWasteTypeOptions();
+                    setWasteTypeSaveStatus((current) => ({
+                        ...current,
+                        [normalizedValue]: { saving: false, saved: true, error: "" },
+                    }));
+                } catch (error) {
+                    setWasteTypeSaveStatus((current) => ({
+                        ...current,
+                        [normalizedValue]: { saving: false, saved: false, error: error.message || "Failed to save waste type" },
+                    }));
+                }
+            }, 450);
+
+            timers.push(timer);
+        });
+
+        return () => {
+            timers.forEach((timer) => clearTimeout(timer));
+        };
+    }, [normalizedWasteTypes, refreshWasteTypeOptions, wasteKgRows, wasteTypeSaveStatus]);
+
+    useEffect(() => {
         const shouldReset = useBlowroomRedux ? success : localSubmitTick > 0;
         if (shouldReset) {
             loadSavedEntries();
@@ -528,6 +571,8 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             setOverallWaste('');
             setRemarks('');
             setSelectedSavedEntryId("");
+            setWasteTypeSaveStatus({});
+            wasteTypeAttemptRef.current = {};
         }
     }, [success, localSubmitTick, dispatch, useBlowroomRedux]);
 
@@ -569,6 +614,8 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         setOverallWaste('');
         setRemarks('');
         setSelectedSavedEntryId("");
+        setWasteTypeSaveStatus({});
+        wasteTypeAttemptRef.current = {};
         if (useBlowroomRedux) {
             dispatch(resetState());
         }
@@ -1036,18 +1083,28 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                         <div className={styles['mixx-row']} key={`waste-kg-${i}`}>
                             <div className={styles['mixx-group']}>
                                 <label>Waste Type</label>
-                                <select
+                                <SearchableSelect
                                     className={styles['mixx-input']}
                                     value={row.wasteType}
-                                    onChange={(e) => handleWasteKgRowChange(i, "wasteType", e.target.value)}
-                                >
-                                    <option value="">Select Waste Type</option>
-                                    {WASTE_TYPE_OPTIONS.map((option) => (
-                                        <option key={option} value={option}>
-                                            {option}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(value) => handleWasteKgRowChange(i, "wasteType", value)}
+                                    options={wasteTypeOptions}
+                                    placeholder={
+                                        loadingWasteTypeOptions
+                                            ? "Loading waste types..."
+                                            : wasteTypeOptionsError
+                                                ? "Type waste type"
+                                                : "Select or type waste type"
+                                    }
+                                    ariaLabel={`Waste Type ${i + 1}`}
+                                />
+                                {wasteTypeSaveStatus[String(row.wasteType || "").trim().toLowerCase()]?.saving ? (
+                                    <div className={styles['mixx-help']}>Saving new waste type...</div>
+                                ) : null}
+                                {wasteTypeSaveStatus[String(row.wasteType || "").trim().toLowerCase()]?.error ? (
+                                    <div className={styles['mixx-help-error']}>
+                                        {wasteTypeSaveStatus[String(row.wasteType || "").trim().toLowerCase()].error}
+                                    </div>
+                                ) : null}
                             </div>
                             <div className={styles['mixx-group']}>
                                 <label>Waste KGs Value</label>
