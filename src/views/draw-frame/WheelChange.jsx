@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
+import { fetchDrawFrameWheelChangePrepVarieties } from "@/apis/draw-frame";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
 
@@ -308,6 +309,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [values, setValues] = useState(createValues);
   const [errors, setErrors] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [prepVarietyOptions, setPrepVarietyOptions] = useState([]);
 
   const activeRows = useMemo(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
@@ -336,6 +338,22 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     } finally {
       setDraftLoaded(true);
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchDrawFrameWheelChangePrepVarieties()
+      .then((options) => {
+        if (!active) return;
+        setPrepVarietyOptions(Array.isArray(options) ? options : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPrepVarietyOptions([]);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -534,9 +552,18 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     }`;
 
     if (row.inputType === "select") {
+      const selectOptions =
+        row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
+          ? prepVarietyOptions
+          : [];
       return (
         <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
-          <option value="">Select</option>
+          <option value="">{selectOptions.length ? "Select variety" : "Select"}</option>
+          {selectOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
         </select>
       );
     }
