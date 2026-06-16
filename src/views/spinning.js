@@ -88,6 +88,7 @@ const SPINNING_ENTRY_ID_CONFIG = {
 
 const getSpinningEntryConfig = (typeName) =>
     SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN" };
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
 const getMachineText = (value) => {
     if (value === undefined || value === null) return "";
@@ -103,6 +104,8 @@ const getMachineText = (value) => {
         value.rf_name ??
         value.checker_name ??
         value.employee_name ??
+        value.empname ??
+        value.emp_name ??
         value.user_name ??
         value.operator_name ??
         value.employee_code ??
@@ -163,6 +166,8 @@ const normalizeMachineOptions = (payload) => {
                 row?.rf_no ??
                 row?.checker_name ??
                 row?.employee_name ??
+                row?.empname ??
+                row?.emp_name ??
                 row?.user_name ??
                 row?.operator_name ??
                 row?.employee_code ??
@@ -178,6 +183,8 @@ const normalizeMachineOptions = (payload) => {
                 row?.text ??
                 row?.checker_name ??
                 row?.employee_name ??
+                row?.empname ??
+                row?.emp_name ??
                 row?.user_name ??
                 row?.operator_name ??
                 row?.employee_name ??
@@ -185,6 +192,7 @@ const normalizeMachineOptions = (payload) => {
                 row?.shift_code ??
                 row?.mc_name ??
                 row?.machine_name ??
+                row?.varname ??
                 row?.machine_number ??
                 row?.rf_name ??
                 row?.name ??
@@ -249,14 +257,17 @@ function SpinningDepartment() {
     const { success, error } = useSelector((state) => state.spinning);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-    const checkingOptions = filterOptionsByDepartmentAccess(
+    const queryType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+    const isProcessParameterRequest = normalizeTypeName(queryType) === "process parameter";
+    const fullCheckingOptions = filterOptionsByDepartmentAccess(
         SPINNING_CHECKING_OPTIONS,
         accessByDepartment,
         user,
         "Spinning"
     );
-
-    const queryType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+    const checkingOptions = isProcessParameterRequest
+        ? fullCheckingOptions
+        : fullCheckingOptions.filter((item) => item.name !== "Process Parameter");
     const findCheckingOption = (value) =>
         checkingOptions.find((item) => item.name === value || item.displayName === value) || null;
 
@@ -463,7 +474,7 @@ function SpinningDepartment() {
 
         let isMounted = true;
         Promise.allSettled([
-            fetchSpinningRingFrameCheckerNames(),
+            fetchSpinningRingFrameCheckerNames({ department: "Spinning", dept_code: "25/27", department_code: "25/27" }),
             fetchSpinningRingFrameShifts(),
         ]).then(([checkerResult, shiftResult]) => {
             if (!isMounted) return;

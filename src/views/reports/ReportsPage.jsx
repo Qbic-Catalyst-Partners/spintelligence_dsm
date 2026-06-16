@@ -182,7 +182,7 @@ const reportSources = {
     Carding: {
       "Process Parameter": { fetcher: getCardingProcessParameterEntries },
       "Between & Within Card Data Entry": { endpoint: "/carding/between-within-card" },
-      "Card Thick Place Entry": { endpoint: "/carding/card-thick-place" },
+    "Thick place & CV": { endpoint: "/carding/card-thick-place" },
       "Trials Data Entry Form": { endpoint: "/carding/trials" },
       "Nati Data Entry": { endpoint: "/carding/nati-data" },
       "U% Data Entry": { fetcher: fetchCardingUqcEntries },

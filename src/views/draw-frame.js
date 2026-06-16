@@ -72,6 +72,9 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
 const getDrawFrameEntryConfig = (type = "") =>
   DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRA" };
 
+const normalizeTypeName = (value = "") =>
+  String(value).trim().toLowerCase();
+
 const getDrawFrameUniqueId = (sequence, type = "") => {
   const config = getDrawFrameEntryConfig(type);
   return formatEntryId({
@@ -622,12 +625,19 @@ function DrawFrame() {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-  const typeOptions = filterOptionsByDepartmentAccess(
+  const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+  const isProcessParameterRequest = ["process parameter", "pp - breaker drawing", "pp - finisher drawing"].includes(
+    normalizeTypeName(requestedType)
+  );
+  const fullTypeOptions = filterOptionsByDepartmentAccess(
     primaryTypeOptions,
     accessByDepartment,
     user,
     "Draw Frame"
   );
+  const typeOptions = isProcessParameterRequest
+    ? fullTypeOptions.filter((option) => option.name === "PP - Breaker Drawing" || option.name === "PP - Finisher Drawing")
+    : fullTypeOptions.filter((option) => option.name !== "PP - Breaker Drawing" && option.name !== "PP - Finisher Drawing");
   const { actionLoading, actionSuccess, cotsEntries, uqcEntries, listLoading, error } = useSelector(
     (state) =>
       state.drawFrame ?? {
@@ -661,7 +671,6 @@ function DrawFrame() {
     date: today,
     shift: "General",
     processType: "Breaker",
-    serialNumber: "",
     machineNumber: "",
     remarks: "",
     readingCount: 5,
@@ -738,6 +747,24 @@ function DrawFrame() {
       }));
     }
   }, [form.type, typeOptions]);
+
+  useEffect(() => {
+    if (!requestedType || !typeOptions.length) return;
+
+    const normalizedRequest = normalizeTypeName(requestedType);
+    const matchedType = typeOptions.find((option) => {
+      const names = [option.name, ...(option.aliases || [])].map(normalizeTypeName);
+      return names.includes(normalizedRequest);
+    });
+
+    if (matchedType && matchedType.name !== form.type) {
+      setForm((current) => ({
+        ...current,
+        type: matchedType.name,
+        processType: matchedType.name === "PP - Finisher Drawing" ? "Finisher" : current.processType,
+      }));
+    }
+  }, [form.type, requestedType, typeOptions]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1238,7 +1265,6 @@ function DrawFrame() {
         machineErrors.push(errs);
       });
     } else {
-      if (!form.serialNumber.trim()) headerErrors.serialNumber = true;
       if (!form.date.trim()) headerErrors.date = true;
       if (!form.machineNumber.trim()) headerErrors.machineNumber = true;
       if (!form.remarks.trim()) headerErrors.remarks = true;

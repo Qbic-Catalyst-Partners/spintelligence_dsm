@@ -4,6 +4,7 @@ const BLOWROOM_SYNC_ENDPOINT = "/blowroom/sync";
 const BLOWROOM_DROP_TEST_ENDPOINT = "/blowroom/drop-test";
 const BLOWROOM_BR_WASTE_ENDPOINT = "/blowroom/br-waste-study";
 const BLOWROOM_PROCESS_PARAMETER_ENDPOINT = "/blowroom/header";
+const BLOWROOM_WASTE_TYPE_MASTER_ENDPOINT = "/blowroom/master/waste-types";
 
 const getBlowroomApiErrorMessage = (error, fallbackMessage) => {
   const data = error.response?.data;
@@ -45,6 +46,42 @@ const parseVarietyPayload = (payload) => {
     ...(Array.isArray(payload) ? payload : []),
   ];
   return uniqueStrings(rows.map((row) => row?.variety_name || row?.prep_variety_name || row?.variety || row?.name || row));
+};
+
+const normalizeMasterNameRows = (payload) => {
+  const rows = [
+    ...(Array.isArray(payload?.data) ? payload.data : []),
+    ...(Array.isArray(payload?.rows) ? payload.rows : []),
+    ...(Array.isArray(payload?.options) ? payload.options : []),
+    ...(Array.isArray(payload) ? payload : []),
+  ];
+
+  const seen = new Set();
+  return rows
+    .map((row) => {
+      if (row && typeof row === "object") {
+        const name = String(
+          row.waste_type_name ??
+          row.wasteTypeName ??
+          row.waste_type ??
+          row.wasteType ??
+          row.name ??
+          row.label ??
+          row.value ??
+          row.text ??
+          ""
+        ).trim();
+        return name ? { value: name, label: name } : null;
+      }
+
+      const name = String(row || "").trim();
+      return name ? { value: name, label: name } : null;
+    })
+    .filter((option) => {
+      if (!option || seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
 };
 
 const normalizeCountPayload = (payload) => {
@@ -162,6 +199,61 @@ export const fetchBlowroomCountOptions = async ({ prefix = "", screen = "header"
   }
 
   throw new Error(getBlowroomApiErrorMessage(lastError || {}, "Failed to fetch count options"));
+};
+
+export const fetchBlowroomMasterWasteTypes = async () => {
+  const endpoints = [
+    BLOWROOM_WASTE_TYPE_MASTER_ENDPOINT,
+    `${BLOWROOM_WASTE_TYPE_MASTER_ENDPOINT}/dropdown`,
+    `${BLOWROOM_WASTE_TYPE_MASTER_ENDPOINT}/list`,
+  ];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await apiConfig.get(
+        endpoint,
+        {},
+        { skipGlobalErrorModal: true }
+      );
+      const options = normalizeMasterNameRows(res.data);
+      if (options.length || endpoint === endpoints[endpoints.length - 1]) {
+        return options;
+      }
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status && error.response.status !== 404) {
+        throw new Error(getBlowroomApiErrorMessage(error, "Failed to fetch waste type options"));
+      }
+    }
+  }
+
+  throw new Error(getBlowroomApiErrorMessage(lastError || {}, "Failed to fetch waste type options"));
+};
+
+export const saveBlowroomMasterWasteType = async (wasteTypeName) => {
+  const name = String(wasteTypeName || "").trim();
+  if (!name) {
+    throw new Error("Waste type is required");
+  }
+
+  try {
+    const res = await apiConfig.post(
+      BLOWROOM_WASTE_TYPE_MASTER_ENDPOINT,
+      { waste_type: name, waste_type_name: name, name },
+      { skipGlobalSuccessModal: true }
+    );
+    return res.data;
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(
+        error.response.data.message ||
+        error.response.data.error ||
+        "Failed to save waste type"
+      );
+    }
+    throw new Error(error.message || "Failed to save waste type");
+  }
 };
 
 export const fetchBlowroomDataApi = async () => {

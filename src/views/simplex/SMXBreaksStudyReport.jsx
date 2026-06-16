@@ -69,6 +69,23 @@ const formatPercentage = (value) => {
 const getColumnBreakValues = (breakMatrix, columnLabel) =>
   breakRows.flatMap((rowLabel) => parseBreakEntries(breakMatrix[rowLabel]?.[columnLabel]));
 
+const getTotalBreakPercentages = (breakMatrix) => {
+  const columnTotals = breakColumns.reduce((accumulator, columnLabel) => {
+    accumulator[columnLabel] = breakRows.reduce(
+      (sum, rowLabel) => sum + countBreakEntries(breakMatrix[rowLabel]?.[columnLabel]),
+      0
+    );
+    return accumulator;
+  }, {});
+  const grandTotal = breakColumns.reduce((sum, columnLabel) => sum + columnTotals[columnLabel], 0);
+  const percentages = breakColumns.reduce((accumulator, columnLabel) => {
+    accumulator[columnLabel] = grandTotal > 0 ? (columnTotals[columnLabel] / grandTotal) * 100 : 0;
+    return accumulator;
+  }, {});
+
+  return { columnTotals, grandTotal, percentages };
+};
+
 const createInitialForm = () => ({
   type: "SMX Breaks Study Report",
   simplexNo: "",
@@ -348,6 +365,14 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       });
     });
 
+    const totalBreakPercentages = getTotalBreakPercentages(breakMatrix).percentages;
+    breakColumns.forEach((columnLabel) => {
+      items.push({
+        label: `TOTAL BREAK (%) - ${columnLabel}`,
+        value: `${formatPercentage(totalBreakPercentages[columnLabel])}%`,
+      });
+    });
+
     return items;
   };
 
@@ -388,6 +413,10 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const tableSection = (
     <section className="overflow-x-auto px-1">
       <div className="min-w-[1120px]">
+        {(() => {
+          const { columnTotals: totalCounts, grandTotal: totalCount, percentages } = getTotalBreakPercentages(breakMatrix);
+          return (
+            <>
         <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] gap-x-3 gap-y-4 text-[11px] font-semibold uppercase tracking-[0.01em] text-slate-600">
           <div className="flex items-end pb-2">Length</div>
           {breakColumns.map((columnLabel) => (
@@ -430,7 +459,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
             <div className="text-[12px] font-semibold uppercase text-slate-700">
               Total Breaks
               <span className="block text-[11px] font-bold text-[#3d539f]">
-                Grand: {formatNumber(grandTotal)}
+                Grand: {formatNumber(totalCount)}
               </span>
             </div>
             {breakColumns.map((columnLabel) => (
@@ -439,7 +468,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 type="text"
                 readOnly
                 className={`${tableFieldClass} text-slate-500`}
-                value={formatNumber(columnTotals[columnLabel])}
+                value={formatNumber(totalCounts[columnLabel])}
               />
             ))}
           </div>
@@ -447,14 +476,14 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Breaks %</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">TOTAL BREAK (%)</div>
             {percentageBreakColumns.map((columnLabel) => (
               <input
                 key={`percent-${columnLabel}`}
                 type="text"
                 readOnly
                 className={`${tableFieldClass} text-slate-500`}
-                value={`${formatPercentage(percentageTotals[columnLabel])}%`}
+                value={`${formatPercentage(percentages[columnLabel])}%`}
               />
             ))}
           </div>

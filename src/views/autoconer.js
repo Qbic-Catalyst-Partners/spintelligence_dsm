@@ -60,6 +60,7 @@ const getAutoconerEntryConfig = (typeName) =>
   AUTOCONER_ENTRY_ID_CONFIG[typeName] || {
     prefix: "ACR",
   };
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
 function Autoconer() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -68,7 +69,9 @@ function Autoconer() {
   const childRef = useRef(null);
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-  const typeOptions = useMemo(
+  const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+  const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+  const fullTypeOptions = useMemo(
     () =>
       filterOptionsByDepartmentAccess(
         autoconerTypes,
@@ -77,6 +80,12 @@ function Autoconer() {
         "Autoconer"
       ),
     [accessByDepartment, user]
+  );
+  const typeOptions = useMemo(
+    () => isProcessParameterRequest
+      ? fullTypeOptions
+      : fullTypeOptions.filter((item) => item.name !== "Process Parameter"),
+    [fullTypeOptions, isProcessParameterRequest]
   );
   const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
@@ -165,6 +174,17 @@ function Autoconer() {
       setCheckingType(typeOptions[0]?.name || "");
     }
   }, [checkingType, typeOptions]);
+
+  useEffect(() => {
+    if (!requestedType || !typeOptions.length) return;
+    const requested = normalizeTypeName(requestedType);
+    const matchedType = typeOptions.find((item) =>
+      [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
+    );
+    if (matchedType && matchedType.name !== checkingType) {
+      setCheckingType(matchedType.name);
+    }
+  }, [checkingType, requestedType, typeOptions]);
   return (
     <div className={styles.page}>
       <div className={styles.container}>
