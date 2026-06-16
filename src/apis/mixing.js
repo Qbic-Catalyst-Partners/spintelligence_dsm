@@ -57,8 +57,11 @@ export const fetchMixingMasterVarieties = async ({ prefix = "" } = {}) => {
         '/mixing/change-control/mixings',
         '/mixing/change-control/mixing-dropdown',
         '/mixing/master/varieties',
+        '/blowroom/master/varieties',
         '/carding/master/varieties',
+        '/drawframe/master/varieties',
         '/comber/master/varieties',
+        '/simplex/master/varieties',
     ];
     let lastError = null;
 

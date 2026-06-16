@@ -50,7 +50,7 @@ const DEFAULT_BLOWROOM_STATE = { success: false };
 const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
 const TYPE_1_MAX_ENTRIES = 10;
 const TYPE_3_MAX_ENTRIES = 10;
-const WASTE_KG_MAX_TYPES = 5;
+const WASTE_KG_MAX_TYPES = 25;
 
 const getTotalWastePercent = (wasteKgRows) =>
     (Array.isArray(wasteKgRows) ? wasteKgRows : []).reduce(
@@ -59,6 +59,10 @@ const getTotalWastePercent = (wasteKgRows) =>
     );
 
 const formatWastePercent = (value) => (Number(value) > 0 ? Number(value).toFixed(2) : "0.00");
+const formatCardingProduction = (rows) =>
+    (Array.isArray(rows) ? rows : [])
+        .reduce((sum, row) => sum + (Number(row?.mcProduction) || 0), 0)
+        .toFixed(2);
 
 const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
     const selectedTypeRows = formData.studyType === "Type 3"
@@ -154,6 +158,11 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     fetchMachineOptionsApi = null,
     entryTypeLabel = "BR Waste Study Entry",
     useBlowroomRedux = true,
+    showEntryId = true,
+    hideSavedEntryRow = false,
+    onSavedEntriesChange = null,
+    onSavedEntriesLoadingChange = null,
+    onSavedEntriesErrorChange = null,
 }, ref) {
     const dispatch = useDispatch();
     const { success } = useSelector((state) => state.blowroom ?? DEFAULT_BLOWROOM_STATE);
@@ -188,24 +197,27 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [overallWaste, setOverallWaste] = useState('');
     const [remarks, setRemarks] = useState('');
     const effectiveFetchEntriesApi = fetchEntriesApi || fetchBlowroomBrWasteApi;
-    const normalizedWasteTypes = new Set(
-        (Array.isArray(wasteTypeOptions) ? wasteTypeOptions : [])
-            .map((option) => String(option?.label ?? option?.value ?? option ?? "").trim().toLowerCase())
-            .filter(Boolean)
-    );
+    const { studyType } = formData;
 
     const loadSavedEntries = async () => {
         setLoadingSavedEntries(true);
+        onSavedEntriesLoadingChange?.(true);
         try {
             const response = await effectiveFetchEntriesApi({ page: 1, limit: 50 });
             const rows = Array.isArray(response?.data) ? response.data : [];
             setSavedEntries(rows);
             setSavedEntriesError("");
+            onSavedEntriesChange?.(rows);
+            onSavedEntriesErrorChange?.("");
         } catch (error) {
             setSavedEntries([]);
-            setSavedEntriesError(error.message || "Unable to load saved entries.");
+            const message = error.message || "Unable to load saved entries.";
+            setSavedEntriesError(message);
+            onSavedEntriesChange?.([]);
+            onSavedEntriesErrorChange?.(message);
         } finally {
             setLoadingSavedEntries(false);
+            onSavedEntriesLoadingChange?.(false);
         }
     };
 
@@ -304,7 +316,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
             : value;
         setFormData(prev => {
-            const updated = { ...prev, [field]: nextValue };
             if (field === "cardingProduction") {
                 setWasteKgRows((prevRows) =>
                     prevRows.map((row) => ({
@@ -313,7 +324,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     }))
                 );
             }
-            return updated;
+            return { ...prev, [field]: nextValue };
         });
         setErrors((prev) => {
             if (!prev[field]) return prev;
@@ -424,7 +435,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         const nextValue =
             field === "wasteType"
                 ? value
-                : sanitizeNumericInput(value, { precision: 10, scale: 2 });
+                : sanitizeNumericInput(value, { precision: 10, scale: 4 });
         setWasteKgRows((prev) => {
             const updated = [...prev];
             updated[index] = { ...updated[index], [field]: nextValue };
@@ -441,6 +452,32 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     useEffect(() => {
         setOverallWaste(formatWastePercent(getTotalWastePercent(wasteKgRows)));
     }, [wasteKgRows]);
+
+    useEffect(() => {
+        setWasteKgRows((prevRows) =>
+            prevRows.map((row) => ({
+                ...row,
+                wasteKgPercent: calculateWastePercent(row.wasteKgValue, formData.cardingProduction),
+            }))
+        );
+    }, [formData.cardingProduction]);
+
+    useEffect(() => {
+        const selectedRows =
+            studyType === "Type 3"
+                ? type3Rows
+                : studyType === "Type 2"
+                    ? type2Rows
+                    : studyType === "Type 1"
+                        ? type1Rows
+                        : [];
+        const nextCardingProduction = selectedRows.length ? formatCardingProduction(selectedRows) : "";
+        setFormData((prev) => (
+            prev.cardingProduction === nextCardingProduction
+                ? prev
+                : { ...prev, cardingProduction: nextCardingProduction }
+        ));
+    }, [studyType, type1Rows, type2Rows, type3Rows]);
 
     const applyWasteKgCount = () => {
         const n = Math.min(WASTE_KG_MAX_TYPES, Math.max(1, parseInt(wasteKgCountInput) || 1));
@@ -619,8 +656,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const getPreviewData = () => {
         const header = [
             { label: "Date", value: date },
-            { label: "BR Waste ID", value: formData.brWasteId || entryId },
-            { label: "Lot No", value: lotNo },
+            ...(showEntryId ? [{ label: "BR Waste ID", value: formData.brWasteId || entryId }] : []),
             { label: "Variety", value: formData.variety },
             { label: "Carding Production (KGs)", value: formData.cardingProduction },
             { label: "Study Type", value: formData.studyType },
@@ -652,55 +688,60 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         clear: handleClear,
         validate,
         getPreviewData,
+        loadSavedEntries,
+        selectSavedEntry: (id) => {
+            setSelectedSavedEntryId(id);
+            const selected = savedEntries.find((item) => String(item.id) === String(id));
+            if (selected) {
+                mapEntryToForm(selected);
+            }
+        },
     }));
-
-    const { studyType } = formData;
 
     return (
         <>
-            {/* Row 1: BR Waste ID, Entry Date, Variety */}
-            <div className={styles['mixx-row']}>
-                <div className={styles['mixx-group']}>
-                    <label>Load Saved Entry</label>
-                    <select
-                        className={styles['mixx-input']}
-                        value={selectedSavedEntryId}
-                        onChange={(e) => {
-                            const id = e.target.value;
-                            setSelectedSavedEntryId(id);
-                            const selected = savedEntries.find((item) => String(item.id) === String(id));
-                            if (selected) {
-                                mapEntryToForm(selected);
-                            }
-                        }}
-                        disabled={loadingSavedEntries || !savedEntries.length}
-                    >
-                        <option value="">
-                            {loadingSavedEntries ? "Loading..." : savedEntries.length ? "Select Saved Entry" : "No Saved Entries"}
-                        </option>
-                        {savedEntries.map((entry) => (
-                            <option key={entry.id} value={entry.id}>
-                                {(entry.entry_id || entry.waste_study_id || `ID-${entry.id}`)} | {entry.study_type || "-"} | {entry.date || "-"}
+            {hideSavedEntryRow ? null : (
+                <div className={styles['mixx-row']}>
+                    <div className={styles['mixx-group']}>
+                        <label>Load Saved Entry</label>
+                        <select
+                            className={styles['mixx-input']}
+                            value={selectedSavedEntryId}
+                            onChange={(e) => {
+                                const id = e.target.value;
+                                setSelectedSavedEntryId(id);
+                                const selected = savedEntries.find((item) => String(item.id) === String(id));
+                                if (selected) {
+                                    mapEntryToForm(selected);
+                                }
+                            }}
+                            disabled={loadingSavedEntries || !savedEntries.length}
+                        >
+                            <option value="">
+                                {loadingSavedEntries ? "Loading..." : savedEntries.length ? "Select Saved Entry" : "No Saved Entries"}
                             </option>
-                        ))}
-                    </select>
-                    {savedEntriesError ? <div className={styles['mixx-help-error']}>{savedEntriesError}</div> : null}
+                            {savedEntries.map((entry) => (
+                                <option key={entry.id} value={entry.id}>
+                                    {(entry.entry_id || entry.waste_study_id || `ID-${entry.id}`)} | {entry.study_type || "-"} | {entry.date || "-"}
+                                </option>
+                            ))}
+                        </select>
+                        {savedEntriesError ? <div className={styles['mixx-help-error']}>{savedEntriesError}</div> : null}
+                    </div>
+
+                    <div className={styles['mixx-group']}>
+                        <label>Entry ID</label>
+                        <input
+                            className={`${styles['mixx-input']} ${errors.brWasteId ? styles['mixx-error'] : ''}`}
+                            placeholder="Enter Entry ID"
+                            value={formData.brWasteId || entryId || ""}
+                            onChange={e => handleChange('brWasteId', e.target.value)}
+                        />
+                    </div>
                 </div>
-                <div className={styles['mixx-empty']} />
-                <div className={styles['mixx-empty']} />
-            </div>
+            )}
 
             <div className={styles['mixx-row']}>
-                <div className={styles['mixx-group']}>
-                    <label>BR Waste ID</label>
-                    <input
-                        className={`${styles['mixx-input']} ${errors.brWasteId ? styles['mixx-error'] : ''}`}
-                        placeholder="Enter BR Waste ID"
-                        value={formData.brWasteId || entryId || ""}
-                        onChange={e => handleChange('brWasteId', e.target.value)}
-                    />
-                </div>
-
                 <div className={styles['mixx-group']}>
                     <label>Entry Date</label>
                     <input
@@ -730,7 +771,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                 </div>
             </div>
 
-            {/* Row 2: Carding Production, Study Type */}
             <div className={styles['mixx-row']}>
                 <CustomInput
                     label="Carding Production (KGs)"
@@ -738,6 +778,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     value={formData.cardingProduction}
                     onChange={value => handleChange('cardingProduction', value)}
                     error={errors.cardingProduction}
+                    readOnly
                 />
 
                 <div className={styles['mixx-group']}>
@@ -1069,7 +1110,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                                 <label>Waste KGs Value</label>
                                 <input
                                     className={styles['mixx-input']}
-                                    placeholder="0.00"
+                                    placeholder="0.0000"
                                     value={row.wasteKgValue}
                                     onChange={(e) => handleWasteKgRowChange(i, "wasteKgValue", e.target.value)}
                                 />

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiBell,
-    FiBookOpen,
     FiBriefcase,
     FiCalendar,
     FiCheck,
@@ -75,6 +74,16 @@ const departmentLinks = [
     { href: "/spinning", label: "Spinning", department: "Spinning" },
     { href: "/autoconer", label: "Autoconer", department: "Autoconer" },
     { href: "/departments/quality-control/wrapping", label: "Wrapping", department: "Wrapping" },
+];
+
+const processParameterLinks = [
+    { href: "/mixing?type=Process%20Parameter", label: "Mixing", department: "Mixing", path: "/mixing" },
+    { href: "/blowroom?type=Process%20Parameter", label: "Blow Room", department: "Blow Room", path: "/blowroom" },
+    { href: "/carding?type=Process%20Parameter", label: "Carding", department: "Carding", path: "/carding" },
+    { href: "/draw-frame?type=PP%20-%20Breaker%20Drawing", label: "Draw Frame", department: "Draw Frame", path: "/draw-frame" },
+    { href: "/simplex?type=Process%20Parameter", label: "Simplex", department: "Simplex", path: "/simplex" },
+    { href: "/spinning?type=Process%20Parameter", label: "Spinning", department: "Spinning", path: "/spinning" },
+    { href: "/autoconer?type=Process%20Parameter", label: "Autoconer", department: "Autoconer", path: "/autoconer" },
 ];
 
 const settingsLinks = [
@@ -199,6 +208,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
+    const visibleProcessParameterLinks = processParameterLinks.filter((link) =>
+        hasSubDepartmentAccess(accessByDepartment, link.department, user)
+    );
     const visibleTicketingLinks = hasFullAccess
         ? ticketingLinks
         : ticketingLinks.filter((link) => link.href !== "/l3-ticketing");
@@ -225,6 +237,12 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const isActiveLink = (href) => {
         if (!href) {
             return false;
+        }
+
+        const [hrefPath, hrefQuery = ""] = href.split("?");
+        if (hrefQuery) {
+            const currentQuery = router.asPath?.split("?")[1] || "";
+            return currentPath === hrefPath && decodeURIComponent(currentQuery) === decodeURIComponent(hrefQuery);
         }
 
         if (href === "/departments") {
@@ -629,6 +647,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 {departmentLink.label}
                                             </Link>
                                         ))}
+                                        {visibleProcessParameterLinks.length ? (
+                                            <Link
+                                                href="/process-parameter"
+                                                className={`${styles["side-subnav-link"]} ${isActiveLink("/process-parameter") ? styles["side-subnav-active"] : ""}`}
+                                            >
+                                                Process Parameter
+                                            </Link>
+                                        ) : null}
                                     </div>
                                 </div>
                             );

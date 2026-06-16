@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
-import { fetchDrawFrameWheelChangePrepVarieties } from "@/apis/draw-frame";
+import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
 
@@ -179,6 +179,8 @@ const createValues = () =>
 
 const hasTextValue = (value) => String(value ?? "").trim() !== "";
 const getTextValue = (value) => String(value ?? "").trim();
+const uniqueStrings = (values = []) =>
+  Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
 const parseNumericValue = (value) => {
   const parsed = Number.parseFloat(String(value ?? "").trim());
   return Number.isFinite(parsed) ? parsed : null;
@@ -309,7 +311,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [values, setValues] = useState(createValues);
   const [errors, setErrors] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
-  const [prepVarietyOptions, setPrepVarietyOptions] = useState([]);
+  const [selectOptions, setSelectOptions] = useState([]);
 
   const activeRows = useMemo(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
@@ -342,15 +344,26 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
 
   useEffect(() => {
     let active = true;
-    fetchDrawFrameWheelChangePrepVarieties()
-      .then((options) => {
+
+    const loadDropdowns = async () => {
+      try {
+        const dropdown = await fetchDrawFrameUqcMasterDropdown();
         if (!active) return;
-        setPrepVarietyOptions(Array.isArray(options) ? options : []);
-      })
-      .catch(() => {
+        const options = uniqueStrings([
+          ...(Array.isArray(dropdown?.mcNos) ? dropdown.mcNos.map((row) => row?.value ?? row?.label ?? row) : []),
+          ...(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []),
+          ...(Array.isArray(dropdown?.departmentNames) ? dropdown.departmentNames : []),
+          ...(Array.isArray(dropdown?.shifts) ? dropdown.shifts.map((row) => row?.value ?? row?.label ?? row) : []),
+        ]);
+        setSelectOptions(options);
+      } catch {
         if (!active) return;
-        setPrepVarietyOptions([]);
-      });
+        setSelectOptions([]);
+      }
+    };
+
+    loadDropdowns();
+
     return () => {
       active = false;
     };
@@ -558,7 +571,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
           : [];
       return (
         <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
-          <option value="">{selectOptions.length ? "Select variety" : "Select"}</option>
+          <option value="">Select</option>
           {selectOptions.map((option) => (
             <option key={option} value={option}>
               {option}

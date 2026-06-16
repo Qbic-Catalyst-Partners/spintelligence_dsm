@@ -115,13 +115,17 @@ function AppShell({ Component, pageProps }) {
   }, []);
 
   useEffect(() => {
-    return subscribeToGlobalSuccessModal(() => {
+    return subscribeToGlobalSuccessModal(({ message }) => {
+      if (isInputScreen) {
+        return;
+      }
+
       setSuccessModal({
         open: true,
-        message: "Data Submitted",
+        message: message || "Data Submitted",
       });
     });
-  }, []);
+  }, [isInputScreen]);
 
   useEffect(() => {
     if (typeof document === "undefined") {

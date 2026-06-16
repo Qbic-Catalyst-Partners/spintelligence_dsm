@@ -7,7 +7,7 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
-import { fetchCardingMasterVarieties, fetchCardingNatiMasterMcNos } from "@/apis/carding";
+import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -51,15 +51,11 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             try {
                 const [varietyList, mcNos] = await Promise.all([
                     fetchCardingMasterVarieties(),
-                    fetchCardingNatiMasterMcNos(),
+                    fetchCardingMasterMachines({ prefix: "CDG" }),
                 ]);
                 if (active) {
                     setVarietyOptions(Array.isArray(varietyList) ? varietyList : []);
-                    setMcNoOptions(
-                        Array.isArray(mcNos)
-                            ? mcNos.map((item) => item.mc_no).filter(Boolean)
-                            : []
-                    );
+                    setMcNoOptions(Array.isArray(mcNos) ? mcNos : []);
                 }
             } catch (_err) {
                 if (active) {
@@ -302,8 +298,8 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                                                         value={entry.mc_no}
                                                         onChange={(value) => handleEntryChange(index, "mc_no", value)}
                                                         options={mcNoOptions}
-                                                        placeholder="Select MC No"
-                                                        ariaLabel={`MC No Row ${index + 1}`}
+                                                        placeholder="Select CDG No"
+                                                        ariaLabel={`CDG No Row ${index + 1}`}
                                                         className={errors[`${index}-mc_no`] ? styles["field-error"] : ""}
                                                     />
                                                 </div>
