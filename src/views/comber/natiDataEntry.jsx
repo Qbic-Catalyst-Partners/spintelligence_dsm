@@ -29,7 +29,6 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     const dispatch = useDispatch();
     const { data, error, isLoading } = useSelector((state) => state.comber ?? emptyComberState);
 
-    const [natiId, setNatiId] = useState("");
     const [entryDate, setEntryDate] = useState("");
     const [variety, setVariety] = useState("");
     const [entryCount, setEntryCount] = useState(1);
@@ -84,7 +83,6 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     }, [dispatch]);
 
     const resetForm = () => {
-        setNatiId("");
         setEntryDate(new Date().toISOString().split("T")[0]);
         setVariety("");
         setEntryCount(1);
@@ -131,7 +129,6 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     const buildPayload = () => ({
         entry_id: entryId || "",
         type: selectedType,
-        nati_id: natiId,
         entry_date: entryDate,
         variety,
         entries: entries
@@ -146,7 +143,6 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
 
     const validate = () => {
         const nextErrors = {};
-        if (!natiId) nextErrors.natiId = true;
         if (!variety) nextErrors.variety = true;
         if (!entries.some((entry) => entry.mc_no !== "")) nextErrors.entries = true;
 
@@ -172,7 +168,6 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     const getPreviewData = () => {
         const base = [
             { label: "Type", value: selectedType || "Nati Data Entry" },
-            { label: "Nati ID", value: natiId },
             { label: "Entry ID", value: entryId || "-" },
             { label: "Variety", value: variety },
         ];
@@ -216,60 +211,41 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                     </div>
 
                     {showForm ? (
-                        <>
-                            <div className={styles["cb-form-group"]}>
-                                <label>Nati ID</label>
-                                <input
-                                    className={errors.natiId ? styles["input-error"] : ""}
-                                    value={natiId}
-                                    onChange={(e) => {
-                                        setNatiId(e.target.value);
-                                        setErrors((prev) => {
-                                            if (!prev.natiId) return prev;
-                                            const next = { ...prev };
-                                            delete next.natiId;
-                                            return next;
-                                        });
-                                    }}
-                                />
-                            </div>
+                        <div className={styles["cb-form-group"]}>
+                            <label>Entry ID</label>
+                            <input
+                                type="text"
+                                value={entryId || ""}
+                                readOnly disabled
+                                readOnly
+                            />
+                        </div>
+                    ) : null}
 
-                            <div className={styles["cb-form-group"]}>
-                                <label>Entry ID</label>
-                                <input
-                                    type="text"
-                                    value={entryId || ""}
-                                    readOnly disabled
-                                    readOnly
-                                />
-                            </div>
-                        </>
+                    {showForm ? (
+                        <div className={styles["cb-form-group"]}>
+                            <label>Variety</label>
+                            <SearchableSelect
+                                className={errors.variety ? styles["input-error"] : ""}
+                                value={variety}
+                                onChange={(value) => {
+                                    setVariety(value);
+                                    setErrors((prev) => {
+                                        if (!prev.variety) return prev;
+                                        const next = { ...prev };
+                                        delete next.variety;
+                                        return next;
+                                    });
+                                }}
+                                options={varietyOptions}
+                                placeholder="-- Select Variety --"
+                            />
+                        </div>
                     ) : null}
                 </div>
 
                 {showForm ? (
                     <>
-                        <div className={styles["cb-row"]}>
-                            <div className={styles["cb-form-group"]}>
-                                <label>Variety</label>
-                                <SearchableSelect
-                                    className={errors.variety ? styles["input-error"] : ""}
-                                    value={variety}
-                                    onChange={(value) => {
-                                        setVariety(value);
-                                        setErrors((prev) => {
-                                            if (!prev.variety) return prev;
-                                            const next = { ...prev };
-                                            delete next.variety;
-                                            return next;
-                                        });
-                                    }}
-                                    options={varietyOptions}
-                                    placeholder="-- Select Variety --"
-                                />
-                            </div>
-                        </div>
-
                         <div className={styles["cb-sample-section"]}>
                             <h4>Neps Details</h4>
                             <div className={styles["cb-form-group"]}>

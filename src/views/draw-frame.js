@@ -189,7 +189,7 @@ const matchesCotsTypePrefix = (machineName, processType) => {
 
 const getMachineCardDefaults = () => [];
 
-const formatMetric = (value) => (Number.isFinite(value) ? value.toFixed(2) : "");
+const formatMetric = (value) => (Number.isFinite(value) ? value.toFixed(3) : "");
 
 const emptyMetric = () => ({
   avg: "",
@@ -940,7 +940,7 @@ function DrawFrame() {
   };
 
   const handleReadingChange = (setter, errorKey, index, value) => {
-    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
+    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 3 });
     setter((current) => current.map((item, itemIndex) => (itemIndex === index ? nextValue : item)));
     setHasCalculated(false);
     setOneYardMetrics([]);
@@ -1256,7 +1256,6 @@ function DrawFrame() {
         if (item.fanWaste === "") errs.fanWaste = true;
         if (item.cotChange === "") errs.cotChange = true;
         if (item.stripperWaste === "") errs.stripperWaste = true;
-        if (item.thickPlace === "") errs.thickPlace = true;
         if (form.processType === "Finisher") {
           if (item.autoLevel === "") errs.autoLevel = true;
           if (item.silverMon === "") errs.silverMon = true;
@@ -1313,13 +1312,12 @@ function DrawFrame() {
         items.push({ label: `Machine ${idx + 1}`, value: m.machineName });
         items.push({ label: "Fan Waste", value: m.fanWaste || "-" });
         items.push({ label: "Cot Change", value: m.cotChange || "-" });
-        items.push({ label: "Stripper W", value: m.stripperWaste || "-" });
-        items.push({ label: "Thick Place", value: m.thickPlace || "-" });
+        items.push({ label: "Stripper Waste", value: m.stripperWaste || "-" });
         if (form.processType === "Finisher") {
           items.push({ label: "Auto Level", value: m.autoLevel || "-" });
-          items.push({ label: "Silver Mon", value: m.silverMon || "-" });
-          items.push({ label: "Mass Thick", value: m.massThick || "-" });
-          items.push({ label: "Scanning R", value: m.scanningR || "-" });
+          items.push({ label: "Silver Monitor", value: m.silverMon || "-" });
+          items.push({ label: "Mass Thick Place", value: m.massThick || "-" });
+          items.push({ label: "Scanning Roller", value: m.scanningR || "-" });
         }
       });
     } else if (form.type === "U% Data Entry") {
@@ -1506,9 +1504,9 @@ function DrawFrame() {
           })),
         }
       : {
-          entry_id: entryId,
-          type: form.type,
-          entry_date: form.date,
+        entry_id: entryId,
+        type: form.type,
+        entry_date: form.date,
           machine_number: form.machineNumber,
           remarks: form.remarks,
           num_readings: Number(form.readingCount),
@@ -2002,7 +2000,7 @@ function DrawFrame() {
                         </div>
 
                         <div className={styles.field}>
-                          <label className={styles.label}>Stripper W</label>
+                          <label className={styles.label}>Stripper Waste</label>
                           <input
                             value={machine.stripperWaste}
                             onChange={(e) => handleMachineChange(index, "stripperWaste", e.target.value)}
@@ -2015,17 +2013,6 @@ function DrawFrame() {
                         {form.processType === "Finisher" ? (
                           <>
                             <div className={styles.field}>
-                              <label className={styles.label}>Thick Place</label>
-                              <input
-                                value={machine.thickPlace}
-                                onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}
-                                className={`${styles.input} ${
-                                  errors.machines?.[index]?.thickPlace ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
-
-                            <div className={styles.field}>
                               <label className={styles.label}>Auto Level</label>
                                 <input
                                   value={machine.autoLevel}
@@ -2037,7 +2024,7 @@ function DrawFrame() {
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Silver Mon</label>
+                              <label className={styles.label}>Silver Monitor</label>
                                 <input
                                   value={machine.silverMon}
                                   onChange={(e) => handleMachineChange(index, "silverMon", e.target.value)}
@@ -2048,7 +2035,7 @@ function DrawFrame() {
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Mass Thick</label>
+                              <label className={styles.label}>Mass Thick Place</label>
                                 <input
                                   value={machine.massThick}
                                   onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
@@ -2059,7 +2046,7 @@ function DrawFrame() {
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Scanning R</label>
+                              <label className={styles.label}>Scanning Roller</label>
                                 <input
                                   value={machine.scanningR}
                                   onChange={(e) => handleMachineChange(index, "scanningR", e.target.value)}
@@ -2069,18 +2056,7 @@ function DrawFrame() {
                                 />
                             </div>
                           </>
-                        ) : (
-                          <div className={`${styles.field} ${styles.machineFieldCompact}`}>
-                            <label className={styles.label}>Thick Place</label>
-                            <input
-                              value={machine.thickPlace}
-                              onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}
-                              className={`${styles.input} ${
-                                errors.machines?.[index]?.thickPlace ? styles.inputError : ""
-                              }`}
-                            />
-                          </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   ))}

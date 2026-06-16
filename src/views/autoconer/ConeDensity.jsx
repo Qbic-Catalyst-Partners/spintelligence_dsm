@@ -20,7 +20,6 @@ const autoConerOptions = [];
 const coneTipOptions = ["Blue", "Red", "White"];
 
 const formFieldSanitizers = {
-  testNo: (value) => sanitizeIntegerInput(value, 10),
   baseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   noseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   drumFrom: (value) => sanitizeIntegerInput(value, 10),
@@ -40,7 +39,6 @@ const rowFieldSanitizers = {
 
 const createInitialForm = () => ({
   type: "Cone Density",
-  testNo: "",
   date: today,
   countNameFrom: "",
   countCode: "",
@@ -219,7 +217,6 @@ const ConeDensity = forwardRef(function ConeDensity(
 
   const buildPayload = () => ({
     entry_id: entryId || undefined,
-    test_no: toNullableNumber(form.testNo),
     entry_date: form.date,
     type: selectedTypeName || form.type,
     machine_name: form.autoConerNo,
@@ -546,7 +543,6 @@ const ConeDensity = forwardRef(function ConeDensity(
 
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
-    { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countOptions, placeholder: "Enter count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerOptions, placeholder: "Enter auto coner no." },

@@ -16,15 +16,6 @@ function DrawFrameCvSection({
   return (
     <>
       <div className={styles.field}>
-        <label className={styles.label}>S. No.</label>
-        <input
-          value={form.serialNumber}
-          onChange={(e) => handleFormChange("serialNumber", e.target.value)}
-          className={styles.input}
-        />
-      </div>
-
-      <div className={styles.field}>
         <label className={styles.label}>Date</label>
         <input
           type="date"
