@@ -49,8 +49,11 @@ export const fetchMixingMasterVarieties = async ({ prefix = "" } = {}) => {
 
     const endpoints = [
         '/mixing/master/varieties',
+        '/blowroom/master/varieties',
         '/carding/master/varieties',
+        '/drawframe/master/varieties',
         '/comber/master/varieties',
+        '/simplex/master/varieties',
     ];
     let lastError = null;
 

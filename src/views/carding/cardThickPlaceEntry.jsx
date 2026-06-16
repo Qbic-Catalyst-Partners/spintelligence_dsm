@@ -141,7 +141,7 @@ function CardThickPlaceEntry({
 
     const handleTypeSelect = (value) => {
         onTypeChange(value);
-        if (value === "Card Thick Place Entry") {
+        if (value === "Thick place & CV" || value === "Card Thick Place Entry") {
             stampNow();
             setFormMessage("");
             setIsError(false);
@@ -352,7 +352,7 @@ function CardThickPlaceEntry({
                     <PreviewModal
                         open={showPreview}
                         title="Carding Preview"
-                        subtitle="Carding Notebook / Card Thick Place Entry"
+                        subtitle="Carding Notebook / Thick place & CV"
                         items={previewItems}
                         typeValue={selectedType}
                         onCancel={() => setShowPreview(false)}

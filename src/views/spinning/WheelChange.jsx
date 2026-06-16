@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
-import { fetchSpinningWheelChangeDropdown, fetchSpinningWheelChangeRfNos } from "@/apis/spinning";
+import { fetchSpinningMachineNumberOptions, fetchSpinningWheelChangeDropdown } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
@@ -12,6 +12,7 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 3": "type3",
 };
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
+const WHEEL_CHANGE_MACHINE_DEPT_CODES = ["25", "27"];
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
@@ -315,6 +316,71 @@ const getOptionText = (value) => {
       ""
   ).trim();
 };
+const normalizeMachineOptions = (payload) => {
+  const rows = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.machines)
+        ? payload.machines
+        : Array.isArray(payload?.machineOptions)
+          ? payload.machineOptions
+          : Array.isArray(payload?.options)
+            ? payload.options
+            : Array.isArray(payload?.values)
+              ? payload.values
+              : Array.isArray(payload?.machine_numbers)
+                ? payload.machine_numbers
+                : Array.isArray(payload?.mc_nos)
+                  ? payload.mc_nos
+                  : [];
+
+  const seen = new Set();
+
+  return rows
+    .map((row) => {
+      const value = getOptionText(
+        row?.value ??
+          row?.mc_no ??
+          row?.machine_no ??
+          row?.machine_number ??
+          row?.code ??
+          row
+      );
+      const machineName = getOptionText(
+        row?.mc_name ??
+          row?.machine_name ??
+          row?.name ??
+          row?.label ??
+          row?.text ??
+          value
+      );
+      const deptCode = getOptionText(
+        row?.dept_code ??
+          row?.department_code ??
+          row?.dept ??
+          row?.department ??
+          ""
+      );
+      const labelParts = [value];
+      if (machineName && machineName !== value) labelParts.push(machineName);
+      if (deptCode) labelParts.push(`Dept ${deptCode}`);
+
+      return value
+        ? {
+            value,
+            label: labelParts.join(" - "),
+            machineName,
+            deptCode,
+          }
+        : null;
+    })
+    .filter((option) => {
+      if (!option || seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
+};
 const normalizeLookupOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -424,18 +490,22 @@ const WheelChange = forwardRef(function WheelChange(
   ref
 ) {
   const [wheelChangeType, setWheelChangeType] = useState("");
-  const [rfNo, setRfNo] = useState("");
+  const [machineNumber, setMachineNumber] = useState("");
   const [date, setDate] = useState(getTodayDate);
   const [values, setValues] = useState(createWheelChangeValues);
   const [errors, setErrors] = useState({});
-  const [rfOptions, setRfOptions] = useState([]);
+  const [machineOptions, setMachineOptions] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
   const activeRows = WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE[wheelChangeType] || TYPE_1_PARAMETER_ROWS;
-  const referenceLabel = "R/F No.";
-  const rfLookupParams = useMemo(
-    () => (wheelChangeType === "Type 3" ? { rf_prefix: "FR" } : { rf_prefix: "RF" }),
-    [wheelChangeType]
+  const referenceLabel = "Machine Number";
+  const machineLookupParams = useMemo(
+    () => ({
+      dept_code: WHEEL_CHANGE_MACHINE_DEPT_CODES.join("/"),
+      department_code: WHEEL_CHANGE_MACHINE_DEPT_CODES.join("/"),
+      department: "Spinning",
+    }),
+    []
   );
 
   useEffect(() => {
@@ -444,7 +514,7 @@ const WheelChange = forwardRef(function WheelChange(
       const stored = JSON.parse(window.localStorage.getItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY) || "{}");
       if (stored && typeof stored === "object") {
         setWheelChangeType(typeof stored.wheelChangeType === "string" ? stored.wheelChangeType : "");
-        setRfNo(typeof stored.rfNo === "string" ? stored.rfNo : "");
+        setMachineNumber(typeof stored.machineNumber === "string" ? stored.machineNumber : "");
         setDate(typeof stored.date === "string" && stored.date ? stored.date : getTodayDate());
         setValues({
           ...createWheelChangeValues(),
@@ -464,12 +534,12 @@ const WheelChange = forwardRef(function WheelChange(
       WHEEL_CHANGE_DRAFT_STORAGE_KEY,
       JSON.stringify({
         wheelChangeType,
-        rfNo,
+        machineNumber,
         date,
         values,
       })
     );
-  }, [date, draftLoaded, rfNo, values, wheelChangeType]);
+  }, [date, draftLoaded, machineNumber, values, wheelChangeType]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -509,15 +579,18 @@ const WheelChange = forwardRef(function WheelChange(
     let isMounted = true;
 
     Promise.allSettled([
-      fetchSpinningWheelChangeRfNos(rfLookupParams),
-      fetchSpinningWheelChangeDropdown(wheelChangeType, rfLookupParams),
-    ]).then(([rfResult, dropdownResult]) => {
+      fetchSpinningMachineNumberOptions({
+        screen: "master",
+        ...machineLookupParams,
+      }),
+      fetchSpinningWheelChangeDropdown(wheelChangeType, machineLookupParams),
+    ]).then(([machineResult, dropdownResult]) => {
       if (!isMounted) return;
 
-      if (rfResult.status === "fulfilled") {
-        setRfOptions(normalizeLookupOptions(rfResult.value));
+      if (machineResult.status === "fulfilled") {
+        setMachineOptions(normalizeMachineOptions(machineResult.value));
       } else {
-        setRfOptions([]);
+        setMachineOptions([]);
       }
 
       if (dropdownResult.status === "fulfilled") {
@@ -530,7 +603,7 @@ const WheelChange = forwardRef(function WheelChange(
     return () => {
       isMounted = false;
     };
-  }, [rfLookupParams, wheelChangeType]);
+  }, [machineLookupParams, wheelChangeType]);
 
   const handleValueChange = (rowKey, column) => (event) => {
     const nextValue = event.target.value;
@@ -569,7 +642,7 @@ const WheelChange = forwardRef(function WheelChange(
 
   const clear = () => {
     setWheelChangeType("");
-    setRfNo("");
+    setMachineNumber("");
     setDate(getTodayDate());
     setValues(createWheelChangeValues());
     setErrors({});
@@ -584,7 +657,7 @@ const WheelChange = forwardRef(function WheelChange(
     if (!selectedTypeName) nextErrors.selectedTypeName = true;
     if (!wheelChangeType.trim()) nextErrors.wheelChangeType = true;
     if (!date) nextErrors.date = true;
-    if (!rfNo.trim()) nextErrors.rfNo = true;
+    if (!machineNumber.trim()) nextErrors.machineNumber = true;
 
     const valueErrors = {};
     activeRows.forEach((row) => {
@@ -641,10 +714,10 @@ const WheelChange = forwardRef(function WheelChange(
       wheel_change_type: typeCode,
       date: date || getTodayDate(),
       test_no: "",
-      [typeFieldConfig.referenceField]: getTextValue(rfNo),
-      rf_no: getTextValue(rfNo),
-      rf_number: getTextValue(rfNo),
-      r_f_no: getTextValue(rfNo),
+      [typeFieldConfig.referenceField]: getTextValue(machineNumber),
+      machine_no: getTextValue(machineNumber),
+      machine_number: getTextValue(machineNumber),
+      mc_no: getTextValue(machineNumber),
     };
 
     activeRows.forEach((row) => {
@@ -670,7 +743,7 @@ const WheelChange = forwardRef(function WheelChange(
     { label: "Checking Type", value: selectedTypeName || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "#SPN-001" },
-    { label: referenceLabel, value: rfNo || "-" },
+    { label: referenceLabel, value: machineNumber || "-" },
     ...activeRows.flatMap((row) => [
       { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
       { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
@@ -788,13 +861,13 @@ const WheelChange = forwardRef(function WheelChange(
           <div className={styles.field}>
             <label>{referenceLabel}</label>
             <SearchableSelect
-              className={`${styles.topInput} ${errors.rfNo ? styles.errorInput : ""}`}
-              value={rfNo}
+              className={`${styles.topInput} ${errors.machineNumber ? styles.errorInput : ""}`}
+              value={machineNumber}
               onChange={(value) => {
-                setRfNo(value);
-                clearFieldError("rfNo");
+                setMachineNumber(value);
+                clearFieldError("machineNumber");
               }}
-              options={rfOptions}
+              options={machineOptions}
               placeholder={`Select ${referenceLabel}`}
               ariaLabel={referenceLabel}
             />

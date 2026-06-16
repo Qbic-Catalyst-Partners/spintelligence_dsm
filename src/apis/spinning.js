@@ -305,7 +305,13 @@ export const fetchSpinningCountChangeDropdown = async (params = {}) => {
   }
 };
 
-export const fetchSpinningMachineNumberOptions = async ({ screen = "master", prefix = "" } = {}) => {
+export const fetchSpinningMachineNumberOptions = async ({
+  screen = "master",
+  prefix = "",
+  dept_code = "",
+  department_code = "",
+  department = "",
+} = {}) => {
   const screenEndpoints = {
     "lycra-missing": ["/spinning/lycra-missing/master/mc-nos"],
     "lycra-centering": ["/spinning/lycra-centering/master/mc-nos"],
@@ -324,7 +330,14 @@ export const fetchSpinningMachineNumberOptions = async ({ screen = "master", pre
     try {
       const response = await api.get(
         endpoint,
-        { prefix, mc_no_prefix: prefix, machine_prefix: prefix },
+        {
+          prefix,
+          mc_no_prefix: prefix,
+          machine_prefix: prefix,
+          dept_code,
+          department_code,
+          department,
+        },
         { skipGlobalErrorModal: true }
       );
       return response.data;
