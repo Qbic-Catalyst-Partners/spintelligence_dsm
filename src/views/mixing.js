@@ -44,6 +44,7 @@ const mixingDepartmentTypes = [
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
 
 const getCurrentDate = () => new Date().toISOString().split("T")[0];
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 const MIXING_ENTRY_ID_CONFIG = {
     "Cotton HVI Data Entry": { prefix: "COT", width: 4, routePath: "/mixing/cotton-hvi" },
     "Fibre Data Entry": { prefix: "FIB", width: 4, routePath: "/mixing/fibre" },
@@ -65,12 +66,17 @@ function Mixing() {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const currentDate = getCurrentDate();
-    const typeOptions = filterOptionsByDepartmentAccess(
+    const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+    const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+    const fullTypeOptions = filterOptionsByDepartmentAccess(
         mixingDepartmentTypes,
         accessByDepartment,
         user,
         "Mixing"
     );
+    const typeOptions = isProcessParameterRequest
+        ? fullTypeOptions
+        : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
     const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
@@ -102,6 +108,17 @@ function Mixing() {
             setSelectedTypeName(typeOptions[0]?.name || "");
         }
     }, [selectedTypeName, typeOptions]);
+
+    useEffect(() => {
+        if (!requestedType || !typeOptions.length) return;
+        const requested = normalizeTypeName(requestedType);
+        const matchedType = typeOptions.find((item) =>
+            [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
+        );
+        if (matchedType && matchedType.name !== selectedTypeName) {
+            setSelectedTypeName(matchedType.name);
+        }
+    }, [requestedType, selectedTypeName, typeOptions]);
 
     useEffect(() => {
         if (actionSuccess) {

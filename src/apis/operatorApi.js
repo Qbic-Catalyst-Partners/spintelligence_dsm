@@ -141,7 +141,7 @@ const manualTicketInputScreenEndpoints = {
     carding: {
       "Process Parameter": "/carding/qc-header",
       "Between & Within Card Data Entry": "/carding/between-within-card",
-      "Card Thick Place Entry": "/carding/card-thick-place",
+    "Thick place & CV": "/carding/card-thick-place",
       "Trials Data Entry Form": "/carding/trials",
       "Nati Data Entry": "/carding/nati-data",
       "U% Data Entry": "/carding/uqc",

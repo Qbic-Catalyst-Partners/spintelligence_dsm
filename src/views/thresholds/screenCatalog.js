@@ -17,7 +17,7 @@ export const thresholdScreenCatalog = {
         carding: [
             "Process Parameter",
             "Between & Within Card Data Entry",
-            "Card Thick Place Entry",
+    "Thick place & CV",
             "Trials Data Entry Form",
             "Nati Data Entry",
             "U% Data Entry",

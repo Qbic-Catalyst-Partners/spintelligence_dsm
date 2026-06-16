@@ -1,0 +1,161 @@
+.page {
+  min-height: calc(100dvh - 72px);
+  background: #f5f7fb;
+  padding: 32px;
+}
+
+.panel {
+  width: min(760px, 100%);
+  background: #ffffff;
+  border: 1px solid #dfe6f2;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: #1d4ed8;
+  font-size: 22px;
+  flex: 0 0 auto;
+}
+
+.header h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 24px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.header p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.selectorRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cfd8e6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.openButton {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #ffffff;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.openButton:hover {
+  background: #1e40af;
+}
+
+.emptyState {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  padding: 18px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+:global(:root[data-theme="dark"]) .page {
+  background: #050505;
+}
+
+:global(:root[data-theme="dark"]) .panel {
+  background: #111111;
+  border-color: #2f2f2f;
+  box-shadow: none;
+}
+
+:global(:root[data-theme="dark"]) .header h1,
+:global(:root[data-theme="dark"]) .field span,
+:global(:root[data-theme="dark"]) .field select {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .header p,
+:global(:root[data-theme="dark"]) .emptyState {
+  color: #d1d5db;
+}
+
+:global(:root[data-theme="dark"]) .field select,
+:global(:root[data-theme="dark"]) .emptyState {
+  background: #1f1f1f;
+  border-color: #3b3b3b;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 20px;
+  }
+
+  .panel {
+    padding: 20px;
+  }
+
+  .selectorRow {
+    grid-template-columns: 1fr;
+  }
+
+  .openButton {
+    width: 100%;
+  }
+}

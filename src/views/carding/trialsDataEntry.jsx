@@ -358,7 +358,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     ];
 
     const fieldClass = (name) => (errors[name] ? styles.errorField : "");
-    const trialTypeOptions = ["Trial"];
+    const trialTypeOptions = ["Trials", "Sample"];
 
     return (
         <div className={styles.cardShell}>
