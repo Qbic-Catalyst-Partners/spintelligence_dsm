@@ -181,6 +181,11 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         loadingWasteTypeOptions,
         refreshWasteTypeOptions,
     } = useBlowroomMasterWasteTypes();
+    const normalizedWasteTypes = new Set(
+        (Array.isArray(wasteTypeOptions) ? wasteTypeOptions : [])
+            .map((option) => String(option?.value ?? option?.label ?? option ?? "").trim().toLowerCase())
+            .filter(Boolean)
+    );
     const [wasteTypeSaveStatus, setWasteTypeSaveStatus] = useState({});
     const wasteTypeAttemptRef = useRef({});
 

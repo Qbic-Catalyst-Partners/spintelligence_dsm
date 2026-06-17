@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
@@ -83,9 +83,19 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [cdgOptions, setCdgOptions] = useState(DEFAULT_CDG_OPTIONS);
+  const lastLoadedMixingRef = useRef("");
+  const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
 
-  const loadLatestSaved = async () => {
-    const payload = await fetchCardingChangeControlEntries({ page: 1, limit: 1 });
+  const loadLatestSaved = async (mixingValue = "") => {
+    const params = { page: 1, limit: 1 };
+    const trimmedMixing = String(mixingValue || "").trim();
+    if (trimmedMixing) {
+      params.variety = trimmedMixing;
+      params.variety_name = trimmedMixing;
+      params.mixing = trimmedMixing;
+    }
+
+    const payload = await fetchCardingChangeControlEntries(params);
     const latest = extractLatestEntry(payload);
     if (!latest) return null;
 
@@ -110,10 +120,25 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   }, []);
 
   useEffect(() => {
-    loadLatestSaved().catch(() => {
-      // Keep an empty form when there is no previous Wheel Change entry yet.
-    });
-  }, []);
+    if (!selectedMixing) {
+      lastLoadedMixingRef.current = "";
+      return;
+    }
+
+    if (lastLoadedMixingRef.current === selectedMixing) return;
+
+    let cancelled = false;
+    loadLatestSaved(selectedMixing)
+      .then((latest) => {
+        if (cancelled || !latest) return;
+        lastLoadedMixingRef.current = selectedMixing;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMixing]);
 
   const previewItems = useMemo(
     () => [
@@ -229,6 +254,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     setMessage("");
     setShowPreview(false);
+    lastLoadedMixingRef.current = "";
   };
 
   const handlePreview = () => {
