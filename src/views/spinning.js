@@ -64,7 +64,14 @@ const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
 const RING_FRAME_RF_TOTAL = 24;
 const COTS_SIDE_MAX = 650;
-const RING_FRAME_TOTAL_FIELDS = ["position_1", "position_2", "position_3", "position_4", "position_5", "position_6"];
+const RING_FRAME_TOTAL_FIELDS = [
+    "position_1",
+    "position_2",
+    "position_3",
+    "position_4",
+    "position_5",
+    "position_6",
+];
 const SPINNING_ENTRY_ID_CONFIG = {
     "Process Parameter": { prefix: "SNP", width: 4, routePath: "/spinning/qc" },
     "COTS Checking": { prefix: "SCT", width: 4, routePath: "/spinning/cots-checking" },
@@ -215,6 +222,7 @@ const createRingFrameRows = () =>
         position_5: "",
         position_6: "",
         guide_roll_lapping: "",
+        lycra_missing: "",
         others: "",
     }));
 
@@ -277,7 +285,6 @@ function SpinningDepartment() {
     const [countReadingCount, setCountReadingCount] = useState("");
     const [countChangeRows, setCountChangeRows] = useState([]);
     const [shift, setShift] = useState("");
-    const [checkerName, setCheckerName] = useState("");
     const [ringFrameRows, setRingFrameRows] = useState(createRingFrameRows);
     const [outOfCenterAc, setOutOfCenterAc] = useState("");
     const [comments, setComments] = useState("");
@@ -320,6 +327,9 @@ function SpinningDepartment() {
     const isCountChange = checkingType === "Count Change";
     const isRingFrame = checkingType === "Ring Frame Log Book";
     const isWheelChange = checkingType === "Wheel Change";
+    const isRsmChecking =
+        checkingType === "RSM & Lycrasensor Checking Online" ||
+        checkingType === "RSM & Lycrasensor Checking Offline";
     const isBottomApronChecking = checkingType === "Bottom Apron Checking";
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Spinning",
@@ -525,6 +535,15 @@ function SpinningDepartment() {
             0
         ).toFixed(2)
     );
+    const guideRollTotal = Number(
+        ringFrameRows.reduce((total, row) => total + (parseNumericInput(row.guide_roll_lapping) ?? 0), 0).toFixed(2)
+    );
+    const lycraMissingTotal = Number(
+        ringFrameRows.reduce((total, row) => total + (parseNumericInput(row.lycra_missing) ?? 0), 0).toFixed(2)
+    );
+    const othersTotal = Number(
+        ringFrameRows.reduce((total, row) => total + (parseNumericInput(row.others) ?? 0), 0).toFixed(2)
+    );
     const totalCopsAc = sumDecimalValues(outOfCenterAc, faultCopsAc);
     const totalCopsRf = sumDecimalValues(outOfCenterRf, faultCopsRf);
     const totalCopsGrandTotal = sumDecimalValues(totalCopsAc, totalCopsRf);
@@ -636,7 +655,6 @@ function SpinningDepartment() {
             if (!countChangeMode) nextErrors.countChangeMode = true;
         } else if (isRingFrame) {
             if (!shift.trim()) nextErrors.shift = true;
-            if (!checkerName.trim()) nextErrors.checkerName = true;
             if (!outOfCenterAc.trim()) nextErrors.outOfCenterAc = true;
             if (!comments.trim()) nextErrors.comments = true;
             if (!faultCopsAc.trim()) nextErrors.faultCopsAc = true;
@@ -655,6 +673,7 @@ function SpinningDepartment() {
                 if (!hasTextValue(row.position_5)) rowErrors.position_5 = true;
                 if (!hasTextValue(row.position_6)) rowErrors.position_6 = true;
                 if (!hasTextValue(row.guide_roll_lapping)) rowErrors.guide_roll_lapping = true;
+                if (!hasTextValue(row.lycra_missing)) rowErrors.lycra_missing = true;
                 if (!hasTextValue(row.others)) rowErrors.others = true;
                 if (Object.keys(rowErrors).length > 0) ringFrameRowErrors[index] = rowErrors;
             });
@@ -715,7 +734,6 @@ function SpinningDepartment() {
                 inspection_type: "Ring Frame",
                 entry_date: date || getTodayDate(),
                 shift,
-                checker_name: checkerName,
                 rows: ringFrameRows.map((row) => ({
                     mc_no: String(row.machine_no ?? "").trim(),
                     lycra: String(row.lycra ?? "").trim(),
@@ -727,6 +745,7 @@ function SpinningDepartment() {
                     spindle_5: String(row.position_5 ?? "").trim(),
                     spindle_6: String(row.position_6 ?? "").trim(),
                     guide_roll_lapping: String(row.guide_roll_lapping ?? "").trim(),
+                    lycra_missing: String(row.lycra_missing ?? "").trim(),
                     others: String(row.others ?? "").trim(),
                     total: String(getRingFrameRowTotal(row)),
                 })),
@@ -761,9 +780,6 @@ function SpinningDepartment() {
             rhs_audio: "",
             checking_type: checkingType,
         };
-        if (!isCotsChecking) {
-            payload.employeename = employeeSearch;
-        }
         if (checkingType === "Speed Checking") {
             payload.display_speed = parseDecimalPayloadValue(displaySpeed);
             payload.spindle_speed = parseDecimalPayloadValue(spindleSpeed);
@@ -871,10 +887,6 @@ function SpinningDepartment() {
                 { label: "Entry ID", value: entryId },
                 { label: machineFieldLabel, value: selectedMachine || "-" },
             ];
-        if (!isCotsChecking && !isCountChange) {
-            headerItems.push({ label: "Employee", value: employeeSearch || "-" });
-        }
-
         const bodyItems = isCountChange
             ? [
                 { label: "Count Change Type", value: countChangeMode || "-" },
@@ -886,12 +898,14 @@ function SpinningDepartment() {
             : isRingFrame
                 ? [
                     { label: "Shift", value: shift || "-" },
-                    { label: "Checker Name", value: checkerName || "-" },
                     { label: "Rows", value: ringFrameRows.length },
                     { label: "Out of Center AC", value: outOfCenterAc || "-" },
                     { label: "Out of Center RF", value: outOfCenterRf || "-" },
                     { label: "Fault Cops AC", value: faultCopsAc || "-" },
                     { label: "Fault Cops RF", value: faultCopsRf || "-" },
+                    { label: "Guide Roll", value: String(guideRollTotal) },
+                    { label: "Lycra Missing", value: String(lycraMissingTotal) },
+                    { label: "Others", value: String(othersTotal) },
                     { label: "Total Cops AC", value: String(totalCopsAc) },
                     { label: "Total Cops RF", value: String(totalCopsRf) },
                     { label: "Grand Total", value: String(totalCopsGrandTotal) },
@@ -1111,21 +1125,7 @@ function SpinningDepartment() {
                                 </div>
 
                                 <div className={styles.row}>
-                                    <div className={styles["sp-form-group"]}>
-                                        <label>Checker Name</label>
-                                        <SearchableSelect
-                                            className={`${styles["highlight-input"]} ${errors.checkerName ? styles["input-error"] : ""}`}
-                                            value={checkerName}
-                                            onChange={(value) => {
-                                                setCheckerName(value);
-                                                clearFieldError("checkerName");
-                                            }}
-                                            options={ringFrameCheckerSelectOptions}
-                                            placeholder="Select Checker"
-                                            ariaLabel="Checker Name"
-                                        />
                                     </div>
-                                </div>
 
                                 <div className={styles.ringFrameTableWrap}>
                                     <table className={styles.ringFrameTable}>
@@ -1138,11 +1138,12 @@ function SpinningDepartment() {
                                                 <th>2</th>
                                                 <th>3</th>
                                                 <th>4</th>
-                                                <th>5</th>
-                                                <th>6</th>
-                                                <th>Guide Roll Lapping</th>
-                                                <th>Others</th>
-                                                <th>Total</th>
+                        <th>5</th>
+                        <th>6</th>
+                        <th>Guide Roll Lapping</th>
+                        <th>Lycra Missing</th>
+                        <th>Others</th>
+                        <th>Total</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -1180,6 +1181,7 @@ function SpinningDepartment() {
                                                     <td><input type="text" placeholder="Enter" value={String(row.position_5 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_5")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_5 ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" placeholder="Enter" value={String(row.position_6 ?? "")} onChange={handleRingFrameTextChange(rowIndex, "position_6")} className={`${styles.ringFrameInput} ${errors.ringFrameRows?.[rowIndex]?.position_6 ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" placeholder="Enter" value={String(row.guide_roll_lapping ?? "")} onChange={handleRingFrameTextChange(rowIndex, "guide_roll_lapping")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.guide_roll_lapping ? styles["input-error"] : ""}`} /></td>
+                                                    <td><input type="text" placeholder="Enter" value={String(row.lycra_missing ?? "")} onChange={handleRingFrameTextChange(rowIndex, "lycra_missing")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.lycra_missing ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" placeholder="Enter" value={String(row.others ?? "")} onChange={handleRingFrameTextChange(rowIndex, "others")} className={`${styles.ringFrameInputWide} ${errors.ringFrameRows?.[rowIndex]?.others ? styles["input-error"] : ""}`} /></td>
                                                     <td><input type="text" value={String(getRingFrameRowTotal(row))} readOnly className={styles.ringFrameInputWide} /></td>
                                                 </tr>
@@ -1214,9 +1216,23 @@ function SpinningDepartment() {
                                             <label>Total Cops RF</label>
                                             <input type="text" value={String(totalCopsRf)} readOnly className={styles["highlight-input"]} />
                                         </div>
-                                        <div className={`${styles["sp-form-group"]} ${styles.ringFrameSummaryFull}`}>
+                                        <div className={styles["sp-form-group"]}>
                                             <label>Grand Total</label>
                                             <input type="text" value={String(totalCopsGrandTotal)} readOnly className={styles["highlight-input"]} />
+                                        </div>
+                                        <div className={`${styles.ringFrameExtraSummaryGrid} ${styles.ringFrameSummaryFull}`}>
+                                            <div className={styles["sp-form-group"]}>
+                                                <label>Guide Roll</label>
+                                                <input type="text" value={String(guideRollTotal)} readOnly className={styles["highlight-input"]} />
+                                            </div>
+                                            <div className={styles["sp-form-group"]}>
+                                                <label>Lycra Missing</label>
+                                                <input type="text" value={String(lycraMissingTotal)} readOnly className={styles["highlight-input"]} />
+                                            </div>
+                                            <div className={styles["sp-form-group"]}>
+                                                <label>Others</label>
+                                                <input type="text" value={String(othersTotal)} readOnly className={styles["highlight-input"]} />
+                                            </div>
                                         </div>
                                         <div className={`${styles["sp-form-group"]} ${styles.ringFrameComments} ${styles.ringFrameSummaryFull}`}>
                                             <label>Comments</label>
@@ -1254,43 +1270,6 @@ function SpinningDepartment() {
                                         />
                                     </div>
                                 </div>
-
-                                {!isCotsChecking && (
-                                    <div className={`${styles["sp-form-group"]} ${styles["full-width"]}`} ref={dropdownRef}>
-                                        <label>Employee Name</label>
-                                        <div className={styles["search-dropdown"]}>
-                                            <div className={styles["input-wrapper"]}>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Search employee..."
-                                                    value={employeeSearch}
-                                                    onChange={(e) => {
-                                                        setEmployeeSearch(e.target.value);
-                                                        clearFieldError("employeeSearch");
-                                                        setShowEmployeeList(true);
-                                                    }}
-                                                    onFocus={() => setShowEmployeeList(true)}
-                                                    className={`${styles["highlight-input"]} ${styles["employee-input"]} ${errors.employeeSearch ? styles["input-error"] : ""}`}
-                                                />
-                                            </div>
-                                            {showEmployeeList && (
-                                                <div className={styles["dropdown-list"]}>
-                                                    {filteredEmployees.length > 0
-                                                        ? filteredEmployees.map((emp, index) => (
-                                                            <div key={index} className={styles["dropdown-item"]} onClick={() => {
-                                                                setEmployeeSearch(emp);
-                                                                clearFieldError("employeeSearch");
-                                                                setShowEmployeeList(false);
-                                                            }}>
-                                                                {emp}
-                                                            </div>
-                                                        ))
-                                                        : <div className={`${styles["dropdown-item"]} ${styles.disabled}`}>No employees found</div>}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
 
                                 {checkingType === "Speed Checking" && (
                                     <div className={styles["speed-section"]}>

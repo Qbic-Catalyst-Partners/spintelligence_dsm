@@ -460,6 +460,13 @@
   height: 104px;
 }
 
+.ringFrameExtraSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
 /* Title row with blue icon */
 .title-row {
   display: flex;

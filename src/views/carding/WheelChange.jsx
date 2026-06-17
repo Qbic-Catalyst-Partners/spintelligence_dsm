@@ -268,7 +268,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       setShowPreview(false);
       setShowSuccess(true);
       setEntryDate(getTodayDate());
-      await loadLatestSaved();
+      await loadLatestSaved(values.mixing?.existing || values.mixing?.proposed || "");
     } catch (error) {
       setShowPreview(false);
       setMessage(error?.response?.data?.message || error?.message || "Wheel Change could not be submitted.");

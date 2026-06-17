@@ -29,7 +29,6 @@ const coneTipOptions = ["Red Color with Blue", "Blue Color with White", "Yellow 
 const drumRangeOptions = Array.from({ length: 73 }, (_, index) => String(index));
 
 const formFieldSanitizers = {
-  testNo: (value) => sanitizeIntegerInput(value, 10),
   drumFrom: (value) => sanitizeIntegerInput(value, 10),
   drumTo: (value) => sanitizeIntegerInput(value, 10),
   noOfCones: (value) => sanitizeIntegerInput(value, 10),
@@ -51,7 +50,6 @@ const rowFieldSanitizers = {
 
 const createInitialForm = () => ({
   type: "Rewinding Study",
-  testNo: "",
   date: today,
   countNameFrom: "",
   autoConerNo: "",
@@ -250,7 +248,6 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   ];
 
   const buildPayload = () => ({
-    test_no: Number(form.testNo),
     entry_date: form.date,
     type: selectedTypeName || form.type,
     machine_name: form.autoConerNo,
@@ -480,7 +477,6 @@ const RewindingStudy = forwardRef(function RewindingStudy(
 
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
-    { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Enter count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerDropdownOptions, placeholder: "Enter auto coner no." },

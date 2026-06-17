@@ -488,6 +488,25 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
             ))}
           </div>
         </div>
+
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <div className="grid grid-cols-[100px_minmax(0,160px)] items-center gap-x-3 gap-y-3">
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Total Breaks %</div>
+            <input
+              type="text"
+              readOnly
+              className={`${tableFieldClass} text-slate-500`}
+              value={`${formatPercentage(
+                percentageBreakColumns.length
+                  ? percentageBreakColumns.reduce(
+                      (sum, columnLabel) => sum + (percentageTotals[columnLabel] || 0),
+                      0
+                    )
+                  : 0
+              )}%`}
+            />
+          </div>
+        </div>
             </>
           );
         })()}

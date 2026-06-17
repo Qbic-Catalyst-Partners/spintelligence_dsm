@@ -11,6 +11,7 @@ import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "@/views/simplex/processParameterDataEntry";
 import SMXCotsChangeDataEntry from "@/views/simplex/SMXCotsChangeDataEntry";
 import SMXBreaksStudyReport from "@/views/simplex/SMXBreaksStudyReport";
+import WheelChange from "@/views/simplex/WheelChange";
 import UPercentDataEntry from "@/views/simplex/u%dataentry";
 import {
   clearSimplexState,
@@ -26,7 +27,8 @@ const simplexTypes = [
   { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
-  { id: 4, name: "Stretch %", aliases: ["Stretch %", "Stretch Percent", "Stretch Percentage"] },
+  { id: 4, name: "Wheel Change", aliases: ["Wheel Change", "WheelChange"], component: WheelChange },
+  { id: 5, name: "Stretch %", aliases: ["Stretch %", "Stretch Percent", "Stretch Percentage"] },
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
@@ -35,6 +37,7 @@ const SIMPLEX_ENTRY_ID_CONFIG = {
   "SMXCots Change Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
   "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/study" },
   "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
+  "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change" },
   "Stretch %": { prefix: "STP",  },
   "Wrapping Simplex Notebook": { prefix: "WSX" },
 };
@@ -89,6 +92,7 @@ function Simplex() {
   });
   const SelectedComponent = selectedType?.component ?? null;
   const isStretchPercent = selectedTypeName === "Stretch %";
+  const isWheelChange = selectedTypeName === "Wheel Change";
   const entryTableTheme = {
     surface: isDarkMode ? "#050505" : "#fff",
     header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -177,7 +181,7 @@ function Simplex() {
 
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="p-5">
-            {selectedTypeName !== "Process Parameter" ? (
+            {selectedTypeName !== "Process Parameter" && !isWheelChange ? (
               <>
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2 min-w-0">

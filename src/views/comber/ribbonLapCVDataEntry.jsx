@@ -399,7 +399,8 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 >
                                     <option value="">Select Type</option>
                                     <option value="Ribbon Lap">Ribbon Lap</option>
-                                    <option value="Lap Roll">Lap Roll</option>
+                                    <option value="Lap Former">Lap Former</option>
+                                    <option value="Blow Room">Blow Room</option>
                                 </select>
                             </div>
                         </div>
