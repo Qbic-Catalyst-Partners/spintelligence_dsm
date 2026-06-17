@@ -52,7 +52,16 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                 ]);
                 if (!active) return;
                 setVarietyOptions(Array.isArray(varieties) ? varieties : []);
-                setMcNoOptions(Array.isArray(mcNos) ? mcNos.map((item) => item.mc_no).filter(Boolean) : []);
+                setMcNoOptions(
+                    Array.isArray(mcNos)
+                        ? mcNos
+                            .map((item) => ({
+                                value: String(item?.mc_no ?? "").trim(),
+                                label: String(item?.mc_name ?? item?.mc_no ?? "").trim(),
+                            }))
+                            .filter((item) => item.value)
+                        : []
+                );
             } catch (_err) {
                 if (!active) return;
                 setVarietyOptions([]);
@@ -134,7 +143,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
         entries: entries
             .filter((entry) => entry.mc_no !== "")
             .map((entry) => ({
-                mc_no: Number.isFinite(Number(entry.mc_no)) ? Number(entry.mc_no) : entry.mc_no,
+                mc_no: entry.mc_no,
                 ratio_size_1: entry.ratio_size_1 === "" ? null : Number(entry.ratio_size_1),
                 ratio_size_07: entry.ratio_size_07 === "" ? null : Number(entry.ratio_size_07),
                 ratio_size_05: entry.ratio_size_05 === "" ? null : Number(entry.ratio_size_05),

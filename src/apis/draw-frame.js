@@ -25,6 +25,18 @@ const COTS_MACHINE_MASTER_URL =
     `${API_BASE_URL}/drawframe/cots/machine-numbers`;
 
 const parseJson = async (response) => response.json().catch(() => null);
+const getStoredAuthToken = () => {
+    if (typeof window === "undefined") return "";
+    return (
+        window.sessionStorage.getItem("token") ||
+        window.localStorage.getItem("token") ||
+        ""
+    );
+};
+const getAuthHeaders = () => {
+    const token = getStoredAuthToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 const DRAW_FRAME_UQC_ENDPOINTS = ["/drawframe/uqc", "/draw-frame/uqc"];
 const DRAW_FRAME_UQC_MASTER_DROPDOWN_ENDPOINTS = [
     "/drawframe/uqc/master/dropdown",
@@ -239,6 +251,7 @@ export const submitDrawFrameYarnCvInspection = async (payload) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...getAuthHeaders(),
             },
             body: JSON.stringify(payload),
         });
@@ -262,6 +275,7 @@ export const submitDrawFrameCotsInspection = async (payload) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...getAuthHeaders(),
             },
             body: JSON.stringify(payload),
         });
@@ -285,6 +299,7 @@ export const fetchDrawFrameCotsEntries = async ({ page = 1, limit = 10 } = {}) =
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
+                ...getAuthHeaders(),
             },
         });
 
@@ -738,6 +753,7 @@ export const fetchDrawFrameMachineMaster = async ({ prefix = "" } = {}) => {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
+                    ...getAuthHeaders(),
                 },
             });
             const data = await parseJson(response);
@@ -773,6 +789,7 @@ export const fetchDrawFrameCotsMachineMaster = async ({ prefix = "", subType = "
         method: "GET",
         headers: {
             "Content-Type": "application/json",
+            ...getAuthHeaders(),
         },
     });
     const data = await parseJson(response);

@@ -326,6 +326,12 @@ const getOptionText = (value) => {
       ""
   ).trim();
 };
+const cleanRfLabel = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^\d+\s*[,/-]\s*/g, "")
+    .replace(/^\d+\s*\/\s*/g, "")
+    .trim();
 const normalizeMachineOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -349,21 +355,21 @@ const normalizeMachineOptions = (payload) => {
 
   return rows
     .map((row) => {
-      const value = getOptionText(
-        row?.value ??
+      const machineName = getOptionText(
+        row?.rf_name ??
+          row?.rf_no ??
+          row?.rf_number ??
+          row?.mc_name ??
+          row?.machine_name ??
+          row?.name ??
+          row?.label ??
+          row?.text ??
+          row?.value ??
           row?.mc_no ??
           row?.machine_no ??
           row?.machine_number ??
           row?.code ??
           row
-      );
-      const machineName = getOptionText(
-        row?.mc_name ??
-          row?.machine_name ??
-          row?.name ??
-          row?.label ??
-          row?.text ??
-          value
       );
       const deptCode = getOptionText(
         row?.dept_code ??
@@ -372,15 +378,15 @@ const normalizeMachineOptions = (payload) => {
           row?.department ??
           ""
       );
-      const labelParts = [value];
-      if (machineName && machineName !== value) labelParts.push(machineName);
-      if (deptCode) labelParts.push(`Dept ${deptCode}`);
+      const rawValue = getOptionText(row?.mc_no ?? row?.machine_no ?? row?.machine_number ?? row?.value ?? row?.code ?? row);
+      const visibleLabel = cleanRfLabel(machineName || rawValue);
+      const value = rawValue || visibleLabel;
 
       return value
         ? {
             value,
-            label: labelParts.join(" - "),
-            machineName,
+            label: deptCode ? `${visibleLabel || value} - Dept ${deptCode}` : (visibleLabel || value),
+            machineName: visibleLabel || value,
             deptCode,
           }
         : null;
@@ -391,6 +397,7 @@ const normalizeMachineOptions = (payload) => {
       return true;
     });
 };
+const getWheelChangeMachineOptions = (payload) => normalizeMachineOptions(payload);
 const normalizeLookupOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -534,7 +541,7 @@ const WheelChange = forwardRef(function WheelChange(
   const [draftLoaded, setDraftLoaded] = useState(false);
   const lastLoadedVarietyRef = useRef("");
   const activeRows = WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE[wheelChangeType] || TYPE_1_PARAMETER_ROWS;
-  const referenceLabel = "Machine Number";
+  const referenceLabel = "R/F No.";
   const machineLookupParams = useMemo(
     () => ({
       department: "Spinning",
@@ -616,24 +623,37 @@ const WheelChange = forwardRef(function WheelChange(
 
     Promise.allSettled([
       fetchSpinningMachineNumberOptions({
-        screen: "wheel-change",
+        screen: "rsm-lycra-online",
         ...machineLookupParams,
       }),
       fetchSpinningWheelChangeDropdown(wheelChangeType, machineLookupParams),
     ]).then(([machineResult, dropdownResult]) => {
       if (!isMounted) return;
 
+      const machineOptionSources = [];
+
       if (machineResult.status === "fulfilled") {
-        setMachineOptions(normalizeMachineOptions(machineResult.value));
-      } else {
-        setMachineOptions([]);
+        machineOptionSources.push(getWheelChangeMachineOptions(machineResult.value));
       }
 
       if (dropdownResult.status === "fulfilled") {
-        setDropdownOptions(dropdownResult.value || {});
+        const dropdownValue = dropdownResult.value || {};
+        setDropdownOptions(dropdownValue);
+        machineOptionSources.push(getWheelChangeMachineOptions(dropdownValue));
       } else {
         setDropdownOptions({});
       }
+
+      setMachineOptions(
+        Array.from(
+          new Map(
+            machineOptionSources
+              .flat()
+              .filter((option) => option?.value)
+              .map((option) => [option.value, option])
+          ).values()
+        )
+      );
     });
 
     return () => {
@@ -855,12 +875,14 @@ const WheelChange = forwardRef(function WheelChange(
       ]);
 
       return (
-        <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
-          <option value="">Select</option>
-          {options.map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
+        <SearchableSelect
+          className={className}
+          value={value}
+          onChange={handleValueChange(row.key, column)}
+          options={options}
+          placeholder="Select"
+          ariaLabel={row.label}
+        />
       );
     }
 

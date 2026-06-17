@@ -12,7 +12,7 @@ import {
   fetchCardingMasterMachines,
   submitCardingChangeControlEntry,
 } from "@/apis/carding";
-import useMixingMasterVarieties from "@/hooks/useMixingMasterVarieties";
+import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -71,7 +71,6 @@ const buildExistingValuesFromEntry = (entry) =>
 
 function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
-  const { varietyOptions: mixingOptions, loadingVarietyOptions, varietyOptionsError } = useMixingMasterVarieties();
   const [entryDate, setEntryDate] = useState(getTodayDate);
   const [cdoNo, setCdoNo] = useState("");
   const [proposedCdgNo, setProposedCdgNo] = useState("");
@@ -83,6 +82,9 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [cdgOptions, setCdgOptions] = useState(DEFAULT_CDG_OPTIONS);
+  const [mixingOptions, setMixingOptions] = useState([]);
+  const [loadingVarietyOptions, setLoadingVarietyOptions] = useState(false);
+  const [varietyOptionsError, setVarietyOptionsError] = useState("");
   const lastLoadedMixingRef = useRef("");
   const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
 
@@ -106,6 +108,29 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     return latest;
   };
+
+  useEffect(() => {
+    let active = true;
+    const loadVarieties = async () => {
+      setLoadingVarietyOptions(true);
+      try {
+        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        if (!active) return;
+        setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
+        setVarietyOptionsError("");
+      } catch (error) {
+        if (!active) return;
+        setMixingOptions([]);
+        setVarietyOptionsError(error.message || "Unable to load simplex mixing options.");
+      } finally {
+        if (active) setLoadingVarietyOptions(false);
+      }
+    };
+    loadVarieties();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const loadMachines = async () => {

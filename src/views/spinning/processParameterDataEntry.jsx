@@ -35,6 +35,14 @@ const createDefaultForm = () => ({
   make: "",
   denier: "",
   mergeNo: "",
+  slubPartcyCode: "",
+  slubMtr: "",
+  pauseMin: "",
+  pauseMax: "",
+  slubMin: "",
+  slubMax: "",
+  thicknessMin: "",
+  thicknessMax: "",
   lycraDraft: "",
   lycraPercent: "",
 });
@@ -77,6 +85,14 @@ const isVersionComplete = (version) =>
     "make",
     "denier",
     "mergeNo",
+    "slubPartcyCode",
+    "slubMtr",
+    "pauseMin",
+    "pauseMax",
+    "slubMin",
+    "slubMax",
+    "thicknessMin",
+    "thicknessMax",
     "lycraDraft",
     "lycraPercent",
   ].every((field) => String(version?.data?.[field] || "").trim());
@@ -122,6 +138,20 @@ const mapApiEntryToVersion = (entry) => {
           ? ""
           : String(entry.denier),
       mergeNo: entry?.merge_no || "",
+      slubPartcyCode: entry?.slub_partcy_code || "",
+      slubMtr: entry?.slub_mtr || "",
+      pauseMin: entry?.pause_min === null || typeof entry?.pause_min === "undefined" ? "" : String(entry.pause_min),
+      pauseMax: entry?.pause_max === null || typeof entry?.pause_max === "undefined" ? "" : String(entry.pause_max),
+      slubMin: entry?.slub_min === null || typeof entry?.slub_min === "undefined" ? "" : String(entry.slub_min),
+      slubMax: entry?.slub_max === null || typeof entry?.slub_max === "undefined" ? "" : String(entry.slub_max),
+      thicknessMin:
+        entry?.thickness_min === null || typeof entry?.thickness_min === "undefined"
+          ? ""
+          : String(entry.thickness_min),
+      thicknessMax:
+        entry?.thickness_max === null || typeof entry?.thickness_max === "undefined"
+          ? ""
+          : String(entry.thickness_max),
       lycraDraft:
         entry?.lycra_draft === null || typeof entry?.lycra_draft === "undefined"
           ? ""
@@ -193,6 +223,14 @@ const fieldDefs = [
   { key: "make", label: "Make" },
   { key: "denier", label: "Denier" },
   { key: "mergeNo", label: "Mergen Number" },
+  { key: "slubPartcyCode", label: "Slub Partcy Code" },
+  { key: "slubMtr", label: "Slub / Mtr" },
+  { key: "pauseMin", label: "Pause Min" },
+  { key: "pauseMax", label: "Pause Max" },
+  { key: "slubMin", label: "Slub Min" },
+  { key: "slubMax", label: "Slub Max" },
+  { key: "thicknessMin", label: "Thickness Min" },
+  { key: "thicknessMax", label: "Thickness Max" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "lycraPercent", label: "Lycra %" },
 ];
@@ -469,6 +507,14 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     make: form.make,
     denier: parseNumberValue(form.denier),
     merge_no: form.mergeNo,
+    slub_partcy_code: form.slubPartcyCode,
+    slub_mtr: form.slubMtr,
+    pause_min: parseNumberValue(form.pauseMin),
+    pause_max: parseNumberValue(form.pauseMax),
+    slub_min: parseNumberValue(form.slubMin),
+    slub_max: parseNumberValue(form.slubMax),
+    thickness_min: parseNumberValue(form.thicknessMin),
+    thickness_max: parseNumberValue(form.thicknessMax),
     lycra_draft: parseNumberValue(form.lycraDraft),
     lycra_percent: parseNumberValue(form.lycraPercent),
   });
@@ -589,7 +635,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {fieldDefs.map((field) => (
           <div key={field.key} className="flex flex-col gap-1.5">
             <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
