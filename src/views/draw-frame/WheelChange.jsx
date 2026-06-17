@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
@@ -312,11 +312,16 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [errors, setErrors] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [selectOptions, setSelectOptions] = useState([]);
+  const lastLoadedMixingRef = useRef("");
 
   const activeRows = useMemo(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
     [wheelChangeType]
   );
+  const selectedMixingRow = activeRows.find(
+    (row) => row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
+  );
+  const selectedMixing = String(values[selectedMixingRow?.key]?.existing || values[selectedMixingRow?.key]?.proposed || "").trim();
   const availableWheelChangeTypes = useMemo(
     () => WHEEL_CHANGE_TYPES_BY_LINE[lineType] || [],
     [lineType]
@@ -382,13 +387,20 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     );
   }, [date, draftLoaded, lineType, values, wheelChangeType]);
 
-  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType) => {
+  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType, mixingValue = "") => {
     const apiWheelChangeType = getApiWheelChangeType(requestedWheelChangeType);
-    const payload = await fetchDrawFrameWheelChangeEntries({
+    const params = {
       page: 1,
       limit: 1,
       wheelChangeType: apiWheelChangeType,
-    });
+    };
+    const trimmedMixing = String(mixingValue || "").trim();
+    if (trimmedMixing) {
+      params.variety = trimmedMixing;
+      params.variety_name = trimmedMixing;
+      params.mixing = trimmedMixing;
+    }
+    const payload = await fetchDrawFrameWheelChangeEntries(params);
     const latest = extractLatestEntry(payload);
     if (!latest) return null;
 
@@ -409,18 +421,26 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   };
 
   useEffect(() => {
-    if (!draftLoaded) return;
-    loadLatestSaved().catch(() => {
-      // Keep the local draft when the backend has no saved entry yet.
-    });
-  }, [draftLoaded]);
+    if (!draftLoaded || !wheelChangeType || !selectedMixing) {
+      lastLoadedMixingRef.current = "";
+      return;
+    }
 
-  useEffect(() => {
-    if (!draftLoaded || !wheelChangeType) return;
-    loadLatestSaved(wheelChangeType).catch(() => {
-      // Keep current values when this wheel-change type has no saved entry yet.
-    });
-  }, [draftLoaded, wheelChangeType]);
+    const selectionKey = `${wheelChangeType}::${selectedMixing}`;
+    if (lastLoadedMixingRef.current === selectionKey) return;
+
+    let cancelled = false;
+    loadLatestSaved(wheelChangeType, selectedMixing)
+      .then((latest) => {
+        if (cancelled || !latest) return;
+        lastLoadedMixingRef.current = selectionKey;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftLoaded, selectedMixing, wheelChangeType]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -481,6 +501,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     setDate(getTodayDate());
     setValues(createValues());
     setErrors({});
+    lastLoadedMixingRef.current = "";
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(DRAFT_STORAGE_KEY);
     }

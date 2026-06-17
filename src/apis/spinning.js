@@ -325,6 +325,12 @@ export const fetchSpinningMachineNumberOptions = async ({
     "rsm-lycra-online": ["/spinning/rsm-lycra-online/master/mc-nos"],
     "rsm-lycra-offline": ["/spinning/rsm-lycra-offline/master/mc-nos"],
     "ring-frame": ["/spinning/ring-frame/master/mc-nos"],
+    "wheel-change": [
+      "/spinning/wheel-change/master/mc-nos",
+      "/spinning/wheel-change/master/machine-numbers",
+      "/spinning/master/mc-nos",
+      "/spinning/master/machine-numbers",
+    ],
     master: ["/spinning/master/mc-nos"],
   };
   const endpoints = [
@@ -347,7 +353,20 @@ export const fetchSpinningMachineNumberOptions = async ({
         },
         { skipGlobalErrorModal: true }
       );
-      return response.data;
+      const payload = response.data;
+      const rows = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.mc_nos)
+          ? payload.mc_nos
+          : Array.isArray(payload?.machine_numbers)
+            ? payload.machine_numbers
+            : Array.isArray(payload)
+              ? payload
+              : [];
+
+      if (rows.length || endpoint === endpoints[endpoints.length - 1]) {
+        return payload;
+      }
     } catch (error) {
       lastError = error;
       if (error.response?.status !== 404) {
@@ -631,6 +650,66 @@ export const fetchSpinningWheelChangeDropdown = async (wheelType = "", params = 
         error.response.data.message ||
           error.response.data.error ||
           "Failed to load Wheel Change dropdown options."
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
+const normalizeWheelChangeLatestRecordPayload = (payload) => {
+  const latestRecord = payload?.latest_record ?? payload?.latestRecord ?? null;
+  if (latestRecord) return latestRecord;
+
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.rows)
+      ? payload.rows
+      : Array.isArray(payload)
+        ? payload
+        : [];
+
+  return rows[0] || null;
+};
+
+export const fetchSpinningWheelChangeLatestRecord = async (wheelType = "", params = {}) => {
+  const normalizedType = String(wheelType || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  const endpoints = ["type1", "type2", "type3"].includes(normalizedType)
+    ? [`/spinning/wheel-change/${normalizedType}`]
+    : [
+        "/spinning/wheel-change/type1",
+        "/spinning/wheel-change/type2",
+        "/spinning/wheel-change/type3",
+      ];
+
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.get(endpoint, params, { skipGlobalErrorModal: true });
+      const latestRecord = normalizeWheelChangeLatestRecordPayload(response.data);
+      if (latestRecord || endpoint === endpoints[endpoints.length - 1]) {
+        return latestRecord;
+      }
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status !== 404) {
+        break;
+      }
+    }
+  }
+
+  try {
+    throw lastError || new Error("Failed to load Wheel Change latest record.");
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(
+        error.response.data.message ||
+          error.response.data.error ||
+          "Failed to load Wheel Change latest record."
       );
     }
     throw new Error(error.message || "Server error occurred");
