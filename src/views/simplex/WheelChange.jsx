@@ -1,12 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { MdEditNote } from "react-icons/md";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
-  fetchSimplexMachineMaster,
+  fetchSimplexUqcMasterDropdown,
   fetchSimplexWheelChangeNotebookEntries,
   submitSimplexWheelChangeNotebookEntry,
 } from "@/apis/simplex";
-import useMixingMasterVarieties from "@/hooks/useMixingMasterVarieties";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -97,12 +97,16 @@ const normalizeMachineOptions = (rows = []) =>
     .map((row) => {
       if (typeof row === "string") {
         const value = row.trim();
-        return value ? { value, label: value } : null;
+        if (!value) return null;
+        const label = value.toUpperCase().replace(/\s+/g, "-");
+        return { value: label, label };
       }
 
       const value = String(row?.value ?? row?.mc_no ?? row?.machine_no ?? row?.machine_number ?? "").trim();
-      const label = String(row?.label ?? row?.mc_name ?? row?.machine_name ?? value).trim();
-      return value ? { value, label: label || value } : null;
+      const labelSource = String(row?.label ?? row?.mc_name ?? row?.machine_name ?? value).trim();
+      const label = labelSource ? labelSource.toUpperCase().replace(/\s+/g, "-") : value.toUpperCase().replace(/\s+/g, "-");
+      const normalizedValue = label || value;
+      return normalizedValue ? { value: normalizedValue, label: normalizedValue } : null;
     })
     .filter(Boolean);
 
@@ -119,8 +123,8 @@ const WheelChange = forwardRef(function WheelChange(
   const [form, setForm] = useState(createInitialForm);
   const [rows, setRows] = useState(createEmptyRows);
   const [machineOptions, setMachineOptions] = useState([]);
+  const [mixingOptions, setMixingOptions] = useState([]);
   const [submitError, setSubmitError] = useState("");
-  const { varietyOptions: mixingOptions } = useMixingMasterVarieties();
 
   const findLatestEntryForMixing = (entries = [], mixing = "") => {
     const normalizedMixing = String(mixing || "").trim().toLowerCase();
@@ -143,9 +147,9 @@ const WheelChange = forwardRef(function WheelChange(
 
     const loadMachineOptions = async () => {
       try {
-        const payload = await fetchSimplexMachineMaster({ department: "SIMPLEX" });
+        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
         if (cancelled) return;
-        const options = normalizeMachineOptions(payload);
+        const options = normalizeMachineOptions(dropdown?.mcNos || []);
         setMachineOptions(options);
         setForm((current) => ({
           ...current,
@@ -154,6 +158,16 @@ const WheelChange = forwardRef(function WheelChange(
         }));
       } catch {
         if (!cancelled) setMachineOptions([]);
+      }
+    };
+
+    const loadMixingOptions = async () => {
+      try {
+        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        if (cancelled) return;
+        setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
+      } catch {
+        if (!cancelled) setMixingOptions([]);
       }
     };
 
@@ -194,6 +208,7 @@ const WheelChange = forwardRef(function WheelChange(
     };
 
     loadMachineOptions();
+    loadMixingOptions();
     loadLatest();
     return () => {
       cancelled = true;
@@ -313,6 +328,23 @@ const WheelChange = forwardRef(function WheelChange(
     const options = row.key === "mixing" ? mixingOptions : machineOptions;
 
     if (row.select) {
+      if (row.key === "mixing") {
+        return (
+          <SearchableSelect
+            className={className}
+            value={value}
+            onChange={(nextValue) =>
+              setRows((current) =>
+                current.map((item) => (item.key === row.key ? { ...item, [valueKey]: nextValue } : item))
+              )
+            }
+            options={options}
+            placeholder="Select"
+            ariaLabel={row.label}
+          />
+        );
+      }
+
       return (
         <select
           className={className}
@@ -322,7 +354,7 @@ const WheelChange = forwardRef(function WheelChange(
               current.map((item) => (item.key === row.key ? { ...item, [valueKey]: e.target.value } : item))
             )
           }
-          >
+        >
           <option value="">Select</option>
           {options.map((option) => {
             const optionText = getOptionText(option);
@@ -347,15 +379,6 @@ const WheelChange = forwardRef(function WheelChange(
         }
       />
     );
-  };
-
-  const renderTopOption = (option) => {
-    const optionText = getOptionText(option);
-    return optionText ? (
-      <option key={optionText} value={optionText}>
-        {optionText}
-      </option>
-    ) : null;
   };
 
   return (
@@ -409,26 +432,26 @@ const WheelChange = forwardRef(function WheelChange(
 
           <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">SMX No.</label>
-            <select
+            <SearchableSelect
               className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
               value={form.smxNo}
-              onChange={(e) => setForm((current) => ({ ...current, smxNo: e.target.value }))}
-            >
-              <option value="">Select</option>
-              {machineOptions.map((item) => renderTopOption(item))}
-            </select>
+              onChange={(value) => setForm((current) => ({ ...current, smxNo: value }))}
+              options={machineOptions}
+              placeholder="Select"
+              ariaLabel="SMX No."
+            />
           </div>
 
           <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">SMX No. (Proposed)</label>
-            <select
+            <SearchableSelect
               className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
               value={form.smxNoProposed}
-              onChange={(e) => setForm((current) => ({ ...current, smxNoProposed: e.target.value }))}
-            >
-              <option value="">Select</option>
-              {machineOptions.map((item) => renderTopOption(item))}
-            </select>
+              onChange={(value) => setForm((current) => ({ ...current, smxNoProposed: value }))}
+              options={machineOptions}
+              placeholder="Select"
+              ariaLabel="SMX No. Proposed"
+            />
           </div>
         </div>
 

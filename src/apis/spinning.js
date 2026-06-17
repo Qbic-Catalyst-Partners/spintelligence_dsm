@@ -259,6 +259,86 @@ const normalizeCountChangeDropdownPayload = (payload = {}) => {
   };
 };
 
+const normalizeMachineNumberOptionRows = (rows = []) => {
+  const seen = new Set();
+
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const value = String(
+        row?.value ??
+          row?.machine_no ??
+          row?.machine_number ??
+          row?.mc_no ??
+          row?.code ??
+          row ??
+          ""
+      ).trim();
+      const label = String(
+        row?.label ??
+          row?.text ??
+          row?.machine_name ??
+          row?.mc_name ??
+          row?.name ??
+          value
+      ).trim();
+      const deptCode = String(
+        row?.dept_code ??
+          row?.department_code ??
+          row?.dept ??
+          row?.department ??
+          ""
+      ).trim();
+
+      return value
+        ? {
+            value,
+            label: [value, label && label !== value ? label : "", deptCode ? `Dept ${deptCode}` : ""]
+              .filter(Boolean)
+              .join(" - "),
+            machineName: label,
+            deptCode,
+          }
+        : null;
+    })
+    .filter((option) => {
+      if (!option || seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
+};
+
+const normalizeWheelChangeDropdownPayload = (payload = {}) => {
+  const options = payload.options || {};
+  const existingMachineOptions = normalizeMachineNumberOptionRows(
+    options.machine_no_existing ||
+      options.existing_machine_options ||
+      payload.machine_no_existing ||
+      payload.existing_machine_options ||
+      payload.machine_numbers ||
+      payload.mc_nos ||
+      []
+  );
+  const proposedMachineOptions = normalizeMachineNumberOptionRows(
+    options.machine_no_proposed ||
+      options.proposed_machine_options ||
+      payload.machine_no_proposed ||
+      payload.proposed_machine_options ||
+      payload.machine_numbers ||
+      payload.mc_nos ||
+      []
+  );
+
+  return {
+    ...payload,
+    existingMachineOptions,
+    proposedMachineOptions,
+    machineNumberOptions:
+      existingMachineOptions.length >= proposedMachineOptions.length
+        ? existingMachineOptions
+        : proposedMachineOptions,
+  };
+};
+
 export const fetchSpinningCountChangeDropdown = async (params = {}) => {
   const endpoints = [
     "/spinning/count-change/master/count-dropdown",
@@ -538,7 +618,7 @@ export const fetchSpinningRingFrameShifts = async (params = {}) => {
         params,
         { skipGlobalErrorModal: true }
       );
-      return response.data;
+      return normalizeWheelChangeDropdownPayload(response.data);
     } catch (error) {
       lastError = error;
       if (error.response?.status !== 404) {
