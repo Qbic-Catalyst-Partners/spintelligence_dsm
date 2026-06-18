@@ -90,9 +90,14 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         const nextDepartments = dropdown.departmentNames?.length
           ? dropdown.departmentNames
           : dropdown.departments.map((item) => item.dept_name).filter(Boolean);
-        const nextMcNos = dropdown.mcNos
-          .map((item) => item.mc_name || item.mc_no)
-          .filter(Boolean);
+        const nextMcNos = Array.isArray(dropdown.mcNos)
+          ? dropdown.mcNos
+              .map((item) => ({
+                value: String(item?.mc_no ?? "").trim(),
+                label: String(item?.mc_name ?? item?.mc_no ?? "").trim(),
+              }))
+              .filter((item) => item.value)
+          : [];
 
         if (nextShifts.length) setShiftOptions(nextShifts);
         if (nextVarieties.length) setVarietyOptions(nextVarieties);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
@@ -12,7 +12,7 @@ import {
   fetchCardingMasterMachines,
   submitCardingChangeControlEntry,
 } from "@/apis/carding";
-import useMixingMasterVarieties from "@/hooks/useMixingMasterVarieties";
+import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -71,7 +71,6 @@ const buildExistingValuesFromEntry = (entry) =>
 
 function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
-  const { varietyOptions: mixingOptions, loadingVarietyOptions, varietyOptionsError } = useMixingMasterVarieties();
   const [entryDate, setEntryDate] = useState(getTodayDate);
   const [cdoNo, setCdoNo] = useState("");
   const [proposedCdgNo, setProposedCdgNo] = useState("");
@@ -83,21 +82,23 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [cdgOptions, setCdgOptions] = useState(DEFAULT_CDG_OPTIONS);
+  const [mixingOptions, setMixingOptions] = useState([]);
+  const [loadingVarietyOptions, setLoadingVarietyOptions] = useState(false);
+  const [varietyOptionsError, setVarietyOptionsError] = useState("");
+  const lastLoadedMixingRef = useRef("");
+  const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
 
-  const findLatestEntryForMixing = (entries = [], mixing = "") => {
-    const normalizedMixing = String(mixing || "").trim().toLowerCase();
-    if (!normalizedMixing) return entries[0] || null;
-    return (
-      entries.find((entry) => String(entry?.mixing ?? entry?.mixing_name ?? entry?.variety ?? entry?.prep_variety_name ?? "").trim().toLowerCase() === normalizedMixing) ||
-      entries[0] ||
-      null
-    );
-  };
+  const loadLatestSaved = async (mixingValue = "") => {
+    const params = { page: 1, limit: 1 };
+    const trimmedMixing = String(mixingValue || "").trim();
+    if (trimmedMixing) {
+      params.variety = trimmedMixing;
+      params.variety_name = trimmedMixing;
+      params.mixing = trimmedMixing;
+    }
 
-  const loadLatestSaved = async (mixing = "") => {
-    const payload = await fetchCardingChangeControlEntries({ page: 1, limit: 100 });
-    const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-    const latest = findLatestEntryForMixing(rows, mixing);
+    const payload = await fetchCardingChangeControlEntries(params);
+    const latest = extractLatestEntry(payload);
     if (!latest) return null;
 
     setCdoNo(trimValue(latest.cdg_no_proposed ?? latest.cdo_no ?? ""));
@@ -107,6 +108,29 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     return latest;
   };
+
+  useEffect(() => {
+    let active = true;
+    const loadVarieties = async () => {
+      setLoadingVarietyOptions(true);
+      try {
+        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        if (!active) return;
+        setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
+        setVarietyOptionsError("");
+      } catch (error) {
+        if (!active) return;
+        setMixingOptions([]);
+        setVarietyOptionsError(error.message || "Unable to load simplex mixing options.");
+      } finally {
+        if (active) setLoadingVarietyOptions(false);
+      }
+    };
+    loadVarieties();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const loadMachines = async () => {
@@ -121,10 +145,25 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   }, []);
 
   useEffect(() => {
-    loadLatestSaved().catch(() => {
-      // Keep an empty form when there is no previous Wheel Change entry yet.
-    });
-  }, []);
+    if (!selectedMixing) {
+      lastLoadedMixingRef.current = "";
+      return;
+    }
+
+    if (lastLoadedMixingRef.current === selectedMixing) return;
+
+    let cancelled = false;
+    loadLatestSaved(selectedMixing)
+      .then((latest) => {
+        if (cancelled || !latest) return;
+        lastLoadedMixingRef.current = selectedMixing;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMixing]);
 
   const previewItems = useMemo(
     () => [
@@ -240,6 +279,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     setMessage("");
     setShowPreview(false);
+    lastLoadedMixingRef.current = "";
   };
 
   const handlePreview = () => {

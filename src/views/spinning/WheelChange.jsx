@@ -1,7 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
-import { fetchSpinningMachineNumberOptions, fetchSpinningWheelChangeDropdown } from "@/apis/spinning";
+import { fetchSpinningMachineNumberOptions, fetchSpinningWheelChangeDropdown, fetchSpinningWheelChangeLatestRecord } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
@@ -12,7 +12,6 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 3": "type3",
 };
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
-const WHEEL_CHANGE_MACHINE_DEPT_CODES = ["25", "27"];
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
@@ -327,6 +326,12 @@ const getOptionText = (value) => {
       ""
   ).trim();
 };
+const cleanRfLabel = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/^\d+\s*[,/-]\s*/g, "")
+    .replace(/^\d+\s*\/\s*/g, "")
+    .trim();
 const normalizeMachineOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -350,21 +355,21 @@ const normalizeMachineOptions = (payload) => {
 
   return rows
     .map((row) => {
-      const value = getOptionText(
-        row?.value ??
+      const machineName = getOptionText(
+        row?.rf_name ??
+          row?.rf_no ??
+          row?.rf_number ??
+          row?.mc_name ??
+          row?.machine_name ??
+          row?.name ??
+          row?.label ??
+          row?.text ??
+          row?.value ??
           row?.mc_no ??
           row?.machine_no ??
           row?.machine_number ??
           row?.code ??
           row
-      );
-      const machineName = getOptionText(
-        row?.mc_name ??
-          row?.machine_name ??
-          row?.name ??
-          row?.label ??
-          row?.text ??
-          value
       );
       const deptCode = getOptionText(
         row?.dept_code ??
@@ -373,15 +378,15 @@ const normalizeMachineOptions = (payload) => {
           row?.department ??
           ""
       );
-      const labelParts = [value];
-      if (machineName && machineName !== value) labelParts.push(machineName);
-      if (deptCode) labelParts.push(`Dept ${deptCode}`);
+      const rawValue = getOptionText(row?.mc_no ?? row?.machine_no ?? row?.machine_number ?? row?.value ?? row?.code ?? row);
+      const visibleLabel = cleanRfLabel(machineName || rawValue);
+      const value = rawValue || visibleLabel;
 
       return value
         ? {
             value,
-            label: labelParts.join(" - "),
-            machineName,
+            label: deptCode ? `${visibleLabel || value} - Dept ${deptCode}` : (visibleLabel || value),
+            machineName: visibleLabel || value,
             deptCode,
           }
         : null;
@@ -392,6 +397,7 @@ const normalizeMachineOptions = (payload) => {
       return true;
     });
 };
+const getWheelChangeMachineOptions = (payload) => normalizeMachineOptions(payload);
 const normalizeLookupOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -464,6 +470,30 @@ const normalizeDropdownOptions = (rows) =>
         .filter(Boolean)
     )
   );
+const normalizeWheelChangeRecordValue = (value) =>
+  value === undefined || value === null ? "" : String(value).trim();
+const buildWheelChangeValuesFromRecord = (record = {}, wheelChangeType = "") => {
+  const typeConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
+  const rows = typeConfig?.rows || {};
+  return ALL_WHEEL_CHANGE_PARAMETER_ROWS.reduce((values, row) => {
+    const fieldBase = rows[row.key];
+    const existingValue = fieldBase
+      ? normalizeWheelChangeRecordValue(
+          record?.[`${fieldBase}_existing`] ??
+            record?.[`${fieldBase}_proposed`] ??
+            record?.[fieldBase]
+        )
+      : "";
+
+    return {
+      ...values,
+      [row.key]: {
+        existing: existingValue,
+        proposed: "",
+      },
+    };
+  }, {});
+};
 const parseNumericValue = (value) => {
   const parsed = Number.parseFloat(String(value ?? "").trim());
   return Number.isFinite(parsed) ? parsed : null;
@@ -509,12 +539,11 @@ const WheelChange = forwardRef(function WheelChange(
   const [machineOptions, setMachineOptions] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const lastLoadedVarietyRef = useRef("");
   const activeRows = WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE[wheelChangeType] || TYPE_1_PARAMETER_ROWS;
-  const referenceLabel = "Machine Number";
+  const referenceLabel = "R/F No.";
   const machineLookupParams = useMemo(
     () => ({
-      dept_code: WHEEL_CHANGE_MACHINE_DEPT_CODES.join("/"),
-      department_code: WHEEL_CHANGE_MACHINE_DEPT_CODES.join("/"),
       department: "Spinning",
     }),
     []
@@ -552,6 +581,8 @@ const WheelChange = forwardRef(function WheelChange(
       })
     );
   }, [date, draftLoaded, machineNumber, values, wheelChangeType]);
+
+  const selectedVariety = String(values.countForm?.existing || values.countForm?.proposed || "").trim();
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -592,30 +623,88 @@ const WheelChange = forwardRef(function WheelChange(
 
     Promise.allSettled([
       fetchSpinningMachineNumberOptions({
-        screen: "master",
+        screen: "rsm-lycra-online",
         ...machineLookupParams,
       }),
       fetchSpinningWheelChangeDropdown(wheelChangeType, machineLookupParams),
     ]).then(([machineResult, dropdownResult]) => {
       if (!isMounted) return;
 
+      const machineOptionSources = [];
+
       if (machineResult.status === "fulfilled") {
-        setMachineOptions(normalizeMachineOptions(machineResult.value));
-      } else {
-        setMachineOptions([]);
+        machineOptionSources.push(getWheelChangeMachineOptions(machineResult.value));
       }
 
       if (dropdownResult.status === "fulfilled") {
-        setDropdownOptions(dropdownResult.value || {});
+        const dropdownValue = dropdownResult.value || {};
+        setDropdownOptions(dropdownValue);
+        machineOptionSources.push(getWheelChangeMachineOptions(dropdownValue));
       } else {
         setDropdownOptions({});
       }
+
+      setMachineOptions(
+        Array.from(
+          new Map(
+            machineOptionSources
+              .flat()
+              .filter((option) => option?.value)
+              .map((option) => [option.value, option])
+          ).values()
+        )
+      );
     });
 
     return () => {
       isMounted = false;
     };
   }, [machineLookupParams, wheelChangeType]);
+
+  useEffect(() => {
+    if (!wheelChangeType || !selectedVariety) {
+      lastLoadedVarietyRef.current = "";
+      return;
+    }
+
+    const selectionKey = `${wheelChangeType}::${selectedVariety}`;
+    if (lastLoadedVarietyRef.current === selectionKey) return;
+
+    let cancelled = false;
+
+    fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+      variety: selectedVariety,
+      variety_name: selectedVariety,
+      mixing: selectedVariety,
+    })
+      .then((latestRecord) => {
+        if (cancelled || !latestRecord) return;
+
+        lastLoadedVarietyRef.current = selectionKey;
+        setMachineNumber((current) => current || getTextValue(
+          latestRecord?.[WHEEL_CHANGE_FIELD_MAP[wheelChangeType]?.referenceField] ||
+            latestRecord?.machine_no ||
+            latestRecord?.machine_number ||
+            latestRecord?.mc_no ||
+            ""
+        ));
+        setValues((current) => {
+          const nextValues = buildWheelChangeValuesFromRecord(latestRecord, wheelChangeType);
+          return {
+            ...nextValues,
+            countForm: {
+              existing: selectedVariety,
+              proposed: current.countForm?.proposed || "",
+            },
+          };
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVariety, wheelChangeType]);
 
   const handleValueChange = (rowKey, column) => (event) => {
     const nextValue = event.target.value;
@@ -786,12 +875,14 @@ const WheelChange = forwardRef(function WheelChange(
       ]);
 
       return (
-        <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
-          <option value="">Select</option>
-          {options.map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
+        <SearchableSelect
+          className={className}
+          value={value}
+          onChange={handleValueChange(row.key, column)}
+          options={options}
+          placeholder="Select"
+          ariaLabel={row.label}
+        />
       );
     }
 
