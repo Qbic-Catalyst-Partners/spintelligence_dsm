@@ -32,7 +32,7 @@ const Footer = ({
             onClick={onBack}
           >
             <AiOutlineArrowLeft size={14} />
-            Back to Quality Control
+            Back to Dashboard
           </button>
         </div>
       )}

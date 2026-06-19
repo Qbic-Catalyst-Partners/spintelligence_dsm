@@ -255,6 +255,33 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     [columnTotals, grandTotal]
   );
 
+  const noOfBreaksPer100Spindles = useMemo(() => {
+    const runningSpindles = Number(calculatedRunningSpdl);
+
+    if (!Number.isFinite(runningSpindles) || runningSpindles <= 0) {
+      return breakColumns.reduce((accumulator, columnLabel) => {
+        accumulator[columnLabel] = 0;
+        return accumulator;
+      }, {});
+    }
+
+    return breakColumns.reduce((accumulator, columnLabel) => {
+      const total = columnTotals[columnLabel] || 0;
+      accumulator[columnLabel] = (total * 100) / runningSpindles;
+      return accumulator;
+    }, {});
+  }, [calculatedRunningSpdl, columnTotals]);
+
+  const grandTotalBreakPercent = useMemo(() => {
+    const runningSpindles = Number(calculatedRunningSpdl);
+    const totalMinutes = Number(totalTime);
+
+    if (!Number.isFinite(runningSpindles) || !Number.isFinite(totalMinutes)) return "";
+    if (runningSpindles <= 0 || totalMinutes <= 0 || grandTotal <= 0) return "0.00";
+
+    return formatPercentage((grandTotal * 100) / (runningSpindles * (totalMinutes / 60)));
+  }, [calculatedRunningSpdl, grandTotal, totalTime]);
+
   const handleFormChange = (field, value) => {
     const nextValue =
       (field === "startTime" || field === "endTime") && value ? value.slice(0, 5) : value;
@@ -456,12 +483,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">
-              Total Breaks
-              <span className="block text-[11px] font-bold text-[#3d539f]">
-                Grand: {formatNumber(totalCount)}
-              </span>
-            </div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Total Breaks</div>
             {breakColumns.map((columnLabel) => (
               <input
                 key={`total-${columnLabel}`}
@@ -474,6 +496,27 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           </div>
         </div>
 
+        <div className="mt-3">
+          <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Grand Total</div>
+            <input
+              type="text"
+              readOnly
+              className={`${tableFieldClass} col-start-2 text-slate-500`}
+              value={formatNumber(totalCount)}
+            />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+          </div>
+        </div>
+
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
             <div className="text-[12px] font-semibold uppercase text-slate-700"> No.of Breaks / 100 Spindles</div>
@@ -483,7 +526,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
                 type="text"
                 readOnly
                 className={`${tableFieldClass} text-slate-500`}
-                value={`${formatPercentage(percentages[columnLabel])}%`}
+                value={`${formatPercentage(noOfBreaksPer100Spindles[columnLabel])}%`}
               />
             ))}
           </div>
@@ -496,14 +539,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
               type="text"
               readOnly
               className={`${tableFieldClass} text-slate-500`}
-              value={`${formatPercentage(
-                percentageBreakColumns.length
-                  ? percentageBreakColumns.reduce(
-                      (sum, columnLabel) => sum + (percentageTotals[columnLabel] || 0),
-                      0
-                    )
-                  : 0
-              )}%`}
+              value={grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : ""}
             />
           </div>
         </div>

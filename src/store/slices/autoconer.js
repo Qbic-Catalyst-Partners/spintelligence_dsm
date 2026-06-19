@@ -9,6 +9,7 @@ import {
   fetchAutoconerPendingQualityParameterEntries,
   fetchAutoconerParameterEntries,
   fetchAutoconerRewindingStudy,
+  fetchAutoconerRewindingStudyById,
   fetchAutoconerSpliceStrength,
   submitAutoconerConeDensity,
   submitAutoconerConePackingAudit,
@@ -186,6 +187,17 @@ export const getAutoconerRewindingStudy = createAsyncThunk(
   async ({ page = 1, limit = 10 } = {}, { rejectWithValue }) => {
     try {
       return await fetchAutoconerRewindingStudy({ page, limit });
+    } catch (error) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const getAutoconerRewindingStudyById = createAsyncThunk(
+  "autoconer/getRewindingStudyById",
+  async (id, { rejectWithValue }) => {
+    try {
+      return await fetchAutoconerRewindingStudyById(id);
     } catch (error) {
       return rejectWithValue(error.message);
     }
