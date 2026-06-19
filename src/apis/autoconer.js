@@ -483,25 +483,25 @@ export const fetchAutoconerRewindingStudy = async ({
   limit = 10,
 } = {}) =>
   getAutoconer(
-    "rewinding-study",
+    "inspection-data-entry",
     { page, limit },
-    "Unable to fetch rewinding study.",
+    "Unable to fetch inspection data entry.",
     { suppressFailure: true, paginated: true }
   );
 
 export const fetchAutoconerRewindingStudyById = async (id) =>
   getAutoconer(
-    `rewinding-study/${id}`,
+    `inspection-data-entry/${id}`,
     {},
-    "Unable to fetch rewinding study details.",
+    "Unable to fetch inspection data entry details.",
     { suppressFailure: true }
   );
 
 export const submitAutoconerRewindingStudy = async (payload) =>
   postAutoconer(
-    "rewinding-study",
+    "inspection-data-entry",
     payload,
-    "Unable to save rewinding study."
+    "Unable to save inspection data entry."
   );
 
 export const fetchAutoconerConeDensity = async ({
@@ -541,9 +541,9 @@ export const fetchAutoconerDrumWiseMasterData = async () =>
 
 export const fetchAutoconerRewindingStudyMasterData = async () =>
   getAutoconerPathCandidates(
-    ["rewinding-study/master-data", "rewindingstudy/master-data", "master-data"],
+    ["inspection-data-entry/master-data", "master-data"],
     {},
-    "Unable to fetch rewinding study master data.",
+    "Unable to fetch inspection data entry master data.",
     { suppressFailure: true }
   );
 
@@ -611,7 +611,9 @@ export const fetchAutoconerConePackingAudit = async ({
 
 export const submitAutoconerCountWiseCuts = async (payload) => {
   const payloadCandidates = [
-    payload,
+    {
+      ...payload,
+    },
     {
       ...payload,
       type: payload?.inspection_type,
@@ -619,10 +621,6 @@ export const submitAutoconerCountWiseCuts = async (payload) => {
       machine_name: payload?.machine_no,
       count: payload?.count_name,
       crane_tip: payload?.cone_tip,
-      drums_from_to:
-        payload?.drum_from && payload?.drum_to
-          ? `${payload.drum_from}-${payload.drum_to}`
-          : undefined,
     },
     {
       ...payload,

@@ -7,6 +7,7 @@ import {
   saveAutoconerRewindingStudy,
 } from "@/store/slices/autoconer";
 import { fetchAutoconerRewindingStudyMasterData } from "@/apis/autoconer";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
@@ -135,33 +136,33 @@ const buildDrumNumberOptions = (from = "", to = "") => {
 };
 
 const mapRewindingEntryToRows = (entry = {}) => {
-  const nestedRows = Array.isArray(entry.drum_inspections)
-    ? entry.drum_inspections
-    : Array.isArray(entry.readings)
-      ? entry.readings
+  const nestedRows = Array.isArray(entry.readings)
+    ? entry.readings
+    : Array.isArray(entry.drum_inspections)
+      ? entry.drum_inspections
       : [];
 
   if (nestedRows.length > 0) {
     return nestedRows.map((row, index) => ({
-      drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_no ?? entry.drum_from ?? "-"),
-      noOfCones: String(row.no_of_cones ?? row.noOfCones ?? entry.no_of_cones ?? entry.noOfCones ?? "-"),
-      faultName: String(row.short_cut ?? row.shortCut ?? "-"),
-      noOfFaults: String(row.reading_number ?? row.readingNumber ?? index + 1),
-      percentFault: String(row.fault_percent ?? row.faultPercent ?? "-"),
+      drumNo: String(row.drum_no ?? row.drumNo ?? "-"),
+      noOfCones: String(row.no_of_cones ?? row.noOfCones ?? "-"),
+      faultName: String(row.fault_name ?? row.faultName ?? row.shortName ?? row.short_cut ?? row.shortCut ?? "-"),
+      noOfFaults: String(row.no_of_faults ?? row.noOfFaults ?? row.reading_number ?? row.readingNumber ?? index + 1),
+      percentFault: String(row.percent_fault ?? row.percentFault ?? row.fault_percent ?? row.faultPercent ?? "-"),
       weight: String(row.weight ?? entry.weight ?? "-"),
-      length: String(row.length_mm ?? row.length ?? "-"),
+      length: String(row.length_meters ?? row.length_mm ?? row.length ?? "-"),
     }));
   }
 
   return [
     {
-      drumNo: String(entry.drum_no ?? entry.drumNo ?? entry.drum_from ?? "-"),
+      drumNo: String(entry.drum_no ?? entry.drumNo ?? "-"),
       noOfCones: String(entry.no_of_cones ?? entry.noOfCones ?? "-"),
-      faultName: String(entry.short_cut ?? entry.shortCut ?? "-"),
-      noOfFaults: String(entry.reading_number ?? entry.readingNumber ?? "1"),
-      percentFault: String(entry.fault_percent ?? entry.faultPercent ?? "-"),
+      faultName: String(entry.fault_name ?? entry.faultName ?? entry.short_cut ?? entry.shortCut ?? "-"),
+      noOfFaults: String(entry.no_of_faults ?? entry.noOfFaults ?? entry.reading_number ?? entry.readingNumber ?? "1"),
+      percentFault: String(entry.percent_fault ?? entry.percentFault ?? entry.fault_percent ?? entry.faultPercent ?? "-"),
       weight: String(entry.weight ?? "-"),
-      length: String(entry.length_mm ?? entry.length ?? "-"),
+      length: String(entry.length_meters ?? entry.length_mm ?? entry.length ?? "-"),
     },
   ];
 };
@@ -196,12 +197,44 @@ const toNumberOrNull = (value) => {
   return Number.isFinite(numericValue) ? numericValue : null;
 };
 
+const getMissingFieldLabel = (field = "") => {
+  const labels = {
+    entry_id: "Entry ID",
+    entry_date: "Entry Date",
+    type: "Type",
+    auto_coner_no: "Auto Coner No.",
+    count_name: "Count Name (From)",
+    cone_tip: "Cone Tip",
+    actual_count: "Actual Count",
+    no_of_cuts: "No. of Cuts",
+    break_per_million_meter: "Break / 1 Million Meter",
+    readings: "Reading Rows",
+  };
+
+  return labels[field] || field || "unknown";
+};
+
+const mapInspectionEntryToReadings = (entry = {}) => {
+  const rows = Array.isArray(entry.readings) ? entry.readings : [];
+
+  return rows.map((row) => ({
+    drumNo: String(row.drum_no ?? row.drumNo ?? "-"),
+    noOfCones: String(row.no_of_cones ?? row.noOfCones ?? "-"),
+    faultName: String(row.fault_name ?? row.faultName ?? row.shortName ?? "-"),
+    noOfFaults: String(row.no_of_faults ?? row.noOfFaults ?? "-"),
+    percentFault: String(row.percent_fault ?? row.percentFault ?? "-"),
+    weight: String(row.weight ?? "-"),
+    length: String(row.length_meters ?? row.lengthMeters ?? "-"),
+  }));
+};
+
 const RewindingStudy = forwardRef(function RewindingStudy(
   {
     selectedTypeName = "Rewinding Study",
     onTypeChange,
     typeOptions = [],
     tablePortalTargetId,
+    postFooterPortalTargetId,
     entryId = "",
   },
   ref
@@ -221,6 +254,12 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const [formMessageIsError, setFormMessageIsError] = useState(false);
   const dropdownTriggerRefs = useRef({});
   const rewindingStudy = useSelector((state) => state.autoconer?.rewindingStudy ?? []);
+  const { entryId: generatedEntryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Autoconer",
+    typeName: selectedTypeName,
+    config: { prefix: "ARW", width: 4, routePath: "/autoconer/inspection-data-entry" },
+  });
+  const effectiveEntryId = entryId || generatedEntryId;
   const drumNoOptions = useMemo(() => Array.from({ length: 120 }, (_, index) => String(index + 1)), []);
 
   useEffect(() => {
@@ -278,31 +317,24 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     const filledRows = readingRows.filter((row) => !isBlankReadingRow(row));
 
     return {
+      entry_id: effectiveEntryId || form.date,
       entry_date: form.date,
       type: selectedTypeName || form.type,
-      machine_name: form.autoConerNo,
       count_name: form.countNameFrom,
-      cntcode: countCodeByName[form.countNameFrom] || undefined,
-      cone_tip: form.coneTip,
-      drum_from: toNumberOrNull(form.drumFrom),
-      drum_to: toNumberOrNull(form.drumTo),
-      drum_no: toNumberOrNull(filledRows[0]?.drumNo ?? form.drumNo),
-      no_of_cones: toNumberOrNull(filledRows[0]?.noOfCones ?? ""),
       actual_count: toNumberOrNull(form.actualCount),
-      weight: toNumberOrNull(form.weight),
+      auto_coner_no: form.autoConerNo,
+      cone_tip: form.coneTip,
       no_of_cuts: toNumberOrNull(form.noOfCuts),
-      break_per_lakh: toNumberOrNull(form.breakPerLakhMeter),
+      break_per_million_meter: toNumberOrNull(breakPerMillionMeter) || 0,
       remarks: "Normal",
-      drum_inspections: filledRows.map((row) => ({
-        reading_number: toNumberOrNull(row.readingNumber) || 1,
-        short_cut: row.shortCut || null,
-        short_name: row.shortName || null,
-        fault_percent: toNumberOrNull(formatFaultPercent(row.shortCut, totalFaults)) || 0,
-        length_mm: toNumberOrNull(row.length) || 0,
+      readings: filledRows.map((row) => ({
+        drum_no: toNumberOrNull(row.drumNo) || 0,
+        no_of_cones: toNumberOrNull(row.noOfCones) || 0,
+        fault_name: row.shortName || null,
+        no_of_faults: toNumberOrNull(row.shortCut) || 0,
+        percent_fault: toNumberOrNull(formatFaultPercent(row.shortCut, totalFaults)) || 0,
         weight: toNumberOrNull(row.weight) || 0,
-        break_per_meter: toNumberOrNull(row.breakPerMeter) || 0,
-        percent_yarn: toNumberOrNull(row.breakPerMeter) || 0,
-        appearance_ok: true,
+        length_meters: toNumberOrNull(row.breakPerMeter) || 0,
       })),
     };
   };
@@ -332,17 +364,16 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     const nextErrors = {};
 
     const requiredTopLevel = [
+      "entry_id",
       "entry_date",
       "type",
-      "machine_name",
       "count_name",
-      "cone_tip",
-      "drum_from",
-      "drum_to",
-      "no_of_cones",
       "actual_count",
+      "auto_coner_no",
+      "cone_tip",
       "no_of_cuts",
-      "drum_inspections",
+      "break_per_million_meter",
+      "readings",
     ];
 
     requiredTopLevel.forEach((field) => {
@@ -355,15 +386,20 @@ const RewindingStudy = forwardRef(function RewindingStudy(
       if (missing) nextErrors[field] = true;
     });
 
-    (payload.drum_inspections || []).forEach((row, index) => {
-      const rowRequired = ["reading_number", "short_cut", "short_name", "fault_percent", "length_mm", "weight", "break_per_meter", "percent_yarn", "appearance_ok"];
+    (payload.readings || []).forEach((row, index) => {
+      const rowRequired = [
+        "drum_no",
+        "no_of_cones",
+        "fault_name",
+        "no_of_faults",
+        "percent_fault",
+        "weight",
+        "length_meters",
+      ];
       rowRequired.forEach((field) => {
         const value = row[field];
-        const missing =
-          field === "appearance_ok"
-            ? value === null || value === undefined
-            : value === null || value === undefined || value === "";
-        if (missing) nextErrors[`drum_inspections[${index}].${field}`] = true;
+        const missing = value === null || value === undefined || value === "";
+        if (missing) nextErrors[`readings[${index}].${field}`] = true;
       });
     });
 
@@ -389,24 +425,25 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const submit = async () => {
     const validationResult = validate();
     if (!validationResult.valid) {
-      setFormMessage(`Missing required field: ${validationResult.missingField}`);
+      setFormMessage(`Missing required field: ${getMissingFieldLabel(validationResult.missingField)}`);
       setFormMessageIsError(true);
       return false;
     }
 
-    console.log("Rewinding Study payload:", validationResult.payload);
+      console.log("Inspection Data Entry payload:", validationResult.payload);
     const resultAction = await dispatch(saveAutoconerRewindingStudy(validationResult.payload));
 
     if (saveAutoconerRewindingStudy.fulfilled.match(resultAction)) {
       dispatch(getAutoconerRewindingStudy({ page: 1, limit: 10 }));
-      const successMessage = resultAction.payload?.message || "Rewinding study saved successfully.";
+      const successMessage = resultAction.payload?.message || "Inspection data entry saved successfully.";
       clear();
       setFormMessage(successMessage);
       setFormMessageIsError(false);
+      await reserveEntryId();
       return true;
     }
 
-    setFormMessage(resultAction.payload || resultAction.error?.message || "Unable to save rewinding study.");
+    setFormMessage(resultAction.payload || resultAction.error?.message || "Unable to save inspection data entry.");
     setFormMessageIsError(true);
     return false;
   };
@@ -607,7 +644,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
 
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Rewinding Study" },
-    { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
+    { label: "Entry ID", field: "date", type: "text", value: effectiveEntryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Actual Count", field: "actualCount", type: "text", placeholder: "0.00" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerDropdownOptions, placeholder: "Select auto coner" },
@@ -897,6 +934,70 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     </div>
   );
 
+  const lastTenEntries = useMemo(
+    () => rewindingStudy.slice(0, 10).map((entry) => ({
+      entryId: String(entry.entry_id ?? entry.entryId ?? entry.id ?? "-"),
+      date: String(entry.entry_date ?? entry.entryDate ?? "-"),
+      type: String(entry.type ?? "-"),
+      countName: String(entry.count_name ?? entry.countName ?? "-"),
+      actualCount: String(entry.actual_count ?? entry.actualCount ?? "-"),
+      autoConerNo: String(entry.auto_coner_no ?? entry.autoConerNo ?? "-"),
+      coneTip: String(entry.cone_tip ?? entry.coneTip ?? "-"),
+      noOfCuts: String(entry.no_of_cuts ?? entry.noOfCuts ?? "-"),
+      breakPerMillionMeter: String(entry.break_per_million_meter ?? entry.breakPerMillionMeter ?? "-"),
+      readings: mapInspectionEntryToReadings(entry),
+    })),
+    [rewindingStudy]
+  );
+
+  const summarySection = (
+    <div className="mt-6 overflow-x-auto rounded-[12px] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-[15px] font-semibold text-slate-800">Last 10 Entries</h4>
+      </div>
+      <table className="min-w-full border-collapse text-[12px] text-slate-700">
+        <thead>
+          <tr className="border-b border-slate-300 text-left uppercase tracking-wide text-slate-500">
+            <th className="px-2 py-2 font-semibold">Entry ID</th>
+            <th className="px-2 py-2 font-semibold">Date</th>
+            <th className="px-2 py-2 font-semibold">Count Name</th>
+            <th className="px-2 py-2 font-semibold">Actual Count</th>
+            <th className="px-2 py-2 font-semibold">Auto Coner No.</th>
+            <th className="px-2 py-2 font-semibold">Cone Tip</th>
+            <th className="px-2 py-2 font-semibold">No. of Cuts</th>
+            <th className="px-2 py-2 font-semibold">Break / 1 Million Meter</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lastTenEntries.map((entry, index) => (
+            <tr key={`${entry.entryId}-${index}`} className="border-b border-slate-100 last:border-b-0">
+              <td className="px-2 py-2">{entry.entryId}</td>
+              <td className="px-2 py-2">{entry.date}</td>
+              <td className="px-2 py-2">{entry.countName}</td>
+              <td className="px-2 py-2">{entry.actualCount}</td>
+              <td className="px-2 py-2">{entry.autoConerNo}</td>
+              <td className="px-2 py-2">{entry.coneTip}</td>
+              <td className="px-2 py-2">{entry.noOfCuts}</td>
+              <td className="px-2 py-2">{entry.breakPerMillionMeter}</td>
+            </tr>
+          ))}
+          {!lastTenEntries.length ? (
+            <tr>
+              <td colSpan={8} className="px-2 py-4 text-center text-slate-400">
+                No inspection entries available.
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const summaryPortalTarget =
+    portalReady && postFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(postFooterPortalTargetId)
+      : null;
+
   const rowDrumMenu =
     portalReady && openDropdown?.startsWith("row-drum-") && dropdownMenuStyle
       ? createPortal(
@@ -1039,6 +1140,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
       ) : null}
       {topPortalTarget ? createPortal(generatedTableSection, topPortalTarget) : null}
       {rowDrumMenu}
+      {summaryPortalTarget ? createPortal(summarySection, summaryPortalTarget) : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving rewinding study...</p> : null}
     </>
   );
