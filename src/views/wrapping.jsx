@@ -38,7 +38,7 @@ const WRAPPING_SAVE_ENDPOINTS = {
   simplex: "/simplex/wrapping-simplex-notebook",
 };
 
-const API_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 
 const toDocType = (type) => String(type || "Carding").trim().toLowerCase();
 

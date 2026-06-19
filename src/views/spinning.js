@@ -18,9 +18,9 @@ import {
     fetchSpinningCountChangeDropdown,
     fetchSpinningCountChangeRfNos,
     fetchSpinningMachineNumberOptions,
-    fetchSpinningRingFrameCheckerNames,
     fetchSpinningRingFrameShifts,
 } from "@/apis/spinning";
+import { fetchEmployeeOptions, normalizeEmployeeOptions } from "@/apis/employeeMaster";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
@@ -313,6 +313,7 @@ function SpinningDepartment() {
     );
     const [ringFrameCheckerOptions, setRingFrameCheckerOptions] = useState([]);
     const [ringFrameShiftOptions, setRingFrameShiftOptions] = useState(SHIFT_OPTIONS);
+    const [checkerName, setCheckerName] = useState("");
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -474,15 +475,13 @@ function SpinningDepartment() {
 
         let isMounted = true;
         Promise.allSettled([
-            fetchSpinningRingFrameCheckerNames({ department: "Spinning", dept_code: "25/27", department_code: "25/27" }),
+            fetchEmployeeOptions({ module: "spinning" }),
             fetchSpinningRingFrameShifts(),
         ]).then(([checkerResult, shiftResult]) => {
             if (!isMounted) return;
 
             if (checkerResult.status === "fulfilled") {
-                if (!isMounted) return;
-                const options = normalizeMachineOptions(checkerResult.value)
-                    .filter((option) => option.value);
+                const options = normalizeEmployeeOptions({ data: checkerResult.value }).filter((option) => option.value);
                 setRingFrameCheckerOptions(options);
             } else {
                 setRingFrameCheckerOptions([]);
@@ -626,8 +625,8 @@ function SpinningDepartment() {
         setCountNameTo("");
         setCountReadingCount("");
         setCountChangeRows([]);
-        setShift("");
         setCheckerName("");
+        setShift("");
         setRingFrameRows(createRingFrameRows());
         setOutOfCenterAc("");
         setComments("");
@@ -654,6 +653,7 @@ function SpinningDepartment() {
             if (!countReadingCount.trim() || Number(countReadingCount) <= 0) nextErrors.countReadingCount = true;
             if (!countChangeMode) nextErrors.countChangeMode = true;
         } else if (isRingFrame) {
+            if (!checkerName.trim()) nextErrors.checkerName = true;
             if (!shift.trim()) nextErrors.shift = true;
             if (!outOfCenterAc.trim()) nextErrors.outOfCenterAc = true;
             if (!comments.trim()) nextErrors.comments = true;
@@ -733,6 +733,7 @@ function SpinningDepartment() {
                 entry_id: entryId,
                 inspection_type: "Ring Frame",
                 entry_date: date || getTodayDate(),
+                checker_name: checkerName.trim(),
                 shift,
                 rows: ringFrameRows.map((row) => ({
                     mc_no: String(row.machine_no ?? "").trim(),
@@ -898,6 +899,7 @@ function SpinningDepartment() {
             : isRingFrame
                 ? [
                     { label: "Shift", value: shift || "-" },
+                    { label: "Checker Name", value: checkerName || "-" },
                     { label: "Rows", value: ringFrameRows.length },
                     { label: "Out of Center AC", value: outOfCenterAc || "-" },
                     { label: "Out of Center RF", value: outOfCenterRf || "-" },
@@ -1122,10 +1124,21 @@ function SpinningDepartment() {
                                             ariaLabel="Shift"
                                         />
                                     </div>
-                                </div>
-
-                                <div className={styles.row}>
+                                    <div className={styles["sp-form-group"]}>
+                                        <label>Checker Name</label>
+                                        <SearchableSelect
+                                            className={`${styles["highlight-input"]} ${errors.checkerName ? styles["input-error"] : ""}`}
+                                            value={checkerName}
+                                            onChange={(value) => {
+                                                setCheckerName(value);
+                                                clearFieldError("checkerName");
+                                            }}
+                                            options={ringFrameCheckerSelectOptions}
+                                            placeholder="Select Checker Name"
+                                            ariaLabel="Checker Name"
+                                        />
                                     </div>
+                                </div>
 
                                 <div className={styles.ringFrameTableWrap}>
                                     <table className={styles.ringFrameTable}>
