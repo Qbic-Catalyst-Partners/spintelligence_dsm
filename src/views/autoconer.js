@@ -50,7 +50,7 @@ const AUTOCONER_ENTRY_ID_CONFIG = {
   "Process Parameter": { prefix: "APP", width: 4, routePath: "/autoconer/process-parameters" },
   "PP - Autoconer Q2": { prefix: "AQD", width: 4, routePath: "/autoconer/q2" },
   "PP - Autoconer Q3": { prefix: "AQT", width: 4, routePath: "/autoconer/q3" },
-  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/rewinding-study" },
+  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/inspection-data-entry" },
   "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
   "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
   "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking" },
