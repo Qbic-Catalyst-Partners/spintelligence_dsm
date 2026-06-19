@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
-const OCR_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || "").replace(/\/+$/, "");
-const OCR_ENDPOINT = OCR_BASE ? `${OCR_BASE}/ocr-machine/api/ocr` : "/api/ocr-machine/ocr";
+import { runOcrForDocument } from "@/apis/ocrApi";
 
 const DOC_TYPES = [
   { label: "HVI Data Entry", value: "hvi" },
@@ -166,39 +163,16 @@ export default function OcrMachinePage() {
     setLogs([]);
     setRows([]);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("doc_type", docType);
-      const ocrUrl = OCR_ENDPOINT;
-      const res = await fetch(ocrUrl, { method: "POST", body: form });
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`OCR request failed (${res.status}) at ${ocrUrl}${errorText ? `: ${errorText}` : ""}`);
-      }
-      if (!res.body) throw new Error("No stream returned");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let finalResult = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() || "";
-        for (const evt of events) {
-          if (!evt.startsWith("data:")) continue;
-          const payload = JSON.parse(evt.slice(5).trim());
-          if (payload?.msg) setLogs((prev) => [...prev, payload.msg]);
-          if (payload?.result) finalResult = payload.result;
-        }
-      }
-
-      const parsed = Array.isArray(finalResult?.json_output) ? finalResult.json_output : [];
+      const result = await runOcrForDocument({ file, docType });
+      const parsed = Array.isArray(result?.json_output)
+        ? result.json_output
+        : Array.isArray(result?.raw_tables)
+          ? result.raw_tables
+          : Array.isArray(result?.data)
+            ? result.data
+            : [];
       if (docType === "bwc") {
-        const rawText = String(finalResult?.raw_text || "").toLowerCase();
+        const rawText = String(result?.raw_text || "").toLowerCase();
         const looksLikeHviReport =
           rawText.includes("hvi1000") ||
           rawText.includes("systemtesting-individual tests") ||
@@ -230,7 +204,7 @@ export default function OcrMachinePage() {
     } catch (e) {
       const isNetworkFailure = e instanceof TypeError && /fetch/i.test(e.message || "");
       const msg = isNetworkFailure
-        ? `Network error calling ${OCR_ENDPOINT}. Check backend availability.`
+        ? "Network error calling OCR API route. Check backend availability."
         : e.message || "OCR failed";
       setLogs((prev) => [...prev, msg]);
     } finally {
