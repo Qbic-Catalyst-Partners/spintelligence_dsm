@@ -62,6 +62,7 @@ function Mixing() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const childRef = useRef(null);
+    const successHandledRef = useRef(false);
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
     const user = useSelector((state) => state.auth?.user);
@@ -123,6 +124,8 @@ function Mixing() {
 
     useEffect(() => {
         if (actionSuccess) {
+            if (successHandledRef.current) return;
+            successHandledRef.current = true;
             reserveEntryId();
             setShowSuccess(true);
         }
@@ -266,6 +269,8 @@ function Mixing() {
     const handleSuccessClose = () => {
         setShowSuccess(false);
         dispatch(clearMixingState());
+        successHandledRef.current = false;
+        router.reload();
     };
 
     const handleOpennessSubmitSuccess = () => {
@@ -486,6 +491,7 @@ function Mixing() {
                 message="Data Submitted"
                 typeValue={selectedTypeName}
                 onClose={handleSuccessClose}
+                closeLabel="OK"
             />
         </div>
     );

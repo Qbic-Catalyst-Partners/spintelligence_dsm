@@ -524,12 +524,13 @@ function Carding() {
                 confirmLabel="Submit"
             />
 
-                <SuccessModal
-                open={showSuccess}
-                message="Data Submitted"
-                typeValue={selectedType}
-                onClose={handleSuccessClose}
-            />
+      <SuccessModal
+        open={showSuccess}
+        message="Data Submitted"
+        typeValue={selectedType}
+        onClose={handleSuccessClose}
+        closeLabel="OK"
+      />
         </div>
     );
 }

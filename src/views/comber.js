@@ -424,6 +424,7 @@ function Comber() {
                     childRef.current?.clear?.();
                     dispatch(clearComberState());
                 }}
+                closeLabel="OK"
             />
         </div>
     );

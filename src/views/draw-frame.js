@@ -2310,6 +2310,7 @@ function DrawFrame() {
         message="Data Submitted"
         typeValue={form.type}
         onClose={handleSuccessClose}
+        closeLabel="OK"
       />
     </div>
   );

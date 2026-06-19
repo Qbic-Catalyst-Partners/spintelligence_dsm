@@ -41,6 +41,11 @@ const autoconerTypes = [
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
+const AUTOCONER_PROCESS_PARAMETER_TYPES = [
+  "Process Parameter",
+  "PP - Autoconer Q2",
+  "PP - Autoconer Q3",
+];
 const AUTOCONER_ENTRY_ID_CONFIG = {
   "Process Parameter": { prefix: "APP", width: 4, routePath: "/autoconer/process-parameters" },
   "PP - Autoconer Q2": { prefix: "AQD", width: 4, routePath: "/autoconer/q2" },
@@ -82,9 +87,12 @@ function Autoconer() {
     [accessByDepartment, user]
   );
   const typeOptions = useMemo(
-    () => isProcessParameterRequest
-      ? fullTypeOptions
-      : fullTypeOptions.filter((item) => item.name !== "Process Parameter"),
+    () =>
+      isProcessParameterRequest
+        ? fullTypeOptions.filter((item) => AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name))
+        : fullTypeOptions.filter(
+            (item) => !AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name)
+          ),
     [fullTypeOptions, isProcessParameterRequest]
   );
   const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
@@ -286,6 +294,7 @@ function Autoconer() {
           registeredActions.onClear?.();
           dispatch(clearAutoconerState());
         }}
+        closeLabel="OK"
       />
     </div>
   );

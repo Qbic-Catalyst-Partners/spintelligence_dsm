@@ -313,6 +313,7 @@ function BlowRoom() {
         message="Data Submitted"
         typeValue={selectedTypeName}
         onClose={handleSuccessClose}
+        closeLabel="OK"
       />
     </div>
   );

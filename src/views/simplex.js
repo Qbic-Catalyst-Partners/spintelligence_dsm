@@ -51,6 +51,8 @@ function Simplex() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
+  const submitInProgressRef = useRef(false);
+  const successHandledRef = useRef(false);
   const { isDarkMode } = useThemeMode();
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -145,20 +147,42 @@ function Simplex() {
   };
 
   const confirmSubmit = async () => {
+    if (submitInProgressRef.current) return;
+    submitInProgressRef.current = true;
     setShowPreview(false);
-    const ok = await childRef.current?.submit?.();
-    if (ok) {
-      await recordSubmittedNotebook({
-        department: "Quality Control",
-        subDepartment: "Simplex",
-        notebookName: selectedTypeName,
-        entryId,
-        childRef,
-        previewItems,
-        user,
-      });
-      await reserveEntryId();
-      setShowSuccess(true);
+    try {
+      const ok = await childRef.current?.submit?.();
+      if (ok) {
+        if (successHandledRef.current) return;
+        successHandledRef.current = true;
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Simplex",
+          notebookName: selectedTypeName,
+          entryId,
+          childRef,
+          previewItems,
+          user,
+        });
+        await reserveEntryId();
+        setShowSuccess(true);
+      }
+    } finally {
+      submitInProgressRef.current = false;
+    }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    setValidationMessage("");
+    childRef.current?.clear?.();
+    dispatch(clearSimplexState());
+    successHandledRef.current = false;
+    if (selectedTypeName === "U% Data Entry") {
+      dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
+    }
+    if (selectedTypeName === "SMXCots Change Data Entry") {
+      dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
     }
   };
 
@@ -495,18 +519,8 @@ function Simplex() {
         open={showSuccess}
         message="Data Submitted"
         typeValue={selectedTypeName}
-        onClose={() => {
-          setShowSuccess(false);
-          setValidationMessage("");
-          childRef.current?.clear?.();
-          dispatch(clearSimplexState());
-          if (selectedTypeName === "U% Data Entry") {
-            dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
-          }
-          if (selectedTypeName === "SMXCots Change Data Entry") {
-            dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
-          }
-        }}
+        onClose={handleSuccessClose}
+        closeLabel="OK"
       />
     </div>
   );

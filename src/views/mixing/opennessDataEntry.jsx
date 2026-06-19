@@ -14,6 +14,18 @@ const parseNumber = (value) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
+const roundToDecimals = (value, decimals) => {
+  const factor = 10 ** decimals;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+};
+
+const normalizeTargetSpecificVolume = (value) => {
+  const numericValue = parseNumber(value);
+  if (numericValue <= 0) return 0;
+
+  return roundToDecimals(numericValue > 1 ? numericValue / 100 : numericValue, 10);
+};
+
 const createStages = (totalEntries) => {
   const stages = [];
   let remaining = totalEntries;
@@ -74,7 +86,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       field === "entries"
         ? sanitizeIntegerInput(value, 9)
         : field === "target"
-          ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
+          ? sanitizeNumericInput(value, { precision: 20, scale: 10 })
           : value;
 
     setForm((current) => ({
@@ -119,9 +131,14 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
             if (weight > 0 && volumeOne > 0 && volumeTwo > 0) {
               const avgVolume = (volumeOne + volumeTwo) / 2;
-              const calculated = (avgVolume / weight).toFixed(2);
-              nextRow.asv = calculated;
-              nextRow.aov = calculated;
+              const apparentSpecificVolume = (avgVolume / weight);
+              const targetSpecificVolume = normalizeTargetSpecificVolume(form.target);
+              const actualOpennessValue =
+                  targetSpecificVolume > 0
+                  ? (((apparentSpecificVolume - targetSpecificVolume) / targetSpecificVolume).toFixed(2))
+                  : "";
+              nextRow.asv = apparentSpecificVolume.toFixed(2);
+              nextRow.aov = actualOpennessValue;
             } else {
               nextRow.asv = "";
               nextRow.aov = "";
@@ -151,9 +168,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
         const avgVol = validRows ? (totalVol / validRows).toFixed(2) : "";
         const avgAov = validRows ? (totalAov / validRows).toFixed(2) : "";
-        const target = parseNumber(form.target);
-        const openness =
-          target > 0 && avgAov !== "" ? ((parseNumber(avgAov) / target) * 100).toFixed(2) : "";
+        const openness = avgAov;
 
         return { ...stage, rows: updatedRows, avgVol, avgAov, openness };
       });

@@ -476,7 +476,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">TOTAL BREAK (%)</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">No.of Breaks / 100 Spindles</div>
             {percentageBreakColumns.map((columnLabel) => (
               <input
                 key={`percent-${columnLabel}`}
@@ -491,7 +491,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_minmax(0,160px)] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Total Breaks %</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700"> Grand Total Breaks %</div>
             <input
               type="text"
               readOnly

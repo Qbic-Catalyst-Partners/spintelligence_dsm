@@ -1,6 +1,12 @@
 import styles from "@/styles/successModal.module.css";
 
-function SuccessModal({ open, message = "Data Submitted", onClose, scope = "page" }) {
+function SuccessModal({
+  open,
+  message = "Data Submitted",
+  onClose,
+  scope = "page",
+  closeLabel = "Close",
+}) {
   if (!open) return null;
 
   return (
@@ -16,7 +22,7 @@ function SuccessModal({ open, message = "Data Submitted", onClose, scope = "page
         <div className={styles.message}>{message}</div>
 
         <button type="button" className={styles.button} onClick={onClose}>
-          Close
+          {closeLabel}
         </button>
       </div>
     </div>
