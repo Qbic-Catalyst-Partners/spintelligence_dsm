@@ -119,13 +119,17 @@ function Autoconer() {
     selectedType === "Cone Packing Audit";
 
   const openPreview = () => {
-    const valid = childRef.current?.validate
+    const validationResult = childRef.current?.validate
       ? childRef.current.validate()
       : registeredActions.validate
         ? registeredActions.validate()
         : true;
-    if (valid === false) {
+    if (validationResult === false) {
       setValidationMessage("Please fill all required fields before saving.");
+      return;
+    }
+    if (validationResult && typeof validationResult === "object" && validationResult.valid === false) {
+      setValidationMessage(`Missing required field: ${validationResult.missingField || "unknown"}`);
       return;
     }
     setValidationMessage("");
@@ -190,6 +194,7 @@ function Autoconer() {
       <div className={styles.container}>
         <div className={styles.header}>
           <h1>Quality Control - Autoconer Notebook</h1>
+          <p>Record and manage industrial machine quality inspections.</p>
           <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
         <div className={styles.shell}>

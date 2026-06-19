@@ -489,6 +489,14 @@ export const fetchAutoconerRewindingStudy = async ({
     { suppressFailure: true, paginated: true }
   );
 
+export const fetchAutoconerRewindingStudyById = async (id) =>
+  getAutoconer(
+    `rewinding-study/${id}`,
+    {},
+    "Unable to fetch rewinding study details.",
+    { suppressFailure: true }
+  );
+
 export const submitAutoconerRewindingStudy = async (payload) =>
   postAutoconer(
     "rewinding-study",
