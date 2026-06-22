@@ -314,6 +314,7 @@ function SpinningDepartment() {
     const [ringFrameCheckerOptions, setRingFrameCheckerOptions] = useState([]);
     const [ringFrameShiftOptions, setRingFrameShiftOptions] = useState(SHIFT_OPTIONS);
     const [checkerName, setCheckerName] = useState("");
+    const successHandledRef = useRef(false);
 
     const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
@@ -350,6 +351,11 @@ function SpinningDepartment() {
     const ringFrameShiftSelectOptions = ringFrameShiftOptions;
     const machineFieldLabel = isCotsChecking ? "Variety" : "Machine";
     const machineFieldPlaceholder = isCotsChecking ? "Select Variety" : "Select Machine";
+    const showSuccessOnce = () => {
+        if (successHandledRef.current) return;
+        successHandledRef.current = true;
+        setShowSuccess(true);
+    };
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -505,7 +511,7 @@ function SpinningDepartment() {
         if (success) {
             reserveEntryId();
             setShowPreview(false);
-            setShowSuccess(true);
+            showSuccessOnce();
             dispatch(resetSpinningState());
         }
         if (error) dispatch(resetSpinningState());
@@ -964,7 +970,7 @@ function SpinningDepartment() {
                             typeOptions={checkingOptions}
                             entryId={entryId}
                             onTypeChange={(value) => handleTypeChange({ target: { value } })}
-                            onSubmitSuccess={() => setShowSuccess(true)}
+                            onSubmitSuccess={showSuccessOnce}
                             standaloneSection={isProcessParameter}
                             savedVersionsTargetId={isProcessParameter ? "spinning-process-parameter-saved-versions" : ""}
                         />
@@ -1391,6 +1397,7 @@ function SpinningDepartment() {
                 open={showSuccess}
                 onClose={() => {
                     setShowSuccess(false);
+                    successHandledRef.current = false;
                     handleClearForm();
                 }}
                 closeLabel="OK"

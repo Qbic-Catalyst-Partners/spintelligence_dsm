@@ -122,12 +122,16 @@ function Mixing() {
         }
     }, [requestedType, selectedTypeName, typeOptions]);
 
+    const showSuccessOnce = () => {
+        if (successHandledRef.current) return;
+        successHandledRef.current = true;
+        setShowSuccess(true);
+    };
+
     useEffect(() => {
         if (actionSuccess) {
-            if (successHandledRef.current) return;
-            successHandledRef.current = true;
             reserveEntryId();
-            setShowSuccess(true);
+            showSuccessOnce();
         }
     }, [actionSuccess]);
 
@@ -244,7 +248,7 @@ function Mixing() {
             const ok = await childRef.current?.submit?.();
             if (ok === false) return;
             await reserveEntryId();
-            setShowSuccess(true);
+            showSuccessOnce();
         } catch (error) {
             console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
             return;
@@ -274,7 +278,7 @@ function Mixing() {
     };
 
     const handleOpennessSubmitSuccess = () => {
-        setShowSuccess(true);
+        showSuccessOnce();
     };
 
     useEffect(() => {

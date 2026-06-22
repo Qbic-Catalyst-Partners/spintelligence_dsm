@@ -686,6 +686,7 @@ function DrawFrame() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const successHandledRef = useRef(false);
   const [wheelChangeSaving, setWheelChangeSaving] = useState(false);
   const [entrySeq, setEntrySeq] = useState(1);
   const cvMachineDropdownRef = useRef(null);
@@ -1156,8 +1157,15 @@ function DrawFrame() {
 
   const handleSuccessClose = () => {
     setShowSuccess(false);
+    successHandledRef.current = false;
     handleClear();
     dispatch(clearDrawFrameState());
+  };
+
+  const showSuccessOnce = () => {
+    if (successHandledRef.current) return;
+    successHandledRef.current = true;
+    setShowSuccess(true);
   };
 
   useEffect(() => {
@@ -1446,7 +1454,7 @@ function DrawFrame() {
           },
         });
         reserveEntryId();
-        setShowSuccess(true);
+        showSuccessOnce();
       } catch (submitError) {
         setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
       }
@@ -1472,7 +1480,7 @@ function DrawFrame() {
         }).catch((error) => console.error("Submitted notebook creation failed:", error));
         reserveEntryId();
         await wheelChangeRef.current?.loadLatestSaved?.();
-        setShowSuccess(true);
+        showSuccessOnce();
       } catch (submitError) {
         setErrors((current) => ({
           ...current,
@@ -1557,7 +1565,7 @@ function DrawFrame() {
       if (form.type === "U% Data Entry") {
         dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
       }
-      setShowSuccess(true);
+      showSuccessOnce();
     }
   }, [actionSuccess, dispatch, form.type, reserveEntryId]);
 

@@ -8,7 +8,6 @@ import styles from "./comber/ribbonLapCVDataEntry.module.css";
 import PreviewModal from "@/components/PreviewModal";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PdfOcrTableEntry from "@/components/PdfOcrTableEntry";
-import SuccessModal from "@/components/SuccessModal";
 import Footer from "@/components/Footer";
 import { useSelector, useDispatch } from "react-redux";
 import { clearComberState, submitComberUqc } from "@/store/slices/comber";
@@ -83,7 +82,6 @@ function Comber() {
 
     const childRef = useRef(null);
     const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
-    const [showSuccess, setShowSuccess] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const selectedType = typeOptions.find((item) => item.id === checkingType)?.name || "";
@@ -105,8 +103,11 @@ function Comber() {
     }, [checkingType, typeOptions]);
 
     useEffect(() => {
-        if (data) setShowSuccess(true);
-    }, [data]);
+        if (data) {
+            childRef.current?.clear?.();
+            dispatch(clearComberState());
+        }
+    }, [data, dispatch]);
     const handleSubmit = useCallback(async () => {
         try {
             const ok = await childRef.current?.submit?.();
@@ -121,12 +122,11 @@ function Comber() {
                     user,
                 });
                 await reserveEntryId();
-                setShowSuccess(true);
             }
         } catch (e) {
             // child handles its own errors
         }
-    }, [reserveEntryId]);
+    }, [reserveEntryId, selectedType, entryId, previewItems, user]);
 
     const handleCalculate = useCallback(() => {
         childRef.current?.calculateStats?.();
@@ -163,7 +163,6 @@ function Comber() {
                     user,
                 });
                 await reserveEntryId();
-                setShowSuccess(true);
             }
         } catch (e) {
             // child handles errors
@@ -415,17 +414,6 @@ function Comber() {
                 confirmLabel="Submit"
             />
 
-            <SuccessModal
-                open={showSuccess}
-                message="Data Submitted"
-                typeValue={selectedType || "Comber"}
-                onClose={() => {
-                    setShowSuccess(false);
-                    childRef.current?.clear?.();
-                    dispatch(clearComberState());
-                }}
-                closeLabel="OK"
-            />
         </div>
     );
 }

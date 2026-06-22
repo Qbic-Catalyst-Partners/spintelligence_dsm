@@ -44,6 +44,7 @@ function BlowRoom() {
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
+  const successHandledRef = useRef(false);
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
@@ -108,9 +109,15 @@ function BlowRoom() {
 
   const actionLoading = blowroomState?.loading;
 
+  const showSuccessOnce = () => {
+    if (successHandledRef.current) return;
+    successHandledRef.current = true;
+    setShowSuccess(true);
+  };
+
   useEffect(() => {
     if (blowroomState?.success) {
-      setShowSuccess(true);
+      showSuccessOnce();
     }
   }, [blowroomState?.success]);
 
@@ -161,7 +168,7 @@ function BlowRoom() {
         user,
       });
       await reserveEntryId();
-      setShowSuccess(true);
+      showSuccessOnce();
     } catch (e) {
       // submission error handled by slices/toasts; keep modal closed
     }
@@ -169,6 +176,7 @@ function BlowRoom() {
 
   const handleSuccessClose = () => {
     setShowSuccess(false);
+    successHandledRef.current = false;
     dispatch(resetBlowroom());
   };
   const isSyncType = selectedTypeName === "Blow Room Sync";
