@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
-const OCR_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || "").replace(/\/+$/, "");
+const OCR_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 const OCR_ENDPOINT = OCR_BASE ? `${OCR_BASE}/ocr-machine/api/ocr` : "/api/ocr-machine/ocr";
 
 const DOC_TYPES = [
