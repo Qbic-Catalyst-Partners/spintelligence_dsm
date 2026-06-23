@@ -573,27 +573,9 @@ export const fetchAutoconerConePackingAuditMasterData = async () =>
 
 export const submitAutoconerConeDensity = async (payload) =>
   {
-    const sourceRows = payload?.cone_density_readings ?? payload?.cone_readings ?? [];
-    const normalizedRows = Array.isArray(sourceRows)
-      ? sourceRows.map((row) => ({
-          ...row,
-          // Backend variants read either `cone_weight` or `weight`.
-          weight: row?.weight ?? row?.cone_weight ?? null,
-          cone_weight: row?.cone_weight ?? row?.weight ?? null,
-          // Preserve alternate traverse naming seen in older payloads.
-          cone_traverse: row?.cone_traverse ?? row?.coneTrav ?? null,
-        }))
-      : [];
-
-    const normalizedPayload = {
-      ...payload,
-      cone_density_readings: normalizedRows,
-      cone_readings: normalizedRows,
-    };
-
     return postAutoconerCandidates(
-      "cone-density",
-      [normalizedPayload],
+      "cone-density-notebook",
+      [payload],
       "Unable to save cone density."
     );
   };
