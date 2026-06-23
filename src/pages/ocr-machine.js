@@ -1,14 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-
-const OCR_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
-const OCR_ENDPOINT = OCR_BASE ? `${OCR_BASE}/ocr-machine/api/ocr` : "/api/ocr-machine/ocr";
 import { runOcrForDocument } from "@/apis/ocrApi";
 
-// Maps raw_text section labels → data-entry field names for HVI reports.
-// Each section in the USTER HVI 1000 raw_text follows the pattern:
-//   LABEL\nSample1\nSample2\n...\nAverage\nStdDev\n...
-// The Average is the (N+1)th numeric value where N = number of bales.
 const HVI_LABEL_MAP = [
   { label: "SCI",  field: "SCI" },
   { label: "SL2",  field: "Span Length (2.5%)" },
@@ -23,7 +16,6 @@ const HVI_LABEL_MAP = [
 const extractHviFields = (rawText, fields = []) => {
   if (!rawText) return {};
   const lines = rawText.split("\n").map((s) => s.trim());
-
   const isNumericLine = (s) => /^[0-9]/.test(s) && !/[A-Za-z]/.test(s) && !isNaN(parseFloat(s));
 
   const numericAverageAt = (labelIdx) => {
@@ -34,7 +26,6 @@ const extractHviFields = (rawText, fields = []) => {
       if (isNumericLine(line)) nums.push(line);
       else if (nums.length > 0) break;
     }
-    // Average is the 5th value (after 4 samples); fall back to the last collected.
     return nums[4] ?? nums[nums.length - 1] ?? "";
   };
 
@@ -58,7 +49,6 @@ const extractHviFields = (rawText, fields = []) => {
     if (idx !== -1) result[field] = numericAverageAt(idx);
   });
 
-  // Colour Grade — non-numeric, needs mode extraction
   const cGrdIdx = lines.indexOf("CGrd");
   if (cGrdIdx !== -1 && (!fields.length || fields.includes("Colour Grade"))) {
     result["Colour Grade"] = gradeMode(cGrdIdx);
@@ -229,13 +219,20 @@ export default function OcrMachinePage() {
     setRows([]);
     try {
       const result = await runOcrForDocument({ file, docType });
-      const parsed = Array.isArray(result?.json_output)
+      const rawParsed = Array.isArray(result?.json_output)
         ? result.json_output
         : Array.isArray(result?.raw_tables)
           ? result.raw_tables
           : Array.isArray(result?.data)
             ? result.data
             : [];
+      const firstHasData = rawParsed[0] && Object.keys(rawParsed[0]).length > 0;
+      const parsed = firstHasData
+        ? rawParsed
+        : (() => {
+            const extracted = extractHviFields(result?.raw_text, result?.fields || []);
+            return Object.keys(extracted).length > 0 ? [extracted] : rawParsed;
+          })();
       if (docType === "bwc") {
         const rawText = String(result?.raw_text || "").toLowerCase();
         const looksLikeHviReport =
