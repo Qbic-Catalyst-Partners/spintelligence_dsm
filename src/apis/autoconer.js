@@ -509,7 +509,7 @@ export const fetchAutoconerConeDensity = async ({
   limit = 10,
 } = {}) =>
   getAutoconer(
-    "cone-density",
+    "cone-density-notebook",
     { page, limit },
     "Unable to fetch cone density.",
     { suppressFailure: true, paginated: true }

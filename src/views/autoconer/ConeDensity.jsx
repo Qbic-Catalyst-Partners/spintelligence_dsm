@@ -86,7 +86,9 @@ const createReadingRows = (from = "", to = "") => {
 };
 
 const mapConeDensityEntryToRows = (entry = {}) => {
-  const nestedRows = Array.isArray(entry.cone_density_readings)
+  const nestedRows = Array.isArray(entry.drums)
+    ? entry.drums
+    : Array.isArray(entry.cone_density_readings)
     ? entry.cone_density_readings
     : Array.isArray(entry.cone_readings)
       ? entry.cone_readings
@@ -97,21 +99,20 @@ const mapConeDensityEntryToRows = (entry = {}) => {
   if (nestedRows.length > 0) {
     return nestedRows.map((row, index) => ({
       drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_from ?? "-"),
-      baseDiaE: String(row.base_dia_e ?? entry.base_dia_e ?? "-"),
-      noseDiaE: String(row.nose_dia_e ?? entry.nose_dia_e ?? "-"),
-      baseDia: String(row.base_dia ?? row.baseDia ?? "-"),
-      noseDia: String(row.nose_dia ?? row.noseDia ?? "-"),
-      coneWeight: String(row.cone_weight ?? row.weight ?? row.coneWeight ?? "-"),
+      baseDiaE: String(row.base_dia_e_d1 ?? row.base_dia_e ?? entry.base_dia_e ?? "-"),
+      noseDiaE: String(row.nose_dia_e_d2 ?? row.nose_dia_e ?? entry.nose_dia_e ?? "-"),
+      baseDia: String(row.base_dia_i_d3 ?? row.base_dia ?? row.baseDia ?? "-"),
+      noseDia: String(row.nose_dia_i_d4 ?? row.nose_dia ?? row.noseDia ?? "-"),
+      coneWeight: String(row.cone_weight_gms ?? row.cone_weight ?? row.weight ?? row.coneWeight ?? "-"),
       coneTraverse: String(row.cone_traverse ?? row.coneTrav ?? "-"),
-      coneDensity: String(row.density ?? row.cone_density ?? row.coneDensity ?? "-"),
+      coneDensity: String(row.density_gms_cm3 ?? row.density ?? row.cone_density ?? row.coneDensity ?? "-"),
       percentYarn: String(row.hardness ?? "-"),
-      slantHeight: String(row.slant_height ?? row.slantHeight ?? "-"),
-      verticalHeight: String(row.vertical_height ?? row.verticalHeight ?? "-"),
-      volume: String(row.volume ?? "-"),
-      gmsPerCm3: String(row.gms_per_cm3 ?? row.gmsPerCm3 ?? "-"),
-      gmsPerLitre: String(row.gms_per_litre ?? row.gmsPerLitre ?? "-"),
-      gmsPerCm3: String(row.gms_per_cm3 ?? row.gmsPerCm3 ?? "-"),
-      windingSpeed: String(row.winding_speed ?? row.windingSpeed ?? "-"),
+      slantHeight: String(row.slant_height_b1 ?? row.slant_height ?? row.slantHeight ?? "-"),
+      verticalHeight: String(row.vertical_height_b2 ?? row.vertical_height ?? row.verticalHeight ?? "-"),
+      volume: String(row.volume_cm3 ?? row.volume ?? "-"),
+      gmsPerCm3: String(row.density_gms_cm3 ?? row.gms_per_cm3 ?? row.gmsPerCm3 ?? "-"),
+      gmsPerLitre: String(row.gms_litre ?? row.gms_per_litre ?? row.gmsPerLitre ?? "-"),
+      windingSpeed: String(row.winding_speed_m_min ?? row.winding_speed ?? row.windingSpeed ?? "-"),
       cnTension: String(row.cn_tension ?? row.cnTension ?? "-"),
       tensionerRpm: String(row.tensioner_rpm ?? row.tensionerRpm ?? "-"),
       tensionerForce: String(row.tensioner_force ?? row.tensionerForce ?? "-"),
@@ -293,7 +294,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     });
     if (!readingRows.length) nextErrors.drumRange = true;
     readingRows.forEach((row, index) => {
-      ["baseDiaE", "noseDiaE", "baseDia", "noseDia", "coneWeight", "coneTrav", "density", "volume", "gmsPerCm3", "gmsLitre", "windingSpeed", "cnTension", "tensionerRpm", "tensionerForce", "nCradlePressure", "remarks"].forEach((field) => {
+      ["baseDiaE", "noseDiaE", "baseDia", "noseDia", "coneWeight", "coneTrav", "density", "volume", "gmsPerCm3", "gmsLitre", "windingSpeed", "cnTension", "tensionerRpm", "tensionerForce", "nCradlePressure"].forEach((field) => {
         if (!String(row[field] || "").trim()) {
           nextErrors[`row-${index}-${field}`] = true;
         }
@@ -354,7 +355,7 @@ const calculateGmsPerLitre = (row = {}) => {
       volume_cm3: toNullableNumber(row.volume),
       density_gms_cm3: toNullableNumber(row.gmsPerCm3),
       gms_litre: toNullableNumber(row.gmsLitre),
-      winding_speed: toNullableNumber(row.windingSpeed),
+      winding_speed_m_min: toNullableNumber(row.windingSpeed),
       cn_tension: toNullableNumber(row.cnTension),
       tensioner_rpm: toNullableNumber(row.tensionerRpm),
       tensioner_force: toNullableNumber(row.tensionerForce),
