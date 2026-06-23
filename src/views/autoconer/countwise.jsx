@@ -43,7 +43,7 @@ const metricKeys = [
   "FD",
   "JP",
   "JM",
-  "CVD",
+  "CVT",
   "A1",
   "A2",
   "A3",
@@ -90,7 +90,7 @@ const mapApiEntryToMetrics = (entry = {}) => ({
   FD: entry.fd ?? "",
   JP: entry.jp ?? "",
   JM: entry.jm ?? "",
-  CVD: entry.cvd ?? "",
+  CVT: entry.cvt ?? entry.cvd ?? "",
   A1: entry.a1 ?? "",
   A2: entry.a2 ?? "",
   A3: entry.a3 ?? "",
@@ -116,16 +116,6 @@ const mapApiEntryToMetrics = (entry = {}) => ({
   I2: entry.l2 ?? "",
 });
 
-const splitDrumsRange = (value) => {
-  const parts = String(value)
-    .split(/[-/,\s]+/)
-    .filter(Boolean);
-  return {
-    drumFrom: parts[0] || "",
-    drumTo: parts[1] || "",
-  };
-};
-
 function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterActions, entryId = "" }) {
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
@@ -141,8 +131,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const [countDropdownOptions, setCountDropdownOptions] = useState(
     countOptions.map((option) => ({ value: option, label: option, code: "" }))
   );
-  const [drumFrom, setDrumFrom] = useState("");
-  const [drumTo, setDrumTo] = useState("");
   const [craneTip, setCraneTip] = useState("");
   const [lotNo, setLotNo] = useState("");
   const [frameNo, setFrameNo] = useState("");
@@ -175,8 +163,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     setMachineNo(machineDropdownOptions[0]?.value || machineOptions[0]);
     setCount(countDropdownOptions[0]?.label || countOptions[0]);
     setCountCode(countDropdownOptions[0]?.code || "");
-    setDrumFrom("");
-    setDrumTo("");
     setCraneTip("");
     setLotNo("");
     setFrameNo("");
@@ -190,8 +176,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     if (!String(date || "").trim()) nextErrors.date = true;
     if (!String(machineNo || "").trim() || machineNo === machineOptions[0]) nextErrors.machineNo = true;
     if (!String(count || "").trim() || count === countOptions[0]) nextErrors.count = true;
-    if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
-    if (!String(drumTo || "").trim()) nextErrors.drumTo = true;
     if (!String(craneTip || "").trim()) nextErrors.craneTip = true;
     if (!String(lotNo || "").trim()) nextErrors.lotNo = true;
     if (!String(frameNo || "").trim()) nextErrors.frameNo = true;
@@ -207,8 +191,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     { label: "Entry ID", value: entryId || "-" },
     { label: "Machine No.", value: machineNo || "-" },
     { label: "Count", value: count || "-" },
-    { label: "Drums From", value: drumFrom || "-" },
-    { label: "Drums To", value: drumTo || "-" },
     { label: "Cone Tip", value: craneTip || "-" },
     { label: "Lot No.", value: lotNo || "-" },
     { label: "Frame No.", value: frameNo || "-" },
@@ -224,8 +206,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         machine_no: machineNo,
         count_name: count,
         cntcode: countCode || undefined,
-        drum_from: drumFrom,
-        drum_to: drumTo,
         cone_tip: craneTip,
         lot_no: lotNo,
         frame_no: frameNo,
@@ -243,7 +223,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         fd: metrics.FD || null,
         jp: metrics.JP || null,
         jm: metrics.JM || null,
-        cvd: metrics.CVD || null,
+        cvt: metrics.CVT || null,
         a1: metrics.A1 || null,
         a2: metrics.A2 || null,
         a3: metrics.A3 || null,
@@ -346,8 +326,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     date,
     machineNo,
     count,
-    drumFrom,
-    drumTo,
     craneTip,
     lotNo,
     frameNo,
@@ -397,16 +375,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
             options={countDropdownOptions.map((option) => option.label)}
             className={styles.select}
           />
-        </div>
-
-        <div className={styles.field}>
-          <label>Drums From</label>
-          <input value={drumFrom} onChange={(e) => setDrumFrom(e.target.value.replace(/[^\d]/g, ""))} style={errorStyle(errors.drumFrom)} />
-        </div>
-
-        <div className={styles.field}>
-          <label>Drums To</label>
-          <input value={drumTo} onChange={(e) => setDrumTo(e.target.value.replace(/[^\d]/g, ""))} style={errorStyle(errors.drumTo)} />
         </div>
 
         <div className={styles.field}>

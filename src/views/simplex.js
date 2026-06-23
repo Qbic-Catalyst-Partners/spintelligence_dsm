@@ -11,6 +11,7 @@ import SuccessModal from "@/components/SuccessModal";
 import ProcessParameterDataEntry from "@/views/simplex/processParameterDataEntry";
 import SMXCotsChangeDataEntry from "@/views/simplex/SMXCotsChangeDataEntry";
 import SMXBreaksStudyReport from "@/views/simplex/SMXBreaksStudyReport";
+import WheelChange from "@/views/simplex/WheelChange";
 import UPercentDataEntry from "@/views/simplex/u%dataentry";
 import {
   clearSimplexState,
@@ -26,7 +27,8 @@ const simplexTypes = [
   { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
-  { id: 4, name: "Stretch %", aliases: ["Stretch %", "Stretch Percent", "Stretch Percentage"] },
+  { id: 4, name: "Wheel Change", aliases: ["Wheel Change", "WheelChange"], component: WheelChange },
+  { id: 5, name: "Stretch %", aliases: ["Stretch %", "Stretch Percent", "Stretch Percentage"] },
 ];
 
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
@@ -35,22 +37,28 @@ const SIMPLEX_ENTRY_ID_CONFIG = {
   "SMXCots Change Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
   "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/study" },
   "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
+  "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change" },
   "Stretch %": { prefix: "STP",  },
   "Wrapping Simplex Notebook": { prefix: "WSX" },
 };
 
 const getSimplexEntryConfig = (typeName) =>
   SIMPLEX_ENTRY_ID_CONFIG[typeName] || { prefix: "SIM" };
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
 function Simplex() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
+  const submitInProgressRef = useRef(false);
+  const successHandledRef = useRef(false);
   const { isDarkMode } = useThemeMode();
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-  const typeOptions = useMemo(
+  const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+  const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+  const fullTypeOptions = useMemo(
     () =>
       filterOptionsByDepartmentAccess(
         simplexTypes,
@@ -59,6 +67,12 @@ function Simplex() {
         "Simplex"
       ),
     [accessByDepartment, user]
+  );
+  const typeOptions = useMemo(
+    () => isProcessParameterRequest
+      ? fullTypeOptions
+      : fullTypeOptions.filter((item) => item.name !== "Process Parameter"),
+    [fullTypeOptions, isProcessParameterRequest]
   );
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
@@ -80,6 +94,7 @@ function Simplex() {
   });
   const SelectedComponent = selectedType?.component ?? null;
   const isStretchPercent = selectedTypeName === "Stretch %";
+  const isWheelChange = selectedTypeName === "Wheel Change";
   const entryTableTheme = {
     surface: isDarkMode ? "#050505" : "#fff",
     header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -98,6 +113,17 @@ function Simplex() {
       setSelectedTypeName(typeOptions[0]?.name || "");
     }
   }, [selectedTypeName, typeOptions]);
+
+  useEffect(() => {
+    if (!requestedType || !typeOptions.length) return;
+    const requested = normalizeTypeName(requestedType);
+    const matchedType = typeOptions.find((item) =>
+      [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
+    );
+    if (matchedType && matchedType.name !== selectedTypeName) {
+      setSelectedTypeName(matchedType.name);
+    }
+  }, [requestedType, selectedTypeName, typeOptions]);
 
   useEffect(() => {
     if (selectedTypeName === "U% Data Entry") {
@@ -121,20 +147,42 @@ function Simplex() {
   };
 
   const confirmSubmit = async () => {
+    if (submitInProgressRef.current) return;
+    submitInProgressRef.current = true;
     setShowPreview(false);
-    const ok = await childRef.current?.submit?.();
-    if (ok) {
-      await recordSubmittedNotebook({
-        department: "Quality Control",
-        subDepartment: "Simplex",
-        notebookName: selectedTypeName,
-        entryId,
-        childRef,
-        previewItems,
-        user,
-      });
-      await reserveEntryId();
-      setShowSuccess(true);
+    try {
+      const ok = await childRef.current?.submit?.();
+      if (ok) {
+        if (successHandledRef.current) return;
+        successHandledRef.current = true;
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Simplex",
+          notebookName: selectedTypeName,
+          entryId,
+          childRef,
+          previewItems,
+          user,
+        });
+        await reserveEntryId();
+        setShowSuccess(true);
+      }
+    } finally {
+      submitInProgressRef.current = false;
+    }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    setValidationMessage("");
+    childRef.current?.clear?.();
+    dispatch(clearSimplexState());
+    successHandledRef.current = false;
+    if (selectedTypeName === "U% Data Entry") {
+      dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
+    }
+    if (selectedTypeName === "SMXCots Change Data Entry") {
+      dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
     }
   };
 
@@ -157,7 +205,7 @@ function Simplex() {
 
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="p-5">
-            {selectedTypeName !== "Process Parameter" ? (
+            {selectedTypeName !== "Process Parameter" && !isWheelChange ? (
               <>
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2 min-w-0">
@@ -471,18 +519,8 @@ function Simplex() {
         open={showSuccess}
         message="Data Submitted"
         typeValue={selectedTypeName}
-        onClose={() => {
-          setShowSuccess(false);
-          setValidationMessage("");
-          childRef.current?.clear?.();
-          dispatch(clearSimplexState());
-          if (selectedTypeName === "U% Data Entry") {
-            dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
-          }
-          if (selectedTypeName === "SMXCots Change Data Entry") {
-            dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
-          }
-        }}
+        onClose={handleSuccessClose}
+        closeLabel="OK"
       />
     </div>
   );

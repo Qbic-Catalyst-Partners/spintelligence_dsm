@@ -15,19 +15,13 @@ export const thresholdScreenCatalog = {
             "Drop Test Data Entry",
         ],
         carding: [
-            "Process Parameter",
-            "Between & Within Card Data Entry",
-            "Card Thick Place Entry",
             "Trials Data Entry Form",
             "Nati Data Entry",
             "U% Data Entry",
-            "Card DFK Pressure Checking",
-            "WheelChange",
+            "Card Waste Study",
         ],
         comber: [
-            "Ribbon Lap CV Data Entry",
             "Nati Data Entry",
-            "U% Data Entry",
         ],
         "draw-frame": [
             "1 Yard / Half Yard CV Entry",

@@ -1,7 +1,7 @@
 import "@/styles/globals.css";
 import "@/views/carding/betweenWithinCardEntry.css";
 import { Provider } from 'react-redux';
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useRouter } from "next/router";
 import FailureModal from "@/components/FailureModal";
@@ -33,6 +33,7 @@ function AppShell({ Component, pageProps }) {
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const [failureModal, setFailureModal] = useState({ open: false, message: "Error Occured" });
   const [successModal, setSuccessModal] = useState({ open: false, message: "Data Submitted" });
+  const lastSuccessEventRef = useRef({ message: "", status: null, at: 0 });
   const isInputScreen = Boolean(routeDepartmentMap[router.pathname]);
   const isHomeFlow = router.pathname === "/";
   const isDepartmentFlow =
@@ -115,13 +116,26 @@ function AppShell({ Component, pageProps }) {
   }, []);
 
   useEffect(() => {
-    return subscribeToGlobalSuccessModal(() => {
+    return subscribeToGlobalSuccessModal(({ message }) => {
+      if (isInputScreen && !router.pathname.startsWith("/comber")) {
+        return;
+      }
+
+      const normalizedMessage = String(message || "Data Submitted").trim();
+      const signature = `${router.pathname}:${normalizedMessage}`;
+      const now = Date.now();
+      const last = lastSuccessEventRef.current;
+      if (last.message === signature && now - last.at < 1500) {
+        return;
+      }
+      lastSuccessEventRef.current = { message: signature, status: null, at: now };
+
       setSuccessModal({
         open: true,
-        message: "Data Submitted",
+        message: normalizedMessage || "Data Submitted",
       });
     });
-  }, []);
+  }, [isInputScreen, router.pathname]);
 
   useEffect(() => {
     if (typeof document === "undefined") {

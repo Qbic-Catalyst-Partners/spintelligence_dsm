@@ -115,7 +115,7 @@ export const thresholdFieldCatalog = {
         "Hank SD",
         "Hank CV",
     ],
-    "Card Thick Place Entry": [
+    "Thick place & CV": [
         "ID No.",
         "Date",
         "Time",

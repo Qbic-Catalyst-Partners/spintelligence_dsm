@@ -226,6 +226,44 @@ const fetchFirstSimplexMasterPayload = async (endpoints, params) => {
   throw lastError;
 };
 
+const SIMPLEX_NOTEBOOK_ENDPOINTS = [
+  "/simplex/notebook",
+  "/simplex/simplex-notebook",
+  "/simplex/notebook/simplex",
+];
+
+const fetchFirstNotebookPayload = async (params = {}) => {
+  let lastError;
+
+  for (const endpoint of SIMPLEX_NOTEBOOK_ENDPOINTS) {
+    try {
+      const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
+      return response?.data || {};
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
+
+export const fetchSimplexWheelChangeNotebookEntries = async (params = {}) => {
+  try {
+    return await fetchFirstNotebookPayload(params);
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to fetch simplex notebook entries."));
+  }
+};
+
+export const submitSimplexWheelChangeNotebookEntry = async (payload) => {
+  try {
+    const response = await apiConfig.post("/simplex/notebook", payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to submit simplex notebook entry."));
+  }
+};
+
 export const submitSimplexUqcEntry = async (payload) => {
   try {
     const response = await apiConfig.post("/simplex/uqc", payload);
@@ -461,6 +499,84 @@ export const fetchSimplexStudyMachineNames = async ({ prefix = "" } = {}) => {
   }
 
   throw new Error(extractErrorMessage(lastError, "Unable to fetch Simplex No options."));
+};
+
+export const fetchSimplexMachineMaster = async ({ department = "SIMPLEX", prefix = "" } = {}) => {
+  const endpoints = ["/simplex/master/mc-nos", "/simplex/uqc/master/mc-nos", "/simplex/master/machine-numbers"];
+  let lastError;
+
+  const normalizeMachineRows = (payload = {}) => {
+    const rows = [
+      ...(Array.isArray(payload?.data) ? payload.data : []),
+      ...(Array.isArray(payload?.mc_nos) ? payload.mc_nos : []),
+      ...(Array.isArray(payload?.mc_no_values) ? payload.mc_no_values : []),
+      ...(Array.isArray(payload?.machine_numbers) ? payload.machine_numbers : []),
+      ...(Array.isArray(payload?.machine_nos) ? payload.machine_nos : []),
+      ...(Array.isArray(payload?.machines) ? payload.machines : []),
+      ...(Array.isArray(payload?.names) ? payload.names : []),
+    ];
+
+    const options = rows
+      .map((row) => {
+        if (typeof row === "string") {
+          const value = row.trim();
+          return value ? { value, label: value } : null;
+        }
+
+        const value = String(
+          row?.mc_no ??
+            row?.mcNo ??
+            row?.machine_no ??
+            row?.machineNo ??
+            row?.machine_number ??
+            row?.machineNumber ??
+            row?.value ??
+            row?.code ??
+            ""
+        ).trim();
+        const label = String(row?.mc_name ?? row?.machine_name ?? row?.name ?? row?.label ?? row?.text ?? value).trim();
+        const deptName = String(row?.dept_name ?? row?.department_name ?? row?.department ?? "").trim();
+        const deptCode = String(row?.dept_code ?? row?.department_code ?? "").trim();
+        return value ? { value, label: label || value, dept_name: deptName, dept_code: deptCode } : null;
+      })
+      .filter(Boolean);
+
+    const seen = new Set();
+    return options.filter((row) => {
+      const key = row.value;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.get(
+        endpoint,
+        {
+          prefix,
+          mc_no_prefix: prefix,
+          machine_prefix: prefix,
+          dept_code: department,
+          department_code: department,
+          department,
+        },
+        { skipGlobalErrorModal: true }
+      );
+      const options = normalizeMachineRows(response?.data || {});
+      if (options.length || endpoint === endpoints[endpoints.length - 1]) {
+        return options;
+      }
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status && error.response.status !== 404) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(extractErrorMessage(lastError, "Unable to fetch Simplex machine master options."));
 };
 
 export const fetchSimplexCountOptions = async ({ prefix = "", screen = "master" } = {}) => {

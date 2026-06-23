@@ -36,7 +36,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
   const { isLoading = false } = autoconerState;
-  const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
   const [lycraDraft, setLycraDraft] = useState("");
   const [countName, setCountName] = useState(countOptions[0]);
@@ -47,6 +46,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const [readingsCount, setReadingsCount] = useState("");
   const [lycraWeight, setLycraWeight] = useState("");
   const [fabricWeight, setFabricWeight] = useState("");
+  const [totalWeight, setTotalWeight] = useState("");
   const [generatedRows, setGeneratedRows] = useState([]);
   const [errors, setErrors] = useState({});
   const errorStyle = (flag) =>
@@ -57,13 +57,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           boxShadow: "0 0 0 1000px #fff1f2 inset",
         }
       : undefined;
-
-  const totalWeight = useMemo(() => {
-    if (!lycraWeight && !fabricWeight) return "";
-    const lycra = parseFloat(lycraWeight) || 0;
-    const fabric = parseFloat(fabricWeight) || 0;
-    return (lycra + fabric).toFixed(4);
-  }, [lycraWeight, fabricWeight]);
 
   const lycraPercent = useMemo(() => {
     if (!lycraWeight || !totalWeight) return "";
@@ -80,6 +73,11 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     if (!values.length) return "";
     return (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2);
   }, [generatedRows]);
+
+  const averageLycraPercent = useMemo(() => {
+    if (!generatedRows.length || !lycraPercent) return "";
+    return Number(lycraPercent).toFixed(2);
+  }, [generatedRows.length, lycraPercent]);
 
   const handleGenerate = () => {
     const count = Math.max(1, Number(readingsCount) || 1);
@@ -108,7 +106,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   };
 
   const resetForm = () => {
-    setTestNo("");
     setEntryDate(todayDate);
     setLycraDraft("");
     setCountName(countDropdownOptions[0]?.label || countOptions[0]);
@@ -116,6 +113,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     setReadingsCount("");
     setLycraWeight("");
     setFabricWeight("");
+    setTotalWeight("");
     setGeneratedRows([]);
     setErrors({});
   };
@@ -123,13 +121,13 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const validate = () => {
     const nextErrors = {};
     if (!String(selectedType || "").trim()) nextErrors.type = true;
-    if (!String(testNo || "").trim()) nextErrors.testNo = true;
     if (!String(entryDate || "").trim()) nextErrors.entryDate = true;
     if (!String(lycraDraft || "").trim()) nextErrors.lycraDraft = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
     if (!String(readingsCount || "").trim()) nextErrors.readingsCount = true;
     if (!String(lycraWeight || "").trim()) nextErrors.lycraWeight = true;
     if (!String(fabricWeight || "").trim()) nextErrors.fabricWeight = true;
+    if (!String(totalWeight || "").trim()) nextErrors.totalWeight = true;
     if (!generatedRows.length) nextErrors.generatedRows = true;
     generatedRows.forEach((row, index) => {
       if (!String(row.length || "").trim()) nextErrors[`row-${index}`] = true;
@@ -140,7 +138,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
 
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
-    { label: "Test No.", value: testNo || "-" },
     { label: "Entry ID", value: entryId || "-" },
     { label: "Lycra Draft", value: lycraDraft || "-" },
     { label: "Count Name", value: countName || "-" },
@@ -160,7 +157,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     try {
       const payload = {
         inspection_type: selectedType,
-        test_no: Number(testNo) || 0,
         entry_date: entryDate,
         lycra_draft: lycraDraft,
         count_name: countName,
@@ -184,6 +180,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           fabric_weight: Number(fabricWeight) || 0,
           total_weight: Number(totalWeight) || 0,
           lycra_percent: Number(lycraPercent) || 0,
+          average_lycra_percent: Number(averageLycraPercent) || 0,
         },
       };
 
@@ -242,7 +239,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   }, [
     onRegisterActions,
     selectedType,
-    testNo,
     entryDate,
     lycraDraft,
     countName,
@@ -251,6 +247,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     fabricWeight,
     totalWeight,
     lycraPercent,
+    averageLycraPercent,
     generatedRows,
     averageLength,
     dispatch,
@@ -270,11 +267,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
               </option>
             ))}
           </select>
-        </div>
-
-        <div className={styles.field}>
-          <label>Test No.</label>
-          <input value={testNo} onChange={(e) => setTestNo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.testNo)} />
         </div>
 
         <div className={styles.field}>
@@ -327,7 +319,11 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
 
         <div className={styles.field}>
           <label>Total Weight</label>
-          <input value={totalWeight} readOnly />
+          <input
+            value={totalWeight}
+            onChange={(e) => setTotalWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
+            style={errorStyle(errors.totalWeight)}
+          />
         </div>
 
         <div className={styles.field}>
@@ -365,7 +361,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                   <td>{fabricWeight}</td>
                   <td>{totalWeight}</td>
                   <td>{lycraPercent}</td>
-                  <td>{lycraPercent}</td>
+                  <td>{averageLycraPercent}</td>
                 </tr>
               ))}
               <tr className={styles.summaryRow}>
@@ -375,7 +371,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                 <td>{fabricWeight}</td>
                 <td>{totalWeight}</td>
                 <td>{lycraPercent}</td>
-                <td>{lycraPercent}</td>
+                <td>{averageLycraPercent}</td>
               </tr>
             </tbody>
           </table>

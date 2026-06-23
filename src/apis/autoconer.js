@@ -483,17 +483,25 @@ export const fetchAutoconerRewindingStudy = async ({
   limit = 10,
 } = {}) =>
   getAutoconer(
-    "rewinding-study",
+    "inspection-data-entry",
     { page, limit },
-    "Unable to fetch rewinding study.",
+    "Unable to fetch inspection data entry.",
     { suppressFailure: true, paginated: true }
+  );
+
+export const fetchAutoconerRewindingStudyById = async (id) =>
+  getAutoconer(
+    `inspection-data-entry/${id}`,
+    {},
+    "Unable to fetch inspection data entry details.",
+    { suppressFailure: true }
   );
 
 export const submitAutoconerRewindingStudy = async (payload) =>
   postAutoconer(
-    "rewinding-study",
+    "inspection-data-entry",
     payload,
-    "Unable to save rewinding study."
+    "Unable to save inspection data entry."
   );
 
 export const fetchAutoconerConeDensity = async ({
@@ -501,7 +509,7 @@ export const fetchAutoconerConeDensity = async ({
   limit = 10,
 } = {}) =>
   getAutoconer(
-    "cone-density",
+    "cone-density-notebook",
     { page, limit },
     "Unable to fetch cone density.",
     { suppressFailure: true, paginated: true }
@@ -533,9 +541,9 @@ export const fetchAutoconerDrumWiseMasterData = async () =>
 
 export const fetchAutoconerRewindingStudyMasterData = async () =>
   getAutoconerPathCandidates(
-    ["rewinding-study/master-data", "rewindingstudy/master-data", "master-data"],
+    ["inspection-data-entry/master-data", "master-data"],
     {},
-    "Unable to fetch rewinding study master data.",
+    "Unable to fetch inspection data entry master data.",
     { suppressFailure: true }
   );
 
@@ -565,27 +573,9 @@ export const fetchAutoconerConePackingAuditMasterData = async () =>
 
 export const submitAutoconerConeDensity = async (payload) =>
   {
-    const sourceRows = payload?.cone_density_readings ?? payload?.cone_readings ?? [];
-    const normalizedRows = Array.isArray(sourceRows)
-      ? sourceRows.map((row) => ({
-          ...row,
-          // Backend variants read either `cone_weight` or `weight`.
-          weight: row?.weight ?? row?.cone_weight ?? null,
-          cone_weight: row?.cone_weight ?? row?.weight ?? null,
-          // Preserve alternate traverse naming seen in older payloads.
-          cone_traverse: row?.cone_traverse ?? row?.coneTrav ?? null,
-        }))
-      : [];
-
-    const normalizedPayload = {
-      ...payload,
-      cone_density_readings: normalizedRows,
-      cone_readings: normalizedRows,
-    };
-
     return postAutoconerCandidates(
-      "cone-density",
-      [normalizedPayload],
+      "cone-density-notebook",
+      [payload],
       "Unable to save cone density."
     );
   };
@@ -603,7 +593,9 @@ export const fetchAutoconerConePackingAudit = async ({
 
 export const submitAutoconerCountWiseCuts = async (payload) => {
   const payloadCandidates = [
-    payload,
+    {
+      ...payload,
+    },
     {
       ...payload,
       type: payload?.inspection_type,
@@ -611,10 +603,6 @@ export const submitAutoconerCountWiseCuts = async (payload) => {
       machine_name: payload?.machine_no,
       count: payload?.count_name,
       crane_tip: payload?.cone_tip,
-      drums_from_to:
-        payload?.drum_from && payload?.drum_to
-          ? `${payload.drum_from}-${payload.drum_to}`
-          : undefined,
     },
     {
       ...payload,

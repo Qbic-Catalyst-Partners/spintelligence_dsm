@@ -8,7 +8,7 @@ import {
 import { fetchAutoconerSpliceStrengthMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/spliceStrength.module.css";
-import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 
 const getTodayDate = () => {
@@ -81,7 +81,6 @@ function SpliceStrength({
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
   const { isLoading = false, isFetching = false, spliceStrength: savedEntries = [] } = autoconerState;
-  const [testNo, setTestNo] = useState("");
   const [date, setDate] = useState(todayDate);
   const [countName, setCountName] = useState(countOptions[0]);
   const [countCode, setCountCode] = useState("");
@@ -163,7 +162,6 @@ function SpliceStrength({
   };
 
   const resetForm = () => {
-    setTestNo("");
     setDate(todayDate);
     setCountName(countDropdownOptions[0]?.label || countOptions[0]);
     setCountCode(countDropdownOptions[0]?.code || "");
@@ -180,7 +178,6 @@ function SpliceStrength({
   const validate = () => {
     const nextErrors = {};
     if (!String(selectedType || "").trim()) nextErrors.type = true;
-    if (!String(testNo || "").trim()) nextErrors.testNo = true;
     if (!String(date || "").trim()) nextErrors.date = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
     if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
@@ -200,7 +197,6 @@ function SpliceStrength({
 
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
-    { label: "Test No.", value: testNo || "-" },
     { label: "Entry ID", value: entryId || "-" },
     { label: "Count Name", value: countName || "-" },
     { label: "Auto Coner No.", value: autoconerNo || "-" },
@@ -220,7 +216,6 @@ function SpliceStrength({
     try {
       const payload = {
         type: "Splice Strength Test",
-        test_no: Number(testNo) || 0,
         inspection_date: date,
         count_name: countName,
         cntcode: countCode || undefined,
@@ -352,7 +347,6 @@ function SpliceStrength({
     onRegisterActions,
     dispatch,
     isLoading,
-    testNo,
     date,
     countName,
     autoconerNo,
@@ -440,11 +434,6 @@ function SpliceStrength({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Test No.</label>
-            <input value={testNo} onChange={(e) => setTestNo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.testNo)} />
           </div>
 
           <div className={styles.field}>

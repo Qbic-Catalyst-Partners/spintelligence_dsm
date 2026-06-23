@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import styles from "@/styles/BlowRoomSync.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
@@ -32,6 +32,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const [tableData, setTableData] = useState([]);
   const [generated, setGenerated] = useState(false);
   const [errors, setErrors] = useState({});
+  const rowAInputRefs = useRef([]);
   const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
   const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("blowroom-checked-by");
   const [form, setForm] = useState({
@@ -115,6 +116,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     }));
 
     setTableData(newData);
+    rowAInputRefs.current = [];
     setGenerated(true);
     setErrors((prev) => ({ ...prev, table: false }));
   };
@@ -162,6 +164,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const handleClear = () => {
     setGenerated(false);
     setTableData([]);
+    rowAInputRefs.current = [];
     setRows(5);
     setErrors({});
     setForm({
@@ -186,6 +189,14 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       delete next[field];
       return next;
     });
+  };
+
+  const focusNextRowA = (index) => {
+    const nextRowInput = rowAInputRefs.current[index + 1];
+    if (nextRowInput) {
+      nextRowInput.focus();
+      nextRowInput.select?.();
+    }
   };
 
   useImperativeHandle(ref, () => ({
@@ -354,6 +365,9 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
               <span className={styles.serial}>{i + 1}</span>
 
               <input
+                ref={(el) => {
+                  rowAInputRefs.current[i] = el;
+                }}
                 value={row.a}
                 onChange={(e) => handleChange(i, "a", e.target.value)}
                 className={errors[`row-${i}-a`] ? styles.errorField : undefined}
@@ -361,13 +375,20 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
               <input
                 value={row.b}
                 onChange={(e) => handleChange(i, "b", e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    focusNextRowA(i);
+                  }
+                }}
                 className={errors[`row-${i}-b`] ? styles.errorField : undefined}
               />
               <input
                 value={row.c}
                 readOnly
+                tabIndex={-1}
               />
-              <input value={row.sync ? `${row.sync}%` : ""} readOnly />
+              <input value={row.sync ? `${row.sync}%` : ""} readOnly tabIndex={-1} />
             </div>
           ))}
         </div>

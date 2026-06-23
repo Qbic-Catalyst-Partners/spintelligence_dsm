@@ -69,6 +69,23 @@ const formatPercentage = (value) => {
 const getColumnBreakValues = (breakMatrix, columnLabel) =>
   breakRows.flatMap((rowLabel) => parseBreakEntries(breakMatrix[rowLabel]?.[columnLabel]));
 
+const getTotalBreakPercentages = (breakMatrix) => {
+  const columnTotals = breakColumns.reduce((accumulator, columnLabel) => {
+    accumulator[columnLabel] = breakRows.reduce(
+      (sum, rowLabel) => sum + countBreakEntries(breakMatrix[rowLabel]?.[columnLabel]),
+      0
+    );
+    return accumulator;
+  }, {});
+  const grandTotal = breakColumns.reduce((sum, columnLabel) => sum + columnTotals[columnLabel], 0);
+  const percentages = breakColumns.reduce((accumulator, columnLabel) => {
+    accumulator[columnLabel] = grandTotal > 0 ? (columnTotals[columnLabel] / grandTotal) * 100 : 0;
+    return accumulator;
+  }, {});
+
+  return { columnTotals, grandTotal, percentages };
+};
+
 const createInitialForm = () => ({
   type: "SMX Breaks Study Report",
   simplexNo: "",
@@ -238,6 +255,33 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     [columnTotals, grandTotal]
   );
 
+  const noOfBreaksPer100Spindles = useMemo(() => {
+    const runningSpindles = Number(calculatedRunningSpdl);
+
+    if (!Number.isFinite(runningSpindles) || runningSpindles <= 0) {
+      return breakColumns.reduce((accumulator, columnLabel) => {
+        accumulator[columnLabel] = 0;
+        return accumulator;
+      }, {});
+    }
+
+    return breakColumns.reduce((accumulator, columnLabel) => {
+      const total = columnTotals[columnLabel] || 0;
+      accumulator[columnLabel] = (total * 100) / runningSpindles;
+      return accumulator;
+    }, {});
+  }, [calculatedRunningSpdl, columnTotals]);
+
+  const grandTotalBreakPercent = useMemo(() => {
+    const runningSpindles = Number(calculatedRunningSpdl);
+    const totalMinutes = Number(totalTime);
+
+    if (!Number.isFinite(runningSpindles) || !Number.isFinite(totalMinutes)) return "";
+    if (runningSpindles <= 0 || totalMinutes <= 0 || grandTotal <= 0) return "0.00";
+
+    return formatPercentage((grandTotal * 100) / (runningSpindles * (totalMinutes / 60)));
+  }, [calculatedRunningSpdl, grandTotal, totalTime]);
+
   const handleFormChange = (field, value) => {
     const nextValue =
       (field === "startTime" || field === "endTime") && value ? value.slice(0, 5) : value;
@@ -348,6 +392,14 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
       });
     });
 
+    const totalBreakPercentages = getTotalBreakPercentages(breakMatrix).percentages;
+    breakColumns.forEach((columnLabel) => {
+      items.push({
+        label: `TOTAL BREAK (%) - ${columnLabel}`,
+        value: `${formatPercentage(totalBreakPercentages[columnLabel])}%`,
+      });
+    });
+
     return items;
   };
 
@@ -388,6 +440,10 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const tableSection = (
     <section className="overflow-x-auto px-1">
       <div className="min-w-[1120px]">
+        {(() => {
+          const { columnTotals: totalCounts, grandTotal: totalCount, percentages } = getTotalBreakPercentages(breakMatrix);
+          return (
+            <>
         <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] gap-x-3 gap-y-4 text-[11px] font-semibold uppercase tracking-[0.01em] text-slate-600">
           <div className="flex items-end pb-2">Length</div>
           {breakColumns.map((columnLabel) => (
@@ -427,38 +483,69 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">
-              Total Breaks
-              <span className="block text-[11px] font-bold text-[#3d539f]">
-                Grand: {formatNumber(grandTotal)}
-              </span>
-            </div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Total Breaks</div>
             {breakColumns.map((columnLabel) => (
               <input
                 key={`total-${columnLabel}`}
                 type="text"
                 readOnly
                 className={`${tableFieldClass} text-slate-500`}
-                value={formatNumber(columnTotals[columnLabel])}
+                value={formatNumber(totalCounts[columnLabel])}
               />
             ))}
           </div>
         </div>
 
+        <div className="mt-3">
+          <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Grand Total</div>
+            <input
+              type="text"
+              readOnly
+              className={`${tableFieldClass} col-start-2 text-slate-500`}
+              value={formatNumber(totalCount)}
+            />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+            <div />
+          </div>
+        </div>
+
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Breaks %</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700"> No.of Breaks / 100 Spindles</div>
             {percentageBreakColumns.map((columnLabel) => (
               <input
                 key={`percent-${columnLabel}`}
                 type="text"
                 readOnly
                 className={`${tableFieldClass} text-slate-500`}
-                value={`${formatPercentage(percentageTotals[columnLabel])}%`}
+                value={`${formatPercentage(noOfBreaksPer100Spindles[columnLabel])}%`}
               />
             ))}
           </div>
         </div>
+
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <div className="grid grid-cols-[100px_minmax(0,160px)] items-center gap-x-3 gap-y-3">
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Grand Total Breaks %</div>
+            <input
+              type="text"
+              readOnly
+              className={`${tableFieldClass} text-slate-500`}
+              value={grandTotalBreakPercent ? `${grandTotalBreakPercent}%` : ""}
+            />
+          </div>
+        </div>
+            </>
+          );
+        })()}
       </div>
     </section>
   );

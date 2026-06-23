@@ -183,6 +183,7 @@ const normalizeCountNameOptionRows = (rows = []) => {
         row?.COUNT_NAME ??
         row?.COUNTNAME ??
         row?.variety_name ??
+        row?.prep_variety_name ??
         row?.variety ??
         row?.VARIETY_NAME ??
         row?.VARIETY ??
@@ -222,6 +223,8 @@ const normalizeCountNameOptions = (payload = {}) => {
         ...(Array.isArray(options.count_names) ? options.count_names : []),
         ...(Array.isArray(options.varieties) ? options.varieties : []),
         ...(Array.isArray(options.variety) ? options.variety : []),
+          ...(Array.isArray(options.prep_variety_names) ? options.prep_variety_names : []),
+          ...(Array.isArray(options.prep_varieties) ? options.prep_varieties : []),
       ];
   const rows = [
     ...optionValues,
@@ -231,7 +234,9 @@ const normalizeCountNameOptions = (payload = {}) => {
     ...(Array.isArray(payload.count_name_from) ? payload.count_name_from : []),
     ...(Array.isArray(payload.count_name_to) ? payload.count_name_to : []),
     ...(Array.isArray(payload.variety_names) ? payload.variety_names : []),
+      ...(Array.isArray(payload.prep_variety_names) ? payload.prep_variety_names : []),
     ...(Array.isArray(payload.varieties) ? payload.varieties : []),
+      ...(Array.isArray(payload.prep_varieties) ? payload.prep_varieties : []),
     ...(Array.isArray(payload.values) ? payload.values : []),
     ...(Array.isArray(payload.names) ? payload.names : []),
     ...(Array.isArray(payload.data) ? payload.data : []),
@@ -254,6 +259,86 @@ const normalizeCountChangeDropdownPayload = (payload = {}) => {
   };
 };
 
+const normalizeMachineNumberOptionRows = (rows = []) => {
+  const seen = new Set();
+
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => {
+      const value = String(
+        row?.value ??
+          row?.machine_no ??
+          row?.machine_number ??
+          row?.mc_no ??
+          row?.code ??
+          row ??
+          ""
+      ).trim();
+      const label = String(
+        row?.label ??
+          row?.text ??
+          row?.machine_name ??
+          row?.mc_name ??
+          row?.name ??
+          value
+      ).trim();
+      const deptCode = String(
+        row?.dept_code ??
+          row?.department_code ??
+          row?.dept ??
+          row?.department ??
+          ""
+      ).trim();
+
+      return value
+        ? {
+            value,
+            label: [value, label && label !== value ? label : "", deptCode ? `Dept ${deptCode}` : ""]
+              .filter(Boolean)
+              .join(" - "),
+            machineName: label,
+            deptCode,
+          }
+        : null;
+    })
+    .filter((option) => {
+      if (!option || seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
+};
+
+const normalizeWheelChangeDropdownPayload = (payload = {}) => {
+  const options = payload.options || {};
+  const existingMachineOptions = normalizeMachineNumberOptionRows(
+    options.machine_no_existing ||
+      options.existing_machine_options ||
+      payload.machine_no_existing ||
+      payload.existing_machine_options ||
+      payload.machine_numbers ||
+      payload.mc_nos ||
+      []
+  );
+  const proposedMachineOptions = normalizeMachineNumberOptionRows(
+    options.machine_no_proposed ||
+      options.proposed_machine_options ||
+      payload.machine_no_proposed ||
+      payload.proposed_machine_options ||
+      payload.machine_numbers ||
+      payload.mc_nos ||
+      []
+  );
+
+  return {
+    ...payload,
+    existingMachineOptions,
+    proposedMachineOptions,
+    machineNumberOptions:
+      existingMachineOptions.length >= proposedMachineOptions.length
+        ? existingMachineOptions
+        : proposedMachineOptions,
+  };
+};
+
 export const fetchSpinningCountChangeDropdown = async (params = {}) => {
   const endpoints = [
     "/spinning/count-change/master/count-dropdown",
@@ -265,6 +350,8 @@ export const fetchSpinningCountChangeDropdown = async (params = {}) => {
     "/spinning/count-change/master/count-names",
     "/spinning/count-change/varieties",
     "/spinning/count-change/master/varieties",
+      "/spinning/wheel-change/master/varieties",
+      "/spinning/wheel-change/varieties",
   ];
   let lastError = null;
 
@@ -305,13 +392,25 @@ export const fetchSpinningCountChangeDropdown = async (params = {}) => {
   }
 };
 
-export const fetchSpinningMachineNumberOptions = async ({ screen = "master", prefix = "" } = {}) => {
+export const fetchSpinningMachineNumberOptions = async ({
+  screen = "master",
+  prefix = "",
+  dept_code = "",
+  department_code = "",
+  department = "",
+} = {}) => {
   const screenEndpoints = {
     "lycra-missing": ["/spinning/lycra-missing/master/mc-nos"],
     "lycra-centering": ["/spinning/lycra-centering/master/mc-nos"],
     "rsm-lycra-online": ["/spinning/rsm-lycra-online/master/mc-nos"],
     "rsm-lycra-offline": ["/spinning/rsm-lycra-offline/master/mc-nos"],
     "ring-frame": ["/spinning/ring-frame/master/mc-nos"],
+    "wheel-change": [
+      "/spinning/wheel-change/master/mc-nos",
+      "/spinning/wheel-change/master/machine-numbers",
+      "/spinning/master/mc-nos",
+      "/spinning/master/machine-numbers",
+    ],
     master: ["/spinning/master/mc-nos"],
   };
   const endpoints = [
@@ -324,10 +423,30 @@ export const fetchSpinningMachineNumberOptions = async ({ screen = "master", pre
     try {
       const response = await api.get(
         endpoint,
-        { prefix, mc_no_prefix: prefix, machine_prefix: prefix },
+        {
+          prefix,
+          mc_no_prefix: prefix,
+          machine_prefix: prefix,
+          dept_code,
+          department_code,
+          department,
+        },
         { skipGlobalErrorModal: true }
       );
-      return response.data;
+      const payload = response.data;
+      const rows = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.mc_nos)
+          ? payload.mc_nos
+          : Array.isArray(payload?.machine_numbers)
+            ? payload.machine_numbers
+            : Array.isArray(payload)
+              ? payload
+              : [];
+
+      if (rows.length || endpoint === endpoints[endpoints.length - 1]) {
+        return payload;
+      }
     } catch (error) {
       lastError = error;
       if (error.response?.status !== 404) {
@@ -499,7 +618,7 @@ export const fetchSpinningRingFrameShifts = async (params = {}) => {
         params,
         { skipGlobalErrorModal: true }
       );
-      return response.data;
+      return normalizeWheelChangeDropdownPayload(response.data);
     } catch (error) {
       lastError = error;
       if (error.response?.status !== 404) {
@@ -611,6 +730,66 @@ export const fetchSpinningWheelChangeDropdown = async (wheelType = "", params = 
         error.response.data.message ||
           error.response.data.error ||
           "Failed to load Wheel Change dropdown options."
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
+const normalizeWheelChangeLatestRecordPayload = (payload) => {
+  const latestRecord = payload?.latest_record ?? payload?.latestRecord ?? null;
+  if (latestRecord) return latestRecord;
+
+  const rows = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.rows)
+      ? payload.rows
+      : Array.isArray(payload)
+        ? payload
+        : [];
+
+  return rows[0] || null;
+};
+
+export const fetchSpinningWheelChangeLatestRecord = async (wheelType = "", params = {}) => {
+  const normalizedType = String(wheelType || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  const endpoints = ["type1", "type2", "type3"].includes(normalizedType)
+    ? [`/spinning/wheel-change/${normalizedType}`]
+    : [
+        "/spinning/wheel-change/type1",
+        "/spinning/wheel-change/type2",
+        "/spinning/wheel-change/type3",
+      ];
+
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.get(endpoint, params, { skipGlobalErrorModal: true });
+      const latestRecord = normalizeWheelChangeLatestRecordPayload(response.data);
+      if (latestRecord || endpoint === endpoints[endpoints.length - 1]) {
+        return latestRecord;
+      }
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status !== 404) {
+        break;
+      }
+    }
+  }
+
+  try {
+    throw lastError || new Error("Failed to load Wheel Change latest record.");
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(
+        error.response.data.message ||
+          error.response.data.error ||
+          "Failed to load Wheel Change latest record."
       );
     }
     throw new Error(error.message || "Server error occurred");

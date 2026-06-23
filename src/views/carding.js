@@ -29,7 +29,7 @@ import styles from "./carding/cardThickPlaceEntry.module.css";
 const cardingDepartmentTypes = [
     { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
     { id: 1, name: "Between & Within Card Data Entry", aliases: ["Between & Within Card Data Entry", "Between and Within Card Data Entry", "Between Within Card Entry"] },
-    { id: 2, name: "Card Thick Place Entry", aliases: ["Card Thick Place Entry", "Card Thick Place Checking"] },
+    { id: 2, name: "Thick place & CV", aliases: ["Thick place & CV", "Card Thick Place Entry", "Card Thick Place Checking"] },
     { id: 3, name: "Trials Data Entry Form", aliases: ["Trials Data Entry Form", "Trials Data Entry", "Trials"] },
     { id: 4, name: "Nati Data Entry", aliases: ["Nati Data Entry"] },
     { id: 5, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U Percentage Data Entry", "U% Checking"] },
@@ -42,7 +42,7 @@ export const CARDING_INPUT_SCREEN_COUNT = cardingDepartmentTypes.length;
 const CARDING_ENTRY_ID_CONFIG = {
     "Process Parameter": { prefix: "CPP", width: 4, routePath: "/carding/qc-header" },
     "Between & Within Card Data Entry": { prefix: "BWC", width: 4, routePath: "/carding/between-within-card" },
-    "Card Thick Place Entry": { prefix: "CTP", width: 4, routePath: "/carding/card-thick-place" },
+    "Thick place & CV": { prefix: "CTP", width: 4, routePath: "/carding/card-thick-place" },
     "Trials Data Entry Form": { prefix: "TRI", width: 4, routePath: "/carding/trials" },
     "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/carding/nati-data" },
     "U% Data Entry": { prefix: "CAU", width: 4, routePath: "/carding/uqc" },
@@ -68,18 +68,27 @@ function Carding() {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const currentDateLabel = new Date().toLocaleDateString("en-IN");
-    const typeOptions = filterOptionsByDepartmentAccess(
+    const requestedType = typeof router.query.type === "string" ? router.query.type : "";
+    const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+    const fullTypeOptions = filterOptionsByDepartmentAccess(
         cardingDepartmentTypes,
         accessByDepartment,
         user,
         "Carding"
     );
+    const typeOptions = isProcessParameterRequest
+        ? fullTypeOptions
+        : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
     const [checkingType, setCheckingType] = useState(typeOptions[0]?.id ?? null);
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
-    const [showSuccess, setShowSuccess] = useState(false);
-    const [validationMessage, setValidationMessage] = useState("");
-    const [bwcInspectionType, setBwcInspectionType] = useState("Within");    const [lotNo, setLotNo] = useState("");
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [validationMessage, setValidationMessage] = useState("");
+  const [bwcInspectionType, setBwcInspectionType] = useState("Within");    const [lotNo, setLotNo] = useState("");
+  const [cardWasteSavedEntries, setCardWasteSavedEntries] = useState([]);
+  const [cardWasteSavedEntriesLoading, setCardWasteSavedEntriesLoading] = useState(false);
+  const [cardWasteSavedEntriesError, setCardWasteSavedEntriesError] = useState("");
+  const [cardWasteSavedEntryId, setCardWasteSavedEntryId] = useState("");
     useEffect(() => {
         if (!typeOptions.some((item) => item.id === checkingType)) {
             setCheckingType(typeOptions[0]?.id ?? null);
@@ -87,7 +96,6 @@ function Carding() {
     }, [checkingType, typeOptions]);
 
     useEffect(() => {
-        const requestedType = typeof router.query.type === "string" ? router.query.type : "";
         if (!requestedType || !typeOptions.length) return;
         const requested = normalizeTypeName(requestedType);
         const matched = typeOptions.find((item) => {
@@ -176,6 +184,14 @@ function Carding() {
         }
     };
 
+    const handleSuccessClose = () => {
+        setShowSuccess(false);
+        setValidationMessage("");
+        childRef.current?.clear?.();
+        dispatch(clearCardingState());
+        window.location.reload();
+    };
+
     return (
         <div className={styles["card-page"]}>
             <div className={styles["card-container"]}>
@@ -233,20 +249,40 @@ function Carding() {
                                     </select>
                                 </div>
                                 <div className={brWasteStyles["mixx-group"]}>
+                                    <label>Load Saved Entry</label>
+                                    <select
+                                        className={brWasteStyles["mixx-input"]}
+                                        value={cardWasteSavedEntryId}
+                                        onChange={(e) => {
+                                            const id = e.target.value;
+                                            setCardWasteSavedEntryId(id);
+                                            childRef.current?.selectSavedEntry?.(id);
+                                        }}
+                                        disabled={cardWasteSavedEntriesLoading || !cardWasteSavedEntries.length}
+                                    >
+                                        <option value="">
+                                            {cardWasteSavedEntriesLoading
+                                                ? "Loading..."
+                                                : cardWasteSavedEntries.length
+                                                    ? "Select Saved Entry"
+                                                    : "No Saved Entries"}
+                                        </option>
+                                        {cardWasteSavedEntries.map((entry) => (
+                                            <option key={entry.id} value={entry.id}>
+                                                {(entry.entry_id || entry.waste_study_id || `ID-${entry.id}`)} | {entry.study_type || "-"} | {entry.date || "-"}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {cardWasteSavedEntriesError ? (
+                                        <div className={brWasteStyles["mixx-help-error"]}>{cardWasteSavedEntriesError}</div>
+                                    ) : null}
+                                </div>
+                                <div className={brWasteStyles["mixx-group"]}>
                                     <label>Entry ID</label>
                                     <input
                                         className={brWasteStyles["mixx-input"]}
                                         value={entryId}
                                         readOnly
-                                    />
-                                </div>
-                                <div className={brWasteStyles["mixx-group"]}>
-                                    <label>Lot No</label>
-                                    <input
-                                        className={brWasteStyles["mixx-input"]}
-                                        value={lotNo}
-                                        onChange={(e) => setLotNo(e.target.value)}
-                                        placeholder="Enter Lot Number"
                                     />
                                 </div>
                             </div>
@@ -260,6 +296,11 @@ function Carding() {
                                 fetchMachineOptionsApi={fetchCardingMasterMachines}
                                 entryTypeLabel="Card Waste Study"
                                 useBlowroomRedux={false}
+                                showEntryId={false}
+                                hideSavedEntryRow
+                                onSavedEntriesChange={setCardWasteSavedEntries}
+                                onSavedEntriesLoadingChange={setCardWasteSavedEntriesLoading}
+                                onSavedEntriesErrorChange={setCardWasteSavedEntriesError}
                             />
                         </>
                     ) : null}
@@ -295,12 +336,12 @@ function Carding() {
                         />
                     )}
 
-                    {selectedType === "Card Thick Place Entry" || !selectedType ? (
+    {selectedType === "Thick place & CV" || !selectedType ? (
                         <CardThickPlaceEntry
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
-                            showForm={selectedType === "Card Thick Place Entry"}
+      showForm={selectedType === "Thick place & CV"}
                             entryId={entryId}
                         />
                     ) : null}
@@ -483,17 +524,13 @@ function Carding() {
                 confirmLabel="Submit"
             />
 
-                <SuccessModal
-                    open={showSuccess}
-                    message="Data Submitted"
-                    typeValue={selectedType}
-                    onClose={() => {
-                        setShowSuccess(false);
-                        setValidationMessage("");
-                        childRef.current?.clear?.();
-                        dispatch(clearCardingState());
-                    }}
-            />
+      <SuccessModal
+        open={showSuccess}
+        message="Data Submitted"
+        typeValue={selectedType}
+        onClose={handleSuccessClose}
+        closeLabel="OK"
+      />
         </div>
     );
 }

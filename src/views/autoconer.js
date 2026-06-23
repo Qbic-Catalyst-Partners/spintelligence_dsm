@@ -41,11 +41,16 @@ const autoconerTypes = [
 ];
 
 export const AUTOCONER_INPUT_SCREEN_COUNT = autoconerTypes.length;
+const AUTOCONER_PROCESS_PARAMETER_TYPES = [
+  "Process Parameter",
+  "PP - Autoconer Q2",
+  "PP - Autoconer Q3",
+];
 const AUTOCONER_ENTRY_ID_CONFIG = {
   "Process Parameter": { prefix: "APP", width: 4, routePath: "/autoconer/process-parameters" },
   "PP - Autoconer Q2": { prefix: "AQD", width: 4, routePath: "/autoconer/q2" },
   "PP - Autoconer Q3": { prefix: "AQT", width: 4, routePath: "/autoconer/q3" },
-  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/rewinding-study" },
+  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/inspection-data-entry" },
   "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
   "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
   "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking" },
@@ -60,6 +65,19 @@ const getAutoconerEntryConfig = (typeName) =>
   AUTOCONER_ENTRY_ID_CONFIG[typeName] || {
     prefix: "ACR",
   };
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
+const dedupeOptionsByName = (options = []) => {
+  const seen = new Set();
+
+  return (Array.isArray(options) ? options : []).filter((option) => {
+    const key = normalizeTypeName(option?.name);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
 
 function Autoconer() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -68,7 +86,9 @@ function Autoconer() {
   const childRef = useRef(null);
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-  const typeOptions = useMemo(
+  const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+  const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+  const fullTypeOptions = useMemo(
     () =>
       filterOptionsByDepartmentAccess(
         autoconerTypes,
@@ -77,6 +97,17 @@ function Autoconer() {
         "Autoconer"
       ),
     [accessByDepartment, user]
+  );
+  const typeOptions = useMemo(
+    () =>
+      dedupeOptionsByName(
+        isProcessParameterRequest
+        ? fullTypeOptions.filter((item) => AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name))
+        : fullTypeOptions.filter(
+            (item) => !AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name)
+          ),
+      ),
+    [fullTypeOptions, isProcessParameterRequest]
   );
   const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
@@ -110,13 +141,17 @@ function Autoconer() {
     selectedType === "Cone Packing Audit";
 
   const openPreview = () => {
-    const valid = childRef.current?.validate
+    const validationResult = childRef.current?.validate
       ? childRef.current.validate()
       : registeredActions.validate
         ? registeredActions.validate()
         : true;
-    if (valid === false) {
+    if (validationResult === false) {
       setValidationMessage("Please fill all required fields before saving.");
+      return;
+    }
+    if (validationResult && typeof validationResult === "object" && validationResult.valid === false) {
+      setValidationMessage(`Missing required field: ${validationResult.missingField || "unknown"}`);
       return;
     }
     setValidationMessage("");
@@ -165,11 +200,23 @@ function Autoconer() {
       setCheckingType(typeOptions[0]?.name || "");
     }
   }, [checkingType, typeOptions]);
+
+  useEffect(() => {
+    if (!requestedType || !typeOptions.length) return;
+    const requested = normalizeTypeName(requestedType);
+    const matchedType = typeOptions.find((item) =>
+      [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
+    );
+    if (matchedType && matchedType.name !== checkingType) {
+      setCheckingType(matchedType.name);
+    }
+  }, [checkingType, requestedType, typeOptions]);
   return (
     <div className={styles.page}>
       <div className={styles.container}>
         <div className={styles.header}>
           <h1>Quality Control - Autoconer Notebook</h1>
+          <p>Record and manage industrial machine quality inspections.</p>
           <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
         </div>
         <div className={styles.shell}>
@@ -266,6 +313,7 @@ function Autoconer() {
           registeredActions.onClear?.();
           dispatch(clearAutoconerState());
         }}
+        closeLabel="OK"
       />
     </div>
   );

@@ -19,7 +19,7 @@ import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 const blowroomTypes = [
   { id: 1, name: "Blow Room Sync", aliases: ["Blow Room Sync"], component: BlowRoomSync, needsLotNo: false },
   { id: 2, name: "Process Parameter", aliases: ["Process Parameter"], component: ProcessParameter, needsLotNo: false },
-  { id: 3, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: true },
+  { id: 3, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: false },
   { id: 4, name: "Drop Test Data Entry", aliases: ["Drop Test Data Entry", "Drop Test"], component: DropTestDataEntry, needsLotNo: true },
 ];
 
@@ -36,14 +36,20 @@ const BLOWROOM_ENTRY_ID_CONFIG = {
 const getBlowRoomEntryConfig = (typeName) =>
   BLOWROOM_ENTRY_ID_CONFIG[typeName] || { prefix: "BLR" };
 
+const normalizeTypeName = (value = "") =>
+  String(value).trim().toLowerCase();
+
 function BlowRoom() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
+  const successHandledRef = useRef(false);
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-  const typeOptions = useMemo(
+  const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+  const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+  const fullTypeOptions = useMemo(
     () =>
       filterOptionsByDepartmentAccess(
         blowroomTypes,
@@ -52,6 +58,12 @@ function BlowRoom() {
         "Blow Room"
       ),
     [accessByDepartment, user]
+  );
+  const typeOptions = useMemo(
+    () => isProcessParameterRequest
+      ? fullTypeOptions
+      : fullTypeOptions.filter((item) => item.name !== "Process Parameter"),
+    [fullTypeOptions, isProcessParameterRequest]
   );
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [date, setDate] = useState(today);
@@ -81,11 +93,31 @@ function BlowRoom() {
     }
   }, [selectedTypeName, typeOptions]);
 
+  useEffect(() => {
+    if (!requestedType || !typeOptions.length) return;
+
+    const normalizedRequest = normalizeTypeName(requestedType);
+    const matchedType = typeOptions.find((item) => {
+      const names = [item.name, ...(item.aliases || [])].map(normalizeTypeName);
+      return names.includes(normalizedRequest);
+    });
+
+    if (matchedType && matchedType.name !== selectedTypeName) {
+      setSelectedTypeName(matchedType.name);
+    }
+  }, [requestedType, selectedTypeName, typeOptions]);
+
   const actionLoading = blowroomState?.loading;
+
+  const showSuccessOnce = () => {
+    if (successHandledRef.current) return;
+    successHandledRef.current = true;
+    setShowSuccess(true);
+  };
 
   useEffect(() => {
     if (blowroomState?.success) {
-      setShowSuccess(true);
+      showSuccessOnce();
     }
   }, [blowroomState?.success]);
 
@@ -136,7 +168,7 @@ function BlowRoom() {
         user,
       });
       await reserveEntryId();
-      setShowSuccess(true);
+      showSuccessOnce();
     } catch (e) {
       // submission error handled by slices/toasts; keep modal closed
     }
@@ -144,6 +176,7 @@ function BlowRoom() {
 
   const handleSuccessClose = () => {
     setShowSuccess(false);
+    successHandledRef.current = false;
     dispatch(resetBlowroom());
   };
   const isSyncType = selectedTypeName === "Blow Room Sync";
@@ -288,6 +321,7 @@ function BlowRoom() {
         message="Data Submitted"
         typeValue={selectedTypeName}
         onClose={handleSuccessClose}
+        closeLabel="OK"
       />
     </div>
   );

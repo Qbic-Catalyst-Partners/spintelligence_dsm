@@ -1,5 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import SearchableSelect from "@/components/SearchableSelect";
+import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
@@ -30,7 +32,7 @@ const WHEEL_CHANGE_API_TYPES = {
 const DRAFT_STORAGE_KEY = "draw_frame_wheel_change_last_values";
 
 const TYPE_1_ROWS = [
-  { key: "milling", label: "Mixing" },
+  { key: "milling", label: "Mixing", inputType: "select" },
   { key: "blendPercent", label: "Blend %" },
   { key: "exHank", label: "Del-Hank" },
   { key: "feedHank", label: "Feed Hank" },
@@ -50,7 +52,7 @@ const TYPE_1_ROWS = [
 ];
 
 const TD7_ROWS = [
-  { key: "mixing", label: "Mixing" },
+  { key: "mixing", label: "Mixing", inputType: "select" },
   { key: "blendPercent", label: "Blend %" },
   { key: "delHank", label: "Del-Hank" },
   { key: "feedHank", label: "Feed Hank" },
@@ -67,7 +69,7 @@ const TD7_ROWS = [
 ];
 
 const FINISHER_TYPE_1_LRSB_ROWS = [
-  { key: "lrsbMixing", label: "Mixing" },
+  { key: "lrsbMixing", label: "Mixing", inputType: "select" },
   { key: "lrsbBlendPercent", label: "Blend %" },
   { key: "lrsbDelHank", label: "Del-Hank" },
   { key: "lrsbFeedHank", label: "Feed Hank" },
@@ -93,7 +95,7 @@ const FINISHER_TYPE_1_LRSB_ROWS = [
 ];
 
 const TYPE_2_D40_ROWS = [
-  { key: "d40Mixing", label: "Mixing" },
+  { key: "d40Mixing", label: "Mixing", inputType: "select" },
   { key: "d40BlendPercent", label: "Blend %" },
   { key: "d40DelHank", label: "Del-Hank" },
   { key: "d40FeedHank", label: "Feed Hank" },
@@ -114,7 +116,7 @@ const TYPE_2_D40_ROWS = [
 ];
 
 const TYPE_3_D50_D55_ROWS = [
-  { key: "d50Mixing", label: "Mixing" },
+  { key: "d50Mixing", label: "Mixing", inputType: "select" },
   { key: "d50BlendPercent", label: "Blend %" },
   { key: "d50DelHank", label: "Del-Hank" },
   { key: "d50FeedHank", label: "Feed Hank" },
@@ -132,7 +134,7 @@ const TYPE_3_D50_D55_ROWS = [
 ];
 
 const TYPE_4_LDF3S_ROWS = [
-  { key: "ldf3sMixing", label: "Mixing" },
+  { key: "ldf3sMixing", label: "Mixing", inputType: "select" },
   { key: "ldf3sBlendPercent", label: "Blend %" },
   { key: "ldf3sDelHank", label: "Del-Hank" },
   { key: "ldf3sFeedHank", label: "Feed Hank" },
@@ -308,11 +310,17 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [values, setValues] = useState(createValues);
   const [errors, setErrors] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
+  const [mixingOptions, setMixingOptions] = useState([]);
+  const lastLoadedMixingRef = useRef("");
 
   const activeRows = useMemo(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
     [wheelChangeType]
   );
+  const selectedMixingRow = activeRows.find(
+    (row) => row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
+  );
+  const selectedMixing = String(values[selectedMixingRow?.key]?.existing || values[selectedMixingRow?.key]?.proposed || "").trim();
   const availableWheelChangeTypes = useMemo(
     () => WHEEL_CHANGE_TYPES_BY_LINE[lineType] || [],
     [lineType]
@@ -339,6 +347,27 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    const loadDropdowns = async () => {
+      try {
+        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        if (!active) return;
+        setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
+      } catch {
+        if (!active) return;
+        setMixingOptions([]);
+      }
+    };
+
+    loadDropdowns();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!draftLoaded || typeof window === "undefined") return;
     window.localStorage.setItem(
       DRAFT_STORAGE_KEY,
@@ -351,13 +380,20 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     );
   }, [date, draftLoaded, lineType, values, wheelChangeType]);
 
-  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType) => {
+  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType, mixingValue = "") => {
     const apiWheelChangeType = getApiWheelChangeType(requestedWheelChangeType);
-    const payload = await fetchDrawFrameWheelChangeEntries({
+    const params = {
       page: 1,
       limit: 1,
       wheelChangeType: apiWheelChangeType,
-    });
+    };
+    const trimmedMixing = String(mixingValue || "").trim();
+    if (trimmedMixing) {
+      params.variety = trimmedMixing;
+      params.variety_name = trimmedMixing;
+      params.mixing = trimmedMixing;
+    }
+    const payload = await fetchDrawFrameWheelChangeEntries(params);
     const latest = extractLatestEntry(payload);
     if (!latest) return null;
 
@@ -378,18 +414,26 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   };
 
   useEffect(() => {
-    if (!draftLoaded) return;
-    loadLatestSaved().catch(() => {
-      // Keep the local draft when the backend has no saved entry yet.
-    });
-  }, [draftLoaded]);
+    if (!draftLoaded || !wheelChangeType || !selectedMixing) {
+      lastLoadedMixingRef.current = "";
+      return;
+    }
 
-  useEffect(() => {
-    if (!draftLoaded || !wheelChangeType) return;
-    loadLatestSaved(wheelChangeType).catch(() => {
-      // Keep current values when this wheel-change type has no saved entry yet.
-    });
-  }, [draftLoaded, wheelChangeType]);
+    const selectionKey = `${wheelChangeType}::${selectedMixing}`;
+    if (lastLoadedMixingRef.current === selectionKey) return;
+
+    let cancelled = false;
+    loadLatestSaved(wheelChangeType, selectedMixing)
+      .then((latest) => {
+        if (cancelled || !latest) return;
+        lastLoadedMixingRef.current = selectionKey;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftLoaded, selectedMixing, wheelChangeType]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -450,6 +494,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     setDate(getTodayDate());
     setValues(createValues());
     setErrors({});
+    lastLoadedMixingRef.current = "";
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(DRAFT_STORAGE_KEY);
     }
@@ -532,6 +577,19 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
+
+    if (row.inputType === "select" && (row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing"))) {
+      return (
+        <SearchableSelect
+          className={className}
+          value={value}
+          onChange={handleValueChange(row.key, column)}
+          options={mixingOptions}
+          placeholder="Select"
+          ariaLabel={row.label}
+        />
+      );
+    }
 
     if (row.inputType === "select") {
       return (

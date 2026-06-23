@@ -18,6 +18,7 @@ import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
+import { fetchMixingLotDetails } from "@/apis/mixing";
 
 const mixingDepartmentTypes = [
     {
@@ -44,6 +45,7 @@ const mixingDepartmentTypes = [
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
 
 const getCurrentDate = () => new Date().toISOString().split("T")[0];
+const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 const MIXING_ENTRY_ID_CONFIG = {
     "Cotton HVI Data Entry": { prefix: "COT", width: 4, routePath: "/mixing/cotton-hvi" },
     "Fibre Data Entry": { prefix: "FIB", width: 4, routePath: "/mixing/fibre" },
@@ -60,17 +62,23 @@ function Mixing() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const childRef = useRef(null);
+    const successHandledRef = useRef(false);
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const currentDate = getCurrentDate();
-    const typeOptions = filterOptionsByDepartmentAccess(
+    const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+    const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+    const fullTypeOptions = filterOptionsByDepartmentAccess(
         mixingDepartmentTypes,
         accessByDepartment,
         user,
         "Mixing"
     );
+    const typeOptions = isProcessParameterRequest
+        ? fullTypeOptions
+        : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
     const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
@@ -104,9 +112,26 @@ function Mixing() {
     }, [selectedTypeName, typeOptions]);
 
     useEffect(() => {
+        if (!requestedType || !typeOptions.length) return;
+        const requested = normalizeTypeName(requestedType);
+        const matchedType = typeOptions.find((item) =>
+            [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
+        );
+        if (matchedType && matchedType.name !== selectedTypeName) {
+            setSelectedTypeName(matchedType.name);
+        }
+    }, [requestedType, selectedTypeName, typeOptions]);
+
+    const showSuccessOnce = () => {
+        if (successHandledRef.current) return;
+        successHandledRef.current = true;
+        setShowSuccess(true);
+    };
+
+    useEffect(() => {
         if (actionSuccess) {
             reserveEntryId();
-            setShowSuccess(true);
+            showSuccessOnce();
         }
     }, [actionSuccess]);
 
@@ -152,6 +177,33 @@ function Mixing() {
         setSelectedLotDetails(lotOptions.find((lot) => lot.lot_no === lotNo || lot.value === lotNo) || null);
     }, [lotNo, lotOptions]);
 
+    useEffect(() => {
+        if (!lotNo || !selectedTypeName) return undefined;
+        const hasAutofillDetails =
+            selectedLotDetails?.variety ||
+            selectedLotDetails?.invoice_no ||
+            selectedLotDetails?.invoice_date;
+        if (hasAutofillDetails) return undefined;
+        const fetchKey = `${selectedTypeName}:${lotNo}`;
+        if (lotDetailsFetchKeyRef.current === fetchKey) return undefined;
+        lotDetailsFetchKeyRef.current = fetchKey;
+
+        let active = true;
+        fetchMixingLotDetails({ screenName: selectedTypeName, lotNo })
+            .then((details) => {
+                if (active && details) {
+                    setSelectedLotDetails(details);
+                }
+            })
+            .catch((error) => {
+                console.warn("Unable to fetch selected lot details:", error?.message || error);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, [lotNo, selectedTypeName, selectedLotDetails]);
+
     const buildHeaderPreview = () => {
         const list = [
             { label: "Type", value: selectedTypeName },
@@ -196,7 +248,7 @@ function Mixing() {
             const ok = await childRef.current?.submit?.();
             if (ok === false) return;
             await reserveEntryId();
-            setShowSuccess(true);
+            showSuccessOnce();
         } catch (error) {
             console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
             return;
@@ -221,10 +273,12 @@ function Mixing() {
     const handleSuccessClose = () => {
         setShowSuccess(false);
         dispatch(clearMixingState());
+        successHandledRef.current = false;
+        router.reload();
     };
 
     const handleOpennessSubmitSuccess = () => {
-        setShowSuccess(true);
+        showSuccessOnce();
     };
 
     useEffect(() => {
@@ -441,6 +495,7 @@ function Mixing() {
                 message="Data Submitted"
                 typeValue={selectedTypeName}
                 onClose={handleSuccessClose}
+                closeLabel="OK"
             />
         </div>
     );

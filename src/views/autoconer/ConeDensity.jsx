@@ -20,9 +20,6 @@ const autoConerOptions = [];
 const coneTipOptions = ["Blue", "Red", "White"];
 
 const formFieldSanitizers = {
-  testNo: (value) => sanitizeIntegerInput(value, 10),
-  baseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
-  noseDiaE: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   drumFrom: (value) => sanitizeIntegerInput(value, 10),
   drumTo: (value) => sanitizeIntegerInput(value, 10),
 };
@@ -34,19 +31,23 @@ const rowFieldSanitizers = {
   noseDia: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   coneWeight: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   coneTrav: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
-  density: (value) => sanitizeNumericInput(value, { precision: 10, scale: 3 }),
-  hardness: (value) => sanitizeNumericInput(value, { precision: 10, scale: 3 }),
+  density: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  volume: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  gmsPerCm3: (value) => sanitizeNumericInput(value, { precision: 10, scale: 3 }),
+  gmsLitre: (value) => sanitizeNumericInput(value, { precision: 10, scale: 3 }),
+  windingSpeed: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  cnTension: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  tensionerRpm: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  tensionerForce: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
+  nCradlePressure: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
 };
 
 const createInitialForm = () => ({
   type: "Cone Density",
-  testNo: "",
   date: today,
   countNameFrom: "",
   countCode: "",
   autoConerNo: "",
-  baseDiaE: "",
-  noseDiaE: "",
   drumFrom: "",
   drumTo: "",
   coneTip: "",
@@ -55,7 +56,7 @@ const createInitialForm = () => ({
 const tableInputClass =
   "autoconer-input w-full h-[38px] rounded-[8px] border border-slate-200 bg-[#F8FAFC] px-2 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 
-const createReadingRows = (from = "", to = "", baseDiaE = "", noseDiaE = "") => {
+const createReadingRows = (from = "", to = "") => {
   const start = Number(from);
   const end = Number(to);
 
@@ -65,19 +66,29 @@ const createReadingRows = (from = "", to = "", baseDiaE = "", noseDiaE = "") => 
 
   return Array.from({ length: end - start + 1 }, (_, index) => ({
     drumNo: String(start + index),
-    baseDiaE: baseDiaE || "",
-    noseDiaE: noseDiaE || "",
+    baseDiaE: "",
+    noseDiaE: "",
     baseDia: "",
     noseDia: "",
     coneWeight: "",
     coneTrav: "",
     density: "",
-    hardness: "",
+    volume: "",
+    gmsPerCm3: "",
+    gmsLitre: "",
+    windingSpeed: "",
+    cnTension: "",
+    tensionerRpm: "",
+    tensionerForce: "",
+    nCradlePressure: "",
+    remarks: "",
   }));
 };
 
 const mapConeDensityEntryToRows = (entry = {}) => {
-  const nestedRows = Array.isArray(entry.cone_density_readings)
+  const nestedRows = Array.isArray(entry.drums)
+    ? entry.drums
+    : Array.isArray(entry.cone_density_readings)
     ? entry.cone_density_readings
     : Array.isArray(entry.cone_readings)
       ? entry.cone_readings
@@ -88,14 +99,25 @@ const mapConeDensityEntryToRows = (entry = {}) => {
   if (nestedRows.length > 0) {
     return nestedRows.map((row, index) => ({
       drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_from ?? "-"),
-      baseDiaE: String(row.base_dia_e ?? entry.base_dia_e ?? "-"),
-      noseDiaE: String(row.nose_dia_e ?? entry.nose_dia_e ?? "-"),
-      baseDia: String(row.base_dia ?? row.baseDia ?? "-"),
-      noseDia: String(row.nose_dia ?? row.noseDia ?? "-"),
-      coneWeight: String(row.cone_weight ?? row.weight ?? row.coneWeight ?? "-"),
+      baseDiaE: String(row.base_dia_e_d1 ?? row.base_dia_e ?? entry.base_dia_e ?? "-"),
+      noseDiaE: String(row.nose_dia_e_d2 ?? row.nose_dia_e ?? entry.nose_dia_e ?? "-"),
+      baseDia: String(row.base_dia_i_d3 ?? row.base_dia ?? row.baseDia ?? "-"),
+      noseDia: String(row.nose_dia_i_d4 ?? row.nose_dia ?? row.noseDia ?? "-"),
+      coneWeight: String(row.cone_weight_gms ?? row.cone_weight ?? row.weight ?? row.coneWeight ?? "-"),
       coneTraverse: String(row.cone_traverse ?? row.coneTrav ?? "-"),
-      coneDensity: String(row.density ?? row.cone_density ?? row.coneDensity ?? "-"),
+      coneDensity: String(row.density_gms_cm3 ?? row.density ?? row.cone_density ?? row.coneDensity ?? "-"),
       percentYarn: String(row.hardness ?? "-"),
+      slantHeight: String(row.slant_height_b1 ?? row.slant_height ?? row.slantHeight ?? "-"),
+      verticalHeight: String(row.vertical_height_b2 ?? row.vertical_height ?? row.verticalHeight ?? "-"),
+      volume: String(row.volume_cm3 ?? row.volume ?? "-"),
+      gmsPerCm3: String(row.density_gms_cm3 ?? row.gms_per_cm3 ?? row.gmsPerCm3 ?? "-"),
+      gmsPerLitre: String(row.gms_litre ?? row.gms_per_litre ?? row.gmsPerLitre ?? "-"),
+      windingSpeed: String(row.winding_speed_m_min ?? row.winding_speed ?? row.windingSpeed ?? "-"),
+      cnTension: String(row.cn_tension ?? row.cnTension ?? "-"),
+      tensionerRpm: String(row.tensioner_rpm ?? row.tensionerRpm ?? "-"),
+      tensionerForce: String(row.tensioner_force ?? row.tensionerForce ?? "-"),
+      nCradlePressure: String(row.n_cradle_pressure ?? row.nCradlePressure ?? "-"),
+      remarks: String(row.remarks ?? "-"),
       label: index,
     }));
   }
@@ -111,6 +133,18 @@ const mapConeDensityEntryToRows = (entry = {}) => {
       coneTraverse: String(entry.cone_traverse ?? "-"),
       coneDensity: String(entry.cone_density ?? "-"),
       percentYarn: String(entry.percent_yarn ?? "-"),
+      slantHeight: String(entry.slant_height ?? "-"),
+      verticalHeight: String(entry.vertical_height ?? "-"),
+      volume: String(entry.volume ?? "-"),
+      gmsPerCm3: String(entry.gms_per_cm3 ?? "-"),
+      gmsPerLitre: String(entry.gms_per_litre ?? "-"),
+      gmsPerCm3: String(entry.gms_per_cm3 ?? "-"),
+      windingSpeed: String(entry.winding_speed ?? "-"),
+      cnTension: String(entry.cn_tension ?? "-"),
+      tensionerRpm: String(entry.tensioner_rpm ?? "-"),
+      tensionerForce: String(entry.tensioner_force ?? "-"),
+      nCradlePressure: String(entry.n_cradle_pressure ?? "-"),
+      remarks: String(entry.remarks ?? "-"),
       label: 0,
     },
   ];
@@ -120,6 +154,33 @@ const errorClass = (flag) =>
   flag
     ? " !border-red-500 !bg-[#fff1f2] focus:!border-red-500 focus:!ring-[rgba(239,68,68,0.35)] [box-shadow:0_0_0_1000px_#fff1f2_inset]"
     : "";
+
+const calculateVolumeCm3 = (row = {}) => {
+  const d1 = Number(row.baseDiaE);
+  const d2 = Number(row.noseDiaE);
+  const d3 = Number(row.baseDia);
+  const d4 = Number(row.noseDia);
+  const b1 = Number(row.coneWeight);
+  const b2 = Number(row.coneTrav);
+
+  if (String(row.baseDiaE ?? "").trim() === "") return "";
+  if (![d1, d2, d3, d4, b1, b2].every(Number.isFinite)) return "";
+
+  const result =
+    ((((d1 + d3) / 4) + ((d2 + d4) / 4)) * ((b1 + b2) / 2) * (((d1 - d3) / 4) + ((d2 - d4) / 4)) * 3.1415926) /
+    1000;
+  return Number.isFinite(result) ? String(result.toFixed(2)) : "";
+};
+
+const calculateDensity = (row = {}) => {
+  const weight = Number(row.density);
+  const volume = Number(row.volume);
+
+  if (!Number.isFinite(weight) || !Number.isFinite(volume) || volume === 0) return "";
+
+  const result = weight / volume;
+  return Number.isFinite(result) ? String(result.toFixed(3)) : "";
+};
 
 const ConeDensity = forwardRef(function ConeDensity(
   {
@@ -146,15 +207,47 @@ const ConeDensity = forwardRef(function ConeDensity(
     setPortalReady(true);
   }, []);
 
-  const topHeaders = useMemo(
-    () => ["Drum No.", "Base Dia (E)", "Nose Dia (E)", "Base Dia", "Nose Dia", "Cone Weight", "Cone Trav", "Density", "Hardness"],
+  const allDrumHeaders = useMemo(
+    () => [
+      "Drum",
+      "Base Dia (E) (D1)",
+      "Nose Dia (E) (D2)",
+      "Base Dia (I) (D3)",
+      "Nose Dia (I) (D4)",
+      "Slant Height (B1)",
+      "Vertical Height (B2)",
+      "Cone Weight (Gms)",
+      "Volume (Cm3)",
+      "Density (Gms / Cm3)",
+      "Gms / Litre",
+      "Winding Speed (m/Min)",
+      "cN Tension",
+      "Tensioner RPM",
+      "Tensioner Force",
+      "N Cradle Pressure",
+      "Remarks",
+    ],
     []
   );
 
-  const allDrumHeaders = useMemo(
-    () => ["Drum No.", "Base Dia (E)", "Nose Dia(E)", "Base Dia", "Nose Dia", "Cone Weight", "Cone Traverse", "Cone Density", "Precent Yarn"],
-    []
-  );
+  const drumCardFields = [
+    { label: "Base Dia (E) (D1)", field: "baseDiaE", type: "text" },
+    { label: "Nose Dia (E) (D2)", field: "noseDiaE", type: "text" },
+    { label: "Base Dia (I) (D3)", field: "baseDia", type: "text" },
+    { label: "Nose Dia (I) (D4)", field: "noseDia", type: "text" },
+    { label: "Slant Height (B1)", field: "coneWeight", type: "text" },
+    { label: "Vertical Height (B2)", field: "coneTrav", type: "text" },
+    { label: "Cone Weight (Gms)", field: "density", type: "text" },
+    { label: "Volume (Cm3)", field: "volume", type: "text" },
+    { label: "Density (Gms / Cm3)", field: "gmsPerCm3", type: "text" },
+    { label: "Gms / Litre", field: "gmsLitre", type: "text" },
+    { label: "Winding Speed (m/Min)", field: "windingSpeed", type: "text" },
+    { label: "cN Tension", field: "cnTension", type: "text" },
+    { label: "Tensioner RPM", field: "tensionerRpm", type: "text" },
+    { label: "Tensioner Force", field: "tensionerForce", type: "text" },
+    { label: "N Cradle Pressure", field: "nCradlePressure", type: "text", span: 2 },
+    { label: "Remarks", field: "remarks", type: "textarea", span: 4 },
+  ];
 
   const handleFormChange = (field, value) => {
     const nextValue = formFieldSanitizers[field] ? formFieldSanitizers[field](value) : value;
@@ -177,9 +270,14 @@ const ConeDensity = forwardRef(function ConeDensity(
   const handleRowChange = (index, field, value) => {
     const nextValue = rowFieldSanitizers[field] ? rowFieldSanitizers[field](value) : value;
     setReadingRows((current) =>
-      current.map((row, rowIndex) =>
-        rowIndex === index ? { ...row, [field]: nextValue } : row
-      )
+      current.map((row, rowIndex) => {
+        if (rowIndex !== index) return row;
+        const nextRow = { ...row, [field]: nextValue };
+        nextRow.volume = calculateVolumeCm3(nextRow);
+        nextRow.gmsPerCm3 = calculateDensity(nextRow);
+        nextRow.gmsLitre = calculateGmsPerLitre(nextRow);
+        return nextRow;
+      })
     );
     setErrors((current) => {
       if (!current[`row-${index}-${field}`]) return current;
@@ -196,7 +294,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     });
     if (!readingRows.length) nextErrors.drumRange = true;
     readingRows.forEach((row, index) => {
-      ["baseDiaE", "noseDiaE", "baseDia", "noseDia", "coneWeight", "coneTrav", "density", "hardness"].forEach((field) => {
+      ["baseDiaE", "noseDiaE", "baseDia", "noseDia", "coneWeight", "coneTrav", "density", "volume", "gmsPerCm3", "gmsLitre", "windingSpeed", "cnTension", "tensionerRpm", "tensionerForce", "nCradlePressure"].forEach((field) => {
         if (!String(row[field] || "").trim()) {
           nextErrors[`row-${index}-${field}`] = true;
         }
@@ -213,36 +311,56 @@ const ConeDensity = forwardRef(function ConeDensity(
     })),
     ...readingRows.map((row, index) => ({
       label: `Reading ${index + 1}`,
-      value: `${row.drumNo} | ${row.baseDiaE} | ${row.noseDiaE} | ${row.baseDia} | ${row.noseDia} | ${row.coneWeight} | ${row.coneTrav} | ${row.density} | ${row.hardness}`,
+      value: `${row.drumNo} | ${row.baseDiaE} | ${row.noseDiaE} | ${row.baseDia} | ${row.noseDia} | ${row.coneWeight} | ${row.coneTrav} | ${row.density} | ${row.volume}`,
     })),
   ];
 
+const calculateDensity = (row = {}) => {
+  const weight = Number(row.density);
+  const volume = Number(row.volume);
+  if (!Number.isFinite(weight) || !Number.isFinite(volume) || volume === 0) return "";
+  const result = weight / volume;
+  return Number.isFinite(result) ? String(result.toFixed(4)) : "";
+};
+
+const calculateGmsPerLitre = (row = {}) => {
+  const weight = Number(row.density);
+  const volume = Number(row.volume);
+  if (!Number.isFinite(weight) || !Number.isFinite(volume) || volume === 0) return "";
+  const result = (weight / volume) * 1000;
+  if (!Number.isFinite(result)) return "";
+  return Number.isInteger(result) ? String(result) : String(Number(result.toFixed(3)));
+};
+
   const buildPayload = () => ({
     entry_id: entryId || undefined,
-    test_no: toNullableNumber(form.testNo),
     entry_date: form.date,
     type: selectedTypeName || form.type,
-    machine_name: form.autoConerNo,
+    auto_coner_no: form.autoConerNo,
     count_name: form.countNameFrom,
     cntcode: form.countCode || undefined,
     cone_tip: form.coneTip,
-    base_dia_e: toNullableNumber(form.baseDiaE),
-    nose_dia_e: toNullableNumber(form.noseDiaE),
     drum_from: toNullableNumber(form.drumFrom),
     drum_to: toNullableNumber(form.drumTo),
-    weight: null,
-    no_of_cuts: null,
-    remarks: "Normal",
-    cone_readings: readingRows.map((row) => ({
+    remarks: form.remarks || "",
+    drums: readingRows.map((row) => ({
       drum_no: toNullableNumber(row.drumNo),
-      base_dia_e: toNullableNumber(row.baseDiaE),
-      nose_dia_e: toNullableNumber(row.noseDiaE),
-      base_dia: toNullableNumber(row.baseDia),
-      nose_dia: toNullableNumber(row.noseDia),
-      cone_weight: toNullableNumber(row.coneWeight),
-      cone_traverse: toNullableNumber(row.coneTrav),
-      density: toNullableNumber(row.density),
-      hardness: toNullableNumber(row.hardness),
+      base_dia_e_d1: toNullableNumber(row.baseDiaE),
+      nose_dia_e_d2: toNullableNumber(row.noseDiaE),
+      base_dia_i_d3: toNullableNumber(row.baseDia),
+      nose_dia_i_d4: toNullableNumber(row.noseDia),
+      slant_height_b1: toNullableNumber(row.coneWeight),
+      vertical_height_b2: toNullableNumber(row.coneTrav),
+      cone_weight_gms: toNullableNumber(row.density),
+      volume_cm3: toNullableNumber(row.volume),
+      density_gms_cm3: toNullableNumber(row.gmsPerCm3),
+      gms_litre: toNullableNumber(row.gmsLitre),
+      winding_speed_m_min: toNullableNumber(row.windingSpeed),
+      cn_tension: toNullableNumber(row.cnTension),
+      tensioner_rpm: toNullableNumber(row.tensionerRpm),
+      tensioner_force: toNullableNumber(row.tensionerForce),
+      n_cradle_pressure: toNullableNumber(row.nCradlePressure),
+      remarks: row.remarks || undefined,
     })),
   });
 
@@ -367,28 +485,30 @@ const ConeDensity = forwardRef(function ConeDensity(
 
   useEffect(() => {
     setReadingRows((current) => {
-      const nextRows = createReadingRows(
-        form.drumFrom,
-        form.drumTo,
-        form.baseDiaE,
-        form.noseDiaE
-      );
+      const nextRows = createReadingRows(form.drumFrom, form.drumTo);
 
       if (!nextRows.length) return [];
 
       return nextRows.map((nextRow) => {
         const existingRow = current.find((row) => row.drumNo === nextRow.drumNo);
-        return existingRow
+        const mergedRow = existingRow
           ? {
               ...nextRow,
               ...existingRow,
-              baseDiaE: form.baseDiaE || existingRow.baseDiaE || "",
-              noseDiaE: form.noseDiaE || existingRow.noseDiaE || "",
             }
           : nextRow;
+        return existingRow
+          ? {
+              ...mergedRow,
+              volume: calculateVolumeCm3(mergedRow),
+            }
+          : {
+              ...mergedRow,
+              volume: calculateVolumeCm3(mergedRow),
+            };
       });
     });
-  }, [form.drumFrom, form.drumTo, form.baseDiaE, form.noseDiaE]);
+  }, [form.drumFrom, form.drumTo]);
 
   const allDrumEntries = useMemo(
     () => coneDensity.flatMap((entry) => mapConeDensityEntryToRows(entry)),
@@ -407,96 +527,57 @@ const ConeDensity = forwardRef(function ConeDensity(
 
   const generatedTableSection = (
     <div className="px-6 pt-2">
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-[11px] text-slate-700">
-          <thead>
-            <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
-              {topHeaders.map((header) => (
-                <th key={header} className="px-0 py-3 pr-6 font-semibold">
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {readingRows.map((row, index) => (
-              <tr key={`${row.drumNo}-${index}`} className="border-b border-slate-200">
-                <td className="px-0 py-5 pr-6">{row.drumNo}</td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-baseDiaE`])}`}
-                    value={row.baseDiaE}
-                    onChange={(event) => handleRowChange(index, "baseDiaE", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-noseDiaE`])}`}
-                    value={row.noseDiaE}
-                    onChange={(event) => handleRowChange(index, "noseDiaE", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-baseDia`])}`}
-                    value={row.baseDia}
-                    onChange={(event) => handleRowChange(index, "baseDia", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-noseDia`])}`}
-                    value={row.noseDia}
-                    onChange={(event) => handleRowChange(index, "noseDia", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-coneWeight`])}`}
-                    value={row.coneWeight}
-                    onChange={(event) => handleRowChange(index, "coneWeight", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-coneTrav`])}`}
-                    value={row.coneTrav}
-                    onChange={(event) => handleRowChange(index, "coneTrav", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5 pr-6">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-density`])}`}
-                    value={row.density}
-                    onChange={(event) => handleRowChange(index, "density", event.target.value)}
-                  />
-                </td>
-                <td className="px-0 py-5">
-                  <input
-                    type="text"
-                    className={`${tableInputClass}${errorClass(errors[`row-${index}-hardness`])}`}
-                    value={row.hardness}
-                    onChange={(event) => handleRowChange(index, "hardness", event.target.value)}
-                  />
-                </td>
-              </tr>
-            ))}
-            {!readingRows.length ? (
-              <tr>
-                <td colSpan={9} className="px-0 py-5 text-center text-[12px] text-slate-400">
-                  Enter a valid drum range to generate drum rows.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+      <div className="mx-auto mb-8 flex max-w-3xl justify-center">
+        <div className="bg-transparent p-0 shadow-none">
+          <img
+            src="/cone-density-diagram.png"
+            alt="Cone density diagram"
+            className="block h-auto w-full max-w-[300px] object-contain"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        {readingRows.map((row, index) => (
+          <div key={`${row.drumNo}-${index}`} className="rounded-[14px] border border-[#cfe2ff] bg-[#f8fbff] px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mb-5 text-[15px] font-semibold text-slate-900">Drum No : {row.drumNo}</div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7">
+              {drumCardFields.map((item) => {
+                const colSpanClass = item.span === 4
+                  ? "xl:col-span-4"
+                  : item.span === 2
+                    ? "xl:col-span-2"
+                    : "xl:col-span-1";
+                return (
+                  <div key={item.field} className={`flex flex-col gap-2 ${colSpanClass}`}>
+                    <label className="text-[13px] font-semibold text-slate-700">{item.label}</label>
+                    {item.type === "textarea" ? (
+                      <textarea
+                        rows={2}
+                        className={`${topFieldClass} min-h-[56px] resize-y ${errorClass(errors[`row-${index}-${item.field}`])}`}
+                        value={row[item.field] || ""}
+                        onChange={(event) => handleRowChange(index, item.field, event.target.value)}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        className={`${topFieldClass} ${errorClass(errors[`row-${index}-${item.field}`])}`}
+                        value={row[item.field] || ""}
+                        readOnly={item.field === "volume" || item.field === "gmsPerCm3" || item.field === "gmsLitre"}
+                        onChange={(event) => handleRowChange(index, item.field, event.target.value)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {!readingRows.length ? (
+          <div className="rounded-[14px] border border-dashed border-slate-300 bg-white px-5 py-8 text-center text-[13px] text-slate-500">
+            Enter a drum range from 1 to 5 to generate 5 containers.
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -506,7 +587,7 @@ const ConeDensity = forwardRef(function ConeDensity(
       <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-[11px] text-slate-700">
+          <table className="min-w-max border-collapse whitespace-nowrap text-[11px] text-slate-700">
             <thead>
               <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
                 {allDrumHeaders.map((header) => (
@@ -524,10 +605,18 @@ const ConeDensity = forwardRef(function ConeDensity(
                   <td className="px-4 py-4">{entry.noseDiaE}</td>
                   <td className="px-4 py-4">{entry.baseDia}</td>
                   <td className="px-4 py-4">{entry.noseDia}</td>
+                  <td className="px-4 py-4">{entry.slantHeight}</td>
+                  <td className="px-4 py-4">{entry.verticalHeight}</td>
                   <td className="px-4 py-4">{entry.coneWeight}</td>
-                  <td className="px-4 py-4">{entry.coneTraverse}</td>
-                  <td className="px-4 py-4">{entry.coneDensity}</td>
-                  <td className="px-4 py-4 last:pr-0">{entry.percentYarn}</td>
+                  <td className="px-4 py-4">{entry.volume}</td>
+                  <td className="px-4 py-4">{entry.gmsPerCm3}</td>
+                  <td className="px-4 py-4">{entry.gmsPerLitre}</td>
+                  <td className="px-4 py-4">{entry.windingSpeed}</td>
+                  <td className="px-4 py-4">{entry.cnTension}</td>
+                  <td className="px-4 py-4">{entry.tensionerRpm}</td>
+                  <td className="px-4 py-4">{entry.tensionerForce}</td>
+                  <td className="px-4 py-4">{entry.nCradlePressure}</td>
+                  <td className="px-4 py-4 last:pr-0">{entry.remarks}</td>
                 </tr>
               ))}
               {!allDrumEntries.length ? (
@@ -546,12 +635,9 @@ const ConeDensity = forwardRef(function ConeDensity(
 
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
-    { label: "Test No.", field: "testNo", type: "text", placeholder: "Enter test no." },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countOptions, placeholder: "Enter count name" },
     { label: "Auto Coner No.", field: "autoConerNo", type: "select", options: autoconerOptions, placeholder: "Enter auto coner no." },
-    { label: "Base Dia (E)", field: "baseDiaE", type: "text", placeholder: "Enter base dia (e)" },
-    { label: "Nose Dia (E)", field: "noseDiaE", type: "text", placeholder: "Enter nose dia (e)" },
     { label: "Drum From/To", field: "drumRange", type: "pair" },
     { label: "Cone Tip", field: "coneTip", type: "text", placeholder: "Enter cone tip" },
   ];

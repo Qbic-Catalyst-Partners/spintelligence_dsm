@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberRibbonLapCV } from "@/store/slices/comber";
 import Footer from "@/components/Footer";
 import SearchableSelect from "@/components/SearchableSelect";
-import { fetchComberMasterVarieties } from "@/apis/comber";
+import { fetchComberMasterVarieties, fetchComberRibbonLapMasterMcNos } from "@/apis/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
@@ -44,6 +44,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const [stats, setStats] = useState(defaultStats);
     const [formMessage, setFormMessage] = useState("");
     const [errors, setErrors] = useState({});
+    const [machineOptions, setMachineOptions] = useState([]);
     const [varietyOptions, setVarietyOptions] = useState(["Cotton", "Polyester", "PC Blend"]);
 
     const isCVEntry = selectedType === "Ribbon Lap CV Data Entry";
@@ -56,10 +57,21 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         let active = true;
         (async () => {
             try {
-                const options = await fetchComberMasterVarieties();
-                if (active && options.length) setVarietyOptions(options);
+                const [varieties, machines] = await Promise.all([
+                    fetchComberMasterVarieties(),
+                    fetchComberRibbonLapMasterMcNos({ prefix: "CBR%" }),
+                ]);
+                if (active && varieties.length) setVarietyOptions(varieties);
+                if (active && machines.length) {
+                    setMachineOptions(
+                        machines.map((item) => item.mc_name || item.mc_no).filter(Boolean)
+                    );
+                }
             } catch (_error) {
-                if (active) setVarietyOptions(["Cotton", "Polyester", "PC Blend"]);
+                if (active) {
+                    setVarietyOptions(["Cotton", "Polyester", "PC Blend"]);
+                    setMachineOptions([]);
+                }
             }
         })();
         return () => {
@@ -332,11 +344,11 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                         <div className={styles["cb-row"]}>
                             <div className={styles["cb-form-group"]}>
                                 <label>Machine Name</label>
-                                <input
+                                <SearchableSelect
                                     className={errors.machine ? styles["input-error"] : ""}
                                     value={machine}
-                                    onChange={(e) => {
-                                        setMachine(e.target.value);
+                                    onChange={(value) => {
+                                        setMachine(value);
                                         setErrors((prev) => {
                                             if (!prev.machine) return prev;
                                             const next = { ...prev };
@@ -344,6 +356,9 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                             return next;
                                         });
                                     }}
+                                    options={machineOptions}
+                                    placeholder="Select Machine"
+                                    ariaLabel="Machine Name"
                                 />
                             </div>
 
@@ -384,7 +399,8 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                 >
                                     <option value="">Select Type</option>
                                     <option value="Ribbon Lap">Ribbon Lap</option>
-                                    <option value="Lap Roll">Lap Roll</option>
+                                    <option value="Lap Former">Lap Former</option>
+                                    <option value="Blow Room">Blow Room</option>
                                 </select>
                             </div>
                         </div>

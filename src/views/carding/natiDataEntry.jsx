@@ -7,7 +7,7 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
-import { fetchCardingMasterVarieties, fetchCardingNatiMasterMcNos } from "@/apis/carding";
+import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -29,7 +29,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     const dispatch = useDispatch();
     const { isLoading, nati, error } = useSelector((state) => state.carding ?? emptyCardingState);
 
-    const [natiId, setNatiId] = useState("");
     const [entryDate, setEntryDate] = useState("");
     const [variety, setVariety] = useState("");
     const [entryCount, setEntryCount] = useState(1);
@@ -52,15 +51,11 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             try {
                 const [varietyList, mcNos] = await Promise.all([
                     fetchCardingMasterVarieties(),
-                    fetchCardingNatiMasterMcNos(),
+                    fetchCardingMasterMachines({ prefix: "CDG" }),
                 ]);
                 if (active) {
                     setVarietyOptions(Array.isArray(varietyList) ? varietyList : []);
-                    setMcNoOptions(
-                        Array.isArray(mcNos)
-                            ? mcNos.map((item) => item.mc_no).filter(Boolean)
-                            : []
-                    );
+                    setMcNoOptions(Array.isArray(mcNos) ? mcNos : []);
                 }
             } catch (_err) {
                 if (active) {
@@ -138,7 +133,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     };
 
     const handleClear = () => {
-        setNatiId("");
         setEntryDate(new Date().toISOString().split("T")[0]);
         setVariety("");
         setEntryCount(1);
@@ -152,7 +146,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     const buildPayload = () => ({
         entry_id: entryId || "",
         type: selectedType,
-        nati_id: natiId,
         entry_date: entryDate,
         variety,
         entries: entries
@@ -169,7 +162,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
         const nextErrors = {};
 
         if (!selectedType) nextErrors.selectedType = true;
-        if (!String(natiId || "").trim()) nextErrors.natiId = true;
         if (!entryDate) nextErrors.entryDate = true;
         if (!String(variety || "").trim()) nextErrors.variety = true;
         if (!String(entryCount || "").trim()) nextErrors.entryCount = true;
@@ -205,7 +197,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
 
     const previewItems = [
         { label: "Type", value: selectedType },
-        { label: "Nati ID", value: natiId },
         { label: "Entry ID", value: entryId || "-" },
         { label: "Variety", value: variety },
         { label: "Entry Count", value: entryCount },
@@ -240,22 +231,6 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
 
                         {showForm && (
                             <>
-                                <div className={styles["cb-form-group"]}>
-                                    <label>Nati ID</label>
-                                    <input
-                                        value={natiId}
-                                        onChange={(e) => {
-                                            setNatiId(e.target.value);
-                                            setErrors((current) => {
-                                                const next = { ...current };
-                                                delete next.natiId;
-                                                return next;
-                                            });
-                                        }}
-                                        className={errors.natiId ? styles["field-error"] : ""}
-                                    />
-                                </div>
-
                                 <div className={styles["cb-form-group"]}>
                                     <label>Entry ID</label>
                                     <input
@@ -323,8 +298,8 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                                                         value={entry.mc_no}
                                                         onChange={(value) => handleEntryChange(index, "mc_no", value)}
                                                         options={mcNoOptions}
-                                                        placeholder="Select MC No"
-                                                        ariaLabel={`MC No Row ${index + 1}`}
+                                                        placeholder="Select CDG No"
+                                                        ariaLabel={`CDG No Row ${index + 1}`}
                                                         className={errors[`${index}-mc_no`] ? styles["field-error"] : ""}
                                                     />
                                                 </div>

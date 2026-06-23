@@ -25,6 +25,18 @@ const COTS_MACHINE_MASTER_URL =
     `${API_BASE_URL}/drawframe/cots/machine-numbers`;
 
 const parseJson = async (response) => response.json().catch(() => null);
+const getStoredAuthToken = () => {
+    if (typeof window === "undefined") return "";
+    return (
+        window.sessionStorage.getItem("token") ||
+        window.localStorage.getItem("token") ||
+        ""
+    );
+};
+const getAuthHeaders = () => {
+    const token = getStoredAuthToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+};
 const DRAW_FRAME_UQC_ENDPOINTS = ["/drawframe/uqc", "/draw-frame/uqc"];
 const DRAW_FRAME_UQC_MASTER_DROPDOWN_ENDPOINTS = [
     "/drawframe/uqc/master/dropdown",
@@ -46,6 +58,13 @@ const DRAW_FRAME_UQC_MASTER_MC_NO_ENDPOINTS = [
     "/drawframe/master/mc-nos",
     "/drawframe/master/machine-nos",
     "/drawframe/master/machine-numbers",
+];
+const DRAW_FRAME_WHEEL_CHANGE_PREP_VARIETY_ENDPOINTS = [
+    "/drawframe/wheel-change/master/dropdown",
+    "/drawframe/wheel-change/master/varieties",
+    "/drawframe/wheel-change/master/mixings",
+    "/drawframe/wheel-change/master/mixing-dropdown",
+    "/drawframe/master/varieties",
 ];
 const DRAW_FRAME_MACHINE_MASTER_ENDPOINTS = [
     "/drawframe/master/mc-nos",
@@ -232,6 +251,7 @@ export const submitDrawFrameYarnCvInspection = async (payload) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...getAuthHeaders(),
             },
             body: JSON.stringify(payload),
         });
@@ -255,6 +275,7 @@ export const submitDrawFrameCotsInspection = async (payload) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                ...getAuthHeaders(),
             },
             body: JSON.stringify(payload),
         });
@@ -278,6 +299,7 @@ export const fetchDrawFrameCotsEntries = async ({ page = 1, limit = 10 } = {}) =
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
+                ...getAuthHeaders(),
             },
         });
 
@@ -564,6 +586,54 @@ export const fetchDrawFrameUqcMasterDropdown = async ({
     throw new Error(extractApiError(lastError, "Failed to fetch draw frame UQC dropdown options"));
 };
 
+export const fetchDrawFrameWheelChangePrepVarieties = async ({ prefix = "" } = {}) => {
+    let lastError;
+
+    for (const endpoint of DRAW_FRAME_WHEEL_CHANGE_PREP_VARIETY_ENDPOINTS) {
+        try {
+            const response = await apiConfig.get(endpoint, { prefix }, { skipGlobalErrorModal: true });
+            const payload = response?.data || {};
+            const options = payload.options || payload.dropdown_options || {};
+            const optionRows = [
+                ...(Array.isArray(options) ? options : []),
+                ...(Array.isArray(options.variety) ? options.variety : []),
+                ...(Array.isArray(options.varieties) ? options.varieties : []),
+                ...(Array.isArray(options.prep_varieties) ? options.prep_varieties : []),
+                ...(Array.isArray(options.mixing) ? options.mixing : []),
+            ];
+            const rows = [
+                ...(Array.isArray(payload.data) ? payload.data : []),
+                ...(Array.isArray(payload.varieties) ? payload.varieties : []),
+                ...(Array.isArray(payload.prep_varieties) ? payload.prep_varieties : []),
+                ...(Array.isArray(payload.mixings) ? payload.mixings : []),
+                ...(Array.isArray(payload.mixing_dropdown) ? payload.mixing_dropdown : []),
+                ...optionRows,
+            ];
+            const names = uniqueStrings(
+                rows.map((row) =>
+                    row?.prep_variety_name ||
+                    row?.variety_name ||
+                    row?.mixing_name ||
+                    row?.name ||
+                    row?.label ||
+                    row?.value ||
+                    row
+                )
+            );
+            if (names.length || endpoint === DRAW_FRAME_WHEEL_CHANGE_PREP_VARIETY_ENDPOINTS[DRAW_FRAME_WHEEL_CHANGE_PREP_VARIETY_ENDPOINTS.length - 1]) {
+                return names;
+            }
+        } catch (error) {
+            lastError = error;
+            if (error.response?.status && error.response.status !== 404) {
+                throw new Error(extractApiError(error, "Failed to fetch draw frame wheel change varieties"));
+            }
+        }
+    }
+
+    throw new Error(extractApiError(lastError, "Failed to fetch draw frame wheel change varieties"));
+};
+
 export const submitDrawFrameHeaderEntry = async (payload) => {
     try {
         const response = await apiConfig.post("/drawframe/header", payload);
@@ -683,6 +753,7 @@ export const fetchDrawFrameMachineMaster = async ({ prefix = "" } = {}) => {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
+                    ...getAuthHeaders(),
                 },
             });
             const data = await parseJson(response);
@@ -718,6 +789,7 @@ export const fetchDrawFrameCotsMachineMaster = async ({ prefix = "", subType = "
         method: "GET",
         headers: {
             "Content-Type": "application/json",
+            ...getAuthHeaders(),
         },
     });
     const data = await parseJson(response);

@@ -242,6 +242,8 @@ const normalizeCountPayload = (payload) => {
         });
 };
 
+const CARDING_DEPARTMENT_CODE = "CARDING";
+
 export const fetchCardingCountOptions = async ({ prefix = "", screen = "qc-header" } = {}) => {
     const screenEndpoints = {
         trials: ["/trials/master/count-dropdown", "/trials/master/counts", "/trials/master/count-names"],
@@ -449,7 +451,10 @@ export const fetchCardingUqcMasterDepartments = async ({ prefix = "" } = {}) => 
 
 export const fetchCardingUqcMasterMcNos = async ({ prefix = "", department = "", department_code = "" } = {}) => {
     try {
-        const response = await apiConfig.get("/carding/uqc/master/mc-nos", { prefix, department, department_code });
+        const response = await apiConfig.get(
+            "/carding/uqc/master/mc-nos",
+            { prefix, department, department_code: department_code || CARDING_DEPARTMENT_CODE }
+        );
         const payload = response?.data;
         const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
         return rows
@@ -467,17 +472,41 @@ export const fetchCardingUqcMasterMcNos = async ({ prefix = "", department = "",
 
 export const fetchCardingNatiMasterMcNos = async ({ prefix = "", department = "", department_code = "" } = {}) => {
     try {
-        const response = await apiConfig.get("/carding/nati/master/mc-nos", { prefix, department, department_code });
-        const payload = response?.data;
-        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
-        return rows
-            .map((row) => ({
-                mc_no: String(row?.mc_no || row?.mccode || row?.value || "").trim(),
-                mc_name: String(row?.mc_name || row?.mcname || "").trim(),
-                dept_code: String(row?.dept_code || "").trim(),
-                dept_name: String(row?.dept_name || "").trim(),
-            }))
-            .filter((row) => row.mc_no);
+        const endpoints = [
+            "/carding/nati/master/cdg-nos",
+            "/carding/nati/master/mc-nos",
+        ];
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+            try {
+                const response = await apiConfig.get(
+                    endpoint,
+                    { prefix, department, department_code: department_code || CARDING_DEPARTMENT_CODE },
+                    { skipGlobalErrorModal: true }
+                );
+                const payload = response?.data;
+                const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+                const normalized = rows
+                    .map((row) => ({
+                        mc_no: String(row?.mc_no || row?.mccode || row?.value || "").trim(),
+                        mc_name: String(row?.mc_name || row?.mcname || "").trim(),
+                        dept_code: String(row?.dept_code || "").trim(),
+                        dept_name: String(row?.dept_name || "").trim(),
+                    }))
+                    .filter((row) => row.mc_no);
+                if (normalized.length || endpoint === endpoints[endpoints.length - 1]) {
+                    return normalized;
+                }
+            } catch (error) {
+                lastError = error;
+                if (error.response?.status && error.response.status !== 404) {
+                    throw new Error(getCardingApiErrorMessage(error, "Unable to fetch Nati MC No options."));
+                }
+            }
+        }
+
+        throw lastError || new Error("Unable to fetch Nati MC No options.");
     } catch (error) {
         throw new Error(getCardingApiErrorMessage(error, "Unable to fetch Nati MC No options."));
     }
@@ -496,14 +525,18 @@ export const fetchCardingUqcMasterDropdown = async ({
 
     for (const endpoint of endpoints) {
       try {
-        const response = await apiConfig.get(endpoint, {
-          prefix,
-          variety_prefix,
-          department_prefix,
-          mc_no_prefix,
-          department,
-          department_code,
-        }, { skipGlobalErrorModal: true });
+        const response = await apiConfig.get(
+          endpoint,
+          {
+            prefix,
+            variety_prefix,
+            department_prefix,
+            mc_no_prefix,
+            department,
+            department_code: department_code || CARDING_DEPARTMENT_CODE,
+          },
+          { skipGlobalErrorModal: true }
+        );
         const payload = response?.data || {};
         const options = payload.options || payload.dropdown_options || {};
 

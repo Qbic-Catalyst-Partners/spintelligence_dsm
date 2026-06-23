@@ -79,7 +79,6 @@ function DrumWiseAppearance({
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
   const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
-  const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(todayDate);
   const [countName, setCountName] = useState(countOptions[0].value);
   const [countCode, setCountCode] = useState("");
@@ -131,7 +130,6 @@ function DrumWiseAppearance({
   };
 
   const resetForm = () => {
-    setTestNo("");
     setEntryDate(todayDate);
     setCountName(countDropdownOptions[0]?.label || countOptions[0].value);
     setCountCode(countDropdownOptions[0]?.code || "");
@@ -146,7 +144,6 @@ function DrumWiseAppearance({
   const validate = () => {
     const nextErrors = {};
     if (!String(selectedType || "").trim()) nextErrors.type = true;
-    if (!String(testNo || "").trim()) nextErrors.testNo = true;
     if (!String(entryDate || "").trim()) nextErrors.entryDate = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
     if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
@@ -160,7 +157,6 @@ function DrumWiseAppearance({
 
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
-    { label: "Test No.", value: testNo || "-" },
     { label: "Entry ID", value: entryId || "-" },
     { label: "Count Name", value: selectedCountLabel || "-" },
     { label: "Auto Coner No.", value: selectedMachineLabel || "-" },
@@ -177,7 +173,6 @@ function DrumWiseAppearance({
     if (!validate()) return false;
     try {
       const payload = {
-        test_no: Number(testNo) || 0,
         entry_date: entryDate,
         type: "Drum Inspection",
         machine_id: Number(autoconerNo) || null,
@@ -297,7 +292,6 @@ function DrumWiseAppearance({
   }, [
     onRegisterActions,
     selectedType,
-    testNo,
     entryDate,
     countName,
     autoconerNo,
@@ -408,11 +402,6 @@ function DrumWiseAppearance({
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Test No.</label>
-            <input value={testNo} onChange={(e) => setTestNo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.testNo)} />
           </div>
 
           <div className={styles.field}>

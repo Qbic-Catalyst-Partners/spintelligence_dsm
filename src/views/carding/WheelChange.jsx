@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { MdEditNote } from "react-icons/md";
 
@@ -12,6 +12,7 @@ import {
   fetchCardingMasterMachines,
   submitCardingChangeControlEntry,
 } from "@/apis/carding";
+import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -70,7 +71,6 @@ const buildExistingValuesFromEntry = (entry) =>
 
 function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
-  const [testNo, setTestNo] = useState("");
   const [entryDate, setEntryDate] = useState(getTodayDate);
   const [cdoNo, setCdoNo] = useState("");
   const [proposedCdgNo, setProposedCdgNo] = useState("");
@@ -82,9 +82,22 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [cdgOptions, setCdgOptions] = useState(DEFAULT_CDG_OPTIONS);
+  const [mixingOptions, setMixingOptions] = useState([]);
+  const [loadingVarietyOptions, setLoadingVarietyOptions] = useState(false);
+  const [varietyOptionsError, setVarietyOptionsError] = useState("");
+  const lastLoadedMixingRef = useRef("");
+  const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
 
-  const loadLatestSaved = async () => {
-    const payload = await fetchCardingChangeControlEntries({ page: 1, limit: 1 });
+  const loadLatestSaved = async (mixingValue = "") => {
+    const params = { page: 1, limit: 1 };
+    const trimmedMixing = String(mixingValue || "").trim();
+    if (trimmedMixing) {
+      params.variety = trimmedMixing;
+      params.variety_name = trimmedMixing;
+      params.mixing = trimmedMixing;
+    }
+
+    const payload = await fetchCardingChangeControlEntries(params);
     const latest = extractLatestEntry(payload);
     if (!latest) return null;
 
@@ -95,6 +108,29 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     return latest;
   };
+
+  useEffect(() => {
+    let active = true;
+    const loadVarieties = async () => {
+      setLoadingVarietyOptions(true);
+      try {
+        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        if (!active) return;
+        setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
+        setVarietyOptionsError("");
+      } catch (error) {
+        if (!active) return;
+        setMixingOptions([]);
+        setVarietyOptionsError(error.message || "Unable to load simplex mixing options.");
+      } finally {
+        if (active) setLoadingVarietyOptions(false);
+      }
+    };
+    loadVarieties();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const loadMachines = async () => {
@@ -109,15 +145,29 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   }, []);
 
   useEffect(() => {
-    loadLatestSaved().catch(() => {
-      // Keep an empty form when there is no previous Wheel Change entry yet.
-    });
-  }, []);
+    if (!selectedMixing) {
+      lastLoadedMixingRef.current = "";
+      return;
+    }
+
+    if (lastLoadedMixingRef.current === selectedMixing) return;
+
+    let cancelled = false;
+    loadLatestSaved(selectedMixing)
+      .then((latest) => {
+        if (cancelled || !latest) return;
+        lastLoadedMixingRef.current = selectedMixing;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMixing]);
 
   const previewItems = useMemo(
     () => [
       { label: "Type", value: selectedType || "WheelChange" },
-      { label: "Test No.", value: testNo || "-" },
       { label: "Entry ID", value: entryId || "-" },
       { label: "CDG No.", value: cdoNo || "-" },
       { label: "CDG No. (Proposed)", value: proposedCdgNo || "-" },
@@ -127,7 +177,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       ]),
       { label: "Remarks", value: remarks || "-" },
     ],
-    [cdoNo, entryId, proposedCdgNo, remarks, selectedType, testNo, values]
+    [cdoNo, entryId, proposedCdgNo, remarks, selectedType, values]
   );
 
   const clearError = (field) => {
@@ -157,11 +207,12 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   };
 
   const handleValueChange = (rowKey, column) => (event) => {
+    const nextValue = typeof event === "string" ? event : event?.target?.value ?? "";
     setValues((current) => ({
       ...current,
       [rowKey]: {
         ...(current[rowKey] || { existing: "", proposed: "" }),
-        [column]: event.target.value,
+        [column]: nextValue,
       },
     }));
     clearValueError(rowKey, column);
@@ -171,8 +222,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const validate = () => {
     const nextErrors = {};
     if (!selectedType) nextErrors.selectedType = true;
-    if (!hasValue(testNo)) nextErrors.testNo = true;
-    else if (!isNumericValue(testNo)) nextErrors.testNo = true;
     if (!hasValue(entryDate)) nextErrors.entryDate = true;
     if (!hasValue(cdoNo)) nextErrors.cdoNo = true;
     if (!hasValue(proposedCdgNo)) nextErrors.proposedCdgNo = true;
@@ -205,7 +254,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
 
     return {
       type: CHANGE_CONTROL_TYPE,
-      test_no: Number(trimValue(testNo)),
       entry_date: entryDate || getTodayDate(),
       cdo_no: cdoNo,
       cdg_no_proposed: proposedCdgNo,
@@ -215,7 +263,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   };
 
   const handleClear = () => {
-    setTestNo("");
     setEntryDate(getTodayDate());
     setCdoNo("");
     setProposedCdgNo("");
@@ -232,6 +279,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     setMessage("");
     setShowPreview(false);
+    lastLoadedMixingRef.current = "";
   };
 
   const handlePreview = () => {
@@ -244,9 +292,8 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       await submitCardingChangeControlEntry(buildPayload());
       setShowPreview(false);
       setShowSuccess(true);
-      setTestNo("");
       setEntryDate(getTodayDate());
-      await loadLatestSaved();
+      await loadLatestSaved(values.mixing?.existing || values.mixing?.proposed || "");
     } catch (error) {
       setShowPreview(false);
       setMessage(error?.response?.data?.message || error?.message || "Wheel Change could not be submitted.");
@@ -258,6 +305,20 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const renderControl = (row, column) => {
     const value = values[row.key]?.[column] || "";
     const className = `${styles.input} ${errors.values?.[row.key]?.[column] ? styles.errorInput : ""}`;
+
+    if (row.key === "mixing") {
+      return (
+        <SearchableSelect
+          className={className}
+          value={value}
+          onChange={handleValueChange(row.key, column)}
+          options={mixingOptions}
+          placeholder={loadingVarietyOptions ? "Loading..." : varietyOptionsError ? "Select Mixing" : "Select"}
+          ariaLabel="Mixing"
+          disabled={loadingVarietyOptions && !mixingOptions.length}
+        />
+      );
+    }
 
     if (row.inputType === "select") {
       return (
@@ -309,19 +370,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className={styles.field}>
-            <label>Test No.</label>
-            <input
-              type="number"
-              className={`${styles.topInput} ${errors.testNo ? styles.errorInput : ""}`}
-              value={testNo}
-              onChange={(event) => {
-                setTestNo(event.target.value);
-                clearError("testNo");
-              }}
-            />
           </div>
 
           <div className={styles.field}>

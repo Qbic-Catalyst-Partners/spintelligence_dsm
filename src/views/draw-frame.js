@@ -72,6 +72,9 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
 const getDrawFrameEntryConfig = (type = "") =>
   DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRA" };
 
+const normalizeTypeName = (value = "") =>
+  String(value).trim().toLowerCase();
+
 const getDrawFrameUniqueId = (sequence, type = "") => {
   const config = getDrawFrameEntryConfig(type);
   return formatEntryId({
@@ -186,7 +189,7 @@ const matchesCotsTypePrefix = (machineName, processType) => {
 
 const getMachineCardDefaults = () => [];
 
-const formatMetric = (value) => (Number.isFinite(value) ? value.toFixed(2) : "");
+const formatMetric = (value) => (Number.isFinite(value) ? value.toFixed(3) : "");
 
 const emptyMetric = () => ({
   avg: "",
@@ -622,12 +625,19 @@ function DrawFrame() {
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-  const typeOptions = filterOptionsByDepartmentAccess(
+  const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
+  const isProcessParameterRequest = ["process parameter", "pp - breaker drawing", "pp - finisher drawing"].includes(
+    normalizeTypeName(requestedType)
+  );
+  const fullTypeOptions = filterOptionsByDepartmentAccess(
     primaryTypeOptions,
     accessByDepartment,
     user,
     "Draw Frame"
   );
+  const typeOptions = isProcessParameterRequest
+    ? fullTypeOptions.filter((option) => option.name === "PP - Breaker Drawing" || option.name === "PP - Finisher Drawing")
+    : fullTypeOptions.filter((option) => option.name !== "PP - Breaker Drawing" && option.name !== "PP - Finisher Drawing");
   const { actionLoading, actionSuccess, cotsEntries, uqcEntries, listLoading, error } = useSelector(
     (state) =>
       state.drawFrame ?? {
@@ -661,7 +671,6 @@ function DrawFrame() {
     date: today,
     shift: "General",
     processType: "Breaker",
-    serialNumber: "",
     machineNumber: "",
     remarks: "",
     readingCount: 5,
@@ -677,6 +686,7 @@ function DrawFrame() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const successHandledRef = useRef(false);
   const [wheelChangeSaving, setWheelChangeSaving] = useState(false);
   const [entrySeq, setEntrySeq] = useState(1);
   const cvMachineDropdownRef = useRef(null);
@@ -738,6 +748,24 @@ function DrawFrame() {
       }));
     }
   }, [form.type, typeOptions]);
+
+  useEffect(() => {
+    if (!requestedType || !typeOptions.length) return;
+
+    const normalizedRequest = normalizeTypeName(requestedType);
+    const matchedType = typeOptions.find((option) => {
+      const names = [option.name, ...(option.aliases || [])].map(normalizeTypeName);
+      return names.includes(normalizedRequest);
+    });
+
+    if (matchedType && matchedType.name !== form.type) {
+      setForm((current) => ({
+        ...current,
+        type: matchedType.name,
+        processType: matchedType.name === "PP - Finisher Drawing" ? "Finisher" : current.processType,
+      }));
+    }
+  }, [form.type, requestedType, typeOptions]);
 
   useEffect(() => {
     let isMounted = true;
@@ -913,7 +941,7 @@ function DrawFrame() {
   };
 
   const handleReadingChange = (setter, errorKey, index, value) => {
-    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 2 });
+    const nextValue = sanitizeNumericInput(value, { precision: 10, scale: 3 });
     setter((current) => current.map((item, itemIndex) => (itemIndex === index ? nextValue : item)));
     setHasCalculated(false);
     setOneYardMetrics([]);
@@ -1129,8 +1157,15 @@ function DrawFrame() {
 
   const handleSuccessClose = () => {
     setShowSuccess(false);
+    successHandledRef.current = false;
     handleClear();
     dispatch(clearDrawFrameState());
+  };
+
+  const showSuccessOnce = () => {
+    if (successHandledRef.current) return;
+    successHandledRef.current = true;
+    setShowSuccess(true);
   };
 
   useEffect(() => {
@@ -1229,7 +1264,6 @@ function DrawFrame() {
         if (item.fanWaste === "") errs.fanWaste = true;
         if (item.cotChange === "") errs.cotChange = true;
         if (item.stripperWaste === "") errs.stripperWaste = true;
-        if (item.thickPlace === "") errs.thickPlace = true;
         if (form.processType === "Finisher") {
           if (item.autoLevel === "") errs.autoLevel = true;
           if (item.silverMon === "") errs.silverMon = true;
@@ -1239,7 +1273,6 @@ function DrawFrame() {
         machineErrors.push(errs);
       });
     } else {
-      if (!form.serialNumber.trim()) headerErrors.serialNumber = true;
       if (!form.date.trim()) headerErrors.date = true;
       if (!form.machineNumber.trim()) headerErrors.machineNumber = true;
       if (!form.remarks.trim()) headerErrors.remarks = true;
@@ -1287,13 +1320,12 @@ function DrawFrame() {
         items.push({ label: `Machine ${idx + 1}`, value: m.machineName });
         items.push({ label: "Fan Waste", value: m.fanWaste || "-" });
         items.push({ label: "Cot Change", value: m.cotChange || "-" });
-        items.push({ label: "Stripper W", value: m.stripperWaste || "-" });
-        items.push({ label: "Thick Place", value: m.thickPlace || "-" });
+        items.push({ label: "Stripper Waste", value: m.stripperWaste || "-" });
         if (form.processType === "Finisher") {
           items.push({ label: "Auto Level", value: m.autoLevel || "-" });
-          items.push({ label: "Silver Mon", value: m.silverMon || "-" });
-          items.push({ label: "Mass Thick", value: m.massThick || "-" });
-          items.push({ label: "Scanning R", value: m.scanningR || "-" });
+          items.push({ label: "Silver Monitor", value: m.silverMon || "-" });
+          items.push({ label: "Mass Thick Place", value: m.massThick || "-" });
+          items.push({ label: "Scanning Roller", value: m.scanningR || "-" });
         }
       });
     } else if (form.type === "U% Data Entry") {
@@ -1318,7 +1350,6 @@ function DrawFrame() {
       items.push(...(wheelChangeRef.current?.getPreviewData?.() || []));
     } else if (!isHeaderEntry) {
       items.push({ label: "Type", value: form.type });
-      items.push({ label: "S. No.", value: form.serialNumber });
       items.push({ label: "Date", value: form.date });
       items.push({ label: "Machine Number", value: form.machineNumber });
       items.push({ label: "Remarks", value: form.remarks });
@@ -1423,7 +1454,7 @@ function DrawFrame() {
           },
         });
         reserveEntryId();
-        setShowSuccess(true);
+        showSuccessOnce();
       } catch (submitError) {
         setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
       }
@@ -1449,7 +1480,7 @@ function DrawFrame() {
         }).catch((error) => console.error("Submitted notebook creation failed:", error));
         reserveEntryId();
         await wheelChangeRef.current?.loadLatestSaved?.();
-        setShowSuccess(true);
+        showSuccessOnce();
       } catch (submitError) {
         setErrors((current) => ({
           ...current,
@@ -1481,10 +1512,9 @@ function DrawFrame() {
           })),
         }
       : {
-          entry_id: entryId,
-          type: form.type,
-          s_no: form.serialNumber,
-          entry_date: form.date,
+        entry_id: entryId,
+        type: form.type,
+        entry_date: form.date,
           machine_number: form.machineNumber,
           remarks: form.remarks,
           num_readings: Number(form.readingCount),
@@ -1535,7 +1565,7 @@ function DrawFrame() {
       if (form.type === "U% Data Entry") {
         dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
       }
-      setShowSuccess(true);
+      showSuccessOnce();
     }
   }, [actionSuccess, dispatch, form.type, reserveEntryId]);
 
@@ -1890,15 +1920,6 @@ function DrawFrame() {
               ) :(
                 <>
                   <div className={styles.field}>
-                    <label className={styles.label}>S. No.</label>
-                    <input
-                      value={form.serialNumber}
-                      onChange={(e) => handleFormChange("serialNumber", e.target.value)}
-                      className={`${styles.input} ${errors.header?.serialNumber ? styles.inputError : ""}`}
-                    />
-                  </div>
-
-                  <div className={styles.field}>
                     <label className={styles.label}>Entry ID</label>
                     <input type="text" value={entryId} readOnly disabled className={`${styles.input} ${errors.header?.date ? styles.inputError : ""}`} />
                   </div>
@@ -1987,7 +2008,7 @@ function DrawFrame() {
                         </div>
 
                         <div className={styles.field}>
-                          <label className={styles.label}>Stripper W</label>
+                          <label className={styles.label}>Stripper Waste</label>
                           <input
                             value={machine.stripperWaste}
                             onChange={(e) => handleMachineChange(index, "stripperWaste", e.target.value)}
@@ -2000,17 +2021,6 @@ function DrawFrame() {
                         {form.processType === "Finisher" ? (
                           <>
                             <div className={styles.field}>
-                              <label className={styles.label}>Thick Place</label>
-                              <input
-                                value={machine.thickPlace}
-                                onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}
-                                className={`${styles.input} ${
-                                  errors.machines?.[index]?.thickPlace ? styles.inputError : ""
-                                }`}
-                              />
-                            </div>
-
-                            <div className={styles.field}>
                               <label className={styles.label}>Auto Level</label>
                                 <input
                                   value={machine.autoLevel}
@@ -2022,7 +2032,7 @@ function DrawFrame() {
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Silver Mon</label>
+                              <label className={styles.label}>Silver Monitor</label>
                                 <input
                                   value={machine.silverMon}
                                   onChange={(e) => handleMachineChange(index, "silverMon", e.target.value)}
@@ -2033,7 +2043,7 @@ function DrawFrame() {
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Mass Thick</label>
+                              <label className={styles.label}>Mass Thick Place</label>
                                 <input
                                   value={machine.massThick}
                                   onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
@@ -2044,7 +2054,7 @@ function DrawFrame() {
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Scanning R</label>
+                              <label className={styles.label}>Scanning Roller</label>
                                 <input
                                   value={machine.scanningR}
                                   onChange={(e) => handleMachineChange(index, "scanningR", e.target.value)}
@@ -2054,18 +2064,7 @@ function DrawFrame() {
                                 />
                             </div>
                           </>
-                        ) : (
-                          <div className={`${styles.field} ${styles.machineFieldCompact}`}>
-                            <label className={styles.label}>Thick Place</label>
-                            <input
-                              value={machine.thickPlace}
-                              onChange={(e) => handleMachineChange(index, "thickPlace", e.target.value)}
-                              className={`${styles.input} ${
-                                errors.machines?.[index]?.thickPlace ? styles.inputError : ""
-                              }`}
-                            />
-                          </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -2319,6 +2318,7 @@ function DrawFrame() {
         message="Data Submitted"
         typeValue={form.type}
         onClose={handleSuccessClose}
+        closeLabel="OK"
       />
     </div>
   );

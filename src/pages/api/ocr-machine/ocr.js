@@ -2,11 +2,10 @@ import { Readable } from "node:stream";
 
 const getBackendBaseUrl = () =>
   String(
+    process.env.NEXT_PUBLIC_API_URL ||
     process.env.OCR_API_URL ||
-      process.env.API_URL ||
-      process.env.NEXT_PUBLIC_OCR_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      ""
+    process.env.API_URL ||
+    ""
   )
     .trim()
     .replace(/\/+$/, "");
@@ -28,7 +27,7 @@ export default async function handler(req, res) {
   const backendBaseUrl = getBackendBaseUrl();
   if (!backendBaseUrl) {
     return res.status(500).json({
-      message: "OCR backend URL is not configured. Set OCR_API_URL, API_URL, or NEXT_PUBLIC_API_URL.",
+      message: "OCR backend URL is not configured. Set NEXT_PUBLIC_API_URL.",
     });
   }
 
@@ -39,6 +38,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "content-type": req.headers["content-type"] || "application/octet-stream",
+        ...(req.headers.authorization ? { authorization: req.headers.authorization } : {}),
       },
       body: req,
       duplex: "half",
