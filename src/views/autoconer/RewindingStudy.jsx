@@ -643,7 +643,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   );
 
   const formFields = [
-    { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Rewinding Study" },
+    { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Select Type" },
     { label: "Entry ID", field: "date", type: "text", value: effectiveEntryId, placeholder: "Entry ID" },
     { label: "Count Name (From)", field: "countNameFrom", type: "select", options: countNameDropdownOptions, placeholder: "Select count name" },
     { label: "Actual Count", field: "actualCount", type: "text", placeholder: "0.00" },
