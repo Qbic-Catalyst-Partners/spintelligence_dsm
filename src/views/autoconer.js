@@ -66,6 +66,18 @@ const getAutoconerEntryConfig = (typeName) =>
     prefix: "ACR",
   };
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
+const dedupeOptionsByName = (options = []) => {
+  const seen = new Set();
+
+  return (Array.isArray(options) ? options : []).filter((option) => {
+    const key = normalizeTypeName(option?.name);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
 
 function Autoconer() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -88,11 +100,13 @@ function Autoconer() {
   );
   const typeOptions = useMemo(
     () =>
-      isProcessParameterRequest
+      dedupeOptionsByName(
+        isProcessParameterRequest
         ? fullTypeOptions.filter((item) => AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name))
         : fullTypeOptions.filter(
             (item) => !AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name)
           ),
+      ),
     [fullTypeOptions, isProcessParameterRequest]
   );
   const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
