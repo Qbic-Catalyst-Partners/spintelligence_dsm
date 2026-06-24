@@ -99,7 +99,7 @@ function Mixing() {
     const { lotOptions, lotOptionsError, loadingLotOptions } = useMixingLotOptions(
         shouldLoadLots ? selectedTypeName : ""
     );
-    const { entryId, reserveEntryId } = useDatabaseEntryId({
+    const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
         department: "Mixing",
         typeName: selectedTypeName,
         config: getEntryConfigForType(selectedTypeName),
@@ -219,6 +219,10 @@ function Mixing() {
     };
 
     const openPreview = () => {
+        if (entryIdLoading || !entryId) {
+            setValidationMessage("Entry ID is still loading. Please wait a moment and try again.");
+            return;
+        }
         const errors = {};
         if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
         if (selectedTypeName === "Openness Data Entry" && !mixingValue) errors.mixing = true;
@@ -470,7 +474,7 @@ function Mixing() {
                         onClear={handleClear}
                         onSave={openPreview}
                         saveLabel={actionLoading ? "Submitting..." : "Save Record"}
-                        disabled={actionLoading}
+                        disabled={actionLoading || entryIdLoading}
                     />
                 </div>
 

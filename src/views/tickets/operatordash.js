@@ -41,6 +41,16 @@ export default function operatorboard() {
     const [endDate, setEndDate] = useState("");
     const [activeTicketingView, setActiveTicketingView] = useState("threshold");
 
+    const resolveNotebookType = (ticket) =>
+        String(
+            ticket?.notebookType ||
+            ticket?.notebook_type ||
+            ticket?.notebook ||
+            ticket?.machine_name ||
+            ticket?.machine ||
+            ""
+        ).trim();
+
     const router = useRouter();
     const shouldUseSupervisorDashboard = isSupervisorNavUser(authUser);
 
@@ -49,19 +59,20 @@ export default function operatorboard() {
 
     const formatSubmissionTicket = (ticket) => {
         const transformedTicket = transformTicket(ticket);
-        return {
-            id: transformedTicket.ticket_id || ticket.ticket_id,
-            machine:
-                ticket.notebook ||
-                transformedTicket.notebook ||
-                transformedTicket.machine_name ||
-                "Unknown",
-            notebookType:
-                ticket.notebook ||
-                transformedTicket.notebook_type ||
-                transformedTicket.notebookType ||
-                transformedTicket.notebook ||
-                "Submission",
+            return {
+                id: transformedTicket.ticket_id || ticket.ticket_id,
+                machine:
+                    ticket.notebook ||
+                    transformedTicket.notebook ||
+                    transformedTicket.machine_name ||
+                    "Unknown",
+            notebookType: resolveNotebookType({
+                notebookType: transformedTicket.notebookType,
+                notebook_type: transformedTicket.notebook_type,
+                notebook: transformedTicket.notebook,
+                machine_name: transformedTicket.machine_name,
+                machine: transformedTicket.machine,
+            }) || "Submission",
             parameter:
                 ticket.parameter ||
                 transformedTicket.parameter ||
@@ -131,9 +142,7 @@ export default function operatorboard() {
                         id: transformedTicket.ticket_id,
                         machine: transformedTicket.machine_name,
                         notebookType:
-                            transformedTicket.notebook_type ||
-                            transformedTicket.notebookType ||
-                            transformedTicket.notebook ||
+                            resolveNotebookType(transformedTicket) ||
                             "Unknown",
                         parameter: transformedTicket.parameter,
                         actual: transformedTicket.actual,
@@ -269,7 +278,7 @@ export default function operatorboard() {
     const currentTickets = displayTickets.slice(indexOfFirst, indexOfLast);
     const uniqueNotebookTypes = [
         "All",
-        ...new Set(activeDataSource.map((t) => t.notebookType).filter(Boolean)),
+        ...new Set(activeDataSource.map((t) => resolveNotebookType(t)).filter(Boolean)),
     ];
 
     return (
@@ -524,7 +533,7 @@ export default function operatorboard() {
                                 <label>Notebook Type</label>
                                 <select value={notebookType} onChange={(e) => setNotebookType(e.target.value)}>
                                     <option>All</option>
-                                    {[...new Set(activeDataSource.map((t) => t.notebookType).filter(Boolean))].map((type) => (
+                                    {[...new Set(activeDataSource.map((t) => resolveNotebookType(t)).filter(Boolean))].map((type) => (
                                         <option key={type}>{type}</option>
                                     ))}
                                 </select>

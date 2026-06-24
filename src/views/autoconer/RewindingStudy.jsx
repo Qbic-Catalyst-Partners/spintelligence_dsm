@@ -179,6 +179,11 @@ const formatFaultPercent = (faultCount = 0, totalFaultCount = 0) => {
   return (faults / total).toFixed(2);
 };
 
+const isPreviewPlaceholder = (value) => {
+  const normalized = String(value ?? "").trim();
+  return !normalized || normalized === "-";
+};
+
 const isBlankReadingRow = (row = {}) =>
   ![
     row.drumNo,
@@ -412,14 +417,34 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   };
 
   const getPreviewData = () => [
-    ...Object.entries(form).map(([label, value]) => ({
-      label: label === "date" ? "Entry ID" : label,
-      value: label === "date" ? entryId || "-" : value || "-",
-    })),
-    ...readingRows.filter((row) => !isBlankReadingRow(row)).map((row, index) => ({
-      label: `Reading ${index + 1}`,
-      value: `${row.drumNo} | ${row.readingNumber} | ${row.shortName || "-"} | ${row.shortCut || "-"} | ${formatFaultPercent(row.shortCut, totalFaults)} | ${row.length} | ${row.weight} | ${row.breakPerMeter}`,
-    })),
+    ...Object.entries(form)
+      .map(([label, value]) => ({
+        label: label === "date" ? "Entry ID" : label,
+        value: label === "date" ? entryId : value,
+      }))
+      .filter((item) => !isPreviewPlaceholder(item.value)),
+    ...readingRows
+      .filter((row) => !isBlankReadingRow(row))
+      .map((row, index) => {
+        const rowValues = [
+          row.drumNo,
+          row.readingNumber,
+          row.shortName,
+          row.shortCut,
+          formatFaultPercent(row.shortCut, totalFaults),
+          row.length,
+          row.weight,
+          row.breakPerMeter,
+        ].filter((value) => !isPreviewPlaceholder(value));
+
+        return rowValues.length
+          ? {
+              label: `Reading ${index + 1}`,
+              value: rowValues.join(" | "),
+            }
+          : null;
+      })
+      .filter(Boolean),
   ];
 
   const submit = async () => {

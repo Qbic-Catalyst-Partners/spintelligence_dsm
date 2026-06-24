@@ -252,7 +252,7 @@
     background: #f8fbff;
     padding: 0 10px;
     color: #29374f;
-    font-size: 12px;
+    font-size: 11px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -305,7 +305,7 @@
     border-radius: 8px;
     cursor: pointer;
     color: #2b3951;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .multiSelectOption:hover {
@@ -314,12 +314,15 @@
 
 .multiSelectOption input {
     margin: 0;
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
 }
 
 .multiSelectEmpty {
     padding: 8px 6px;
     color: #7b89a0;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .ruleActions {

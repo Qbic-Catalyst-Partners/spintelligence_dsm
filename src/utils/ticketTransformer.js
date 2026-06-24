@@ -271,6 +271,13 @@ export const transformTicket = (ticket) => {
     ticket?.standard_value,
     ticket?.standardValue
   );
+  const notebookType = firstDisplayValue(
+    ticket?.notebook_type,
+    ticket?.notebookType,
+    ticket?.notebook,
+    ticket?.machine_name,
+    ticket?.machine
+  );
 
   const resolvedStatus =
     ticket?.status ??
@@ -287,6 +294,9 @@ export const transformTicket = (ticket) => {
 
     machine: ticket.machine_name,
     machine_name: ticket.machine_name,
+    notebookType,
+    notebook_type: notebookType,
+    notebook: notebookType,
 
     parameter,
     parameter_name: parameterNames,
