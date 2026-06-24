@@ -220,7 +220,7 @@ const ConeDensity = forwardRef(function ConeDensity(
       "Volume (Cm3)",
       "Density (Gms / Cm3)",
       "Gms / Litre",
-      "Winding Speed (m/Min)",
+      "W.Speed (m/Min)",
       "cN Tension",
       "Tensioner RPM",
       "Tensioner Force",
@@ -241,11 +241,11 @@ const ConeDensity = forwardRef(function ConeDensity(
     { label: "Volume (Cm3)", field: "volume", type: "text" },
     { label: "Density (Gms / Cm3)", field: "gmsPerCm3", type: "text" },
     { label: "Gms / Litre", field: "gmsLitre", type: "text" },
-    { label: "Winding Speed (m/Min)", field: "windingSpeed", type: "text" },
+    { label: "W.Speed (m/Min)", field: "windingSpeed", type: "text" },
     { label: "cN Tension", field: "cnTension", type: "text" },
     { label: "Tensioner RPM", field: "tensionerRpm", type: "text" },
     { label: "Tensioner Force", field: "tensionerForce", type: "text" },
-    { label: "N Cradle Pressure", field: "nCradlePressure", type: "text", span: 2 },
+    { label: "N Cradle Pressure", field: "nCradlePressure", type: "text", span: 1 },
     { label: "Remarks", field: "remarks", type: "textarea", span: 4 },
   ];
 
@@ -550,7 +550,7 @@ const calculateGmsPerLitre = (row = {}) => {
                     : "xl:col-span-1";
                 return (
                   <div key={item.field} className={`flex flex-col gap-2 ${colSpanClass}`}>
-                    <label className="text-[13px] font-semibold text-slate-700">{item.label}</label>
+                    <label className="text-[13px] font-semibold text-slate-500">{item.label}</label>
                     {item.type === "textarea" ? (
                       <textarea
                         rows={2}
@@ -649,7 +649,7 @@ const calculateGmsPerLitre = (row = {}) => {
           if (type === "pair") {
             return (
               <div key={field} className="flex flex-col gap-2">
-                <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+                <label className="text-[14px] font-semibold text-slate-500">{label}</label>
                 <div className="grid grid-cols-2 gap-3">
                   <input
                     type="text"
@@ -674,7 +674,7 @@ const calculateGmsPerLitre = (row = {}) => {
 
           return (
             <div key={field} className="flex flex-col gap-2">
-              <label className="text-[14px] font-semibold text-slate-700">{label}</label>
+              <label className="text-[14px] font-semibold text-slate-500">{label}</label>
               {type === "select" && (field === "countNameFrom" || field === "autoConerNo") ? (
                 <SearchableSelect
                   className={`${topFieldClass}${errorClass(errors[field])}`}
