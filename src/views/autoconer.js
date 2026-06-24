@@ -80,7 +80,6 @@ const dedupeOptionsByName = (options = []) => {
 };
 
 function Autoconer() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
@@ -115,6 +114,7 @@ function Autoconer() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
+  const [currentDateLabel, setCurrentDateLabel] = useState("");
   const selectedType = useMemo(
     () => typeOptions.find((item) => item.name === checkingType)?.name || "",
     [checkingType, typeOptions]
@@ -200,6 +200,10 @@ function Autoconer() {
       setCheckingType(typeOptions[0]?.name || "");
     }
   }, [checkingType, typeOptions]);
+
+  useEffect(() => {
+    setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+  }, []);
 
   useEffect(() => {
     if (!requestedType || !typeOptions.length) return;
