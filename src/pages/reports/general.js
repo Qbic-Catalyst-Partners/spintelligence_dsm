@@ -394,10 +394,33 @@ export default function GeneralReport() {
       const workbook = new ExcelJS.Workbook();
       workbook.creator = "Spintelligence";
       const usedSheetNames = new Set();
+      const reportDateLabel = `${toDisplayDate(fromDate)}${toDate && toDate !== fromDate ? ` - ${toDisplayDate(toDate)}` : ""}`;
 
       reportSections.forEach((section, index) => {
         const fields = section.fields.length ? section.fields : [{ key: "__report_data", label: "Report Data" }];
         const sheet = workbook.addWorksheet(getWorksheetName(section.typeName, index, usedSheetNames));
+        sheet.addRow([
+          "Department :",
+          selectedDept || "-",
+          "",
+          "Selected Date :",
+          reportDateLabel || "-",
+        ]);
+        sheet.addRow([
+          "Sub-department :",
+          selectedSubDept || "-",
+          "",
+          "Current Date :",
+          currentDateLabel || "-",
+        ]);
+        sheet.addRow([
+          "Notebook Type :",
+          isAllTypeSelected ? "All Type" : selectedNotebook || "-",
+          "",
+          "Current Time :",
+          currentTimeLabel || "-",
+        ]);
+        sheet.addRow([]);
         sheet.addRow(fields.map((field) => field.label));
 
         if (section.rows.length && section.fields.length) {
@@ -408,12 +431,20 @@ export default function GeneralReport() {
           sheet.addRow(["No data stored for the selected date."]);
         }
 
-        sheet.getRow(1).font = { bold: true };
-        sheet.columns = fields.map((field) => ({
-          header: field.label,
-          key: field.key,
-          width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
-        }));
+        [1, 2, 3, 5].forEach((rowNumber) => {
+          sheet.getRow(rowNumber).font = { bold: true };
+        });
+        sheet.getRow(4).height = 4;
+        sheet.columns = [
+          { width: 18 },
+          { width: 28 },
+          { width: 6 },
+          { width: 18 },
+          { width: 28 },
+          ...fields.map((field) => ({
+            width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
+          })),
+        ];
       });
 
       const buffer = await workbook.xlsx.writeBuffer();
