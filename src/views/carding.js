@@ -206,6 +206,7 @@ function Carding() {
                             <MdEditNote />
                             <h3>Inspection Data Entry</h3>
                             <InputScreenUploadButton
+                                visible={selectedType === "Between & Within Card Data Entry"}
                                 className="ml-auto"
                                 docType={ocrDocType}
                                 inspectionType={selectedType === "Between & Within Card Data Entry" ? bwcInspectionType : ""}

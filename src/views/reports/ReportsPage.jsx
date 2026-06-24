@@ -1175,6 +1175,7 @@ function ReportsPage() {
   const selectedReportSource = isTeamPerformanceReport
     ? accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT]?.[TEAM_PERFORMANCE_REPORT_TYPE]
     : accessibleReportSources[department]?.[subDepartment]?.[reportType];
+  const isInvoiceDataReport = String(reportType || "").trim().toLowerCase().includes("invoice");
 
   const getUserId = (user) =>
     String(user?.id || user?.user_id || user?.userId || user?.employeeId || user?.employee_id || user?.email || "");
@@ -1255,6 +1256,7 @@ function ReportsPage() {
   }, [builderOptions.input_fields, reportType, rows, selectedFields]);
 
   const filteredRows = useMemo(() => {
+    if (isInvoiceDataReport) return rows;
     if (!dateFilterActive) return rows;
 
     const start = startDate ? new Date(startDate) : null;
@@ -1269,7 +1271,7 @@ function ReportsPage() {
       if (end && date > end) return false;
       return true;
     });
-  }, [dateFilterActive, endDate, rows, startDate]);
+  }, [dateFilterActive, endDate, isInvoiceDataReport, rows, startDate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -2192,50 +2194,52 @@ function ReportsPage() {
                 </select>
                 <FiChevronDown />
               </label>
-              <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
-                <span>Date - From</span>
-                <button
-                  type="button"
-                  className={styles.dateInputs}
-                  onClick={() => openDatePicker("start")}
-                >
-                  <span className={styles.dateDisplay}>{toDisplayDate(startDate)}</span>
-                  <FiCalendar />
-                </button>
-                {activeDatePicker === "start" ? (
-                  <div className={styles.datePickerPopover}>
-                    <CalendarPanel
-                      month={calendarMonth}
-                      onDateClick={handleCalendarDateClick}
-                      onMonthChange={setCalendarMonth}
-                      selectedValue={startDate}
-                      title="Select From Date"
-                    />
-                  </div>
-                ) : null}
-              </div>
-              <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
-                <span>Date - To</span>
-                <button
-                  type="button"
-                  className={styles.dateInputs}
-                  onClick={() => openDatePicker("end")}
-                >
-                  <span className={styles.dateDisplay}>{toDisplayDate(endDate)}</span>
-                  <FiCalendar />
-                </button>
-                {activeDatePicker === "end" ? (
-                  <div className={styles.datePickerPopover}>
-                    <CalendarPanel
-                      month={calendarMonth}
-                      onDateClick={handleCalendarDateClick}
-                      onMonthChange={setCalendarMonth}
-                      selectedValue={endDate}
-                      title="Select To Date"
-                    />
-                  </div>
-                ) : null}
-              </div>
+              <>
+                <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
+                  <span>Date - From</span>
+                  <button
+                    type="button"
+                    className={styles.dateInputs}
+                    onClick={() => openDatePicker("start")}
+                  >
+                    <span className={styles.dateDisplay}>{toDisplayDate(startDate)}</span>
+                    <FiCalendar />
+                  </button>
+                  {activeDatePicker === "start" ? (
+                    <div className={styles.datePickerPopover}>
+                      <CalendarPanel
+                        month={calendarMonth}
+                        onDateClick={handleCalendarDateClick}
+                        onMonthChange={setCalendarMonth}
+                        selectedValue={startDate}
+                        title="Select From Date"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+                <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
+                  <span>Date - To</span>
+                  <button
+                    type="button"
+                    className={styles.dateInputs}
+                    onClick={() => openDatePicker("end")}
+                  >
+                    <span className={styles.dateDisplay}>{toDisplayDate(endDate)}</span>
+                    <FiCalendar />
+                  </button>
+                  {activeDatePicker === "end" ? (
+                    <div className={styles.datePickerPopover}>
+                      <CalendarPanel
+                        month={calendarMonth}
+                        onDateClick={handleCalendarDateClick}
+                        onMonthChange={setCalendarMonth}
+                        selectedValue={endDate}
+                        title="Select To Date"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </>
             </div>
           </section>
 

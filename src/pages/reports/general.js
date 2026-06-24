@@ -197,19 +197,20 @@ export default function GeneralReport() {
     [notebooks]
   );
   const isAllTypeSelected = selectedNotebook === ALL_TYPES_VALUE;
+  const isInvoiceDataType = String(selectedNotebook || "").trim().toLowerCase().includes("invoice");
   const filteredRows = useMemo(
-    () => filterRowsByDateRange(rows, fromDate, toDate),
-    [fromDate, rows, toDate]
+    () => (isInvoiceDataType ? rows : filterRowsByDateRange(rows, fromDate, toDate)),
+    [fromDate, isInvoiceDataType, rows, toDate]
   );
   const filteredRowsByType = useMemo(
     () =>
       Object.fromEntries(
         Object.entries(rowsByType).map(([typeName, typeRows]) => [
           typeName,
-          filterRowsByDateRange(typeRows, fromDate, toDate),
+          isInvoiceDataType ? typeRows : filterRowsByDateRange(typeRows, fromDate, toDate),
         ])
       ),
-    [fromDate, rowsByType, toDate]
+    [fromDate, isInvoiceDataType, rowsByType, toDate]
   );
   const reportFields = useMemo(() => {
     if (isAllTypeSelected) return [];
@@ -503,37 +504,39 @@ export default function GeneralReport() {
             <FiChevronDown />
           </div>
 
-          <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
-            <label>Date - From</label>
-            <button type="button" className={styles.dateInputs} onClick={() => openCalendarPicker(fromDateInputRef)}>
-              <span className={styles.dateDisplay}>{toDisplayDate(fromDate)}</span>
-              <input
-                ref={fromDateInputRef}
-                className={styles.hiddenDateInput}
-                type="date"
-                value={fromDate}
-                tabIndex={-1}
-                onChange={(event) => setFromDate(event.target.value)}
-              />
-              <FiCalendar />
-            </button>
-          </div>
+          <>
+            <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
+              <label>Date - From</label>
+              <button type="button" className={styles.dateInputs} onClick={() => openCalendarPicker(fromDateInputRef)}>
+                <span className={styles.dateDisplay}>{toDisplayDate(fromDate)}</span>
+                <input
+                  ref={fromDateInputRef}
+                  className={styles.hiddenDateInput}
+                  type="date"
+                  value={fromDate}
+                  tabIndex={-1}
+                  onChange={(event) => setFromDate(event.target.value)}
+                />
+                <FiCalendar />
+              </button>
+            </div>
 
-          <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
-            <label>Date - To</label>
-            <button type="button" className={styles.dateInputs} onClick={() => openCalendarPicker(toDateInputRef)}>
-              <span className={styles.dateDisplay}>{toDisplayDate(toDate)}</span>
-              <input
-                ref={toDateInputRef}
-                className={styles.hiddenDateInput}
-                type="date"
-                value={toDate}
-                tabIndex={-1}
-                onChange={(event) => setToDate(event.target.value)}
-              />
-              <FiCalendar />
-            </button>
-          </div>
+            <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
+              <label>Date - To</label>
+              <button type="button" className={styles.dateInputs} onClick={() => openCalendarPicker(toDateInputRef)}>
+                <span className={styles.dateDisplay}>{toDisplayDate(toDate)}</span>
+                <input
+                  ref={toDateInputRef}
+                  className={styles.hiddenDateInput}
+                  type="date"
+                  value={toDate}
+                  tabIndex={-1}
+                  onChange={(event) => setToDate(event.target.value)}
+                />
+                <FiCalendar />
+              </button>
+            </div>
+          </>
 
           <div />
         </div>

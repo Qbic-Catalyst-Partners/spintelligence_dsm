@@ -349,6 +349,7 @@ function Mixing() {
                                     <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
                                 </div>
                                 <InputScreenUploadButton
+                                    visible={selectedTypeName === "Cotton HVI Data Entry" || selectedTypeName === "AFIS Data Entry"}
                                     disabled={ocrBusy}
                                     returnTo="/mixing"
                                     docType={selectedTypeName === "AFIS Data Entry" ? "afis" : "hvi"}

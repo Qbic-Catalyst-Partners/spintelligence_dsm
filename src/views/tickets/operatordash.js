@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/router";
 import Image from "next/image";
-import { FiPlus } from "react-icons/fi";
+import { FiCalendar, FiPlus } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
 import { useSelector } from "react-redux";
 import { getOperatorTickets, getSubmissionTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
@@ -40,6 +40,8 @@ export default function operatorboard() {
     const [startDate, setStartDate] = useState("");
     const [endDate, setEndDate] = useState("");
     const [activeTicketingView, setActiveTicketingView] = useState("threshold");
+    const startDateInputRef = useRef(null);
+    const endDateInputRef = useRef(null);
 
     const resolveNotebookType = (ticket) =>
         String(
@@ -53,6 +55,21 @@ export default function operatorboard() {
 
     const router = useRouter();
     const shouldUseSupervisorDashboard = isSupervisorNavUser(authUser);
+    const openCalendarPicker = (inputRef) => {
+        const input = inputRef.current;
+        if (!input) return;
+        if (typeof input.showPicker === "function") {
+            input.showPicker();
+            return;
+        }
+        input.focus();
+        input.click();
+    };
+    const formatDateDisplay = (value) => {
+        if (!value) return "";
+        const [year, month, day] = String(value).split("-");
+        return year && month && day ? `${day}-${month}-${year}` : String(value);
+    };
 
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 6;
@@ -385,22 +402,44 @@ export default function operatorboard() {
                 <div className={styles["sup-date-group"]}>
                     <div className={styles["sup-filter"]}>
                         <label>Start Date</label>
-                        <input
-                            type="date"
+                        <button
+                            type="button"
                             className={styles["sup-select"]}
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                        />
+                            onClick={() => openCalendarPicker(startDateInputRef)}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}
+                        >
+                            <span>{formatDateDisplay(startDate) || "Select date"}</span>
+                            <input
+                                ref={startDateInputRef}
+                                type="date"
+                                value={startDate}
+                                tabIndex={-1}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+                            />
+                            <FiCalendar aria-hidden="true" />
+                        </button>
                     </div>
 
                     <div className={styles["sup-filter"]}>
                         <label>End Date</label>
-                        <input
-                            type="date"
+                        <button
+                            type="button"
                             className={styles["sup-select"]}
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                        />
+                            onClick={() => openCalendarPicker(endDateInputRef)}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}
+                        >
+                            <span>{formatDateDisplay(endDate) || "Select date"}</span>
+                            <input
+                                ref={endDateInputRef}
+                                type="date"
+                                value={endDate}
+                                tabIndex={-1}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+                            />
+                            <FiCalendar aria-hidden="true" />
+                        </button>
                     </div>
                 </div>
             </div>

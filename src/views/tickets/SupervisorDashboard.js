@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import styles from "../../styles/supervisordashboard.module.css";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
+import { FiCalendar } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
 import { updateOperatorTicketStatus } from "../../apis/operatorApi";
 import { acknowledgeTicketApi } from "../../apis/supervisorApi";
@@ -36,6 +37,11 @@ const formatDateTime = (dateString) => {
     minute: "2-digit",
     hour12: true,
   });
+};
+const formatDateDisplay = (value) => {
+  if (!value) return "";
+  const [year, month, day] = String(value).split("-");
+  return year && month && day ? `${day}-${month}-${year}` : String(value);
 };
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase();
@@ -233,10 +239,23 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const [showFilter, setShowFilter] = useState(false);
   const [activeTicketingView, setActiveTicketingView] = useState(isReviewOnlyL3Mode ? "review" : "threshold");
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
+  const startDateInputRef = useRef(null);
+  const endDateInputRef = useRef(null);
 
   useEffect(() => {
     dispatch(fetchSupervisorTickets(supervisorTicketQuery));
   }, [dispatch, isAdminUser]);
+
+  const openCalendarPicker = (inputRef) => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+    input.focus();
+    input.click();
+  };
 
   useEffect(() => {
     if (!isReviewOnlyL3Mode) return;
@@ -539,21 +558,43 @@ export default function SupervisorDashboard({ mode = "L2" }) {
           <div className={styles["sup-date-group"]}>
             <div className={styles["sup-filter"]}>
               <label>Start Date</label>
-              <input
-                type="date"
+              <button
+                type="button"
                 className={styles["sup-select"]}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
+                onClick={() => openCalendarPicker(startDateInputRef)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}
+              >
+                <span>{formatDateDisplay(startDate) || "Select date"}</span>
+                <input
+                  ref={startDateInputRef}
+                  type="date"
+                  value={startDate}
+                  tabIndex={-1}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+                />
+                <FiCalendar aria-hidden="true" />
+              </button>
             </div>
             <div className={styles["sup-filter"]}>
               <label>End Date</label>
-              <input
-                type="date"
+              <button
+                type="button"
                 className={styles["sup-select"]}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+                onClick={() => openCalendarPicker(endDateInputRef)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}
+              >
+                <span>{formatDateDisplay(endDate) || "Select date"}</span>
+                <input
+                  ref={endDateInputRef}
+                  type="date"
+                  value={endDate}
+                  tabIndex={-1}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+                />
+                <FiCalendar aria-hidden="true" />
+              </button>
             </div>
           </div>
         </div>
