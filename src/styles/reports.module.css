@@ -336,6 +336,70 @@
   grid-column: span 1;
 }
 
+.generateActionGroup {
+  display: flex;
+  align-items: end;
+}
+
+.generateReportButton {
+  width: fit-content;
+  min-width: 132px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: #4056a8;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(64, 86, 168, 0.16);
+  padding: 0 14px;
+}
+
+.generateReportButton:hover {
+  background: #34479a;
+}
+
+.generateReportButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reportMetaBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  margin-top: 4px;
+  padding: 0 18px 4px;
+}
+
+.reportMetaItem {
+  display: grid;
+  gap: 4px;
+  color: #172033;
+}
+
+.reportMetaLabel {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.reportMetaItem strong {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.reportSectionTitle {
+  margin: 0 0 10px;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 800;
+  color: #101828;
+}
+
 .dateInputs {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -526,6 +590,11 @@
   color: #172033;
 }
 
+.availableCard h2 strong,
+.previewCard h2 strong {
+  font-weight: 800;
+}
+
 .availableCard h3 {
   margin: 12px 0 0;
   font-size: 14px;
@@ -654,8 +723,11 @@
   top: 0;
   z-index: 1;
   background: #f8fafc;
-  font-weight: 700;
-  color: #1e293b;
+  color: #6f87a8;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .tableWrap tr:last-child td {
@@ -706,6 +778,11 @@
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.exportActions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .exportActions button:first-child {

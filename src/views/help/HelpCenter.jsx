@@ -323,10 +323,7 @@ export default function HelpCenter() {
           </button>
         ) : null}
         {activeTab === "notifications" ? (
-          <button type="button" onClick={handleToggleSubscription} className={styles.addButton}>
-            <FiBell />
-            <span>{analysisSubscribed ? "Mute" : "Unmute"}</span>
-          </button>
+          null
         ) : null}
       </div>
 

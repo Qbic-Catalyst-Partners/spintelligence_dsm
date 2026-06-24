@@ -2075,12 +2075,18 @@ function ReportsPage() {
               word-break: break-word;
               white-space: normal;
             }
-            th { background: #f6f8fb; }
+            th {
+              background: #f6f8fb;
+              color: #6f87a8;
+              font-size: 12px;
+              font-weight: 600;
+              letter-spacing: 0;
+            }
             tr { break-inside: avoid; page-break-inside: avoid; }
           </style>
         </head>
         <body>
-          <h1>${escapeHtmlText(activeReportDisplay.department)} - ${escapeHtmlText(activeReportDisplay.subDepartment)} - ${escapeHtmlText(activeReportDisplay.reportType)}</h1>
+          <h1>${escapeHtmlText(activeReportDisplay.department)} - <strong>${escapeHtmlText(activeReportDisplay.subDepartment)}</strong> - ${escapeHtmlText(activeReportDisplay.reportType)}</h1>
           <table>
             <thead><tr>${selectedFields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("")}</tr></thead>
             <tbody>${exportRows
@@ -2241,7 +2247,9 @@ function ReportsPage() {
 
           <section className={styles.contentGrid}>
             <aside className={styles.availableCard}>
-              <h2>{activeReportDisplay.subDepartment} - {activeReportDisplay.reportType}</h2>
+              <h2>
+                <strong>{activeReportDisplay.subDepartment}</strong> - {activeReportDisplay.reportType}
+              </h2>
               <h3>Available Fields</h3>
               <p>Drag or click the fields to add to report</p>
               <div className={styles.fieldList}>

@@ -174,6 +174,8 @@ export default function GeneralReport() {
   const [selectedDept, setSelectedDept] = useState("");
   const [selectedSubDept, setSelectedSubDept] = useState("");
   const [selectedNotebook, setSelectedNotebook] = useState("");
+  const [isReportGenerated, setIsReportGenerated] = useState(false);
+  const [generatedAt, setGeneratedAt] = useState("");
   const [rows, setRows] = useState([]);
   const [rowsByType, setRowsByType] = useState({});
   const [loadingRows, setLoadingRows] = useState(false);
@@ -237,6 +239,25 @@ export default function GeneralReport() {
     () => reportSections.reduce((total, section) => total + section.rows.length, 0),
     [reportSections]
   );
+  const reportDateLabel = `${toDisplayDate(fromDate)}${toDate && toDate !== fromDate ? ` - ${toDisplayDate(toDate)}` : ""}`;
+  const reportTimeLabel = generatedAt
+    ? new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(new Date(generatedAt))
+    : "-";
+  const currentDateLabel = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const currentTimeLabel = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(new Date());
 
   useEffect(() => {
     if (!selectedDept && departments.length) {
@@ -256,6 +277,7 @@ export default function GeneralReport() {
     const nextNotebook = notebooks.length ? ALL_TYPES_VALUE : "";
     if (!selectedNotebook || !validTypes.includes(selectedNotebook)) {
       setSelectedNotebook(nextNotebook);
+      setIsReportGenerated(false);
     }
   }, [notebooks, selectedNotebook]);
 
@@ -263,7 +285,7 @@ export default function GeneralReport() {
     let isActive = true;
 
     const loadRows = async () => {
-      if (!selectedDept || !selectedSubDept || !selectedNotebook) {
+      if (!isReportGenerated || !selectedDept || !selectedSubDept || !selectedNotebook) {
         setRows([]);
         setRowsByType({});
         return;
@@ -315,7 +337,11 @@ export default function GeneralReport() {
     return () => {
       isActive = false;
     };
-  }, [notebooks, selectedDept, selectedNotebook, selectedSubDept]);
+  }, [isReportGenerated, notebooks, selectedDept, selectedNotebook, selectedSubDept]);
+
+  useEffect(() => {
+    setIsReportGenerated(false);
+  }, [fromDate, toDate, selectedDept, selectedSubDept, selectedNotebook]);
 
   const openCalendarPicker = (inputRef) => {
     const input = inputRef.current;
@@ -326,6 +352,12 @@ export default function GeneralReport() {
     }
     input.focus();
     input.click();
+  };
+
+  const handleGenerateReport = () => {
+    if (!selectedDept || !selectedSubDept || !selectedNotebook) return;
+    setIsReportGenerated(true);
+    setGeneratedAt(new Date().toISOString());
   };
 
   const getReportFilename = (extension) =>
@@ -423,7 +455,8 @@ export default function GeneralReport() {
             body { margin: 0; color: #101828; font-family: Arial, sans-serif; font-size: 10px; }
             h1 { margin: 0 0 8px; font-size: 18px; }
             h2 { margin: 16px 0 8px; font-size: 13px; break-after: avoid; }
-            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; margin-bottom: 14px; color: #344054; font-size: 11px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 14px; color: #344054; font-size: 11px; }
+            .meta-col { display: grid; gap: 4px; align-content: start; }
             .meta strong { color: #101828; }
             table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 10px; page-break-inside: auto; }
             tr { page-break-inside: avoid; page-break-after: auto; }
@@ -434,12 +467,16 @@ export default function GeneralReport() {
         <body>
           <h1>General Report</h1>
           <section class="meta">
-            <div><strong>Department:</strong> ${escapeHtml(selectedDept || "-")}</div>
-            <div><strong>Sub Department:</strong> ${escapeHtml(selectedSubDept || "-")}</div>
-            <div><strong>Type:</strong> ${escapeHtml(isAllTypeSelected ? "All Type" : selectedNotebook || "-")}</div>
-            <div><strong>Date:</strong> ${escapeHtml(toDisplayDate(fromDate))} - ${escapeHtml(toDisplayDate(toDate))}</div>
-            <div><strong>Rows:</strong> ${totalRows}</div>
-            <div><strong>Columns:</strong> ${totalColumns}</div>
+            <div class="meta-col">
+              <div><strong>Dept:</strong> ${escapeHtml(selectedDept || "-")}</div>
+              <div><strong>Sub-Dept:</strong> ${escapeHtml(selectedSubDept || "-")}</div>
+              <div><strong>Type:</strong> ${escapeHtml(isAllTypeSelected ? "All Type" : selectedNotebook || "-")}</div>
+            </div>
+            <div class="meta-col">
+              <div><strong>Selected Date:</strong> ${escapeHtml(toDisplayDate(fromDate))} - ${escapeHtml(toDisplayDate(toDate))}</div>
+              <div><strong>Current Date:</strong> ${escapeHtml(currentDateLabel)}</div>
+              <div><strong>Current Time:</strong> ${escapeHtml(currentTimeLabel)}</div>
+            </div>
           </section>
           ${sectionsHtml}
         </body>
@@ -535,65 +572,81 @@ export default function GeneralReport() {
             </button>
           </div>
 
-          <div />
+          <div className={styles.generateActionGroup}>
+            <button type="button" className={styles.generateReportButton} onClick={handleGenerateReport}>
+              Generate Report
+            </button>
+          </div>
         </div>
 
-        {reportSections.map((section) => (
-          <section key={section.typeName} style={{ marginTop: 18 }}>
-            {isAllTypeSelected ? <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>{section.typeName}</h2> : null}
-            <div className={styles.tableWrap}>
-              <table>
-                <thead>
-                  <tr>
-                    {section.fields.length ? (
-                      section.fields.map((field) => <th key={field.key}>{field.label}</th>)
-                    ) : (
-                      <th>Report Data</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingRows ? (
-                    <tr>
-                      <td colSpan={section.fields.length || 1}>Loading report details...</td>
-                    </tr>
-                  ) : null}
-                  {!loadingRows && rowsError ? (
-                    <tr>
-                      <td colSpan={section.fields.length || 1}>{rowsError}</td>
-                    </tr>
-                  ) : null}
-                  {!loadingRows && !rowsError && section.rows.length ? (
-                    section.rows.map((row, rowIndex) => (
-                      <tr key={row?.id || row?.entry_id || `${section.typeName}-${rowIndex}`}>
-                        {section.fields.map((field) => (
-                          <td key={field.key}>{getCellValue(row, field)}</td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : null}
-                  {!loadingRows && !rowsError && !section.rows.length ? (
-                    <tr>
-                      <td colSpan={section.fields.length || 1}>No data stored for the selected date.</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+        {isReportGenerated ? (
+          <>
+            <div className={styles.reportMetaBar}>
+              <div className={styles.reportMetaItem}>
+                <span className={styles.reportMetaLabel}>Current Time</span>
+                <strong>{reportTimeLabel}</strong>
+              </div>
+              <div className={styles.reportMetaItem}>
+                <span className={styles.reportMetaLabel}>Date</span>
+                <strong>{reportDateLabel || "-"}</strong>
+              </div>
             </div>
-          </section>
-        ))}
+
+            {reportSections.map((section) => (
+              <section key={section.typeName} style={{ marginTop: 18 }}>
+                <h2 className={styles.reportSectionTitle}>{section.typeName}</h2>
+                <div className={styles.tableWrap}>
+                  <table>
+                    <thead>
+                      <tr>
+                        {section.fields.length ? (
+                          section.fields.map((field) => <th key={field.key}>{field.label}</th>)
+                        ) : (
+                          <th>Report Data</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingRows ? (
+                        <tr>
+                          <td colSpan={section.fields.length || 1}>Loading report details...</td>
+                        </tr>
+                      ) : null}
+                      {!loadingRows && rowsError ? (
+                        <tr>
+                          <td colSpan={section.fields.length || 1}>{rowsError}</td>
+                        </tr>
+                      ) : null}
+                      {!loadingRows && !rowsError && section.rows.length ? (
+                        section.rows.map((row, rowIndex) => (
+                          <tr key={row?.id || row?.entry_id || `${section.typeName}-${rowIndex}`}>
+                            {section.fields.map((field) => (
+                              <td key={field.key}>{getCellValue(row, field)}</td>
+                            ))}
+                          </tr>
+                        ))
+                      ) : null}
+                      {!loadingRows && !rowsError && !section.rows.length ? (
+                        <tr>
+                          <td colSpan={section.fields.length || 1}>No data stored for the selected date.</td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </>
+        ) : null}
 
         <div className={styles.exportBar} style={{ marginTop: 18 }}>
-          <p>
-            Ready to export Report with <strong>{totalColumns}</strong> columns and{" "}
-            <strong>{totalRows}</strong> rows
-          </p>
+          <p>Select filters and generate the report to view tables.</p>
 
           <div className={styles.exportActions}>
             <button type="button" onClick={() => router.push("/reports")}>Schedule Report</button>
-            <button type="button" onClick={handleExportCsv}>Export CSV</button>
-            <button type="button" onClick={handleExportExcel}>Export Excel</button>
-            <button type="button" className={styles.primaryExport} onClick={handleExportPdf}>Export PDF</button>
+            <button type="button" onClick={handleExportCsv} disabled={!isReportGenerated}>Export CSV</button>
+            <button type="button" onClick={handleExportExcel} disabled={!isReportGenerated}>Export Excel</button>
+            <button type="button" className={styles.primaryExport} onClick={handleExportPdf} disabled={!isReportGenerated}>Export PDF</button>
           </div>
         </div>
       </section>

@@ -906,9 +906,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         <FiCheck />
                                         <span>Read all</span>
                                     </button>
-                                    <button type="button" onClick={handleToggleAnalysisSubscription}>
-                                        {analysisSubscribed ? "Mute" : "Unmute"}
-                                    </button>
                                 </div>
                             </div>
                             {notificationsLoading ? (
