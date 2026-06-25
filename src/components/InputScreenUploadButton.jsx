@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 export default function InputScreenUploadButton({
   className = "",
   disabled = false,
+  visible = false,
   navigateToOcr = true,
   returnTo = "",
   docType = "hvi",
@@ -11,6 +12,9 @@ export default function InputScreenUploadButton({
   screenName = "",
 }) {
   const router = useRouter();
+
+  if (!visible) return null;
+
   const handleClick = () => {
     if (disabled) return;
     if (!navigateToOcr) return;

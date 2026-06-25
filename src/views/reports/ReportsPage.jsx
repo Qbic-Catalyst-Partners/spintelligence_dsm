@@ -1175,6 +1175,7 @@ function ReportsPage() {
   const selectedReportSource = isTeamPerformanceReport
     ? accessibleReportSources[department]?.[TEAM_PERFORMANCE_SUB_DEPARTMENT]?.[TEAM_PERFORMANCE_REPORT_TYPE]
     : accessibleReportSources[department]?.[subDepartment]?.[reportType];
+  const isInvoiceDataReport = String(reportType || "").trim().toLowerCase().includes("invoice");
 
   const getUserId = (user) =>
     String(user?.id || user?.user_id || user?.userId || user?.employeeId || user?.employee_id || user?.email || "");
@@ -1255,6 +1256,7 @@ function ReportsPage() {
   }, [builderOptions.input_fields, reportType, rows, selectedFields]);
 
   const filteredRows = useMemo(() => {
+    if (isInvoiceDataReport) return rows;
     if (!dateFilterActive) return rows;
 
     const start = startDate ? new Date(startDate) : null;
@@ -1269,7 +1271,7 @@ function ReportsPage() {
       if (end && date > end) return false;
       return true;
     });
-  }, [dateFilterActive, endDate, rows, startDate]);
+  }, [dateFilterActive, endDate, isInvoiceDataReport, rows, startDate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -2028,7 +2030,41 @@ function ReportsPage() {
       workbook.creator = "Spintelligence";
       const sheet = workbook.addWorksheet("Report");
       const fields = selectedFields.length ? selectedFields : [{ key: "__report_data", label: "Report Data" }];
+      const currentDateLabel = new Intl.DateTimeFormat("en-GB", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      const currentTimeLabel = new Intl.DateTimeFormat("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      }).format(new Date());
+      const reportDateLabel = `${startDate || "-"}${endDate && endDate !== startDate ? ` - ${endDate}` : ""}`;
 
+      sheet.addRow([
+        "Department :",
+        activeReportDisplay.department || "-",
+        "",
+        "Selected Date :",
+        reportDateLabel || "-",
+      ]);
+      sheet.addRow([
+        "Sub-department :",
+        activeReportDisplay.subDepartment || "-",
+        "",
+        "Current Date :",
+        currentDateLabel || "-",
+      ]);
+      sheet.addRow([
+        "Notebook Type :",
+        activeReportDisplay.reportType || "-",
+        "",
+        "Current Time :",
+        currentTimeLabel || "-",
+      ]);
+      sheet.addRow([]);
       sheet.addRow(fields.map((field) => field.label));
       if (exportRows.length && selectedFields.length) {
         exportRows.forEach((row) => {
@@ -2038,12 +2074,20 @@ function ReportsPage() {
         sheet.addRow(["No report details found."]);
       }
 
-      sheet.getRow(1).font = { bold: true };
-      sheet.columns = fields.map((field) => ({
-        header: field.label,
-        key: field.key,
-        width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
-      }));
+      [1, 2, 3, 5].forEach((rowNumber) => {
+        sheet.getRow(rowNumber).font = { bold: true };
+      });
+      sheet.getRow(4).height = 4;
+      sheet.columns = [
+        { width: 18 },
+        { width: 28 },
+        { width: 6 },
+        { width: 18 },
+        { width: 28 },
+        ...fields.map((field) => ({
+          width: Math.min(Math.max(String(field.label).length + 4, 16), 36),
+        })),
+      ];
 
       const buffer = await workbook.xlsx.writeBuffer();
       downloadFile("report.xlsx", buffer, XLSX_MIME);
@@ -2057,14 +2101,40 @@ function ReportsPage() {
   const handleExportPdf = () => {
     const popup = window.open("", "_blank", "width=900,height=700");
     if (!popup) return;
+    const currentDateLabel = new Intl.DateTimeFormat("en-GB", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const currentTimeLabel = new Intl.DateTimeFormat("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(new Date());
     popup.document.write(`
       <html>
         <head>
           <title>Report</title>
           <style>
             @page { size: landscape; margin: 12mm; }
-            body { font-family: Arial, sans-serif; padding: 24px; color: #14213d; }
+            * { box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #14213d; }
             h1 { font-size: 20px; margin: 0 0 16px; }
+            .meta {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 18px;
+              margin-bottom: 14px;
+              font-size: 11px;
+              color: #344054;
+            }
+            .meta-col {
+              display: grid;
+              gap: 4px;
+              align-content: start;
+            }
+            .meta strong { color: #101828; }
             table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
             th, td {
               border: 1px solid #d7dee9;
@@ -2075,12 +2145,30 @@ function ReportsPage() {
               word-break: break-word;
               white-space: normal;
             }
-            th { background: #f6f8fb; }
+            th {
+              background: #f6f8fb;
+              color: #6f87a8;
+              font-size: 12px;
+              font-weight: 600;
+              letter-spacing: 0;
+            }
             tr { break-inside: avoid; page-break-inside: avoid; }
           </style>
         </head>
         <body>
-          <h1>${escapeHtmlText(activeReportDisplay.department)} - ${escapeHtmlText(activeReportDisplay.subDepartment)} - ${escapeHtmlText(activeReportDisplay.reportType)}</h1>
+          <h1>Report</h1>
+          <section class="meta">
+            <div class="meta-col">
+              <div><strong>Dept:</strong> ${escapeHtmlText(activeReportDisplay.department)}</div>
+              <div><strong>Sub-Dept:</strong> ${escapeHtmlText(activeReportDisplay.subDepartment)}</div>
+              <div><strong>Type:</strong> ${escapeHtmlText(activeReportDisplay.reportType)}</div>
+            </div>
+            <div class="meta-col">
+              <div><strong>Selected Date:</strong> ${escapeHtmlText(startDate)} - ${escapeHtmlText(endDate)}</div>
+              <div><strong>Current Date:</strong> ${escapeHtmlText(currentDateLabel)}</div>
+              <div><strong>Current Time:</strong> ${escapeHtmlText(currentTimeLabel)}</div>
+            </div>
+          </section>
           <table>
             <thead><tr>${selectedFields.map((field) => `<th>${escapeHtmlText(field.label)}</th>`).join("")}</tr></thead>
             <tbody>${exportRows
@@ -2192,56 +2280,60 @@ function ReportsPage() {
                 </select>
                 <FiChevronDown />
               </label>
-              <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
-                <span>Date - From</span>
-                <button
-                  type="button"
-                  className={styles.dateInputs}
-                  onClick={() => openDatePicker("start")}
-                >
-                  <span className={styles.dateDisplay}>{toDisplayDate(startDate)}</span>
-                  <FiCalendar />
-                </button>
-                {activeDatePicker === "start" ? (
-                  <div className={styles.datePickerPopover}>
-                    <CalendarPanel
-                      month={calendarMonth}
-                      onDateClick={handleCalendarDateClick}
-                      onMonthChange={setCalendarMonth}
-                      selectedValue={startDate}
-                      title="Select From Date"
-                    />
-                  </div>
-                ) : null}
-              </div>
-              <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
-                <span>Date - To</span>
-                <button
-                  type="button"
-                  className={styles.dateInputs}
-                  onClick={() => openDatePicker("end")}
-                >
-                  <span className={styles.dateDisplay}>{toDisplayDate(endDate)}</span>
-                  <FiCalendar />
-                </button>
-                {activeDatePicker === "end" ? (
-                  <div className={styles.datePickerPopover}>
-                    <CalendarPanel
-                      month={calendarMonth}
-                      onDateClick={handleCalendarDateClick}
-                      onMonthChange={setCalendarMonth}
-                      selectedValue={endDate}
-                      title="Select To Date"
-                    />
-                  </div>
-                ) : null}
-              </div>
+              <>
+                <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
+                  <span>Date - From</span>
+                  <button
+                    type="button"
+                    className={styles.dateInputs}
+                    onClick={() => openDatePicker("start")}
+                  >
+                    <span className={styles.dateDisplay}>{toDisplayDate(startDate)}</span>
+                    <FiCalendar />
+                  </button>
+                  {activeDatePicker === "start" ? (
+                    <div className={styles.datePickerPopover}>
+                      <CalendarPanel
+                        month={calendarMonth}
+                        onDateClick={handleCalendarDateClick}
+                        onMonthChange={setCalendarMonth}
+                        selectedValue={startDate}
+                        title="Select From Date"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+                <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
+                  <span>Date - To</span>
+                  <button
+                    type="button"
+                    className={styles.dateInputs}
+                    onClick={() => openDatePicker("end")}
+                  >
+                    <span className={styles.dateDisplay}>{toDisplayDate(endDate)}</span>
+                    <FiCalendar />
+                  </button>
+                  {activeDatePicker === "end" ? (
+                    <div className={styles.datePickerPopover}>
+                      <CalendarPanel
+                        month={calendarMonth}
+                        onDateClick={handleCalendarDateClick}
+                        onMonthChange={setCalendarMonth}
+                        selectedValue={endDate}
+                        title="Select To Date"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </>
             </div>
           </section>
 
           <section className={styles.contentGrid}>
             <aside className={styles.availableCard}>
-              <h2>{activeReportDisplay.subDepartment} - {activeReportDisplay.reportType}</h2>
+              <h2>
+                <strong>{activeReportDisplay.subDepartment}</strong> - {activeReportDisplay.reportType}
+              </h2>
               <h3>Available Fields</h3>
               <p>Drag or click the fields to add to report</p>
               <div className={styles.fieldList}>

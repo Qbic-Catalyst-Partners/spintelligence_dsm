@@ -258,7 +258,7 @@
 .dashboardWelcomeBlock > span {
     font-size: 1.5rem;
     line-height: 1.2;
-    font-weight: 800;
+    font-weight: 600;
     color: #1f2937;
 }
 
@@ -324,7 +324,7 @@
 
 .referenceSection h1 {
     margin: 0 0 14px;
-    color: #111827;
+    color: #5f6f85;
     font-size: 20px;
     line-height: 26px;
     font-weight: 700;
