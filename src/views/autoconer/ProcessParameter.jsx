@@ -8,7 +8,6 @@ import {
   fetchAutoconerConsigneeMaster,
   fetchAutoconerProcessParameters,
   submitAutoconerProcessParameter,
-  updateAutoconerProcessParameter,
 } from "@/apis/autoconer";
 import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
 import {
@@ -18,6 +17,7 @@ import {
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
 import styles from "@/styles/AutoconerProcessParameter.module.css";
 
 
@@ -120,7 +120,7 @@ const mapApiEntryToVersion = (entry) => ({
   label: formatDisplayDate(entry?.creation_date),
   data: {
     versionId: getEntryId(entry),
-    paramId: entry?.entry_id || entry?.ins_code || "",
+    paramId: normalizeProcessParameterId(entry?.entry_id || entry?.ins_code || ""),
     type: "Process Parameter",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
@@ -169,7 +169,6 @@ const isVersionComplete = (version) =>
   );
 
 const buildPayload = (form, entryId = "") => ({
-  entry_id: entryId || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -206,8 +205,9 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   },
   ref
 ) {
+  const safeSelectedType = String(selectedType?.name ?? selectedType ?? "Process Parameter").trim() || "Process Parameter";
   const [versions, setVersions] = useState([]);
-  const [form, setForm] = useState(() => createDefaultForm(selectedType));
+  const [form, setForm] = useState(() => createDefaultForm(safeSelectedType));
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -215,6 +215,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("process-parameter");
   const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
 
@@ -254,18 +255,21 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
       setVersions(nextVersions);
       setVersionsError("");
+      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
         const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: activeVersion.id, type: selectedType };
+          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId, type: safeSelectedType };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
-        setForm(createDefaultForm(selectedType));
+        setForm(createDefaultForm(safeSelectedType));
         setExpandedVersionId(null);
+        setSavedProcessParameterId("");
       }
     } catch (error) {
       setVersions([]);
@@ -299,7 +303,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   useEffect(() => {
     setForm((current) => ({
       ...current,
-      type: selectedType || "Process Parameter",
+      type: safeSelectedType || "Process Parameter",
     }));
   }, [selectedType]);
 
@@ -333,7 +337,15 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const handleVersionSelect = (version) => {
-    setForm({ ...version.data, versionId: version.id, type: selectedType });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({
+      ...createDefaultForm(safeSelectedType),
+      ...version.data,
+      versionId: "",
+      paramId: nextProcessParameterId,
+      type: safeSelectedType,
+    });
+    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
     setSubmitError("");
   };
@@ -349,7 +361,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   const validate = () => {
     const nextErrors = {};
-    if (!String(selectedType || "").trim()) nextErrors.selectedType = true;
+    if (!String(safeSelectedType || "").trim()) nextErrors.selectedType = true;
     if (!String(form.countName || "").trim()) nextErrors.countName = true;
     if (!String(form.consigneeName || "").trim()) nextErrors.consigneeName = true;
     if (!String(form.creationDate || "").trim()) nextErrors.creationDate = true;
@@ -361,10 +373,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const getPreviewData = () => [
-    { label: "Type", value: selectedType || "-" },
+    { label: "Type", value: safeSelectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -378,21 +390,17 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload(form, entryId);
-      const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
-
-      if (selectedExistingVersion) {
-        const { entry_id, ...updatePayload } = payload;
-        await updateAutoconerProcessParameter(selectedExistingVersion.id, updatePayload);
-      } else {
-        await submitAutoconerProcessParameter(payload);
-      }
+      const response = await submitAutoconerProcessParameter(payload);
+      setSavedProcessParameterId(
+        String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
+      );
 
       try {
         await createThresholdViolationTickets({
           department: "Quality Control",
           subDepartment: "Autoconer",
-          screenName: selectedType || "Process Parameter",
-          machineName: form.machineNo || selectedType || "Process Parameter",
+          screenName: safeSelectedType || "Process Parameter",
+          machineName: form.machineNo || safeSelectedType || "Process Parameter",
           values: fieldDefs.map((field) => ({
             label: field.label,
             value: form[field.key],
@@ -405,12 +413,12 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       await loadVersions();
       return true;
     } catch (error) {
-      const errorMessage = String(error?.message || "");
-      setSubmitError(
+        const errorMessage = String(error?.message || "");
+        setSubmitError(
         /duplicate entry_id/i.test(errorMessage)
-          ? "Entry ID already exists. Please clear and save again to generate next ID."
-          : errorMessage || "Unable to submit the form."
-      );
+          ? "Process Parameter ID already exists. Please clear and save again to generate next ID."
+            : errorMessage || "Unable to submit the form."
+        );
       return false;
     } finally {
       setIsSubmitting(false);
@@ -418,9 +426,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const clear = () => {
-    setForm(createDefaultForm(selectedType));
+    setForm(createDefaultForm(safeSelectedType));
     setErrors({});
     setSubmitError("");
+    setSavedProcessParameterId("");
   };
 
   useImperativeHandle(ref, () => ({
@@ -509,15 +518,19 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <label>Type</label>
             <select
               className={`${styles.field}${errors.selectedType ? ` ${styles.errorField}` : ""}`}
-              value={selectedType}
+              value={safeSelectedType}
               onChange={(event) => onTypeChange?.(event.target.value)}
             >
               <option value="">Select Type</option>
-              {types.map((item) => (
-                <option key={item.id} value={item.name}>
-                  {item.displayName ?? item.name}
-                </option>
-              ))}
+              {types.map((item) => {
+                const value = typeof item === "string" ? item : String(item?.name ?? "").trim();
+                const label = typeof item === "string" ? item : String(item?.displayName ?? item?.name ?? "").trim();
+                return (
+                  <option key={value} value={value}>
+                    {label || value}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -525,7 +538,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <label>Count Name</label>
             <SearchableSelect
               className={`${styles.field}${errors.countName ? ` ${styles.errorField}` : ""}`}
-              value={form.countName}
+              value={form.countName || ""}
               onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
               placeholder={
@@ -543,7 +556,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <label>Consignee Name</label>
             <SearchableSelect
               className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
-              value={form.consigneeName}
+              value={form.consigneeName || ""}
               onChange={(value) => handleFieldChange("consigneeName", value)}
               options={consigneeOptions}
               placeholder="Search or select consignee name"
@@ -552,11 +565,11 @@ const ProcessParameter = forwardRef(function ProcessParameter(
           </div>
 
           <div className={styles.fieldGroup}>
-            <label>Entry ID</label>
+            <label>Process Parameter ID</label>
             <input
               type="text"
               className={styles.field}
-              value={entryId}
+              value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
               readOnly
               disabled
             />
@@ -573,7 +586,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
               <input
                 type="text"
                 className={`${styles.field}${errors[field.key] ? ` ${styles.errorField}` : ""}`}
-                value={form[field.key]}
+                value={form[field.key] || ""}
                 onChange={(event) => handleFieldChange(field.key, event.target.value)}
               />
             </div>

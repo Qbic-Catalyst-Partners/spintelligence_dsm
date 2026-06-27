@@ -1,0 +1,19 @@
+
+> spintelligence-frontend-beta1@0.1.0 dev
+> next dev --port 3000
+
+▲ Next.js 16.2.0 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.29.56:3000
+- Environments: .env
+✓ Ready in 3.0s
+Creating turbopack project {
+  dir: 'C:\\Users\\Sneha\\Downloads\\spintelligence-frontend-beta1',
+  testMode: true
+}
+
+○ Compiling /carding ...
+ GET /carding?type=Process%20Parameter 200 in 15.4s (next.js: 14.9s, application-code: 497ms)
+✓ Compiled in 6s
+✓ Compiled in 2.5s
+[?25h

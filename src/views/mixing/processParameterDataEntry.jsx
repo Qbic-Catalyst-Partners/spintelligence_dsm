@@ -7,12 +7,13 @@ import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
 import { getMixingProcessParameterEntries } from "@/apis/mixing";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
-import { clearMixingState, submitProcessParameter, updateProcessParameter } from "@/store/slices/mixing";
+import { clearMixingState, submitProcessParameter } from "@/store/slices/mixing";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
+import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
 
 const createBlankRow = (label) => ({
   label,
@@ -87,6 +88,7 @@ const parseNumberValue = (value) => {
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
+  const paramId = normalizeProcessParameterId(entry?.param_id || "");
   const blendMap = new Map(
     Array.isArray(entry?.blends)
       ? entry.blends.map((blend) => [Number(blend.blend_no), blend])
@@ -100,7 +102,7 @@ const mapApiEntryToVersion = (entry) => {
     date: normalizedDate,
     data: {
       versionId: String(entry?.qc_id ?? entry?.param_id ?? ""),
-      paramId: entry?.param_id || "",
+      paramId,
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
       creationDate: normalizedDate || new Date().toISOString().split("T")[0],
@@ -350,6 +352,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
+  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isMounted, setIsMounted] = useState(false);
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useMixingCountOptions();
 
@@ -364,16 +367,22 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       setVersions(nextVersions);
 
       if (nextVersions.length > 0) {
+        setSavedProcessParameterId(getNextProcessParameterId(nextVersions, "PP", 4));
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
-          return { ...cloneForm(activeVersion.data), versionId: activeVersion.id };
+          return {
+            ...cloneForm(activeVersion.data),
+            versionId: "",
+            paramId: getNextProcessParameterId(nextVersions, "PP", 4),
+          };
         });
         const latestCompleteVersion = nextVersions.find(isVersionComplete);
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
+        setSavedProcessParameterId("");
       }
       setVersionsError("");
     } catch (error) {
@@ -435,7 +444,9 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const handleVersionSelect = (version) => {
-    setForm({ ...cloneForm(version.data), versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
+    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
   };
 
@@ -444,7 +455,8 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const handleVersionToggle = (version) => {
-    setForm({ ...cloneForm(version.data), versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
       scrollToForm();
@@ -475,9 +487,6 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
   const buildPayload = () => ({
     process_parameter: "Mixing",
-    consignee_name: form.consigneeName,
-    count_name: form.countName,
-    creation_date: form.creationDate,
     status: "DONE",
     blends: form.rows.map((row, index) => ({
       blend_no: index + 1,
@@ -494,15 +503,10 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     if (!validate()) return false;
 
     const payload = buildPayload();
-    const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
-    const response = selectedExistingVersion
-      ? await dispatch(
-          updateProcessParameter({
-            qcId: selectedExistingVersion.id,
-            payload,
-          })
-        ).unwrap()
-      : await dispatch(submitProcessParameter(payload)).unwrap();
+    const response = await dispatch(submitProcessParameter(payload)).unwrap();
+    setSavedProcessParameterId(
+      String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
+    );
     await loadVersions();
     dispatch(clearMixingState());
     onSubmitSuccess?.(response);
@@ -512,12 +516,13 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const clear = () => {
     setForm(createDefaultForm());
     setErrors({});
+    setSavedProcessParameterId("");
   };
 
   const getPreviewData = () => [
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
     ...form.rows.flatMap((row, index) => [
       { label: `Lot No ${index + 1}`, value: row.lotNo || "-" },
       { label: row.label, value: row.blend || "-" },
@@ -585,11 +590,11 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
+          <label className="text-[14px] font-semibold text-slate-700">Process Parameter ID</label>
           <input
             type="text"
             className={topFieldClass}
-            value={entryId}
+            value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
             readOnly
             disabled
           />

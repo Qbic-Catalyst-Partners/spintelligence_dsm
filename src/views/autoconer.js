@@ -47,9 +47,9 @@ const AUTOCONER_PROCESS_PARAMETER_TYPES = [
   "PP - Autoconer Q3",
 ];
 const AUTOCONER_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "APP", width: 4, routePath: "/autoconer/process-parameters" },
-  "PP - Autoconer Q2": { prefix: "AQD", width: 4, routePath: "/autoconer/q2" },
-  "PP - Autoconer Q3": { prefix: "AQT", width: 4, routePath: "/autoconer/q3" },
+  "Process Parameter": { prefix: "PP", width: 4, routePath: "/autoconer/process-parameter" },
+  "PP - Autoconer Q2": { prefix: "PP", width: 4, routePath: "/autoconer/q2" },
+  "PP - Autoconer Q3": { prefix: "PP", width: 4, routePath: "/autoconer/q3" },
   "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/inspection-data-entry" },
   "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
   "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
@@ -66,6 +66,19 @@ const getAutoconerEntryConfig = (typeName) =>
     prefix: "ACR",
   };
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
+const getTypeName = (value = "") => String(value?.name ?? value ?? "").trim();
+const formatTypeValue = (value = "") => getTypeName(value);
+const stripTypeOptionsForUi = (options = []) =>
+  (Array.isArray(options) ? options : []).map((option) => ({
+    id: option?.id,
+    name: option?.name || "",
+    displayName: option?.displayName || option?.name || "",
+    aliases: Array.isArray(option?.aliases) ? option.aliases : [],
+  }));
+const normalizeTypeOptionsForChildren = (options = []) =>
+  (Array.isArray(options) ? options : []).map((option) =>
+    String(option?.displayName ?? option?.name ?? option ?? "").trim()
+  ).filter(Boolean);
 const dedupeOptionsByName = (options = []) => {
   const seen = new Set();
 
@@ -86,7 +99,11 @@ function Autoconer() {
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
-  const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
+  const isProcessParameterRequest = [
+    "process parameter",
+    "pp - autoconer q2",
+    "pp - autoconer q3",
+  ].includes(normalizeTypeName(requestedType));
   const fullTypeOptions = useMemo(
     () =>
       filterOptionsByDepartmentAccess(
@@ -105,8 +122,13 @@ function Autoconer() {
         : fullTypeOptions.filter(
             (item) => !AUTOCONER_PROCESS_PARAMETER_TYPES.includes(item.name)
           ),
-      ),
+    ),
     [fullTypeOptions, isProcessParameterRequest]
+  );
+  const uiTypeOptions = useMemo(() => stripTypeOptionsForUi(typeOptions), [typeOptions]);
+  const childTypeOptions = useMemo(
+    () => normalizeTypeOptionsForChildren(typeOptions),
+    [typeOptions]
   );
   const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
@@ -116,7 +138,7 @@ function Autoconer() {
   const [validationMessage, setValidationMessage] = useState("");
   const [currentDateLabel, setCurrentDateLabel] = useState("");
   const selectedType = useMemo(
-    () => typeOptions.find((item) => item.name === checkingType)?.name || "",
+    () => formatTypeValue(checkingType),
     [checkingType, typeOptions]
   );
   const SelectedComponent = useMemo(
@@ -188,11 +210,17 @@ function Autoconer() {
   };
 
   const handleTypeChange = (nextType) => {
-    setCheckingType(nextType);
+    const nextTypeName = getTypeName(nextType);
+    setCheckingType(nextTypeName);
     setRegisteredActions({});
     setPreviewItems([]);
     setShowPreview(false);
     setShowSuccess(false);
+
+    const nextRoute = getAutoconerEntryConfig(nextTypeName)?.routePath;
+    if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
+      router.push(nextRoute);
+    }
   };
 
   useEffect(() => {
@@ -237,8 +265,8 @@ function Autoconer() {
                 selectedTypeName={selectedType}
                 selectedType={selectedType}
                 onTypeChange={handleTypeChange}
-                types={typeOptions}
-                typeOptions={typeOptions.map((type) => type.name)}
+                types={childTypeOptions}
+                typeOptions={childTypeOptions}
                 entryId={entryId}
                 tablePortalTargetId="autoconer-table-slot"
                 savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}

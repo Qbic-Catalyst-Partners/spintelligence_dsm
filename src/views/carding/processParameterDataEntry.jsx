@@ -7,7 +7,6 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   getCardingProcessParameterEntries,
   submitCardingProcessParameterEntry,
-  updateCardingProcessParameterEntry,
 } from "@/apis/carding";
 import useCardingCountOptions from "@/hooks/useCardingCountOptions";
 import {
@@ -16,6 +15,7 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -119,6 +119,9 @@ const isVersionComplete = (version) =>
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
+  const paramId = normalizeProcessParameterId(
+    entry?.param_id ?? entry?.qc_code ?? entry?.qc_id ?? entry?.process_parameter_id ?? entry?.id ?? ""
+  );
 
   return {
     id: String(entry?.qc_id ?? entry?.id ?? entry?.qc_code ?? Date.now()),
@@ -126,7 +129,7 @@ const mapApiEntryToVersion = (entry) => {
     label: formatDisplayDate(normalizedDate),
     data: {
       versionId: String(entry?.qc_id ?? entry?.id ?? ""),
-      paramId: entry?.qc_code || entry?.param_id || "",
+      paramId,
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
       creationDate: normalizedDate || new Date().toISOString().split("T")[0],
@@ -306,6 +309,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useCardingCountOptions("qc-header");
 
   const countOptions = buildProcessParameterOptions(
@@ -345,18 +349,21 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
 
       setVersions(nextVersions);
       setVersionsError("");
+      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
         const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
-          return { ...activeVersion.data, versionId: activeVersion.id };
+          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
+        setSavedProcessParameterId("");
       }
     } catch (error) {
       setVersions([]);
@@ -406,13 +413,16 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   };
 
   const handleVersionSelect = (version) => {
-    setForm({ ...version.data, versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...version.data, versionId: "", paramId: nextProcessParameterId });
+    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
     setSubmitError("");
   };
 
   const handleVersionToggle = (version) => {
-    setForm({ ...version.data, versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...version.data, versionId: "", paramId: nextProcessParameterId });
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
       setErrors({});
@@ -441,10 +451,10 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   };
 
   const buildPayload = () => ({
-    type: selectedType || "Process Parameter",
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
+    type: selectedType || "Process Parameter",
     machine_no: parseNumberValue(form.machineNo),
     lickerin_speed: parseNumberValue(form.lickerinSpeed),
     cylinder_speed: parseNumberValue(form.cylinderSpeed),
@@ -470,13 +480,14 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     setForm(createDefaultForm());
     setErrors({});
     setSubmitError("");
+    setSavedProcessParameterId("");
   };
 
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -490,13 +501,17 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload();
-      const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
-
-      if (selectedExistingVersion) {
-        await updateCardingProcessParameterEntry(selectedExistingVersion.id, payload);
-      } else {
-        await submitCardingProcessParameterEntry(payload);
-      }
+      const response = await submitCardingProcessParameterEntry(payload);
+      setSavedProcessParameterId(
+        normalizeProcessParameterId(
+          response?.param_id ||
+            response?.entry_id ||
+            response?.process_parameter_id ||
+            response?.qc_id ||
+            response?.id ||
+            ""
+        )
+      );
 
       try {
         await createThresholdViolationTickets({
@@ -595,11 +610,11 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
             </div>
 
             <div className="flex flex-col gap-1.5 min-w-0">
-              <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
+              <label className="text-[14px] font-semibold text-slate-700">Process Parameter ID</label>
               <input
                 type="text"
                 className={topFieldClass}
-                value={entryId || ""}
+                value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
                 readOnly
                 disabled
               />

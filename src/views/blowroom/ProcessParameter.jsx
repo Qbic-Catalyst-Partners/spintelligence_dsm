@@ -7,7 +7,6 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   fetchBlowroomProcessParametersApi,
   saveBlowroomProcessParameterApi,
-  updateBlowroomProcessParameterApi,
 } from "@/apis/blowroom";
 import useBlowroomCountOptions from "@/hooks/useBlowroomCountOptions";
 import {
@@ -17,6 +16,7 @@ import {
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
 import styles from "@/styles/ProcessParameter.module.css";
 
 const createDefaultForm = (selectedTypeName = "Process Parameter") => ({
@@ -103,7 +103,7 @@ const mapApiEntryToVersion = (entry) => ({
   label: formatDisplayDate(entry?.creation_date),
   data: {
     versionId: getEntryId(entry),
-    paramId: getDisplayEntryId(entry),
+    paramId: normalizeProcessParameterId(getDisplayEntryId(entry)),
     type: "Process Parameter",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
@@ -151,6 +151,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useBlowroomCountOptions("header");
 
@@ -187,18 +188,26 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
       setVersions(nextVersions);
       setVersionsError("");
+      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
         const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: activeVersion.id, type: selectedTypeName };
+          return {
+            ...activeVersion.data,
+            versionId: "",
+            paramId: nextProcessParameterId,
+            type: selectedTypeName,
+          };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm(selectedTypeName));
         setExpandedVersionId(null);
+        setSavedProcessParameterId("");
       }
     } catch (error) {
       setVersions([]);
@@ -249,7 +258,9 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const handleVersionSelect = (version) => {
-    setForm({ ...version.data, versionId: version.id, type: selectedTypeName });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...version.data, versionId: "", paramId: nextProcessParameterId, type: selectedTypeName });
+    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
     setSubmitError("");
   };
@@ -277,7 +288,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const buildPayload = () => ({
-    entry_id: entryId || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -305,13 +315,14 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     setForm(createDefaultForm(selectedTypeName));
     setErrors({});
     setSubmitError("");
+    setSavedProcessParameterId("");
   };
 
   const getPreviewData = () => [
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -325,13 +336,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload();
-      const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
-
-      if (selectedExistingVersion) {
-        await updateBlowroomProcessParameterApi(selectedExistingVersion.id, payload);
-      } else {
-        await saveBlowroomProcessParameterApi(payload);
-      }
+      const response = await saveBlowroomProcessParameterApi(payload);
+      setSavedProcessParameterId(
+        String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
+      );
 
       try {
         await createThresholdViolationTickets({
@@ -491,14 +499,14 @@ const ProcessParameter = forwardRef(function ProcessParameter(
           </div>
 
           <div className={styles.fieldGroup}>
-            <label>Entry ID</label>
-            <input
-              type="text"
-              className={topFieldClass}
-              value={entryId || ""}
-              readOnly
-              disabled
-            />
+          <label>Process Parameter ID</label>
+          <input
+            type="text"
+            className={topFieldClass}
+            value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
+            readOnly
+            disabled
+          />
           </div>
         </div>
 

@@ -7,7 +7,6 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   getSpinningProcessParameterEntries,
   spinningProcessParameterDataEntry,
-  updateSpinningProcessParameterEntry,
 } from "@/apis/spinning";
 import useSpinningCountOptions from "@/hooks/useSpinningCountOptions";
 import {
@@ -16,6 +15,7 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -99,6 +99,7 @@ const isVersionComplete = (version) =>
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
+  const paramId = normalizeProcessParameterId(entry?.param_id || "");
 
   return {
     id: String(entry?.qc_id ?? entry?.param_id ?? Date.now()),
@@ -107,7 +108,7 @@ const mapApiEntryToVersion = (entry) => {
     date: normalizedDate,
     data: {
       versionId: String(entry?.qc_id ?? entry?.param_id ?? ""),
-      paramId: entry?.param_id || "",
+      paramId,
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
       creationDate: normalizedDate || new Date().toISOString().split("T")[0],
@@ -375,6 +376,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
+  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useSpinningCountOptions("master");
 
   const countOptions = buildProcessParameterOptions(
@@ -402,16 +404,23 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       setVersions(nextVersions);
 
       if (nextVersions.length > 0) {
+        const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+        setSavedProcessParameterId(nextProcessParameterId);
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
-          return { ...cloneForm(activeVersion.data), versionId: activeVersion.id };
+          return {
+            ...cloneForm(activeVersion.data),
+            versionId: "",
+            paramId: nextProcessParameterId,
+          };
         });
         const latestCompleteVersion = nextVersions.find(isVersionComplete);
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
+        setSavedProcessParameterId("");
       }
       setVersionsError("");
     } catch (error) {
@@ -454,7 +463,9 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const handleVersionSelect = (version) => {
-    setForm({ ...cloneForm(version.data), versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
+    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
   };
 
@@ -463,7 +474,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const handleVersionToggle = (version) => {
-    setForm({ ...cloneForm(version.data), versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
       scrollToForm();
@@ -491,7 +503,6 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const buildPayload = () => ({
-    entry_id: entryId,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -523,13 +534,10 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     if (!validate()) return false;
 
     const payload = buildPayload();
-    const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
-
-    if (selectedExistingVersion) {
-      await updateSpinningProcessParameterEntry(selectedExistingVersion.id, payload);
-    } else {
-      await spinningProcessParameterDataEntry(payload);
-    }
+    const response = await spinningProcessParameterDataEntry(payload);
+    setSavedProcessParameterId(
+      String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
+    );
 
     try {
       await createThresholdViolationTickets({
@@ -554,13 +562,14 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const clear = () => {
     setForm(createDefaultForm());
     setErrors({});
+    setSavedProcessParameterId("");
   };
 
   const getPreviewData = () => [
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "#SPN-001" },
+    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -624,11 +633,11 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
+          <label className="text-[14px] font-semibold text-slate-700">Process Parameter ID</label>
           <input
             type="text"
             className={topFieldClass}
-            value={entryId || "#SPN-001"}
+            value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
             readOnly
             disabled
           />

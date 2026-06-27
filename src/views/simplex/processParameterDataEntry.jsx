@@ -7,7 +7,6 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   fetchSimplexProcessParameterEntries,
   submitSimplexProcessParameterEntry,
-  updateSimplexProcessParameterEntry,
 } from "@/apis/simplex";
 import useSimplexCountOptions from "@/hooks/useSimplexCountOptions";
 import {
@@ -16,6 +15,7 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
+import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -100,6 +100,8 @@ const isVersionComplete = (version) =>
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
+  const rawParamId = entry?.entry_id || entry?.process_parameter_id || entry?.param_id || "";
+  const paramId = normalizeProcessParameterId(rawParamId) || String(rawParamId).trim();
 
   return {
     id: String(entry?.id ?? entry?.process_parameter_id ?? entry?.param_id ?? Date.now()),
@@ -107,7 +109,7 @@ const mapApiEntryToVersion = (entry) => {
     label: formatDisplayDate(normalizedDate),
     data: {
       versionId: String(entry?.id ?? entry?.process_parameter_id ?? entry?.param_id ?? ""),
-      paramId: entry?.param_id || entry?.process_parameter_id || "",
+      paramId,
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
       creationDate: normalizedDate || new Date().toISOString().split("T")[0],
@@ -288,6 +290,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isMounted, setIsMounted] = useState(false);
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useSimplexCountOptions("process_parameter");
 
@@ -322,18 +325,21 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
       setVersions(nextVersions);
       setVersionsError("");
+      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
         const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: activeVersion.id };
+          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
+        setSavedProcessParameterId("");
       }
     } catch (error) {
       setVersions([]);
@@ -380,7 +386,9 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   };
 
   const handleVersionSelect = (version) => {
-    setForm({ ...cloneForm(version.data), versionId: version.id });
+    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
+    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
+    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
     setSubmitError("");
   };
@@ -409,6 +417,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   };
 
   const buildPayload = () => ({
+    entry_id: form.paramId || savedProcessParameterId || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -438,7 +447,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -449,6 +458,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     setForm(createDefaultForm());
     setErrors({});
     setSubmitError("");
+    setSavedProcessParameterId("");
   };
 
   const submit = async () => {
@@ -456,13 +466,10 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
     try {
       const payload = buildPayload();
-      const selectedExistingVersion = versions.find((item) => item.id === form.versionId);
-
-      if (selectedExistingVersion) {
-        await updateSimplexProcessParameterEntry(selectedExistingVersion.id, payload);
-      } else {
-        await submitSimplexProcessParameterEntry(payload);
-      }
+      const response = await submitSimplexProcessParameterEntry(payload);
+      setSavedProcessParameterId(
+        String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
+      );
 
       try {
         await createThresholdViolationTickets({
@@ -558,11 +565,11 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
           </div>
 
           <div className="flex flex-col gap-1.5 min-w-0">
-            <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
+            <label className="text-[14px] font-semibold text-slate-700">Process Parameter ID</label>
             <input
               type="text"
               className={topFieldClass}
-              value={entryId}
+              value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
               readOnly
               disabled
             />

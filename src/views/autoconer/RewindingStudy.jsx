@@ -1103,11 +1103,18 @@ const RewindingStudy = forwardRef(function RewindingStudy(
                   onChange={(event) => handleFormChange(field, event.target.value)}
                 >
                   <option value="">{placeholder || "Select"}</option>
-                  {options.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
+                  {options.map((option) => {
+                    const value = typeof option === "string" ? option : String(option?.name ?? option?.value ?? "").trim();
+                    const label =
+                      typeof option === "string"
+                        ? option
+                        : String(option?.displayName ?? option?.label ?? option?.name ?? option?.value ?? "").trim();
+                    return (
+                      <option key={value} value={value}>
+                        {label || value}
+                      </option>
+                    );
+                  })}
                 </select>
               ) : type === "select" && (field === "countNameFrom" || field === "autoConerNo") ? (
                 <select

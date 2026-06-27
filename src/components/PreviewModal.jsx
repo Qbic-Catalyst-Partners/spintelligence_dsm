@@ -32,7 +32,7 @@ function PreviewModal({
           {typeValue ? (
             <div className={styles.typePill}>
               <div className={styles.typeLabel}>{typeLabel}</div>
-              <div className={styles.typeValue}>{typeValue}</div>
+              <div className={styles.typeValue}>{formatValue(typeValue)}</div>
             </div>
           ) : null}
         </div>

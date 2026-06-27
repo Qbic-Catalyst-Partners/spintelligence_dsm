@@ -711,12 +711,15 @@ const calculateGmsPerLitre = (row = {}) => {
                 >
                   <option value="">{placeholder || "Enter value"}</option>
                   {options.map((option) => {
-                    const isObject = option && typeof option === "object";
-                    const optionValue = isObject ? option.value : option;
-                    const optionLabel = isObject ? option.label : option;
+                    const optionValue =
+                      typeof option === "string" ? option : String(option?.value ?? option?.name ?? "").trim();
+                    const optionLabel =
+                      typeof option === "string"
+                        ? option
+                        : String(option?.label ?? option?.displayName ?? option?.name ?? option?.value ?? "").trim();
                     return (
                       <option key={optionValue} value={optionValue}>
-                        {optionLabel}
+                        {optionLabel || optionValue}
                       </option>
                     );
                   })}

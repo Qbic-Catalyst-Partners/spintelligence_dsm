@@ -117,6 +117,11 @@ function Carding() {
         setPreviewItems([]);
         setShowPreview(false);
         setShowSuccess(false);
+
+        const nextRoute = selected ? getCardingEntryConfig(selected.name)?.routePath : "";
+        if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
+            router.push(nextRoute);
+        }
     };
 
     const selectedType =

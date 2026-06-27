@@ -736,6 +736,10 @@ export const fetchSpinningWheelChangeDropdown = async (wheelType = "", params = 
   }
 };
 
+// Backward-compatible alias for existing callers.
+export const submitSpinningProcessParameterEntry =
+  spinningProcessParameterDataEntry;
+
 const normalizeWheelChangeLatestRecordPayload = (payload) => {
   const latestRecord = payload?.latest_record ?? payload?.latestRecord ?? null;
   if (latestRecord) return latestRecord;

@@ -72,8 +72,8 @@ const screenEndpoints = {
       "1 Yard / Half Yard CV Entry": "/drawframe/yarn-cv",
       "Draw Frame Cots Data Entry": "/drawframe/cots",
       "U% Data Entry": "/drawframe/uqc",
-      "PP - Breaker Drawing": "/drawframe/header",
-      "PP - Finisher Drawing": "/drawframe/finisher",
+      "PP - Breaker Drawing": "/draw-frame?type=PP%20-%20Breaker%20Drawing",
+      "PP - Finisher Drawing": "/draw-frame?type=PP%20-%20Finisher%20Drawing",
     },
     Simplex: {
       "Process Parameter": "/simplex/process-parameters",
@@ -96,8 +96,8 @@ const screenEndpoints = {
     },
     Autoconer: {
       "Process Parameter": "/autoconer/process-parameters",
-      "PP - Autoconer Q2": "/autoconer/q2",
-      "PP - Autoconer Q3": "/autoconer/q3",
+      "PP - Autoconer Q2": "/autoconer?type=PP%20-%20Autoconer%20Q2",
+      "PP - Autoconer Q3": "/autoconer?type=PP%20-%20Autoconer%20Q3",
       "Rewinding Study": "/autoconer/rewinding-study",
       "Cone Density": "/autoconer/cone-density",
       "Cone Packing Audit": "/autoconer/cone-packing-audit",
