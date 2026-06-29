@@ -41,6 +41,7 @@ export default function useDatabaseEntryId({
   const resolvedPrefix = config?.prefix || fallbackPrefix;
   const resolvedWidth = config?.width || fallbackWidth;
   const routePath = String(config?.routePath || "").trim();
+  const fetchPath = String(config?.fetchPath || routePath || "").trim();
   const scope = String(config?.scope || "").trim();
   const normalizeReservedEntryId = (value) => {
     const raw = String(value ?? "").trim();
@@ -51,14 +52,20 @@ export default function useDatabaseEntryId({
     return `${resolvedPrefix}-${sequence.padStart(resolvedWidth, "0")}`;
   };
   const fetchNextFromExistingEntries = useCallback(async () => {
-    if (!routePath) return null;
+    if (!fetchPath) return null;
 
     try {
-      const response = await apiConfig.get(
-        routePath,
-        { page: 1, limit: 200 },
-        { skipGlobalErrorModal: true }
-      );
+      console.debug("[entry-id] fetch existing rows", {
+        department,
+        typeName,
+        routePath: fetchPath,
+        scope: scope || "",
+      });
+      const query = { page: 1, limit: 200 };
+      if (scope) {
+        query.scope = scope;
+      }
+      const response = await apiConfig.get(fetchPath, query, { skipGlobalErrorModal: true });
       const rows = extractRows(response?.data || response);
       if (!rows.length) return null;
 
@@ -84,7 +91,7 @@ export default function useDatabaseEntryId({
     } catch (_error) {
       return null;
     }
-  }, [leadingHash, resolvedPrefix, resolvedWidth, routePath]);
+  }, [fetchPath, leadingHash, resolvedPrefix, resolvedWidth, scope]);
   const initialEntryId = routePath
     ? `${resolvedPrefix}-${String(1).padStart(resolvedWidth, "0")}`
     : formatEntryId({
@@ -101,6 +108,14 @@ export default function useDatabaseEntryId({
 
     setLoading(true);
     try {
+      console.debug("[entry-id] reserve requested", {
+        department,
+        typeName,
+        routePath: routePath || "",
+        scope: scope || "",
+        prefix: resolvedPrefix,
+        width: resolvedWidth,
+      });
       if (routePath) {
         const url = new URL("/entry-id/next", resolvedBaseUrl);
         url.searchParams.set("route_path", routePath);
@@ -117,6 +132,13 @@ export default function useDatabaseEntryId({
         if (nextEntryId) {
           setEntryId(nextEntryId);
         }
+        console.debug("[entry-id] reserve resolved", {
+          department,
+          typeName,
+          routePath: routePath || "",
+          scope: scope || "",
+          entryId: nextEntryId || "",
+        });
         return nextEntryId || null;
       }
 
@@ -139,8 +161,22 @@ export default function useDatabaseEntryId({
       if (nextEntryId) {
         setEntryId(nextEntryId);
       }
+      console.debug("[entry-id] reserve resolved", {
+        department,
+        typeName,
+        routePath: routePath || "",
+        scope: scope || "",
+        entryId: nextEntryId || "",
+      });
       return nextEntryId || null;
     } catch (error) {
+      console.debug("[entry-id] reserve failed", {
+        department,
+        typeName,
+        routePath: routePath || "",
+        scope: scope || "",
+        message: error?.message || String(error),
+      });
       return null;
     } finally {
       setLoading(false);
@@ -153,5 +189,7 @@ export default function useDatabaseEntryId({
     reserveEntryId();
   }, [initialEntryId, reserveEntryId]);
 
-  return { entryId, loading, reserveEntryId };
+  const readyEntryId = entryId || initialEntryId;
+
+  return { entryId: readyEntryId, loading, reserveEntryId };
 }
