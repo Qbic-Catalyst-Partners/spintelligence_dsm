@@ -63,7 +63,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "Yarn CV% Calculation Form": { prefix: "YCV" },
   "Draw Frame Cots Data Entry": { prefix: "DRC", width: 4, routePath: "/drawframe/cots" },
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
-  // Keep Breaker and Finisher on separate sequence scopes so each starts at PP-0001 independently.
+  // Keep breaker and finisher on separate sequence scopes so they do not share storage identity.
   "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header?scope=breaker" },
   "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher?scope=finisher" },
   "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },

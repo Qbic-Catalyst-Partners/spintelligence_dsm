@@ -86,7 +86,8 @@ const TYPE_CONFIG = {
       pressureBar: "",
     }),
     updateEntry: updateDrawFrameHeaderEntry,
-    buildPayload: (form) => ({
+    buildPayload: (form, entryId) => ({
+      entry_id: entryId || undefined,
       type: form.type,
       entry_scope: "breaker",
       count_name: form.countName,
@@ -167,7 +168,8 @@ const TYPE_CONFIG = {
       scanningRollsSize: "",
     }),
     updateEntry: updateDrawFrameFinisherEntry,
-    buildPayload: (form) => ({
+    buildPayload: (form, entryId) => ({
+      entry_id: entryId || undefined,
       entry_scope: "finisher",
       count_name: form.countName,
       consignee_name: form.consigneeName,
@@ -323,12 +325,24 @@ function isEntryComplete(entry) {
   return Array.isArray(entry?.details) && entry.details.some((detail) => String(detail?.value ?? "").trim());
 }
 
+function extractEntrySequence(value) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return 0;
+  const match = normalized.match(/(\d+)(?!.*\d)/);
+  return match ? Number(match[1]) || 0 : 0;
+}
+
 function getEntrySortValue(entry) {
-  const dateValue = entry?.creationDate ? new Date(entry.creationDate).getTime() : 0;
+  const dateValue = entry?.creationDate ? new Date(`${String(entry.creationDate).split("T")[0]}T00:00:00`).getTime() : 0;
   if (Number.isFinite(dateValue) && dateValue > 0) return dateValue;
 
-  const numericId = Number(entry?.id);
-  return Number.isFinite(numericId) ? numericId : 0;
+  const paramSequence = extractEntrySequence(entry?.paramId);
+  if (paramSequence > 0) return paramSequence;
+
+  const idSequence = extractEntrySequence(entry?.id);
+  if (idSequence > 0) return idSequence;
+
+  return 0;
 }
 
 function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeChange }) {
@@ -505,7 +519,7 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      const payload = activeConfig.buildPayload(form);
+      const payload = activeConfig.buildPayload(form, entryId);
       const selectedExistingEntry = recentEntries.find(
         (entry) => String(entry.id) === String(form.versionId)
       );
