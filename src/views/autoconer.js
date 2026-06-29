@@ -168,14 +168,25 @@ function Autoconer() {
     () => formatTypeValue(checkingType),
     [checkingType, typeOptions]
   );
+  const useParentEntryId =
+    selectedType === "Process Parameter" ||
+    selectedType === "Rewinding Study" ||
+    selectedType === "Cone Density" ||
+    selectedType === "Cone Packing Audit" ||
+    selectedType === "Lycra Checking" ||
+    selectedType === "Count Wise Cuts Record" ||
+    selectedType === "Splice Strength" ||
+    selectedType === "Drum wise Appearance" ||
+    selectedType === "CSP Parameter Entries" ||
+    selectedType === "U% Parameter Entries";
   const SelectedComponent = useMemo(
     () => typeOptions.find((item) => item.name === checkingType)?.component || null,
     [checkingType, typeOptions]
   );
   const { entryId, reserveEntryId } = useDatabaseEntryId({
     department: "Autoconer",
-    typeName: selectedType,
-    config: getAutoconerEntryConfig(selectedType),
+    typeName: useParentEntryId ? selectedType : "",
+    config: useParentEntryId ? getAutoconerEntryConfig(selectedType) : {},
   });
   const isFooterHistoryType =
     selectedType === "Process Parameter" ||
@@ -221,17 +232,22 @@ function Autoconer() {
         ? await registeredActions.submit()
         : false;
     if (ok) {
+      const previewEntryId =
+        previewItems.find((item) => ["Entry ID", "Process Parameter ID"].includes(String(item?.label || "").trim()))?.value ||
+        "";
       await recordSubmittedNotebook({
         department: "Quality Control",
         subDepartment: "Autoconer",
         notebookName: selectedType,
-        entryId,
+        entryId: useParentEntryId ? entryId : previewEntryId,
         childRef,
         registeredActions,
         previewItems,
         user,
       });
-      await reserveEntryId();
+      if (useParentEntryId) {
+        await reserveEntryId();
+      }
       setShowSuccess(true);
     }
   };
@@ -297,7 +313,7 @@ function Autoconer() {
                 onTypeChange={handleTypeChange}
                 types={childTypeOptions}
                 typeOptions={childTypeOptions}
-                entryId={entryId}
+                entryId={useParentEntryId ? entryId : ""}
                 tablePortalTargetId="autoconer-table-slot"
                 savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}
                 postFooterPortalTargetId="autoconer-post-footer-slot"

@@ -10,6 +10,7 @@ import {
 } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -273,7 +274,16 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("q2");
   const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
-  const displayEntryId = entryId || "";
+  const { entryId: reservedEntryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
+    department: "Autoconer",
+    typeName: selectedType,
+    config: {
+      prefix: "PP",
+      width: 4,
+      routePath: "/autoconer/q2",
+    },
+  });
+  const displayEntryId = reservedEntryId || (entryIdLoading ? "Generating next ID..." : "Generating next ID...");
 
   const countOptions = useMemo(
     () =>
@@ -426,7 +436,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     { label: "Type", value: selectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: entryId || "-" },
+    { label: "Entry ID", value: reservedEntryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -439,10 +449,11 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     try {
       setIsSubmitting(true);
       setSubmitError("");
-      const payload = buildPayload(form, entryId);
+      const payload = buildPayload(form, reservedEntryId);
       await submitAutoconerQ2Entry(payload);
 
       await loadVersions();
+      await reserveEntryId();
       return true;
     } catch (error) {
       const errorMessage = String(error?.message || "");
