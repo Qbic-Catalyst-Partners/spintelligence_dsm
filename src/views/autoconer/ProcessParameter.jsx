@@ -169,6 +169,7 @@ const isVersionComplete = (version) =>
   );
 
 const buildPayload = (form, entryId = "") => ({
+  scope: "process-parameter",
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -569,7 +570,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <input
               type="text"
               className={styles.field}
-              value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
+              value={form.versionId ? (form.paramId || entryId || savedProcessParameterId || "") : (entryId || savedProcessParameterId || form.paramId || "")}
               readOnly
               disabled
             />

@@ -205,6 +205,7 @@ const isVersionComplete = (version) =>
 
 const buildPayload = (form, entryId = "") => ({
   entry_id: entryId || undefined,
+  scope: "q2",
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -272,6 +273,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("q2");
   const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
+  const displayEntryId = entryId || "";
 
   const countOptions = useMemo(
     () =>
@@ -598,7 +600,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
             <input
               type="text"
               className={styles.field}
-              value={entryId || ""}
+              value={displayEntryId}
               readOnly
               disabled
             />

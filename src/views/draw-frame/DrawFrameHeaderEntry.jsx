@@ -88,6 +88,7 @@ const TYPE_CONFIG = {
     updateEntry: updateDrawFrameHeaderEntry,
     buildPayload: (form) => ({
       type: form.type,
+      entry_scope: "breaker",
       count_name: form.countName,
       consignee_name: form.consigneeName,
       creation_date: form.creationDate,
@@ -167,6 +168,7 @@ const TYPE_CONFIG = {
     }),
     updateEntry: updateDrawFrameFinisherEntry,
     buildPayload: (form) => ({
+      entry_scope: "finisher",
       count_name: form.countName,
       consignee_name: form.consigneeName,
       creation_date: form.creationDate,

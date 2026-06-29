@@ -47,18 +47,44 @@ const AUTOCONER_PROCESS_PARAMETER_TYPES = [
   "PP - Autoconer Q3",
 ];
 const AUTOCONER_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "PP", width: 4, routePath: "/autoconer?type=Process%20Parameter" },
-  "PP - Autoconer Q2": { prefix: "PP", width: 4, routePath: "/autoconer?type=PP%20-%20Autoconer%20Q2" },
-  "PP - Autoconer Q3": { prefix: "PP", width: 4, routePath: "/autoconer?type=PP%20-%20Autoconer%20Q3" },
-  "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/inspection-data-entry" },
-  "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
-  "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
-  "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking" },
-  "Count Wise Cuts Record": { prefix: "ACW", width: 4, routePath: "/autoconer/count-wise-cuts" },
-  "Splice Strength": { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength" },
-  "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise-appearance" },
-  "CSP Parameter Entries": { prefix: "ACS", width: 4, routePath: "/autoconer/parameter-entries/pending-csp" },
-  "U% Parameter Entries": { prefix: "AUP", width: 4, routePath: "/autoconer/parameter-entries/pending-quality" },
+  "Process Parameter": {
+    prefix: "PP",
+    width: 4,
+    routePath: "/autoconer",
+    fetchPath: "/autoconer/process-parameter",
+    pagePath: "/autoconer?type=Process%20Parameter",
+    scope: "process-parameter",
+  },
+  "PP - Autoconer Q2": {
+    prefix: "PP",
+    width: 4,
+    routePath: "/autoconer",
+    fetchPath: "/autoconer/q2",
+    pagePath: "/autoconer?type=PP%20-%20Autoconer%20Q2",
+    scope: "q2",
+  },
+  "PP - Autoconer Q3": {
+    prefix: "PP",
+    width: 4,
+    routePath: "/autoconer",
+    fetchPath: "/autoconer/q3",
+    pagePath: "/autoconer?type=PP%20-%20Autoconer%20Q3",
+    scope: "q3",
+  },
+  "Rewinding Study": {
+    prefix: "ARW",
+    width: 4,
+    routePath: "/autoconer/inspection-data-entry",
+    pagePath: "/autoconer/inspection-data-entry",
+  },
+  "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density", pagePath: "/autoconer/cone-density" },
+  "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit", pagePath: "/autoconer/cone-packing-audit" },
+  "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking", pagePath: "/autoconer/lycra-checking" },
+  "Count Wise Cuts Record": { prefix: "ACW", width: 4, routePath: "/autoconer/count-wise-cuts", pagePath: "/autoconer/count-wise-cuts" },
+  "Splice Strength": { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength", pagePath: "/autoconer/splice-strength" },
+  "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise-appearance", pagePath: "/autoconer/drum-wise-appearance" },
+  "CSP Parameter Entries": { prefix: "ACS", width: 4, routePath: "/autoconer/parameter-entries/pending-csp", pagePath: "/autoconer/parameter-entries/pending-csp" },
+  "U% Parameter Entries": { prefix: "AUP", width: 4, routePath: "/autoconer/parameter-entries/pending-quality", pagePath: "/autoconer/parameter-entries/pending-quality" },
 };
 
 const getAutoconerEntryConfig = (typeName) =>
@@ -218,7 +244,7 @@ function Autoconer() {
     setShowPreview(false);
     setShowSuccess(false);
 
-    const nextRoute = getAutoconerEntryConfig(nextTypeName)?.routePath;
+    const nextRoute = getAutoconerEntryConfig(nextTypeName)?.pagePath || getAutoconerEntryConfig(nextTypeName)?.routePath;
     if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
       router.push(nextRoute);
     }
