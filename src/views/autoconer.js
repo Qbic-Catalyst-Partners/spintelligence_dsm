@@ -137,6 +137,7 @@ function Autoconer() {
   const [registeredActions, setRegisteredActions] = useState({});
   const [validationMessage, setValidationMessage] = useState("");
   const [currentDateLabel, setCurrentDateLabel] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
   const selectedType = useMemo(
     () => formatTypeValue(checkingType),
     [checkingType, typeOptions]
@@ -230,6 +231,7 @@ function Autoconer() {
   }, [checkingType, typeOptions]);
 
   useEffect(() => {
+    setIsMounted(true);
     setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
   }, []);
 
@@ -249,7 +251,9 @@ function Autoconer() {
         <div className={styles.header}>
           <h1>Quality Control - Autoconer Notebook</h1>
           <p>Record and manage industrial machine quality inspections.</p>
-          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
+          <div className="mt-2 text-right text-base font-semibold text-slate-600">
+            Current Date: {isMounted ? currentDateLabel : "--"}
+          </div>
         </div>
         <div className={styles.shell}>
           <div className={styles.formBody}>

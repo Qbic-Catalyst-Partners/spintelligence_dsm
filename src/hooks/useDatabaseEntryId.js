@@ -92,8 +92,8 @@ export default function useDatabaseEntryId({
         width: resolvedWidth,
         leadingHash,
       });
-  const [entryId, setEntryId] = useState(() => initialEntryId);
-  const [loading, setLoading] = useState(false);
+  const [entryId, setEntryId] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const reserveEntryId = useCallback(async () => {
     if (!department || !typeName || !resolvedPrefix) return null;
@@ -145,7 +145,8 @@ export default function useDatabaseEntryId({
   }, [department, fetchNextFromExistingEntries, initialEntryId, leadingHash, resolvedPrefix, resolvedWidth, routePath, typeName]);
 
   useEffect(() => {
-    setEntryId(initialEntryId);
+    setEntryId("");
+    setLoading(true);
     reserveEntryId();
   }, [initialEntryId, reserveEntryId]);
 

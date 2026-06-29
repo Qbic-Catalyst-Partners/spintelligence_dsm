@@ -59,7 +59,6 @@ const getEntryConfigForType = (typeName) =>
     MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX" };
 
 function Mixing() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
     const router = useRouter();
     const childRef = useRef(null);
     const successHandledRef = useRef(false);
@@ -91,6 +90,7 @@ function Mixing() {
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
+    const [currentDateLabel, setCurrentDateLabel] = useState("");
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -138,6 +138,10 @@ function Mixing() {
     useEffect(() => {
         setDate(getCurrentDate());
     }, [router.asPath]);
+
+    useEffect(() => {
+        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+    }, []);
     const handleTypeChange = (value) => {
         setSelectedTypeName(value);
         setLotNo("");
