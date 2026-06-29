@@ -63,8 +63,9 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "Yarn CV% Calculation Form": { prefix: "YCV" },
   "Draw Frame Cots Data Entry": { prefix: "DRC", width: 4, routePath: "/drawframe/cots" },
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
-  "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header" },
-  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher" },
+  // Keep Breaker and Finisher on separate sequence scopes so each starts at PP-0001 independently.
+  "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header?scope=breaker" },
+  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher?scope=finisher" },
   "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },
   "Wheel Change": { prefix: "DWC", width: 4, routePath: "/drawframe/wheel-change" },
 };
@@ -730,7 +731,10 @@ function DrawFrame() {
   const { entryId, reserveEntryId } = useDatabaseEntryId({
     department: "Draw Frame",
     typeName: form.type,
-    config: getDrawFrameEntryConfig(form.type),
+    config: {
+      ...getDrawFrameEntryConfig(form.type),
+      scope: form.type === "PP - Finisher Drawing" ? "finisher" : form.type === "PP - Breaker Drawing" ? "breaker" : "",
+    },
   });
 
   useEffect(() => {

@@ -41,6 +41,7 @@ export default function useDatabaseEntryId({
   const resolvedPrefix = config?.prefix || fallbackPrefix;
   const resolvedWidth = config?.width || fallbackWidth;
   const routePath = String(config?.routePath || "").trim();
+  const scope = String(config?.scope || "").trim();
   const normalizeReservedEntryId = (value) => {
     const raw = String(value ?? "").trim();
     if (!raw) return "";
@@ -103,6 +104,7 @@ export default function useDatabaseEntryId({
       if (routePath) {
         const url = new URL("/entry-id/next", resolvedBaseUrl);
         url.searchParams.set("route_path", routePath);
+        if (scope) url.searchParams.set("scope", scope);
         const response = await fetch(url.toString());
         if (!response.ok) return null;
         const data = await response.json();
@@ -128,6 +130,7 @@ export default function useDatabaseEntryId({
           prefix: resolvedPrefix,
           width: resolvedWidth,
           leadingHash,
+          scope,
         }),
       });
       if (!response.ok) return null;
@@ -142,7 +145,7 @@ export default function useDatabaseEntryId({
     } finally {
       setLoading(false);
     }
-  }, [department, fetchNextFromExistingEntries, initialEntryId, leadingHash, resolvedPrefix, resolvedWidth, routePath, typeName]);
+  }, [department, fetchNextFromExistingEntries, initialEntryId, leadingHash, resolvedPrefix, resolvedWidth, routePath, scope, typeName]);
 
   useEffect(() => {
     setEntryId("");
