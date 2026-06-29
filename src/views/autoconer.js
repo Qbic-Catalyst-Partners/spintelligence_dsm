@@ -47,9 +47,9 @@ const AUTOCONER_PROCESS_PARAMETER_TYPES = [
   "PP - Autoconer Q3",
 ];
 const AUTOCONER_ENTRY_ID_CONFIG = {
-  "Process Parameter": { prefix: "PP", width: 4, routePath: "/autoconer/process-parameter" },
-  "PP - Autoconer Q2": { prefix: "PP", width: 4, routePath: "/autoconer/q2" },
-  "PP - Autoconer Q3": { prefix: "PP", width: 4, routePath: "/autoconer/q3" },
+  "Process Parameter": { prefix: "PP", width: 4, routePath: "/autoconer?type=Process%20Parameter" },
+  "PP - Autoconer Q2": { prefix: "PP", width: 4, routePath: "/autoconer?type=PP%20-%20Autoconer%20Q2" },
+  "PP - Autoconer Q3": { prefix: "PP", width: 4, routePath: "/autoconer?type=PP%20-%20Autoconer%20Q3" },
   "Rewinding Study": { prefix: "ARW", width: 4, routePath: "/autoconer/inspection-data-entry" },
   "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density" },
   "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit" },
