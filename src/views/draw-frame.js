@@ -63,8 +63,8 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "Yarn CV% Calculation Form": { prefix: "YCV" },
   "Draw Frame Cots Data Entry": { prefix: "DRC", width: 4, routePath: "/drawframe/cots" },
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
-  "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/drawframe_qc_header" },
-  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher_drawing_inspection" },
+  "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header" },
+  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher" },
   "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },
   "Wheel Change": { prefix: "DWC", width: 4, routePath: "/drawframe/wheel-change" },
 };
