@@ -187,6 +187,17 @@ const valueAfterLabel = (cells, label) => {
   return cell?.match(pattern)?.[1]?.trim() || "";
 };
 
+const valueFromLabelLine = (lines, label) => {
+  const pattern = new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*(.*)$`, "i");
+  for (const line of lines) {
+    for (const cell of line.cells) {
+      const match = cell.match(pattern);
+      if (match?.[1]) return match[1].trim();
+    }
+  }
+  return "";
+};
+
 const firstValueAfterLabels = (cells, labels) => {
   for (const label of labels) {
     const value = valueAfterLabel(cells, label);
@@ -292,6 +303,16 @@ const parseStretchPdfRows = (lines) => {
   return rows.filter((row) => Object.values(row).some(Boolean));
 };
 
+const parseBwcPdfRows = (lines) => {
+  const row = {
+    "Row Type": "Meta",
+    "Test ID": valueFromLabelLine(lines, "Test ID"),
+    Date: valueFromLabelLine(lines, "Date"),
+  };
+
+  return Object.values(row).some(Boolean) ? [row] : [];
+};
+
 const parseAPercentPdfRows = (lines) => {
   const rows = [];
   const allCells = lines.flatMap((line) => line.cells);
@@ -343,9 +364,10 @@ const parseAPercentPdfRows = (lines) => {
 };
 
 const extractRowsFromPdf = (pdfBuffer, docType) => {
-  if (!pdfBuffer || !["noils", "strech", "a_percent"].includes(docType)) return [];
+  if (!pdfBuffer || !["noils", "strech", "a_percent", "bwc"].includes(docType)) return [];
 
   const lines = groupPdfLines(extractPdfTextItems(pdfBuffer));
+  if (docType === "bwc") return parseBwcPdfRows(lines);
   if (docType === "noils") return parseNoilsPdfRows(lines);
   if (docType === "a_percent") return parseAPercentPdfRows(lines);
   return parseStretchPdfRows(lines);

@@ -213,7 +213,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
 
             const nextMachine = pick("Machine Name", "MC Name", "mc_name", "machine_name", "machine");
             const nextInspectionType = pick("Inspection Type", "inspection_type");
-            const nextInspectionDate = pick("Inspection Date", "inspection_date");
+            const nextInspectionDate = pick("Inspection Date", "inspection_date", "Date", "date");
             const nextTestId = pick("Test ID", "test_id", "testId");
 
             if (nextMachine) setMcName(nextMachine);
