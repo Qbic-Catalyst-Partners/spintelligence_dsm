@@ -552,13 +552,12 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     </section>
   );
 
-const buildStudyPayload = () => ({
+  const buildStudyPayload = () => ({
     s_no: form.simplexNo,
     entry_date: form.date,
     machine_name: form.simplexNo,
     operator_name: form.sName,
     study_type: selectedTypeName || form.type,
-    shift: "A",
     start_time: form.startTime,
     end_time: form.endTime,
     start_hk: form.startHk,
@@ -573,7 +572,6 @@ const buildStudyPayload = () => ({
       remarks: "",
     })),
     other_field_values: {
-      time: form.startTime,
       start_time: form.startTime,
       end_time: form.endTime,
       start_hk: form.startHk,
