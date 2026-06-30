@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "r
 import { MdEditNote } from "react-icons/md";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
+import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import {
   fetchSimplexUqcMasterDropdown,
   fetchSimplexWheelChangeNotebookEntries,
@@ -116,6 +117,32 @@ const getOptionText = (option) => {
   return String(option?.label ?? option?.value ?? option?.name ?? option?.text ?? "").trim();
 };
 
+const mergeMachineOptions = (apiOptions = []) => {
+  const merged = [
+    ...createSmxMachineOptions(),
+    ...(Array.isArray(apiOptions) ? apiOptions : [])
+      .map((option) => {
+        if (!option) return null;
+        if (typeof option === "string") {
+          const value = option.trim();
+          return value ? { value, label: value } : null;
+        }
+
+        const value = String(option?.value ?? option?.mc_no ?? option?.machine_no ?? option?.mcName ?? "").trim();
+        const label = String(option?.label ?? option?.mc_name ?? option?.machine_name ?? value ?? "").trim();
+        return value ? { value, label: label || value } : null;
+      })
+      .filter(Boolean),
+  ];
+
+  const seen = new Set();
+  return merged.filter((item) => {
+    if (!item?.value || seen.has(item.value)) return false;
+    seen.add(item.value);
+    return true;
+  });
+};
+
 const WheelChange = forwardRef(function WheelChange(
   { selectedTypeName = "Wheel Change", onTypeChange, typeOptions = [], entryId = "" },
   ref
@@ -147,23 +174,18 @@ const WheelChange = forwardRef(function WheelChange(
 
     const loadMachineOptions = async () => {
       try {
-        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        const dropdown = await fetchSimplexUqcMasterDropdown();
         if (cancelled) return;
         const options = normalizeMachineOptions(dropdown?.mcNos || []);
-        setMachineOptions(options);
-        setForm((current) => ({
-          ...current,
-          smxNo: current.smxNo || options[0]?.value || "",
-          smxNoProposed: current.smxNoProposed || options[0]?.value || "",
-        }));
+        setMachineOptions(mergeMachineOptions(options));
       } catch {
-        if (!cancelled) setMachineOptions([]);
+        if (!cancelled) setMachineOptions(createSmxMachineOptions());
       }
     };
 
     const loadMixingOptions = async () => {
       try {
-        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        const dropdown = await fetchSimplexUqcMasterDropdown();
         if (cancelled) return;
         setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
       } catch {

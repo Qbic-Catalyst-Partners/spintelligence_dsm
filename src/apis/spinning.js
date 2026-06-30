@@ -95,6 +95,10 @@ export const getSpinningProcessParameterEntries = async (params = {}) => {
 
 export const fetchSpinningCotsCheckingMachines = async () => {
   const endpoints = [
+    "/spinning/count-change/rf-nos",
+    "/spinning/count-change/master/rf-nos",
+    "/spinning/count-change/machines",
+    "/spinning/count-change/rfs",
     "/spinning/cots-checking/machines",
     "/spinning/cots-checking/master/machines",
     "/spinning/master/machines",

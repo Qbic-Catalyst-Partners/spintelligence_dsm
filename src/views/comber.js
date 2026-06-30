@@ -42,7 +42,7 @@ const comberDepartmentTypes = [
 export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
 const COMBER_ENTRY_ID_CONFIG = {
     "Ribbon Lap CV Data Entry": { prefix: "RLC", width: 4, routePath: "/comber/lap-cv" },
-    "Nati Data Entry": { prefix: "CNT", width: 4, routePath: "/comber/nati-data-entry" },
+    "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/comber/nati-data-entry" },
     "U% Data Entry": { prefix: "COU", width: 4, routePath: "/comber/uqc" },
     "Comber Nolis %": { prefix: "CNP",  },
 };

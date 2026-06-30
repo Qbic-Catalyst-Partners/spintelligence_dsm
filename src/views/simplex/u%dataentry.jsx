@@ -3,7 +3,8 @@ import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
+import { fetchSimplexMachineMaster, fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
+import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import { getSimplexUqcEntries, submitSimplexUqc } from "@/store/slices/simplex";
 
 const initialForm = () => ({
@@ -12,6 +13,8 @@ const initialForm = () => ({
   variety: "",
   department: "",
   mc_no: "",
+  smx_no: "",
+  smx_no_proposed: "",
   u_percent: "",
   cvm: "",
   im_cvm: "",
@@ -22,8 +25,23 @@ const initialForm = () => ({
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
 const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
 const DEPARTMENT_OPTIONS = [{ dept_code: "", dept_name: "FR Drawing" }];
-const MC_NO_OPTIONS = [{ mc_no: "FR DSS-1", mc_name: "FR DSS-1", value: "FR DSS-1", label: "FR DSS-1", dept_code: "", dept_name: "" }];
 const VARIETY_OPTIONS = ["WPSF 0.90"];
+
+const normalizeMachineOption = (item) => {
+  const value = String(item?.value || item?.mc_no || item?.machine_no || item?.mcName || item || "").trim();
+  const label = String(item?.label || item?.mc_name || item?.machine_name || value || "").trim();
+  return value ? { value, label: label || value } : null;
+};
+
+const mergeMachineOptions = (apiOptions = []) => {
+  const merged = [...createSmxMachineOptions(), ...(Array.isArray(apiOptions) ? apiOptions : []).map(normalizeMachineOption).filter(Boolean)];
+  const seen = new Set();
+  return merged.filter((item) => {
+    if (!item?.value || seen.has(item.value)) return false;
+    seen.add(item.value);
+    return true;
+  });
+};
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   { selectedTypeName, onTypeChange, typeOptions = [], entryId = "" },
@@ -38,7 +56,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
   const [varietyOptions, setVarietyOptions] = useState(VARIETY_OPTIONS);
   const [departmentOptions, setDepartmentOptions] = useState(DEPARTMENT_OPTIONS);
-  const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
+  const [mcNoOptions, setMcNoOptions] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -53,14 +71,30 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         } else if (dropdown.departmentNames?.length) {
           setDepartmentOptions(dropdown.departmentNames.map((deptName) => ({ dept_code: "", dept_name: deptName })));
         }
-        if (dropdown.mcNos?.length) setMcNoOptions(dropdown.mcNos);
       })
       .catch(() => {
         if (!active) return;
         setShiftOptions(SHIFT_OPTIONS);
         setVarietyOptions(VARIETY_OPTIONS);
         setDepartmentOptions(DEPARTMENT_OPTIONS);
-        setMcNoOptions(MC_NO_OPTIONS);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchSimplexMachineMaster()
+      .then((options) => {
+        if (!active) return;
+        setMcNoOptions(mergeMachineOptions(options));
+      })
+      .catch(() => {
+        if (!active) return;
+        setMcNoOptions(createSmxMachineOptions());
       });
 
     return () => {
@@ -94,6 +128,8 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     if (!String(form.variety || "").trim()) nextErrors.variety = true;
     if (!String(form.department || "").trim()) nextErrors.department = true;
     if (!String(form.mc_no || "").trim()) nextErrors.mc_no = true;
+    if (!String(form.smx_no || "").trim()) nextErrors.smx_no = true;
+    if (!String(form.smx_no_proposed || "").trim()) nextErrors.smx_no_proposed = true;
     if (!String(form.u_percent || "").trim()) nextErrors.u_percent = true;
     if (!String(form.cvm || "").trim()) nextErrors.cvm = true;
     if (!String(form.im_cvm || "").trim()) nextErrors.im_cvm = true;
@@ -110,6 +146,8 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     { label: "Variety", value: form.variety },
     { label: "Department", value: form.department },
     { label: "MC No.", value: form.mc_no },
+    { label: "SMX No.", value: form.smx_no },
+    { label: "SMX No. (Proposed)", value: form.smx_no_proposed },
     { label: "U%", value: form.u_percent },
     { label: "CV in Metres", value: form.cvm },
     { label: "1m CV in Metres", value: form.im_cvm },
@@ -127,6 +165,8 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         variety: form.variety,
         department: form.department,
         mc_no: form.mc_no,
+        smx_no: form.smx_no,
+        smx_no_proposed: form.smx_no_proposed,
         u_percent: form.u_percent,
         cvm: form.cvm,
         cvm_1m: form.im_cvm,
@@ -227,6 +267,36 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             }))}
             placeholder="Select MC No."
             ariaLabel="MC No."
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label>SMX No.</label>
+          <SearchableSelect
+            value={form.smx_no}
+            onChange={(value) => handleChange("smx_no", value)}
+            className={errors.smx_no ? styles.errorField : ""}
+            options={mcNoOptions.map((item) => ({
+              value: item.value || item.mc_no,
+              label: item.label || item.mc_name || item.mc_no,
+            }))}
+            placeholder="Select SMX No."
+            ariaLabel="SMX No."
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label>SMX No. (Proposed)</label>
+          <SearchableSelect
+            value={form.smx_no_proposed}
+            onChange={(value) => handleChange("smx_no_proposed", value)}
+            className={errors.smx_no_proposed ? styles.errorField : ""}
+            options={mcNoOptions.map((item) => ({
+              value: item.value || item.mc_no,
+              label: item.label || item.mc_name || item.mc_no,
+            }))}
+            placeholder="Select SMX No."
+            ariaLabel="SMX No. Proposed"
           />
         </div>
 

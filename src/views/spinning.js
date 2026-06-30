@@ -13,7 +13,6 @@ import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import {
-    fetchSpinningCotsCheckingMachines,
     fetchSpinningBottomApronEmployeeNames,
     fetchSpinningCountChangeDropdown,
     fetchSpinningCountChangeRfNos,
@@ -349,8 +348,8 @@ function SpinningDepartment() {
     const countChangeCountNameToSelectOptions = countChangeCountNameToOptions;
     const ringFrameCheckerSelectOptions = ringFrameCheckerOptions;
     const ringFrameShiftSelectOptions = ringFrameShiftOptions;
-    const machineFieldLabel = isCotsChecking ? "Variety" : "Machine";
-    const machineFieldPlaceholder = isCotsChecking ? "Select Variety" : "Select Machine";
+    const machineFieldLabel = isCotsChecking ? "Machine No." : "Machine";
+    const machineFieldPlaceholder = isCotsChecking ? "Select Machine No." : "Select Machine";
     const showSuccessOnce = () => {
         if (successHandledRef.current) return;
         successHandledRef.current = true;
@@ -378,7 +377,7 @@ function SpinningDepartment() {
         if (!isCotsChecking) return;
 
         let isMounted = true;
-        fetchSpinningCotsCheckingMachines()
+        fetchSpinningCountChangeRfNos()
             .then((payload) => {
                 if (!isMounted) return;
                 setCotsMachineOptions(normalizeMachineOptions(payload));
@@ -778,7 +777,7 @@ function SpinningDepartment() {
             entry_id: entryId,
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
-            variety: isCotsChecking ? selectedMachine : undefined,
+            machine_no: isCotsChecking ? selectedMachine : undefined,
             lhs_value: isCotsChecking ? Number(lhsValue) : parseDecimalPayloadValue(lhsValue) ?? 0,
             rhs_value: isCotsChecking ? Number(rhsValue) : parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_textremarks: lhsRemarks.trim(),
