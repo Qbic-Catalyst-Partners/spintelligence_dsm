@@ -8,11 +8,6 @@ import { submitSimplexStudyReport } from "@/store/slices/simplex";
 
 const today = new Date().toISOString().split("T")[0];
 
-const simplexOptions = [
-  "SMX 002",
-  ...Array.from({ length: 13 }, (_, index) => `SMX ${String(index + 1).padStart(2, "0")}`),
-];
-
 const topFieldClass =
   "w-full h-[42px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-[14px] text-slate-700 outline-none transition focus:border-[#3d539f] focus:ring-2 focus:ring-[#d7def5]";
 const tableFieldClass =
@@ -162,7 +157,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const [breakMatrix, setBreakMatrix] = useState(createInitialBreakMatrix);
   const [errors, setErrors] = useState({ form: {}, matrix: {} });
   const [portalReady, setPortalReady] = useState(false);
-  const [simplexNoOptions, setSimplexNoOptions] = useState(simplexOptions);
+  const [simplexNoOptions, setSimplexNoOptions] = useState([]);
   const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("simplex");
 
   useEffect(() => {
@@ -189,10 +184,9 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
           .map((item) => String(item || "").trim())
           .filter(Boolean);
 
-        const merged = [...new Set([...simplexOptions, ...cleaned])];
-        setSimplexNoOptions(merged);
+        setSimplexNoOptions(cleaned);
       } catch (_error) {
-        if (!isCancelled) setSimplexNoOptions(simplexOptions);
+        if (!isCancelled) setSimplexNoOptions([]);
       }
     };
 

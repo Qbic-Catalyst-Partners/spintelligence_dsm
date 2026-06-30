@@ -136,7 +136,6 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     };
 
     const buildPayload = () => ({
-        entry_id: entryId || "",
         type: selectedType,
         entry_date: entryDate,
         variety,

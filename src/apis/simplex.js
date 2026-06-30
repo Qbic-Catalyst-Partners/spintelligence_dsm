@@ -350,7 +350,6 @@ export const fetchSimplexUqcMasterDropdown = async ({
   variety_prefix = "",
   department_prefix = "",
   mc_no_prefix = "",
-  department = "",
   department_code = "",
 } = {}) => {
   const params = {
@@ -358,7 +357,6 @@ export const fetchSimplexUqcMasterDropdown = async ({
     variety_prefix,
     department_prefix,
     mc_no_prefix,
-    department,
     department_code,
   };
   let lastError;
@@ -567,12 +565,6 @@ export const fetchSimplexMachineMaster = async ({ department = "SIMPLEX", prefix
       const response = await apiConfig.get(
         endpoint,
         {
-          prefix,
-          mc_no_prefix: prefix,
-          machine_prefix: prefix,
-          dept_code: department,
-          department_code: department,
-          department,
         },
         { skipGlobalErrorModal: true }
       );
