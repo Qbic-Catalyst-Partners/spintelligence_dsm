@@ -474,6 +474,18 @@ export const fetchSimplexUqcMasterDropdown = async ({
         dropdown.mcNoValues = dropdown.mcNos.map((row) => row.mc_no);
       }
 
+      if (dropdown.mcNos.length < 2) {
+        const machineMaster = await fetchSimplexMachineMaster({
+          department: department || "SIMPLEX",
+          prefix,
+        }).catch(() => []);
+        dropdown.mcNos = mergeMcNoRows(
+          dropdown.mcNos,
+          normalizeMcNoRows(machineMaster)
+        );
+        dropdown.mcNoValues = dropdown.mcNos.map((row) => row.mc_no);
+      }
+
       return dropdown;
     } catch (error) {
       lastError = error;

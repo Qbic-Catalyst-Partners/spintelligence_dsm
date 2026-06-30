@@ -707,7 +707,10 @@ const WheelChange = forwardRef(function WheelChange(
   }, [selectedVariety, wheelChangeType]);
 
   const handleValueChange = (rowKey, column) => (event) => {
-    const nextValue = event.target.value;
+    const nextValue =
+      event && typeof event === "object" && "target" in event
+        ? event.target.value
+        : event;
     setValues((current) => ({
       ...current,
       [rowKey]: {

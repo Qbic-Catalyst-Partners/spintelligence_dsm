@@ -192,6 +192,7 @@ const matchesCotsTypePrefix = (machineName, processType) => {
 const getMachineCardDefaults = () => [];
 
 const formatMetric = (value) => (Number.isFinite(value) ? value.toFixed(3) : "");
+const formatHank = (value) => (Number.isFinite(value) ? value.toFixed(4) : "");
 
 const emptyMetric = () => ({
   avg: "",
@@ -213,7 +214,7 @@ const calculateStats = (values, hankNumerator) => {
 
   return {
     avg: formatMetric(avg),
-    hank: formatMetric(hank),
+    hank: formatHank(hank),
     sd: formatMetric(sd),
     cv: formatMetric(cv),
   };

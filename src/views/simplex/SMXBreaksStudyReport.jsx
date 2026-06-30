@@ -33,7 +33,12 @@ const breakRows = [
   "801 - 1000",
   "1001 - 1200",
   "1201 - 1400",
-  "Repeated Spindle",
+  "1401 - 1600",
+  "1601 - 1800",
+  "1801 - 2000",
+  "2001 - 2200",
+  "2201 - 2400",
+  "2401 - 2600",
 ];
 
 const percentageBreakColumns = breakColumns.slice(0, breakColumns.indexOf("SLIVER BREAKS") + 1);
@@ -80,6 +85,9 @@ const getTotalBreakPercentages = (breakMatrix) => {
 
   return { columnTotals, grandTotal, percentages };
 };
+
+const getBreakCellValue = (breakMatrix, rowLabel, columnLabel) =>
+  breakMatrix?.[rowLabel]?.[columnLabel] || "0";
 
 const createInitialForm = () => ({
   type: "SMX Breaks Study Report",
@@ -549,6 +557,7 @@ const buildStudyPayload = () => ({
     entry_date: form.date,
     machine_name: form.simplexNo,
     operator_name: form.sName,
+    study_type: selectedTypeName || form.type,
     shift: "A",
     start_time: form.startTime,
     end_time: form.endTime,
@@ -558,39 +567,11 @@ const buildStudyPayload = () => ({
     idle_spindles: form.ideals,
     ideals: form.ideals,
     s_name: form.sName,
-    inspection_items: breakColumns.map((columnLabel) => ({
+    items: breakColumns.map((columnLabel) => ({
       item_name: columnLabel,
-      status_value: getColumnBreakValues(breakMatrix, columnLabel),
+      status_value: getColumnBreakValues(breakMatrix, columnLabel).join(", "),
       remarks: "",
     })),
-    user_fiber_parameters: {
-      A1: breakMatrix["0 - 200"]["Roving Breaks at Finger"] || "0",
-      A2: breakMatrix["0 - 200"]["Roving Breaks at Front Roller Nip"] || "0",
-      A3: breakMatrix["0 - 200"]["Roving Breaks at Between Flyer"] || "0",
-      A4: breakMatrix["0 - 200"].Undraft || "0",
-      B1: breakMatrix["201 - 400"]["Roving Breaks at Finger"] || "0",
-      B2: breakMatrix["201 - 400"]["Roving Breaks at Front Roller Nip"] || "0",
-      B3: breakMatrix["201 - 400"]["Roving Breaks at Between Flyer"] || "0",
-      B4: breakMatrix["201 - 400"].Undraft || "0",
-      C1: breakMatrix["401 - 600"]["Roving Breaks at Finger"] || "0",
-      C2: breakMatrix["401 - 600"]["Roving Breaks at Front Roller Nip"] || "0",
-      C3: breakMatrix["401 - 600"]["Roving Breaks at Between Flyer"] || "0",
-      C4: breakMatrix["401 - 600"].Undraft || "0",
-      D1: breakMatrix["601 - 800"]["Roving Breaks at Finger"] || "0",
-      D2: breakMatrix["601 - 800"]["Roving Breaks at Front Roller Nip"] || "0",
-      D3: breakMatrix["601 - 800"]["Roving Breaks at Between Flyer"] || "0",
-      D4: breakMatrix["601 - 800"].Undraft || "0",
-    },
-    epi_parameters: {
-      yarn_a1: parseNumber(columnTotals["Roving Breaks at Finger"]),
-      yarn_a2: parseNumber(columnTotals["Roving Breaks at Front Roller Nip"]),
-      yarn_a3: parseNumber(columnTotals["Roving Breaks at Between Flyer"]),
-      yarn_a4: parseNumber(columnTotals.Undraft),
-      yarn_b1: parseNumber(columnTotals["Top Roller Lapping"]),
-      yarn_b2: parseNumber(columnTotals["Bottom Roller Lapping"]),
-      yarn_b3: parseNumber(columnTotals["SLIVER BREAKS"]),
-      yarn_b4: parseNumber(columnTotals["Can Exhaust"]),
-    },
     other_field_values: {
       time: form.startTime,
       start_time: form.startTime,
@@ -622,8 +603,6 @@ const buildStudyPayload = () => ({
         idle_spindles: form.ideals,
         running_spdl: calculatedRunningSpdl,
         hank: calculatedHank,
-        unknown_stop_total: formatNumber(columnTotals["Unknown Stop"]),
-        repeated_spindle: breakMatrix["Repeated Spindle"],
       }),
     },
   });
