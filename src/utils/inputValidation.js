@@ -43,3 +43,21 @@ export const sanitizeNumericInput = (value, config = {}) => {
 
 export const sanitizeIntegerInput = (value, maxDigits = null) =>
   sanitizeNumericInput(value, { integerOnly: true, precision: maxDigits });
+
+export const sanitizeDrumRangeInput = (value, { min = 1, max = 100, maxDigits = 3 } = {}) => {
+  if (value === null || value === undefined) return "";
+
+  const raw = String(value).replace(/\D/g, "");
+  if (!raw) return "";
+
+  const normalized = raw.replace(/^0+(?=\d)/, "");
+  if (!normalized) return "";
+
+  const numericValue = Number(normalized);
+  if (!Number.isFinite(numericValue)) return "";
+
+  if (numericValue < min) return String(min);
+  if (numericValue > max) return String(max);
+
+  return String(numericValue).slice(0, maxDigits);
+};

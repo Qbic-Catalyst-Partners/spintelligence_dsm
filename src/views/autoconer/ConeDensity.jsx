@@ -8,7 +8,7 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerConeDensityMasterData as fetchConeDensityMasterData } from "@/apis/autoconer";
 import { toNullableNumber } from "@/apis/autoconer";
-import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -20,8 +20,14 @@ const autoConerOptions = [];
 const coneTipOptions = ["Blue", "Red", "White"];
 
 const formFieldSanitizers = {
-  drumFrom: (value) => sanitizeIntegerInput(value, 10),
-  drumTo: (value) => sanitizeIntegerInput(value, 10),
+  drumFrom: (value) => sanitizeDrumRangeInput(value, { min: 1, max: 100, maxDigits: 3 }),
+  drumTo: (value) => sanitizeDrumRangeInput(value, { min: 1, max: 100, maxDigits: 3 }),
+};
+
+const isValidDrumRange = (from, to) => {
+  const start = Number(from);
+  const end = Number(to);
+  return Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end <= 100 && start < end;
 };
 
 const rowFieldSanitizers = {
@@ -60,7 +66,7 @@ const createReadingRows = (from = "", to = "") => {
   const start = Number(from);
   const end = Number(to);
 
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) {
+  if (!isValidDrumRange(from, to)) {
     return [];
   }
 
@@ -292,6 +298,11 @@ const ConeDensity = forwardRef(function ConeDensity(
     Object.entries(form).forEach(([key, value]) => {
       if (String(value).trim() === "") nextErrors[key] = true;
     });
+    if (!isValidDrumRange(form.drumFrom, form.drumTo)) {
+      nextErrors.drumFrom = true;
+      nextErrors.drumTo = true;
+      nextErrors.drumRange = true;
+    }
     if (!readingRows.length) nextErrors.drumRange = true;
     readingRows.forEach((row, index) => {
       ["baseDiaE", "noseDiaE", "baseDia", "noseDia", "coneWeight", "coneTrav", "density", "volume", "gmsPerCm3", "gmsLitre", "windingSpeed", "cnTension", "tensionerRpm", "tensionerForce", "nCradlePressure"].forEach((field) => {
@@ -652,14 +663,22 @@ const calculateGmsPerLitre = (row = {}) => {
                 <label className="text-[14px] font-semibold text-slate-500">{label}</label>
                 <div className="grid grid-cols-2 gap-3">
                   <input
-                    type="text"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    inputMode="numeric"
                     placeholder="Enter from"
                     className={`${topFieldClass}${errorClass(errors.drumFrom || errors.drumRange)}`}
                     value={form.drumFrom}
                     onChange={(event) => handleFormChange("drumFrom", event.target.value)}
                   />
                   <input
-                    type="text"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    inputMode="numeric"
                     placeholder="Enter to"
                     className={`${topFieldClass}${errorClass(errors.drumTo || errors.drumRange)}`}
                     value={form.drumTo}

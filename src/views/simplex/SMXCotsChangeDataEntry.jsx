@@ -13,6 +13,8 @@ const detailItems = [
   "Cots Tilting",
   "Cradle Lifting",
   "Condensor Missing",
+  "Others 1",
+  "Others 2",
 ];
 
 const today = new Date().toISOString().split("T")[0];

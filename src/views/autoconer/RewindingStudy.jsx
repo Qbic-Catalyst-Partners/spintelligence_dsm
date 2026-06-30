@@ -8,7 +8,7 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerRewindingStudyMasterData } from "@/apis/autoconer";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
-import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -29,11 +29,11 @@ const countNameOptions = [
 const autoConerOptions = ["AC01", "AC02", "AC03", "AC04"];
 const faultNameOptions = ["Splice", "Double End"];
 const coneTipOptions = ["Red Color with Blue", "Blue Color with White", "Yellow Color with Black"];
-const drumRangeOptions = Array.from({ length: 73 }, (_, index) => String(index));
+const drumRangeOptions = Array.from({ length: 100 }, (_, index) => String(index + 1));
 
 const formFieldSanitizers = {
-  drumFrom: (value) => sanitizeIntegerInput(value, 10),
-  drumTo: (value) => sanitizeIntegerInput(value, 10),
+  drumFrom: (value) => sanitizeDrumRangeInput(value, { min: 1, max: 100, maxDigits: 3 }),
+  drumTo: (value) => sanitizeDrumRangeInput(value, { min: 1, max: 100, maxDigits: 3 }),
   actualCount: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
   drumNo: (value) => sanitizeIntegerInput(value, 10),
   weight: (value) => sanitizeNumericInput(value, { precision: 10, scale: 2 }),
@@ -128,7 +128,7 @@ const buildDrumNumberOptions = (from = "", to = "") => {
   const start = Number(from);
   const end = Number(to);
 
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > 100 || end < start) {
     return [];
   }
 
