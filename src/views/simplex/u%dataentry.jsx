@@ -1,9 +1,9 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { fetchSimplexMachineMaster, fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
+import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import { getSimplexUqcEntries, submitSimplexUqc } from "@/store/slices/simplex";
 
@@ -22,25 +22,21 @@ const initialForm = () => ({
 });
 
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
+const dropdownButtonStyle = {
+  width: "100%",
+  minWidth: 0,
+  height: "38px",
+  padding: "0 12px",
+  border: "1px solid #E2E8F0",
+  borderRadius: "8px",
+  background: "#F1F5F9",
+  color: "#334155",
+  textAlign: "left",
+  outline: "none",
+};
 const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
-const MC_NO_OPTIONS = [{ mc_no: "FR DSS-1", mc_name: "FR DSS-1", value: "FR DSS-1", label: "FR DSS-1", dept_code: "", dept_name: "" }];
+const MC_NO_OPTIONS = createSmxMachineOptions();
 const VARIETY_OPTIONS = ["WPSF 0.90"];
-
-const normalizeMachineOption = (item) => {
-  const value = String(item?.value || item?.mc_no || item?.machine_no || item?.mcName || item || "").trim();
-  const label = String(item?.label || item?.mc_name || item?.machine_name || value || "").trim();
-  return value ? { value, label: label || value } : null;
-};
-
-const mergeMachineOptions = (apiOptions = []) => {
-  const merged = [...createSmxMachineOptions(), ...(Array.isArray(apiOptions) ? apiOptions : []).map(normalizeMachineOption).filter(Boolean)];
-  const seen = new Set();
-  return merged.filter((item) => {
-    if (!item?.value || seen.has(item.value)) return false;
-    seen.add(item.value);
-    return true;
-  });
-};
 
 const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   { selectedTypeName, onTypeChange, typeOptions = [], entryId = "" },
@@ -55,6 +51,8 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
   const [varietyOptions, setVarietyOptions] = useState(VARIETY_OPTIONS);
   const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
+  const [openField, setOpenField] = useState("");
+  const dropdownRefs = useRef({});
 
   useEffect(() => {
     let active = true;
@@ -64,19 +62,31 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         if (!active) return;
         if (dropdown.shifts?.length) setShiftOptions(dropdown.shifts);
         if (dropdown.varietyNames?.length) setVarietyOptions(dropdown.varietyNames);
-        if (dropdown.mcNos?.length) setMcNoOptions(dropdown.mcNos);
       })
       .catch(() => {
         if (!active) return;
         setShiftOptions(SHIFT_OPTIONS);
         setVarietyOptions(VARIETY_OPTIONS);
-        setMcNoOptions(MC_NO_OPTIONS);
       });
 
     return () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      const currentRef = dropdownRefs.current[openField];
+      if (!currentRef?.contains(event.target)) {
+        setOpenField("");
+      }
+    };
+
+    if (!openField) return undefined;
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [openField]);
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -94,6 +104,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const resetForm = () => {
     setForm(initialForm());
     setErrors({});
+    setOpenField("");
   };
 
   const validate = () => {
@@ -218,47 +229,155 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
         <div className={styles.field}>
           <label>MC No.</label>
-          <SearchableSelect
-            value={form.mc_no}
-            onChange={(value) => handleChange("mc_no", value)}
-            className={errors.mc_no ? styles.errorField : ""}
-            options={mcNoOptions.map((item) => ({
-              value: item.value || item.mc_no,
-              label: item.label || item.mc_name || item.mc_no,
-            }))}
-            placeholder="Select MC No."
-            ariaLabel="MC No."
-          />
+          <div
+            ref={(node) => {
+              dropdownRefs.current.mc_no = node;
+            }}
+            style={{ position: "relative" }}
+          >
+            <button
+              type="button"
+              className={errors.mc_no ? styles.errorField : ""}
+              style={errors.mc_no ? undefined : { ...dropdownButtonStyle, ...defaultFieldStyle }}
+              onClick={() => setOpenField((current) => (current === "mc_no" ? "" : "mc_no"))}
+            >
+              <span className={form.mc_no ? "text-slate-900" : "text-slate-500"}>
+                {form.mc_no || "-- Select MC No. --"}
+              </span>
+            </button>
+            {openField === "mc_no" ? (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg">
+                <button
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                  onClick={() => {
+                    handleChange("mc_no", "");
+                    setOpenField("");
+                  }}
+                >
+                  -- Select MC No. --
+                </button>
+                {mcNoOptions.map((machine) => {
+                  const machineName = String(machine?.label || machine?.value || "").trim();
+                  return machineName ? (
+                    <button
+                      key={machineName}
+                      type="button"
+                      className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                      onClick={() => {
+                        handleChange("mc_no", machineName);
+                        setOpenField("");
+                      }}
+                    >
+                      {machineName}
+                    </button>
+                  ) : null;
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.field}>
           <label>SMX No.</label>
-          <SearchableSelect
-            value={form.smx_no}
-            onChange={(value) => handleChange("smx_no", value)}
-            className={errors.smx_no ? styles.errorField : ""}
-            options={mcNoOptions.map((item) => ({
-              value: item.value || item.mc_no,
-              label: item.label || item.mc_name || item.mc_no,
-            }))}
-            placeholder="Select SMX No."
-            ariaLabel="SMX No."
-          />
+          <div
+            ref={(node) => {
+              dropdownRefs.current.smx_no = node;
+            }}
+            style={{ position: "relative" }}
+          >
+            <button
+              type="button"
+              className={errors.smx_no ? styles.errorField : ""}
+              style={errors.smx_no ? undefined : { ...dropdownButtonStyle, ...defaultFieldStyle }}
+              onClick={() => setOpenField((current) => (current === "smx_no" ? "" : "smx_no"))}
+            >
+              <span className={form.smx_no ? "text-slate-900" : "text-slate-500"}>
+                {form.smx_no || "-- Select SMX No. --"}
+              </span>
+            </button>
+            {openField === "smx_no" ? (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg">
+                <button
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                  onClick={() => {
+                    handleChange("smx_no", "");
+                    setOpenField("");
+                  }}
+                >
+                  -- Select SMX No. --
+                </button>
+                {mcNoOptions.map((machine) => {
+                  const machineName = String(machine?.label || machine?.value || "").trim();
+                  return machineName ? (
+                    <button
+                      key={machineName}
+                      type="button"
+                      className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                      onClick={() => {
+                        handleChange("smx_no", machineName);
+                        setOpenField("");
+                      }}
+                    >
+                      {machineName}
+                    </button>
+                  ) : null;
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.field}>
           <label>SMX No. (Proposed)</label>
-          <SearchableSelect
-            value={form.smx_no_proposed}
-            onChange={(value) => handleChange("smx_no_proposed", value)}
-            className={errors.smx_no_proposed ? styles.errorField : ""}
-            options={mcNoOptions.map((item) => ({
-              value: item.value || item.mc_no,
-              label: item.label || item.mc_name || item.mc_no,
-            }))}
-            placeholder="Select SMX No."
-            ariaLabel="SMX No. Proposed"
-          />
+          <div
+            ref={(node) => {
+              dropdownRefs.current.smx_no_proposed = node;
+            }}
+            style={{ position: "relative" }}
+          >
+            <button
+              type="button"
+              className={errors.smx_no_proposed ? styles.errorField : ""}
+              style={errors.smx_no_proposed ? undefined : { ...dropdownButtonStyle, ...defaultFieldStyle }}
+              onClick={() => setOpenField((current) => (current === "smx_no_proposed" ? "" : "smx_no_proposed"))}
+            >
+              <span className={form.smx_no_proposed ? "text-slate-900" : "text-slate-500"}>
+                {form.smx_no_proposed || "-- Select SMX No. --"}
+              </span>
+            </button>
+            {openField === "smx_no_proposed" ? (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg">
+                <button
+                  type="button"
+                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                  onClick={() => {
+                    handleChange("smx_no_proposed", "");
+                    setOpenField("");
+                  }}
+                >
+                  -- Select SMX No. --
+                </button>
+                {mcNoOptions.map((machine) => {
+                  const machineName = String(machine?.label || machine?.value || "").trim();
+                  return machineName ? (
+                    <button
+                      key={machineName}
+                      type="button"
+                      className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
+                      onClick={() => {
+                        handleChange("smx_no_proposed", machineName);
+                        setOpenField("");
+                      }}
+                    >
+                      {machineName}
+                    </button>
+                  ) : null;
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.field}>

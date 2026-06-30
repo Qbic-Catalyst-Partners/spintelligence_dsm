@@ -275,10 +275,16 @@ export const submitSimplexUqcEntry = async (payload) => {
 
 export const submitSimplexStudyReportEntry = async (payload) => {
   try {
-    const response = await apiConfig.post("/simplex/study", payload);
+    const response = await apiConfig.post("/simplex/study", payload, {
+      skipGlobalErrorModal: true,
+    });
     return response.data;
   } catch (error) {
-    throw new Error(extractErrorMessage(error, "Invalid study report payload."));
+    const message = extractErrorMessage(error, "Invalid study report payload.");
+    if (/shift must be one of:/i.test(message)) {
+      throw new Error("Invalid study report payload.");
+    }
+    throw new Error(message);
   }
 };
 
