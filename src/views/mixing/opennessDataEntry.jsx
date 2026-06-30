@@ -43,6 +43,7 @@ const createStages = (totalEntries) => {
         asv: "",
         aov: "",
       })),
+      avgWeight: "",
       avgVol: "",
       avgAsv: "",
       avgAov: "",
@@ -149,7 +150,9 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           return row;
         });
 
+        let totalWeight = 0;
         let totalVol = 0;
+        let totalAsv = 0;
         let totalAov = 0;
         let validRows = 0;
 
@@ -160,17 +163,22 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
           if (weight > 0 && vol1 > 0 && vol2 > 0) {
             const avgVolume = (vol1 + vol2) / 2;
+            const apparentSpecificVolume = parseNumber(row.asv);
+            totalWeight += weight;
             totalVol += avgVolume;
+            totalAsv += apparentSpecificVolume;
             totalAov += parseNumber(row.aov);
             validRows += 1;
           }
         });
 
+        const avgWeight = validRows ? (totalWeight / validRows).toFixed(2) : "";
         const avgVol = validRows ? (totalVol / validRows).toFixed(2) : "";
+        const avgAsv = validRows ? (totalAsv / validRows).toFixed(2) : "";
         const avgAov = validRows ? (totalAov / validRows).toFixed(2) : "";
         const openness = avgAov;
 
-        return { ...stage, rows: updatedRows, avgVol, avgAov, openness };
+        return { ...stage, rows: updatedRows, avgWeight, avgVol, avgAsv, avgAov, openness };
       });
 
       const validStages = updated.filter((stage) => stage.openness !== "");
@@ -187,6 +195,14 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     });
   };
 
+  const handleStageNameChange = (stageIndex, value) => {
+    setStages((current) =>
+      current.map((stage, currentStageIndex) =>
+        currentStageIndex === stageIndex ? { ...stage, stageName: value } : stage
+      )
+    );
+  };
+
   const canSubmit = useMemo(() => {
     if (!date || !mixing?.trim() || !form.target.trim() || !form.entries.trim()) return false;
     if (!stages.length) return false;
@@ -194,7 +210,10 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     return stages.every(
       (stage) =>
         stage.rows.every((row) => row.weight !== "" && row.vol1 !== "" && row.vol2 !== "") &&
+        stage.avgWeight !== "" &&
         stage.avgVol !== "" &&
+        stage.avgAsv !== "" &&
+        stage.avgAov !== "" &&
         stage.openness !== ""
     );
   }, [date, mixing, form, stages]);
@@ -309,7 +328,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       {stages.map((stage, stageIndex) => (
         <div key={stage.stageName} className={styles.stageBox}>
           <h3 className={styles.stageTitle}>Machine Stage {stageIndex + 1}</h3>
-          <input className={styles.stageNameInput} value={stage.stageName} readOnly />
+          <input
+            className={styles.stageNameInput}
+            value={stage.stageName}
+            onChange={(e) => handleStageNameChange(stageIndex, e.target.value)}
+            aria-label={`Stage ${stageIndex + 1} name`}
+          />
 
           {stage.rows.map((row, rowIndex) => {
             runningIndex += 1;
@@ -351,12 +375,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
           <div className={styles.avgSection}>
             <h4 className={styles.avgTitle}>Stage {stageIndex + 1} Averages</h4>
-            <div className={styles.rowGrid}>
+            <div className={styles.avgGrid}>
+              <ReadOnlyField label="Avg. Weight (M)" value={stage.avgWeight} />
               <ReadOnlyField label="Avg. Volume (V)" value={stage.avgVol} />
-              <ReadOnlyField label="Actual Op. Value (AOV)" value={stage.avgAov} />
-            </div>
-            <div className={styles.opennessField}>
-              <ReadOnlyField label="Openness %" value={stage.openness} />
+              <ReadOnlyField label="Average of Apparent Specific Vol (A=V/M)" value={stage.avgAsv} />
+              <ReadOnlyField label="Average of Actual Op. Value (AOV)" value={stage.avgAov} />
+              <ReadOnlyField label="Avg. Openness %" value={stage.openness} />
             </div>
           </div>
         </div>

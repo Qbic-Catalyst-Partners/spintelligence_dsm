@@ -103,8 +103,10 @@
   padding-top: 4px;
 }
 
-.opennessField {
-  max-width: 280px;
+.avgGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
 }
 
 .overallBox {
@@ -128,7 +130,7 @@
     align-items: stretch;
   }
 
-  .opennessField {
-    max-width: none;
+  .avgGrid {
+    grid-template-columns: 1fr;
   }
 }
