@@ -109,6 +109,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
 
     const [inspectionDate, setInspectionDate] = useState("");
     const [inspectionTime, setInspectionTime] = useState("");
+    const [testId, setTestId] = useState("");
     const [mcName, setMcName] = useState("CDG-05");
     const [machineOptions, setMachineOptions] = useState(defaultMachineOptions);
     const [inspectionType, setInspectionType] = useState("Within");
@@ -125,8 +126,6 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
-        const today = new Date();
-        setInspectionDate(today.toISOString().split("T")[0]);
         const now = new Date();
         setInspectionTime(
             [String(now.getHours()).padStart(2, "0"), String(now.getMinutes()).padStart(2, "0"), String(now.getSeconds()).padStart(2, "0")].join(":")
@@ -215,10 +214,12 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             const nextMachine = pick("Machine Name", "MC Name", "mc_name", "machine_name", "machine");
             const nextInspectionType = pick("Inspection Type", "inspection_type");
             const nextInspectionDate = pick("Inspection Date", "inspection_date");
+            const nextTestId = pick("Test ID", "test_id", "testId");
 
             if (nextMachine) setMcName(nextMachine);
             if (nextInspectionType) setInspectionType(nextInspectionType);
             if (nextInspectionDate) setInspectionDate(nextInspectionDate);
+            if (nextTestId) setTestId(nextTestId);
             setEntryCount(detectedEntryCount);
             setRows(nextRows);
             if (typeof window !== "undefined") {
@@ -326,6 +327,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             mc_name: mcName,
             inspection_date: inspectionDate,
             inspection_time: inspectionTime,
+            test_id: testId,
             sample_weights: activeRows.map((row) => toNumber(row.sampleWeight)),
             hanks: activeRows.map((row) => toHankNumber(row.hank)),
         };
@@ -352,6 +354,8 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "Entry ID", value: displayEntryId },
+        { label: "Date", value: inspectionDate },
+        { label: "Test ID", value: testId },
         { label: "MC Name", value: mcName },
         { label: "Inspection Type", value: inspectionType },
         { label: "Number of Entries", value: entryCount },
@@ -391,9 +395,40 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                             <input type="text" value={displayEntryId} readOnly disabled />
                         </div>
                     </div>
-                </div>
 
-                <div className="bwc-row">
+                    <div className="bwc-form-group">
+                        <label>Date</label>
+                        <div className="bwc-input-icon-wrap">
+                            <input
+                                type="date"
+                                value={inspectionDate}
+                                onChange={(e) => {
+                                    setInspectionDate(e.target.value);
+                                    setErrors((current) => {
+                                        const next = { ...current };
+                                        delete next.inspectionDate;
+                                        return next;
+                                    });
+                                }}
+                                className={errors.inspectionDate ? "bwc-error-field" : ""}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="bwc-form-group">
+                        <label>Test ID</label>
+                        <div className="bwc-input-icon-wrap">
+                            <input
+                                type="text"
+                                value={testId}
+                                onChange={(e) => {
+                                    setTestId(e.target.value);
+                                }}
+                                placeholder="Enter Test ID"
+                            />
+                        </div>
+                    </div>
+
                     <div className="bwc-form-group">
                         <label>MC Name</label>
                         <SearchableSelect
@@ -414,7 +449,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     </div>
 
                     <div className="bwc-form-group">
-                        <label>Type</label>
+                        <label>Inspection Type</label>
                         <select
                             value={inspectionType}
                             onChange={(e) => {
@@ -431,7 +466,9 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                             <option value="Between">Between</option>
                         </select>
                     </div>
+                </div>
 
+                <div className="bwc-row">
                     <div className="bwc-form-group">
                         <label>Number of Entries (N) (Max {MAX_ENTRY_COUNT})</label>
                         <div className="bwc-inline-control">

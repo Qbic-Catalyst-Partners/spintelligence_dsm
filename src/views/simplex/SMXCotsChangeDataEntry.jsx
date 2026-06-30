@@ -11,6 +11,8 @@ const detailItems = [
   "Cots Tilting",
   "Cradle Lifting",
   "Condensor Missing",
+  "Others 1",
+  "Others 2",
 ];
 
 const machineOptions = [
