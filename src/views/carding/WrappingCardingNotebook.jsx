@@ -13,6 +13,46 @@ const today = () => new Date().toISOString().split("T")[0];
 const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
 const NUMERIC_FIELDS = ["stdHank", "avgHank", "sd", "cv"];
 
+const toLookupKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const getValueFromSource = (source, aliases = []) => {
+  if (!source || typeof source !== "object") return "";
+  const wanted = aliases.map(toLookupKey);
+  const key = Object.keys(source).find((item) => wanted.includes(toLookupKey(item)));
+  return String(key ? source[key] : "").trim();
+};
+
+const normalizeDateForInput = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/(\d{2})-(\d{2})-(\d{4})/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  return "";
+};
+
+const extractPrefillValues = (payload = {}) => {
+  const values = payload?.values && typeof payload.values === "object" ? payload.values : {};
+  const firstRow = Array.isArray(payload?.result?.json_output) ? payload.result.json_output[0] || {} : {};
+  const source = { ...firstRow, ...values };
+  const testId = getValueFromSource(source, ["Test ID", "Test Id", "test_id", "ID", "id", "entry_id", "entryId"]);
+  const reportDate = getValueFromSource(source, [
+    "Report Date",
+    "report_date",
+    "reportDate",
+    "Date",
+    "date",
+    "entry_date",
+    "entryDate",
+  ]);
+  const normalizedDate = normalizeDateForInput(reportDate);
+
+  return {
+    entryId: testId,
+    date: normalizedDate || reportDate,
+  };
+};
+
 const initialForm = () => ({
   serialNo: "",
   date: today(),
@@ -43,6 +83,7 @@ const toNumberOrNull = (value) => {
 
 const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ entryId = "" }, ref) {
   const [form, setForm] = useState(initialForm);
+  const [resolvedEntryId, setResolvedEntryId] = useState(entryId);
   const [errors, setErrors] = useState({});
   const [machineOptions, setMachineOptions] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -78,6 +119,28 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
     };
   }, []);
 
+  useEffect(() => {
+    if (entryId) setResolvedEntryId(entryId);
+  }, [entryId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.localStorage.getItem("ocr_prefill");
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw);
+      const screen = String(payload?.screen || "").toLowerCase();
+      const matchesCarding = screen.includes("carding");
+      if (!matchesCarding) return;
+      const prefill = extractPrefillValues(payload);
+      if (prefill.entryId) setResolvedEntryId(prefill.entryId);
+      if (prefill.date) setForm((current) => ({ ...current, date: prefill.date }));
+      window.localStorage.removeItem("ocr_prefill");
+    } catch {
+      // Ignore malformed prefill payloads and keep the manual form usable.
+    }
+  }, []);
+
   const setField = (field, value) => {
     const nextValue = NUMERIC_FIELDS.includes(field)
       ? String(value || "").replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
@@ -105,8 +168,8 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
     serial_no: Number.parseInt(form.serialNo, 10) || null,
     date: form.date,
     entry_date: form.date,
-    id: entryId,
-    entry_id: entryId,
+    id: resolvedEntryId,
+    entry_id: resolvedEntryId,
     mac_name: form.machineName,
     machine_name: form.machineName,
     shift: form.shift,
@@ -123,7 +186,7 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
   const getPreviewData = () => [
     { label: "S.No", value: form.serialNo },
     { label: "Date", value: form.date },
-    { label: "ID", value: entryId || "-" },
+    { label: "ID", value: resolvedEntryId || "-" },
     { label: "Mac Name", value: form.machineName },
     { label: "Shift", value: form.shift },
     { label: "Std. Hank", value: form.stdHank },
@@ -169,7 +232,7 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
       <div className={styles["card-row"]}>
         <CustomInput label="S.No" value={form.serialNo} onChange={(value) => setField("serialNo", value.replace(/\D/g, ""))} error={errors.serialNo} />
         <CustomInput label="Date" type="date" value={form.date} onChange={(value) => setField("date", value)} error={errors.date} />
-        <CustomInput label="ID" value={entryId || ""} onChange={() => {}} disabled />
+        <CustomInput label="ID" value={resolvedEntryId || ""} onChange={() => {}} disabled />
       </div>
       <div className={styles["card-row"]}>
         <div className={styles["card-form-group"]}>
