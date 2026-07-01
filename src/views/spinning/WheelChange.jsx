@@ -12,6 +12,109 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 3": "type3",
 };
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
+const STATIC_RF_NO_OPTIONS = ["1", "2", "3", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "20", "24"];
+const STATIC_TYPE_1_DROPDOWN_OPTIONS = {
+  rh: ["40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68"],
+  bd: ["1.92", "1.87", "1.83", "1.79", "1.75", "1.71", "1.67", "1.63", "1.60", "1.57", "1.54", "1.51", "1.48", "1.45", "1.42", "1.40", "1.37", "1.35", "1.32", "1.30", "1.28", "1.26", "1.24", "1.22", "1.20", "1.18", "1.16", "1.15", "1.13"],
+  dca: ["43"],
+  dcb: ["127"],
+  dpc: ["132", "133", "134", "135"],
+  dc: [
+    "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70",
+  ],
+  totalDraft: [
+    "26.11", "26.3", "26.49", "26.5", "26.69", "26.7", "26.89", "27.08", "27.09", "27.28", "27.48", "27.49", "27.69", "27.9", "28.11", "28.32", "28.33", "28.54", "28.75", "28.77", "28.99", "29.2", "29.23", "29.45", "29.67", "29.7", "29.92", "30.15", "30.19", "30.41", "30.64", "30.69", "30.92", "31.15", "31.21", "31.44", "31.68", "31.75", "31.99", "32.22", "32.3", "32.55", "32.79", "32.88", "33.13", "33.38", "33.48", "33.73", "33.98", "34.1", "34.35", "34.61", "34.74", "35", "35.26", "35.41", "35.68", "35.94", "36.1", "36.38", "36.65", "36.83", "37.1", "37.38", "37.58", "37.86", "38.14", "38.36", "38.65", "38.94", "39.18", "39.47", "39.77", "40.03", "40.92", "41.23", "41.53", "41.85", "42.16", "42.48", "42.82", "43.14", "43.47", "43.84", "44.17", "44.5", "44.91", "45.25", "45.59", "46.03", "46.38", "46.73", "47.21", "47.57", "47.92", "48.46", "48.82", "49.18", "49.77", "50.14", "50.51", "51.15", "51.53", "51.92", "52.61", "53", "53.4", "54.16", "54.56", "54.97", "55.8", "56.22", "56.64", "57.54", "57.97", "58.41", "59.4", "59.84", "60.29", "61.38", "61.84", "62.3",
+  ],
+};
+const TYPE_2_BDW_TO_BD = {
+  "40": "1.92",
+  "41": "1.87",
+  "42": "1.83",
+  "43": "1.79",
+  "44": "1.75",
+  "45": "1.71",
+  "46": "1.67",
+  "47": "1.63",
+  "48": "1.6",
+  "49": "1.57",
+  "50": "1.54",
+  "51": "1.51",
+  "52": "1.48",
+  "53": "1.45",
+  "54": "1.42",
+  "55": "1.4",
+  "56": "1.37",
+  "57": "1.35",
+  "58": "1.32",
+  "59": "1.3",
+  "60": "1.28",
+  "61": "1.26",
+  "62": "1.24",
+  "63": "1.22",
+  "64": "1.2",
+  "65": "1.18",
+  "66": "1.16",
+  "67": "1.15",
+  "68": "1.13",
+};
+const TYPE_2_B_TO_A = {
+  "76": "89",
+  "77": "88",
+  "78": "87",
+  "79": "86",
+  "80": "85",
+  "81": "84",
+  "82": "83",
+  "83": "82",
+  "84": "81",
+  "85": "80",
+  "86": "79",
+  "87": "78",
+  "88": "77",
+  "89": "76",
+};
+const TYPE_2_D_TO_C = {
+  "102": "35",
+  "98": "39",
+  "91": "46",
+  "82": "55",
+  "72": "65",
+  "65": "72",
+  "55": "82",
+  "46": "91",
+  "39": "98",
+  "35": "102",
+};
+const STATIC_TYPE_2_DROPDOWN_OPTIONS = {
+  bdv: Object.keys(TYPE_2_BDW_TO_BD),
+  bd: Object.values(TYPE_2_BDW_TO_BD),
+  t: Object.keys(TYPE_2_B_TO_A),
+  b: Object.values(TYPE_2_B_TO_A),
+  f: Object.keys(TYPE_2_D_TO_C),
+  c: Object.values(TYPE_2_D_TO_C),
+};
+const TYPE_1_TW_OPTIONS = Array.from({ length: 41 }, (_, index) => String(index + 30));
+const TYPE_1_TPI_OPTIONS = {
+  default: [
+    "55.49","53.7","52.02","50.44","48.96","47.56","46.24","44.99","43.81","42.68","41.62","40.6","39.63","38.71","37.83","36.99","36.19","35.42","34.68","33.97","33.29","32.64","32.01","31.41","30.81","30.27","29.73","29.2","28.7","28.21","27.74","27.29","26.85","26.42","26.01","25.61","25.22","24.85","24.48","24.13","23.78",
+    "37.19","35.99","34.87","33.81","32.81","31.88","30.99","30.15","29.36","28.61","27.89","27.21","26.56","25.95","25.36","24.79","24.25","23.74","23.24","22.79","22.31","21.88","21.46","21.05","20.66","20.29","19.92","19.57","19.24","18.91","18.59","18.29","17.99","17.71","17.43","17.16","16.9","16.65","16.41","16.17","15.94",
+    "30.41","29.43","28.51","27.64","26.83","26.07","25.34","24.66","24","23.39","22.81","22.25","21.72","21.22","20.73","20.27","19.83","19.41","19.01","18.62","18.25","17.89","17.54","17.21","16.89","16.59","16.29","16","15.73","15.46","15.2","14.96","14.71","14.48","14.25","14.04","13.82","13.62","13.42","13.22","13.03",
+    "20.6","19.94","19.32","18.73","18.18","17.66","17.17","16.71","16.27","15.85","15.45","15.08","14.72","14.37","14.05","13.74","13.44","13.15","12.88","12.62","12.36","12.12","11.89","11.66","11.45","11.24","11.04","10.84","10.66","10.48","10.3","10.13","9.97","9.81","9.66","9.51","9.37","9.23","9.09","8.96","8.83",
+  ],
+  "3": [
+    "50.93","49.28","47.74","46.3","44.93","43.65","42.44","41.29","40.2","39.17","38.19","37.26","36.38","35.53","34.72","33.95","33.21","32.51","31.83","31.18","30.56","29.96","29.38","28.83","28.29","27.78","27.28","26.8","26.34","25.89","25.46","25.05","24.64","24.25","23.87","23.5","23.15","22.8","22.47","22.14","21.83",
+    "34.13","33.03","32","31.03","30.12","29.26","28.44","27.67","26.95","26.25","25.6","24.97","24.38","23.81","23.27","22.75","22.26","21.79","21.33","20.9","20.48","20.08","19.69","19.32","18.96","18.62","18.28","17.96","17.65","17.35","17.07","16.79","16.52","16.25","16","15.75","15.51","15.28","15.06","14.84","14.63",
+    "27.91","27.01","26.16","25.37","24.63","23.92","23.26","22.63","22.03","21.47","20.93","20.42","19.93","19.47","19.03","18.61","18.2","17.81","17.44","17.09","16.75","16.42","16.1","15.8","15.5","15.22","14.95","14.69","14.44","14.19","13.95","13.73","13.5","13.29","13.08","12.88","12.69","12.5","12.31","12.13","11.96",
+    "18.91","18.3","17.73","17.19","16.69","16.21","15.76","15.33","14.93","14.55","14.18","13.84","13.51","13.19","12.89","12.61","12.33","12.07","11.82","11.58","11.35","11.13","10.91","10.7","10.51","10.31","10.13","9.95","9.78","9.62","9.46","9.3","9.15","9","8.86","8.73","8.6","8.47","8.34","8.22","8.1",
+  ],
+};
+const TYPE_1_TCW_OPTIONS = ["36/88", "47/77", "53/71", "65/59"];
+const getType1MachineSpecificOptions = (rowKey, machineNumber = "") => {
+  if (rowKey === "tdv") return TYPE_1_TCW_OPTIONS;
+  if (rowKey === "tm") return TYPE_1_TW_OPTIONS;
+  if (rowKey === "tciTm") return TYPE_1_TPI_OPTIONS[String(machineNumber).trim() === "3" ? "3" : "default"] || TYPE_1_TPI_OPTIONS.default;
+  return [];
+};
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
@@ -24,21 +127,21 @@ const TYPE_1_PARAMETER_ROWS = [
   { key: "diameterDoffSpeed", label: "Product Qty (Kgs)" },
   { key: "rovingHank", label: "Raving Hank" },
   { key: "rh", label: "BDW", inputType: "select" },
-  { key: "bd", label: "BD", darkInput: true },
+  { key: "bd", label: "BD", darkInput: true, inputType: "select" },
   { key: "dca", label: "DCA", inputType: "select" },
-  { key: "dcb", label: "DCB", darkInput: true },
-  { key: "dpc", label: "DFF", inputType: "select" },
+  { key: "dcb", label: "DCB", darkInput: true, inputType: "select" },
+  { key: "dpc", label: "DFC", inputType: "select" },
   { key: "dc", label: "DC", inputType: "select" },
   { key: "tdv", label: "TCW", inputType: "select" },
-  { key: "tm", label: "TW", placeholder: "Select Value" },
-  { key: "tciTm", label: "TPI/TM", darkInput: true },
+  { key: "tm", label: "TW", placeholder: "Select Value", inputType: "select" },
+  { key: "tciTm", label: "TPI/TM", darkInput: true, inputType: "select" },
   { key: "travellerDia", label: "Travellers No." },
   { key: "spacer", label: "Spacer" },
   { key: "capWeight", label: "Cop Weight (Grms)" },
   { key: "spindleMotorRpm", label: "Speed Initial (RPM)" },
   { key: "empaleeColour", label: "Speed Max (RPM)" },
   { key: "traveller", label: "Empties Colour" },
-  { key: "totalDraft", label: "Total Draft", darkInput: true },
+  { key: "totalDraft", label: "Total Draft", darkInput: true, inputType: "select" },
 ];
 
 const TYPE_2_PARAMETER_ROWS = [
@@ -54,12 +157,12 @@ const TYPE_2_PARAMETER_ROWS = [
   { key: "battAirflow", label: "Back Roll Wheel" },
   { key: "obliquePin", label: "Change Pinion" },
   { key: "bdv", label: "BDW", inputType: "select" },
-  { key: "bd", label: "BD", darkInput: true },
+  { key: "bd", label: "BD", darkInput: true, inputType: "select", computed: true },
   { key: "t", label: "B", inputType: "select" },
-  { key: "b", label: "A", darkInput: true },
+  { key: "b", label: "A", darkInput: true, inputType: "select", computed: true },
   { key: "f", label: "D", inputType: "select" },
-  { key: "c", label: "C", darkInput: true },
-  { key: "tpiTm", label: "TPI/TM", darkInput: true },
+  { key: "c", label: "C", darkInput: true, inputType: "select", computed: true },
+  { key: "tpiTm", label: "TPI/TM", darkInput: true, computed: true },
   { key: "windingHp", label: "Winding - E/F" },
   { key: "rollerMoved", label: "Ratchet Wheel" },
   { key: "traveller", label: "Travellers No." },
@@ -67,7 +170,7 @@ const TYPE_2_PARAMETER_ROWS = [
   { key: "spindleInitialRpm", label: "Speed Initial (RPM)" },
   { key: "spindleMtrRpm", label: "Speed Max (RPM)" },
   { key: "emptiesColour", label: "Empties Colour" },
-  { key: "totalDraft", label: "Total Draft", darkInput: true },
+  { key: "totalDraft", label: "Total Draft", darkInput: true, computed: true },
 ];
 
 const TYPE_3_PARAMETER_ROWS = [
@@ -82,11 +185,11 @@ const TYPE_3_PARAMETER_ROWS = [
   { key: "rovingHank", label: "Raving Hank" },
   { key: "bdv", label: "BDW" },
   { key: "bd", label: "BD", darkInput: true },
-  { key: "dca", label: "DCA", inputType: "select" },
+  { key: "dca", label: "DCA" },
   { key: "dcb", label: "DCB", darkInput: true },
-  { key: "dpc", label: "DFF", inputType: "select" },
-  { key: "dc", label: "DC", inputType: "select" },
-  { key: "tdv", label: "TCW", inputType: "select" },
+  { key: "dpc", label: "DFF" },
+  { key: "dc", label: "DC" },
+  { key: "tdv", label: "TCW" },
   { key: "tm", label: "TW" },
   { key: "tpiTm", label: "TPI/TM", darkInput: true },
   { key: "travellersNo", label: "Travellers No." },
@@ -475,7 +578,7 @@ const normalizeWheelChangeRecordValue = (value) =>
 const buildWheelChangeValuesFromRecord = (record = {}, wheelChangeType = "") => {
   const typeConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
   const rows = typeConfig?.rows || {};
-  return ALL_WHEEL_CHANGE_PARAMETER_ROWS.reduce((values, row) => {
+  const values = ALL_WHEEL_CHANGE_PARAMETER_ROWS.reduce((values, row) => {
     const fieldBase = rows[row.key];
     const existingValue = fieldBase
       ? normalizeWheelChangeRecordValue(
@@ -493,10 +596,79 @@ const buildWheelChangeValuesFromRecord = (record = {}, wheelChangeType = "") => 
       },
     };
   }, {});
+
+  return wheelChangeType === "Type 2" ? buildType2DerivedValues(values) : values;
 };
 const parseNumericValue = (value) => {
   const parsed = Number.parseFloat(String(value ?? "").trim());
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const computeType2TpiTm = ({ b, a, d, c }) => {
+  const bValue = parseNumericValue(b);
+  const aValue = parseNumericValue(a);
+  const dValue = parseNumericValue(d);
+  const cValue = parseNumericValue(c);
+  if (bValue === null || aValue === null || dValue === null || cValue === null || aValue === 0 || cValue === 0) {
+    return "";
+  }
+  return String((28.15 * (bValue / aValue) * (dValue / cValue)).toFixed(2));
+};
+
+const computeType2TotalDraft = ({ brw, cp }) => {
+  const brwValue = parseNumericValue(brw);
+  const cpValue = parseNumericValue(cp);
+  if (brwValue === null || cpValue === null || cpValue === 0) {
+    return "";
+  }
+  return String((10.519 * (brwValue / cpValue)).toFixed(2));
+};
+
+const buildType2DerivedValues = (values = {}) => {
+  const nextValues = { ...values };
+
+  const existingBdw = getTextValue(nextValues.bdv?.existing);
+  const proposedBdw = getTextValue(nextValues.bdv?.proposed);
+  const existingB = getTextValue(nextValues.t?.existing);
+  const proposedB = getTextValue(nextValues.t?.proposed);
+  const existingD = getTextValue(nextValues.f?.existing);
+  const proposedD = getTextValue(nextValues.f?.proposed);
+  const existingBrw = getTextValue(nextValues.battAirflow?.existing);
+  const proposedBrw = getTextValue(nextValues.battAirflow?.proposed);
+  const existingCp = getTextValue(nextValues.obliquePin?.existing);
+  const proposedCp = getTextValue(nextValues.obliquePin?.proposed);
+
+  nextValues.bd = {
+    existing: TYPE_2_BDW_TO_BD[existingBdw] || getTextValue(nextValues.bd?.existing),
+    proposed: TYPE_2_BDW_TO_BD[proposedBdw] || getTextValue(nextValues.bd?.proposed),
+  };
+
+  nextValues.t = {
+    existing: getTextValue(nextValues.t?.existing),
+    proposed: getTextValue(nextValues.t?.proposed),
+  };
+
+  nextValues.b = {
+    existing: TYPE_2_B_TO_A[existingB] || getTextValue(nextValues.b?.existing),
+    proposed: TYPE_2_B_TO_A[proposedB] || getTextValue(nextValues.b?.proposed),
+  };
+
+  nextValues.c = {
+    existing: TYPE_2_D_TO_C[existingD] || getTextValue(nextValues.c?.existing),
+    proposed: TYPE_2_D_TO_C[proposedD] || getTextValue(nextValues.c?.proposed),
+  };
+
+  nextValues.tpiTm = {
+    existing: computeType2TpiTm({ b: existingB, a: nextValues.b.existing, d: existingD, c: nextValues.c.existing }),
+    proposed: computeType2TpiTm({ b: proposedB, a: nextValues.b.proposed, d: proposedD, c: nextValues.c.proposed }),
+  };
+
+  nextValues.totalDraft = {
+    existing: computeType2TotalDraft({ brw: existingBrw, cp: existingCp }),
+    proposed: computeType2TotalDraft({ brw: proposedBrw, cp: proposedCp }),
+  };
+
+  return nextValues;
 };
 
 const InspectionEntryIcon = () => (
@@ -613,9 +785,47 @@ const WheelChange = forwardRef(function WheelChange(
     });
   };
 
+  const setWheelChangeValue = (rowKey, column, nextValue) => {
+    setValues((current) => {
+      const nextValues = {
+        ...current,
+        [rowKey]: {
+          ...(current[rowKey] || { existing: "", proposed: "" }),
+          [column]: nextValue,
+        },
+      };
+
+      if (wheelChangeType === "Type 2") {
+        return buildType2DerivedValues(nextValues);
+      }
+
+      return nextValues;
+    });
+  };
+
   const handleIntegerChange = (setter, field) => (event) => {
     setter(sanitizeIntegerInput(event.target.value));
     clearFieldError(field);
+  };
+
+  const handleValueChange = (rowKey, column) => (event) => {
+    const nextValue =
+      event && typeof event === "object" && "target" in event
+        ? event.target.value
+        : event;
+    setWheelChangeValue(rowKey, column, nextValue);
+    clearValueError(rowKey, column);
+  };
+
+  const handleNumericValueChange = (rowKey, column) => (event) => {
+    const nextValue = sanitizeNumericInput(event.target.value, { precision: 10, scale: 3 });
+    setWheelChangeValue(rowKey, column, nextValue);
+    clearValueError(rowKey, column);
+  };
+
+  const handleRadioValueChange = (rowKey, column, nextValue) => {
+    setWheelChangeValue(rowKey, column, nextValue);
+    clearValueError(rowKey, column);
   };
 
   useEffect(() => {
@@ -631,6 +841,10 @@ const WheelChange = forwardRef(function WheelChange(
       if (!isMounted) return;
 
       const machineOptionSources = [];
+
+      machineOptionSources.push(
+        STATIC_RF_NO_OPTIONS.map((value) => ({ value, label: value }))
+      );
 
       if (machineResult.status === "fulfilled") {
         machineOptionSources.push(getWheelChangeMachineOptions(machineResult.value));
@@ -705,44 +919,6 @@ const WheelChange = forwardRef(function WheelChange(
       cancelled = true;
     };
   }, [selectedVariety, wheelChangeType]);
-
-  const handleValueChange = (rowKey, column) => (event) => {
-    const nextValue =
-      event && typeof event === "object" && "target" in event
-        ? event.target.value
-        : event;
-    setValues((current) => ({
-      ...current,
-      [rowKey]: {
-        ...(current[rowKey] || { existing: "", proposed: "" }),
-        [column]: nextValue,
-      },
-    }));
-    clearValueError(rowKey, column);
-  };
-
-  const handleNumericValueChange = (rowKey, column) => (event) => {
-    const nextValue = sanitizeNumericInput(event.target.value, { precision: 10, scale: 3 });
-    setValues((current) => ({
-      ...current,
-      [rowKey]: {
-        ...(current[rowKey] || { existing: "", proposed: "" }),
-        [column]: nextValue,
-      },
-    }));
-    clearValueError(rowKey, column);
-  };
-
-  const handleRadioValueChange = (rowKey, column, nextValue) => {
-    setValues((current) => ({
-      ...current,
-      [rowKey]: {
-        ...(current[rowKey] || { existing: "", proposed: "" }),
-        [column]: nextValue,
-      },
-    }));
-    clearValueError(rowKey, column);
-  };
 
   const clear = () => {
     setWheelChangeType("");
@@ -867,10 +1043,20 @@ const WheelChange = forwardRef(function WheelChange(
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
+    const shouldUseSelect =
+      row.inputType === "select" &&
+      (wheelChangeType !== "Type 1" || !["tdv", "tm", "tciTm"].includes(row.key) || Boolean(machineNumber));
 
-    if (row.inputType === "select") {
+    if (shouldUseSelect) {
       const optionKeys = WHEEL_CHANGE_DROPDOWN_KEYS[row.key] || [];
+      const dynamicDropdownOptions = getType1MachineSpecificOptions(row.key, machineNumber);
+      const staticDropdownOptions = [
+        ...(STATIC_TYPE_1_DROPDOWN_OPTIONS[row.key] || []),
+        ...(STATIC_TYPE_2_DROPDOWN_OPTIONS[row.key] || []),
+      ].map((option) => String(option));
       const options = normalizeDropdownOptions([
+        ...dynamicDropdownOptions,
+        ...staticDropdownOptions,
         ...getFirstArray(dropdownOptions, optionKeys),
         ...(Array.isArray(dropdownOptions?.fixed_options?.[row.key])
           ? dropdownOptions.fixed_options[row.key]
@@ -885,9 +1071,13 @@ const WheelChange = forwardRef(function WheelChange(
           options={options}
           placeholder="Select"
           ariaLabel={row.label}
+          dropUp={row.key === "totalDraft"}
+          disabled={row.computed === true}
         />
       );
     }
+
+    const isReadOnly = row.computed === true;
 
     return (
       <input
@@ -897,6 +1087,7 @@ const WheelChange = forwardRef(function WheelChange(
         placeholder={row.placeholder || ""}
         className={className}
         value={value}
+        readOnly={isReadOnly}
         onChange={
           parameterInputType === "number"
             ? handleNumericValueChange(row.key, column)

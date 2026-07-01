@@ -10,6 +10,7 @@ function SearchableSelect({
   disabled = false,
   name,
   ariaLabel,
+  dropUp = false,
 }) {
   const containerRef = useRef(null);
   const inputRef = useRef(null);
@@ -136,7 +137,14 @@ function SearchableSelect({
       </button>
 
       {isOpen ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#dbe4f0] bg-white shadow-lg">
+        <div
+          className="absolute left-0 right-0 z-50 max-h-60 overflow-y-auto rounded-lg border border-[#dbe4f0] bg-white shadow-lg"
+          style={
+            dropUp
+              ? { bottom: "100%", top: "auto", marginBottom: "0.25rem" }
+              : { top: "100%", bottom: "auto", marginTop: "0.25rem" }
+          }
+        >
           {filteredOptions.length ? (
             <ul className="py-1" role="listbox" aria-label={ariaLabel}>
               {filteredOptions.map((option, index) => {

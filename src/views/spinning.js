@@ -58,6 +58,24 @@ const SPINNING_CHECKING_OPTIONS = [
     { id: 10, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"], component: WheelChange },
 ];
 
+const COUNT_CHANGE_RF_NO_OPTIONS = [
+    "1",
+    "2",
+    "3",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "20",
+    "24",
+];
+
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
@@ -154,6 +172,8 @@ const normalizeMachineOptions = (payload) => {
                                                                     ? payload.shift_codes
                                                                     : [];
 
+    const seen = new Set();
+
     return rows
         .map((row) => {
             const rawValue =
@@ -200,7 +220,12 @@ const normalizeMachineOptions = (payload) => {
             const label = getMachineText(rawLabel) || value;
             return value ? { value, label: label || value } : null;
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .filter((option) => {
+            if (seen.has(option.value)) return false;
+            seen.add(option.value);
+            return true;
+        });
 };
 
 const normalizeCotsSideValue = (value) => {
@@ -453,9 +478,17 @@ function SpinningDepartment() {
             if (!isMounted) return;
 
             if (rfResult.status === "fulfilled") {
-                setCountChangeRfOptions(normalizeMachineOptions(rfResult.value));
+                const normalized = normalizeMachineOptions(rfResult.value);
+                const fallbackOptions = COUNT_CHANGE_RF_NO_OPTIONS.map((value) => ({ value, label: value }));
+                setCountChangeRfOptions(
+                    Array.from(
+                        new Map(
+                            [...normalized, ...fallbackOptions].map((option) => [option.value, option])
+                        ).values()
+                    )
+                );
             } else {
-                setCountChangeRfOptions([]);
+                setCountChangeRfOptions(COUNT_CHANGE_RF_NO_OPTIONS.map((value) => ({ value, label: value })));
             }
 
             if (countNameResult.status === "fulfilled") {

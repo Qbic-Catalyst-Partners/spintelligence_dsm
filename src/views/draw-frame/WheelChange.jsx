@@ -59,7 +59,7 @@ const TD7_ROWS = [
   { key: "noOfEnds", label: "No. of Ends" },
   { key: "speed", label: "Speed" },
   { key: "totalDraftFormula", label: "Total Draft (Formula)", darkInput: true },
-  { key: "totalDraftGear", label: "Total Draft from G1/G2 Combination" },
+  { key: "totalDraftGear", label: "Total Draft from G1/G2 Combinations", inputType: "select" },
   { key: "g1G2", label: "G1/G2", inputType: "select" },
   { key: "bdcp", label: "BDCP (C4) / Break Draft", inputType: "select" },
   { key: "webTension", label: "Web Tension (C3) / Web Tension Draft", inputType: "select" },
@@ -185,6 +185,354 @@ const parseNumericValue = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const computeType1Sb20TotalDraft = ({ nw1, nw2 }) => {
+  const nw1Value = parseNumericValue(nw1);
+  const nw2Value = parseNumericValue(nw2);
+  if (nw1Value === null || nw2Value === null || nw1Value === 0) return "";
+  return String((3.993 * (nw2Value / nw1Value)).toFixed(2));
+};
+
+const DRAW_FRAME_NW_OPTIONS = Array.from({ length: 70 - 23 + 1 }, (_, index) => String(23 + index));
+const DRAW_FRAME_BREAK_DRAFT_OPTIONS = Array.from({ length: 70 - 52 + 1 }, (_, index) => String(52 + index));
+const DRAW_FRAME_W1VWZ_OPTIONS = ["143.9", "145.3", "146.7", "148.1", "149.5", "152.3"];
+const DRAW_FRAME_W3DR_OPTIONS = ["0.9", "1", "1.01", "1.02", "1.03"];
+const DRAW_FRAME_W8DR_OPTIONS = ["0.97", "0.98", "0.99", "1", "1.02", "1.03"];
+const DRAW_FRAME_W4_OPTIONS = [
+  "77.4",
+  "72.2",
+  "70.3",
+  "65.5",
+  "63.8",
+  "59.6",
+  "57.9",
+  "54",
+  "52.7",
+  "49.1",
+  "48",
+  "44.8",
+  "43.5",
+  "40.7",
+  "39.6",
+  "36.9",
+];
+const DRAW_FRAME_TRUMPET_OPTIONS = ["3.8", "4.2"];
+const DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS = [
+  { value: "4", label: "4" },
+  { value: "4.2", label: "4.2" },
+  { value: "4.3", label: "4.3" },
+  { value: "4.4", label: "4.4" },
+  { value: "4.6", label: "4.6" },
+  { value: "4.7", label: "4.7" },
+  { value: "4.8", label: "4.8" },
+  { value: "5", label: "5" },
+  { value: "5.1", label: "5.1" },
+  { value: "5.3", label: "5.3" },
+  { value: "5.5", label: "5.5" },
+  { value: "5.6", label: "5.6" },
+  { value: "5.7", label: "5.7" },
+  { value: "5.9", label: "5.9" },
+  { value: "6.1", label: "6.1" },
+  { value: "6.2", label: "6.2" },
+  { value: "6.4", label: "6.4" },
+  { value: "6.6", label: "6.6" },
+  { value: "6.8", label: "6.8" },
+  { value: "7", label: "7" },
+  { value: "7.2", label: "7.2" },
+  { value: "7.4", label: "7.4" },
+  { value: "7.6", label: "7.6" },
+  { value: "7.8", label: "7.8" },
+  { value: "8", label: "8" },
+  { value: "8.3", label: "8.3" },
+  { value: "8.5", label: "8.5" },
+  { value: "8.8", label: "8.8" },
+  { value: "9", label: "9" },
+  { value: "9.3", label: "9.3" },
+  { value: "9.6", label: "9.6" },
+  { value: "10", label: "10" },
+];
+const DRAW_FRAME_TD7_G1_G2_OPTIONS = [
+  { value: "43/40", label: "43/40" },
+  { value: "41/40", label: "41/40" },
+  { value: "40/40", label: "40/40" },
+  { value: "39/40", label: "39/40" },
+  { value: "38/40", label: "38/40" },
+  { value: "37/40", label: "37/40" },
+  { value: "36/40", label: "36/40" },
+  { value: "35/40", label: "35/40" },
+  { value: "34/40", label: "34/40" },
+  { value: "33/40", label: "33/40" },
+  { value: "41/31", label: "41/31" },
+  { value: "40/31", label: "40/31" },
+  { value: "39/31", label: "39/31" },
+  { value: "38/31", label: "38/31" },
+  { value: "37/31", label: "37/31" },
+  { value: "36/31", label: "36/31" },
+  { value: "35/31", label: "35/31" },
+  { value: "34/31", label: "34/31" },
+  { value: "33/31", label: "33/31" },
+  { value: "32/31", label: "32/31" },
+  { value: "31/31", label: "31/31" },
+  { value: "39/24", label: "39/24" },
+  { value: "38/24", label: "38/24" },
+  { value: "37/24", label: "37/24" },
+  { value: "36/24", label: "36/24" },
+  { value: "35/24", label: "35/24" },
+  { value: "34/24", label: "34/24" },
+  { value: "33/24", label: "33/24" },
+  { value: "32/24", label: "32/24" },
+  { value: "31/24", label: "31/24" },
+  { value: "30/24", label: "30/24" },
+  { value: "29/24", label: "29/24" },
+];
+const DRAW_FRAME_TD7_BDCP_OPTIONS = [
+  { value: "1.038", label: "1.038 / 26" },
+  { value: "1.080", label: "1.080 / 25" },
+  { value: "1.125", label: "1.125 / 24" },
+  { value: "1.174", label: "1.174 / 23" },
+  { value: "1.227", label: "1.227 / 22" },
+  { value: "1.286", label: "1.286 / 21" },
+  { value: "1.350", label: "1.350 / 20" },
+  { value: "1.421", label: "1.421 / 19" },
+  { value: "1.500", label: "1.500 / 18" },
+  { value: "1.588", label: "1.588 / 17" },
+  { value: "1.688", label: "1.688 / 16" },
+];
+const DRAW_FRAME_TD7_WEB_TENSION_OPTIONS = [
+  { value: "87", label: "87 / 0.99" },
+  { value: "86.5", label: "86.5 / 0.995" },
+  { value: "86.1", label: "86.1 / 1" },
+  { value: "85.7", label: "85.7 / 1.005" },
+  { value: "85.2", label: "85.2 / 1.011" },
+  { value: "84.8", label: "84.8 / 1.015" },
+  { value: "84.4", label: "84.4 / 1.02" },
+  { value: "84", label: "84 / 1.025" },
+  { value: "83.6", label: "83.6 / 1.03" },
+  { value: "83.2", label: "83.2 / 1.035" },
+  { value: "82.8", label: "82.8 / 1.04" },
+  { value: "82.4", label: "82.4 / 1.045" },
+  { value: "82", label: "82 / 1.05" },
+  { value: "81.6", label: "81.6 / 1.055" },
+  { value: "81.2", label: "81.2 / 1.06" },
+  { value: "80.8", label: "80.8 / 1.066" },
+  { value: "80.5", label: "80.5 / 1.07" },
+];
+const DRAW_FRAME_TD7_BOTTOM_ROLLER_FRONT_OPTIONS = [
+  { value: "37.8", label: "37.8 / 1.5" },
+  { value: "38.4", label: "38.4 / 2" },
+  { value: "38.9", label: "38.9 / 2.5" },
+  { value: "39.4", label: "39.4 / 3" },
+  { value: "39.9", label: "39.9 / 3.5" },
+  { value: "40.4", label: "40.4 / 4" },
+  { value: "40.9", label: "40.9 / 4.5" },
+  { value: "41.4", label: "41.4 / 5" },
+  { value: "42", label: "42 / 5.5" },
+  { value: "42.5", label: "42.5 / 6" },
+  { value: "43", label: "43 / 6.5" },
+  { value: "43.5", label: "43.5 / 7" },
+  { value: "44", label: "44 / 7.5" },
+  { value: "44.5", label: "44.5 / 8" },
+  { value: "45", label: "45 / 8.5" },
+  { value: "45.5", label: "45.5 / 9" },
+  { value: "46", label: "46 / 9.5" },
+  { value: "46.6", label: "46.6 / 10" },
+  { value: "47.1", label: "47.1 / 10.5" },
+  { value: "47.6", label: "47.6 / 11" },
+  { value: "48.1", label: "48.1 / 11.5" },
+  { value: "48.6", label: "48.6 / 12" },
+  { value: "49.1", label: "49.1 / 12.5" },
+  { value: "49.6", label: "49.6 / 13" },
+  { value: "50.1", label: "50.1 / 13.5" },
+  { value: "50.6", label: "50.6 / 14" },
+  { value: "51.1", label: "51.1 / 14.5" },
+  { value: "51.6", label: "51.6 / 15" },
+  { value: "52.2", label: "52.2 / 15.5" },
+  { value: "52.7", label: "52.7 / 16" },
+  { value: "53.2", label: "53.2 / 16.5" },
+  { value: "53.7", label: "53.7 / 17" },
+  { value: "54.2", label: "54.2 / 17.5" },
+  { value: "54.7", label: "54.7 / 18" },
+  { value: "55.2", label: "55.2 / 18.5" },
+  { value: "55.7", label: "55.7 / 19" },
+  { value: "56.2", label: "56.2 / 19.5" },
+  { value: "56.7", label: "56.7 / 20" },
+  { value: "57.2", label: "57.2 / 20.5" },
+  { value: "57.7", label: "57.7 / 21" },
+  { value: "58.2", label: "58.2 / 21.5" },
+  { value: "58.8", label: "58.8 / 22" },
+  { value: "59.3", label: "59.3 / 22.5" },
+  { value: "59.8", label: "59.8 / 23" },
+];
+const DRAW_FRAME_TD7_BOTTOM_ROLLER_BACK_OPTIONS = [
+  { value: "44.5", label: "44.5 / 6.5" },
+  { value: "45", label: "45 / 7" },
+  { value: "45.5", label: "45.5 / 7.5" },
+  { value: "46", label: "46 / 8" },
+  { value: "46.5", label: "46.5 / 8.5" },
+  { value: "47", label: "47 / 9" },
+  { value: "47.5", label: "47.5 / 9.5" },
+  { value: "48", label: "48 / 10" },
+  { value: "48.5", label: "48.5 / 10.5" },
+  { value: "49", label: "49 / 11" },
+  { value: "49.5", label: "49.5 / 11.5" },
+  { value: "50", label: "50 / 12" },
+  { value: "50.5", label: "50.5 / 12.5" },
+  { value: "51", label: "51 / 13" },
+  { value: "51.5", label: "51.5 / 13.5" },
+  { value: "52", label: "52 / 14" },
+  { value: "52.5", label: "52.5 / 14.5" },
+  { value: "53", label: "53 / 15" },
+  { value: "53.5", label: "53.5 / 15.5" },
+  { value: "54", label: "54 / 16" },
+  { value: "54.5", label: "54.5 / 16.5" },
+  { value: "55", label: "55 / 17" },
+  { value: "55.5", label: "55.5 / 17.5" },
+  { value: "56", label: "56 / 18" },
+  { value: "56.5", label: "56.5 / 18.5" },
+  { value: "57", label: "57 / 19" },
+  { value: "57.5", label: "57.5 / 19.5" },
+  { value: "58", label: "58 / 20" },
+  { value: "58.5", label: "58.5 / 20.5" },
+  { value: "59", label: "59 / 21" },
+  { value: "59.5", label: "59.5 / 21.5" },
+  { value: "60", label: "60 / 22" },
+  { value: "60.5", label: "60.5 / 22.5" },
+  { value: "61", label: "61 / 23" },
+];
+const DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS = [
+  "35 / 1.5",
+  "36 / 2.5",
+  "37 / 3.5",
+  "38 / 4.5",
+  "39 / 5.5",
+  "40 / 6.5",
+  "41 / 7.5",
+  "42 / 8.5",
+  "43 / 9.5",
+  "44 / 10.5",
+  "45 / 11.5",
+  "46 / 12.5",
+  "47 / 13.5",
+  "48 / 14.5",
+  "49 / 15.5",
+  "50 / 16.5",
+  "51 / 17.5",
+  "52 / 18.5",
+  "53 / 19.5",
+  "54 / 20.5",
+  "55 / 21.5",
+  "56 / 22.5",
+  "57 / 23.5",
+  "58 / 24.5",
+  "59 / 25.5",
+  "60 / 26.5",
+];
+const DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS = [
+  "40 / 10",
+  "42 / 12",
+  "44 / 14",
+  "46 / 16",
+  "48 / 18",
+  "50 / 20",
+  "52 / 22",
+  "54 / 24",
+  "56 / 26",
+  "58 / 28",
+  "60 / 30",
+  "62 / 32",
+  "64 / 34",
+  "66 / 36",
+  "68 / 38",
+  "70 / 40",
+  "72 / 42",
+  "74 / 44",
+  "76 / 46",
+  "78 / 48",
+  "80 / 50",
+  "82 / 52",
+  "84 / 54",
+  "86 / 56",
+  "88 / 58",
+];
+const DRAW_FRAME_SCANNING_ROLLER_OPTIONS = ["10", "20", "30", "40", "50", "60", "70", "80"];
+const DRAW_FRAME_SCANNING_ROLLER_LOWER_OPTIONS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+const DRAW_FRAME_SILVER_FUNNEL_OPTIONS = ["A", "B", "C", "D"];
+const DRAW_FRAME_WEB_GUIDE_TUBE_OPTIONS = ["12", "14", "16", "18", "20"];
+const DRAW_FRAME_INSERT_BORE_DIA_OPTIONS = ["0.20", "0.25", "0.30", "0.35", "0.40"];
+const DRAW_FRAME_SELECT_OPTIONS = {
+  md1: DRAW_FRAME_NW_OPTIONS,
+  md2: DRAW_FRAME_NW_OPTIONS,
+  bdcp: DRAW_FRAME_BREAK_DRAFT_OPTIONS,
+  creelTension: DRAW_FRAME_W1VWZ_OPTIONS,
+  feedTension: DRAW_FRAME_W8DR_OPTIONS,
+  webTension: DRAW_FRAME_W3DR_OPTIONS,
+  trumpet: DRAW_FRAME_TRUMPET_OPTIONS,
+  bottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
+  bottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
+  g1G2: ["G1/G2", "G1", "G2"],
+  lrsbNw1: DRAW_FRAME_NW_OPTIONS,
+  lrsbNw2: DRAW_FRAME_NW_OPTIONS,
+  lrsbBackRollerPulley: DRAW_FRAME_W4_OPTIONS,
+  lrsbMiddleRollerPulley: DRAW_FRAME_W1VWZ_OPTIONS,
+  lrsbCreelTensionDraft: DRAW_FRAME_W1VWZ_OPTIONS,
+  lrsbWebTensionDraft: DRAW_FRAME_W3DR_OPTIONS,
+  lrsbBottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
+  lrsbBottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
+  lrsbScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
+  lrsbScanningRollerLower: DRAW_FRAME_SCANNING_ROLLER_LOWER_OPTIONS,
+  lrsbSilverFunnel: DRAW_FRAME_SILVER_FUNNEL_OPTIONS,
+  lrsbWebGuideTube: DRAW_FRAME_WEB_GUIDE_TUBE_OPTIONS,
+  lrsbSliverWireSize: DRAW_FRAME_INSERT_BORE_DIA_OPTIONS,
+  lrsbTrumpet: DRAW_FRAME_TRUMPET_OPTIONS,
+  d40Nw1: DRAW_FRAME_NW_OPTIONS,
+  d40Nw2: DRAW_FRAME_NW_OPTIONS,
+  d40BreakDraft: DRAW_FRAME_BREAK_DRAFT_OPTIONS,
+  d40CreelTensionDraft: DRAW_FRAME_W1VWZ_OPTIONS,
+  d40WebTensionDraft: DRAW_FRAME_W3DR_OPTIONS,
+  d40WebTensionPulley: DRAW_FRAME_W8DR_OPTIONS,
+  d40BottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
+  d40BottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
+  d40ScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
+  d40Trumpet: DRAW_FRAME_TRUMPET_OPTIONS,
+  d50BreakDraft: DRAW_FRAME_BREAK_DRAFT_OPTIONS,
+  d50CreelTensionDraft: DRAW_FRAME_W1VWZ_OPTIONS,
+  d50WebTensionDraft: DRAW_FRAME_W3DR_OPTIONS,
+  d50FeedTensionDraft: DRAW_FRAME_W8DR_OPTIONS,
+  d50BottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
+  d50BottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
+  d50ScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
+  d50Trumpet: DRAW_FRAME_TRUMPET_OPTIONS,
+  ldf3sBreakDraft: DRAW_FRAME_BREAK_DRAFT_OPTIONS,
+  ldf3sCreelTensionDraft: DRAW_FRAME_W1VWZ_OPTIONS,
+  ldf3sWebTensionDraft: DRAW_FRAME_W3DR_OPTIONS,
+  ldf3sFeedTensionDraft: DRAW_FRAME_W8DR_OPTIONS,
+  ldf3sBottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
+  ldf3sBottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
+  ldf3sScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
+  ldf3sTrumpet: DRAW_FRAME_TRUMPET_OPTIONS,
+};
+
+const getSelectOptions = (rowKey, wheelChangeType = "") => {
+  if (wheelChangeType === "Type 2 (TD7)") {
+    switch (rowKey) {
+      case "totalDraftGear":
+        return DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS;
+      case "g1G2":
+        return DRAW_FRAME_TD7_G1_G2_OPTIONS;
+      case "bdcp":
+        return DRAW_FRAME_TD7_BDCP_OPTIONS;
+      case "webTension":
+        return DRAW_FRAME_TD7_WEB_TENSION_OPTIONS;
+      case "bottomRollerFront":
+        return DRAW_FRAME_TD7_BOTTOM_ROLLER_FRONT_OPTIONS;
+      case "bottomRollerBack":
+        return DRAW_FRAME_TD7_BOTTOM_ROLLER_BACK_OPTIONS;
+      default:
+        return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
+    }
+  }
+
+  return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
+};
 const normalizeApiWheelChangeType = (value) => {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
   if (text === "type1") return "Type 1 (SB20)";
@@ -435,6 +783,35 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     };
   }, [draftLoaded, selectedMixing, wheelChangeType]);
 
+  useEffect(() => {
+    if (wheelChangeType !== "Type 1 (SB20)") return;
+
+    const expectedDraftConstant = "3.993";
+    const nextValues = {
+      ...values,
+      draftConstant: { existing: expectedDraftConstant, proposed: expectedDraftConstant },
+      totalDraft: {
+        existing: computeType1Sb20TotalDraft({
+          nw1: values.md1?.existing,
+          nw2: values.md2?.existing,
+        }),
+        proposed: computeType1Sb20TotalDraft({
+          nw1: values.md1?.proposed,
+          nw2: values.md2?.proposed,
+        }),
+      },
+    };
+
+    if (
+      values.draftConstant?.existing !== nextValues.draftConstant.existing ||
+      values.draftConstant?.proposed !== nextValues.draftConstant.proposed ||
+      values.totalDraft?.existing !== nextValues.totalDraft.existing ||
+      values.totalDraft?.proposed !== nextValues.totalDraft.proposed
+    ) {
+      setValues(nextValues);
+    }
+  }, [wheelChangeType, values.md1?.existing, values.md1?.proposed, values.md2?.existing, values.md2?.proposed, values.draftConstant?.existing, values.draftConstant?.proposed, values.totalDraft?.existing, values.totalDraft?.proposed]);
+
   const clearFieldError = (field) => {
     setErrors((current) => {
       if (!current[field]) return current;
@@ -464,27 +841,50 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     });
   };
 
+  const applyType1Sb20ComputedValues = (nextValues) => {
+    if (wheelChangeType !== "Type 1 (SB20)") return nextValues;
+
+    return {
+      ...nextValues,
+      draftConstant: { existing: "3.993", proposed: "3.993" },
+      totalDraft: {
+        existing: computeType1Sb20TotalDraft({
+          nw1: nextValues.md1?.existing,
+          nw2: nextValues.md2?.existing,
+        }),
+        proposed: computeType1Sb20TotalDraft({
+          nw1: nextValues.md1?.proposed,
+          nw2: nextValues.md2?.proposed,
+        }),
+      },
+    };
+  };
+
   const handleValueChange = (rowKey, column) => (event) => {
     const nextValue = event.target.value;
-    setValues((current) => ({
-      ...current,
-      [rowKey]: {
-        ...(current[rowKey] || { existing: "", proposed: "" }),
-        [column]: nextValue,
-      },
-    }));
+    setValues((current) =>
+      applyType1Sb20ComputedValues({
+        ...current,
+        [rowKey]: {
+          ...(current[rowKey] || { existing: "", proposed: "" }),
+          [column]: nextValue,
+        },
+      })
+    );
     clearValueError(rowKey, column);
   };
 
   const handleNumericValueChange = (rowKey, column) => (event) => {
     const nextValue = sanitizeNumericInput(event.target.value, { precision: 10, scale: 3 });
-    setValues((current) => ({
-      ...current,
-      [rowKey]: {
-        ...(current[rowKey] || { existing: "", proposed: "" }),
-        [column]: nextValue,
-      },
-    }));
+    setValues((current) =>
+      applyType1Sb20ComputedValues({
+        ...current,
+        [rowKey]: {
+          ...(current[rowKey] || { existing: "", proposed: "" }),
+          [column]: nextValue,
+        },
+      })
+    );
     clearValueError(rowKey, column);
   };
 
@@ -592,9 +992,19 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     }
 
     if (row.inputType === "select") {
+      const options = getSelectOptions(row.key, wheelChangeType);
       return (
         <select className={className} value={value} onChange={handleValueChange(row.key, column)}>
           <option value="">Select</option>
+          {options.map((option) => {
+            const optionValue = typeof option === "string" ? option : option.value;
+            const optionLabel = typeof option === "string" ? option : option.label ?? option.value;
+            return (
+              <option key={optionValue} value={optionValue}>
+                {optionLabel}
+              </option>
+            );
+          })}
         </select>
       );
     }

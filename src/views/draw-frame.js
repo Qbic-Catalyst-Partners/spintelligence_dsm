@@ -11,6 +11,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
 import WheelChange from "@/views/draw-frame/WheelChange";
+import { cvMachineOptions } from "@/views/draw-frame/constants";
 import {
   fetchDrawFrameCotsMachineMaster,
   fetchDrawFrameMachineMaster,
@@ -58,8 +59,14 @@ const primaryTypeOptions = [
 
 export const DRAW_FRAME_INPUT_SCREEN_COUNT = primaryTypeOptions.length;
 const DRAW_FRAME_ENTRY_SEQ_KEY = "drawframe_entry_sequence";
+const DRAW_FRAME_YARN_CV_PREFIX = String(
+  process.env.NEXT_PUBLIC_DRAWFRAME_YARN_CV_PREFIX || process.env.NEXT_PUBLIC_DRAWFRAME_YARN_CV_PDF_PREFIX || "YAR"
+).trim().toUpperCase() || "YAR";
+const DRAW_FRAME_YARN_CV_DEPARTMENT_CODE = String(
+  process.env.NEXT_PUBLIC_DRAWFRAME_YARN_CV_DEPARTMENT_CODE || "15"
+).trim();
 const DRAW_FRAME_ENTRY_ID_CONFIG = {
-  "1 Yard / Half Yard CV Entry": { prefix: "YAR", width: 4, routePath: "/drawframe/yarn-cv" },
+  "1 Yard / Half Yard CV Entry": { prefix: DRAW_FRAME_YARN_CV_PREFIX, width: 4, routePath: "/drawframe/yarn-cv" },
   "Yarn CV% Calculation Form": { prefix: "YCV" },
   "Draw Frame Cots Data Entry": { prefix: "DRC", width: 4, routePath: "/drawframe/cots" },
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
@@ -778,22 +785,24 @@ function DrawFrame() {
 
     const loadYarnCvMachineNames = async () => {
       try {
-        const machines = await fetchDrawFrameMachineMaster();
+        const machines = await fetchDrawFrameMachineMaster({
+          departmentCode: DRAW_FRAME_YARN_CV_DEPARTMENT_CODE,
+        });
         if (!isMounted) return;
         const names = [];
         const nextMasterByName = {};
         machines.forEach((item) => {
-          const machineName = String(item?.machine_number || item?.mc_name || "").trim();
-          const mcNo = String(item?.mc_no || "").trim();
+          const machineName = normalizeMachineName(item);
+          const mcNo = String(item?.mc_no || item?.machine_no || item?.machineNo || item?.mcNo || "").trim();
           if (!machineName) return;
           names.push(machineName);
-          nextMasterByName[machineName] = { mcNo };
+          nextMasterByName[machineName] = { mcNo: mcNo || machineName };
         });
-        setYarnCvMachineOptions(mergeUniqueMachineNames(names, STATIC_FR_MACHINE_NAMES));
+        setYarnCvMachineOptions(mergeUniqueMachineNames(names, cvMachineOptions));
         setMachineMasterByName(nextMasterByName);
       } catch (_error) {
         if (isMounted) {
-          setYarnCvMachineOptions(mergeUniqueMachineNames([], STATIC_FR_MACHINE_NAMES));
+          setYarnCvMachineOptions(mergeUniqueMachineNames([], cvMachineOptions));
           setMachineMasterByName({});
         }
       }
