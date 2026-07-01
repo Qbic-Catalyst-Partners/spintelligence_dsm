@@ -15,6 +15,8 @@ const MACHINE_FIELDS = [
   "S.No",
   "Date",
   "ID",
+  "Test ID",
+  "Report Date",
   "Mac Name",
   "Shift",
   "Std. Hank",
@@ -31,6 +33,74 @@ const BWC_FIELDS = [
   ...Array.from({ length: BWC_ENTRY_COUNT }, (_, i) => `Sample Weight ${i + 1}`),
   ...Array.from({ length: BWC_ENTRY_COUNT }, (_, i) => `Hank ${i + 1}`),
 ];
+
+const toLookupKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+const getValueFromRow = (row, aliases = []) => {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return "";
+  const wanted = aliases.map(toLookupKey);
+  const key = Object.keys(row).find((item) => wanted.includes(toLookupKey(item)));
+  return key ? String(row[key] ?? "").trim() : "";
+};
+
+const normalizeDateForInput = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/(\d{2})-(\d{2})-(\d{4})/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  return "";
+};
+
+const formatDateForDisplay = (value) => {
+  const normalized = normalizeDateForInput(value);
+  if (!normalized) return String(value || "").trim();
+  const [year, month, day] = normalized.split("-");
+  return `${day}-${month}-${year}`;
+};
+
+const extractTextMatch = (text, patterns = []) => {
+  const source = String(text || "");
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) return String(match[1]).trim();
+  }
+  return "";
+};
+
+const getRowCandidateValues = (rows = [], aliases = []) => {
+  for (const row of rows) {
+    const value = getValueFromRow(row, aliases);
+    if (value) return value;
+  }
+  return "";
+};
+
+const extractMachinePrefill = (result = {}) => {
+  const rows = Array.isArray(result?.json_output)
+    ? result.json_output
+    : Array.isArray(result?.raw_tables)
+      ? result.raw_tables
+      : Array.isArray(result?.data)
+        ? result.data
+        : [];
+  const firstRow = rows.find((row) => row && typeof row === "object" && !Array.isArray(row)) || {};
+  const rawText = String(result?.raw_text || result?.text || "");
+  const testId =
+    getValueFromRow(firstRow, ["Test ID", "Test Id", "test_id", "ID", "id", "entry_id", "entryId"]) ||
+    (rawText.match(/test\s*id\s*[:\-]?\s*([^\r\n]+)/i)?.[1] || "").trim();
+  const reportDate =
+    getValueFromRow(firstRow, ["Report Date", "Date", "date", "entry_date", "entryDate"]) ||
+    (rawText.match(/date\s*[:\-]?\s*([0-9]{2}-[0-9]{2}-[0-9]{4})/i)?.[1] || "").trim();
+  const normalizedDate = normalizeDateForInput(reportDate);
+
+  return {
+    "Test ID": testId,
+    "Report Date": normalizedDate || reportDate,
+    ID: testId,
+    Date: normalizedDate || reportDate,
+  };
+};
 
 const getBwcReviewFields = (count) =>
   Array.from({ length: Math.min(Math.max(1, Number(count) || 1), BWC_ENTRY_COUNT) }, (_, i) => [
@@ -76,6 +146,34 @@ function normalizeBwcValues(source = {}) {
   return values;
 }
 
+const extractBwcMeta = (rows = [], rawText = "") => {
+  const testId =
+    getRowCandidateValues(rows, ["Test ID", "Test Id", "test_id", "ID", "id", "entry_id", "entryId"]) ||
+    extractTextMatch(rawText, [
+      /test\s*id\s*[:\-]?\s*([^\r\n]+)/i,
+      /test\s*id\s+([A-Za-z0-9._/-]+)/i,
+    ]);
+
+  const inspectionDateRaw =
+    getRowCandidateValues(rows, ["Inspection Date", "inspection_date", "Date", "date", "Report Date", "report_date", "entry_date"]) ||
+    extractTextMatch(rawText, [
+      /inspection\s*date\s*[:\-]?\s*([^\r\n]+)/i,
+      /report\s*date\s*[:\-]?\s*([^\r\n]+)/i,
+      /\bdate\s*[:\-]?\s*([0-9]{2}-[0-9]{2}-[0-9]{4})/i,
+    ]);
+
+  return {
+    machineName:
+      getRowCandidateValues(rows, ["Machine Name", "MC Name", "mc_name", "machine_name", "machine"]) ||
+      extractTextMatch(rawText, [/machine\s*name\s*[:\-]?\s*([^\r\n]+)/i, /mc\s*name\s*[:\-]?\s*([^\r\n]+)/i]),
+    inspectionType:
+      getRowCandidateValues(rows, ["Inspection Type", "inspection_type"]) ||
+      extractTextMatch(rawText, [/inspection\s*type\s*[:\-]?\s*([^\r\n]+)/i]),
+    inspectionDate: normalizeDateForInput(inspectionDateRaw),
+    testId,
+  };
+};
+
 export default function OcrMachinePage() {
   const router = useRouter();
   const [docType, setDocType] = useState("hvi");
@@ -85,6 +183,7 @@ export default function OcrMachinePage() {
   const [rows, setRows] = useState([]);
   const [formValues, setFormValues] = useState({});
   const [saved, setSaved] = useState(false);
+  const [lastOcrResult, setLastOcrResult] = useState(null);
   const returnTo = typeof router.query.returnTo === "string" ? router.query.returnTo : "";
   const requestedDocType = typeof router.query.docType === "string" ? router.query.docType.toLowerCase() : "";
   const queryMcName = typeof router.query.mc_name === "string" ? router.query.mc_name : "";
@@ -95,6 +194,7 @@ export default function OcrMachinePage() {
     mc_name: "",
     inspection_type: "",
     inspection_date: "",
+    test_id: "",
   });
   const [isDark, setIsDark] = useState(false);
   const inferredDocType = useMemo(() => {
@@ -162,8 +262,10 @@ export default function OcrMachinePage() {
     setLoading(true);
     setLogs([]);
     setRows([]);
+    setLastOcrResult(null);
     try {
       const result = await runOcrForDocument({ file, docType });
+      setLastOcrResult(result || null);
       const parsed = Array.isArray(result?.json_output)
         ? result.json_output
         : Array.isArray(result?.raw_tables)
@@ -188,16 +290,27 @@ export default function OcrMachinePage() {
         }
       }
       setRows(parsed);
-      const first = parsed[0] || {};
       if (docType === "bwc") {
+        const meta = extractBwcMeta(parsed, result?.raw_text || result?.text || "");
+        const first = parsed[0] || {};
         setFormValues(normalizeBwcValues(first));
+        setMeta((prev) => ({
+          ...prev,
+          mc_name: meta.machineName || prev.mc_name,
+          inspection_type: meta.inspectionType || prev.inspection_type,
+          inspection_date: meta.inspectionDate || prev.inspection_date,
+          test_id: meta.testId || prev.test_id,
+        }));
       } else if (MACHINE_DOC_TYPES.has(docType)) {
-        setFormValues(
-          MACHINE_FIELDS.reduce((acc, field) => {
-            acc[field] = first[field] ?? "";
-            return acc;
-          }, {})
-        );
+        const first = parsed[0] || {};
+        const machineValues = MACHINE_FIELDS.reduce((acc, field) => {
+          acc[field] = first[field] ?? "";
+          return acc;
+        }, {});
+        setFormValues({
+          ...machineValues,
+          ...(docType === "carding" ? extractMachinePrefill(result) : {}),
+        });
       } else {
         setFormValues(first);
       }
@@ -317,7 +430,7 @@ export default function OcrMachinePage() {
           ) : (
             <div>
               {docType === "bwc" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10, marginBottom: 10 }}>
                   <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Machine Name</span>
                     <input
@@ -340,6 +453,14 @@ export default function OcrMachinePage() {
                       type="date"
                       value={meta.inspection_date}
                       onChange={(e) => setMeta((prev) => ({ ...prev, inspection_date: e.target.value }))}
+                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Test ID</span>
+                    <input
+                      value={meta.test_id}
+                      onChange={(e) => setMeta((prev) => ({ ...prev, test_id: e.target.value }))}
                       style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
                     />
                   </label>
@@ -369,19 +490,23 @@ export default function OcrMachinePage() {
                     const screenValue = queryScreen || (target.startsWith("/mixing") ? "Cotton HVI Data Entry" : normalizedScreen);
                     window.localStorage.setItem(
                       "ocr_prefill",
-                      JSON.stringify({
-                        screen: screenValue,
-                        docType,
-                        values: docType === "bwc"
+                        JSON.stringify({
+                          screen: screenValue,
+                          docType,
+                      values: docType === "bwc"
                           ? {
                               ...formValues,
                               "Machine Name": meta.mc_name,
                               "Inspection Type": meta.inspection_type,
-                              "Inspection Date": meta.inspection_date,
+                              "Inspection Date": formatDateForDisplay(meta.inspection_date),
+                              "Test ID": meta.test_id,
                               num_entries: Math.min(countBwcEntries(formValues), BWC_SUBMIT_ENTRY_COUNT),
-                            }
+                          }
                           : formValues,
-                        result: { json_output: rows },
+                        result: {
+                          json_output: rows,
+                          raw_text: lastOcrResult?.raw_text || lastOcrResult?.text || "",
+                        },
                       })
                     );
                     const returnTarget = returnTo === "/mixing" && queryScreen ? `/mixing?type=${encodeURIComponent(queryScreen)}` : target;

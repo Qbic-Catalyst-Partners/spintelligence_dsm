@@ -52,6 +52,25 @@ const normalizeHankValue = (value) => {
     return sanitizeNumericInput(cleaned, { precision: 10, scale: 4 });
 };
 
+const normalizeDateForInput = (value) => {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+
+    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+    const dmyMatch = text.match(/^(\d{2})-(\d{2})-(\d{4})/);
+    if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+
+    const date = new Date(text);
+    if (Number.isNaN(date.getTime())) return "";
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
 const toNumber = (value) => Number(normalizeNumericValue(value));
 const toHankNumber = (value) => Number(normalizeHankValue(value));
 
@@ -175,12 +194,15 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
         try {
             const payload = JSON.parse(raw);
             const screen = String(payload?.screen || "").toLowerCase();
-            if (payload?.docType !== "bwc" || !screen.startsWith("carding")) return;
+            const isCardingPrefill =
+                payload?.docType === "bwc" &&
+                (screen.includes("carding") || screen.includes("quality-control/wrapping") || screen.includes("wrapping"));
+            if (!isCardingPrefill) return;
 
-            const sourceRow =
-                payload?.values ||
-                payload?.result?.json_output?.[0] ||
-                {};
+            const sourceRow = {
+                ...(payload?.result?.json_output?.[0] || {}),
+                ...(payload?.values || {}),
+            };
             const normalize = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
             const sourceEntries = Object.entries(sourceRow || {});
             const pick = (...keys) => {
@@ -213,7 +235,9 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
 
             const nextMachine = pick("Machine Name", "MC Name", "mc_name", "machine_name", "machine");
             const nextInspectionType = pick("Inspection Type", "inspection_type");
-            const nextInspectionDate = pick("Inspection Date", "inspection_date", "Date", "date");
+            const nextInspectionDate = normalizeDateForInput(
+                pick("Inspection Date", "inspection_date", "Date", "date")
+            );
             const nextTestId = pick("Test ID", "test_id", "testId");
 
             if (nextMachine) setMcName(nextMachine);

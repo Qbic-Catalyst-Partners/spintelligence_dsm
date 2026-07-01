@@ -35,19 +35,15 @@
 .stageBox {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #f8fafc;
+  gap: 12px;
 }
 
-.stageTitle,
+.stageLabel,
 .overallTitle,
 .avgTitle {
   margin: 0;
   color: #0f172a;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -63,14 +59,18 @@
   font-size: 14px;
 }
 
+.stageNameInput {
+  max-width: 270px;
+}
+
 .rowBox {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px;
-  border: 1px solid #e2e8f0;
+  padding: 12px;
+  border: 1px solid #cdd8ef;
   border-radius: 10px;
-  background: #ffffff;
+  background: #f8fbff;
 }
 
 .rowNumber {
@@ -96,6 +96,13 @@
   gap: 18px;
 }
 
+.rowContent {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-left: 34px;
+}
+
 .avgSection {
   display: flex;
   flex-direction: column;
@@ -113,6 +120,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-width: 360px;
   padding: 18px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -123,6 +131,10 @@
   .topGrid,
   .rowGrid {
     grid-template-columns: 1fr;
+  }
+
+  .rowContent {
+    margin-left: 0;
   }
 
   .generateField {
