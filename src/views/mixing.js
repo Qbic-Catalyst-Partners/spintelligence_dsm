@@ -35,11 +35,41 @@ const mixingDepartmentTypes = [
         component: ProcessParameterDataEntry,
         needsLotNo: false,
     },
-    { id: 1, name: "Cotton HVI Data Entry", aliases: ["Cotton HVI Data Entry", "Cotton HVI"], component: CottonHVIDataEntry, needsLotNo: true },
-    { id: 2, name: "Fibre Data Entry", aliases: ["Fibre Data Entry", "Fiber Data Entry"], component: FibreDataEntry, needsLotNo: true },
-    { id: 3, name: "AFIS Data Entry", aliases: ["AFIS Data Entry", "Afis Data Entry"], component: AfisDataEntry, needsLotNo: true },
-    { id: 4, name: "Moisture Data Entry", aliases: ["Moisture Data Entry"], component: MoistureDataEntry, needsLotNo: true },
-    { id: 5, name: "Openness Data Entry", aliases: ["Openness Data Entry"], component: OpennessDataEntry, needsLotNo: false },
+    {
+        id: 1,
+        name: "Cotton HVI Data Entry",
+        aliases: ["Cotton HVI Data Entry", "Cotton HVI", "Cotton HVI Entry", "HVI"],
+        component: CottonHVIDataEntry,
+        needsLotNo: true,
+    },
+    {
+        id: 2,
+        name: "Fibre Data Entry",
+        aliases: ["Fibre Data Entry", "Fiber Data Entry", "Fibre"],
+        component: FibreDataEntry,
+        needsLotNo: true,
+    },
+    {
+        id: 3,
+        name: "AFIS Data Entry",
+        aliases: ["AFIS Data Entry", "Afis Data Entry", "AFIS"],
+        component: AfisDataEntry,
+        needsLotNo: true,
+    },
+    {
+        id: 4,
+        name: "Moisture Data Entry",
+        aliases: ["Moisture Data Entry", "Moisture"],
+        component: MoistureDataEntry,
+        needsLotNo: true,
+    },
+    {
+        id: 5,
+        name: "Openness Data Entry",
+        aliases: ["Openness Data Entry", "Openness"],
+        component: OpennessDataEntry,
+        needsLotNo: false,
+    },
 ];
 
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
