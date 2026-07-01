@@ -70,6 +70,25 @@ const fieldDefs = [
 const topFieldClass = styles.topField;
 const numericKeys = new Set(fieldDefs.map((field) => field.key));
 
+const PROCESS_PARAMETER_SUB_DEPARTMENTS = [
+  "Mixing",
+  "Blow Room",
+  "Carding",
+  "Draw Frame",
+  "Simplex",
+  "Spinning",
+  "Autoconer",
+];
+
+const getVersionSubDepartment = (version) =>
+  String(version?.data?.subDepartment || version?.data?.sub_department || "").trim();
+
+const isSubDepartmentComplete = (version, subDepartment) => {
+  const normalized = getVersionSubDepartment(version).toLowerCase();
+  if (!normalized) return true;
+  return normalized === String(subDepartment || "").trim().toLowerCase();
+};
+
 const normalizeDate = (value) => {
   if (!value) return new Date().toISOString().split("T")[0];
   const raw = String(value);
@@ -148,6 +167,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [form, setForm] = useState(() => createDefaultForm(selectedTypeName));
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
+  const [expandedSubDepartmentKey, setExpandedSubDepartmentKey] = useState("");
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -269,9 +289,14 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     handleVersionSelect(version);
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
+      setExpandedSubDepartmentKey("");
       return;
     }
-    setExpandedVersionId((current) => (current === version.id ? null : version.id));
+    setExpandedVersionId((current) => {
+      const nextExpanded = current === version.id ? null : version.id;
+      if (nextExpanded !== version.id) setExpandedSubDepartmentKey("");
+      return nextExpanded;
+    });
   };
 
   const validate = () => {
@@ -396,6 +421,20 @@ const ProcessParameter = forwardRef(function ProcessParameter(
         const isComplete = isVersionComplete(version);
         const isExpanded = expandedVersionId === version.id && isComplete;
         const isActive = version.id === form.versionId;
+        const versionSubDepartment = getVersionSubDepartment(version);
+        const nestedChildren = PROCESS_PARAMETER_SUB_DEPARTMENTS.map((subDepartment) => ({
+          key: `${version.id}-${subDepartment}`,
+          label: subDepartment,
+          isExpanded:
+            expandedVersionId === version.id &&
+            expandedSubDepartmentKey === `${version.id}-${subDepartment}`,
+          hasData:
+            !versionSubDepartment ||
+            versionSubDepartment.toLowerCase() === subDepartment.toLowerCase(),
+          complete:
+            !versionSubDepartment ||
+            versionSubDepartment.toLowerCase() === subDepartment.toLowerCase(),
+        }));
 
         return (
           <div key={version.id} className={styles.versionCard}>
@@ -430,17 +469,69 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             </div>
 
             {isExpanded ? (
-              <div className={styles.versionBody}>
-                <div className={styles.savedFieldsGrid}>
-                  {fieldDefs.map((field) => (
-                    <div key={`${version.id}-${field.key}`} className={styles.savedFieldCard}>
-                      <div className={styles.cellLabel}>{field.label}</div>
-                      <div className={styles.savedValue}>{displaySavedValue(version.data[field.key])}</div>
-                    </div>
-                  ))}
+              <>
+                <div className="mt-4 rounded-xl border border-[#c8d9f0] bg-[#f8fbff]">
+                  <div className="px-4 py-3 text-sm font-semibold text-slate-700">Sub Departments</div>
+                  <div className="flex flex-col gap-2 px-4 pb-4">
+                    {nestedChildren.map((child) => (
+                      <div key={child.key} className="overflow-hidden rounded-lg border border-[#c8d9f0] bg-white">
+                        <button
+                          type="button"
+                          className={`flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
+                            child.isExpanded ? "bg-[#eef5ff]" : ""
+                          }`}
+                          onClick={() =>
+                            setExpandedSubDepartmentKey((current) =>
+                              current === child.key ? "" : child.key
+                            )
+                          }
+                        >
+                          <span className="text-[13px] font-bold text-slate-900">{child.label}</span>
+                          <span className="rounded-full bg-[#dfe9ff] px-3 py-1 text-[11px] font-bold text-[#3d539f]">
+                            {child.complete ? "Saved" : "Pending"}
+                          </span>
+                        </button>
+                        {child.isExpanded ? (
+                          <div className="border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
+                            {child.hasData ? (
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                {fieldDefs.map((field) => (
+                                  <div
+                                    key={`${child.key}-${field.key}`}
+                                    className="rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                                  >
+                                    <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                      {field.label}
+                                    </div>
+                                    <div className="mt-1 text-[13px] font-bold text-slate-900">
+                                      {displaySavedValue(version.data[field.key])}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                                No sub-department specific data is stored for this PP ID yet.
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className={styles.versionDate}>{version.label}</div>
-              </div>
+                <div className={styles.versionBody}>
+                  <div className={styles.savedFieldsGrid}>
+                    {fieldDefs.map((field) => (
+                      <div key={`${version.id}-${field.key}`} className={styles.savedFieldCard}>
+                        <div className={styles.cellLabel}>{field.label}</div>
+                        <div className={styles.savedValue}>{displaySavedValue(version.data[field.key])}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.versionDate}>{version.label}</div>
+                </div>
+              </>
             ) : null}
           </div>
         );

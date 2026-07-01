@@ -176,6 +176,79 @@
   color: #64748b;
 }
 
+.subDepartmentWrap {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #dbe4f0;
+}
+
+.subDepartmentTitle {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.subDepartmentList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subDepartmentCard {
+  overflow: hidden;
+  border: 1px solid #c8d9f0;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.subDepartmentHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: none;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.2s ease;
+}
+
+.subDepartmentHeader:hover {
+  background: #f8fafc;
+}
+
+.subDepartmentHeaderActive {
+  background: #eef5ff;
+}
+
+.subDepartmentName {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.subDepartmentBadge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3d539f;
+  background: #dfe9ff;
+}
+
+.subDepartmentBody {
+  border-top: 1px solid #dbe4f0;
+  padding: 14px;
+  background: #eef5ff;
+}
+
 .infoBox,
 .errorMessage,
 .loadingMessage {
@@ -248,6 +321,9 @@
 :global(:root[data-theme="dark"]) :local(.versionHeader),
 :global(:root[data-theme="dark"]) :local(.versionCell),
 :global(:root[data-theme="dark"]) :local(.versionBody),
+:global(:root[data-theme="dark"]) :local(.subDepartmentCard),
+:global(:root[data-theme="dark"]) :local(.subDepartmentHeader),
+:global(:root[data-theme="dark"]) :local(.subDepartmentBody),
 :global(:root[data-theme="dark"]) :local(.infoBox),
 :global(:root[data-theme="dark"]) :local(.loadingMessage),
 :global(:root[data-theme="dark"]) :local(.errorMessage) {
@@ -258,6 +334,11 @@
 
 :global(:root[data-theme="dark"]) :local(.versionHeaderActive) {
   background: #111827;
+}
+
+:global(:root[data-theme="dark"]) :local(.subDepartmentBadge) {
+  background: #1e293b;
+  color: #bfdbfe;
 }
 
 :global(:root[data-theme="dark"]) :local(.versionCell) {
