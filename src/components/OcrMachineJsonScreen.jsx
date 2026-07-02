@@ -149,11 +149,11 @@ const FIELD_ALIASES = {
   "Total Test": ["Total Test", "Total Tests"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "N"],
   "Length": ["Length"],
-  "Tester": ["Tester", "Tester Name", "User"],
-  "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %"],
-  "Std. Stretch %": ["Std. Stretch %", "Std Stretch %"],
-  "Stretch %": ["Stretch %"],
-  "Remark": ["Remark", "Remarks"],
+  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "User"],
+  "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %", "std_noils_percent"],
+  "Std. Stretch %": ["Std. Stretch %", "Std Stretch %", "std_stretch_percent"],
+  "Stretch %": ["Stretch %", "stretch_percent"],
+  "Remark": ["Remark", "Remarks", "remark"],
 };
 
 const getField = (row, field) => getValue(row, FIELD_ALIASES[field] || [field]);

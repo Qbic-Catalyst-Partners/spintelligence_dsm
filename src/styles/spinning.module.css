@@ -319,6 +319,14 @@
   font-weight: 700;
 }
 
+.countHeaderFormula {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .countChangeTable td {
   color: #1e293b;
   font-size: 11px;

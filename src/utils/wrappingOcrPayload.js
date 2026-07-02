@@ -12,7 +12,7 @@ const FIELD_ALIASES = {
   "Total Test": ["Total Test", "Total Tests", "total_test"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "Entries", "N", "number_of_entries"],
   "Length": ["Length", "length"],
-  "Tester": ["Tester", "Tester Name", "User", "tester"],
+  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "User"],
   "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %", "Standard Noils %", "std_noils_percent"],
   "Noils %": ["Noils %", "Nolis %", "noils_percent"],
   "Sample No": ["Sample No", "Sample No.", "Sample Number", "sample_no"],
