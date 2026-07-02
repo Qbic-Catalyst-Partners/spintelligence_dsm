@@ -356,6 +356,11 @@ function SpinningDepartment() {
         checkingType === "RSM & Lycrasensor Checking Online" ||
         checkingType === "RSM & Lycrasensor Checking Offline";
     const isBottomApronChecking = checkingType === "Bottom Apron Checking";
+    const countHeadingValue = (() => {
+        const selectedReadingsCount = Number.parseInt(countReadingCount, 10);
+        if (!Number.isFinite(selectedReadingsCount) || selectedReadingsCount <= 0) return "";
+        return (64.8 / selectedReadingsCount).toFixed(2);
+    })();
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Spinning",
         typeName: checkingType,
@@ -562,6 +567,7 @@ function SpinningDepartment() {
         const parsedValue = parseNumericInput(value);
         return parsedValue === null ? null : Number(parsedValue.toFixed(2));
     };
+    const roundTo = (value, decimals) => Number(Number(value).toFixed(decimals));
     const sumDecimalValues = (...values) =>
         Number(values.reduce((total, value) => total + (parseNumericInput(value) ?? 0), 0).toFixed(2));
     const outOfCenterRf = Number(
@@ -630,38 +636,65 @@ function SpinningDepartment() {
     const calculatedDifference = calculatedDifferenceValue !== null ? calculatedDifferenceValue.toFixed(2) : "";
     const isCountMode = countChangeMode === "Count";
     const isCsvMode = countChangeMode === "CSV";
+    const countChangeReadingValues = countChangeRows
+        .map((row) => parseNumericInput(row.reading_value))
+        .filter((value) => value !== null);
+    const countModeReadingMean = countChangeReadingValues.length
+        ? roundTo(countChangeReadingValues.reduce((total, value) => total + value, 0) / countChangeReadingValues.length, 5)
+        : null;
+    const countModeVariance = (() => {
+        if (!countChangeReadingValues.length || countChangeReadingValues.length < 2 || countModeReadingMean === null) return null;
+        const sumOfSquares = countChangeReadingValues.reduce((total, value) => {
+            const deviation = roundTo(value - countModeReadingMean, 5);
+            const square = roundTo(deviation * deviation, 8);
+            return total + square;
+        }, 0);
+        return roundTo(sumOfSquares / (countChangeReadingValues.length - 1), 6);
+    })();
+    const countModeStandardDeviation = countModeVariance === null ? null : roundTo(Math.sqrt(countModeVariance), 5);
+    const countModeCvPercent = countModeStandardDeviation === null || countModeReadingMean === null || countModeReadingMean === 0
+        ? ""
+        : roundTo((countModeStandardDeviation / countModeReadingMean) * 100, 9).toFixed(9);
+    const getCalculatedCountValue = (readingValue) => {
+        const numericReading = parseNumericInput(readingValue);
+        if (numericReading === null || numericReading <= 0) return "";
+        return roundTo(64.8 / numericReading, 2).toFixed(2);
+    };
+    const csvStrengthValues = countChangeRows
+        .map((row) => parseNumericInput(row.strength))
+        .filter((value) => value !== null);
+    const csvMeanStrength = csvStrengthValues.length
+        ? roundTo(csvStrengthValues.reduce((total, value) => total + value, 0) / csvStrengthValues.length, 5)
+        : null;
+    const csvStrengthVariance = (() => {
+        if (!csvStrengthValues.length || csvStrengthValues.length < 2 || csvMeanStrength === null) return null;
+        const sumOfSquares = csvStrengthValues.reduce((total, value) => {
+            const deviation = roundTo(value - csvMeanStrength, 5);
+            const square = roundTo(deviation * deviation, 8);
+            return total + square;
+        }, 0);
+        return roundTo(sumOfSquares / (csvStrengthValues.length - 1), 6);
+    })();
+    const csvStrengthStandardDeviation = csvStrengthVariance === null ? null : roundTo(Math.sqrt(csvStrengthVariance), 5);
+    const csvStrengthCvPercent = csvStrengthStandardDeviation === null || csvMeanStrength === null || csvMeanStrength === 0
+        ? ""
+        : roundTo((csvStrengthStandardDeviation / csvMeanStrength) * 100, 9).toFixed(9);
+    const countModeDisplayedMean = countModeReadingMean === null ? "" : countModeReadingMean.toFixed(2);
+    const csvModeDisplayedMean = csvMeanStrength === null ? "" : csvMeanStrength.toFixed(2);
     const deriveCountChangeRow = (row = {}, rowIndex = 0) => {
-        if (isCountMode) {
-            return {
-                ...row,
-                reading_no: row.reading_no || rowIndex + 1,
-                count: "",
-                cv_percent: "",
-                strength: "",
-                mean: "",
-                cv_percent_2: "",
-                csp: "",
-            };
-        }
-
-        if (isCsvMode) {
-            return {
-                ...row,
-                reading_no: row.reading_no || rowIndex + 1,
-                reading_value: row.reading_value,
-                count: "",
-                cv_percent: "",
-                mean: "",
-                cv_percent_2: "",
-                csp: "",
-            };
-        }
-
         return {
             ...row,
             reading_no: row.reading_no || rowIndex + 1,
+            reading_value: row.reading_value,
+            count: getCalculatedCountValue(row.reading_value),
+            cv_percent: countModeCvPercent,
+            mean: csvModeDisplayedMean,
+            strength: row.strength || "",
+            cv_percent_2: csvStrengthCvPercent,
+            csp: "",
         };
     };
+    const displayedCountChangeRows = countChangeRows.map((row, rowIndex) => deriveCountChangeRow(row, rowIndex));
     const renderCountChangeCell = (value, fallback = "-") => {
         const text = String(value ?? "").trim();
         return text ? text : fallback;
@@ -791,7 +824,7 @@ function SpinningDepartment() {
                 lycra_draft: parseDecimalPayloadValue(lycraDraft) ?? 0,
                 count_name_from: countNameFrom,
                 count_name_to: countNameTo,
-                readings: countChangeRows.map((row, index) => ({
+                readings: displayedCountChangeRows.map((row, index) => ({
                     reading_no: row.reading_no || index + 1,
                     reading_value: parseDecimalPayloadValue(row.reading_value) ?? 0,
                     count: parseDecimalPayloadValue(row.count) ?? 0,
@@ -908,12 +941,22 @@ function SpinningDepartment() {
     };
 
     const handleCountChangeRowChange = (rowIndex, field, value) => {
+        const nextCountValue =
+            field === "reading_value"
+                ? (() => {
+                    const numericReading = Number.parseFloat(value);
+                    if (!Number.isFinite(numericReading) || numericReading <= 0) return "";
+                    const calculatedCount = 64.8 / numericReading;
+                    return Number.isFinite(calculatedCount) ? calculatedCount.toFixed(2) : "";
+                })()
+                : null;
         setCountChangeRows((currentRows) =>
             currentRows.map((row, index) =>
                 index === rowIndex
                     ? {
                         ...row,
                         [field]: value,
+                        ...(nextCountValue !== null ? { count: nextCountValue } : {}),
                     }
                     : row
             )
@@ -1168,7 +1211,7 @@ function SpinningDepartment() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {countChangeRows.length > 0 ? countChangeRows.map((row, rowIndex) => (
+                                            {displayedCountChangeRows.length > 0 ? displayedCountChangeRows.map((row, rowIndex) => (
                                                 <tr key={row.reading_no}>
                                                     <td className={styles.countChangeReadingNoCell}>{row.reading_no}</td>
                                                     <td>
@@ -1185,10 +1228,10 @@ function SpinningDepartment() {
                                                         )}
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText} />
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.count, "")}</span>
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText} />
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent, "")}</span>
                                                     </td>
                                                     <td>
                                                         {isCsvMode ? (
@@ -1204,10 +1247,10 @@ function SpinningDepartment() {
                                                         )}
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText} />
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.mean, "")}</span>
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText} />
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent_2, "")}</span>
                                                     </td>
                                                     <td>
                                                         <span className={styles.countChangeCellText} />

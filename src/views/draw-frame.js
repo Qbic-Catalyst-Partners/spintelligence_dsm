@@ -520,7 +520,7 @@ const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", ent
     aPercentNMinus1: getLabelValue(allText, "A% (N-1)") || rowValue(["A% (N-1)", "A Percent N-1", "a_percent_n_minus_1"]),
     aPercentNPlus1: getLabelValue(allText, "A% (N+1)") || rowValue(["A% (N+1)", "A Percent N+1", "a_percent_n_plus_1"]),
     date: getLabelValue(allText, "Date") || rowValue(["Date", "entry_date"]),
-    tester: getLabelValue(allText, "Tester") || rowValue(["Tester", "User"]),
+    tester: getLabelValue(allText, "Tester") || rowValue(["Tester", "Tester Name", "tester", "tester_name", "User"]),
     shift: getLabelValue(allText, "Shift") || rowValue(["Shift"]),
     process: getLabelValue(allText, "Process") || rowValue(["Process"]),
     remark: getLabelValue(allText, "Remark") || rowValue(["Remark", "Remarks"]),

@@ -182,19 +182,52 @@ const groupPdfLines = (items) => {
 };
 
 const valueAfterLabel = (cells, label) => {
-  const pattern = new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*(.*)$`, "i");
-  const cell = cells.find((item) => pattern.test(item));
-  return cell?.match(pattern)?.[1]?.trim() || "";
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^\\s*${escapedLabel}\\s*(?:[:\\-]\\s*)?(.*)$`, "i");
+  for (let index = 0; index < cells.length; index += 1) {
+    const cell = cells[index];
+    const match = cell.match(pattern);
+    if (match) {
+      const captured = String(match[1] || "").trim();
+      if (captured) return captured;
+      const nextValue = cells.slice(index + 1).find((item) => String(item || "").trim());
+      if (nextValue) return String(nextValue).trim();
+    }
+  }
+  return "";
 };
 
 const valueFromLabelLine = (lines, label) => {
-  const pattern = new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*(.*)$`, "i");
   for (const line of lines) {
-    for (const cell of line.cells) {
-      const match = cell.match(pattern);
-      if (match?.[1]) return match[1].trim();
-    }
+    const text = line.cells.join(" ").replace(/\s+/g, " ").trim();
+    const value = extractLabelValue(text, [label]);
+    if (value) return value;
   }
+  return "";
+};
+
+const extractValueFromLines = (lines, labels) => {
+  for (const label of labels) {
+    const lineValue = valueFromLabelLine(lines, label);
+    if (lineValue) return lineValue;
+  }
+  return "";
+};
+
+const extractValueFromSection = (lines, labels) => {
+  const allCells = lines.flatMap((line) => line.cells);
+
+  for (const label of labels) {
+    const lineValue = extractValueFromLines(lines, [label]);
+    if (lineValue) return lineValue;
+
+    const cellValue = valueAfterLabel(allCells, label);
+    if (cellValue) return cellValue;
+
+    const joinedValue = extractLabelValue(allCells.join(" "), [label]);
+    if (joinedValue) return joinedValue;
+  }
+
   return "";
 };
 
@@ -206,13 +239,61 @@ const firstValueAfterLabels = (cells, labels) => {
   return "";
 };
 
+const KNOWN_OCR_LABELS = [
+  "Total Test",
+  "Number of Entries (N)",
+  "Tester",
+  "Tester Name",
+  "User",
+  "Std. Noils %",
+  "Std Noils %",
+  "Std. Nolis %",
+  "Noils %",
+  "Remark",
+  "Sample No",
+  "Sliver Wt",
+  "Noils Wt",
+  "Test ID",
+  "Count System",
+  "Machine",
+  "Length Unit",
+  "Length",
+  "Shift",
+  "Process",
+  "Date",
+  "Average Weight",
+  "Weight (Max)",
+  "Weight (Min)",
+  "Range",
+  "SD",
+  "CV",
+];
+
+const extractLabelValue = (text = "", labels = []) => {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  if (!source) return "";
+
+  for (const label of labels) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(
+      `\\b${escapedLabel}\\b\\s*(?:[:\\-]\\s*)?(.+?)(?=\\s+\\b(?:${KNOWN_OCR_LABELS.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b\\s*(?:[:\\-]|$)|$)`,
+      "i"
+    );
+    const match = source.match(pattern);
+    const value = String(match?.[1] || "").trim();
+    if (value) return value;
+  }
+
+  return "";
+};
+
 const parseNoilsPdfRows = (lines) => {
   const rows = [];
   const allCells = lines.flatMap((line) => line.cells);
   const totalTest = valueAfterLabel(allCells, "Total Test");
   const stdNoils = valueAfterLabel(allCells, "Std. Noils%") || valueAfterLabel(allCells, "Std. Noils %");
   const noilsPercent = valueAfterLabel(allCells, "Noils%");
-  const tester = firstValueAfterLabels(allCells, ["Tester", "Tester Name", "User"]);
+  const tester = extractValueFromSection(lines, ["Tester", "Tester Name", "User"]);
 
   rows.push({
     "Row Type": "Meta",
@@ -261,7 +342,7 @@ const parseStretchPdfRows = (lines) => {
     const allCells = section.flatMap((item) => item.cells);
     const tableNo = String(tableIndex + 1);
     const totalTest = valueAfterLabel(allCells, "Total Test");
-    const tester = firstValueAfterLabels(allCells, ["Tester", "Tester Name", "User"]);
+    const tester = extractValueFromSection(section, ["Tester", "Tester Name", "User"]);
 
     rows.push({
       "Row Type": "Meta",
@@ -331,7 +412,7 @@ const parseAPercentPdfRows = (lines) => {
     "A% (N-1)": valueAfterLabel(allCells, "A% (N-1)"),
     "A% (N+1)": valueAfterLabel(allCells, "A% (N+1)"),
     Date: valueAfterLabel(allCells, "Date"),
-    Tester: firstValueAfterLabels(allCells, ["Tester", "Tester Name", "User"]),
+    Tester: extractValueFromSection(lines, ["Tester", "Tester Name", "User"]),
     Shift: valueAfterLabel(allCells, "Shift"),
     Process: valueAfterLabel(allCells, "Process"),
     Remark: valueAfterLabel(allCells, "Remark"),
