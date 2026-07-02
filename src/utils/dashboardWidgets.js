@@ -95,7 +95,7 @@ const screenEndpoints = {
       "Wheel Change": "/spinning/wheel-change",
     },
     Autoconer: {
-      "Process Parameter": "/autoconer?type=Process%20Parameter",
+      "Process Parameter": "/autoconer/process-parameters",
       "PP - Autoconer Q2": "/autoconer?type=PP%20-%20Autoconer%20Q2",
       "PP - Autoconer Q3": "/autoconer?type=PP%20-%20Autoconer%20Q3",
       "Rewinding Study": "/autoconer/rewinding-study",
