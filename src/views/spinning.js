@@ -26,22 +26,21 @@ import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import styles from "../styles/spinning.module.css";
 
-const COUNT_CHANGE_BASE_ROWS = [
-    { reading_value: "5", count: "10.23", cv_percent: "11.46", strength: "250", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
-    { reading_value: "6", count: "10.23", cv_percent: "11.46", strength: "250", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
-    { reading_value: "6.6", count: "10.23", cv_percent: "11.46", strength: "268", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
-    { reading_value: "6.7", count: "10.23", cv_percent: "11.46", strength: "270", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
-    { reading_value: "6.8", count: "10.23", cv_percent: "11.46", strength: "290", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
-    { reading_value: "6.9", count: "10.23", cv_percent: "11.46", strength: "350", mean: "279.67", cv_percent_2: "13.42", csp: "2861.02" },
-];
-
 const createCountChangeRows = (readingCount) => {
     const total = Math.max(Number.parseInt(readingCount, 10) || 0, 0);
     return Array.from({ length: total }, (_, index) => ({
         reading_no: index + 1,
-        ...COUNT_CHANGE_BASE_ROWS[index % COUNT_CHANGE_BASE_ROWS.length],
+        reading_value: "",
+        count: "",
+        cv_percent: "",
+        strength: "",
+        mean: "",
+        cv_percent_2: "",
+        csp: "",
     }));
 };
+
+const COUNT_CHANGE_MODES = ["Count", "CSV"];
 
 const SHIFT_OPTIONS = ["1", "2", "3"];
 const RING_FRAME_CHECKERS = [];
@@ -629,6 +628,44 @@ function SpinningDepartment() {
     const spindleSpeedValue = parseNumericInput(spindleSpeed);
     const calculatedDifferenceValue = displaySpeedValue !== null && spindleSpeedValue !== null ? Number((displaySpeedValue - spindleSpeedValue).toFixed(2)) : null;
     const calculatedDifference = calculatedDifferenceValue !== null ? calculatedDifferenceValue.toFixed(2) : "";
+    const isCountMode = countChangeMode === "Count";
+    const isCsvMode = countChangeMode === "CSV";
+    const deriveCountChangeRow = (row = {}, rowIndex = 0) => {
+        if (isCountMode) {
+            return {
+                ...row,
+                reading_no: row.reading_no || rowIndex + 1,
+                count: "",
+                cv_percent: "",
+                strength: "",
+                mean: "",
+                cv_percent_2: "",
+                csp: "",
+            };
+        }
+
+        if (isCsvMode) {
+            return {
+                ...row,
+                reading_no: row.reading_no || rowIndex + 1,
+                reading_value: row.reading_value,
+                count: "",
+                cv_percent: "",
+                mean: "",
+                cv_percent_2: "",
+                csp: "",
+            };
+        }
+
+        return {
+            ...row,
+            reading_no: row.reading_no || rowIndex + 1,
+        };
+    };
+    const renderCountChangeCell = (value, fallback = "-") => {
+        const text = String(value ?? "").trim();
+        return text ? text : fallback;
+    };
 
     const handleTypeChange = (e) => {
         const selectedType = e.target.value;
@@ -870,6 +907,19 @@ function SpinningDepartment() {
         setErrors((prev) => ({ ...prev, countReadingCount: false }));
     };
 
+    const handleCountChangeRowChange = (rowIndex, field, value) => {
+        setCountChangeRows((currentRows) =>
+            currentRows.map((row, index) =>
+                index === rowIndex
+                    ? {
+                        ...row,
+                        [field]: value,
+                    }
+                    : row
+            )
+        );
+    };
+
     const handleRingFrameChange = (rowIndex, field, value) => {
         setRingFrameRows((currentRows) =>
             currentRows.map((row, index) =>
@@ -1053,12 +1103,12 @@ function SpinningDepartment() {
                                     <div className={styles["sp-form-group"]}>
                                         <label className={styles.countTypeSpacer}>&nbsp;</label>
                                         <div className={`${styles.segmentedControl} ${styles.countChangeSegmented} ${errors.countChangeMode ? styles["segmented-error"] : ""}`} role="group" aria-label="Count change type">
-                                            {["Count", "CSP"].map((mode) => (
-                                                <button key={mode} type="button" className={`${styles.segmentButton} ${countChangeMode === mode ? styles.segmentButtonActive : ""}`} onClick={() => { setCountChangeMode(mode); clearFieldError("countChangeMode"); }}>
-                                                    {mode}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        {COUNT_CHANGE_MODES.map((mode) => (
+                                            <button key={mode} type="button" className={`${styles.segmentButton} ${countChangeMode === mode ? styles.segmentButtonActive : ""}`} onClick={() => { setCountChangeMode(mode); clearFieldError("countChangeMode"); }}>
+                                                {mode}
+                                            </button>
+                                        ))}
+                                    </div>
                                     </div>
                                 </div>
 
@@ -1118,18 +1168,58 @@ function SpinningDepartment() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {countChangeRows.map((row) => (
+                                            {countChangeRows.length > 0 ? countChangeRows.map((row, rowIndex) => (
                                                 <tr key={row.reading_no}>
-                                                    <td>{row.reading_no}</td>
-                                                    <td>{row.reading_value}</td>
-                                                    <td>{row.count}</td>
-                                                    <td>{row.cv_percent}</td>
-                                                    <td>{row.strength}</td>
-                                                    <td>{row.mean}</td>
-                                                    <td>{row.cv_percent_2}</td>
-                                                    <td>{row.csp}</td>
+                                                    <td className={styles.countChangeReadingNoCell}>{row.reading_no}</td>
+                                                    <td>
+                                                        {isCountMode ? (
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={String(row.reading_value ?? "")}
+                                                                onChange={(event) => handleCountChangeRowChange(rowIndex, "reading_value", event.target.value)}
+                                                                className={styles.countChangeInput}
+                                                            />
+                                                        ) : (
+                                                            <span className={styles.countChangeCellText}>{renderCountChangeCell(row.reading_value, "")}</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText} />
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText} />
+                                                    </td>
+                                                    <td>
+                                                        {isCsvMode ? (
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={String(row.strength ?? "")}
+                                                                onChange={(event) => handleCountChangeRowChange(rowIndex, "strength", event.target.value)}
+                                                                className={styles.countChangeInput}
+                                                            />
+                                                        ) : (
+                                                            <span className={styles.countChangeCellText}>{renderCountChangeCell(row.strength, "")}</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText} />
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText} />
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText} />
+                                                    </td>
                                                 </tr>
-                                            ))}
+                                            )) : (
+                                                <tr>
+                                                    <td colSpan="8" className={styles.countChangeEmptyState}>
+                                                        Enter the number of readings to generate the table.
+                                                    </td>
+                                                </tr>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>

@@ -83,11 +83,24 @@ const PROCESS_PARAMETER_SUB_DEPARTMENTS = [
 const getVersionSubDepartment = (version) =>
   String(version?.data?.subDepartment || version?.data?.sub_department || "").trim();
 
-const isSubDepartmentComplete = (version, subDepartment) => {
-  const normalized = getVersionSubDepartment(version).toLowerCase();
-  if (!normalized) return true;
-  return normalized === String(subDepartment || "").trim().toLowerCase();
+const getVersionGroupKey = (version) => String(version?.data?.paramId || version?.data?.versionId || version?.id || "").trim();
+
+const getVersionGroupMembers = (versions, version) => {
+  const groupKey = getVersionGroupKey(version);
+  if (!groupKey) return [];
+  return versions.filter((item) => getVersionGroupKey(item) === groupKey);
 };
+
+const isSubDepartmentComplete = (versions, version, subDepartment) => {
+  const normalized = String(subDepartment || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return getVersionGroupMembers(versions, version).some(
+    (item) => getVersionSubDepartment(item).toLowerCase() === normalized
+  );
+};
+
+const isProcessParameterComplete = (versions, version) =>
+  PROCESS_PARAMETER_SUB_DEPARTMENTS.every((subDepartment) => isSubDepartmentComplete(versions, version, subDepartment));
 
 const normalizeDate = (value) => {
   if (!value) return new Date().toISOString().split("T")[0];
@@ -159,6 +172,21 @@ const displaySavedValue = (value) => {
   return normalized && normalized !== "-" ? normalized : "0";
 };
 
+const formatDetailLabel = (value = "") =>
+  String(value)
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\w/, (char) => char.toUpperCase());
+
+const getVersionDetailItems = (version) =>
+  fieldDefs.map((field) => ({
+    key: field.key,
+    label: field.label || formatDetailLabel(field.key),
+    value: displaySavedValue(version?.data?.[field.key]),
+  }));
+
 const ProcessParameter = forwardRef(function ProcessParameter(
   { entryId = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "" },
   ref
@@ -200,7 +228,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const loadVersions = async () => {
     setLoadingVersions(true);
     try {
-      const response = await fetchBlowroomProcessParametersApi({ page: 1, limit: 10 });
+      const response = await fetchBlowroomProcessParametersApi({ page: 1, limit: 1000 });
       const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
       const nextVersions = rows
         .map(mapApiEntryToVersion)
@@ -418,22 +446,24 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       ) : null}
 
       {versions.map((version) => {
-        const isComplete = isVersionComplete(version);
+        const isComplete = isProcessParameterComplete(versions, version);
         const isExpanded = expandedVersionId === version.id && isComplete;
         const isActive = version.id === form.versionId;
-        const versionSubDepartment = getVersionSubDepartment(version);
         const nestedChildren = PROCESS_PARAMETER_SUB_DEPARTMENTS.map((subDepartment) => ({
           key: `${version.id}-${subDepartment}`,
           label: subDepartment,
           isExpanded:
             expandedVersionId === version.id &&
             expandedSubDepartmentKey === `${version.id}-${subDepartment}`,
-          hasData:
-            !versionSubDepartment ||
-            versionSubDepartment.toLowerCase() === subDepartment.toLowerCase(),
-          complete:
-            !versionSubDepartment ||
-            versionSubDepartment.toLowerCase() === subDepartment.toLowerCase(),
+          matchingVersion: getVersionGroupMembers(versions, version).find(
+            (item) => getVersionSubDepartment(item).toLowerCase() === subDepartment.toLowerCase()
+          ),
+          complete: isSubDepartmentComplete(versions, version, subDepartment),
+          detailItems: getVersionDetailItems(
+            getVersionGroupMembers(versions, version).find(
+              (item) => getVersionSubDepartment(item).toLowerCase() === subDepartment.toLowerCase()
+            ) || version
+          ),
         }));
 
         return (
@@ -474,63 +504,64 @@ const ProcessParameter = forwardRef(function ProcessParameter(
                   <div className="px-4 py-3 text-sm font-semibold text-slate-700">Sub Departments</div>
                   <div className="flex flex-col gap-2 px-4 pb-4">
                     {nestedChildren.map((child) => (
-                      <div key={child.key} className="overflow-hidden rounded-lg border border-[#c8d9f0] bg-white">
+                      <div key={child.key} className="overflow-hidden rounded-lg border border-[#c8d9f0] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                         <button
                           type="button"
                           className={`flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
                             child.isExpanded ? "bg-[#eef5ff]" : ""
                           }`}
-                          onClick={() =>
+                          onClick={() => {
+                            if (child.matchingVersion) {
+                              handleVersionSelect(child.matchingVersion);
+                            }
                             setExpandedSubDepartmentKey((current) =>
                               current === child.key ? "" : child.key
-                            )
-                          }
+                            );
+                          }}
                         >
-                          <span className="text-[13px] font-bold text-slate-900">{child.label}</span>
-                          <span className="rounded-full bg-[#dfe9ff] px-3 py-1 text-[11px] font-bold text-[#3d539f]">
-                            {child.complete ? "Saved" : "Pending"}
+                          <span className="flex items-center gap-3">
+                            <span className="text-[13px] font-bold text-slate-900">{child.label}</span>
+                          </span>
+                          <span className="flex items-center gap-2">
+                            {child.complete ? <FaCheckCircle className="text-[#3d539f]" /> : null}
+                            <span className="rounded-full bg-[#dfe9ff] px-3 py-1 text-[11px] font-bold text-[#3d539f]">
+                              {child.complete ? "Saved" : "Pending"}
+                            </span>
+                            <span className="flex h-5 w-5 items-center justify-center text-[#64748b]">
+                              {child.isExpanded ? <HiChevronUp /> : <HiChevronDown />}
+                            </span>
                           </span>
                         </button>
                         {child.isExpanded ? (
                           <div className="border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
-                            {child.hasData ? (
-                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                {fieldDefs.map((field) => (
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              {child.detailItems.length > 0 ? (
+                                child.detailItems.map((item) => (
                                   <div
-                                    key={`${child.key}-${field.key}`}
+                                    key={`${child.key}-${item.key}`}
                                     className="rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
                                   >
                                     <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                                      {field.label}
+                                      {item.label}
                                     </div>
-                                    <div className="mt-1 text-[13px] font-bold text-slate-900">
-                                      {displaySavedValue(version.data[field.key])}
+                                    <div className="mt-1 break-words text-[13px] font-bold text-slate-900">
+                                      {item.value}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                                No sub-department specific data is stored for this PP ID yet.
-                              </div>
-                            )}
+                                ))
+                              ) : (
+                                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 md:col-span-2 xl:col-span-4">
+                                  No sub-department specific data is stored for this PP ID yet.
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ) : null}
                       </div>
                     ))}
                   </div>
                 </div>
-                <div className={styles.versionBody}>
-                  <div className={styles.savedFieldsGrid}>
-                    {fieldDefs.map((field) => (
-                      <div key={`${version.id}-${field.key}`} className={styles.savedFieldCard}>
-                        <div className={styles.cellLabel}>{field.label}</div>
-                        <div className={styles.savedValue}>{displaySavedValue(version.data[field.key])}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.versionDate}>{version.label}</div>
-                </div>
+                <div className={styles.versionDate}>{version.label}</div>
               </>
             ) : null}
           </div>
