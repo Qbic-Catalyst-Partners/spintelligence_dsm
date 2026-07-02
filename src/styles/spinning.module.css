@@ -300,15 +300,17 @@
 .countChangeTable {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
+  min-width: 1080px;
+  table-layout: fixed;
 }
 
 .countChangeTable th,
 .countChangeTable td {
-  padding: 14px 8px;
+  padding: 12px 8px;
   border-bottom: 1px solid #d8dee8;
   text-align: left;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .countChangeTable th {
@@ -321,6 +323,59 @@
   color: #1e293b;
   font-size: 11px;
   font-weight: 500;
+}
+
+.countChangeTable th:nth-child(1),
+.countChangeTable td:nth-child(1) {
+  width: 90px;
+}
+
+.countChangeTable th:nth-child(2),
+.countChangeTable td:nth-child(2),
+.countChangeTable th:nth-child(3),
+.countChangeTable td:nth-child(3),
+.countChangeTable th:nth-child(4),
+.countChangeTable td:nth-child(4),
+.countChangeTable th:nth-child(5),
+.countChangeTable td:nth-child(5),
+.countChangeTable th:nth-child(6),
+.countChangeTable td:nth-child(6),
+.countChangeTable th:nth-child(7),
+.countChangeTable td:nth-child(7),
+.countChangeTable th:nth-child(8),
+.countChangeTable td:nth-child(8) {
+  width: calc((100% - 90px) / 7);
+}
+
+.countChangeInput {
+  width: 100%;
+  min-width: 110px;
+  box-sizing: border-box;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid #d8e2f3;
+  background: #f8fbff;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.countChangeInput:focus {
+  outline: none;
+  border-color: #4965b7;
+  box-shadow: 0 0 0 2px rgba(73, 101, 183, 0.12);
+}
+
+.countChangeReadingNoCell {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.countChangeEmptyState {
+  padding: 20px 12px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .ringFrameTableWrap {
