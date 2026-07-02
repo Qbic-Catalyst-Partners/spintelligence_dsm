@@ -635,8 +635,6 @@ function SpinningDepartment() {
     const spindleSpeedValue = parseNumericInput(spindleSpeed);
     const calculatedDifferenceValue = displaySpeedValue !== null && spindleSpeedValue !== null ? Number((displaySpeedValue - spindleSpeedValue).toFixed(2)) : null;
     const calculatedDifference = calculatedDifferenceValue !== null ? calculatedDifferenceValue.toFixed(2) : "";
-<<<<<<< HEAD
-=======
     const isCountMode = countChangeMode === "Count";
     const isCsvMode = countChangeMode === "CSV";
     const countChangeReadingValues = countChangeRows
@@ -702,7 +700,6 @@ function SpinningDepartment() {
         const text = String(value ?? "").trim();
         return text ? text : fallback;
     };
->>>>>>> b41bf6e5915bf8d875560fcc393ee74b6cfd7979
 
     const handleTypeChange = (e) => {
         const selectedType = e.target.value;
@@ -944,8 +941,6 @@ function SpinningDepartment() {
         setErrors((prev) => ({ ...prev, countReadingCount: false }));
     };
 
-<<<<<<< HEAD
-=======
     const handleCountChangeRowChange = (rowIndex, field, value) => {
         const nextCountValue =
             field === "reading_value"
@@ -964,12 +959,10 @@ function SpinningDepartment() {
                         [field]: value,
                         ...(nextCountValue !== null ? { count: nextCountValue } : {}),
                     }
-                    : row
+                : row
             )
         );
     };
-
->>>>>>> b41bf6e5915bf8d875560fcc393ee74b6cfd7979
     const handleRingFrameChange = (rowIndex, field, value) => {
         setRingFrameRows((currentRows) =>
             currentRows.map((row, index) =>
@@ -1218,18 +1211,6 @@ function SpinningDepartment() {
                                             </tr>
                                         </thead>
                                         <tbody>
-<<<<<<< HEAD
-                                            {countChangeRows.map((row) => (
-                                                <tr key={row.reading_no}>
-                                                    <td>{row.reading_no}</td>
-                                                    <td>{row.reading_value}</td>
-                                                    <td>{row.count}</td>
-                                                    <td>{row.cv_percent}</td>
-                                                    <td>{row.strength}</td>
-                                                    <td>{row.mean}</td>
-                                                    <td>{row.cv_percent_2}</td>
-                                                    <td>{row.csp}</td>
-=======
                                             {displayedCountChangeRows.length > 0 ? displayedCountChangeRows.map((row, rowIndex) => (
                                                 <tr key={row.reading_no}>
                                                     <td className={styles.countChangeReadingNoCell}>{row.reading_no}</td>
@@ -1274,9 +1255,8 @@ function SpinningDepartment() {
                                                     <td>
                                                         <span className={styles.countChangeCellText} />
                                                     </td>
->>>>>>> b41bf6e5915bf8d875560fcc393ee74b6cfd7979
                                                 </tr>
-                                            ))}
+                                            )) : null}
                                         </tbody>
                                     </table>
                                 </div>

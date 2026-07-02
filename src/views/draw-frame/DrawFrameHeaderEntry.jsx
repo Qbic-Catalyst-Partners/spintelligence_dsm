@@ -224,17 +224,18 @@ function normalizeBreakerEntries(payload) {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
   return rows.map((entry, index) => ({
     id: String(entry?.ins_id || entry?.id || index),
-    paramId: normalizeProcessParameterId(
-      entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id
-    ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id || "-").trim(),
+    paramId:
+      normalizeProcessParameterId(
+        entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id
+      ) || "",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: entry?.creation_date || "",
     data: {
       versionId: String(entry?.ins_id || entry?.id || index),
       paramId: normalizeProcessParameterId(
-        entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id
-      ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id || "").trim(),
+        entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id
+      ) || "",
       type: "PP - Breaker Drawing",
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
@@ -269,17 +270,18 @@ function normalizeFinisherEntries(payload) {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
   return rows.map((entry, index) => ({
     id: String(entry?.id || index),
-    paramId: normalizeProcessParameterId(
-      entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id
-    ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id || "-").trim(),
+    paramId:
+      normalizeProcessParameterId(
+        entry?.entry_id || entry?.process_parameter_id || entry?.param_id
+      ) || "",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: entry?.creation_date || "",
     data: {
       versionId: String(entry?.id || index),
       paramId: normalizeProcessParameterId(
-        entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id
-      ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id || "").trim(),
+        entry?.entry_id || entry?.process_parameter_id || entry?.param_id
+      ) || "",
       type: "PP - Finisher Drawing",
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",

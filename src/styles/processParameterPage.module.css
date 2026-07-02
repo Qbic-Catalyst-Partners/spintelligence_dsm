@@ -1,0 +1,379 @@
+.page {
+  min-height: calc(100dvh - 72px);
+  background: linear-gradient(180deg, #f7fafc 0%, #eef4ff 100%);
+  padding: 18px 0 28px;
+}
+
+.shell {
+  width: min(1540px, calc(100% - 32px));
+  margin: 0 auto;
+  position: relative;
+  padding-left: 18px;
+}
+
+.panel {
+  width: min(1120px, 100%);
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  padding: 12px 0 20px;
+}
+
+.header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.iconWrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  background: #eef4ff;
+  color: #3056d3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex: 0 0 auto;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1;
+  color: #08132d;
+  font-weight: 800;
+}
+
+.header p {
+  margin: 8px 0 0;
+  font-size: 16px;
+  color: #61708b;
+}
+
+.modeToggle {
+  display: inline-flex;
+  padding: 4px;
+  background: #d0d0d0;
+  border-radius: 7px;
+  gap: 4px;
+  margin-bottom: 22px;
+}
+
+.modeButton {
+  min-width: 160px;
+  height: 23px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #7a7a7a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.modeButtonActive {
+  background: #ffffff;
+  color: #4b5563;
+}
+
+.subHeaderRow {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.subDeptField {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.subDeptField span,
+.fieldGroup span {
+  font-size: 11px;
+  font-weight: 800;
+  color: #344153;
+}
+
+.subDeptField select,
+.fieldGroup input,
+.fieldGroup select {
+  width: 160px;
+  height: 32px;
+  border-radius: 5px;
+  border: 1px solid #dce5f2;
+  background: #ffffff;
+  padding: 0 11px;
+  font-size: 13px;
+  color: #111827;
+  outline: none;
+}
+
+.currentDate {
+  font-size: 13px;
+  font-weight: 800;
+  color: #394150;
+}
+
+.tabBar {
+  display: flex;
+  gap: 0;
+  width: min(340px, 100%);
+  margin: 8px 0 12px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #d9d9d9;
+}
+
+.tabButton {
+  flex: 1 1 0;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #6c7788;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tabButtonActive {
+  background: #ffffff;
+  color: #55648d;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+}
+
+.formCard {
+  border: 1px solid #dbe4f1;
+  border-radius: 12px;
+  padding: 20px 18px 0;
+  background: #ffffff;
+}
+
+.listCard {
+  border: 0;
+  border-radius: 12px;
+  padding: 16px 18px 18px;
+  background: transparent;
+  min-height: 360px;
+}
+
+.listToolbar {
+  margin-bottom: 18px;
+}
+
+.searchInput {
+  width: min(400px, 100%);
+  height: 34px;
+  border: 1px solid #dbe4f1;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-size: 13px;
+  color: #334155;
+  outline: none;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.matrixWrap {
+  overflow-x: auto;
+}
+
+.matrixTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 960px;
+  table-layout: fixed;
+}
+
+.matrixTable th,
+.matrixTable td {
+  border-bottom: 1px solid #d9dde5;
+  text-align: center;
+  padding: 12px 8px;
+  font-size: 12px;
+}
+
+.matrixTable th {
+  color: #6b7280;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.matrixIdCell {
+  text-align: left !important;
+  font-weight: 700;
+  color: #111827;
+  width: 96px;
+}
+
+.matrixStatusCell {
+  width: 78px;
+}
+
+.statusDone,
+.statusPending {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.statusDone {
+  background: #4f9f78;
+  color: #ffffff;
+}
+
+.statusPending {
+  background: #dddddd;
+  color: transparent;
+}
+
+.topGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldGroup input,
+.fieldGroup select {
+  width: 100%;
+  height: 32px;
+  border-radius: 5px;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.fieldsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 12px;
+}
+
+.rowGroup {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.partialRow {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 60%;
+}
+
+.footerBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 10px 10px;
+  border-top: 1px solid rgba(219, 228, 241, 0.72);
+  background: transparent;
+  margin: 0;
+}
+
+.footerWrap {
+  margin-top: 0;
+}
+
+.savedVersionsSlot {
+  margin-top: 18px;
+}
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clearButton,
+.submitButton {
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clearButton {
+  background: transparent;
+  color: #475569;
+}
+
+.submitButton {
+  background: #4f60ae;
+  color: #ffffff;
+}
+
+@media (max-width: 1100px) {
+  .shell {
+    width: min(100%, calc(100% - 32px));
+  }
+
+  .panel {
+    width: 100%;
+  }
+
+  .topGrid,
+  .rowGroup,
+  .partialRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-top: 12px;
+  }
+
+  .shell {
+    width: calc(100% - 20px);
+    padding-left: 0;
+  }
+
+  .panel {
+    padding: 18px 14px 0;
+  }
+
+  .topGrid,
+  .rowGroup,
+  .partialRow,
+  .subHeaderRow {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .footerBar,
+  .footerActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clearButton,
+  .submitButton,
+  .subDeptField select {
+    width: 100%;
+  }
+}

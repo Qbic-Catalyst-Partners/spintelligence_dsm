@@ -636,18 +636,13 @@ function DrawFrame() {
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
-  const isProcessParameterRequest = ["process parameter", "pp - breaker drawing", "pp - finisher drawing"].includes(
-    normalizeTypeName(requestedType)
-  );
   const fullTypeOptions = filterOptionsByDepartmentAccess(
     primaryTypeOptions,
     accessByDepartment,
     user,
     "Draw Frame"
   );
-  const typeOptions = isProcessParameterRequest
-    ? fullTypeOptions.filter((option) => option.name === "PP - Breaker Drawing" || option.name === "PP - Finisher Drawing")
-    : fullTypeOptions.filter((option) => option.name !== "PP - Breaker Drawing" && option.name !== "PP - Finisher Drawing");
+  const typeOptions = fullTypeOptions;
   const { actionLoading, actionSuccess, cotsEntries, uqcEntries, listLoading, error } = useSelector(
     (state) =>
       state.drawFrame ?? {

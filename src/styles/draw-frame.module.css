@@ -1,6 +1,6 @@
 .page {
     min-height: 100vh;
-    background: #f8fafc;
+    background: #ffffff;
 }
 
 .container {
@@ -9,6 +9,7 @@
     margin: 0 auto;
     padding: 2rem 1rem;
     box-sizing: border-box;
+    background: transparent;
 }
 
 .breadcrumbs {
@@ -66,11 +67,13 @@
 
 .inspectionCard {
     overflow: visible;
+    background: #ffffff;
 }
 
 .cardBody {
     padding: 1.5rem;
     overflow: visible;
+    background: #ffffff;
 }
 
 .sectionHeader {
@@ -109,7 +112,7 @@
     flex-direction: column;
     gap: 1.75rem;
     padding: 0.25rem 0 0.5rem;
-    background: #ffffff;
+    background: transparent;
     position: relative;
     z-index: 1;
 }
@@ -454,7 +457,7 @@
     padding: 1.25rem;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
-    background: #f8fbff;
+    background: #ffffff;
 }
 
 .resultSection + .resultSection {
@@ -499,7 +502,7 @@
 .machineCard {
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    background: #f8fafc;
+    background: #ffffff;
     padding: 1rem;
 }
 
