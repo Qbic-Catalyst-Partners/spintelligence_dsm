@@ -366,18 +366,6 @@ const SavedVersionsSection = ({
                 </div>
               </>
             ) : null}
-                      <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        {field.label}
-                      </div>
-                      <div className="mt-1 text-[13px] font-bold text-slate-900">
-                        {displaySavedValue(version.data[field.key])}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3 text-[12px] text-slate-500">{version.label}</div>
-              </div>
-            ) : null}
           </div>
         );
       })}

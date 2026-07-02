@@ -5,6 +5,9 @@ import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
+import draftUtils from "@/views/draw-frame/draftUtils";
+
+const { computeType3D50TotalDraft } = draftUtils;
 
 const LINE_TYPES = ["Breaker", "Finisher"];
 const WHEEL_CHANGE_TYPES = [
@@ -30,6 +33,7 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 4 (LDF3S)": "type4_ldf3s",
 };
 const DRAFT_STORAGE_KEY = "draw_frame_wheel_change_last_values";
+const TD7_LIKE_WHEEL_CHANGE_TYPES = ["Type 2 (TD7)", "Type 3 (TD9)"];
 
 const TYPE_1_ROWS = [
   { key: "milling", label: "Mixing", inputType: "select" },
@@ -185,11 +189,61 @@ const parseNumericValue = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const normalizeTd7DraftValue = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const parsed = Number.parseFloat(text);
+  return Number.isFinite(parsed) ? parsed.toString() : "";
+};
+
+const getTd7G1G2ForTotalDraft = (value) => {
+  const normalizedValue = normalizeTd7DraftValue(value);
+  return TD7_TOTAL_DRAFT_TO_G1_G2_MAP[normalizedValue] || "";
+};
+
+const applyType2Td7AutoFill = (nextValues, changedRowKey = "", wheelChangeType = "") => {
+  if (!TD7_LIKE_WHEEL_CHANGE_TYPES.includes(wheelChangeType)) return nextValues;
+  if (!["totalDraftGear", "totalDraftFormula"].includes(changedRowKey)) return nextValues;
+
+  const draftValue = nextValues.totalDraftGear?.existing || nextValues.totalDraftGear?.proposed || "";
+  const autoG1G2 = getTd7G1G2ForTotalDraft(draftValue);
+  if (!autoG1G2) return nextValues;
+
+  const currentExisting = nextValues.g1G2?.existing ?? "";
+  const currentProposed = nextValues.g1G2?.proposed ?? "";
+  if (currentExisting === autoG1G2 && currentProposed === autoG1G2) return nextValues;
+
+  return {
+    ...nextValues,
+    g1G2: {
+      ...(nextValues.g1G2 || { existing: "", proposed: "" }),
+      existing: autoG1G2,
+      proposed: autoG1G2,
+    },
+  };
+};
+
 const computeType1Sb20TotalDraft = ({ nw1, nw2 }) => {
   const nw1Value = parseNumericValue(nw1);
   const nw2Value = parseNumericValue(nw2);
   if (nw1Value === null || nw2Value === null || nw1Value === 0) return "";
   return String((3.993 * (nw2Value / nw1Value)).toFixed(2));
+};
+
+const computeType2D40TotalDraft = ({ nw1, nw2, totalDraftConstant }) => {
+  const nw1Value = parseNumericValue(nw1);
+  const nw2Value = parseNumericValue(nw2);
+  const constantValue = parseNumericValue(totalDraftConstant);
+  if (nw1Value === null || nw2Value === null || constantValue === null || nw1Value === 0) return "";
+  return String((constantValue * (nw2Value / nw1Value)).toFixed(2));
+};
+
+const computeType4Ldf3sTotalDraft = ({ deliveryHank, feedHank, noOfEnds }) => {
+  const deliveryHankValue = parseNumericValue(deliveryHank);
+  const feedHankValue = parseNumericValue(feedHank);
+  const noOfEndsValue = parseNumericValue(noOfEnds);
+  if (deliveryHankValue === null || feedHankValue === null || noOfEndsValue === null || feedHankValue === 0) return "";
+  return String(((deliveryHankValue / feedHankValue) * noOfEndsValue).toFixed(2));
 };
 
 const DRAW_FRAME_NW_OPTIONS = Array.from({ length: 70 - 23 + 1 }, (_, index) => String(23 + index));
@@ -216,6 +270,163 @@ const DRAW_FRAME_W4_OPTIONS = [
   "36.9",
 ];
 const DRAW_FRAME_TRUMPET_OPTIONS = ["3.8", "4.2"];
+const DRAW_FRAME_D40_NW_OPTIONS = Array.from({ length: 75 - 30 + 1 }, (_, index) => String(30 + index));
+const DRAW_FRAME_D40_BREAK_DRAFT_OPTIONS = [
+  { value: "54.6 / 1.05", label: "54.6 / 1.05" },
+  { value: "57.2 / 1.1", label: "57.2 / 1.1" },
+  { value: "59.8 / 1.15", label: "59.8 / 1.15" },
+  { value: "62.4 / 1.2", label: "62.4 / 1.2" },
+  { value: "65 / 1.25", label: "65 / 1.25" },
+  { value: "67.6 / 1.3", label: "67.6 / 1.3" },
+  { value: "70.2 / 1.35", label: "70.2 / 1.35" },
+  { value: "72.8 / 1.4", label: "72.8 / 1.4" },
+  { value: "78 / 1.5", label: "78 / 1.5" },
+  { value: "83.2 / 1.6", label: "83.2 / 1.6" },
+  { value: "88.4 / 1.7", label: "88.4 / 1.7" },
+  { value: "93.6 / 1.8", label: "93.6 / 1.8" },
+];
+const DRAW_FRAME_D40_CREEL_TENSION_OPTIONS = [
+  { value: "98 / 0.98", label: "98 / 0.98" },
+  { value: "99 / 0.99", label: "99 / 0.99" },
+  { value: "100 / 1", label: "100 / 1" },
+  { value: "101 / 1.01", label: "101 / 1.01" },
+  { value: "102 / 1.02", label: "102 / 1.02" },
+  { value: "103 / 1.03", label: "103 / 1.03" },
+];
+const DRAW_FRAME_D40_WEB_TENSION_OPTIONS = [
+  { value: "75.2 / 0.99", label: "75.2 / 0.99" },
+  { value: "74.4 / 1", label: "74.4 / 1" },
+  { value: "73.7 / 1.01", label: "73.7 / 1.01" },
+  { value: "72.9 / 1.02", label: "72.9 / 1.02" },
+  { value: "72.2 / 1.03", label: "72.2 / 1.03" },
+];
+const DRAW_FRAME_D40_FEED_TENSION_OPTIONS = [
+  { value: "98 / 0.98", label: "98 / 0.98" },
+  { value: "99 / 0.99", label: "99 / 0.99" },
+  { value: "100 / 1", label: "100 / 1" },
+  { value: "101 / 1.01", label: "101 / 1.01" },
+  { value: "102 / 1.02", label: "102 / 1.02" },
+];
+const DRAW_FRAME_D40_BOTTOM_ROLLER_FRONT_OPTIONS = Array.from({ length: 75 - 35 + 1 }, (_, index) => String(35 + index));
+const DRAW_FRAME_D40_BOTTOM_ROLLER_BACK_OPTIONS = Array.from({ length: 75 - 35 + 1 }, (_, index) => String(35 + index));
+const DRAW_FRAME_D40_SCANNING_ROLLER_OPTIONS = ["5", "7", "9"];
+const DRAW_FRAME_D40_TRUMPET_OPTIONS = ["3.8", "4.2", "4.6", "5", "5.5"];
+const DRAW_FRAME_D50_BREAK_DRAFT_OPTIONS = [
+  { value: "54.6 / 1.05", label: "54.6 / 1.05" },
+  { value: "57.2 / 1.1", label: "57.2 / 1.1" },
+  { value: "59.8 / 1.15", label: "59.8 / 1.15" },
+  { value: "62.4 / 1.2", label: "62.4 / 1.2" },
+  { value: "65 / 1.25", label: "65 / 1.25" },
+  { value: "67.6 / 1.3", label: "67.6 / 1.3" },
+  { value: "70.2 / 1.35", label: "70.2 / 1.35" },
+  { value: "72.8 / 1.4", label: "72.8 / 1.4" },
+  { value: "78 / 1.5", label: "78 / 1.5" },
+  { value: "83.2 / 1.6", label: "83.2 / 1.6" },
+  { value: "88.4 / 1.7", label: "88.4 / 1.7" },
+  { value: "93.6 / 1.8", label: "93.6 / 1.8" },
+];
+const DRAW_FRAME_D50_CREEL_TENSION_OPTIONS = [
+  { value: "54.6 / 1.05", label: "54.6 / 1.05" },
+  { value: "57.2 / 1.1", label: "57.2 / 1.1" },
+  { value: "59.8 / 1.15", label: "59.8 / 1.15" },
+  { value: "62.4 / 1.2", label: "62.4 / 1.2" },
+  { value: "65 / 1.25", label: "65 / 1.25" },
+  { value: "67.6 / 1.3", label: "67.6 / 1.3" },
+  { value: "70.2 / 1.35", label: "70.2 / 1.35" },
+];
+const DRAW_FRAME_D50_WEB_TENSION_OPTIONS = [
+  { value: "71 / 0.99", label: "71 / 0.99" },
+  { value: "70.3 / 1", label: "70.3 / 1" },
+  { value: "69.6 / 1.01", label: "69.6 / 1.01" },
+  { value: "68.9 / 1.02", label: "68.9 / 1.02" },
+  { value: "68.3 / 1.03", label: "68.3 / 1.03" },
+];
+const DRAW_FRAME_D50_FEED_TENSION_OPTIONS = [
+  { value: "98 / 0.98", label: "98 / 0.98" },
+  { value: "99 / 0.99", label: "99 / 0.99" },
+  { value: "100 / 1", label: "100 / 1" },
+  { value: "101 / 1.01", label: "101 / 1.01" },
+  { value: "102 / 1.02", label: "102 / 1.02" },
+];
+const DRAW_FRAME_D50_BOTTOM_ROLLER_FRONT_OPTIONS = Array.from({ length: 75 - 35 + 1 }, (_, index) => String(35 + index));
+const DRAW_FRAME_D50_BOTTOM_ROLLER_BACK_OPTIONS = Array.from({ length: 75 - 35 + 1 }, (_, index) => String(35 + index));
+const DRAW_FRAME_D50_SCANNING_ROLLER_OPTIONS = ["5", "7", "9"];
+const DRAW_FRAME_D50_TRUMPET_OPTIONS = ["3.8", "4.2", "4.6", "5", "5.5"];
+const DRAW_FRAME_LDF3S_BREAK_DRAFT_OPTIONS = [
+  "57.2 / 1.1",
+  "59.8 / 1.15",
+  "62.4 / 1.2",
+  "65 / 1.25",
+  "67.6 / 1.3",
+  "72.8 / 1.4",
+  "78 / 1.5",
+  "83.2 / 1.6",
+  "88.4 / 1.7",
+  "93.6 / 1.8",
+];
+const DRAW_FRAME_LDF3S_CREEL_TENSION_OPTIONS = ["98.7 / 1.01", "99.7 / 1.02", "100.7 / 1.03", "101.8 / 1.04"];
+const DRAW_FRAME_LDF3S_WEB_TENSION_OPTIONS = ["74.2 / 0.99", "73.5 / 1", "72.8 / 1.01", "72.3 / 1.02", "71.6 / 1.03"];
+const DRAW_FRAME_LDF3S_FEED_TENSION_OPTIONS = ["99 / 0.99", "100 / 1", "101 / 1.01"];
+const DRAW_FRAME_LDF3S_BOTTOM_ROLLER_FRONT_OPTIONS = [
+  "34 / 0.7",
+  "35 / 1.6",
+  "36 / 2.5",
+  "37 / 3.5",
+  "38 / 4.5",
+  "39 / 5.5",
+  "40 / 6.5",
+  "41 / 7.5",
+  "42 / 8.5",
+  "43 / 9.5",
+  "44 / 10.5",
+  "45 / 11.5",
+  "46 / 12.5",
+  "47 / 13.5",
+  "48 / 14.5",
+  "49 / 15.5",
+  "50 / 16.5",
+  "51 / 17.5",
+  "52 / 18.5",
+  "53 / 19.5",
+  "54 / 20.5",
+  "55 / 21.5",
+  "56 / 22.5",
+  "57 / 23.5",
+  "58 / 24.5",
+  "59 / 25.5",
+  "60 / 26.5",
+];
+const DRAW_FRAME_LDF3S_BOTTOM_ROLLER_BACK_OPTIONS = [
+  "38 / 8",
+  "39 / 9",
+  "40 / 10",
+  "42 / 12",
+  "44 / 14",
+  "46 / 16",
+  "48 / 18",
+  "50 / 20",
+  "52 / 22",
+  "54 / 24",
+  "56 / 26",
+  "58 / 28",
+  "60 / 30",
+  "62 / 32",
+  "64 / 34",
+  "66 / 36",
+  "68 / 38",
+  "70 / 40",
+  "72 / 42",
+  "74 / 44",
+  "76 / 46",
+  "78 / 48",
+  "80 / 50",
+  "82 / 52",
+  "84 / 54",
+  "86 / 56",
+  "88 / 58",
+];
+const DRAW_FRAME_LDF3S_SCANNING_ROLLER_OPTIONS = ["5", "7", "9"];
+const DRAW_FRAME_LDF3S_TRUMPET_OPTIONS = ["3.8", "4.2", "4.6", "5", "5.5"];
 const DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS = [
   { value: "4", label: "4" },
   { value: "4.2", label: "4.2" },
@@ -250,39 +461,73 @@ const DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS = [
   { value: "9.6", label: "9.6" },
   { value: "10", label: "10" },
 ];
+const TD7_TOTAL_DRAFT_TO_G1_G2_MAP = {
+  "4": "62.98/40",
+  "4.2": "60.05/40",
+  "4.3": "58.59/40",
+  "4.4": "57.12/40",
+  "4.6": "55.66/40",
+  "4.7": "54.19/40",
+  "4.8": "52.73/40",
+  "5": "51.26/40",
+  "5.1": "49.8/40",
+  "5.3": "48.33/40",
+  "5.5": "60.05/31",
+  "5.6": "58.59/31",
+  "5.7": "57.12/31",
+  "5.9": "55.66/31",
+  "6.1": "54.19/31",
+  "6.2": "52.73/31",
+  "6.4": "51.26/31",
+  "6.6": "49.8/31",
+  "6.8": "48.33/31",
+  "7": "46.87/31",
+  "7.2": "45.4/31",
+  "7.4": "57.12/24",
+  "7.6": "55.66/24",
+  "7.8": "54.19/24",
+  "8": "52.73/24",
+  "8.3": "51.26/24",
+  "8.5": "49.8/24",
+  "8.8": "48.33/24",
+  "9": "46.87/24",
+  "9.3": "45.4/24",
+  "9.6": "43.94/24",
+  "10": "42.27/24",
+};
 const DRAW_FRAME_TD7_G1_G2_OPTIONS = [
-  { value: "43/40", label: "43/40" },
-  { value: "41/40", label: "41/40" },
-  { value: "40/40", label: "40/40" },
-  { value: "39/40", label: "39/40" },
-  { value: "38/40", label: "38/40" },
-  { value: "37/40", label: "37/40" },
-  { value: "36/40", label: "36/40" },
-  { value: "35/40", label: "35/40" },
-  { value: "34/40", label: "34/40" },
-  { value: "33/40", label: "33/40" },
-  { value: "41/31", label: "41/31" },
-  { value: "40/31", label: "40/31" },
-  { value: "39/31", label: "39/31" },
-  { value: "38/31", label: "38/31" },
-  { value: "37/31", label: "37/31" },
-  { value: "36/31", label: "36/31" },
-  { value: "35/31", label: "35/31" },
-  { value: "34/31", label: "34/31" },
-  { value: "33/31", label: "33/31" },
-  { value: "32/31", label: "32/31" },
-  { value: "31/31", label: "31/31" },
-  { value: "39/24", label: "39/24" },
-  { value: "38/24", label: "38/24" },
-  { value: "37/24", label: "37/24" },
-  { value: "36/24", label: "36/24" },
-  { value: "35/24", label: "35/24" },
-  { value: "34/24", label: "34/24" },
-  { value: "33/24", label: "33/24" },
-  { value: "32/24", label: "32/24" },
-  { value: "31/24", label: "31/24" },
-  { value: "30/24", label: "30/24" },
-  { value: "29/24", label: "29/24" },
+  { value: "62.98/40", label: "62.98 / 40" },
+  { value: "60.05/40", label: "60.05 / 40" },
+  { value: "58.59/40", label: "58.59 / 40" },
+  { value: "57.12/40", label: "57.12 / 40" },
+  { value: "55.66/40", label: "55.66 / 40" },
+  { value: "54.19/40", label: "54.19 / 40" },
+  { value: "52.73/40", label: "52.73 / 40" },
+  { value: "51.26/40", label: "51.26 / 40" },
+  { value: "49.8/40", label: "49.8 / 40" },
+  { value: "48.33/40", label: "48.33 / 40" },
+  { value: "60.05/31", label: "60.05 / 31" },
+  { value: "58.59/31", label: "58.59 / 31" },
+  { value: "57.12/31", label: "57.12 / 31" },
+  { value: "55.66/31", label: "55.66 / 31" },
+  { value: "54.19/31", label: "54.19 / 31" },
+  { value: "52.73/31", label: "52.73 / 31" },
+  { value: "51.26/31", label: "51.26 / 31" },
+  { value: "49.8/31", label: "49.8 / 31" },
+  { value: "48.33/31", label: "48.33 / 31" },
+  { value: "46.87/31", label: "46.87 / 31" },
+  { value: "45.4/31", label: "45.4 / 31" },
+  { value: "57.12/24", label: "57.12 / 24" },
+  { value: "55.66/24", label: "55.66 / 24" },
+  { value: "54.19/24", label: "54.19 / 24" },
+  { value: "52.73/24", label: "52.73 / 24" },
+  { value: "51.26/24", label: "51.26 / 24" },
+  { value: "49.8/24", label: "49.8 / 24" },
+  { value: "48.33/24", label: "48.33 / 24" },
+  { value: "46.87/24", label: "46.87 / 24" },
+  { value: "45.4/24", label: "45.4 / 24" },
+  { value: "43.94/24", label: "43.94 / 24" },
+  { value: "42.27/24", label: "42.27 / 24" },
 ];
 const DRAW_FRAME_TD7_BDCP_OPTIONS = [
   { value: "1.038", label: "1.038 / 26" },
@@ -501,18 +746,18 @@ const DRAW_FRAME_SELECT_OPTIONS = {
   d50BottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
   d50ScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
   d50Trumpet: DRAW_FRAME_TRUMPET_OPTIONS,
-  ldf3sBreakDraft: DRAW_FRAME_BREAK_DRAFT_OPTIONS,
-  ldf3sCreelTensionDraft: DRAW_FRAME_W1VWZ_OPTIONS,
-  ldf3sWebTensionDraft: DRAW_FRAME_W3DR_OPTIONS,
-  ldf3sFeedTensionDraft: DRAW_FRAME_W8DR_OPTIONS,
-  ldf3sBottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
-  ldf3sBottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
-  ldf3sScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
-  ldf3sTrumpet: DRAW_FRAME_TRUMPET_OPTIONS,
+  ldf3sBreakDraft: DRAW_FRAME_LDF3S_BREAK_DRAFT_OPTIONS,
+  ldf3sCreelTensionDraft: DRAW_FRAME_LDF3S_CREEL_TENSION_OPTIONS,
+  ldf3sWebTensionDraft: DRAW_FRAME_LDF3S_WEB_TENSION_OPTIONS,
+  ldf3sFeedTensionDraft: DRAW_FRAME_LDF3S_FEED_TENSION_OPTIONS,
+  ldf3sBottomRollerFront: DRAW_FRAME_LDF3S_BOTTOM_ROLLER_FRONT_OPTIONS,
+  ldf3sBottomRollerBack: DRAW_FRAME_LDF3S_BOTTOM_ROLLER_BACK_OPTIONS,
+  ldf3sScanningRoller: DRAW_FRAME_LDF3S_SCANNING_ROLLER_OPTIONS,
+  ldf3sTrumpet: DRAW_FRAME_LDF3S_TRUMPET_OPTIONS,
 };
 
 const getSelectOptions = (rowKey, wheelChangeType = "") => {
-  if (wheelChangeType === "Type 2 (TD7)") {
+  if (TD7_LIKE_WHEEL_CHANGE_TYPES.includes(wheelChangeType)) {
     switch (rowKey) {
       case "totalDraftGear":
         return DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS;
@@ -526,6 +771,55 @@ const getSelectOptions = (rowKey, wheelChangeType = "") => {
         return DRAW_FRAME_TD7_BOTTOM_ROLLER_FRONT_OPTIONS;
       case "bottomRollerBack":
         return DRAW_FRAME_TD7_BOTTOM_ROLLER_BACK_OPTIONS;
+      default:
+        return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
+    }
+  }
+
+  if (wheelChangeType === "Type 2 (D40)") {
+    switch (rowKey) {
+      case "d40Nw1":
+      case "d40Nw2":
+        return DRAW_FRAME_D40_NW_OPTIONS;
+      case "d40BreakDraft":
+        return DRAW_FRAME_D40_BREAK_DRAFT_OPTIONS;
+      case "d40CreelTensionDraft":
+        return DRAW_FRAME_D40_CREEL_TENSION_OPTIONS;
+      case "d40WebTensionDraft":
+        return DRAW_FRAME_D40_WEB_TENSION_OPTIONS;
+      case "d40WebTensionPulley":
+        return DRAW_FRAME_D40_FEED_TENSION_OPTIONS;
+      case "d40BottomRollerFront":
+        return DRAW_FRAME_D40_BOTTOM_ROLLER_FRONT_OPTIONS;
+      case "d40BottomRollerBack":
+        return DRAW_FRAME_D40_BOTTOM_ROLLER_BACK_OPTIONS;
+      case "d40ScanningRoller":
+        return DRAW_FRAME_D40_SCANNING_ROLLER_OPTIONS;
+      case "d40Trumpet":
+        return DRAW_FRAME_D40_TRUMPET_OPTIONS;
+      default:
+        return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
+    }
+  }
+
+  if (wheelChangeType === "Type 3 (D50/D55)") {
+    switch (rowKey) {
+      case "d50BreakDraft":
+        return DRAW_FRAME_D50_BREAK_DRAFT_OPTIONS;
+      case "d50CreelTensionDraft":
+        return DRAW_FRAME_D50_CREEL_TENSION_OPTIONS;
+      case "d50WebTensionDraft":
+        return DRAW_FRAME_D50_WEB_TENSION_OPTIONS;
+      case "d50FeedTensionDraft":
+        return DRAW_FRAME_D50_FEED_TENSION_OPTIONS;
+      case "d50BottomRollerFront":
+        return DRAW_FRAME_D50_BOTTOM_ROLLER_FRONT_OPTIONS;
+      case "d50BottomRollerBack":
+        return DRAW_FRAME_D50_BOTTOM_ROLLER_BACK_OPTIONS;
+      case "d50ScanningRoller":
+        return DRAW_FRAME_D50_SCANNING_ROLLER_OPTIONS;
+      case "d50Trumpet":
+        return DRAW_FRAME_D50_TRUMPET_OPTIONS;
       default:
         return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
     }
@@ -812,6 +1106,121 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     }
   }, [wheelChangeType, values.md1?.existing, values.md1?.proposed, values.md2?.existing, values.md2?.proposed, values.draftConstant?.existing, values.draftConstant?.proposed, values.totalDraft?.existing, values.totalDraft?.proposed]);
 
+  useEffect(() => {
+    if (wheelChangeType === "Type 2 (D40)") {
+      setValues((current) => {
+        const hasExistingConstant = current.d40TotalDraftConstant?.existing || current.d40TotalDraftConstant?.proposed;
+        const nextValues = {
+          ...current,
+          d40TotalDraftConstant: {
+            existing: current.d40TotalDraftConstant?.existing || "5.98",
+            proposed: current.d40TotalDraftConstant?.proposed || "5.98",
+          },
+          d40TotalDraft: {
+            existing: computeType2D40TotalDraft({
+              nw1: current.d40Nw1?.existing,
+              nw2: current.d40Nw2?.existing,
+              totalDraftConstant: current.d40TotalDraftConstant?.existing || "5.98",
+            }),
+            proposed: computeType2D40TotalDraft({
+              nw1: current.d40Nw1?.proposed,
+              nw2: current.d40Nw2?.proposed,
+              totalDraftConstant: current.d40TotalDraftConstant?.proposed || "5.98",
+            }),
+          },
+        };
+
+        if (!hasExistingConstant && (current.d40TotalDraft?.existing || current.d40TotalDraft?.proposed)) {
+          return nextValues;
+        }
+
+        if (
+          current.d40TotalDraft?.existing !== nextValues.d40TotalDraft.existing ||
+          current.d40TotalDraft?.proposed !== nextValues.d40TotalDraft.proposed ||
+          current.d40TotalDraftConstant?.existing !== nextValues.d40TotalDraftConstant.existing ||
+          current.d40TotalDraftConstant?.proposed !== nextValues.d40TotalDraftConstant.proposed
+        ) {
+          return nextValues;
+        }
+
+        return current;
+      });
+    }
+  }, [wheelChangeType, values.d40Nw1?.existing, values.d40Nw1?.proposed, values.d40Nw2?.existing, values.d40Nw2?.proposed, values.d40TotalDraftConstant?.existing, values.d40TotalDraftConstant?.proposed]);
+
+  useEffect(() => {
+    if (wheelChangeType !== "Type 3 (D50/D55)") return;
+
+    setValues((current) => {
+      const nextValues = {
+        ...current,
+        d50TotalDraft: {
+          existing: computeType3D50TotalDraft({
+            delHank: current.d50DelHank?.existing,
+            feedHank: current.d50FeedHank?.existing,
+            noOfEnds: current.d50NoOfEnds?.existing,
+          }),
+          proposed: computeType3D50TotalDraft({
+            delHank: current.d50DelHank?.proposed,
+            feedHank: current.d50FeedHank?.proposed,
+            noOfEnds: current.d50NoOfEnds?.proposed,
+          }),
+        },
+      };
+
+      if (
+        current.d50TotalDraft?.existing === nextValues.d50TotalDraft.existing &&
+        current.d50TotalDraft?.proposed === nextValues.d50TotalDraft.proposed
+      ) {
+        return current;
+      }
+
+      return nextValues;
+    });
+  }, [wheelChangeType, values.d50DelHank?.existing, values.d50DelHank?.proposed, values.d50FeedHank?.existing, values.d50FeedHank?.proposed, values.d50NoOfEnds?.existing, values.d50NoOfEnds?.proposed]);
+
+  useEffect(() => {
+    if (wheelChangeType !== "Type 4 (LDF3S)") return;
+
+    setValues((current) => {
+      const nextValues = {
+        ...current,
+        ldf3sTotalDraft: {
+          existing: computeType4Ldf3sTotalDraft({
+            deliveryHank: current.ldf3sDelHank?.existing,
+            feedHank: current.ldf3sFeedHank?.existing,
+            noOfEnds: current.ldf3sNoOfEnds?.existing,
+          }),
+          proposed: computeType4Ldf3sTotalDraft({
+            deliveryHank: current.ldf3sDelHank?.proposed,
+            feedHank: current.ldf3sFeedHank?.proposed,
+            noOfEnds: current.ldf3sNoOfEnds?.proposed,
+          }),
+        },
+      };
+
+      if (
+        current.ldf3sTotalDraft?.existing === nextValues.ldf3sTotalDraft.existing &&
+        current.ldf3sTotalDraft?.proposed === nextValues.ldf3sTotalDraft.proposed
+      ) {
+        return current;
+      }
+
+      return nextValues;
+    });
+  }, [wheelChangeType, values.ldf3sDelHank?.existing, values.ldf3sDelHank?.proposed, values.ldf3sFeedHank?.existing, values.ldf3sFeedHank?.proposed, values.ldf3sNoOfEnds?.existing, values.ldf3sNoOfEnds?.proposed]);
+
+  useEffect(() => {
+    if (!TD7_LIKE_WHEEL_CHANGE_TYPES.includes(wheelChangeType)) return;
+
+    const draftValue = values.totalDraftGear?.existing || values.totalDraftGear?.proposed || "";
+    const autoG1G2 = getTd7G1G2ForTotalDraft(draftValue);
+    if (!autoG1G2) return;
+    if ((values.g1G2?.existing || values.g1G2?.proposed || "") === autoG1G2) return;
+
+    setValues((current) => applyType2Td7AutoFill({ ...current }, "totalDraftGear", wheelChangeType));
+  }, [wheelChangeType, values.g1G2?.existing, values.g1G2?.proposed, values.totalDraftGear?.existing, values.totalDraftGear?.proposed]);
+
   const clearFieldError = (field) => {
     setErrors((current) => {
       if (!current[field]) return current;
@@ -862,29 +1271,31 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
 
   const handleValueChange = (rowKey, column) => (event) => {
     const nextValue = event.target.value;
-    setValues((current) =>
-      applyType1Sb20ComputedValues({
+    setValues((current) => {
+      const updatedValues = applyType1Sb20ComputedValues({
         ...current,
         [rowKey]: {
           ...(current[rowKey] || { existing: "", proposed: "" }),
           [column]: nextValue,
         },
-      })
-    );
+      });
+      return applyType2Td7AutoFill(updatedValues, rowKey, wheelChangeType);
+    });
     clearValueError(rowKey, column);
   };
 
   const handleNumericValueChange = (rowKey, column) => (event) => {
     const nextValue = sanitizeNumericInput(event.target.value, { precision: 10, scale: 3 });
-    setValues((current) =>
-      applyType1Sb20ComputedValues({
+    setValues((current) => {
+      const updatedValues = applyType1Sb20ComputedValues({
         ...current,
         [rowKey]: {
           ...(current[rowKey] || { existing: "", proposed: "" }),
           [column]: nextValue,
         },
-      })
-    );
+      });
+      return applyType2Td7AutoFill(updatedValues, rowKey, wheelChangeType);
+    });
     clearValueError(rowKey, column);
   };
 
