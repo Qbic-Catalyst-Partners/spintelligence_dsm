@@ -98,47 +98,6 @@ const displaySavedValue = (value) => {
   return normalized && normalized !== "-" ? normalized : "0";
 };
 
-const formatDetailLabel = (key = "") =>
-  String(key)
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^\w/, (char) => char.toUpperCase());
-
-const getVersionDetailItems = (version, subDepartment) => {
-  if (!version?.data) return [];
-
-  if (subDepartment === "Mixing" && Array.isArray(version.data.rows)) {
-    return version.data.rows.map((row) => ({
-      key: row.label,
-      label: row.label,
-      value: displaySavedValue(
-        row.lotNo || row.blend || row.cutLength || row.tenacity || row.elongation || row.mergeNo
-      ),
-    }));
-  }
-
-  return Object.entries(version.data)
-    .filter(([key, value]) => {
-      if (["versionId", "paramId", "countName", "consigneeName", "creationDate", "rows", "subDepartment", "sub_department"].includes(key)) {
-        return false;
-      }
-      if (value === null || typeof value === "undefined") return false;
-      if (typeof value === "string") return String(value).trim() !== "";
-      if (typeof value === "number" || typeof value === "boolean") return true;
-      return Array.isArray(value) ? value.length > 0 : Object.keys(value || {}).length > 0;
-    })
-    .map(([key, value]) => ({
-      key,
-      label: formatDetailLabel(key),
-      value:
-        typeof value === "object"
-          ? JSON.stringify(value)
-          : displaySavedValue(value),
-    }));
-};
-
 const parseNumberValue = (value) => {
   const normalized = String(value ?? "").replace(/[^0-9.\-]/g, "").trim();
   if (!normalized) return 0;
@@ -420,7 +379,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const loadVersions = async () => {
     setLoadingVersions(true);
     try {
-      const response = await getMixingProcessParameterEntries({ page: 1, limit: 1000 });
+      const response = await getMixingProcessParameterEntries({ page: 1, limit: 100 });
       const nextVersions = Array.isArray(response?.data)
         ? response.data.map(mapApiEntryToVersion)
         : [];
@@ -780,15 +739,15 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
                   const isComplete = isVersionComplete(version);
                   const isExpanded = expandedVersionId === version.id && isComplete;
                   const isActive = version.id === form.versionId;
+                  const versionSubDepartment = getVersionSubDepartment(version);
                   const nestedChildren = PROCESS_PARAMETER_SUB_DEPARTMENTS.map((subDepartment) => {
-                    const detailItems = getVersionDetailItems(version, subDepartment);
                     const key = `${version.id}-${subDepartment}`;
                     return {
                       key,
                       label: subDepartment,
                       isExpanded: expandedSubDepartmentKey === key,
+                      hasData: true,
                       complete: isSubDepartmentComplete(version, subDepartment),
-                      detailItems,
                     };
                   });
 
@@ -892,27 +851,34 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
                                 {child.isExpanded ? (
                                   <div className="border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
-                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                      {child.detailItems.length > 0 ? (
-                                        child.detailItems.map((item) => (
+                                    {child.label === "Mixing" ? (
+                                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                        {version.data.rows.map((row) => (
                                           <div
-                                            key={`${child.key}-${item.key}`}
+                                            key={`${child.key}-${row.label}`}
                                             className="rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
                                           >
                                             <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                                              {item.label}
+                                              {row.label}
                                             </div>
-                                            <div className="mt-1 break-words text-[13px] font-bold text-slate-900">
-                                              {item.value}
+                                            <div className="mt-1 text-[13px] font-bold text-slate-900">
+                                              {displaySavedValue(
+                                                row.lotNo ||
+                                                  row.blend ||
+                                                  row.cutLength ||
+                                                  row.tenacity ||
+                                                  row.elongation ||
+                                                  row.mergeNo
+                                              )}
                                             </div>
                                           </div>
-                                        ))
-                                      ) : (
-                                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 md:col-span-2 xl:col-span-4">
-                                          No saved detail values were found for this sub-department yet.
-                                        </div>
-                                      )}
-                                    </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                                        This sub-department uses the shared PP history completion state.
+                                      </div>
+                                    )}
                                   </div>
                                 ) : null}
                               </div>

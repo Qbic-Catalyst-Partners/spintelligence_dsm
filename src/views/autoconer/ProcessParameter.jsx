@@ -261,7 +261,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const loadVersions = async () => {
     setLoadingVersions(true);
     try {
-      const response = await fetchAutoconerProcessParameters({ page: 1, limit: 1000 });
+      const response = await fetchAutoconerProcessParameters({ page: 1, limit: 10 });
       const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
       const nextVersions = rows
         .map(mapApiEntryToVersion)
@@ -532,14 +532,11 @@ const ProcessParameter = forwardRef(function ProcessParameter(
                       className={`${styles.subDepartmentHeader} ${
                         child.isExpanded ? styles.subDepartmentHeaderActive : ""
                       }`}
-                      onClick={() => {
-                        if (child.hasData) {
-                          handleVersionSelect(version);
-                        }
+                      onClick={() =>
                         setExpandedSubDepartmentKey((current) =>
                           current === child.key ? "" : child.key
-                        );
-                      }}
+                        )
+                      }
                     >
                       <span className={styles.subDepartmentName}>{child.label}</span>
                       <span className={styles.subDepartmentBadge}>

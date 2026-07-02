@@ -142,32 +142,6 @@ function Mixing() {
     }, [selectedTypeName, typeOptions]);
 
     useEffect(() => {
-        if (!router.isReady) {
-            return;
-        }
-
-        const queryType = typeof router.query.type === "string" ? router.query.type : "";
-        const nextType = selectedTypeName || "";
-
-        if (queryType === nextType) {
-            return;
-        }
-
-        const nextQuery = { ...router.query };
-        if (nextType) {
-            nextQuery.type = nextType;
-        } else {
-            delete nextQuery.type;
-        }
-
-        router.replace(
-            { pathname: router.pathname, query: nextQuery },
-            undefined,
-            { shallow: true, scroll: false }
-        );
-    }, [router, selectedTypeName]);
-
-    useEffect(() => {
         if (!requestedType || !typeOptions.length) return;
         const requested = normalizeTypeName(requestedType);
         const matchedType = typeOptions.find((item) =>
@@ -206,18 +180,6 @@ function Mixing() {
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
-
-        const nextQuery = { ...router.query };
-        if (value) {
-            nextQuery.type = value;
-        } else {
-            delete nextQuery.type;
-        }
-        router.replace(
-            { pathname: router.pathname, query: nextQuery },
-            undefined,
-            { shallow: true, scroll: false }
-        );
     };
 
     const handleLotChange = (value) => {

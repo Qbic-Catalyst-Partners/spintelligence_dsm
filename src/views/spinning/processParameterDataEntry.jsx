@@ -396,7 +396,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const loadVersions = async () => {
     setLoadingVersions(true);
     try {
-      const response = await getSpinningProcessParameterEntries({ page: 1, limit: 1000 });
+      const response = await getSpinningProcessParameterEntries({ page: 1, limit: 100 });
       const nextVersions = Array.isArray(response?.data)
         ? response.data.map(mapApiEntryToVersion)
         : [];

@@ -319,7 +319,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   const loadVersions = async () => {
     setLoadingVersions(true);
     try {
-      const response = await fetchSimplexProcessParameterEntries({ page: 1, limit: 1000 });
+      const response = await fetchSimplexProcessParameterEntries({ page: 1, limit: 100 });
       const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
       const nextVersions = rows.map(mapApiEntryToVersion);
 

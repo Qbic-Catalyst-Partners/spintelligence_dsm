@@ -60,24 +60,11 @@ const PROCESS_PARAMETER_SUB_DEPARTMENTS = [
 const getVersionSubDepartment = (version) =>
   String(version?.data?.subDepartment || version?.data?.sub_department || "").trim();
 
-const getVersionGroupKey = (version) => String(version?.data?.paramId || version?.data?.versionId || version?.id || "").trim();
-
-const getVersionGroupMembers = (versions, version) => {
-  const groupKey = getVersionGroupKey(version);
-  if (!groupKey) return [];
-  return versions.filter((item) => getVersionGroupKey(item) === groupKey);
+const isSubDepartmentComplete = (version, subDepartment) => {
+  const normalized = getVersionSubDepartment(version).toLowerCase();
+  if (!normalized) return true;
+  return normalized === String(subDepartment || "").trim().toLowerCase();
 };
-
-const isSubDepartmentComplete = (versions, version, subDepartment) => {
-  const normalized = String(subDepartment || "").trim().toLowerCase();
-  if (!normalized) return false;
-  return getVersionGroupMembers(versions, version).some(
-    (item) => getVersionSubDepartment(item).toLowerCase() === normalized
-  );
-};
-
-const isProcessParameterComplete = (versions, version) =>
-  PROCESS_PARAMETER_SUB_DEPARTMENTS.every((subDepartment) => isSubDepartmentComplete(versions, version, subDepartment));
 
 const fieldDefs = [
   { key: "machineNo", label: "Machine No." },
@@ -233,19 +220,22 @@ const SavedVersionsSection = ({
 
     <div className="mt-4 flex flex-col gap-3">
       {versions.map((version) => {
-        const isComplete = isProcessParameterComplete(versions, version);
+        const isComplete = isVersionComplete(version);
         const isExpanded = expandedVersionId === version.id && isComplete;
         const isActive = version.id === form.versionId;
+        const versionSubDepartment = getVersionSubDepartment(version);
         const nestedChildren = PROCESS_PARAMETER_SUB_DEPARTMENTS.map((subDepartment) => ({
           key: `${version.id}-${subDepartment}`,
           label: subDepartment,
           isExpanded:
             expandedVersionId === version.id &&
             expandedSubDepartmentKey === `${version.id}-${subDepartment}`,
-          matchingVersion: getVersionGroupMembers(versions, version).find(
-            (item) => getVersionSubDepartment(item).toLowerCase() === subDepartment.toLowerCase()
-          ),
-          complete: isSubDepartmentComplete(versions, version, subDepartment),
+          hasData:
+            !versionSubDepartment ||
+            versionSubDepartment.toLowerCase() === subDepartment.toLowerCase(),
+          complete:
+            !versionSubDepartment ||
+            versionSubDepartment.toLowerCase() === subDepartment.toLowerCase(),
         }));
 
         return (
@@ -320,12 +310,7 @@ const SavedVersionsSection = ({
                           className={`flex w-full items-center justify-between gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50 ${
                             child.isExpanded ? "bg-[#eef5ff]" : ""
                           }`}
-                          onClick={() => {
-                            if (child.matchingVersion) {
-                              handleVersionSelect(child.matchingVersion);
-                            }
-                            onSubDepartmentToggle(child.key);
-                          }}
+                          onClick={() => onSubDepartmentToggle(child.key)}
                         >
                           <span className="text-[13px] font-bold text-slate-900">{child.label}</span>
                           <span className="rounded-full bg-[#dfe9ff] px-3 py-1 text-[11px] font-bold text-[#3d539f]">
@@ -334,7 +319,7 @@ const SavedVersionsSection = ({
                         </button>
                         {child.isExpanded ? (
                           <div className="border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
-                            {child.matchingVersion ? (
+                            {child.hasData ? (
                               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 {fieldDefs.map((field) => (
                                   <div
@@ -345,7 +330,7 @@ const SavedVersionsSection = ({
                                       {field.label}
                                     </div>
                                     <div className="mt-1 text-[13px] font-bold text-slate-900">
-                                      {displaySavedValue(child.matchingVersion.data[field.key])}
+                                      {displaySavedValue(version.data[field.key])}
                                     </div>
                                   </div>
                                 ))}
@@ -380,6 +365,18 @@ const SavedVersionsSection = ({
                   <div className="mt-3 text-[12px] text-slate-500">{version.label}</div>
                 </div>
               </>
+            ) : null}
+                      <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        {field.label}
+                      </div>
+                      <div className="mt-1 text-[13px] font-bold text-slate-900">
+                        {displaySavedValue(version.data[field.key])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-[12px] text-slate-500">{version.label}</div>
+              </div>
             ) : null}
           </div>
         );
@@ -428,7 +425,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   const loadVersions = async () => {
     setLoadingVersions(true);
     try {
-      const response = await getCardingProcessParameterEntries({ page: 1, limit: 1000 });
+      const response = await getCardingProcessParameterEntries({ page: 1, limit: 100 });
       const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
       const nextVersions = rows
         .map(mapApiEntryToVersion)
