@@ -386,6 +386,39 @@
   font-size: 13px;
 }
 
+.countChangeSummaryBox {
+  width: 180px;
+  margin-top: 14px;
+  margin-left: auto;
+  padding: 12px 14px;
+  border: 1px solid #d8e2f3;
+  border-radius: 10px;
+  background: #f8fbff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.countChangeSummaryLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.countChangeSummaryValue {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.countChangeSummaryHint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+
 .ringFrameTableWrap {
   margin-top: 18px;
   overflow-x: hidden;

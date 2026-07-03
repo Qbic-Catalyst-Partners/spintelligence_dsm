@@ -169,7 +169,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       });
 
       const withOpenness = updated.map((stage, stageIndex) => {
-        if (stageIndex === 0 || stage.avgAov === "") {
+        if (stageIndex === 0 || stageIndex === updated.length - 1 || stage.avgAov === "") {
           return { ...stage, openness: "" };
         }
 
@@ -182,13 +182,13 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         return { ...stage, openness };
       });
 
-      const validStages = withOpenness.filter((stage) => stage.openness !== "");
+      const firstStage = withOpenness[0];
+      const lastStage = withOpenness[withOpenness.length - 1];
+      const firstAov = firstStage ? parseNumber(firstStage.avgAov) : 0;
+      const lastAov = lastStage ? parseNumber(lastStage.avgAov) : 0;
       const overall =
-        validStages.length > 0
-          ? (
-              validStages.reduce((sum, stage) => sum + parseNumber(stage.openness), 0) /
-              validStages.length
-            ).toFixed(2)
+        firstAov > 0 && lastAov > 0
+          ? (((lastAov - firstAov) / lastAov) * 100).toFixed(2)
           : "";
       setOverallOpen(overall);
 
@@ -215,7 +215,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         stage.avgVol !== "" &&
         stage.avgAsv !== "" &&
         stage.avgAov !== "" &&
-        (stage === stages[0] ? true : stage.openness !== "")
+        (stage === stages[0] || stage === stages[stages.length - 1] ? true : stage.openness !== "")
     );
   }, [date, mixing, form, stages]);
 
@@ -386,7 +386,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
               <ReadOnlyField label="Avg. Volume (V)" value={stage.avgVol} />
               <ReadOnlyField label="Average of Apparent Specific Vol (A=V/M)" value={stage.avgAsv} />
               <ReadOnlyField label="Average of Actual Op. Value (AOV)" value={stage.avgAov} />
-              {stageIndex > 0 ? (
+              {stageIndex > 0 && stageIndex < stages.length - 1 ? (
                 <ReadOnlyField label="Avg. Openness %" value={stage.openness} />
               ) : (
                 <div />

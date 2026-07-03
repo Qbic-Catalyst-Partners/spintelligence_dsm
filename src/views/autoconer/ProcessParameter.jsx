@@ -306,7 +306,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       ...current,
       type: safeSelectedType || "Process Parameter",
     }));
-  }, [selectedType]);
+  }, [safeSelectedType]);
 
   const clearError = (field) => {
     setErrors((current) => {

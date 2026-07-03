@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { AiOutlineAudio } from "react-icons/ai";
@@ -282,15 +282,23 @@ function SpinningDepartment() {
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const queryType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
     const isProcessParameterRequest = normalizeTypeName(queryType) === "process parameter";
-    const fullCheckingOptions = filterOptionsByDepartmentAccess(
-        SPINNING_CHECKING_OPTIONS,
-        accessByDepartment,
-        user,
-        "Spinning"
+    const fullCheckingOptions = useMemo(
+        () =>
+            filterOptionsByDepartmentAccess(
+                SPINNING_CHECKING_OPTIONS,
+                accessByDepartment,
+                user,
+                "Spinning"
+            ),
+        [accessByDepartment, user]
     );
-    const checkingOptions = isProcessParameterRequest
-        ? fullCheckingOptions
-        : fullCheckingOptions.filter((item) => item.name !== "Process Parameter");
+    const checkingOptions = useMemo(
+        () =>
+            isProcessParameterRequest
+                ? fullCheckingOptions
+                : fullCheckingOptions.filter((item) => item.name !== "Process Parameter"),
+        [fullCheckingOptions, isProcessParameterRequest]
+    );
     const findCheckingOption = (value) =>
         checkingOptions.find((item) => item.name === value || item.displayName === value) || null;
 
@@ -654,11 +662,18 @@ function SpinningDepartment() {
     const countModeStandardDeviation = countModeVariance === null ? null : roundTo(Math.sqrt(countModeVariance), 5);
     const countModeCvPercent = countModeStandardDeviation === null || countModeReadingMean === null || countModeReadingMean === 0
         ? ""
-        : roundTo((countModeStandardDeviation / countModeReadingMean) * 100, 9).toFixed(9);
+        : roundTo((countModeStandardDeviation / countModeReadingMean) * 100, 3).toFixed(3);
     const getCalculatedCountValue = (readingValue) => {
         const numericReading = parseNumericInput(readingValue);
         if (numericReading === null || numericReading <= 0) return "";
         return roundTo(64.8 / numericReading, 2).toFixed(2);
+    };
+    const calculateCspValue = (strengthValue, countValue) => {
+        const numericStrength = parseNumericInput(strengthValue);
+        const numericCount = parseNumericInput(countValue);
+        if (numericStrength === null || numericCount === null) return "";
+        const cspValue = numericStrength * numericCount;
+        return Number.isFinite(cspValue) ? roundTo(cspValue, 2).toFixed(2) : "";
     };
     const csvStrengthValues = countChangeRows
         .map((row) => parseNumericInput(row.strength))
@@ -678,9 +693,17 @@ function SpinningDepartment() {
     const csvStrengthStandardDeviation = csvStrengthVariance === null ? null : roundTo(Math.sqrt(csvStrengthVariance), 5);
     const csvStrengthCvPercent = csvStrengthStandardDeviation === null || csvMeanStrength === null || csvMeanStrength === 0
         ? ""
-        : roundTo((csvStrengthStandardDeviation / csvMeanStrength) * 100, 9).toFixed(9);
+        : roundTo((csvStrengthStandardDeviation / csvMeanStrength) * 100, 3).toFixed(3);
     const countModeDisplayedMean = countModeReadingMean === null ? "" : countModeReadingMean.toFixed(2);
     const csvModeDisplayedMean = csvMeanStrength === null ? "" : csvMeanStrength.toFixed(2);
+    const overallAverageCsp = (() => {
+        const cspValues = countChangeRows
+            .map((row) => parseNumericInput(calculateCspValue(row.strength, getCalculatedCountValue(row.reading_value))))
+            .filter((value) => value !== null);
+        if (!cspValues.length) return "";
+        const avg = cspValues.reduce((total, value) => total + value, 0) / cspValues.length;
+        return roundTo(avg, 2).toFixed(2);
+    })();
     const deriveCountChangeRow = (row = {}, rowIndex = 0) => {
         return {
             ...row,
@@ -691,7 +714,7 @@ function SpinningDepartment() {
             mean: csvModeDisplayedMean,
             strength: row.strength || "",
             cv_percent_2: csvStrengthCvPercent,
-            csp: "",
+            csp: calculateCspValue(row.strength, getCalculatedCountValue(row.reading_value)),
         };
     };
     const displayedCountChangeRows = countChangeRows.map((row, rowIndex) => deriveCountChangeRow(row, rowIndex));
@@ -700,16 +723,17 @@ function SpinningDepartment() {
         return text ? text : fallback;
     };
 
-    const handleTypeChange = (e) => {
-        const selectedType = e.target.value;
+    const handleTypeChange = (eventOrValue) => {
+        const selectedType =
+            typeof eventOrValue === "string"
+                ? eventOrValue
+                : eventOrValue?.target?.value || "";
         setCheckingType(selectedType);
         clearFieldError("checkingType");
         if (selectedType) {
             setDate(getTodayDate());
-            router.push(`/spinning?type=${encodeURIComponent(selectedType)}`, undefined, { shallow: true });
         } else {
             setDate("");
-            router.push("/spinning", undefined, { shallow: true });
         }
     };
 
@@ -1253,7 +1277,7 @@ function SpinningDepartment() {
                                                         <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent_2, "")}</span>
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText} />
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.csp, "")}</span>
                                                     </td>
                                                 </tr>
                                             )) : (
@@ -1266,6 +1290,12 @@ function SpinningDepartment() {
                                         </tbody>
                                     </table>
                                 </div>
+                                {countChangeRows.length > 0 ? (
+                                    <div className={styles.countChangeSummaryBox}>
+                                        <div className={styles.countChangeSummaryLabel}>Overall CSP</div>
+                                        <div className={styles.countChangeSummaryValue}>{overallAverageCsp || "-"}</div>
+                                    </div>
+                                ) : null}
                             </>
                         ) : isRingFrame ? (
                             <>

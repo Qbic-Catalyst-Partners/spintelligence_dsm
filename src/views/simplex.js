@@ -38,7 +38,7 @@ const SIMPLEX_ENTRY_ID_CONFIG = {
   "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/study" },
   "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
   "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change" },
-  "Stretch %": { prefix: "STP",  },
+  "Stretch %": { prefix: "STP", width: 4, routePath: "/simplex/stretch-percent" },
   "Wrapping Simplex Notebook": { prefix: "WSX" },
 };
 
@@ -87,7 +87,7 @@ function Simplex() {
     () => typeOptions.find((item) => item.name === selectedTypeName) || null,
     [selectedTypeName, typeOptions]
   );
-  const { entryId, reserveEntryId } = useDatabaseEntryId({
+  const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
     department: "Simplex",
     typeName: selectedTypeName,
     config: getSimplexEntryConfig(selectedTypeName),
@@ -135,6 +135,10 @@ function Simplex() {
   }, [dispatch, selectedTypeName]);
 
   const openPreview = () => {
+    if (entryIdLoading || !entryId) {
+      setValidationMessage("Entry ID is still loading. Please wait a moment and try again.");
+      return;
+    }
     const valid = childRef.current?.validate ? childRef.current.validate() : true;
     if (valid === false) {
       setValidationMessage("Please fill all required fields before saving.");
@@ -142,7 +146,11 @@ function Simplex() {
     }
     setValidationMessage("");
     const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
-    setPreviewItems(items);
+    setPreviewItems([
+      { label: "Type", value: selectedTypeName || "-" },
+      { label: "Entry ID", value: entryId || "-" },
+      ...items,
+    ]);
     setShowPreview(true);
   };
 
@@ -151,6 +159,7 @@ function Simplex() {
     submitInProgressRef.current = true;
     setShowPreview(false);
     try {
+      if (entryIdLoading || !entryId) return;
       const ok = await childRef.current?.submit?.();
       if (ok) {
         if (successHandledRef.current) return;
@@ -237,6 +246,7 @@ function Simplex() {
                 docType="strech"
                 tableTitle="Stretch PDF Values"
                 entryId={entryId}
+                reserveEntryId={reserveEntryId}
               />
             ) : SelectedComponent ? (
               <SelectedComponent
