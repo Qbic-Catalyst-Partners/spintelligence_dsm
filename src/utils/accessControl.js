@@ -6,10 +6,8 @@ const normalizeName = (value) =>
     .replace(/\s+/g, " ")
     .replace(/-/g, " ");
 
-const FULL_ACCESS_EMPLOYEE_IDS = ["ADMIN001"].map((value) => normalizeName(value));
 const FULL_ACCESS_ROLE_NAMES = ["admin"].map((value) => normalizeName(value));
 const FULL_ACCESS_USER_NAMES = ["fazal"].map((value) => normalizeName(value));
-const DASHBOARD_MANAGER_EMPLOYEE_IDS = ["ADMIN001"].map((value) => normalizeName(value));
 
 const getEmployeeKey = (user) =>
   normalizeName(user?.employee_id || user?.employeeId || user?.emp_id || "");
@@ -38,7 +36,6 @@ const isAnonymousDirectAccess = (accessByDepartment, user) =>
   !user && !Array.isArray(accessByDepartment);
 
 export const isFullAccessUser = (user) =>
-  (Boolean(getEmployeeKey(user)) && FULL_ACCESS_EMPLOYEE_IDS.includes(getEmployeeKey(user))) ||
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role)) ||
   getNameKeys(user).some((name) => FULL_ACCESS_USER_NAMES.includes(name));
 
@@ -49,7 +46,7 @@ export const isSubmittedNotebookManagerUser = (user) =>
   isFullAccessUser(user) || isSupervisorNavUser(user);
 
 export const isDashboardManagerUser = (user) =>
-  Boolean(getEmployeeKey(user)) && DASHBOARD_MANAGER_EMPLOYEE_IDS.includes(getEmployeeKey(user));
+  getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
 
 export const getDefaultTicketingRoute = (user) =>
   isSupervisorNavUser(user) ? "/supervisordashboard" : "/operator";
