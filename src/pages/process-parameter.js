@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 
 import Footer from "@/components/Footer";
+import apiConfig from "@/apis/apiConfig";
 import MixingProcessParameter from "@/views/mixing/processParameterDataEntry";
 import CardingProcessParameter from "@/views/carding/processParameterDataEntry";
 import BlowRoomProcessParameter from "@/views/blowroom/ProcessParameter";
@@ -12,6 +13,11 @@ import AutoconerProcessParameter from "@/views/autoconer/ProcessParameter";
 import AutoconerQ2 from "@/views/autoconer/AutoconerQ2";
 import AutoconerQ3 from "@/views/autoconer/AutoconerQ3";
 import { hasSubDepartmentAccess } from "@/utils/accessControl";
+import {
+  registerProcessParameterId,
+  readProcessParameterRegistry,
+  writeProcessParameterRegistry,
+} from "@/utils/processParameterRegistry";
 import styles from "@/styles/processParameterPage.module.css";
 
 const updateExistingColumns = [
@@ -19,32 +25,46 @@ const updateExistingColumns = [
   "Mixing",
   "Blow Room",
   "Carding",
-  "DF-Breaker",
-  "DF-Finisher",
+  "Draw Frame Breaker",
+  "Draw Frame Finisher",
   "Simplex",
   "Spinning",
-  "AC-Q1",
+  "Autoconer PP",
   "AC-Q2",
   "AC-Q3",
 ];
 
-const updateExistingRows = [
-  { id: "PP-0001", statuses: [false, false, false, false, false, false, false, false, false, false] },
-  { id: "PP-0002", statuses: [false, false, false, false, false, false, false, false, false, false] },
-  { id: "PP-0003", statuses: [false, false, false, false, false, false, false, false, false, false] },
-  { id: "PP-0004", statuses: [false, false, false, false, false, false, false, false, false, false] },
-  { id: "PP-0005", statuses: [false, false, false, false, false, false, false, false, false, false] },
+const createBlankStatusRow = () => ({
+  id: "",
+  statuses: [false, false, false, false, false, false, false, false, false, false],
+});
+
+const normalizeRowId = (value) => String(value || "").trim();
+
+const MATRIX_FETCH_ENDPOINTS = ["/process-parameters", "/process-parameter", "/process_parameters"];
+
+const COLUMN_MATCHERS = [
+  { columnIndex: 1, department: "Mixing", types: ["mixing"] },
+  { columnIndex: 2, department: "Blow Room", types: ["blowroom", "blow room"] },
+  { columnIndex: 3, department: "Carding", types: ["carding"] },
+  { columnIndex: 4, department: "Draw Frame", types: ["breaker", "pp-breaker", "breaker drawing"] },
+  { columnIndex: 5, department: "Draw Frame", types: ["finisher", "pp - finisher", "finisher drawing"] },
+  { columnIndex: 6, department: "Simplex", types: ["simplex"] },
+  { columnIndex: 7, department: "Spinning", types: ["spinning"] },
+  { columnIndex: 8, department: "Autoconer", types: ["autoconer process parameter", "autoconer process parameter"] },
+  { columnIndex: 9, department: "Autoconer", types: ["autoconer pp - autoconer q2", "q2"] },
+  { columnIndex: 10, department: "Autoconer", types: ["autoconer pp - autoconer q3", "q3"] },
 ];
 
 const COLUMN_TO_DEPARTMENT = {
-  Mixing: "Mixing",
+  "Mixing": "Mixing",
   "Blow Room": "Blow Room",
-  Carding: "Carding",
-  "DF-Breaker": "Draw Frame",
-  "DF-Finisher": "Draw Frame",
-  Simplex: "Simplex",
-  Spinning: "Spinning",
-  "AC-Q1": "Autoconer",
+  "Carding": "Carding",
+  "Draw Frame Breaker": "Draw Frame",
+  "Draw Frame Finisher": "Draw Frame",
+  "Simplex": "Simplex",
+  "Spinning": "Spinning",
+  "Autoconer PP": "Autoconer",
   "AC-Q2": "Autoconer",
   "AC-Q3": "Autoconer",
 };
@@ -58,6 +78,25 @@ const subDepartments = [
   { label: "Spinning", value: "Spinning" },
   { label: "Autoconer", value: "Autoconer" },
 ];
+
+const normalizeRegistryId = (value) => String(value || "").trim();
+
+const extractRegistryRows = (payload) => {
+  const candidates = [
+    payload?.data,
+    payload?.rows,
+    payload?.entries,
+    payload?.masters,
+    payload?.items,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length) return candidate;
+  }
+
+  if (Array.isArray(payload)) return payload;
+  return [];
+};
 
 const DEPARTMENT_COMPONENTS = {
   Mixing: MixingProcessParameter,
@@ -154,7 +193,9 @@ export default function ProcessParameterPage() {
   const [autoconerType, setAutoconerType] = useState("Process Parameter");
   const [selectedEntryId, setSelectedEntryId] = useState("");
   const [completedCells, setCompletedCells] = useState({});
+  const [dynamicRows, setDynamicRows] = useState([]);
   const componentRef = useRef(null);
+  const lastSubmittedEntryIdRef = useRef("");
 
   const visibleSubDepartments = useMemo(
     () => subDepartments.filter((item) => hasSubDepartmentAccess(accessByDepartment, item.value, user)),
@@ -162,6 +203,100 @@ export default function ProcessParameterPage() {
   );
 
   const currentDate = new Date().toLocaleDateString("en-IN");
+  const buildRowStatuses = (entries = []) => {
+    const statuses = createBlankStatusRow().statuses;
+    entries.forEach((entry) => {
+      const department = normalizeRowId(entry?.department || entry?.sub_department || entry?.dept_name).toLowerCase();
+      const processType = normalizeRowId(entry?.process_type || entry?.type || entry?.function_name).toLowerCase();
+      COLUMN_MATCHERS.forEach((matcher) => {
+        const deptMatch = normalizeRowId(matcher.department).toLowerCase() === department;
+        const typeMatch = matcher.types.some((type) => processType.includes(type));
+        if (deptMatch && typeMatch) {
+          statuses[matcher.columnIndex - 1] = true;
+        }
+      });
+    });
+    return statuses;
+  };
+
+  const loadRegistryRows = async () => {
+    const localRegistryRows = readProcessParameterRegistry()
+      .map((row) => ({
+        id: normalizeRegistryId(row?.displayId),
+        statuses: Array.isArray(row?.statuses) && row.statuses.length === 10
+          ? row.statuses.slice(0, 10)
+          : createBlankStatusRow().statuses,
+      }))
+      .filter((row) => row.id);
+
+    for (const endpoint of MATRIX_FETCH_ENDPOINTS) {
+      try {
+        const response = await apiConfig.get(endpoint, { page: 1, limit: 10 }, { skipGlobalErrorModal: true });
+        const masters = extractRegistryRows(response?.data);
+        if (!Array.isArray(masters) || masters.length === 0) continue;
+
+        const rows = masters
+          .map((master) => {
+            const id = normalizeRegistryId(
+              master?.entry_id ||
+              master?.entryId ||
+              master?.process_parameter_id ||
+              master?.processParameterId ||
+              master?.param_id ||
+              master?.paramId ||
+              master?.id
+            );
+            const rowsPayload = Array.isArray(master?.entries)
+              ? master.entries
+              : Array.isArray(master?.rows)
+                ? master.rows
+                : Array.isArray(master?.data)
+                  ? master.data
+                  : [];
+            const statuses = Array.isArray(master?.statuses) && master.statuses.length === 10
+              ? master.statuses
+              : buildRowStatuses(rowsPayload);
+
+            return { id, statuses };
+          })
+          .filter((row) => row.id)
+          .slice(0, 10);
+
+        if (rows.length) return rows;
+      } catch {
+        // try next endpoint
+      }
+    }
+    return localRegistryRows.slice(0, 10);
+  };
+
+  useEffect(() => {
+    writeProcessParameterRegistry([]);
+    loadRegistryRows().then(setDynamicRows);
+  }, []);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      loadRegistryRows().then(setDynamicRows);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadRegistryRows().then(setDynamicRows);
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", handleStorageChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", handleStorageChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const selectedAutoconerType =
     selectedSubDepartment === "Autoconer" ? autoconerType : "Process Parameter";
   const SelectedComponent =
@@ -181,11 +316,63 @@ export default function ProcessParameterPage() {
   const showFormCard = activeTab === "new";
   const showListCard = activeTab === "existing";
   const [searchTerm, setSearchTerm] = useState("");
-  const filteredRows = updateExistingRows.filter((row) =>
+  const filteredRows = dynamicRows.filter((row) =>
     String(row.id).toLowerCase().includes(String(searchTerm).toLowerCase())
   );
   const getRowStatuses = (rowId) =>
-    completedCells[rowId] || updateExistingRows.find((row) => row.id === rowId)?.statuses || [];
+    completedCells[rowId] ||
+    dynamicRows.find((row) => row.id === rowId)?.statuses ||
+    createBlankStatusRow().statuses;
+
+  const upsertRowStatus = (rowId, columnIndex, isDone = true) => {
+    if (!rowId) return;
+
+    setDynamicRows((currentRows) => {
+      const nextRows = [...currentRows];
+      const rowIndex = nextRows.findIndex((row) => String(row.id) === String(rowId));
+      const baseRow = rowIndex >= 0 ? nextRows[rowIndex] : { ...createBlankStatusRow(), id: rowId };
+      const nextStatuses = [...(baseRow.statuses || createBlankStatusRow().statuses)];
+      nextStatuses[columnIndex] = isDone;
+      const nextRow = { ...baseRow, id: String(rowId), statuses: nextStatuses };
+
+      if (rowIndex >= 0) nextRows[rowIndex] = nextRow;
+      else nextRows.unshift(nextRow);
+
+      return nextRows;
+    });
+
+    setCompletedCells((current) => {
+      const next = { ...current };
+      const nextStatuses = [...(next[rowId] || createBlankStatusRow().statuses)];
+      nextStatuses[columnIndex] = isDone;
+      next[rowId] = nextStatuses;
+      return next;
+    });
+
+  };
+
+  const getColumnIndexForDepartment = () => {
+    if (selectedSubDepartment === "Draw Frame") {
+      return drawFrameType === "PP - Finisher Drawing" ? 5 : 4;
+    }
+    if (selectedSubDepartment === "Autoconer") {
+      if (autoconerType === "PP - Autoconer Q2") return 9;
+      if (autoconerType === "PP - Autoconer Q3") return 10;
+      return 8;
+    }
+    const mapping = {
+      Mixing: 1,
+      "Blow Room": 2,
+      Carding: 3,
+      Simplex: 6,
+      Spinning: 7,
+    };
+    return mapping[selectedSubDepartment] ?? -1;
+  };
+
+  const refreshRegistryRows = () => {
+    loadRegistryRows().then(setDynamicRows);
+  };
 
   const handleMatrixCellClick = (rowId, columnIndex) => {
     const columnName = updateExistingColumns[columnIndex + 1];
@@ -266,12 +453,76 @@ export default function ProcessParameterPage() {
             </button>
           </div>
 
+          {showListCard ? (
+            <div className={styles.listCard}>
+              <div className={styles.listToolbar}>
+                <input
+                  type="text"
+                  className={styles.searchInput}
+                  placeholder="Search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                />
+              </div>
+
+              <div className={styles.matrixWrap}>
+                <table className={styles.matrixTable}>
+                  <thead>
+                    <tr>
+                      {updateExistingColumns.map((column) => (
+                        <th key={column}>{column}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                    <tbody>
+                    {filteredRows.map((row) => (
+                      <tr key={row.id}>
+                        <td className={styles.matrixIdCell}>{row.id}</td>
+                        {getRowStatuses(row.id).map((done, index) => (
+                          <td key={`${row.id}-${index}`} className={styles.matrixStatusCell}>
+                            <button
+                              type="button"
+                              className={done ? styles.statusDone : styles.statusPending}
+                              onClick={() => handleMatrixCellClick(row.id, index)}
+                              aria-label={`${row.id} ${updateExistingColumns[index + 1]} ${done ? "completed" : "pending"}`}
+                            >
+                              {done ? "✓" : ""}
+                            </button>
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          ) : (
+            null
+          )}
+
           {showFormCard ? (
             <div className={styles.formCard}>
               {SelectedComponent ? (
                 <SelectedComponent
                   key={`${selectedSubDepartment}-${selectedTypeName}-${selectedEntryId || "new"}`}
                   ref={componentRef}
+                  onSubmitSuccess={(response) => {
+                    const nextEntryId = String(
+                      response?.entry_id ||
+                        response?.param_id ||
+                        response?.process_parameter_id ||
+                        response?.id ||
+                        selectedEntryId ||
+                        ""
+                    ).trim();
+
+                    if (nextEntryId) {
+                      lastSubmittedEntryIdRef.current = nextEntryId;
+                      setSelectedEntryId(nextEntryId);
+                      refreshRegistryRows();
+                    }
+                  }}
                   {...getDepartmentFormProps(selectedSubDepartment, selectedTypeName, typeOptions)}
                   entryId={selectedEntryId || "Generated on Save"}
                   onTypeChange={
@@ -295,30 +546,30 @@ export default function ProcessParameterPage() {
                     onSave={async () => {
                       const valid = componentRef.current?.validate?.();
                       if (valid === false) return;
-                      const ok = await componentRef.current?.submit?.();
-                      if (ok && selectedEntryId) {
-                        const colIndex = updateExistingColumns.findIndex((column) => {
-                          if (selectedSubDepartment === "Draw Frame") {
-                            return drawFrameType === "PP - Finisher Drawing"
-                              ? column === "DF-Finisher"
-                              : column === "DF-Breaker";
-                          }
-                          if (selectedSubDepartment === "Autoconer") {
-                            if (autoconerType === "PP - Autoconer Q2") return column === "AC-Q2";
-                            if (autoconerType === "PP - Autoconer Q3") return column === "AC-Q3";
-                            return column === "AC-Q1";
-                          }
-                          return column === selectedSubDepartment;
-                        });
-                        if (colIndex > 0) {
-                          setCompletedCells((current) => {
-                            const next = { ...current };
-                            const nextRow = [...getRowStatuses(selectedEntryId)];
-                            nextRow[colIndex - 1] = true;
-                            next[selectedEntryId] = nextRow;
-                            return next;
-                          });
-                        }
+                      lastSubmittedEntryIdRef.current = "";
+                      const result = await componentRef.current?.submit?.();
+                      const submittedEntryId =
+                        String(
+                          result?.entry_id ||
+                            result?.param_id ||
+                            result?.process_parameter_id ||
+                            result?.id ||
+                            lastSubmittedEntryIdRef.current ||
+                            selectedEntryId ||
+                            ""
+                        ).trim();
+                      if (submittedEntryId) {
+                        setSelectedEntryId(submittedEntryId);
+                      }
+                      const batchDisplayId = registerProcessParameterId(
+                        { id: submittedEntryId },
+                        selectedSubDepartment,
+                        { mode: activeTab === "new" ? "create" : "update" }
+                      );
+                      refreshRegistryRows();
+                      const colIndex = getColumnIndexForDepartment();
+                      if ((result !== false || submittedEntryId) && batchDisplayId && colIndex > 0) {
+                        upsertRowStatus(batchDisplayId, colIndex - 1, true);
                       }
                     }}
                     saveLabel="Save Record"
@@ -328,54 +579,7 @@ export default function ProcessParameterPage() {
             </div>
           ) : null}
 
-          {showListCard ? (
-            <div className={styles.listCard}>
-              <div className={styles.listToolbar}>
-                <input
-                  type="text"
-                  className={styles.searchInput}
-                  placeholder="Search"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                />
-              </div>
-
-              <div className={styles.matrixWrap}>
-                <table className={styles.matrixTable}>
-                  <thead>
-                    <tr>
-                      {updateExistingColumns.map((column) => (
-                        <th key={column}>{column}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.map((row) => (
-                      <tr key={row.id}>
-                        <td className={styles.matrixIdCell}>{row.id}</td>
-                        {getRowStatuses(row.id).map((done, index) => (
-                          <td key={`${row.id}-${index}`} className={styles.matrixStatusCell}>
-                            <button
-                              type="button"
-                              className={done ? styles.statusDone : styles.statusPending}
-                              onClick={() => handleMatrixCellClick(row.id, index)}
-                              aria-label={`${row.id} ${updateExistingColumns[index + 1]} ${done ? "completed" : "pending"}`}
-                            >
-                              {done ? "✓" : ""}
-                            </button>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div id="process-parameter-saved-versions" className={styles.savedVersionsSlot} />
-            </div>
-          ) : (
-            <div id="process-parameter-saved-versions" className={styles.savedVersionsSlot} />
-          )}
+          <div id="process-parameter-saved-versions" className={styles.savedVersionsSlot} />
         </div>
       </div>
     </section>

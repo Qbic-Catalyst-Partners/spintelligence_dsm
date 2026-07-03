@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   fetchBlowroomProcessParametersApi,
   saveBlowroomProcessParameterApi,
+  updateBlowroomProcessParameterApi,
 } from "@/apis/blowroom";
 import useBlowroomCountOptions from "@/hooks/useBlowroomCountOptions";
 import {
@@ -16,7 +17,8 @@ import {
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 import styles from "@/styles/ProcessParameter.module.css";
 
 const createDefaultForm = (selectedTypeName = "Process Parameter") => ({
@@ -103,7 +105,7 @@ const mapApiEntryToVersion = (entry) => ({
   label: formatDisplayDate(entry?.creation_date),
   data: {
     versionId: getEntryId(entry),
-    paramId: normalizeProcessParameterId(getDisplayEntryId(entry)),
+    paramId: coerceProcessParameterId(getDisplayEntryId(entry)),
     type: "Process Parameter",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
@@ -188,7 +190,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
       setVersions(nextVersions);
       setVersionsError("");
-      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      const nextProcessParameterId = await reserveGlobalProcessParameterId("PP", 4);
       setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
@@ -199,7 +201,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
           return {
             ...activeVersion.data,
             versionId: "",
-            paramId: nextProcessParameterId,
+            paramId: "",
             type: selectedTypeName,
           };
         });
@@ -207,7 +209,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       } else {
         setForm(createDefaultForm(selectedTypeName));
         setExpandedVersionId(null);
-        setSavedProcessParameterId("");
+        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
       }
     } catch (error) {
       setVersions([]);
@@ -258,9 +260,8 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...version.data, versionId: "", paramId: nextProcessParameterId, type: selectedTypeName });
-    setSavedProcessParameterId(nextProcessParameterId);
+    setForm({ ...version.data, versionId: version.id, paramId: version.data.paramId || savedProcessParameterId || "", type: selectedTypeName });
+    setSavedProcessParameterId(version.data.paramId || savedProcessParameterId || "");
     setErrors({});
     setSubmitError("");
   };
@@ -336,10 +337,14 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload();
-      const response = await saveBlowroomProcessParameterApi(payload);
+      const response = form.versionId
+        ? await updateBlowroomProcessParameterApi(form.versionId, payload)
+        : await saveBlowroomProcessParameterApi(payload);
+      registerProcessParameterId(response, "Blowroom");
       setSavedProcessParameterId(
         String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
       );
+      registerProcessParameterId(response, "Blowroom");
 
       try {
         await createThresholdViolationTickets({

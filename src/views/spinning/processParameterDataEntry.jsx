@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   getSpinningProcessParameterEntries,
   spinningProcessParameterDataEntry,
+  updateSpinningProcessParameterEntry,
 } from "@/apis/spinning";
 import useSpinningCountOptions from "@/hooks/useSpinningCountOptions";
 import {
@@ -15,7 +16,8 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -99,7 +101,7 @@ const isVersionComplete = (version) =>
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
-  const paramId = normalizeProcessParameterId(entry?.param_id || "");
+  const paramId = coerceProcessParameterId(entry?.param_id || "");
 
   return {
     id: String(entry?.qc_id ?? entry?.param_id ?? Date.now()),
@@ -404,7 +406,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       setVersions(nextVersions);
 
       if (nextVersions.length > 0) {
-        const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+        const nextProcessParameterId = await reserveGlobalProcessParameterId("PP", 4);
         setSavedProcessParameterId(nextProcessParameterId);
         setForm((current) => {
           const activeVersion =
@@ -412,7 +414,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
           return {
             ...cloneForm(activeVersion.data),
             versionId: "",
-            paramId: nextProcessParameterId,
+            paramId: "",
           };
         });
         const latestCompleteVersion = nextVersions.find(isVersionComplete);
@@ -420,7 +422,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
-        setSavedProcessParameterId("");
+        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
       }
       setVersionsError("");
     } catch (error) {
@@ -463,9 +465,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
-    setSavedProcessParameterId(nextProcessParameterId);
+    setForm({ ...cloneForm(version.data), versionId: version.id, paramId: version.data.paramId || savedProcessParameterId || "" });
+    setSavedProcessParameterId(version.data.paramId || savedProcessParameterId || "");
     setErrors({});
   };
 
@@ -474,8 +475,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const handleVersionToggle = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
+    setForm({ ...cloneForm(version.data), versionId: version.id, paramId: version.data.paramId || savedProcessParameterId || "" });
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
       scrollToForm();
@@ -534,10 +534,13 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     if (!validate()) return false;
 
     const payload = buildPayload();
-    const response = await spinningProcessParameterDataEntry(payload);
+    const response = form.versionId
+      ? await updateSpinningProcessParameterEntry(form.versionId, payload)
+      : await spinningProcessParameterDataEntry(payload);
     setSavedProcessParameterId(
       String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
     );
+    registerProcessParameterId(response, "Spinning");
 
     try {
       await createThresholdViolationTickets({

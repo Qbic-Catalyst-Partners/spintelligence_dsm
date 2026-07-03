@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   getCardingProcessParameterEntries,
   submitCardingProcessParameterEntry,
+  updateCardingProcessParameterEntry,
 } from "@/apis/carding";
 import useCardingCountOptions from "@/hooks/useCardingCountOptions";
 import {
@@ -15,7 +16,8 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -119,7 +121,7 @@ const isVersionComplete = (version) =>
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
-  const paramId = normalizeProcessParameterId(
+  const paramId = coerceProcessParameterId(
     entry?.param_id ?? entry?.qc_code ?? entry?.qc_id ?? entry?.process_parameter_id ?? entry?.id ?? ""
   );
 
@@ -349,7 +351,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
 
       setVersions(nextVersions);
       setVersionsError("");
-      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      const nextProcessParameterId = await reserveGlobalProcessParameterId("PP", 4);
       setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
@@ -357,13 +359,13 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
-          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId };
+          return { ...activeVersion.data, versionId: "", paramId: "" };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
-        setSavedProcessParameterId("");
+        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
       }
     } catch (error) {
       setVersions([]);
@@ -413,16 +415,14 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...version.data, versionId: "", paramId: nextProcessParameterId });
-    setSavedProcessParameterId(nextProcessParameterId);
+    setForm({ ...version.data, versionId: version.id, paramId: version.data.paramId || savedProcessParameterId || "" });
+    setSavedProcessParameterId(version.data.paramId || savedProcessParameterId || "");
     setErrors({});
     setSubmitError("");
   };
 
   const handleVersionToggle = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...version.data, versionId: "", paramId: nextProcessParameterId });
+    setForm({ ...version.data, versionId: version.id, paramId: version.data.paramId || savedProcessParameterId || "" });
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
       setErrors({});
@@ -501,9 +501,12 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload();
-      const response = await submitCardingProcessParameterEntry(payload);
+      const response = form.versionId
+        ? await updateCardingProcessParameterEntry(form.versionId, payload)
+        : await submitCardingProcessParameterEntry(payload);
+      registerProcessParameterId(response, "Carding");
       setSavedProcessParameterId(
-        normalizeProcessParameterId(
+        coerceProcessParameterId(
           response?.param_id ||
             response?.entry_id ||
             response?.process_parameter_id ||

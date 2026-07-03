@@ -18,16 +18,6 @@ export const normalizeProcessParameterId = (value, fallbackPrefix = "PP", fallba
   return `${parsed.prefix || fallbackPrefix}-${String(parsed.number).padStart(parsed.width || fallbackWidth, "0")}`;
 };
 
-export const getNextProcessParameterId = (versions = [], fallbackPrefix = "PP", fallbackWidth = 4) => {
-  const numericValues = versions
-    .map((version) => parseParamId(version?.data?.paramId))
-    .filter(Boolean)
-    .filter((item) => String(item.prefix || "").toUpperCase() === String(fallbackPrefix).toUpperCase());
-
-  const nextNumber = numericValues.length
-    ? Math.max(...numericValues.map((item) => item.number)) + 1
-    : 1;
-
-  return `${String(fallbackPrefix).toUpperCase()}-${String(nextNumber).padStart(fallbackWidth, "0")}`;
-};
+export const getInitialProcessParameterId = (fallbackPrefix = "PP", fallbackWidth = 4) =>
+  `${String(fallbackPrefix).toUpperCase()}-${String(1).padStart(fallbackWidth, "0")}`;
 

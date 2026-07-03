@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import {
   fetchSimplexProcessParameterEntries,
   submitSimplexProcessParameterEntry,
+  updateSimplexProcessParameterEntry,
 } from "@/apis/simplex";
 import useSimplexCountOptions from "@/hooks/useSimplexCountOptions";
 import {
@@ -15,7 +16,8 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -101,7 +103,7 @@ const isVersionComplete = (version) =>
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
   const rawParamId = entry?.entry_id || entry?.process_parameter_id || entry?.param_id || "";
-  const paramId = normalizeProcessParameterId(rawParamId) || String(rawParamId).trim();
+  const paramId = coerceProcessParameterId(rawParamId) || String(rawParamId).trim();
 
   return {
     id: String(entry?.id ?? entry?.process_parameter_id ?? entry?.param_id ?? Date.now()),
@@ -325,7 +327,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
       setVersions(nextVersions);
       setVersionsError("");
-      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
+      const nextProcessParameterId = await reserveGlobalProcessParameterId("PP", 4);
       setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
@@ -333,13 +335,13 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId };
+          return { ...activeVersion.data, versionId: "", paramId: "" };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
-        setSavedProcessParameterId("");
+        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
       }
     } catch (error) {
       setVersions([]);
@@ -386,9 +388,8 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
-    setSavedProcessParameterId(nextProcessParameterId);
+    setForm({ ...cloneForm(version.data), versionId: version.id, paramId: version.data.paramId || savedProcessParameterId || "" });
+    setSavedProcessParameterId(version.data.paramId || savedProcessParameterId || "");
     setErrors({});
     setSubmitError("");
   };
@@ -466,10 +467,13 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
     try {
       const payload = buildPayload();
-      const response = await submitSimplexProcessParameterEntry(payload);
+      const response = form.versionId
+        ? await updateSimplexProcessParameterEntry(form.versionId, payload)
+        : await submitSimplexProcessParameterEntry(payload);
       setSavedProcessParameterId(
         String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
       );
+      registerProcessParameterId(response, "Simplex");
 
       try {
         await createThresholdViolationTickets({

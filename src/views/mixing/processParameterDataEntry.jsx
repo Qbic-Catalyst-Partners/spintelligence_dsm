@@ -13,7 +13,11 @@ import {
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
+import {
+  updateMixingProcessParameterEntry,
+} from "@/apis/mixing";
 
 const createBlankRow = (label) => ({
   label,
@@ -88,7 +92,7 @@ const parseNumberValue = (value) => {
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
-  const paramId = normalizeProcessParameterId(entry?.param_id || "");
+  const paramId = coerceProcessParameterId(entry?.param_id || "");
   const blendMap = new Map(
     Array.isArray(entry?.blends)
       ? entry.blends.map((blend) => [Number(blend.blend_no), blend])
@@ -367,14 +371,14 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       setVersions(nextVersions);
 
       if (nextVersions.length > 0) {
-        setSavedProcessParameterId(getNextProcessParameterId(nextVersions, "PP", 4));
+        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
           return {
             ...cloneForm(activeVersion.data),
             versionId: "",
-            paramId: getNextProcessParameterId(nextVersions, "PP", 4),
+            paramId: "",
           };
         });
         const latestCompleteVersion = nextVersions.find(isVersionComplete);
@@ -382,7 +386,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       } else {
         setForm(createDefaultForm());
         setExpandedVersionId(null);
-        setSavedProcessParameterId("");
+        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
       }
       setVersionsError("");
     } catch (error) {
@@ -444,9 +448,12 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
-    setSavedProcessParameterId(nextProcessParameterId);
+    setForm({
+      ...cloneForm(version.data),
+      versionId: version.id,
+      paramId: version.data.paramId || savedProcessParameterId || "",
+    });
+    setSavedProcessParameterId(version.data.paramId || savedProcessParameterId || "");
     setErrors({});
   };
 
@@ -455,8 +462,11 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const handleVersionToggle = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
-    setForm({ ...cloneForm(version.data), versionId: "", paramId: nextProcessParameterId });
+    setForm({
+      ...cloneForm(version.data),
+      versionId: version.id,
+      paramId: version.data.paramId || savedProcessParameterId || "",
+    });
     if (!isVersionComplete(version)) {
       setExpandedVersionId(null);
       scrollToForm();
@@ -503,7 +513,10 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     if (!validate()) return false;
 
     const payload = buildPayload();
-    const response = await dispatch(submitProcessParameter(payload)).unwrap();
+    const response = form.versionId
+      ? await updateMixingProcessParameterEntry(form.versionId, payload)
+      : await dispatch(submitProcessParameter(payload)).unwrap();
+    registerProcessParameterId(response, "Mixing");
     setSavedProcessParameterId(
       String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
     );

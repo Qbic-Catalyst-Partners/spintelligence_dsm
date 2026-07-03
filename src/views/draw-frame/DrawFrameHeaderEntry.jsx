@@ -26,6 +26,7 @@ import styles from "@/styles/draw-frame.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
 import { normalizeProcessParameterId } from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -347,7 +348,7 @@ function getEntrySortValue(entry) {
   return 0;
 }
 
-function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeChange }) {
+function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess }) {
   const router = useRouter();
   const activeType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
   const activeConfig = TYPE_CONFIG[activeType];
@@ -525,11 +526,12 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
       const selectedExistingEntry = recentEntries.find(
         (entry) => String(entry.id) === String(form.versionId)
       );
+      let submitResult = null;
 
       if (selectedExistingEntry) {
-        await activeConfig.updateEntry(selectedExistingEntry.id, payload);
+        submitResult = await activeConfig.updateEntry(selectedExistingEntry.id, payload);
       } else {
-        await activeConfig.submitEntry(payload);
+        submitResult = await activeConfig.submitEntry(payload);
       }
 
       try {
@@ -549,7 +551,9 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
         console.error("Threshold ticket generation failed:", ticketError);
       }
 
+      registerProcessParameterId(submitResult, activeType);
       await loadEntries(activeType);
+      onSubmitSuccess?.(submitResult);
       setShowPreview(false);
       setShowSuccess(true);
     } catch (error) {

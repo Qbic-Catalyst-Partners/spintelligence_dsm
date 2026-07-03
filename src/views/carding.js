@@ -54,6 +54,7 @@ const CARDING_ENTRY_ID_CONFIG = {
 const getCardingEntryConfig = (typeName) =>
     CARDING_ENTRY_ID_CONFIG[typeName] || { prefix: "CAR" };
 const DEFAULT_CARDING_STATE = { uqcEntries: [], listLoading: false };
+const PROCESS_PARAMETER_CREATED_IDS_KEY = "mixing-process-parameter-created-ids";
 
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
@@ -157,6 +158,31 @@ function Carding() {
         accent: isDarkMode ? "#93c5fd" : "#1976d2",
     };
 
+    const storeCreatedProcessParameterId = (response) => {
+        const createdId = String(
+            response?.param_id ||
+                response?.entry_id ||
+                response?.process_parameter_id ||
+                response?.qc_id ||
+                response?.id ||
+                ""
+        ).trim();
+
+        if (!createdId || typeof window === "undefined") return;
+
+        try {
+            const raw = window.localStorage.getItem(PROCESS_PARAMETER_CREATED_IDS_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            const existing = Array.isArray(parsed)
+                ? parsed.map((value) => String(value || "").trim()).filter(Boolean)
+                : [];
+            window.localStorage.setItem(
+                PROCESS_PARAMETER_CREATED_IDS_KEY,
+                JSON.stringify(Array.from(new Set([createdId, ...existing])))
+            );
+        } catch {}
+    };
+
     const openPreview = () => {
         const valid = childRef.current?.validate ? childRef.current.validate() : true;
         if (valid === false) {
@@ -174,6 +200,7 @@ function Carding() {
         setShowPreview(false);
         const ok = await childRef.current?.submit?.();
         if (ok) {
+            storeCreatedProcessParameterId(ok);
             await recordSubmittedNotebook({
                 department: "Quality Control",
                 subDepartment: "Carding",

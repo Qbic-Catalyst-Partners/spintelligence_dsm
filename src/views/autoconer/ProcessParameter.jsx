@@ -8,6 +8,7 @@ import {
   fetchAutoconerConsigneeMaster,
   fetchAutoconerProcessParameters,
   submitAutoconerProcessParameter,
+  updateAutoconerProcessParameter,
 } from "@/apis/autoconer";
 import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import { normalizeProcessParameterId } from "@/utils/processParameterId";
 import styles from "@/styles/AutoconerProcessParameter.module.css";
 
 
@@ -216,7 +217,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("process-parameter");
   const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
 
@@ -256,21 +256,18 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
       setVersions(nextVersions);
       setVersionsError("");
-      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
-      setSavedProcessParameterId(nextProcessParameterId);
 
       if (nextVersions.length > 0) {
         const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
         setForm((current) => {
           const activeVersion =
             nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId, type: safeSelectedType };
+          return { ...activeVersion.data, versionId: "", paramId: entryId || activeVersion.data.paramId || "", type: safeSelectedType };
         });
         setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
         setForm(createDefaultForm(safeSelectedType));
         setExpandedVersionId(null);
-        setSavedProcessParameterId("");
       }
     } catch (error) {
       setVersions([]);
@@ -308,6 +305,14 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     }));
   }, [selectedType]);
 
+  useEffect(() => {
+    if (!entryId) return;
+    setForm((current) => ({
+      ...current,
+      paramId: entryId,
+    }));
+  }, [entryId]);
+
   const clearError = (field) => {
     setErrors((current) => {
       if (!current[field]) return current;
@@ -338,15 +343,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
     setForm({
       ...createDefaultForm(safeSelectedType),
       ...version.data,
-      versionId: "",
-      paramId: nextProcessParameterId,
+      versionId: version.id,
+      paramId: entryId || version.data.paramId || "",
       type: safeSelectedType,
     });
-    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
     setSubmitError("");
   };
@@ -377,7 +380,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     { label: "Type", value: safeSelectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -391,10 +394,9 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload(form, entryId);
-      const response = await submitAutoconerProcessParameter(payload);
-      setSavedProcessParameterId(
-        String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
-      );
+      const response = form.versionId
+        ? await updateAutoconerProcessParameter(form.versionId, payload)
+        : await submitAutoconerProcessParameter(payload);
 
       try {
         await createThresholdViolationTickets({
@@ -430,7 +432,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     setForm(createDefaultForm(safeSelectedType));
     setErrors({});
     setSubmitError("");
-    setSavedProcessParameterId("");
   };
 
   useImperativeHandle(ref, () => ({
@@ -570,7 +571,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <input
               type="text"
               className={styles.field}
-              value={form.versionId ? (form.paramId || entryId || savedProcessParameterId || "") : (entryId || savedProcessParameterId || form.paramId || "")}
+              value={form.paramId || entryId || ""}
               readOnly
               disabled
             />

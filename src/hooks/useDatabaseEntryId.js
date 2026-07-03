@@ -42,7 +42,7 @@ export default function useDatabaseEntryId({
   const resolvedWidth = config?.width || fallbackWidth;
   const routePath = String(config?.routePath || "").trim();
   const fetchPath = String(config?.fetchPath || routePath || "").trim();
-  const scope = String(config?.scope || "").trim();
+  const scope = String(config?.scope || (resolvedPrefix === "PP" ? "pp-global" : "")).trim();
   const normalizeReservedEntryId = (value) => {
     const raw = String(value ?? "").trim();
     if (!raw) return "";

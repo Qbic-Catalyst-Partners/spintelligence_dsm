@@ -1,5 +1,11 @@
-export const buildEntryIdScope = (department = "", typeName = "") =>
-  [department, typeName]
+export const buildEntryIdScope = (department = "", typeName = "", prefix = "") => {
+  const normalizedPrefix = String(prefix || "").trim().toUpperCase();
+
+  if (normalizedPrefix === "PP") {
+    return "pp-global";
+  }
+
+  return [department, typeName]
     .map((part) =>
       String(part || "default")
         .trim()
@@ -9,6 +15,7 @@ export const buildEntryIdScope = (department = "", typeName = "") =>
     )
     .filter(Boolean)
     .join(":");
+};
 
 export const formatEntryId = ({ prefix, sequence, width = 3, leadingHash = false }) => {
   const safePrefix = String(prefix || "ENT").trim() || "ENT";

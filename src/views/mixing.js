@@ -58,6 +58,29 @@ const MIXING_ENTRY_ID_CONFIG = {
 const getEntryConfigForType = (typeName) =>
     MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX" };
 
+const PROCESS_PARAMETER_CREATED_IDS_KEY = "mixing-process-parameter-created-ids";
+
+const readCreatedProcessParameterIds = () => {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = window.localStorage.getItem(PROCESS_PARAMETER_CREATED_IDS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    } catch {
+        return [];
+    }
+};
+
+const writeCreatedProcessParameterIds = (ids) => {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(
+            PROCESS_PARAMETER_CREATED_IDS_KEY,
+            JSON.stringify(Array.from(new Set((ids || []).map((value) => String(value || "").trim()).filter(Boolean))))
+        );
+    } catch {}
+};
+
 function Mixing() {
     const router = useRouter();
     const childRef = useRef(null);
@@ -289,6 +312,17 @@ function Mixing() {
         showSuccessOnce();
     };
 
+    const handleProcessParameterSubmitSuccess = (response) => {
+        const createdId = String(
+            response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || ""
+        ).trim();
+
+        if (createdId) {
+            const currentIds = readCreatedProcessParameterIds();
+            writeCreatedProcessParameterIds([createdId, ...currentIds]);
+        }
+    };
+
     useEffect(() => {
         const raw = typeof window !== "undefined" ? window.localStorage.getItem("ocr_prefill") : "";
         if (!raw) return;
@@ -435,7 +469,11 @@ function Mixing() {
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}
                                         onTypeChange={handleTypeChange}
-                                        onSubmitSuccess={handleOpennessSubmitSuccess}
+                                        onSubmitSuccess={
+                                            isProcessParameter
+                                                ? handleProcessParameterSubmitSuccess
+                                                : handleOpennessSubmitSuccess
+                                        }
                                     />
                                 ) : (
                                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
@@ -454,7 +492,11 @@ function Mixing() {
                             selectedTypeName={selectedTypeName}
                             typeOptions={typeOptions}
                             onTypeChange={handleTypeChange}
-                            onSubmitSuccess={handleOpennessSubmitSuccess}
+                            onSubmitSuccess={
+                                isProcessParameter
+                                    ? handleProcessParameterSubmitSuccess
+                                    : handleOpennessSubmitSuccess
+                            }
                             standaloneSection
                             savedVersionsTargetId="mixing-process-parameter-saved-versions"
                         />
