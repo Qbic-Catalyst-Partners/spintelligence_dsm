@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
@@ -85,23 +85,25 @@ function Mixing() {
     const router = useRouter();
     const childRef = useRef(null);
     const successHandledRef = useRef(false);
+    const lotDetailsFetchKeyRef = useRef("");
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-    const currentDate = getCurrentDate();
     const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
     const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
-    const fullTypeOptions = filterOptionsByDepartmentAccess(
-        mixingDepartmentTypes,
-        accessByDepartment,
-        user,
-        "Mixing"
-    );
-    const typeOptions = isProcessParameterRequest
-        ? fullTypeOptions
-        : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
-    const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
+    const typeOptions = useMemo(() => {
+        const fullTypeOptions = filterOptionsByDepartmentAccess(
+            mixingDepartmentTypes,
+            accessByDepartment,
+            user,
+            "Mixing"
+        );
+        return isProcessParameterRequest
+            ? fullTypeOptions
+            : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
+    }, [accessByDepartment, user, isProcessParameterRequest]);
+    const [selectedTypeName, setSelectedTypeName] = useState(() => typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
     const [selectedLotDetails, setSelectedLotDetails] = useState(null);
@@ -113,7 +115,7 @@ function Mixing() {
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
-    const [currentDateLabel, setCurrentDateLabel] = useState("");
+    const currentDateLabel = useMemo(() => new Date().toLocaleDateString("en-IN"), []);
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -156,16 +158,13 @@ function Mixing() {
             reserveEntryId();
             showSuccessOnce();
         }
-    }, [actionSuccess]);
+    }, [actionSuccess, reserveEntryId]);
 
     useEffect(() => {
-        setDate(getCurrentDate());
-    }, [router.asPath]);
-
-    useEffect(() => {
-        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+        setDate((current) => current || getCurrentDate());
     }, []);
     const handleTypeChange = (value) => {
+        if (value === selectedTypeName) return;
         setSelectedTypeName(value);
         setLotNo("");
         setSelectedLotDetails(null);
@@ -373,7 +372,9 @@ function Mixing() {
                     <h1 className="text-[24px] font-extrabold text-slate-900 m-0">
                         Quality Control - Mixing Notebook
                     </h1>
-          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
+                    <div className="mt-2 text-right text-base font-semibold text-slate-600">
+                        Current Date: {currentDateLabel}
+                    </div>
                     <p className="text-[14px] text-slate-500 mt-1.5 mb-0">
                     </p>
                 </div>
@@ -396,7 +397,7 @@ function Mixing() {
                             </div>
 
                             <div className="flex flex-col gap-4">
-                                <div className="grid grid-cols-3 gap-[18px]">
+                                <div className="grid grid-cols-1 gap-[18px] items-start md:grid-cols-2 xl:grid-cols-3">
                                     <div className="flex flex-col gap-1.5 min-w-0">
                                         <label className="text-[14px] font-semibold text-slate-700">Type</label>
                                         <select
@@ -414,16 +415,6 @@ function Mixing() {
                                         </select>
                                     </div>
 
-                                    {selectedTypeName === "Openness Data Entry" && (
-                                        <CustomInput
-                                            label="Mixing"
-                                            placeholder="Enter Mixing"
-                                            value={mixingValue}
-                                            onChange={(value) => setMixingValue(value)}
-                                            error={headerErrors.mixing}
-                                        />
-                                    )}
-
                                     <CustomInput
                                         label="Entry ID"
                                         value={entryId}
@@ -431,7 +422,7 @@ function Mixing() {
                                         disabled
                                     />
 
-                                    {selectedType?.needsLotNo !== false && (
+                                    {selectedType?.needsLotNo !== false ? (
                                         <div className="flex flex-col gap-1.5 min-w-0 w-full">
                                             <label className="text-[14px] font-semibold text-slate-700 truncate">
                                                 Lot No
@@ -445,15 +436,22 @@ function Mixing() {
                                                 value={lotNo}
                                                 onChange={handleLotChange}
                                                 options={lotOptions}
-                                                placeholder={
-                                                    loadingLotOptions
-                                                        ? "Loading lots..."
-                                                        : lotOptionsError
-                                                            ? "Type lot number"
-                                                            : "Select Lot Number"
-                                                }
-                                                ariaLabel="Lot No"
+                                            placeholder={
+                                                loadingLotOptions
+                                                    ? "Loading lots..."
+                                                    : lotOptionsError
+                                                        ? "Type lot number"
+                                                        : "Select Lot Number"
+                                            }
+                                            ariaLabel="Lot No"
                                             />
+                                        </div>
+                                    ) : (
+                                        <div aria-hidden="true" className="flex flex-col gap-1.5 min-w-0 w-full">
+                                            <label className="text-[14px] font-semibold text-slate-700 truncate">
+                                                Lot No
+                                            </label>
+                                            <div className="h-9.5 w-full rounded-lg border border-transparent bg-transparent" />
                                         </div>
                                     )}
                                 </div>

@@ -41,6 +41,15 @@ export const sanitizeNumericInput = (value, config = {}) => {
   return safeIntegerPart;
 };
 
+export const sanitizeBlendPercentInput = (value) => {
+  if (value === null || value === undefined) return "";
+
+  const raw = String(value).replace(/[^\d/\s.]/g, "");
+  if (!raw) return "";
+
+  return raw.replace(/\s+/g, "");
+};
+
 export const sanitizeIntegerInput = (value, maxDigits = null) =>
   sanitizeNumericInput(value, { integerOnly: true, precision: maxDigits });
 

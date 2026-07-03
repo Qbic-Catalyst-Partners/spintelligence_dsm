@@ -303,7 +303,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       ...current,
       type: safeSelectedType || "Process Parameter",
     }));
-  }, [selectedType]);
+  }, [safeSelectedType]);
 
   useEffect(() => {
     if (!entryId) return;

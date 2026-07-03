@@ -8,7 +8,7 @@ import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
-import { runOcrForDocument } from "@/apis/ocrApi";
+import { runOcrJsonForDocument } from "@/apis/ocrApi";
 import DrawFrameHeaderEntry from "@/views/draw-frame/DrawFrameHeaderEntry";
 import WheelChange from "@/views/draw-frame/WheelChange";
 import { cvMachineOptions } from "@/views/draw-frame/constants";
@@ -36,6 +36,12 @@ import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
+import {
+  extractTesterFromText,
+  getTesterFromOcrResult,
+  backfillTesterInRows,
+  mergeTesterIntoRows,
+} from "@/utils/ocrTester";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -494,6 +500,15 @@ const getLabelValue = (text = "", label = "") => {
   return normalizeOcrDisplayValue(text.match(pattern)?.[1] || "");
 };
 
+const getRawTesterValueFromRow = (row = {}) => row?.Tester ?? row?.tester ?? row?.tester_name ?? row?.testerName ?? "";
+
+const getRawTesterFromResult = (result = {}, rows = []) =>
+  result?.meta?.tester ??
+  result?.Tester ??
+  result?.tester ??
+  rows.map(getRawTesterValueFromRow).find((value) => value !== "" && value !== null && value !== undefined) ??
+  "";
+
 const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", entryId = "") => {
   const rawLines = String(result?.raw_text || result?.text || "")
     .split(/\r?\n/)
@@ -505,6 +520,10 @@ const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", ent
     structuredRows.find((row) => String(getObjectValueByAliases(row, ["Row Type", "row_type", "type"])).trim().toLowerCase() === "meta") ||
     {};
   const rowValue = (aliases) => normalizeOcrDisplayValue(getObjectValueByAliases(metaRow, aliases));
+  const rawRowTester =
+    getRawTesterValueFromRow(metaRow) ||
+    getRawTesterValueFromRow(rows.find((row) => getRawTesterValueFromRow(row) !== "") || {});
+  const rawBackendTester = getRawTesterFromResult(result, rows);
 
   return {
     entryId,
@@ -520,7 +539,7 @@ const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", ent
     aPercentNMinus1: getLabelValue(allText, "A% (N-1)") || rowValue(["A% (N-1)", "A Percent N-1", "a_percent_n_minus_1"]),
     aPercentNPlus1: getLabelValue(allText, "A% (N+1)") || rowValue(["A% (N+1)", "A Percent N+1", "a_percent_n_plus_1"]),
     date: getLabelValue(allText, "Date") || rowValue(["Date", "entry_date"]),
-    tester: getLabelValue(allText, "Tester") || rowValue(["Tester", "Tester Name", "tester", "tester_name", "User"]),
+    tester: rawBackendTester || rawRowTester || rowValue(["Tester", "Tester Name", "tester", "tester_name", "testerName", "user", "User"]),
     shift: getLabelValue(allText, "Shift") || rowValue(["Shift"]),
     process: getLabelValue(allText, "Process") || rowValue(["Process"]),
     remark: getLabelValue(allText, "Remark") || rowValue(["Remark", "Remarks"]),
@@ -731,7 +750,7 @@ function DrawFrame() {
   const isWheelChangeEntry = form.type === "Wheel Change";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
-  const { entryId, reserveEntryId } = useDatabaseEntryId({
+  const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
     department: "Draw Frame",
     typeName: form.type,
     config: {
@@ -929,13 +948,6 @@ function DrawFrame() {
       delete nextHeader[field];
       return { ...prev, header: nextHeader };
     });
-
-    if (field === "type") {
-      const nextRoute = getDrawFrameEntryConfig(nextValue)?.routePath;
-      if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
-        router.push(nextRoute);
-      }
-    }
   };
 
   const handleMachineChange = (index, field, value) => {
@@ -1049,19 +1061,37 @@ function DrawFrame() {
     setAPercentOcrRows([]);
     setAPercentRawOcrRows([]);
     try {
-      const result = await runOcrForDocument({ file: aPercentFile, docType: "a_percent" });
-      const parsedRows = Array.isArray(result?.json_output) ? result.json_output : [];
-      const aPercentRows = getAPercentRowsFromOcrResult(result, parsedRows).map(normalizeOcrDisplayRow);
-      const aPercentMeta = getAPercentMetaFromOcrResult(result, aPercentRows, aPercentFile?.name || "", entryId);
+      const result = await runOcrJsonForDocument({ file: aPercentFile, docType: "apct" });
+      const parsedRows = Array.isArray(result?.json_output)
+        ? result.json_output
+        : Array.isArray(result?.data)
+          ? result.data
+          : Array.isArray(result?.raw_tables)
+            ? result.raw_tables
+            : [];
+
+      const tester = getTesterFromOcrResult(result, parsedRows);
+      const backedFilledRows = backfillTesterInRows(
+        tester ? mergeTesterIntoRows(parsedRows, tester) : parsedRows,
+        result
+      );
+
+      const aPercentRows = getAPercentRowsFromOcrResult(result, backedFilledRows).map(normalizeOcrDisplayRow);
+      const aPercentMeta = {
+        ...getAPercentMetaFromOcrResult(result, aPercentRows, aPercentFile?.name || "", entryId),
+        tester:
+          getRawTesterFromResult(result, aPercentRows) ||
+          getRawTesterValueFromRow(aPercentRows.find((row) => getRawTesterValueFromRow(row) !== "") || {}),
+      };
       setAPercentOcrRows(aPercentRows);
-      setAPercentRawOcrRows(parsedRows);
+      setAPercentRawOcrRows(backedFilledRows);
       setAPercentOcrMeta(aPercentMeta);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
           "ocr_prefill",
           JSON.stringify({
             screen: "draw-frame",
-            docType: "a_percent",
+            docType: "apct",
             values: aPercentRows[0] || {},
             meta: aPercentMeta,
             result: { ...result, json_output: aPercentRows, meta: aPercentMeta },
@@ -1366,10 +1396,29 @@ function DrawFrame() {
       items.push({ label: "Remarks", value: uPercentForm.remarks });
     } else if (form.type === "A%") {
       items.push({ label: "Type", value: form.type });
-      items.push({ label: "Entry ID", value: entryId });
+      items.push({ label: "Entry ID", value: entryId || "-" });
       items.push({ label: "PDF File", value: aPercentFile?.name || "-" });
-      items.push({ label: "Sample Rows", value: aPercentOcrRows.filter((row) => !A_PERCENT_SUMMARY_ROWS.has(row.sampleNo)).length });
-      items.push({ label: "Summary Rows", value: aPercentOcrRows.filter((row) => A_PERCENT_SUMMARY_ROWS.has(row.sampleNo)).length });
+      A_PERCENT_META_FIELDS.forEach((field) => {
+        if (field.key === "entryId") return;
+        items.push({
+          label: field.label,
+          value:
+            field.key === "pdfFile"
+              ? aPercentFile?.name || "-"
+              : aPercentOcrMeta?.[field.key] || "-",
+        });
+      });
+
+      aPercentOcrRows.forEach((row, index) => {
+        const isSummary = A_PERCENT_SUMMARY_ROWS.has(String(row.sampleNo || "").trim());
+        const prefix = isSummary ? `Summary ${row.label || index + 1}` : `Sample ${row.sampleNo || index + 1}`;
+        A_PERCENT_TABLE_COLUMNS.forEach((column) => {
+          items.push({
+            label: `${prefix} - ${column.label}`,
+            value: row[column.key] || "-",
+          });
+        });
+      });
     } else if (isWheelChangeEntry) {
       items.push(...(wheelChangeRef.current?.getPreviewData?.() || []));
     } else if (!isHeaderEntry) {
@@ -1396,11 +1445,22 @@ function DrawFrame() {
       items.push({ label: "CV% (1/2Y)", value: halfYardMetrics[0]?.cv || "-" });
     }
     return items;
-  }, [aPercentFile, aPercentOcrRows, entryId, form, isHeaderEntry, isWheelChangeEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
+  }, [aPercentFile, aPercentOcrMeta, aPercentOcrRows, entryId, form, isHeaderEntry, isWheelChangeEntry, machineEntries, oneYardReadings, halfYardReadings, oneYardMetrics, halfYardMetrics, uPercentForm]);
 
   const handleSubmit = async () => {
     const isCots = form.type === "Draw Frame Cots Data Entry";
-    
+
+    if (entryIdLoading || !entryId) {
+      setErrors((current) => ({
+        ...current,
+        header: {
+          ...(current.header || {}),
+          date: entryIdLoading ? "Entry ID is still loading." : "Entry ID is missing.",
+        },
+      }));
+      return;
+    }
+
     if (!validate()) return;
 
     if (form.type === "U% Data Entry") {
@@ -1477,7 +1537,7 @@ function DrawFrame() {
             }),
           },
         });
-        reserveEntryId();
+        await reserveEntryId();
         showSuccessOnce();
       } catch (submitError) {
         setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
@@ -1502,7 +1562,7 @@ function DrawFrame() {
             submitted_fields: payload,
           },
         }).catch((error) => console.error("Submitted notebook creation failed:", error));
-        reserveEntryId();
+        await reserveEntryId();
         await wheelChangeRef.current?.loadLatestSaved?.();
         showSuccessOnce();
       } catch (submitError) {
@@ -1582,7 +1642,7 @@ function DrawFrame() {
 
   useEffect(() => {
     if (actionSuccess) {
-      reserveEntryId();
+      void reserveEntryId();
       if (form.type === "Draw Frame Cots Data Entry") {
         dispatch(fetchDrawFrameCotsEntries({ page: 1, limit: 10 }));
       }

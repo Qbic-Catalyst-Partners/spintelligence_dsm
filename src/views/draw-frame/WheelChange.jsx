@@ -3,7 +3,7 @@ import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
 import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
-import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeBlendPercentInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
 import draftUtils from "@/views/draw-frame/draftUtils";
 
@@ -86,13 +86,13 @@ const FINISHER_TYPE_1_LRSB_ROWS = [
   { key: "lrsbBreakDraft", label: "Break Draft", darkInput: true },
   { key: "lrsbBackRollerPulley", label: "Back Roller Pulley Dia (W4)", inputType: "select" },
   { key: "lrsbMiddleRollerPulley", label: "Middle Roller Pulley (VV)", inputType: "select" },
-  { key: "lrsbCreelTensionDraft", label: "Creel Tension (W1) /Creel Draft", inputType: "select" },
+  { key: "lrsbCreelTensionDraft", label: "Creel Tension (W1) / Creel Draft", inputType: "select" },
   { key: "lrsbWebTensionDraft", label: "Web Tension Wheel (W3) / Web Tension Draft", inputType: "select" },
   { key: "lrsbBottomRollerFront", label: "Bottom Roller Setting Front Zone / Gauge in MM", inputType: "select" },
   { key: "lrsbBottomRollerBack", label: "Bottom Roller Setting Back Zone / Gauge in MM", inputType: "select" },
   { key: "lrsbScanningRoller", label: "Scanning Roller in mm", inputType: "select" },
   { key: "lrsbScanningRollerLower", label: "Scanning Roller Load (kg)", inputType: "select" },
-  { key: "lrsbSilverFunnel", label: "Silver Funnel", inputType: "select" },
+  { key: "lrsbSilverFunnel", label: "Sliver Funnel", inputType: "select" },
   { key: "lrsbWebGuideTube", label: "Web Guide Tube Dia", inputType: "select" },
   { key: "lrsbSliverWireSize", label: "Insert Bore Dia", inputType: "select" },
   { key: "lrsbTrumpet", label: "Trumpet", inputType: "select" },
@@ -189,6 +189,13 @@ const parseNumericValue = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const isBlendPercentValue = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return false;
+  if (/^\d+(\.\d+)?$/.test(text)) return true;
+  return /^\d+(\.\d+)?\/\d+(\.\d+)?$/.test(text);
+};
+
 const normalizeTd7DraftValue = (value) => {
   const text = String(value ?? "").trim();
   if (!text) return "";
@@ -238,6 +245,21 @@ const computeType2D40TotalDraft = ({ nw1, nw2, totalDraftConstant }) => {
   return String((constantValue * (nw2Value / nw1Value)).toFixed(2));
 };
 
+const computeFinisherType1LrsbTotalDraft = ({ nw1, nw2, totalDraftConstant = "6.01" }) => {
+  const nw1Value = parseNumericValue(nw1);
+  const nw2Value = parseNumericValue(nw2);
+  const constantValue = parseNumericValue(totalDraftConstant);
+  if (nw1Value === null || nw2Value === null || constantValue === null || nw1Value === 0) return "";
+  return String((constantValue * (nw2Value / nw1Value)).toFixed(2));
+};
+
+const computeFinisherType1LrsbBreakDraft = ({ backRollerPulley, middleRollerPulley }) => {
+  const backRollerPulleyValue = parseNumericValue(backRollerPulley);
+  const middleRollerPulleyValue = parseNumericValue(middleRollerPulley);
+  if (backRollerPulleyValue === null || middleRollerPulleyValue === null || middleRollerPulleyValue === 0) return "";
+  return String((backRollerPulleyValue / middleRollerPulleyValue).toFixed(2));
+};
+
 const computeType4Ldf3sTotalDraft = ({ deliveryHank, feedHank, noOfEnds }) => {
   const deliveryHankValue = parseNumericValue(deliveryHank);
   const feedHankValue = parseNumericValue(feedHank);
@@ -248,29 +270,67 @@ const computeType4Ldf3sTotalDraft = ({ deliveryHank, feedHank, noOfEnds }) => {
 
 const DRAW_FRAME_NW_OPTIONS = Array.from({ length: 70 - 23 + 1 }, (_, index) => String(23 + index));
 const DRAW_FRAME_BREAK_DRAFT_OPTIONS = Array.from({ length: 70 - 52 + 1 }, (_, index) => String(52 + index));
+const DRAW_FRAME_LRSB_NW_OPTIONS = ["35", "37", "41", "44", "46", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70"];
 const DRAW_FRAME_W1VWZ_OPTIONS = ["143.9", "145.3", "146.7", "148.1", "149.5", "152.3"];
 const DRAW_FRAME_W3DR_OPTIONS = ["0.9", "1", "1.01", "1.02", "1.03"];
 const DRAW_FRAME_W8DR_OPTIONS = ["0.97", "0.98", "0.99", "1", "1.02", "1.03"];
-const DRAW_FRAME_W4_OPTIONS = [
-  "77.4",
-  "72.2",
-  "70.3",
-  "65.5",
-  "63.8",
-  "59.6",
-  "57.9",
-  "54",
-  "52.7",
-  "49.1",
-  "48",
-  "44.8",
-  "43.5",
-  "40.7",
-  "39.6",
-  "36.9",
+const DRAW_FRAME_W4_OPTIONS = ["31.6", "34.8", "38.3", "42.2", "46.4", "51", "56.1", "61.7"];
+const DRAW_FRAME_LRSB_VV_OPTIONS = ["30", "28"];
+const DRAW_FRAME_LRSB_W1_OPTIONS = ["143.9 / 0.999", "145.3 / 1.008", "146.7 / 1.018", "148.1 / 1.028", "149.5 / 1.038"];
+const DRAW_FRAME_LRSB_W3_OPTIONS = ["56.6 / 0.99", "57.2 / 1", "57.8 / 1.01", "58.3 / 1.02", "58.9 / 1.03"];
+const DRAW_FRAME_LRSB_BOTTOM_ROLLER_FRONT_OPTIONS = ["36 / 2.5", "37 / 3.5", "38 / 4.5", "39 / 5.5", "40 / 6.5", "41 / 7.5", "42 / 8.5", "43 / 9.5", "44 / 10.5", "45 / 11.5", "46 / 12.5", "47 / 13.5", "48 / 14.5", "49 / 15.5", "50 / 16.5", "51 / 17.5", "52 / 18.5", "53 / 19.5", "54 / 20.5", "55 / 21.5", "56 / 22.5", "57 / 23.5", "58 / 24.5", "59 / 25.5", "60 / 26.5"];
+const DRAW_FRAME_LRSB_BOTTOM_ROLLER_BACK_OPTIONS = [
+  "40 / 10",
+  "42 / 12",
+  "44 / 14",
+  "46 / 16",
+  "48 / 18",
+  "50 / 20",
+  "52 / 22",
+  "54 / 24",
+  "56 / 26",
+  "58 / 28",
+  "60 / 30",
+  "62 / 32",
+  "64 / 34",
+  "66 / 36",
+  "68 / 38",
+  "70 / 40",
+  "72 / 42",
+  "74 / 44",
+  "76 / 46",
+  "78 / 48",
+  "80 / 50",
+  "82 / 52",
+  "84 / 54",
+  "86 / 56",
+  "88 / 58",
 ];
-const DRAW_FRAME_TRUMPET_OPTIONS = ["3.8", "4.2"];
-const DRAW_FRAME_D40_NW_OPTIONS = Array.from({ length: 75 - 30 + 1 }, (_, index) => String(30 + index));
+const DRAW_FRAME_LRSB_SCANNING_ROLLER_OPTIONS = ["6", "7", "8", "9", "10"];
+const DRAW_FRAME_LRSB_SCANNING_ROLLER_LOAD_OPTIONS = ["120", "140"];
+const DRAW_FRAME_LRSB_SILVER_FUNNEL_OPTIONS = ["6", "7", "8", "9", "10"];
+const DRAW_FRAME_LRSB_WEB_GUIDE_TUBE_OPTIONS = ["8", "10"];
+const DRAW_FRAME_LRSB_INSERT_BORE_DIA_OPTIONS = ["8", "10"];
+const DRAW_FRAME_TRUMPET_OPTIONS = ["3.8", "4.2", "4.6", "5"];
+const DRAW_FRAME_D40_NW_OPTIONS = [
+  "30",
+  "35",
+  "39",
+  "44",
+  "46",
+  "47",
+  "48",
+  "49",
+  "50",
+  "51",
+  "52",
+  "53",
+  "54",
+  "55",
+  "56",
+  "57",
+  "58",
+];
 const DRAW_FRAME_D40_BREAK_DRAFT_OPTIONS = [
   { value: "54.6 / 1.05", label: "54.6 / 1.05" },
   { value: "57.2 / 1.1", label: "57.2 / 1.1" },
@@ -717,16 +777,16 @@ const DRAW_FRAME_SELECT_OPTIONS = {
   lrsbNw1: DRAW_FRAME_NW_OPTIONS,
   lrsbNw2: DRAW_FRAME_NW_OPTIONS,
   lrsbBackRollerPulley: DRAW_FRAME_W4_OPTIONS,
-  lrsbMiddleRollerPulley: DRAW_FRAME_W1VWZ_OPTIONS,
-  lrsbCreelTensionDraft: DRAW_FRAME_W1VWZ_OPTIONS,
-  lrsbWebTensionDraft: DRAW_FRAME_W3DR_OPTIONS,
-  lrsbBottomRollerFront: DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS,
-  lrsbBottomRollerBack: DRAW_FRAME_BOTTOM_ROLLER_BACK_OPTIONS,
-  lrsbScanningRoller: DRAW_FRAME_SCANNING_ROLLER_OPTIONS,
-  lrsbScanningRollerLower: DRAW_FRAME_SCANNING_ROLLER_LOWER_OPTIONS,
-  lrsbSilverFunnel: DRAW_FRAME_SILVER_FUNNEL_OPTIONS,
-  lrsbWebGuideTube: DRAW_FRAME_WEB_GUIDE_TUBE_OPTIONS,
-  lrsbSliverWireSize: DRAW_FRAME_INSERT_BORE_DIA_OPTIONS,
+  lrsbMiddleRollerPulley: DRAW_FRAME_LRSB_VV_OPTIONS,
+  lrsbCreelTensionDraft: DRAW_FRAME_LRSB_W1_OPTIONS,
+  lrsbWebTensionDraft: DRAW_FRAME_LRSB_W3_OPTIONS,
+  lrsbBottomRollerFront: DRAW_FRAME_LRSB_BOTTOM_ROLLER_FRONT_OPTIONS,
+  lrsbBottomRollerBack: DRAW_FRAME_LRSB_BOTTOM_ROLLER_BACK_OPTIONS,
+  lrsbScanningRoller: DRAW_FRAME_LRSB_SCANNING_ROLLER_OPTIONS,
+  lrsbScanningRollerLower: DRAW_FRAME_LRSB_SCANNING_ROLLER_LOAD_OPTIONS,
+  lrsbSilverFunnel: DRAW_FRAME_LRSB_SILVER_FUNNEL_OPTIONS,
+  lrsbWebGuideTube: DRAW_FRAME_LRSB_WEB_GUIDE_TUBE_OPTIONS,
+  lrsbSliverWireSize: DRAW_FRAME_LRSB_INSERT_BORE_DIA_OPTIONS,
   lrsbTrumpet: DRAW_FRAME_TRUMPET_OPTIONS,
   d40Nw1: DRAW_FRAME_NW_OPTIONS,
   d40Nw2: DRAW_FRAME_NW_OPTIONS,
@@ -797,6 +857,18 @@ const getSelectOptions = (rowKey, wheelChangeType = "") => {
         return DRAW_FRAME_D40_SCANNING_ROLLER_OPTIONS;
       case "d40Trumpet":
         return DRAW_FRAME_D40_TRUMPET_OPTIONS;
+      default:
+        return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
+    }
+  }
+
+  if (wheelChangeType === "Type 1 (LRSB)") {
+    switch (rowKey) {
+      case "lrsbNw1":
+      case "lrsbNw2":
+        return DRAW_FRAME_LRSB_NW_OPTIONS;
+      case "lrsbBottomRollerBack":
+        return DRAW_FRAME_LRSB_BOTTOM_ROLLER_BACK_OPTIONS;
       default:
         return DRAW_FRAME_SELECT_OPTIONS[rowKey] || [];
     }
@@ -953,7 +1025,10 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [errors, setErrors] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [mixingOptions, setMixingOptions] = useState([]);
+  const [loadingVarietyOptions, setLoadingVarietyOptions] = useState(false);
+  const [varietyOptionsError, setVarietyOptionsError] = useState("");
   const lastLoadedMixingRef = useRef("");
+  const mixingEditedRef = useRef(false);
 
   const activeRows = useMemo(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
@@ -962,7 +1037,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const selectedMixingRow = activeRows.find(
     (row) => row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
   );
-  const selectedMixing = String(values[selectedMixingRow?.key]?.existing || values[selectedMixingRow?.key]?.proposed || "").trim();
+  const selectedMixingExisting = String(values[selectedMixingRow?.key]?.existing || "").trim();
   const availableWheelChangeTypes = useMemo(
     () => WHEEL_CHANGE_TYPES_BY_LINE[lineType] || [],
     [lineType]
@@ -992,13 +1067,18 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     let active = true;
 
     const loadDropdowns = async () => {
+      setLoadingVarietyOptions(true);
       try {
         const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
         if (!active) return;
         setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
-      } catch {
+        setVarietyOptionsError("");
+      } catch (error) {
         if (!active) return;
         setMixingOptions([]);
+        setVarietyOptionsError(error.message || "Unable to load simplex mixing options.");
+      } finally {
+        if (active) setLoadingVarietyOptions(false);
       }
     };
 
@@ -1056,16 +1136,16 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   };
 
   useEffect(() => {
-    if (!draftLoaded || !wheelChangeType || !selectedMixing) {
+    if (mixingEditedRef.current || !draftLoaded || !wheelChangeType || !selectedMixingExisting) {
       lastLoadedMixingRef.current = "";
       return;
     }
 
-    const selectionKey = `${wheelChangeType}::${selectedMixing}`;
+    const selectionKey = `${wheelChangeType}::${selectedMixingExisting}`;
     if (lastLoadedMixingRef.current === selectionKey) return;
 
     let cancelled = false;
-    loadLatestSaved(wheelChangeType, selectedMixing)
+    loadLatestSaved(wheelChangeType, selectedMixingExisting)
       .then((latest) => {
         if (cancelled || !latest) return;
         lastLoadedMixingRef.current = selectionKey;
@@ -1075,7 +1155,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     return () => {
       cancelled = true;
     };
-  }, [draftLoaded, selectedMixing, wheelChangeType]);
+  }, [draftLoaded, selectedMixingExisting, wheelChangeType]);
 
   useEffect(() => {
     if (wheelChangeType !== "Type 1 (SB20)") return;
@@ -1105,6 +1185,67 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       setValues(nextValues);
     }
   }, [wheelChangeType, values.md1?.existing, values.md1?.proposed, values.md2?.existing, values.md2?.proposed, values.draftConstant?.existing, values.draftConstant?.proposed, values.totalDraft?.existing, values.totalDraft?.proposed]);
+
+  useEffect(() => {
+    if (wheelChangeType !== "Type 1 (LRSB)") return;
+
+    setValues((current) => {
+      const nextValues = {
+        ...current,
+        lrsbTotalDraftConstant: {
+          existing: current.lrsbTotalDraftConstant?.existing || "6.01",
+          proposed: current.lrsbTotalDraftConstant?.proposed || "6.01",
+        },
+        lrsbTotalDraft: {
+          existing: computeFinisherType1LrsbTotalDraft({
+            nw1: current.lrsbNw1?.existing,
+            nw2: current.lrsbNw2?.existing,
+            totalDraftConstant: current.lrsbTotalDraftConstant?.existing || "6.01",
+          }),
+          proposed: computeFinisherType1LrsbTotalDraft({
+            nw1: current.lrsbNw1?.proposed,
+            nw2: current.lrsbNw2?.proposed,
+            totalDraftConstant: current.lrsbTotalDraftConstant?.proposed || "6.01",
+          }),
+        },
+        lrsbBreakDraft: {
+          existing: computeFinisherType1LrsbBreakDraft({
+            backRollerPulley: current.lrsbBackRollerPulley?.existing,
+            middleRollerPulley: current.lrsbMiddleRollerPulley?.existing,
+          }),
+          proposed: computeFinisherType1LrsbBreakDraft({
+            backRollerPulley: current.lrsbBackRollerPulley?.proposed,
+            middleRollerPulley: current.lrsbMiddleRollerPulley?.proposed,
+          }),
+        },
+      };
+
+      if (
+        current.lrsbTotalDraftConstant?.existing === nextValues.lrsbTotalDraftConstant.existing &&
+        current.lrsbTotalDraftConstant?.proposed === nextValues.lrsbTotalDraftConstant.proposed &&
+        current.lrsbTotalDraft?.existing === nextValues.lrsbTotalDraft.existing &&
+        current.lrsbTotalDraft?.proposed === nextValues.lrsbTotalDraft.proposed &&
+        current.lrsbBreakDraft?.existing === nextValues.lrsbBreakDraft.existing &&
+        current.lrsbBreakDraft?.proposed === nextValues.lrsbBreakDraft.proposed
+      ) {
+        return current;
+      }
+
+      return nextValues;
+    });
+  }, [
+    wheelChangeType,
+    values.lrsbNw1?.existing,
+    values.lrsbNw1?.proposed,
+    values.lrsbNw2?.existing,
+    values.lrsbNw2?.proposed,
+    values.lrsbTotalDraftConstant?.existing,
+    values.lrsbTotalDraftConstant?.proposed,
+    values.lrsbScanningRoller?.existing,
+    values.lrsbScanningRoller?.proposed,
+    values.lrsbScanningRollerLower?.existing,
+    values.lrsbScanningRollerLower?.proposed,
+  ]);
 
   useEffect(() => {
     if (wheelChangeType === "Type 2 (D40)") {
@@ -1269,16 +1410,53 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     };
   };
 
-  const handleValueChange = (rowKey, column) => (event) => {
-    const nextValue = event.target.value;
+  const applyFinisherType1LrsbComputedValues = (nextValues) => {
+    if (wheelChangeType !== "Type 1 (LRSB)") return nextValues;
+
+    return {
+      ...nextValues,
+      lrsbTotalDraftConstant: {
+        existing: nextValues.lrsbTotalDraftConstant?.existing || "6.01",
+        proposed: nextValues.lrsbTotalDraftConstant?.proposed || "6.01",
+      },
+      lrsbTotalDraft: {
+        existing: computeFinisherType1LrsbTotalDraft({
+          nw1: nextValues.lrsbNw1?.existing,
+          nw2: nextValues.lrsbNw2?.existing,
+          totalDraftConstant: nextValues.lrsbTotalDraftConstant?.existing || "6.01",
+        }),
+        proposed: computeFinisherType1LrsbTotalDraft({
+          nw1: nextValues.lrsbNw1?.proposed,
+          nw2: nextValues.lrsbNw2?.proposed,
+          totalDraftConstant: nextValues.lrsbTotalDraftConstant?.proposed || "6.01",
+        }),
+      },
+      lrsbBreakDraft: {
+        existing: computeFinisherType1LrsbBreakDraft({
+          backRollerPulley: nextValues.lrsbBackRollerPulley?.existing,
+          middleRollerPulley: nextValues.lrsbMiddleRollerPulley?.existing,
+        }),
+        proposed: computeFinisherType1LrsbBreakDraft({
+          backRollerPulley: nextValues.lrsbBackRollerPulley?.proposed,
+          middleRollerPulley: nextValues.lrsbMiddleRollerPulley?.proposed,
+        }),
+      },
+    };
+  };
+
+  const handleValueChange = (rowKey, column) => (eventOrValue) => {
+    const nextValue =
+      typeof eventOrValue === "object" && eventOrValue !== null && "target" in eventOrValue
+        ? eventOrValue.target.value
+        : eventOrValue;
     setValues((current) => {
-      const updatedValues = applyType1Sb20ComputedValues({
+      const updatedValues = applyFinisherType1LrsbComputedValues(applyType1Sb20ComputedValues({
         ...current,
         [rowKey]: {
           ...(current[rowKey] || { existing: "", proposed: "" }),
           [column]: nextValue,
         },
-      });
+      }));
       return applyType2Td7AutoFill(updatedValues, rowKey, wheelChangeType);
     });
     clearValueError(rowKey, column);
@@ -1287,13 +1465,13 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const handleNumericValueChange = (rowKey, column) => (event) => {
     const nextValue = sanitizeNumericInput(event.target.value, { precision: 10, scale: 3 });
     setValues((current) => {
-      const updatedValues = applyType1Sb20ComputedValues({
+      const updatedValues = applyFinisherType1LrsbComputedValues(applyType1Sb20ComputedValues({
         ...current,
         [rowKey]: {
           ...(current[rowKey] || { existing: "", proposed: "" }),
           [column]: nextValue,
         },
-      });
+      }));
       return applyType2Td7AutoFill(updatedValues, rowKey, wheelChangeType);
     });
     clearValueError(rowKey, column);
@@ -1306,6 +1484,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     setValues(createValues());
     setErrors({});
     lastLoadedMixingRef.current = "";
+    mixingEditedRef.current = false;
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(DRAFT_STORAGE_KEY);
     }
@@ -1322,10 +1501,29 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     activeRows.forEach((row) => {
       const rowValues = values[row.key] || {};
       const rowErrors = {};
-      if (hasTextValue(rowValues.existing) && parseNumericValue(rowValues.existing) === null) {
+      const isSelectField = row.inputType === "select";
+      const isMixingField =
+        isSelectField && (row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing"));
+      const isBlendPercent = row.key.toLowerCase().includes("blendpercent");
+      const isValidExisting = isMixingField
+        ? hasTextValue(rowValues.existing)
+        : isSelectField
+          ? hasTextValue(rowValues.existing)
+          : isBlendPercent
+            ? isBlendPercentValue(rowValues.existing)
+            : parseNumericValue(rowValues.existing) !== null;
+      const isValidProposed = isMixingField
+        ? hasTextValue(rowValues.proposed)
+        : isSelectField
+          ? hasTextValue(rowValues.proposed)
+          : isBlendPercent
+            ? isBlendPercentValue(rowValues.proposed)
+            : parseNumericValue(rowValues.proposed) !== null;
+
+      if (hasTextValue(rowValues.existing) && !isValidExisting) {
         rowErrors.existing = true;
       }
-      if (hasTextValue(rowValues.proposed) && parseNumericValue(rowValues.proposed) === null) {
+      if (hasTextValue(rowValues.proposed) && !isValidProposed) {
         rowErrors.proposed = true;
       }
       if (Object.keys(rowErrors).length > 0) valueErrors[row.key] = rowErrors;
@@ -1388,16 +1586,31 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
+    const isMixingRow = row.inputType === "select" && (row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing"));
 
-    if (row.inputType === "select" && (row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing"))) {
+    if (isMixingRow) {
       return (
         <SearchableSelect
           className={className}
           value={value}
-          onChange={handleValueChange(row.key, column)}
+          onChange={(nextValue) => {
+            mixingEditedRef.current = true;
+            setValues((current) => {
+              const updatedValues = applyFinisherType1LrsbComputedValues(applyType1Sb20ComputedValues({
+                ...current,
+                [row.key]: {
+                  ...(current[row.key] || { existing: "", proposed: "" }),
+                  [column]: nextValue,
+                },
+              }));
+              return applyType2Td7AutoFill(updatedValues, row.key, wheelChangeType);
+            });
+            clearValueError(row.key, column);
+          }}
           options={mixingOptions}
-          placeholder="Select"
-          ariaLabel={row.label}
+          placeholder={loadingVarietyOptions ? "Loading..." : varietyOptionsError ? "Select Mixing" : "Select"}
+          ariaLabel="Mixing"
+          disabled={loadingVarietyOptions && !mixingOptions.length}
         />
       );
     }
@@ -1417,6 +1630,31 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
             );
           })}
         </select>
+      );
+    }
+
+    if (row.key.toLowerCase().includes("blendpercent")) {
+      return (
+        <input
+          type="text"
+          inputMode="text"
+          className={className}
+          value={value}
+          onChange={(event) => {
+            const nextValue = sanitizeBlendPercentInput(event.target.value);
+            setValues((current) => {
+              const updatedValues = applyFinisherType1LrsbComputedValues(applyType1Sb20ComputedValues({
+                ...current,
+                [row.key]: {
+                  ...(current[row.key] || { existing: "", proposed: "" }),
+                  [column]: nextValue,
+                },
+              }));
+              return applyType2Td7AutoFill(updatedValues, row.key, wheelChangeType);
+            });
+            clearValueError(row.key, column);
+          }}
+        />
       );
     }
 

@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
+import { extractTesterFromLines, extractTesterFromText, getTesterValueFromRow, mergeTesterIntoRows } from "@/utils/ocrTester";
 
 const getBackendBaseUrl = () =>
   String(
@@ -29,6 +30,34 @@ const hasAnyRowArray = (payload) =>
     const value = getPath(payload, path);
     return Array.isArray(value) && value.length > 0;
   });
+
+const collectPayloadRows = (payload) =>
+  ROW_SOURCE_KEYS.flatMap((path) => {
+    const value = getPath(payload, path);
+    return Array.isArray(value) ? value : [];
+  });
+
+const mergeTesterIntoPayloadRows = (payload, tester) => {
+  if (!tester) return payload;
+  const nextPayload = { ...payload };
+
+  ["raw_tables", "extracted_tables", "data", "json_output"].forEach((key) => {
+    if (Array.isArray(nextPayload[key])) {
+      nextPayload[key] = mergeTesterIntoRows(nextPayload[key], tester);
+    }
+  });
+
+  if (isPlainObject(nextPayload.result)) {
+    nextPayload.result = { ...nextPayload.result };
+    ["raw_tables", "extracted_tables", "data", "json_output"].forEach((key) => {
+      if (Array.isArray(nextPayload.result[key])) {
+        nextPayload.result[key] = mergeTesterIntoRows(nextPayload.result[key], tester);
+      }
+    });
+  }
+
+  return nextPayload;
+};
 
 const readRequestBody = async (req) => {
   const chunks = [];
@@ -239,6 +268,8 @@ const firstValueAfterLabels = (cells, labels) => {
   return "";
 };
 
+const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
+
 const KNOWN_OCR_LABELS = [
   "Total Test",
   "Number of Entries (N)",
@@ -293,7 +324,7 @@ const parseNoilsPdfRows = (lines) => {
   const totalTest = valueAfterLabel(allCells, "Total Test");
   const stdNoils = valueAfterLabel(allCells, "Std. Noils%") || valueAfterLabel(allCells, "Std. Noils %");
   const noilsPercent = valueAfterLabel(allCells, "Noils%");
-  const tester = extractValueFromSection(lines, ["Tester", "Tester Name", "User"]);
+  const tester = extractTesterFromLines(lines);
 
   rows.push({
     "Row Type": "Meta",
@@ -342,7 +373,7 @@ const parseStretchPdfRows = (lines) => {
     const allCells = section.flatMap((item) => item.cells);
     const tableNo = String(tableIndex + 1);
     const totalTest = valueAfterLabel(allCells, "Total Test");
-    const tester = extractValueFromSection(section, ["Tester", "Tester Name", "User"]);
+    const tester = extractTesterFromLines(section);
 
     rows.push({
       "Row Type": "Meta",
@@ -412,7 +443,7 @@ const parseAPercentPdfRows = (lines) => {
     "A% (N-1)": valueAfterLabel(allCells, "A% (N-1)"),
     "A% (N+1)": valueAfterLabel(allCells, "A% (N+1)"),
     Date: valueAfterLabel(allCells, "Date"),
-    Tester: extractValueFromSection(lines, ["Tester", "Tester Name", "User"]),
+    Tester: extractTesterFromLines(lines),
     Shift: valueAfterLabel(allCells, "Shift"),
     Process: valueAfterLabel(allCells, "Process"),
     Remark: valueAfterLabel(allCells, "Remark"),
@@ -445,12 +476,12 @@ const parseAPercentPdfRows = (lines) => {
 };
 
 const extractRowsFromPdf = (pdfBuffer, docType) => {
-  if (!pdfBuffer || !["noils", "strech", "a_percent", "bwc"].includes(docType)) return [];
+  if (!pdfBuffer || !["noils", "strech", "a_percent", "apct", "bwc"].includes(docType)) return [];
 
   const lines = groupPdfLines(extractPdfTextItems(pdfBuffer));
   if (docType === "bwc") return parseBwcPdfRows(lines);
   if (docType === "noils") return parseNoilsPdfRows(lines);
-  if (docType === "a_percent") return parseAPercentPdfRows(lines);
+  if (docType === "a_percent" || docType === "apct") return parseAPercentPdfRows(lines);
   return parseStretchPdfRows(lines);
 };
 
@@ -494,18 +525,39 @@ export default async function handler(req, res) {
     if (upstreamContentType.includes("application/json")) {
       const payload = JSON.parse(upstreamBody.toString("utf8") || "{}");
       const { fields = {}, files = {} } = parseMultipartBody(requestBody, contentType);
-      const fallbackRows = hasAnyRowArray(payload) ? [] : extractRowsFromPdf(files.file?.buffer, fields.doc_type || payload.doc_type);
+      const extractedRows = extractRowsFromPdf(files.file?.buffer, fields.doc_type || payload.doc_type);
+      const fallbackRows = hasAnyRowArray(payload) ? [] : extractedRows;
+      const parsedPdfLines = groupPdfLines(extractPdfTextItems(files.file?.buffer || Buffer.alloc(0)));
+      const parsedRawText = parsedPdfLines.map((line) => line.cells.join(" ")).join("\n");
+      const testerFromRows = [...collectPayloadRows(payload), ...extractedRows].find((row) => getTesterValueFromRow(row));
+      const testerFallback = extractTesterFromLines(parsedPdfLines) || extractTesterFromText(payload.raw_text || payload.text || parsedRawText);
+      const tester = getTesterValueFromRow(testerFromRows) || testerFallback;
 
       if (fallbackRows.length) {
         return res.status(upstream.status).json({
           ...payload,
-          data: fallbackRows,
-          raw_tables: fallbackRows,
+          data: mergeTesterIntoRows(fallbackRows, tester),
+          raw_tables: mergeTesterIntoRows(fallbackRows, tester),
+          raw_text: payload.raw_text || parsedRawText,
+          meta: { tester },
           fallback_source: "embedded_pdf_text",
         });
       }
 
-      return res.status(upstream.status).json(payload);
+      if (tester) {
+        const patchedPayload = mergeTesterIntoPayloadRows(payload, tester);
+        return res.status(upstream.status).json({
+          ...patchedPayload,
+          raw_text: payload.raw_text || parsedRawText,
+          meta: { tester },
+          fallback_source: payload.fallback_source || "embedded_pdf_text_tester",
+        });
+      }
+
+      return res.status(upstream.status).json({
+        ...payload,
+        meta: { tester: "" },
+      });
     }
 
     res.status(upstream.status);

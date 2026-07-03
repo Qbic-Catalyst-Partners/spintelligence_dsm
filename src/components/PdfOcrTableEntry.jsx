@@ -4,6 +4,7 @@ import { MdInsertDriveFile } from "react-icons/md";
 import { submitWrappingOcrPercentInspection } from "@/apis/draw-frame";
 import { runOcrForDocument, runOcrJsonForDocument } from "@/apis/ocrApi";
 import styles from "@/styles/draw-frame.module.css";
+import { extractTesterFromText, mergeTesterIntoRows, getTesterFromOcrResult } from "@/utils/ocrTester";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
 import { buildWrappingOcrPayload } from "@/utils/wrappingOcrPayload";
 
@@ -23,7 +24,7 @@ const FIELD_ALIASES = {
   "Total Test": ["Total Test", "Total Tests", "total_test"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "Entries", "N"],
   "Length": ["Length"],
-  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "User"],
+  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "testerName", "user", "User"],
   "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %", "Standard Noils %", "std_noils_percent"],
   "Noils %": ["Noils %", "Nolis %", "noils_percent"],
   "Sample No": ["Sample No", "Sample No.", "Sample Number", "sample_no"],
@@ -493,6 +494,7 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
     docType,
     tableTitle = "PDF Values",
     entryId = "",
+    reserveEntryId,
   },
   ref
 ) {
@@ -566,6 +568,11 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
         ? await runOcrJsonForDocument({ file, docType })
         : await runOcrForDocument({ file, docType });
       let nextRows = prepareOcrRows(canonicalizeOcrRows(getOcrRows(result), docType), docType);
+      
+      // Use comprehensive tester extraction with fallback sources
+      const tester = getTesterFromOcrResult(result, nextRows);
+      nextRows = mergeTesterIntoRows(nextRows, tester);
+      
       let responseHasRows = hasOcrResponseRows(result);
 
       // If main endpoint returned no rows or signalled table-detection failure, try JSON endpoint fallback
@@ -579,7 +586,9 @@ const PdfOcrTableEntry = forwardRef(function PdfOcrTableEntry(
           responseHasRows = responseHasRows || hasOcrResponseRows(fallback);
           if (fallbackRows.length) {
             result = fallback;
-            nextRows = fallbackRows;
+            // Use comprehensive tester extraction for fallback as well
+            const fallbackTester = getTesterFromOcrResult(fallback, fallbackRows);
+            nextRows = mergeTesterIntoRows(fallbackRows, fallbackTester);
           } else if (detectedFailure) {
             setMessage("OCR completed, but the OCR engine could not detect a table structure.");
           }

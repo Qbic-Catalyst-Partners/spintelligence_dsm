@@ -5,8 +5,9 @@ export default function LycraCheckingPage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!router.isReady) return;
     router.replace("/autoconer?type=Lycra%20Checking");
-  }, [router]);
+  }, [router.isReady, router]);
 
   return null;
 }

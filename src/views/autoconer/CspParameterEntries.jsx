@@ -88,6 +88,13 @@ const sumValues = (values, keys) => {
   return total ? total.toFixed(2) : "";
 };
 
+const calculateCsp = (strength, count) => {
+  const parsedStrength = Number.parseFloat(strength) || 0;
+  const parsedCount = Number.parseFloat(count) || 0;
+  const csp = parsedStrength * parsedCount;
+  return csp ? csp.toFixed(2) : "";
+};
+
 const getEntryId = (entry) => entry?.id ?? entry?._id ?? entry?.entry_id ?? null;
 
 const getEntryValue = (entry, keys) => {
@@ -158,7 +165,14 @@ const mapPendingEntry = (entry = {}, index = 0) => ({
   id: getEntryId(entry) || `${entry.entry_date || "entry"}-${index}`,
   date: formatDisplayDate(getEntryValue(entry, ["entry_date", "date", "inspection_date"])),
   countName: getEntryValue(entry, ["count_name", "countName"]),
+  calculatedCsp: calculateCsp(
+    getEntryValue(entry, "strength"),
+    getEntryValue(entry, ["actCount", "act_count"])
+  ),
   values: {
+    actCount: getEntryValue(entry, ["actCount", "act_count"]),
+    strength: getEntryValue(entry, "strength"),
+    csp: getEntryValue(entry, "csp"),
     uPercent: getEntryValue(entry, ["uPercent", "u"]),
     cvm: getEntryValue(entry, "cvm"),
     oneMtrCv: getEntryValue(entry, ["oneMtrCv", "cv_1m"]),
@@ -292,6 +306,12 @@ function CspParameterEntries({
     setValues((current) => ({
       ...current,
       [field]: nextValue,
+      ...(field === "strength" || field === "actCount"
+        ? { csp: calculateCsp(
+            field === "strength" ? nextValue : current.strength,
+            field === "actCount" ? nextValue : current.actCount
+          ) }
+        : {}),
     }));
     setErrors((current) => {
       if (!current[field]) return current;
@@ -438,7 +458,10 @@ function CspParameterEntries({
       strength: getEntryValue(selectedPendingEntry, "strength"),
       countCv: getEntryValue(selectedPendingEntry, ["countCv", "count_cv"]),
       strengthCv: getEntryValue(selectedPendingEntry, ["strengthCv", "strength_cv"]),
-      csp: getEntryValue(selectedPendingEntry, "csp"),
+      csp: calculateCsp(
+        getEntryValue(selectedPendingEntry, "strength"),
+        getEntryValue(selectedPendingEntry, ["actCount", "act_count"])
+      ),
     }));
   }, [countDropdownOptions, selectedPendingEntry]);
 
@@ -463,6 +486,7 @@ function CspParameterEntries({
       darkDisabled = false,
       error = false,
     } = options;
+    const isCspField = field.key === "csp";
 
     return (
       <div key={field.key} className={styles.metricField}>
@@ -470,8 +494,8 @@ function CspParameterEntries({
         <input
           value={value}
           onChange={(event) => handleValueChange(field.key, event.target.value)}
-          readOnly={readOnly}
-          disabled={disabled}
+          readOnly={readOnly || isCspField}
+          disabled={disabled || isCspField}
           className={`${styles.input} ${error ? styles.errorField : ""} ${readOnly || disabled ? styles.readOnlyField : ""} ${darkDisabled ? styles.darkDisabledField : ""}`}
         />
       </div>
@@ -521,6 +545,18 @@ function CspParameterEntries({
               </div>
 
               <div className={styles.pendingDataGrid}>
+                <div className={styles.pendingMetaItem}>
+                  <span>Act Count</span>
+                  <strong>{entry.values.actCount || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Strength</span>
+                  <strong>{entry.values.strength || "-"}</strong>
+                </div>
+                <div className={styles.pendingMetaItem}>
+                  <span>Calculated CSP</span>
+                  <strong>{entry.calculatedCsp || entry.values.csp || "-"}</strong>
+                </div>
                 <div className={styles.pendingMetaItem}>
                   <span>U</span>
                   <strong>{entry.values.uPercent || "-"}</strong>

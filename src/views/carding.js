@@ -119,10 +119,7 @@ function Carding() {
         setShowPreview(false);
         setShowSuccess(false);
 
-        const nextRoute = selected ? getCardingEntryConfig(selected.name)?.routePath : "";
-        if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
-            router.push(nextRoute);
-        }
+        // Keep the selection in place without forcing a route change.
     };
 
     const selectedType =
