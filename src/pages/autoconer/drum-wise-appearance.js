@@ -5,8 +5,9 @@ export default function DrumWiseAppearancePage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!router.isReady) return;
     router.replace("/autoconer?type=Drum%20wise%20Appearance");
-  }, [router]);
+  }, [router.isReady, router]);
 
   return null;
 }

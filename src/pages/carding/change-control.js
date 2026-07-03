@@ -5,8 +5,9 @@ export default function ChangeControlPage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!router.isReady) return;
     router.replace("/carding?type=WheelChange");
-  }, [router]);
+  }, [router.isReady, router]);
 
   return null;
 }

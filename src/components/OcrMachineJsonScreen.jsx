@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { FiFile, FiRefreshCw, FiUpload } from "react-icons/fi";
 
 import { runOcrJsonForDocument } from "@/apis/ocrApi";
+import { extractTesterFromText, mergeTesterIntoRows, getTesterFromOcrResult } from "@/utils/ocrTester";
 import { normalizeOcrDisplayRow, normalizeOcrDisplayValue } from "@/utils/ocrDisplayValues";
 
 const normalizeCell = (value) => {
@@ -149,7 +150,7 @@ const FIELD_ALIASES = {
   "Total Test": ["Total Test", "Total Tests"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "N"],
   "Length": ["Length"],
-  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "User"],
+  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "testerName", "user", "User"],
   "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %", "std_noils_percent"],
   "Std. Stretch %": ["Std. Stretch %", "Std Stretch %", "std_stretch_percent"],
   "Stretch %": ["Stretch %", "stretch_percent"],
@@ -345,7 +346,12 @@ export default function OcrMachineJsonScreen({ reportType }) {
     try {
       const result = await runOcrJsonForDocument({ file, docType: config.docType });
       const extractedRows = getOcrTableRows(result);
-      const nextRows = extractedRows.length ? prepareRows(extractedRows, config, reportType) : [];
+      const preparedRows = extractedRows.length ? prepareRows(extractedRows, config, reportType) : [];
+      
+      // Use comprehensive tester extraction with fallback sources
+      const tester = getTesterFromOcrResult(result, preparedRows);
+      
+      const nextRows = mergeTesterIntoRows(preparedRows, tester);
       const responseHasRows = hasOcrResponseRows(result);
       setAllRows(nextRows);
       setMessage(

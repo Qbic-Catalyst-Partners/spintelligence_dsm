@@ -81,6 +81,13 @@ const sumValues = (values, keys) => {
   return total ? total.toFixed(2) : "";
 };
 
+const calculateCsp = (strength, count) => {
+  const parsedStrength = Number.parseFloat(strength) || 0;
+  const parsedCount = Number.parseFloat(count) || 0;
+  const csp = parsedStrength * parsedCount;
+  return csp ? csp.toFixed(2) : "";
+};
+
 const getEntryId = (entry) => entry?.id ?? entry?._id ?? entry?.entry_id ?? null;
 
 const getEntryValue = (entry, keys) => {
@@ -164,6 +171,10 @@ const mapPendingEntry = (entry = {}, index = 0) => ({
   id: getEntryId(entry) || `${entry.entry_date || "entry"}-${index}`,
   date: formatDisplayDate(getEntryValue(entry, ["entry_date", "date", "inspection_date"])),
   countName: getEntryValue(entry, ["count_name", "countName"]),
+  calculatedCsp: calculateCsp(
+    getEntryValue(entry, "strength"),
+    getEntryValue(entry, ["actCount", "act_count"])
+  ),
   values: {
     coneColor: getEntryValue(entry, ["coneColor", "cone_color"]),
     actCount: getEntryValue(entry, ["actCount", "act_count"]),
@@ -242,7 +253,14 @@ function UPercentParameterEntries({
       strength: getEntryValue(selectedPendingEntry, "strength") || values.strength || "",
       cv1: getEntryValue(selectedPendingEntry, ["cv1", "countCv", "count_cv"]) || values.cv1 || "",
       cv2: getEntryValue(selectedPendingEntry, ["cv2", "strengthCv", "strength_cv"]) || values.cv2 || "",
-      csp: getEntryValue(selectedPendingEntry, "csp") || values.csp || "",
+      csp:
+        getEntryValue(selectedPendingEntry, "csp") ||
+        calculateCsp(
+          getEntryValue(selectedPendingEntry, "strength") || values.strength,
+          getEntryValue(selectedPendingEntry, ["actCount", "act_count"]) || values.actCount
+        ) ||
+        values.csp ||
+        "",
     }),
     [selectedPendingEntry, values.actCount, values.strength, values.cv1, values.cv2, values.csp]
   );
@@ -283,6 +301,14 @@ function UPercentParameterEntries({
     setValues((current) => ({
       ...current,
       [fieldConfig.key]: nextValue,
+      ...(fieldConfig.key === "strength" || fieldConfig.key === "actCount"
+        ? {
+            csp: calculateCsp(
+              fieldConfig.key === "strength" ? nextValue : current.strength,
+              fieldConfig.key === "actCount" ? nextValue : current.actCount
+            ),
+          }
+        : {}),
     }));
 
     setErrors((current) => {
@@ -416,6 +442,10 @@ function UPercentParameterEntries({
       nepsPlus140: getEntryValue(selectedPendingEntry, ["nepsPlus140", "neps_plus_140"]),
       thinMinus30: getEntryValue(selectedPendingEntry, ["thinMinus30", "thin_minus_30"]),
       nepsPlus400: getEntryValue(selectedPendingEntry, ["nepsPlus400", "neps_plus_400"]),
+      csp: calculateCsp(
+        getEntryValue(selectedPendingEntry, "strength"),
+        getEntryValue(selectedPendingEntry, ["actCount", "act_count"])
+      ),
     }));
   }, [countDropdownOptions, selectedPendingEntry]);
 
@@ -440,6 +470,7 @@ function UPercentParameterEntries({
       darkDisabled = false,
       error = false,
     } = options;
+    const isCspField = field.key === "csp";
 
     return (
       <div key={field.key} className={styles.metricField}>
@@ -447,9 +478,9 @@ function UPercentParameterEntries({
         <input
           value={value}
           onChange={(event) => handleValueChange(field, event.target.value)}
-          readOnly={readOnly}
-          disabled={disabled}
-          className={`${styles.input} ${error ? styles.errorField : ""} ${readOnly || disabled ? styles.readOnlyField : ""} ${darkDisabled ? styles.darkDisabledField : ""}`}
+          readOnly={readOnly || isCspField}
+          disabled={disabled || isCspField}
+          className={`${styles.input} ${error ? styles.errorField : ""} ${(readOnly || disabled || isCspField) ? styles.readOnlyField : ""} ${darkDisabled ? styles.darkDisabledField : ""}`}
         />
       </div>
     );
@@ -519,8 +550,8 @@ function UPercentParameterEntries({
                   <strong>{entry.values.cv2 || "-"}</strong>
                 </div>
                 <div className={styles.pendingMetaItem}>
-                  <span>CSP</span>
-                  <strong>{entry.values.csp || "-"}</strong>
+                  <span>Calculated CSP</span>
+                  <strong>{entry.calculatedCsp || entry.values.csp || "-"}</strong>
                 </div>
               </div>
             </article>

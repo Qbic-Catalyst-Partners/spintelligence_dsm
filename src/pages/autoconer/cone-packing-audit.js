@@ -5,8 +5,9 @@ export default function ConePackingAuditPage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!router.isReady) return;
     router.replace("/autoconer?type=Cone%20Packing%20Audit");
-  }, [router]);
+  }, [router.isReady, router]);
 
   return null;
 }

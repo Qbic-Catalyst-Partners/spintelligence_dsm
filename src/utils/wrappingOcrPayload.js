@@ -12,7 +12,7 @@ const FIELD_ALIASES = {
   "Total Test": ["Total Test", "Total Tests", "total_test"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "Entries", "N", "number_of_entries"],
   "Length": ["Length", "length"],
-  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "User"],
+  "Tester": ["Tester", "Tester Name", "tester", "tester_name", "testerName", "user", "User"],
   "Std. Noils %": ["Std. Noils %", "Std Noils %", "Std. Nolis %", "Standard Noils %", "std_noils_percent"],
   "Noils %": ["Noils %", "Nolis %", "noils_percent"],
   "Sample No": ["Sample No", "Sample No.", "Sample Number", "sample_no"],
@@ -60,8 +60,17 @@ export const groupWrappingOcrRowsByTable = (rows = []) =>
     return acc;
   }, {});
 
+const stripInternalRowFields = (row = {}) => {
+  if (!isPlainObject(row)) return row;
+  return Object.entries(normalizeOcrDisplayRow(row)).reduce((acc, [key, value]) => {
+    if (key.startsWith("__")) return acc;
+    acc[key] = value;
+    return acc;
+  }, {});
+};
+
 const normalizedRows = (rows = []) =>
-  rows.filter(isPlainObject).map((row) => normalizeOcrDisplayRow(row));
+  rows.filter(isPlainObject).map((row) => stripInternalRowFields(row));
 
 const buildMeta = (row = {}) => ({
   table_no: getWrappingOcrValue(row, "Table No"),
