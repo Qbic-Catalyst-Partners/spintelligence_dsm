@@ -3,22 +3,26 @@ import { createPortal } from "react-dom";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { FaCheckCircle } from "react-icons/fa";
 import SearchableSelect from "@/components/SearchableSelect";
+import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 
-import {
-  fetchBlowroomProcessParametersApi,
-  saveBlowroomProcessParameterApi,
-  updateBlowroomProcessParameterApi,
-} from "@/apis/blowroom";
-import useBlowroomCountOptions from "@/hooks/useBlowroomCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import {
+  coerceProcessParameterId,
+  normalizeProcessParameterId,
+  reserveGlobalProcessParameterId,
+  resolveProcessParameterDisplayId,
+} from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
+import {
+  saveBlowroomProcessParameterApi,
+  updateBlowroomProcessParameterApi,
+  fetchBlowroomProcessParametersApi,
+} from "@/apis/blowroom";
 import styles from "@/styles/ProcessParameter.module.css";
 
 const createDefaultForm = (selectedTypeName = "Process Parameter") => ({
@@ -143,31 +147,17 @@ const displaySavedValue = (value) => {
 };
 
 const ProcessParameter = forwardRef(function ProcessParameter(
-  { entryId = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "" },
+  { entryId = "", nextEntryIdPreview = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "" },
   ref
 ) {
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(() => createDefaultForm(selectedTypeName));
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
-  const [loadingVersions, setLoadingVersions] = useState(false);
-  const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useBlowroomCountOptions("header");
-
-  const countOptions = useMemo(
-    () =>
-      buildProcessParameterOptions(
-        masterCountOptions.length
-          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
-          : PROCESS_PARAMETER_COUNT_OPTIONS,
-        versions.map((version) => version?.data?.countName),
-        form.countName
-      ),
-    [form.countName, masterCountOptions, versions]
-  );
+  const [previewNextId, setPreviewNextId] = useState("");
 
   const consigneeOptions = useMemo(
     () =>
@@ -179,50 +169,76 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     [form.consigneeName, versions]
   );
 
+  const { countOptions: masterCountOptions } = useMixingCountOptions();
+  const countOptions = useMemo(
+    () =>
+      buildProcessParameterOptions(
+        masterCountOptions.length
+          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+          : PROCESS_PARAMETER_COUNT_OPTIONS,
+        [],
+        form.countName
+      ),
+    [form.countName, masterCountOptions]
+  );
+
   const loadVersions = async () => {
-    setLoadingVersions(true);
-    try {
-      const response = await fetchBlowroomProcessParametersApi({ page: 1, limit: 10 });
-      const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
-      const nextVersions = rows
-        .map(mapApiEntryToVersion)
-        .sort((left, right) => Number(right.id) - Number(left.id));
+    const response = await fetchBlowroomProcessParametersApi({ page: 1, limit: 200 });
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const nextVersions = rows
+      .map(mapApiEntryToVersion)
+      .sort((left, right) => Number(right.id) - Number(left.id));
 
-      setVersions(nextVersions);
-      setVersionsError("");
-      const nextProcessParameterId = await reserveGlobalProcessParameterId("PP", 4);
-      setSavedProcessParameterId(nextProcessParameterId);
-
-      if (nextVersions.length > 0) {
-        const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
-        setForm((current) => {
-          const activeVersion =
-            nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return {
-            ...activeVersion.data,
-            versionId: "",
-            paramId: "",
-            type: selectedTypeName,
-          };
+    setVersions(nextVersions);
+    if (nextVersions.length > 0) {
+      const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
+      const matchByEntryId = entryId
+        ? nextVersions.find(
+            (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(entryId)
+          )
+        : null;
+      if (matchByEntryId) {
+        setForm({
+          ...matchByEntryId.data,
+          versionId: matchByEntryId.id,
+          paramId: entryId || matchByEntryId.data.paramId || "",
+          type: selectedTypeName,
         });
-        setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
-        setForm(createDefaultForm(selectedTypeName));
-        setExpandedVersionId(null);
-        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
+        setForm({ ...createDefaultForm(selectedTypeName), paramId: entryId || "" });
       }
-    } catch (error) {
-      setVersions([]);
+      setExpandedVersionId(latestCompleteVersion?.id || null);
+    } else {
+      setForm({ ...createDefaultForm(selectedTypeName), paramId: entryId || "" });
       setExpandedVersionId(null);
-      setVersionsError(error.message || "Unable to load saved versions.");
-    } finally {
-      setLoadingVersions(false);
+      setSavedProcessParameterId(entryId || "");
     }
   };
 
   useEffect(() => {
     loadVersions();
   }, []);
+
+  useEffect(() => {
+    if (entryId) {
+      setSavedProcessParameterId(entryId);
+    }
+  }, [entryId]);
+
+  useEffect(() => {
+    if (entryId) return;
+    if (nextEntryIdPreview) {
+      setPreviewNextId(nextEntryIdPreview);
+      return;
+    }
+    let cancelled = false;
+    reserveGlobalProcessParameterId("PP", 4).then((nextId) => {
+      if (!cancelled) setPreviewNextId(nextId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [entryId, nextEntryIdPreview]);
 
   useEffect(() => {
     setForm((current) => ({
@@ -240,12 +256,29 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     });
   };
 
+  const findLatestVersionByCountName = (countName) => {
+    const normalized = String(countName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      versions
+        .filter((version) => String(version.data.countName || "").trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.data.creationDate || 0) - new Date(a.data.creationDate || 0))[0] || null
+    );
+  };
+
   const handleFieldChange = (field, value) => {
     const nextValue = numericKeys.has(field)
       ? sanitizeNumericInput(value, { precision: field === "lineNumbers" || field === "scutcherNo" ? 10 : 10, scale: field === "lineNumbers" || field === "scutcherNo" ? 0 : 2 })
       : value;
 
     setForm((current) => {
+      if (field === "countName" && !entryId && !current.versionId) {
+        const match = findLatestVersionByCountName(nextValue);
+        if (match) {
+          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId, type: selectedTypeName };
+        }
+      }
+
       const nextForm = { ...current, [field]: nextValue };
       if (
         (field === "countName" || field === "consigneeName") &&
@@ -289,6 +322,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const buildPayload = () => ({
+    entry_id: (form.paramId || entryId || savedProcessParameterId) || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -340,26 +374,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       const response = form.versionId
         ? await updateBlowroomProcessParameterApi(form.versionId, payload)
         : await saveBlowroomProcessParameterApi(payload);
-      registerProcessParameterId(response, "Blowroom");
-      setSavedProcessParameterId(
-        String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
-      );
-      registerProcessParameterId(response, "Blowroom");
 
-      try {
-        await createThresholdViolationTickets({
-          department: "Quality Control",
-          subDepartment: "Blow Room",
-          screenName: selectedTypeName || "Process Parameter",
-          machineName: selectedTypeName || "Process Parameter",
-          values: fieldDefs.map((field) => ({
-            label: field.label,
-            value: form[field.key],
-          })),
-        });
-      } catch (ticketError) {
-        console.error("Threshold ticket generation failed:", ticketError);
-      }
+      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
+      registerProcessParameterId(response, "Blowroom");
+      setSavedProcessParameterId(nextParamId);
 
       await loadVersions();
       return true;
@@ -385,15 +403,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   const historySection = (
     <div className={styles.historyWrap}>
-      {loadingVersions ? (
-        <div className={styles.infoBox}>Loading saved versions...</div>
-      ) : null}
-
-      {!loadingVersions && versionsError ? (
-        <div className={styles.errorMessage}>{versionsError}</div>
-      ) : null}
-
-      {!loadingVersions && !versionsError && versions.length === 0 ? (
+      {versions.length === 0 ? (
         <div className={styles.infoBox}>No saved versions found in the database.</div>
       ) : null}
 
@@ -480,13 +490,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
               value={form.countName}
               onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
-              placeholder={
-                loadingCountOptions
-                  ? "Loading count names..."
-                  : countOptionsError
-                    ? "Search or type count name"
-                    : "Search or select count name"
-              }
+              placeholder="Search or select count name"
               ariaLabel="Count Name"
             />
           </div>
@@ -508,7 +512,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
           <input
             type="text"
             className={topFieldClass}
-            value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
+            value={form.paramId || entryId || savedProcessParameterId || previewNextId || "Generating..."}
             readOnly
             disabled
           />
