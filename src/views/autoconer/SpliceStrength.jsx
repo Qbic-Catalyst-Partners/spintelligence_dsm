@@ -8,7 +8,7 @@ import {
 import { fetchAutoconerSpliceStrengthMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/spliceStrength.module.css";
-import { sanitizeDrumRangeInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 
 const getTodayDate = () => {

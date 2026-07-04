@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { AiOutlineAudio } from "react-icons/ai";
@@ -39,7 +39,8 @@ const createCountChangeRows = (readingCount) => {
     const total = Math.max(Number.parseInt(readingCount, 10) || 0, 0);
     return Array.from({ length: total }, (_, index) => ({
         reading_no: index + 1,
-        ...COUNT_CHANGE_BASE_ROWS[index % COUNT_CHANGE_BASE_ROWS.length],
+        reading_value: "",
+        strength: "",
     }));
 };
 
@@ -316,6 +317,7 @@ function SpinningDepartment() {
     const [countNameTo, setCountNameTo] = useState("");
     const [countReadingCount, setCountReadingCount] = useState("");
     const [countChangeRows, setCountChangeRows] = useState([]);
+    const [countChangeEditingRow, setCountChangeEditingRow] = useState(null);
     const [shift, setShift] = useState("");
     const [ringFrameRows, setRingFrameRows] = useState(createRingFrameRows);
     const [outOfCenterAc, setOutOfCenterAc] = useState("");
@@ -394,6 +396,39 @@ function SpinningDepartment() {
         setShowSuccess(true);
     };
 
+    const clearFormValues = useCallback(() => {
+        childRef.current?.clear?.();
+        setSelectedMachine("");
+        setEmployeeSearch("");
+        setShowEmployeeList(false);
+        setDisplaySpeed("");
+        setSpindleSpeed("");
+        setCountChangeMode("");
+        setRfNo("");
+        setLycraDraft("");
+        setCountNameFrom("");
+        setCountNameTo("");
+        setCountReadingCount("");
+        setCountChangeRows([]);
+        setCountChangeEditingRow(null);
+        setShift("");
+        setRingFrameRows(createRingFrameRows());
+        setOutOfCenterAc("");
+        setComments("");
+        setFaultCopsAc("");
+        setFaultCopsRf("");
+        setLhsValue("");
+        setLhsRemarks("");
+        setRhsValue("");
+        setRhsRemarks("");
+        setDate("");
+        setCheckerName("");
+        setErrors({});
+        setValidationMessage("");
+        setShowPreview(false);
+        setPreviewItems([]);
+    }, []);
+
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
         checkScreen();
@@ -410,6 +445,26 @@ function SpinningDepartment() {
             setDate("");
         }
     }, [checkingOptions, queryType]);
+
+    const typeChangeRef = useRef(false);
+
+    useEffect(() => {
+        if (!typeChangeRef.current) {
+            typeChangeRef.current = true;
+            return;
+        }
+        clearFormValues();
+    }, [checkingType, clearFormValues]);
+
+    useEffect(() => {
+        const handleRouteChangeStart = () => {
+            clearFormValues();
+        };
+        router.events.on("routeChangeStart", handleRouteChangeStart);
+        return () => {
+            router.events.off("routeChangeStart", handleRouteChangeStart);
+        };
+    }, [router.events, clearFormValues]);
 
     useEffect(() => {
         if (!isCotsChecking) return;
@@ -557,10 +612,11 @@ function SpinningDepartment() {
             reserveEntryId();
             setShowPreview(false);
             showSuccessOnce();
+            clearFormValues();
             dispatch(resetSpinningState());
         }
         if (error) dispatch(resetSpinningState());
-    }, [success, error, dispatch]);
+    }, [success, error, dispatch, clearFormValues]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -745,53 +801,73 @@ function SpinningDepartment() {
             setValidationMessage("");
             return;
         }
+        clearFormValues();
         setCheckingType("");
-        setSelectedMachine("");
-        setEmployeeSearch("");
-        setDate("");
-        setDisplaySpeed("");
-        setSpindleSpeed("");
-        setCountChangeMode("");
-        setRfNo("");
-        setLycraDraft("");
-        setCountNameFrom("");
-        setCountNameTo("");
-        setCountReadingCount("");
-        setCountChangeRows([]);
-        setCheckerName("");
-        setShift("");
-        setRingFrameRows(createRingFrameRows());
-        setOutOfCenterAc("");
-        setComments("");
-        setFaultCopsAc("");
-        setFaultCopsRf("");
-        setLhsValue("");
-        setLhsRemarks("");
-        setRhsValue("");
-        setRhsRemarks("");
-        setErrors({});
-        setValidationMessage("");
         router.push("/spinning", undefined, { shallow: true });
     };
 
     const validate = () => {
         const nextErrors = {};
-        if (!checkingType) nextErrors.checkingType = true;
-        if (!date) nextErrors.date = true;
+        const missingFields = [];
+
+        if (!checkingType) {
+            nextErrors.checkingType = true;
+            missingFields.push("Checking Type");
+        }
+        if (!date) {
+            nextErrors.date = true;
+            missingFields.push("Date");
+        }
         if (isCountChange) {
-            if (!rfNo.trim()) nextErrors.rfNo = true;
-            if (!lycraDraft.trim()) nextErrors.lycraDraft = true;
-            if (!countNameFrom.trim()) nextErrors.countNameFrom = true;
-            if (!countNameTo.trim()) nextErrors.countNameTo = true;
-            if (!countReadingCount.trim() || Number(countReadingCount) <= 0) nextErrors.countReadingCount = true;
-            if (!countChangeMode) nextErrors.countChangeMode = true;
+            if (!rfNo.trim()) {
+                nextErrors.rfNo = true;
+                missingFields.push("RF No.");
+            }
+            if (!lycraDraft.trim()) {
+                nextErrors.lycraDraft = true;
+                missingFields.push("Lycra Draft");
+            }
+            if (!countNameFrom.trim()) {
+                nextErrors.countNameFrom = true;
+                missingFields.push("Count Name (From)");
+            }
+            if (!countNameTo.trim()) {
+                nextErrors.countNameTo = true;
+                missingFields.push("Count Name (To)");
+            }
+            if (!countReadingCount.trim() || Number(countReadingCount) <= 0) {
+                nextErrors.countReadingCount = true;
+                missingFields.push("No. of Readings");
+            }
+            if (!countChangeMode) {
+                nextErrors.countChangeMode = true;
+                missingFields.push("Count Change Type");
+            }
         } else if (isRingFrame) {
-            if (!checkerName.trim()) nextErrors.checkerName = true;
-            if (!shift.trim()) nextErrors.shift = true;
-            if (!outOfCenterAc.trim()) nextErrors.outOfCenterAc = true;
-            if (!comments.trim()) nextErrors.comments = true;
-            if (!faultCopsAc.trim()) nextErrors.faultCopsAc = true;
-            if (!faultCopsRf.trim()) nextErrors.faultCopsRf = true;
+            if (!checkerName.trim()) {
+                nextErrors.checkerName = true;
+                missingFields.push("Checker Name");
+            }
+            if (!shift.trim()) {
+                nextErrors.shift = true;
+                missingFields.push("Shift");
+            }
+            if (!outOfCenterAc.trim()) {
+                nextErrors.outOfCenterAc = true;
+                missingFields.push("Out of Center AC");
+            }
+            if (!comments.trim()) {
+                nextErrors.comments = true;
+                missingFields.push("Comments");
+            }
+            if (!faultCopsAc.trim()) {
+                nextErrors.faultCopsAc = true;
+                missingFields.push("Fault Cops AC");
+            }
+            if (!faultCopsRf.trim()) {
+                nextErrors.faultCopsRf = true;
+                missingFields.push("Fault Cops RF");
+            }
 
             const ringFrameRowErrors = {};
             ringFrameRows.forEach((row, index) => {
@@ -813,9 +889,18 @@ function SpinningDepartment() {
 
             if (Object.keys(ringFrameRowErrors).length > 0) nextErrors.ringFrameRows = ringFrameRowErrors;
         } else {
-            if (!selectedMachine) nextErrors.selectedMachine = true;
-            if (!lhsValue.trim()) nextErrors.lhsValue = true;
-            if (!rhsValue.trim()) nextErrors.rhsValue = true;
+            if (!selectedMachine) {
+                nextErrors.selectedMachine = true;
+                missingFields.push(machineFieldLabel);
+            }
+            if (!lhsValue.trim()) {
+                nextErrors.lhsValue = true;
+                missingFields.push("LHS Value");
+            }
+            if (!rhsValue.trim()) {
+                nextErrors.rhsValue = true;
+                missingFields.push("RHS Value");
+            }
             if (isCotsChecking) {
                 const lhsNumber = Number(lhsValue);
                 const rhsNumber = Number(rhsValue);
@@ -827,16 +912,36 @@ function SpinningDepartment() {
                 }
             } else if (!employeeSearch.trim()) {
                 nextErrors.employeeSearch = true;
+                missingFields.push("Employee");
             }
-            if (!lhsRemarks.trim()) nextErrors.lhsRemarks = true;
-            if (!rhsRemarks.trim()) nextErrors.rhsRemarks = true;
+            if (!lhsRemarks.trim()) {
+                nextErrors.lhsRemarks = true;
+                missingFields.push("LHS Remarks");
+            }
+            if (!rhsRemarks.trim()) {
+                nextErrors.rhsRemarks = true;
+                missingFields.push("RHS Remarks");
+            }
         }
         if (checkingType === "Speed Checking") {
-            if (displaySpeedValue === null) nextErrors.displaySpeed = true;
-            if (spindleSpeedValue === null) nextErrors.spindleSpeed = true;
+            if (displaySpeedValue === null) {
+                nextErrors.displaySpeed = true;
+                missingFields.push("Display Speed");
+            }
+            if (spindleSpeedValue === null) {
+                nextErrors.spindleSpeed = true;
+                missingFields.push("Spindle Speed");
+            }
         }
         setErrors(nextErrors);
-        return Object.keys(nextErrors).length === 0;
+
+        if (missingFields.length > 0) {
+            setValidationMessage(`Please fill required fields: ${missingFields.slice(0, 4).join(", ")}${missingFields.length > 4 ? ", ..." : ""}`);
+            return false;
+        }
+
+        setValidationMessage("");
+        return true;
     };
 
     const buildPayload = () => {
@@ -983,10 +1088,19 @@ function SpinningDepartment() {
                         [field]: value,
                         ...(nextCountValue !== null ? { count: nextCountValue } : {}),
                     }
-                : row
+                    : row
             )
         );
     };
+
+    const handleCountChangeRowFocus = (rowIndex) => {
+        setCountChangeEditingRow(rowIndex);
+    };
+
+    const handleCountChangeRowBlur = () => {
+        setCountChangeEditingRow(null);
+    };
+
     const handleRingFrameChange = (rowIndex, field, value) => {
         setRingFrameRows((currentRows) =>
             currentRows.map((row, index) =>
@@ -1026,7 +1140,6 @@ function SpinningDepartment() {
         }
 
         if (!validate()) {
-            setValidationMessage("Please fill all required fields before saving.");
             return;
         }
         setValidationMessage("");
@@ -1170,7 +1283,7 @@ function SpinningDepartment() {
                                     <div className={styles["sp-form-group"]}>
                                         <label className={styles.countTypeSpacer}>&nbsp;</label>
                                         <div className={`${styles.segmentedControl} ${styles.countChangeSegmented} ${errors.countChangeMode ? styles["segmented-error"] : ""}`} role="group" aria-label="Count change type">
-                                            {["Count", "CSP"].map((mode) => (
+                                            {["Count", "CSV"].map((mode) => (
                                                 <button key={mode} type="button" className={`${styles.segmentButton} ${countChangeMode === mode ? styles.segmentButtonActive : ""}`} onClick={() => { setCountChangeMode(mode); clearFieldError("countChangeMode"); }}>
                                                     {mode}
                                                 </button>
@@ -1240,13 +1353,19 @@ function SpinningDepartment() {
                                                     <td className={styles.countChangeReadingNoCell}>{row.reading_no}</td>
                                                     <td>
                                                         {isCountMode ? (
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={String(row.reading_value ?? "")}
-                                                                onChange={(event) => handleCountChangeRowChange(rowIndex, "reading_value", event.target.value)}
-                                                                className={styles.countChangeInput}
-                                                            />
+                                                            countChangeEditingRow === rowIndex || !row.reading_value ? (
+                                                                <input
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    value={String(row.reading_value ?? "")}
+                                                                    onFocus={() => handleCountChangeRowFocus(rowIndex)}
+                                                                    onBlur={handleCountChangeRowBlur}
+                                                                    onChange={(event) => handleCountChangeRowChange(rowIndex, "reading_value", event.target.value)}
+                                                                    className={styles.countChangeInput}
+                                                                />
+                                                            ) : (
+                                                                <span className={styles.countChangeCellText}>{String(row.reading_value ?? "")}</span>
+                                                            )
                                                         ) : (
                                                             <span className={styles.countChangeCellText}>{renderCountChangeCell(row.reading_value, "")}</span>
                                                         )}

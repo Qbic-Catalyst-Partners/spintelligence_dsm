@@ -301,6 +301,7 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 760px;
+  table-layout: fixed;
 }
 
 .countChangeTable th,
@@ -355,15 +356,21 @@
 
 .countChangeInput {
   width: 100%;
-  min-width: 110px;
+  min-width: 0;
   box-sizing: border-box;
-  height: 38px;
+  height: 34px;
   border-radius: 8px;
   border: 1px solid #d8e2f3;
   background: #f8fbff;
-  padding: 8px 10px;
+  padding: 6px 10px;
   font-size: 13px;
   color: #0f172a;
+}
+
+.countChangeTable td:nth-child(2) .countChangeInput,
+.countChangeTable td:nth-child(5) .countChangeInput {
+  width: 80px;
+  min-width: 80px;
 }
 
 .countChangeInput:focus {
