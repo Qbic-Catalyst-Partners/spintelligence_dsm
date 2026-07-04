@@ -1,7 +1,7 @@
-import React, { forwardRef } from "react";
+import React, { forwardRef, useEffect, useState } from "react";
 
 import UqcEntryForm from "@/components/UqcEntryForm";
-import { submitSimplexUqcEntry } from "@/apis/simplex";
+import { fetchSimplexMachineMaster, submitSimplexUqcEntry } from "@/apis/simplex";
 
 const typeOptions = [
   { id: 1, name: "SMXCots Change Data Entry" },
@@ -9,12 +9,30 @@ const typeOptions = [
   { id: 3, name: "U% Data Entry" },
 ];
 
-const machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04", "MC-05", "MC-06"];
-
 const SimplexUqcDataEntry = forwardRef(function SimplexUqcDataEntry(
   { selectedTypeName, onTypeChange },
   ref
 ) {
+  const [machineOptions, setMachineOptions] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchSimplexMachineMaster({ department: "SIMPLEX" })
+      .then((options) => {
+        if (!active) return;
+        setMachineOptions(Array.isArray(options) ? options : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMachineOptions([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <UqcEntryForm
       ref={ref}

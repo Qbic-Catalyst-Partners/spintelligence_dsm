@@ -275,10 +275,16 @@ export const submitSimplexUqcEntry = async (payload) => {
 
 export const submitSimplexStudyReportEntry = async (payload) => {
   try {
-    const response = await apiConfig.post("/simplex/study", payload);
+    const response = await apiConfig.post("/simplex/study", payload, {
+      skipGlobalErrorModal: true,
+    });
     return response.data;
   } catch (error) {
-    throw new Error(extractErrorMessage(error, "Invalid study report payload."));
+    const message = extractErrorMessage(error, "Invalid study report payload.");
+    if (/shift must be one of:/i.test(message)) {
+      throw new Error("Invalid study report payload.");
+    }
+    throw new Error(message);
   }
 };
 
@@ -350,7 +356,6 @@ export const fetchSimplexUqcMasterDropdown = async ({
   variety_prefix = "",
   department_prefix = "",
   mc_no_prefix = "",
-  department = "",
   department_code = "",
 } = {}) => {
   const params = {
@@ -358,7 +363,6 @@ export const fetchSimplexUqcMasterDropdown = async ({
     variety_prefix,
     department_prefix,
     mc_no_prefix,
-    department,
     department_code,
   };
   let lastError;
@@ -476,6 +480,18 @@ export const fetchSimplexUqcMasterDropdown = async ({
         dropdown.mcNoValues = dropdown.mcNos.map((row) => row.mc_no);
       }
 
+      if (dropdown.mcNos.length < 2) {
+        const machineMaster = await fetchSimplexMachineMaster({
+          department: department || "SIMPLEX",
+          prefix,
+        }).catch(() => []);
+        dropdown.mcNos = mergeMcNoRows(
+          dropdown.mcNos,
+          normalizeMcNoRows(machineMaster)
+        );
+        dropdown.mcNoValues = dropdown.mcNos.map((row) => row.mc_no);
+      }
+
       return dropdown;
     } catch (error) {
       lastError = error;
@@ -555,12 +571,6 @@ export const fetchSimplexMachineMaster = async ({ department = "SIMPLEX", prefix
       const response = await apiConfig.get(
         endpoint,
         {
-          prefix,
-          mc_no_prefix: prefix,
-          machine_prefix: prefix,
-          dept_code: department,
-          department_code: department,
-          department,
         },
         { skipGlobalErrorModal: true }
       );

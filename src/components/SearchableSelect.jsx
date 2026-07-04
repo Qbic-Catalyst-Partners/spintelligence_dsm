@@ -10,6 +10,7 @@ function SearchableSelect({
   disabled = false,
   name,
   ariaLabel,
+  dropUp = false,
 }) {
   const containerRef = useRef(null);
   const inputRef = useRef(null);
@@ -69,8 +70,17 @@ function SearchableSelect({
   }, []);
 
   const handleSelect = (option) => {
-    onChange?.(option.value);
-    setSearchTerm(option.label);
+    const safeOption =
+      option && typeof option === "object"
+        ? {
+            value: String(option.value ?? "").trim(),
+            label: String(option.label ?? option.text ?? option.value ?? "").trim(),
+          }
+        : { value: "", label: "" };
+
+    if (!safeOption.value) return;
+    onChange?.(safeOption.value);
+    setSearchTerm(safeOption.label || safeOption.value);
     setIsOpen(false);
     inputRef.current?.focus();
   };
@@ -127,23 +137,41 @@ function SearchableSelect({
       </button>
 
       {isOpen ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[#dbe4f0] bg-white shadow-lg">
+        <div
+          className="absolute left-0 right-0 z-50 max-h-60 overflow-y-auto rounded-lg border border-[#dbe4f0] bg-white shadow-lg"
+          style={
+            dropUp
+              ? { bottom: "100%", top: "auto", marginBottom: "0.25rem" }
+              : { top: "100%", bottom: "auto", marginTop: "0.25rem" }
+          }
+        >
           {filteredOptions.length ? (
             <ul className="py-1" role="listbox" aria-label={ariaLabel}>
-              {filteredOptions.map((option) => (
-                <li key={option.value}>
+              {filteredOptions.map((option, index) => {
+                const safeOption = option && typeof option === "object"
+                  ? {
+                      value: String(option.value ?? "").trim(),
+                      label: String(option.label ?? option.text ?? option.value ?? "").trim(),
+                    }
+                  : { value: "", label: "" };
+
+                if (!safeOption.value) return null;
+
+                return (
+                <li key={`${safeOption.value}-${index}`}>
                   <button
                     type="button"
                     className={`flex w-full items-center px-3 py-2 text-left text-[12px] text-slate-700 hover:bg-slate-100 ${
-                      option.value === value ? "bg-slate-50 font-semibold" : ""
+                      safeOption.value === value ? "bg-slate-50 font-semibold" : ""
                     }`}
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => handleSelect(option)}
+                    onClick={() => handleSelect(safeOption)}
                   >
-                    <span className="truncate">{option.label}</span>
+                    <span className="truncate">{safeOption.label}</span>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           ) : (
             <div className="px-3 py-2 text-[12px] text-slate-500">No matching options</div>

@@ -103,8 +103,7 @@ const isAdminUser = (req) => {
   const role = String(req.user?.role || "").trim().toLowerCase();
   return role === "admin" || role === "super admin" || role === "superadmin";
 };
-const isAdmin001DashboardManager = (req) => String(req.user?.employee_id || "").trim().toUpperCase() === "ADMIN001";
-const canManageDashboards = (req) => isAdmin001DashboardManager(req);
+const canManageDashboards = (req) => isAdminUser(req);
 
 const ensureDashboardAccess = (req, res, userId) => {
   const requesterId = parseUserId(req.user?.id);
@@ -429,7 +428,7 @@ const getTrendQuery = ({ table, dateColumn, valueColumn, period }) => {
   `;
 };
 
-const fetchWidgetData = async ({ widget, period = "1W", userId = null, userEmployeeId = "" }) => {
+const fetchWidgetData = async ({ widget, period = "1W", userId = null, isAdmin = false }) => {
   if (
     widget?.visualization_type === "individual_ticket_count" ||
     widget?.visualization_type === "add_ticket_count" ||
@@ -440,9 +439,8 @@ const fetchWidgetData = async ({ widget, period = "1W", userId = null, userEmplo
     }
 
     const metricKey = String(widget?.metric_key || "").toLowerCase().trim();
-    const isAdmin001 = String(userEmployeeId || "").trim().toUpperCase() === "ADMIN001";
-    const ticketScopeWhere = isAdmin001 ? "1=1" : "user_id = $1";
-    const queryParams = isAdmin001 ? [] : [userId];
+    const ticketScopeWhere = isAdmin ? "1=1" : "user_id = $1";
+    const queryParams = isAdmin ? [] : [userId];
     const countQueryByMetric = {
       total: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere}`,
       open: `SELECT COUNT(*)::int AS ticket_count FROM ticketing_system.operator_tickets WHERE ${ticketScopeWhere} AND lower(trim(COALESCE(status, ''))) = 'open'`,
@@ -1019,7 +1017,7 @@ const handleMyDashboardPage = async (req, res) => {
     .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
   const data = [];
   for (const widget of widgets) {
-    data.push(await fetchWidgetData({ widget, period, userId, userEmployeeId: req.user?.employee_id }));
+    data.push(await fetchWidgetData({ widget, period, userId, isAdmin: isAdminUser(req) }));
   }
   return res.status(200).json({ user_id: userId, updated_at: config.updated_at, widgets, data });
 };
@@ -1068,7 +1066,7 @@ const handleGetMyPageData = async (req, res, pageKey = "default") => {
     .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
   const data = [];
   for (const widget of widgets) {
-    data.push(await fetchWidgetData({ widget, period, userId, userEmployeeId: req.user?.employee_id }));
+    data.push(await fetchWidgetData({ widget, period, userId, isAdmin: isAdminUser(req) }));
   }
   return res.status(200).json({
     user_id: userId,
@@ -1103,7 +1101,7 @@ const handleDeleteMyPage = async (req, res, pageKey) => {
 };
 
 const handleAssignPageToUser = async (req, res, userIdParam, pageKey = "default") => {
-  if (!canManageDashboards(req)) return jsonError(res, 403, "Only ADMIN001 can assign dashboard pages to other users");
+  if (!canManageDashboards(req)) return jsonError(res, 403, "Only Admin users can assign dashboard pages to other users");
   const targetUserId = parseUserId(userIdParam);
   if (!targetUserId) return jsonError(res, 400, "Valid userId is required");
   const widgets = await validateWidgetsPayload(req.body?.widgets, res);

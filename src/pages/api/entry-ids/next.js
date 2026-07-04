@@ -14,6 +14,15 @@ const ensureEntryIdTable = async (client) => {
   `);
 };
 
+const ensureEntryIdMigrationTable = async (client) => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS entry_id_sequence_migrations (
+      migration_key TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -27,7 +36,9 @@ export default async function handler(req, res) {
     width = 3,
     leadingHash = false,
   } = req.body || {};
-  const scope = buildEntryIdScope(department, typeName);
+  const scope = buildEntryIdScope(department, typeName, prefix);
+  const effectivePrefix = scope === "pp-global" ? "PP" : String(prefix || "ENT").trim().toUpperCase();
+  const effectiveWidth = scope === "pp-global" ? 4 : Number(width) || 3;
 
   if (!scope || !prefix) {
     return res.status(400).json({ message: "department, typeName, and prefix are required" });
@@ -38,6 +49,24 @@ export default async function handler(req, res) {
     client = await pool.connect();
     await client.query("BEGIN");
     await ensureEntryIdTable(client);
+    await ensureEntryIdMigrationTable(client);
+
+    if (scope === "pp-global") {
+      const migrationKey = "pp-global-reset-v1";
+      const migrationResult = await client.query(
+        `
+          INSERT INTO entry_id_sequence_migrations (migration_key)
+          VALUES ($1)
+          ON CONFLICT (migration_key) DO NOTHING
+          RETURNING migration_key
+        `,
+        [migrationKey]
+      );
+
+      if (migrationResult.rowCount > 0) {
+        await client.query(`DELETE FROM entry_id_sequences WHERE scope = $1`, [scope]);
+      }
+    }
 
     const result = await client.query(
       `
@@ -52,7 +81,7 @@ export default async function handler(req, res) {
           updated_at = NOW()
         RETURNING next_value - 1 AS sequence, prefix, width, leading_hash
       `,
-      [scope, prefix, Number(width) || 3, Boolean(leadingHash)]
+      [scope, effectivePrefix, effectiveWidth, Boolean(leadingHash)]
     );
 
     await client.query("COMMIT");

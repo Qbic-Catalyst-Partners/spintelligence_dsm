@@ -42,7 +42,7 @@ const comberDepartmentTypes = [
 export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
 const COMBER_ENTRY_ID_CONFIG = {
     "Ribbon Lap CV Data Entry": { prefix: "RLC", width: 4, routePath: "/comber/lap-cv" },
-    "Nati Data Entry": { prefix: "CNT", width: 4, routePath: "/comber/nati-data-entry" },
+    "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/comber/nati-data-entry" },
     "U% Data Entry": { prefix: "COU", width: 4, routePath: "/comber/uqc" },
     "Comber Nolis %": { prefix: "CNP",  },
 };
@@ -85,7 +85,7 @@ function Comber() {
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
     const selectedType = typeOptions.find((item) => item.id === checkingType)?.name || "";
-    const { entryId, reserveEntryId } = useDatabaseEntryId({
+    const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
         department: "Comber",
         typeName: selectedType,
         config: getComberEntryConfig(selectedType),
@@ -109,6 +109,9 @@ function Comber() {
         }
     }, [data, dispatch]);
     const handleSubmit = useCallback(async () => {
+        if (entryIdLoading || !entryId) {
+            return;
+        }
         try {
             const ok = await childRef.current?.submit?.();
             if (ok) {
@@ -126,7 +129,7 @@ function Comber() {
         } catch (e) {
             // child handles its own errors
         }
-    }, [reserveEntryId, selectedType, entryId, previewItems, user]);
+    }, [entryId, entryIdLoading, previewItems, reserveEntryId, selectedType, user]);
 
     const handleCalculate = useCallback(() => {
         childRef.current?.calculateStats?.();
@@ -137,19 +140,22 @@ function Comber() {
     }, []);
 
     const openPreview = useCallback(() => {
+        if (entryIdLoading || !entryId) return;
         const valid = childRef.current?.validate ? childRef.current.validate() : true;
         if (valid === false) return;
 
         const items = childRef.current?.getPreviewData ? childRef.current.getPreviewData() : [];
         const headerItems = [
             { label: "Type", value: selectedType || "Select Type" },
+            { label: "Entry ID", value: entryId || "-" },
         ];
         setPreviewItems([...headerItems, ...items]);
         setShowPreview(true);
-    }, [selectedType]);
+    }, [entryId, entryIdLoading, selectedType]);
 
     const confirmSubmit = useCallback(async () => {
         setShowPreview(false);
+        if (entryIdLoading || !entryId) return;
         try {
             const ok = await childRef.current?.submit?.();
             if (ok) {
@@ -167,7 +173,7 @@ function Comber() {
         } catch (e) {
             // child handles errors
         }
-    }, [entryId, previewItems, reserveEntryId, selectedType, user]);
+    }, [entryId, entryIdLoading, previewItems, reserveEntryId, selectedType, user]);
 
     return (
         <div className={styles["cb-page"]}>
@@ -207,13 +213,13 @@ function Comber() {
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
-                                <Footer
-                                    onBack={() => router.push("/departments/quality-control")}
-                                    onClear={handleClear}
-                                    onSave={openPreview}
-                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
-                                    disabled={isLoading}
-                                />
+                                    <Footer
+                                        onBack={() => router.push("/departments/quality-control")}
+                                        onClear={handleClear}
+                                        onSave={openPreview}
+                                        saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                        disabled={isLoading || entryIdLoading}
+                                    />
                             </div>
                         </>
                     ) : selectedType === "U% Data Entry" ? (
@@ -227,13 +233,13 @@ function Comber() {
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
-                                <Footer
-                                    onBack={() => router.push("/departments/quality-control")}
-                                    onClear={handleClear}
-                                    onSave={openPreview}
-                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
-                                    disabled={isLoading}
-                                />
+                                    <Footer
+                                        onBack={() => router.push("/departments/quality-control")}
+                                        onClear={handleClear}
+                                        onSave={openPreview}
+                                        saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                        disabled={isLoading || entryIdLoading}
+                                    />
                             </div>
                         </>
                     ) : selectedType === "Comber Nolis %" ? (
@@ -245,16 +251,17 @@ function Comber() {
                                 typeOptions={typeOptions}
                                 docType="noils"
                                 entryId={entryId}
+                                reserveEntryId={reserveEntryId}
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
-                                <Footer
-                                    onBack={() => router.push("/departments/quality-control")}
-                                    onClear={handleClear}
-                                    onSave={openPreview}
-                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
-                                    disabled={isLoading}
-                                />
+                                    <Footer
+                                        onBack={() => router.push("/departments/quality-control")}
+                                        onClear={handleClear}
+                                        onSave={openPreview}
+                                        saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                        disabled={isLoading || entryIdLoading}
+                                    />
                             </div>
                         </>
                     ) : selectedType === "U% Data Entry" ? (
@@ -269,13 +276,13 @@ function Comber() {
                             />
 
                             <div style={{ margin: "16px -24px 0 -24px" }}>
-                                <Footer
-                                    onBack={() => router.push("/departments/quality-control")}
-                                    onClear={handleClear}
-                                    onSave={openPreview}
-                                    saveLabel={isLoading ? "Submitting..." : "Save Record"}
-                                    disabled={isLoading}
-                                />
+                                    <Footer
+                                        onBack={() => router.push("/departments/quality-control")}
+                                        onClear={handleClear}
+                                        onSave={openPreview}
+                                        saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                        disabled={isLoading || entryIdLoading}
+                                    />
                             </div>
                         </>
                     ) : (
@@ -360,7 +367,7 @@ function Comber() {
                     </tr>
                 ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
                     <tr
-                        key={entry.id}
+                        key={`${entry.id ?? "row"}-${i}`}
                         style={{
                             backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
                         }}

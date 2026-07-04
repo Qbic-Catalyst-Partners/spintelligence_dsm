@@ -8,7 +8,7 @@ import {
 import { fetchAutoconerDrumWiseMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/drumWiseAppearance.module.css";
-import { sanitizeIntegerInput } from "@/utils/inputValidation";
+import { sanitizeDrumRangeInput } from "@/utils/inputValidation";
 
 
 const getTodayDate = () => {
@@ -33,11 +33,17 @@ const autoconerOptions = [
   { value: "AC05", label: "AC05" },
 ];
 
+const isValidDrumRange = (from, to) => {
+  const start = Number(from);
+  const end = Number(to);
+  return Number.isInteger(start) && Number.isInteger(end) && start >= 1 && end <= 100 && start < end;
+};
+
 const buildRowsFromRange = (from, to) => {
   const start = Number(from) || 1;
   const end = Number(to) || start;
-  if (end < start) {
-    return [{ drumNo: String(start), ok: 1, notOk: 0 }];
+  if (!isValidDrumRange(from, to)) {
+    return [];
   }
   return Array.from({ length: end - start + 1 }, (_, index) => ({
     drumNo: String(start + index),
@@ -149,6 +155,11 @@ function DrumWiseAppearance({
     if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
     if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
     if (!String(drumTo || "").trim()) nextErrors.drumTo = true;
+    if (!isValidDrumRange(drumFrom, drumTo)) {
+      nextErrors.drumFrom = true;
+      nextErrors.drumTo = true;
+      nextErrors.rows = true;
+    }
     if (!String(remarks || "").trim()) nextErrors.remarks = true;
     if (!rows.length) nextErrors.rows = true;
     setErrors(nextErrors);
@@ -207,7 +218,7 @@ function DrumWiseAppearance({
       if (!current.length) return buildRowsFromRange(drumFrom, drumTo);
       const start = Number(drumFrom);
       const end = Number(drumTo);
-      if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+      if (!isValidDrumRange(drumFrom, drumTo)) {
         return current;
       }
       if (
@@ -447,11 +458,11 @@ function DrumWiseAppearance({
           <div className={styles.doubleField}>
             <div className={styles.field}>
               <label>Drum From/To</label>
-              <input value={drumFrom} onChange={(e) => setDrumFrom(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.drumFrom || errors.rows)} />
+              <input type="number" min="1" max="100" step="1" inputMode="numeric" value={drumFrom} onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))} style={errorStyle(errors.drumFrom || errors.rows)} />
             </div>
             <div className={styles.field}>
               <label className={styles.hiddenLabel}>To</label>
-              <input value={drumTo} onChange={(e) => setDrumTo(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.drumTo || errors.rows)} />
+              <input type="number" min="1" max="100" step="1" inputMode="numeric" value={drumTo} onChange={(e) => setDrumTo(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))} style={errorStyle(errors.drumTo || errors.rows)} />
             </div>
           </div>
         </div>

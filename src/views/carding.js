@@ -44,7 +44,7 @@ const CARDING_ENTRY_ID_CONFIG = {
     "Between & Within Card Data Entry": { prefix: "BWC", width: 4, routePath: "/carding/between-within-card" },
     "Thick place & CV": { prefix: "CTP", width: 4, routePath: "/carding/card-thick-place" },
     "Trials Data Entry Form": { prefix: "TRI", width: 4, routePath: "/carding/trials" },
-    "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/carding/nati-data" },
+    "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/carding/nati-data-entry" },
     "U% Data Entry": { prefix: "CAU", width: 4, routePath: "/carding/uqc" },
     "Card DFK Pressure Checking": { prefix: "DFK", width: 4, routePath: "/carding/dfk-pressure" },
     WheelChange: { prefix: "WHL", width: 4, routePath: "/carding/change-control" },
@@ -54,6 +54,7 @@ const CARDING_ENTRY_ID_CONFIG = {
 const getCardingEntryConfig = (typeName) =>
     CARDING_ENTRY_ID_CONFIG[typeName] || { prefix: "CAR" };
 const DEFAULT_CARDING_STATE = { uqcEntries: [], listLoading: false };
+const PROCESS_PARAMETER_CREATED_IDS_KEY = "mixing-process-parameter-created-ids";
 
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
@@ -118,10 +119,7 @@ function Carding() {
         setShowPreview(false);
         setShowSuccess(false);
 
-        const nextRoute = selected ? getCardingEntryConfig(selected.name)?.routePath : "";
-        if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
-            router.push(nextRoute);
-        }
+        // Keep the selection in place without forcing a route change.
     };
 
     const selectedType =
@@ -157,6 +155,31 @@ function Carding() {
         accent: isDarkMode ? "#93c5fd" : "#1976d2",
     };
 
+    const storeCreatedProcessParameterId = (response) => {
+        const createdId = String(
+            response?.param_id ||
+                response?.entry_id ||
+                response?.process_parameter_id ||
+                response?.qc_id ||
+                response?.id ||
+                ""
+        ).trim();
+
+        if (!createdId || typeof window === "undefined") return;
+
+        try {
+            const raw = window.localStorage.getItem(PROCESS_PARAMETER_CREATED_IDS_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            const existing = Array.isArray(parsed)
+                ? parsed.map((value) => String(value || "").trim()).filter(Boolean)
+                : [];
+            window.localStorage.setItem(
+                PROCESS_PARAMETER_CREATED_IDS_KEY,
+                JSON.stringify(Array.from(new Set([createdId, ...existing])))
+            );
+        } catch {}
+    };
+
     const openPreview = () => {
         const valid = childRef.current?.validate ? childRef.current.validate() : true;
         if (valid === false) {
@@ -172,20 +195,27 @@ function Carding() {
 
     const confirmSubmit = async () => {
         setShowPreview(false);
-        const ok = await childRef.current?.submit?.();
-        if (ok) {
-            await recordSubmittedNotebook({
-                department: "Quality Control",
-                subDepartment: "Carding",
-                notebookName: selectedType,
-                entryId,
-                lotNo,
-                childRef,
-                previewItems,
-                user,
-            });
+        try {
+            const ok = await childRef.current?.submit?.();
+            if (ok) {
+                storeCreatedProcessParameterId(ok);
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    notebookName: selectedType,
+                    entryId,
+                    lotNo,
+                    childRef,
+                    previewItems,
+                    user,
+                });
+                await reserveEntryId();
+                setShowSuccess(true);
+            }
+        } catch (e) {
+            // submission error is shown via the global error modal; refresh the
+            // reserved entry ID so a duplicate-ID rejection doesn't repeat on retry
             await reserveEntryId();
-            setShowSuccess(true);
         }
     };
 
@@ -349,6 +379,7 @@ function Carding() {
                             onTypeChange={handleTypeChange}
       showForm={selectedType === "Thick place & CV"}
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
                         />
                     ) : null}
 
@@ -442,7 +473,6 @@ function Carding() {
                                         "Date",
                                         "Shift",
                                         "Variety",
-                                        "Department",
                                         "MC No.",
                                         "U%",
                                         "CVM",
@@ -470,7 +500,7 @@ function Carding() {
                             <tbody>
                                 {listLoading ? (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted }}>
+                                        <td colSpan={9} style={{ padding: "14px", color: entryTableTheme.muted }}>
                                             Loading...
                                         </td>
                                     </tr>
@@ -485,7 +515,6 @@ function Carding() {
                                             entry.entry_date ? new Date(entry.entry_date).toLocaleDateString("en-GB") : "-",
                                             entry.shift || "-",
                                             entry.variety || "-",
-                                            entry.department || "-",
                                             entry.mc_no || "-",
                                             entry.u_percent || "-",
                                             entry.cvm || "-",
@@ -508,7 +537,7 @@ function Carding() {
                                     </tr>
                                 )) : (
                                     <tr>
-                                        <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted }}>
+                                        <td colSpan={9} style={{ padding: "14px", color: entryTableTheme.muted }}>
                                             No entries found.
                                         </td>
                                     </tr>

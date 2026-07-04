@@ -22,6 +22,7 @@ function CardThickPlaceEntry({
     selectedType,
     onTypeChange,
     entryId = "",
+    reserveEntryId,
     showForm,
     hideTypeField = false,
 }) {
@@ -204,6 +205,9 @@ function CardThickPlaceEntry({
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");
             setIsError(true);
+            // refresh the reserved entry ID so a duplicate-ID rejection
+            // doesn't repeat on retry
+            await reserveEntryId?.();
         }
     };
 

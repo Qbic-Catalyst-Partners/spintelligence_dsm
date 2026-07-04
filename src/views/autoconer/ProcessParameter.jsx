@@ -1,23 +1,25 @@
 import { createPortal } from "react-dom";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import SearchableSelect from "@/components/SearchableSelect";
-
-import {
-  fetchAutoconerConsigneeMaster,
-  fetchAutoconerProcessParameters,
-  submitAutoconerProcessParameter,
-} from "@/apis/autoconer";
-import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
+import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
-  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { getNextProcessParameterId, normalizeProcessParameterId } from "@/utils/processParameterId";
+import {
+  normalizeProcessParameterId,
+  reserveGlobalProcessParameterId,
+  resolveProcessParameterDisplayId,
+} from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
+import {
+  submitAutoconerProcessParameter,
+  updateAutoconerProcessParameter,
+  fetchAutoconerProcessParameters,
+} from "@/apis/autoconer";
 import styles from "@/styles/AutoconerProcessParameter.module.css";
 
 
@@ -109,6 +111,9 @@ const displaySavedValue = (value) => {
   return normalized && normalized !== "-" ? normalized : "0";
 };
 
+const getDisplayEntryId = (entry, fallback = "") =>
+  resolveProcessParameterDisplayId(entry, fallback);
+
 const parseNumberValue = (value, decimals = 2) => {
   const parsed = Number(String(value ?? "").trim());
   if (Number.isNaN(parsed)) return decimals === 0 ? 0 : "0.00";
@@ -120,7 +125,7 @@ const mapApiEntryToVersion = (entry) => ({
   label: formatDisplayDate(entry?.creation_date),
   data: {
     versionId: getEntryId(entry),
-    paramId: normalizeProcessParameterId(entry?.entry_id || entry?.ins_code || ""),
+    paramId: getDisplayEntryId(entry, entry?.ins_code || ""),
     type: "Process Parameter",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
@@ -169,7 +174,7 @@ const isVersionComplete = (version) =>
   );
 
 const buildPayload = (form, entryId = "") => ({
-  scope: "process-parameter",
+  entry_id: (form.paramId || entryId) || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -203,6 +208,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     types = [],
     savedVersionsTargetId = "",
     entryId = "",
+    nextEntryIdPreview = "",
   },
   ref
 ) {
@@ -211,73 +217,50 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [form, setForm] = useState(() => createDefaultForm(safeSelectedType));
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
-  const [loadingVersions, setLoadingVersions] = useState(false);
-  const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
-  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("process-parameter");
-  const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
+  const [previewNextId, setPreviewNextId] = useState("");
 
-  const countOptions = useMemo(
-    () =>
-      buildProcessParameterOptions(
-        masterCountOptions.length
-          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
-          : PROCESS_PARAMETER_COUNT_OPTIONS,
-        versions.map((version) => version?.data?.countName),
-        form.countName
-      ),
-    [form.countName, masterCountOptions, versions]
-  );
-
-  const consigneeOptions = useMemo(
-    () =>
-      buildProcessParameterOptions(
-        PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
-        [
-          ...masterConsigneeOptions,
-          ...versions.map((version) => version?.data?.consigneeName),
-        ],
-        form.consigneeName
-      ),
-    [form.consigneeName, masterConsigneeOptions, versions]
+  const { countOptions: masterCountOptions } = useMixingCountOptions();
+  const countOptions = buildProcessParameterOptions(
+    masterCountOptions.length
+      ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+      : PROCESS_PARAMETER_COUNT_OPTIONS,
+    [],
+    form.countName
   );
 
   const loadVersions = async () => {
-    setLoadingVersions(true);
-    try {
-      const response = await fetchAutoconerProcessParameters({ page: 1, limit: 10 });
-      const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
-      const nextVersions = rows
-        .map(mapApiEntryToVersion)
-        .sort((left, right) => Number(right.id) - Number(left.id));
+    const response = await fetchAutoconerProcessParameters({ page: 1, limit: 200 });
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const nextVersions = rows
+      .map(mapApiEntryToVersion)
+      .sort((left, right) => Number(right.id) - Number(left.id));
 
-      setVersions(nextVersions);
-      setVersionsError("");
-      const nextProcessParameterId = getNextProcessParameterId(nextVersions, "PP", 4);
-      setSavedProcessParameterId(nextProcessParameterId);
+    setVersions(nextVersions);
 
-      if (nextVersions.length > 0) {
-        const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
-        setForm((current) => {
-          const activeVersion =
-            nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: "", paramId: nextProcessParameterId, type: safeSelectedType };
+    if (nextVersions.length > 0) {
+      const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
+      const matchByEntryId = entryId
+        ? nextVersions.find(
+            (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(entryId)
+          )
+        : null;
+      if (matchByEntryId) {
+        setForm({
+          ...matchByEntryId.data,
+          versionId: matchByEntryId.id,
+          paramId: entryId || matchByEntryId.data.paramId || "",
+          type: safeSelectedType,
         });
-        setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
-        setForm(createDefaultForm(safeSelectedType));
-        setExpandedVersionId(null);
-        setSavedProcessParameterId("");
+        setForm({ ...createDefaultForm(safeSelectedType), paramId: entryId || "" });
       }
-    } catch (error) {
-      setVersions([]);
+      setExpandedVersionId(latestCompleteVersion?.id || null);
+    } else {
+      setForm({ ...createDefaultForm(safeSelectedType), paramId: entryId || "" });
       setExpandedVersionId(null);
-      setVersionsError(error.message || "Unable to load saved versions.");
-    } finally {
-      setLoadingVersions(false);
     }
   };
 
@@ -290,23 +273,34 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   }, []);
 
   useEffect(() => {
-    let active = true;
-    const loadConsigneeOptions = async () => {
-      const options = await fetchAutoconerConsigneeMaster({ screen: "process-parameter" });
-      if (active) setMasterConsigneeOptions(Array.isArray(options) ? options : []);
-    };
-    loadConsigneeOptions();
+    if (entryId) return;
+    if (nextEntryIdPreview) {
+      setPreviewNextId(nextEntryIdPreview);
+      return;
+    }
+    let cancelled = false;
+    reserveGlobalProcessParameterId("PP", 4).then((nextId) => {
+      if (!cancelled) setPreviewNextId(nextId);
+    });
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, []);
+  }, [entryId, nextEntryIdPreview]);
 
   useEffect(() => {
     setForm((current) => ({
       ...current,
       type: safeSelectedType || "Process Parameter",
     }));
-  }, [selectedType]);
+  }, [safeSelectedType]);
+
+  useEffect(() => {
+    if (!entryId) return;
+    setForm((current) => ({
+      ...current,
+      paramId: entryId,
+    }));
+  }, [entryId]);
 
   const clearError = (field) => {
     setErrors((current) => {
@@ -317,6 +311,16 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     });
   };
 
+  const findLatestVersionByCountName = (countName) => {
+    const normalized = String(countName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      versions
+        .filter((version) => String(version.data.countName || "").trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.data.creationDate || 0) - new Date(a.data.creationDate || 0))[0] || null
+    );
+  };
+
   const handleFieldChange = (field, value) => {
     const fieldDef = fieldDefs.find((item) => item.key === field);
     const nextValue = fieldDef?.numeric
@@ -324,6 +328,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       : value;
 
     setForm((current) => {
+      if (field === "countName" && !entryId && !current.versionId) {
+        const match = findLatestVersionByCountName(nextValue);
+        if (match) {
+          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId, type: safeSelectedType };
+        }
+      }
+
       const nextForm = { ...current, [field]: nextValue };
       if (
         (field === "countName" || field === "consigneeName") &&
@@ -338,15 +349,13 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const handleVersionSelect = (version) => {
-    const nextProcessParameterId = getNextProcessParameterId(versions, "PP", 4);
     setForm({
       ...createDefaultForm(safeSelectedType),
       ...version.data,
-      versionId: "",
-      paramId: nextProcessParameterId,
+      versionId: version.id,
+      paramId: entryId || version.data.paramId || getDisplayEntryId(version, version.id) || "",
       type: safeSelectedType,
     });
-    setSavedProcessParameterId(nextProcessParameterId);
     setErrors({});
     setSubmitError("");
   };
@@ -377,7 +386,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     { label: "Type", value: safeSelectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
+    { label: "Process Parameter ID", value: form.paramId || entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -391,35 +400,21 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload(form, entryId);
-      const response = await submitAutoconerProcessParameter(payload);
-      setSavedProcessParameterId(
-        String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
-      );
+      const response = form.versionId
+        ? await updateAutoconerProcessParameter(form.versionId, payload)
+        : await submitAutoconerProcessParameter(payload);
 
-      try {
-        await createThresholdViolationTickets({
-          department: "Quality Control",
-          subDepartment: "Autoconer",
-          screenName: safeSelectedType || "Process Parameter",
-          machineName: form.machineNo || safeSelectedType || "Process Parameter",
-          values: fieldDefs.map((field) => ({
-            label: field.label,
-            value: form[field.key],
-          })),
-        });
-      } catch (ticketError) {
-        console.error("Threshold ticket generation failed:", ticketError);
-      }
+      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
+      setForm((current) => ({
+        ...current,
+        paramId: nextParamId,
+      }));
+      registerProcessParameterId(response, "Autoconer");
 
       await loadVersions();
       return true;
     } catch (error) {
-        const errorMessage = String(error?.message || "");
-        setSubmitError(
-        /duplicate entry_id/i.test(errorMessage)
-          ? "Process Parameter ID already exists. Please clear and save again to generate next ID."
-            : errorMessage || "Unable to submit the form."
-        );
+      setSubmitError(error?.message || "Unable to submit the form.");
       return false;
     } finally {
       setIsSubmitting(false);
@@ -430,7 +425,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     setForm(createDefaultForm(safeSelectedType));
     setErrors({});
     setSubmitError("");
-    setSavedProcessParameterId("");
   };
 
   useImperativeHandle(ref, () => ({
@@ -447,11 +441,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   const historySection = (
     <div className={styles.historyWrap}>
-      {loadingVersions ? <div className={styles.infoBox}>Loading saved versions...</div> : null}
-      {!loadingVersions && versionsError ? (
-        <div className={styles.errorMessage}>{versionsError}</div>
-      ) : null}
-      {!loadingVersions && !versionsError && versions.length === 0 ? (
+      {versions.length === 0 ? (
         <div className={styles.infoBox}>No saved versions found in the database.</div>
       ) : null}
 
@@ -465,7 +455,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <div className={`${styles.versionHeader} ${isActive ? styles.versionHeaderActive : ""}`}>
               <button type="button" className={styles.versionCell} onClick={() => handleVersionSelect(version)}>
                 <span className={styles.cellLabel}>Param ID</span>
-                <span className={styles.cellValue}>{displaySavedValue(version.data.paramId)}</span>
+                <span className={styles.cellValue}>{displaySavedValue(version.data.paramId || version.id)}</span>
               </button>
 
               <button type="button" className={styles.versionCell} onClick={() => handleVersionSelect(version)}>
@@ -542,26 +532,20 @@ const ProcessParameter = forwardRef(function ProcessParameter(
               value={form.countName || ""}
               onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
-              placeholder={
-                loadingCountOptions
-                  ? "Loading count names..."
-                  : countOptionsError
-                    ? "Search or type count name"
-                    : "Search or select count name"
-              }
+              placeholder="Search or select count name"
               ariaLabel="Count Name"
             />
           </div>
 
           <div className={styles.fieldGroup}>
             <label>Consignee Name</label>
-            <SearchableSelect
+            <input
+              type="text"
               className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
               value={form.consigneeName || ""}
-              onChange={(value) => handleFieldChange("consigneeName", value)}
-              options={consigneeOptions}
-              placeholder="Search or select consignee name"
-              ariaLabel="Consignee Name"
+              onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
+              placeholder="Type consignee name"
+              aria-label="Consignee Name"
             />
           </div>
 
@@ -570,7 +554,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             <input
               type="text"
               className={styles.field}
-              value={form.versionId ? (form.paramId || entryId || savedProcessParameterId || "") : (entryId || savedProcessParameterId || form.paramId || "")}
+              value={form.paramId || entryId || previewNextId || "Generating..."}
               readOnly
               disabled
             />

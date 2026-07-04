@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
+import { extractTesterFromLines, extractTesterFromText, getTesterValueFromRow, mergeTesterIntoRows } from "@/utils/ocrTester";
 
 const getBackendBaseUrl = () =>
   String(
@@ -29,6 +30,34 @@ const hasAnyRowArray = (payload) =>
     const value = getPath(payload, path);
     return Array.isArray(value) && value.length > 0;
   });
+
+const collectPayloadRows = (payload) =>
+  ROW_SOURCE_KEYS.flatMap((path) => {
+    const value = getPath(payload, path);
+    return Array.isArray(value) ? value : [];
+  });
+
+const mergeTesterIntoPayloadRows = (payload, tester) => {
+  if (!tester) return payload;
+  const nextPayload = { ...payload };
+
+  ["raw_tables", "extracted_tables", "data", "json_output"].forEach((key) => {
+    if (Array.isArray(nextPayload[key])) {
+      nextPayload[key] = mergeTesterIntoRows(nextPayload[key], tester);
+    }
+  });
+
+  if (isPlainObject(nextPayload.result)) {
+    nextPayload.result = { ...nextPayload.result };
+    ["raw_tables", "extracted_tables", "data", "json_output"].forEach((key) => {
+      if (Array.isArray(nextPayload.result[key])) {
+        nextPayload.result[key] = mergeTesterIntoRows(nextPayload.result[key], tester);
+      }
+    });
+  }
+
+  return nextPayload;
+};
 
 const readRequestBody = async (req) => {
   const chunks = [];
@@ -182,9 +211,53 @@ const groupPdfLines = (items) => {
 };
 
 const valueAfterLabel = (cells, label) => {
-  const pattern = new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*:\\s*(.*)$`, "i");
-  const cell = cells.find((item) => pattern.test(item));
-  return cell?.match(pattern)?.[1]?.trim() || "";
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^\\s*${escapedLabel}\\s*(?:[:\\-]\\s*)?(.*)$`, "i");
+  for (let index = 0; index < cells.length; index += 1) {
+    const cell = cells[index];
+    const match = cell.match(pattern);
+    if (match) {
+      const captured = String(match[1] || "").trim();
+      if (captured) return captured;
+      const nextValue = cells.slice(index + 1).find((item) => String(item || "").trim());
+      if (nextValue) return String(nextValue).trim();
+    }
+  }
+  return "";
+};
+
+const valueFromLabelLine = (lines, label) => {
+  for (const line of lines) {
+    const text = line.cells.join(" ").replace(/\s+/g, " ").trim();
+    const value = extractLabelValue(text, [label]);
+    if (value) return value;
+  }
+  return "";
+};
+
+const extractValueFromLines = (lines, labels) => {
+  for (const label of labels) {
+    const lineValue = valueFromLabelLine(lines, label);
+    if (lineValue) return lineValue;
+  }
+  return "";
+};
+
+const extractValueFromSection = (lines, labels) => {
+  const allCells = lines.flatMap((line) => line.cells);
+
+  for (const label of labels) {
+    const lineValue = extractValueFromLines(lines, [label]);
+    if (lineValue) return lineValue;
+
+    const cellValue = valueAfterLabel(allCells, label);
+    if (cellValue) return cellValue;
+
+    const joinedValue = extractLabelValue(allCells.join(" "), [label]);
+    if (joinedValue) return joinedValue;
+  }
+
+  return "";
 };
 
 const firstValueAfterLabels = (cells, labels) => {
@@ -195,13 +268,63 @@ const firstValueAfterLabels = (cells, labels) => {
   return "";
 };
 
+const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
+
+const KNOWN_OCR_LABELS = [
+  "Total Test",
+  "Number of Entries (N)",
+  "Tester",
+  "Tester Name",
+  "User",
+  "Std. Noils %",
+  "Std Noils %",
+  "Std. Nolis %",
+  "Noils %",
+  "Remark",
+  "Sample No",
+  "Sliver Wt",
+  "Noils Wt",
+  "Test ID",
+  "Count System",
+  "Machine",
+  "Length Unit",
+  "Length",
+  "Shift",
+  "Process",
+  "Date",
+  "Average Weight",
+  "Weight (Max)",
+  "Weight (Min)",
+  "Range",
+  "SD",
+  "CV",
+];
+
+const extractLabelValue = (text = "", labels = []) => {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  if (!source) return "";
+
+  for (const label of labels) {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(
+      `\\b${escapedLabel}\\b\\s*(?:[:\\-]\\s*)?(.+?)(?=\\s+\\b(?:${KNOWN_OCR_LABELS.map((item) => item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b\\s*(?:[:\\-]|$)|$)`,
+      "i"
+    );
+    const match = source.match(pattern);
+    const value = String(match?.[1] || "").trim();
+    if (value) return value;
+  }
+
+  return "";
+};
+
 const parseNoilsPdfRows = (lines) => {
   const rows = [];
   const allCells = lines.flatMap((line) => line.cells);
   const totalTest = valueAfterLabel(allCells, "Total Test");
   const stdNoils = valueAfterLabel(allCells, "Std. Noils%") || valueAfterLabel(allCells, "Std. Noils %");
   const noilsPercent = valueAfterLabel(allCells, "Noils%");
-  const tester = firstValueAfterLabels(allCells, ["Tester", "Tester Name", "User"]);
+  const tester = extractTesterFromLines(lines);
 
   rows.push({
     "Row Type": "Meta",
@@ -250,7 +373,7 @@ const parseStretchPdfRows = (lines) => {
     const allCells = section.flatMap((item) => item.cells);
     const tableNo = String(tableIndex + 1);
     const totalTest = valueAfterLabel(allCells, "Total Test");
-    const tester = firstValueAfterLabels(allCells, ["Tester", "Tester Name", "User"]);
+    const tester = extractTesterFromLines(section);
 
     rows.push({
       "Row Type": "Meta",
@@ -292,6 +415,16 @@ const parseStretchPdfRows = (lines) => {
   return rows.filter((row) => Object.values(row).some(Boolean));
 };
 
+const parseBwcPdfRows = (lines) => {
+  const row = {
+    "Row Type": "Meta",
+    "Test ID": valueFromLabelLine(lines, "Test ID"),
+    Date: valueFromLabelLine(lines, "Date"),
+  };
+
+  return Object.values(row).some(Boolean) ? [row] : [];
+};
+
 const parseAPercentPdfRows = (lines) => {
   const rows = [];
   const allCells = lines.flatMap((line) => line.cells);
@@ -310,7 +443,7 @@ const parseAPercentPdfRows = (lines) => {
     "A% (N-1)": valueAfterLabel(allCells, "A% (N-1)"),
     "A% (N+1)": valueAfterLabel(allCells, "A% (N+1)"),
     Date: valueAfterLabel(allCells, "Date"),
-    Tester: firstValueAfterLabels(allCells, ["Tester", "Tester Name", "User"]),
+    Tester: extractTesterFromLines(lines),
     Shift: valueAfterLabel(allCells, "Shift"),
     Process: valueAfterLabel(allCells, "Process"),
     Remark: valueAfterLabel(allCells, "Remark"),
@@ -343,11 +476,12 @@ const parseAPercentPdfRows = (lines) => {
 };
 
 const extractRowsFromPdf = (pdfBuffer, docType) => {
-  if (!pdfBuffer || !["noils", "strech", "a_percent"].includes(docType)) return [];
+  if (!pdfBuffer || !["noils", "strech", "a_percent", "apct", "bwc"].includes(docType)) return [];
 
   const lines = groupPdfLines(extractPdfTextItems(pdfBuffer));
+  if (docType === "bwc") return parseBwcPdfRows(lines);
   if (docType === "noils") return parseNoilsPdfRows(lines);
-  if (docType === "a_percent") return parseAPercentPdfRows(lines);
+  if (docType === "a_percent" || docType === "apct") return parseAPercentPdfRows(lines);
   return parseStretchPdfRows(lines);
 };
 
@@ -391,18 +525,39 @@ export default async function handler(req, res) {
     if (upstreamContentType.includes("application/json")) {
       const payload = JSON.parse(upstreamBody.toString("utf8") || "{}");
       const { fields = {}, files = {} } = parseMultipartBody(requestBody, contentType);
-      const fallbackRows = hasAnyRowArray(payload) ? [] : extractRowsFromPdf(files.file?.buffer, fields.doc_type || payload.doc_type);
+      const extractedRows = extractRowsFromPdf(files.file?.buffer, fields.doc_type || payload.doc_type);
+      const fallbackRows = hasAnyRowArray(payload) ? [] : extractedRows;
+      const parsedPdfLines = groupPdfLines(extractPdfTextItems(files.file?.buffer || Buffer.alloc(0)));
+      const parsedRawText = parsedPdfLines.map((line) => line.cells.join(" ")).join("\n");
+      const testerFromRows = [...collectPayloadRows(payload), ...extractedRows].find((row) => getTesterValueFromRow(row));
+      const testerFallback = extractTesterFromLines(parsedPdfLines) || extractTesterFromText(payload.raw_text || payload.text || parsedRawText);
+      const tester = getTesterValueFromRow(testerFromRows) || testerFallback;
 
       if (fallbackRows.length) {
         return res.status(upstream.status).json({
           ...payload,
-          data: fallbackRows,
-          raw_tables: fallbackRows,
+          data: mergeTesterIntoRows(fallbackRows, tester),
+          raw_tables: mergeTesterIntoRows(fallbackRows, tester),
+          raw_text: payload.raw_text || parsedRawText,
+          meta: { tester },
           fallback_source: "embedded_pdf_text",
         });
       }
 
-      return res.status(upstream.status).json(payload);
+      if (tester) {
+        const patchedPayload = mergeTesterIntoPayloadRows(payload, tester);
+        return res.status(upstream.status).json({
+          ...patchedPayload,
+          raw_text: payload.raw_text || parsedRawText,
+          meta: { tester },
+          fallback_source: payload.fallback_source || "embedded_pdf_text_tester",
+        });
+      }
+
+      return res.status(upstream.status).json({
+        ...payload,
+        meta: { tester: "" },
+      });
     }
 
     res.status(upstream.status);

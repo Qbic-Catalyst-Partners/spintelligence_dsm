@@ -50,26 +50,23 @@ const AUTOCONER_ENTRY_ID_CONFIG = {
   "Process Parameter": {
     prefix: "PP",
     width: 4,
-    routePath: "/autoconer",
     fetchPath: "/autoconer/process-parameter",
     pagePath: "/autoconer?type=Process%20Parameter",
-    scope: "process-parameter",
+    scope: "pp-global",
   },
   "PP - Autoconer Q2": {
     prefix: "PP",
     width: 4,
-    routePath: "/autoconer",
     fetchPath: "/autoconer/q2",
     pagePath: "/autoconer?type=PP%20-%20Autoconer%20Q2",
-    scope: "q2",
+    scope: "pp-global",
   },
   "PP - Autoconer Q3": {
     prefix: "PP",
     width: 4,
-    routePath: "/autoconer",
     fetchPath: "/autoconer/q3",
     pagePath: "/autoconer?type=PP%20-%20Autoconer%20Q3",
-    scope: "q3",
+    scope: "pp-global",
   },
   "Rewinding Study": {
     prefix: "ARW",
@@ -156,7 +153,7 @@ function Autoconer() {
     () => normalizeTypeOptionsForChildren(typeOptions),
     [typeOptions]
   );
-  const [checkingType, setCheckingType] = useState(typeOptions[0]?.name || "");
+  const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -164,25 +161,35 @@ function Autoconer() {
   const [validationMessage, setValidationMessage] = useState("");
   const [currentDateLabel, setCurrentDateLabel] = useState("");
   const [isMounted, setIsMounted] = useState(false);
-  const selectedType = useMemo(
-    () => formatTypeValue(checkingType),
-    [checkingType, typeOptions]
-  );
+  const selectedType = useMemo(() => {
+    const current = typeOptions.find((item) =>
+      [item.name, ...(item.aliases || [])]
+        .map(normalizeTypeName)
+        .includes(normalizeTypeName(selectedTypeName))
+    );
+    return formatTypeValue(current?.name || selectedTypeName);
+  }, [selectedTypeName, typeOptions]);
   const useParentEntryId =
-    selectedType === "Process Parameter" ||
-    selectedType === "Rewinding Study" ||
-    selectedType === "Cone Density" ||
-    selectedType === "Cone Packing Audit" ||
-    selectedType === "Lycra Checking" ||
-    selectedType === "Count Wise Cuts Record" ||
-    selectedType === "Splice Strength" ||
-    selectedType === "Drum wise Appearance" ||
-    selectedType === "CSP Parameter Entries" ||
-    selectedType === "U% Parameter Entries";
-  const SelectedComponent = useMemo(
-    () => typeOptions.find((item) => item.name === checkingType)?.component || null,
-    [checkingType, typeOptions]
+      selectedType === "Process Parameter" ||
+      selectedType === "Rewinding Study" ||
+      selectedType === "Cone Density" ||
+      selectedType === "Cone Packing Audit" ||
+      selectedType === "Lycra Checking" ||
+      selectedType === "Count Wise Cuts Record" ||
+      selectedType === "Splice Strength" ||
+      selectedType === "Drum wise Appearance" ||
+      selectedType === "CSP Parameter Entries" ||
+      selectedType === "U% Parameter Entries";
+  const selectedOption = useMemo(
+    () =>
+      typeOptions.find((item) =>
+        [item.name, ...(item.aliases || [])]
+          .map(normalizeTypeName)
+          .includes(normalizeTypeName(selectedTypeName))
+      ) || null,
+    [selectedTypeName, typeOptions]
   );
+  const SelectedComponent = selectedOption?.component || null;
   const { entryId, reserveEntryId } = useDatabaseEntryId({
     department: "Autoconer",
     typeName: useParentEntryId ? selectedType : "",
@@ -254,23 +261,21 @@ function Autoconer() {
 
   const handleTypeChange = (nextType) => {
     const nextTypeName = getTypeName(nextType);
-    setCheckingType(nextTypeName);
+    const matchedType = typeOptions.find((item) =>
+      [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(normalizeTypeName(nextTypeName))
+    );
+    setSelectedTypeName(matchedType?.name || nextTypeName);
     setRegisteredActions({});
     setPreviewItems([]);
     setShowPreview(false);
     setShowSuccess(false);
-
-    const nextRoute = getAutoconerEntryConfig(nextTypeName)?.pagePath || getAutoconerEntryConfig(nextTypeName)?.routePath;
-    if (nextRoute && nextRoute !== router.asPath.split("?")[0]) {
-      router.push(nextRoute);
-    }
   };
 
   useEffect(() => {
-    if (!typeOptions.some((item) => item.name === checkingType)) {
-      setCheckingType(typeOptions[0]?.name || "");
+    if (!typeOptions.some((item) => item.name === selectedTypeName)) {
+      setSelectedTypeName(typeOptions[0]?.name || "");
     }
-  }, [checkingType, typeOptions]);
+  }, [selectedTypeName, typeOptions]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -283,10 +288,10 @@ function Autoconer() {
     const matchedType = typeOptions.find((item) =>
       [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
     );
-    if (matchedType && matchedType.name !== checkingType) {
-      setCheckingType(matchedType.name);
+    if (matchedType && matchedType.name !== selectedTypeName) {
+      setSelectedTypeName(matchedType.name);
     }
-  }, [checkingType, requestedType, typeOptions]);
+  }, [requestedType, selectedTypeName, typeOptions]);
   return (
     <div className={styles.page}>
       <div className={styles.container}>

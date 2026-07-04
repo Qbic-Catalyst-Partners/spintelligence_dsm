@@ -8,7 +8,7 @@ import {
 import { fetchAutoconerSpliceStrengthMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/spliceStrength.module.css";
-import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 
 const getTodayDate = () => {
@@ -27,7 +27,6 @@ const countOptions = [
 ];
 
 const autoconerOptions = ["AC-01", "AC02", "AC03", "AC04"];
-const drumOptions = ["1", "2", "3", "4", "5", "10"];
 const initialRows = (count) =>
   Array.from({ length: count }, (_, index) => ({
     drumNo: "",
@@ -479,23 +478,31 @@ function SpliceStrength({
           <div className={styles.doubleField}>
             <div className={styles.field}>
               <label>Drum From/To</label>
-              <select value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} style={errorStyle(errors.drumFrom || errors.generatedRows)}>
-                {drumOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                inputMode="numeric"
+                value={drumFrom}
+                onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
+                style={errorStyle(errors.drumFrom || errors.generatedRows)}
+              />
             </div>
             <div className={styles.field}>
               <label className={styles.hiddenLabel}>To</label>
-              <select value={drumTo} onChange={(e) => setDrumTo(e.target.value)} style={errorStyle(errors.drumTo || errors.generatedRows)}>
-                {drumOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                inputMode="numeric"
+                value={drumTo}
+                onChange={(e) => setDrumTo(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
+                style={errorStyle(errors.drumTo || errors.generatedRows)}
+              />
             </div>
           </div>
 
@@ -520,13 +527,17 @@ function SpliceStrength({
       <div className={styles.generateBar}>
         <div className={styles.generateField}>
           <label>Drum No</label>
-          <select value={drumFrom} onChange={(e) => setDrumFrom(e.target.value)} style={errorStyle(errors.drumFrom || errors.generatedRows)}>
-            {drumOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <input
+            type="text"
+            type="number"
+            min="1"
+            max="100"
+            step="1"
+            inputMode="numeric"
+            value={drumFrom}
+            onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
+            style={errorStyle(errors.drumFrom || errors.generatedRows)}
+          />
         </div>
 
         <div className={styles.generateField}>

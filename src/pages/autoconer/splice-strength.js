@@ -5,8 +5,9 @@ export default function SpliceStrengthPage() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!router.isReady) return;
     router.replace("/autoconer?type=Splice%20Strength");
-  }, [router]);
+  }, [router.isReady, router]);
 
   return null;
 }

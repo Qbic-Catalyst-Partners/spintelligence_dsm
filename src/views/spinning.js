@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { AiOutlineAudio } from "react-icons/ai";
@@ -13,7 +13,6 @@ import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import {
-    fetchSpinningCotsCheckingMachines,
     fetchSpinningBottomApronEmployeeNames,
     fetchSpinningCountChangeDropdown,
     fetchSpinningCountChangeRfNos,
@@ -40,7 +39,8 @@ const createCountChangeRows = (readingCount) => {
     const total = Math.max(Number.parseInt(readingCount, 10) || 0, 0);
     return Array.from({ length: total }, (_, index) => ({
         reading_no: index + 1,
-        ...COUNT_CHANGE_BASE_ROWS[index % COUNT_CHANGE_BASE_ROWS.length],
+        reading_value: "",
+        strength: "",
     }));
 };
 
@@ -57,6 +57,24 @@ const SPINNING_CHECKING_OPTIONS = [
     { id: 8, name: "RSM & Lycrasensor Checking Online", aliases: ["RSM & Lycrasensor Checking Online", "RSM AND LYCRASENSOR CHECKING ONLINE"] },
     { id: 9, name: "RSM & Lycrasensor Checking Offline", aliases: ["RSM & Lycrasensor Checking Offline", "RSM AND LYCRASENSOR CHECKING OFFLINE"] },
     { id: 10, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"], component: WheelChange },
+];
+
+const COUNT_CHANGE_RF_NO_OPTIONS = [
+    "1",
+    "2",
+    "3",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "16",
+    "17",
+    "20",
+    "24",
 ];
 
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
@@ -155,6 +173,8 @@ const normalizeMachineOptions = (payload) => {
                                                                     ? payload.shift_codes
                                                                     : [];
 
+    const seen = new Set();
+
     return rows
         .map((row) => {
             const rawValue =
@@ -201,7 +221,12 @@ const normalizeMachineOptions = (payload) => {
             const label = getMachineText(rawLabel) || value;
             return value ? { value, label: label || value } : null;
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        .filter((option) => {
+            if (seen.has(option.value)) return false;
+            seen.add(option.value);
+            return true;
+        });
 };
 
 const normalizeCotsSideValue = (value) => {
@@ -259,15 +284,23 @@ function SpinningDepartment() {
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const queryType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
     const isProcessParameterRequest = normalizeTypeName(queryType) === "process parameter";
-    const fullCheckingOptions = filterOptionsByDepartmentAccess(
-        SPINNING_CHECKING_OPTIONS,
-        accessByDepartment,
-        user,
-        "Spinning"
+    const fullCheckingOptions = useMemo(
+        () =>
+            filterOptionsByDepartmentAccess(
+                SPINNING_CHECKING_OPTIONS,
+                accessByDepartment,
+                user,
+                "Spinning"
+            ),
+        [accessByDepartment, user]
     );
-    const checkingOptions = isProcessParameterRequest
-        ? fullCheckingOptions
-        : fullCheckingOptions.filter((item) => item.name !== "Process Parameter");
+    const checkingOptions = useMemo(
+        () =>
+            isProcessParameterRequest
+                ? fullCheckingOptions
+                : fullCheckingOptions.filter((item) => item.name !== "Process Parameter"),
+        [fullCheckingOptions, isProcessParameterRequest]
+    );
     const findCheckingOption = (value) =>
         checkingOptions.find((item) => item.name === value || item.displayName === value) || null;
 
@@ -284,6 +317,7 @@ function SpinningDepartment() {
     const [countNameTo, setCountNameTo] = useState("");
     const [countReadingCount, setCountReadingCount] = useState("");
     const [countChangeRows, setCountChangeRows] = useState([]);
+    const [countChangeEditingRow, setCountChangeEditingRow] = useState(null);
     const [shift, setShift] = useState("");
     const [ringFrameRows, setRingFrameRows] = useState(createRingFrameRows);
     const [outOfCenterAc, setOutOfCenterAc] = useState("");
@@ -333,6 +367,11 @@ function SpinningDepartment() {
         checkingType === "RSM & Lycrasensor Checking Online" ||
         checkingType === "RSM & Lycrasensor Checking Offline";
     const isBottomApronChecking = checkingType === "Bottom Apron Checking";
+    const countHeadingValue = (() => {
+        const selectedReadingsCount = Number.parseInt(countReadingCount, 10);
+        if (!Number.isFinite(selectedReadingsCount) || selectedReadingsCount <= 0) return "";
+        return (64.8 / selectedReadingsCount).toFixed(2);
+    })();
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Spinning",
         typeName: checkingType,
@@ -349,13 +388,46 @@ function SpinningDepartment() {
     const countChangeCountNameToSelectOptions = countChangeCountNameToOptions;
     const ringFrameCheckerSelectOptions = ringFrameCheckerOptions;
     const ringFrameShiftSelectOptions = ringFrameShiftOptions;
-    const machineFieldLabel = isCotsChecking ? "Variety" : "Machine";
-    const machineFieldPlaceholder = isCotsChecking ? "Select Variety" : "Select Machine";
+    const machineFieldLabel = isCotsChecking ? "Machine No." : "Machine";
+    const machineFieldPlaceholder = isCotsChecking ? "Select Machine No." : "Select Machine";
     const showSuccessOnce = () => {
         if (successHandledRef.current) return;
         successHandledRef.current = true;
         setShowSuccess(true);
     };
+
+    const clearFormValues = useCallback(() => {
+        childRef.current?.clear?.();
+        setSelectedMachine("");
+        setEmployeeSearch("");
+        setShowEmployeeList(false);
+        setDisplaySpeed("");
+        setSpindleSpeed("");
+        setCountChangeMode("");
+        setRfNo("");
+        setLycraDraft("");
+        setCountNameFrom("");
+        setCountNameTo("");
+        setCountReadingCount("");
+        setCountChangeRows([]);
+        setCountChangeEditingRow(null);
+        setShift("");
+        setRingFrameRows(createRingFrameRows());
+        setOutOfCenterAc("");
+        setComments("");
+        setFaultCopsAc("");
+        setFaultCopsRf("");
+        setLhsValue("");
+        setLhsRemarks("");
+        setRhsValue("");
+        setRhsRemarks("");
+        setDate("");
+        setCheckerName("");
+        setErrors({});
+        setValidationMessage("");
+        setShowPreview(false);
+        setPreviewItems([]);
+    }, []);
 
     useEffect(() => {
         const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -374,11 +446,31 @@ function SpinningDepartment() {
         }
     }, [checkingOptions, queryType]);
 
+    const typeChangeRef = useRef(false);
+
+    useEffect(() => {
+        if (!typeChangeRef.current) {
+            typeChangeRef.current = true;
+            return;
+        }
+        clearFormValues();
+    }, [checkingType, clearFormValues]);
+
+    useEffect(() => {
+        const handleRouteChangeStart = () => {
+            clearFormValues();
+        };
+        router.events.on("routeChangeStart", handleRouteChangeStart);
+        return () => {
+            router.events.off("routeChangeStart", handleRouteChangeStart);
+        };
+    }, [router.events, clearFormValues]);
+
     useEffect(() => {
         if (!isCotsChecking) return;
 
         let isMounted = true;
-        fetchSpinningCotsCheckingMachines()
+        fetchSpinningCountChangeRfNos()
             .then((payload) => {
                 if (!isMounted) return;
                 setCotsMachineOptions(normalizeMachineOptions(payload));
@@ -454,9 +546,17 @@ function SpinningDepartment() {
             if (!isMounted) return;
 
             if (rfResult.status === "fulfilled") {
-                setCountChangeRfOptions(normalizeMachineOptions(rfResult.value));
+                const normalized = normalizeMachineOptions(rfResult.value);
+                const fallbackOptions = COUNT_CHANGE_RF_NO_OPTIONS.map((value) => ({ value, label: value }));
+                setCountChangeRfOptions(
+                    Array.from(
+                        new Map(
+                            [...normalized, ...fallbackOptions].map((option) => [option.value, option])
+                        ).values()
+                    )
+                );
             } else {
-                setCountChangeRfOptions([]);
+                setCountChangeRfOptions(COUNT_CHANGE_RF_NO_OPTIONS.map((value) => ({ value, label: value })));
             }
 
             if (countNameResult.status === "fulfilled") {
@@ -512,10 +612,11 @@ function SpinningDepartment() {
             reserveEntryId();
             setShowPreview(false);
             showSuccessOnce();
+            clearFormValues();
             dispatch(resetSpinningState());
         }
         if (error) dispatch(resetSpinningState());
-    }, [success, error, dispatch]);
+    }, [success, error, dispatch, clearFormValues]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -531,6 +632,7 @@ function SpinningDepartment() {
         const parsedValue = parseNumericInput(value);
         return parsedValue === null ? null : Number(parsedValue.toFixed(2));
     };
+    const roundTo = (value, decimals) => Number(Number(value).toFixed(decimals));
     const sumDecimalValues = (...values) =>
         Number(values.reduce((total, value) => total + (parseNumericInput(value) ?? 0), 0).toFixed(2));
     const outOfCenterRf = Number(
@@ -597,17 +699,98 @@ function SpinningDepartment() {
     const spindleSpeedValue = parseNumericInput(spindleSpeed);
     const calculatedDifferenceValue = displaySpeedValue !== null && spindleSpeedValue !== null ? Number((displaySpeedValue - spindleSpeedValue).toFixed(2)) : null;
     const calculatedDifference = calculatedDifferenceValue !== null ? calculatedDifferenceValue.toFixed(2) : "";
+    const isCountMode = countChangeMode === "Count";
+    const isCsvMode = countChangeMode === "CSV";
+    const countChangeReadingValues = countChangeRows
+        .map((row) => parseNumericInput(row.reading_value))
+        .filter((value) => value !== null);
+    const countModeReadingMean = countChangeReadingValues.length
+        ? roundTo(countChangeReadingValues.reduce((total, value) => total + value, 0) / countChangeReadingValues.length, 5)
+        : null;
+    const countModeVariance = (() => {
+        if (!countChangeReadingValues.length || countChangeReadingValues.length < 2 || countModeReadingMean === null) return null;
+        const sumOfSquares = countChangeReadingValues.reduce((total, value) => {
+            const deviation = roundTo(value - countModeReadingMean, 5);
+            const square = roundTo(deviation * deviation, 8);
+            return total + square;
+        }, 0);
+        return roundTo(sumOfSquares / (countChangeReadingValues.length - 1), 6);
+    })();
+    const countModeStandardDeviation = countModeVariance === null ? null : roundTo(Math.sqrt(countModeVariance), 5);
+    const countModeCvPercent = countModeStandardDeviation === null || countModeReadingMean === null || countModeReadingMean === 0
+        ? ""
+        : roundTo((countModeStandardDeviation / countModeReadingMean) * 100, 3).toFixed(3);
+    const getCalculatedCountValue = (readingValue) => {
+        const numericReading = parseNumericInput(readingValue);
+        if (numericReading === null || numericReading <= 0) return "";
+        return roundTo(64.8 / numericReading, 2).toFixed(2);
+    };
+    const calculateCspValue = (strengthValue, countValue) => {
+        const numericStrength = parseNumericInput(strengthValue);
+        const numericCount = parseNumericInput(countValue);
+        if (numericStrength === null || numericCount === null) return "";
+        const cspValue = numericStrength * numericCount;
+        return Number.isFinite(cspValue) ? roundTo(cspValue, 2).toFixed(2) : "";
+    };
+    const csvStrengthValues = countChangeRows
+        .map((row) => parseNumericInput(row.strength))
+        .filter((value) => value !== null);
+    const csvMeanStrength = csvStrengthValues.length
+        ? roundTo(csvStrengthValues.reduce((total, value) => total + value, 0) / csvStrengthValues.length, 5)
+        : null;
+    const csvStrengthVariance = (() => {
+        if (!csvStrengthValues.length || csvStrengthValues.length < 2 || csvMeanStrength === null) return null;
+        const sumOfSquares = csvStrengthValues.reduce((total, value) => {
+            const deviation = roundTo(value - csvMeanStrength, 5);
+            const square = roundTo(deviation * deviation, 8);
+            return total + square;
+        }, 0);
+        return roundTo(sumOfSquares / (csvStrengthValues.length - 1), 6);
+    })();
+    const csvStrengthStandardDeviation = csvStrengthVariance === null ? null : roundTo(Math.sqrt(csvStrengthVariance), 5);
+    const csvStrengthCvPercent = csvStrengthStandardDeviation === null || csvMeanStrength === null || csvMeanStrength === 0
+        ? ""
+        : roundTo((csvStrengthStandardDeviation / csvMeanStrength) * 100, 3).toFixed(3);
+    const countModeDisplayedMean = countModeReadingMean === null ? "" : countModeReadingMean.toFixed(2);
+    const csvModeDisplayedMean = csvMeanStrength === null ? "" : csvMeanStrength.toFixed(2);
+    const overallAverageCsp = (() => {
+        const cspValues = countChangeRows
+            .map((row) => parseNumericInput(calculateCspValue(row.strength, getCalculatedCountValue(row.reading_value))))
+            .filter((value) => value !== null);
+        if (!cspValues.length) return "";
+        const avg = cspValues.reduce((total, value) => total + value, 0) / cspValues.length;
+        return roundTo(avg, 2).toFixed(2);
+    })();
+    const deriveCountChangeRow = (row = {}, rowIndex = 0) => {
+        return {
+            ...row,
+            reading_no: row.reading_no || rowIndex + 1,
+            reading_value: row.reading_value,
+            count: getCalculatedCountValue(row.reading_value),
+            cv_percent: countModeCvPercent,
+            mean: csvModeDisplayedMean,
+            strength: row.strength || "",
+            cv_percent_2: csvStrengthCvPercent,
+            csp: calculateCspValue(row.strength, getCalculatedCountValue(row.reading_value)),
+        };
+    };
+    const displayedCountChangeRows = countChangeRows.map((row, rowIndex) => deriveCountChangeRow(row, rowIndex));
+    const renderCountChangeCell = (value, fallback = "-") => {
+        const text = String(value ?? "").trim();
+        return text ? text : fallback;
+    };
 
-    const handleTypeChange = (e) => {
-        const selectedType = e.target.value;
+    const handleTypeChange = (eventOrValue) => {
+        const selectedType =
+            typeof eventOrValue === "string"
+                ? eventOrValue
+                : eventOrValue?.target?.value || "";
         setCheckingType(selectedType);
         clearFieldError("checkingType");
         if (selectedType) {
             setDate(getTodayDate());
-            router.push(`/spinning?type=${encodeURIComponent(selectedType)}`, undefined, { shallow: true });
         } else {
             setDate("");
-            router.push("/spinning", undefined, { shallow: true });
         }
     };
 
@@ -618,53 +801,73 @@ function SpinningDepartment() {
             setValidationMessage("");
             return;
         }
+        clearFormValues();
         setCheckingType("");
-        setSelectedMachine("");
-        setEmployeeSearch("");
-        setDate("");
-        setDisplaySpeed("");
-        setSpindleSpeed("");
-        setCountChangeMode("");
-        setRfNo("");
-        setLycraDraft("");
-        setCountNameFrom("");
-        setCountNameTo("");
-        setCountReadingCount("");
-        setCountChangeRows([]);
-        setCheckerName("");
-        setShift("");
-        setRingFrameRows(createRingFrameRows());
-        setOutOfCenterAc("");
-        setComments("");
-        setFaultCopsAc("");
-        setFaultCopsRf("");
-        setLhsValue("");
-        setLhsRemarks("");
-        setRhsValue("");
-        setRhsRemarks("");
-        setErrors({});
-        setValidationMessage("");
         router.push("/spinning", undefined, { shallow: true });
     };
 
     const validate = () => {
         const nextErrors = {};
-        if (!checkingType) nextErrors.checkingType = true;
-        if (!date) nextErrors.date = true;
+        const missingFields = [];
+
+        if (!checkingType) {
+            nextErrors.checkingType = true;
+            missingFields.push("Checking Type");
+        }
+        if (!date) {
+            nextErrors.date = true;
+            missingFields.push("Date");
+        }
         if (isCountChange) {
-            if (!rfNo.trim()) nextErrors.rfNo = true;
-            if (!lycraDraft.trim()) nextErrors.lycraDraft = true;
-            if (!countNameFrom.trim()) nextErrors.countNameFrom = true;
-            if (!countNameTo.trim()) nextErrors.countNameTo = true;
-            if (!countReadingCount.trim() || Number(countReadingCount) <= 0) nextErrors.countReadingCount = true;
-            if (!countChangeMode) nextErrors.countChangeMode = true;
+            if (!rfNo.trim()) {
+                nextErrors.rfNo = true;
+                missingFields.push("RF No.");
+            }
+            if (!lycraDraft.trim()) {
+                nextErrors.lycraDraft = true;
+                missingFields.push("Lycra Draft");
+            }
+            if (!countNameFrom.trim()) {
+                nextErrors.countNameFrom = true;
+                missingFields.push("Count Name (From)");
+            }
+            if (!countNameTo.trim()) {
+                nextErrors.countNameTo = true;
+                missingFields.push("Count Name (To)");
+            }
+            if (!countReadingCount.trim() || Number(countReadingCount) <= 0) {
+                nextErrors.countReadingCount = true;
+                missingFields.push("No. of Readings");
+            }
+            if (!countChangeMode) {
+                nextErrors.countChangeMode = true;
+                missingFields.push("Count Change Type");
+            }
         } else if (isRingFrame) {
-            if (!checkerName.trim()) nextErrors.checkerName = true;
-            if (!shift.trim()) nextErrors.shift = true;
-            if (!outOfCenterAc.trim()) nextErrors.outOfCenterAc = true;
-            if (!comments.trim()) nextErrors.comments = true;
-            if (!faultCopsAc.trim()) nextErrors.faultCopsAc = true;
-            if (!faultCopsRf.trim()) nextErrors.faultCopsRf = true;
+            if (!checkerName.trim()) {
+                nextErrors.checkerName = true;
+                missingFields.push("Checker Name");
+            }
+            if (!shift.trim()) {
+                nextErrors.shift = true;
+                missingFields.push("Shift");
+            }
+            if (!outOfCenterAc.trim()) {
+                nextErrors.outOfCenterAc = true;
+                missingFields.push("Out of Center AC");
+            }
+            if (!comments.trim()) {
+                nextErrors.comments = true;
+                missingFields.push("Comments");
+            }
+            if (!faultCopsAc.trim()) {
+                nextErrors.faultCopsAc = true;
+                missingFields.push("Fault Cops AC");
+            }
+            if (!faultCopsRf.trim()) {
+                nextErrors.faultCopsRf = true;
+                missingFields.push("Fault Cops RF");
+            }
 
             const ringFrameRowErrors = {};
             ringFrameRows.forEach((row, index) => {
@@ -686,9 +889,18 @@ function SpinningDepartment() {
 
             if (Object.keys(ringFrameRowErrors).length > 0) nextErrors.ringFrameRows = ringFrameRowErrors;
         } else {
-            if (!selectedMachine) nextErrors.selectedMachine = true;
-            if (!lhsValue.trim()) nextErrors.lhsValue = true;
-            if (!rhsValue.trim()) nextErrors.rhsValue = true;
+            if (!selectedMachine) {
+                nextErrors.selectedMachine = true;
+                missingFields.push(machineFieldLabel);
+            }
+            if (!lhsValue.trim()) {
+                nextErrors.lhsValue = true;
+                missingFields.push("LHS Value");
+            }
+            if (!rhsValue.trim()) {
+                nextErrors.rhsValue = true;
+                missingFields.push("RHS Value");
+            }
             if (isCotsChecking) {
                 const lhsNumber = Number(lhsValue);
                 const rhsNumber = Number(rhsValue);
@@ -700,16 +912,36 @@ function SpinningDepartment() {
                 }
             } else if (!employeeSearch.trim()) {
                 nextErrors.employeeSearch = true;
+                missingFields.push("Employee");
             }
-            if (!lhsRemarks.trim()) nextErrors.lhsRemarks = true;
-            if (!rhsRemarks.trim()) nextErrors.rhsRemarks = true;
+            if (!lhsRemarks.trim()) {
+                nextErrors.lhsRemarks = true;
+                missingFields.push("LHS Remarks");
+            }
+            if (!rhsRemarks.trim()) {
+                nextErrors.rhsRemarks = true;
+                missingFields.push("RHS Remarks");
+            }
         }
         if (checkingType === "Speed Checking") {
-            if (displaySpeedValue === null) nextErrors.displaySpeed = true;
-            if (spindleSpeedValue === null) nextErrors.spindleSpeed = true;
+            if (displaySpeedValue === null) {
+                nextErrors.displaySpeed = true;
+                missingFields.push("Display Speed");
+            }
+            if (spindleSpeedValue === null) {
+                nextErrors.spindleSpeed = true;
+                missingFields.push("Spindle Speed");
+            }
         }
         setErrors(nextErrors);
-        return Object.keys(nextErrors).length === 0;
+
+        if (missingFields.length > 0) {
+            setValidationMessage(`Please fill required fields: ${missingFields.slice(0, 4).join(", ")}${missingFields.length > 4 ? ", ..." : ""}`);
+            return false;
+        }
+
+        setValidationMessage("");
+        return true;
     };
 
     const buildPayload = () => {
@@ -722,7 +954,7 @@ function SpinningDepartment() {
                 lycra_draft: parseDecimalPayloadValue(lycraDraft) ?? 0,
                 count_name_from: countNameFrom,
                 count_name_to: countNameTo,
-                readings: countChangeRows.map((row, index) => ({
+                readings: displayedCountChangeRows.map((row, index) => ({
                     reading_no: row.reading_no || index + 1,
                     reading_value: parseDecimalPayloadValue(row.reading_value) ?? 0,
                     count: parseDecimalPayloadValue(row.count) ?? 0,
@@ -778,7 +1010,7 @@ function SpinningDepartment() {
             entry_id: entryId,
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
-            variety: isCotsChecking ? selectedMachine : undefined,
+            machine_no: isCotsChecking ? selectedMachine : undefined,
             lhs_value: isCotsChecking ? Number(lhsValue) : parseDecimalPayloadValue(lhsValue) ?? 0,
             rhs_value: isCotsChecking ? Number(rhsValue) : parseDecimalPayloadValue(rhsValue) ?? 0,
             lhs_textremarks: lhsRemarks.trim(),
@@ -838,6 +1070,37 @@ function SpinningDepartment() {
         setErrors((prev) => ({ ...prev, countReadingCount: false }));
     };
 
+    const handleCountChangeRowChange = (rowIndex, field, value) => {
+        const nextCountValue =
+            field === "reading_value"
+                ? (() => {
+                    const numericReading = Number.parseFloat(value);
+                    if (!Number.isFinite(numericReading) || numericReading <= 0) return "";
+                    const calculatedCount = 64.8 / numericReading;
+                    return Number.isFinite(calculatedCount) ? calculatedCount.toFixed(2) : "";
+                })()
+                : null;
+        setCountChangeRows((currentRows) =>
+            currentRows.map((row, index) =>
+                index === rowIndex
+                    ? {
+                        ...row,
+                        [field]: value,
+                        ...(nextCountValue !== null ? { count: nextCountValue } : {}),
+                    }
+                    : row
+            )
+        );
+    };
+
+    const handleCountChangeRowFocus = (rowIndex) => {
+        setCountChangeEditingRow(rowIndex);
+    };
+
+    const handleCountChangeRowBlur = () => {
+        setCountChangeEditingRow(null);
+    };
+
     const handleRingFrameChange = (rowIndex, field, value) => {
         setRingFrameRows((currentRows) =>
             currentRows.map((row, index) =>
@@ -877,7 +1140,6 @@ function SpinningDepartment() {
         }
 
         if (!validate()) {
-            setValidationMessage("Please fill all required fields before saving.");
             return;
         }
         setValidationMessage("");
@@ -1021,7 +1283,7 @@ function SpinningDepartment() {
                                     <div className={styles["sp-form-group"]}>
                                         <label className={styles.countTypeSpacer}>&nbsp;</label>
                                         <div className={`${styles.segmentedControl} ${styles.countChangeSegmented} ${errors.countChangeMode ? styles["segmented-error"] : ""}`} role="group" aria-label="Count change type">
-                                            {["Count", "CSP"].map((mode) => (
+                                            {["Count", "CSV"].map((mode) => (
                                                 <button key={mode} type="button" className={`${styles.segmentButton} ${countChangeMode === mode ? styles.segmentButtonActive : ""}`} onClick={() => { setCountChangeMode(mode); clearFieldError("countChangeMode"); }}>
                                                     {mode}
                                                 </button>
@@ -1086,21 +1348,67 @@ function SpinningDepartment() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {countChangeRows.map((row) => (
+                                            {displayedCountChangeRows.length > 0 ? displayedCountChangeRows.map((row, rowIndex) => (
                                                 <tr key={row.reading_no}>
-                                                    <td>{row.reading_no}</td>
-                                                    <td>{row.reading_value}</td>
-                                                    <td>{row.count}</td>
-                                                    <td>{row.cv_percent}</td>
-                                                    <td>{row.strength}</td>
-                                                    <td>{row.mean}</td>
-                                                    <td>{row.cv_percent_2}</td>
-                                                    <td>{row.csp}</td>
+                                                    <td className={styles.countChangeReadingNoCell}>{row.reading_no}</td>
+                                                    <td>
+                                                        {isCountMode ? (
+                                                            countChangeEditingRow === rowIndex || !row.reading_value ? (
+                                                                <input
+                                                                    type="text"
+                                                                    inputMode="decimal"
+                                                                    value={String(row.reading_value ?? "")}
+                                                                    onFocus={() => handleCountChangeRowFocus(rowIndex)}
+                                                                    onBlur={handleCountChangeRowBlur}
+                                                                    onChange={(event) => handleCountChangeRowChange(rowIndex, "reading_value", event.target.value)}
+                                                                    className={styles.countChangeInput}
+                                                                />
+                                                            ) : (
+                                                                <span className={styles.countChangeCellText}>{String(row.reading_value ?? "")}</span>
+                                                            )
+                                                        ) : (
+                                                            <span className={styles.countChangeCellText}>{renderCountChangeCell(row.reading_value, "")}</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.count, "")}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent, "")}</span>
+                                                    </td>
+                                                    <td>
+                                                        {isCsvMode ? (
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={String(row.strength ?? "")}
+                                                                onChange={(event) => handleCountChangeRowChange(rowIndex, "strength", event.target.value)}
+                                                                className={styles.countChangeInput}
+                                                            />
+                                                        ) : (
+                                                            <span className={styles.countChangeCellText}>{renderCountChangeCell(row.strength, "")}</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.mean, "")}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent_2, "")}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.csp, "")}</span>
+                                                    </td>
                                                 </tr>
-                                            ))}
+                                            )) : null}
                                         </tbody>
                                     </table>
                                 </div>
+                                {countChangeRows.length > 0 ? (
+                                    <div className={styles.countChangeSummaryBox}>
+                                        <div className={styles.countChangeSummaryLabel}>Overall CSP</div>
+                                        <div className={styles.countChangeSummaryValue}>{overallAverageCsp || "-"}</div>
+                                    </div>
+                                ) : null}
                             </>
                         ) : isRingFrame ? (
                             <>

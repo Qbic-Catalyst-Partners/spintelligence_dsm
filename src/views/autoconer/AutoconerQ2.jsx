@@ -1,22 +1,26 @@
 import { createPortal } from "react-dom";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 
-import {
-  fetchAutoconerConsigneeMaster,
-  fetchAutoconerQ2Entries,
-  submitAutoconerQ2Entry,
-} from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
-import useAutoconerCountOptions from "@/hooks/useAutoconerCountOptions";
-import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
+import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
-  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import {
+  normalizeProcessParameterId,
+  reserveGlobalProcessParameterId,
+  resolveProcessParameterDisplayId,
+} from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
+import {
+  submitAutoconerQ2Entry,
+  updateAutoconerQ2Entry,
+  fetchAutoconerQ2Entries,
+} from "@/apis/autoconer";
 import styles from "@/styles/AutoconerQ2.module.css";
 
 
@@ -205,8 +209,7 @@ const isVersionComplete = (version) =>
   );
 
 const buildPayload = (form, entryId = "") => ({
-  entry_id: entryId || undefined,
-  scope: "q2",
+  entry_id: (form.paramId || entryId) || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -261,6 +264,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     types = [],
     savedVersionsTargetId = "",
     entryId = "",
+    nextEntryIdPreview = "",
   },
   ref
 ) {
@@ -268,78 +272,50 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   const [form, setForm] = useState(() => createDefaultForm(selectedType));
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
-  const [loadingVersions, setLoadingVersions] = useState(false);
-  const [versionsError, setVersionsError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useAutoconerCountOptions("q2");
-  const [masterConsigneeOptions, setMasterConsigneeOptions] = useState([]);
-  const { entryId: reservedEntryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
-    department: "Autoconer",
-    typeName: selectedType,
-    config: {
-      prefix: "PP",
-      width: 4,
-      routePath: "/autoconer/q2",
-    },
-  });
-  const displayEntryId = reservedEntryId || (entryIdLoading ? "Generating next ID..." : "Generating next ID...");
+  const [previewNextId, setPreviewNextId] = useState("");
+  const displayEntryId = form.paramId || entryId || previewNextId || "Generating next ID...";
 
-  const countOptions = useMemo(
-    () =>
-      buildProcessParameterOptions(
-        masterCountOptions.length
-          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
-          : PROCESS_PARAMETER_COUNT_OPTIONS,
-        versions.map((version) => version?.data?.countName),
-        form.countName
-      ),
-    [form.countName, masterCountOptions, versions]
-  );
-
-  const consigneeOptions = useMemo(
-    () =>
-      buildProcessParameterOptions(
-        PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
-        [
-          ...masterConsigneeOptions,
-          ...versions.map((version) => version?.data?.consigneeName),
-        ],
-        form.consigneeName
-      ),
-    [form.consigneeName, masterConsigneeOptions, versions]
+  const { countOptions: masterCountOptions } = useMixingCountOptions();
+  const countOptions = buildProcessParameterOptions(
+    masterCountOptions.length
+      ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+      : PROCESS_PARAMETER_COUNT_OPTIONS,
+    [],
+    form.countName
   );
 
   const loadVersions = async () => {
-    setLoadingVersions(true);
-    try {
-      const response = await fetchAutoconerQ2Entries({ page: 1, limit: 10 });
-      const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
-      const nextVersions = rows
-        .map(mapApiEntryToVersion)
-        .sort((left, right) => Number(right.id) - Number(left.id));
+    const response = await fetchAutoconerQ2Entries({ page: 1, limit: 200 });
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const nextVersions = rows
+      .map(mapApiEntryToVersion)
+      .sort((left, right) => Number(right.id) - Number(left.id));
 
-      setVersions(nextVersions);
-      setVersionsError("");
+    setVersions(nextVersions);
 
-      if (nextVersions.length > 0) {
-        const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
-        setForm((current) => {
-          const activeVersion =
-            nextVersions.find((item) => item.id === current.versionId) || latestCompleteVersion;
-          return { ...activeVersion.data, versionId: activeVersion.id, type: selectedType };
+    if (nextVersions.length > 0) {
+      const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
+      const matchByEntryId = entryId
+        ? nextVersions.find(
+            (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(entryId)
+          )
+        : null;
+      if (matchByEntryId) {
+        setForm({
+          ...matchByEntryId.data,
+          versionId: matchByEntryId.id,
+          paramId: entryId || matchByEntryId.data.paramId || "",
+          type: selectedType,
         });
-        setExpandedVersionId(latestCompleteVersion?.id || null);
       } else {
-        setForm(createDefaultForm(selectedType));
-        setExpandedVersionId(null);
+        setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
       }
-    } catch (error) {
-      setVersions([]);
+      setExpandedVersionId(latestCompleteVersion?.id || null);
+    } else {
+      setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
       setExpandedVersionId(null);
-      setVersionsError(error.message || "Unable to load saved versions.");
-    } finally {
-      setLoadingVersions(false);
     }
   };
 
@@ -348,16 +324,19 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   }, []);
 
   useEffect(() => {
-    let active = true;
-    const loadConsigneeOptions = async () => {
-      const options = await fetchAutoconerConsigneeMaster({ screen: "q2" });
-      if (active) setMasterConsigneeOptions(Array.isArray(options) ? options : []);
-    };
-    loadConsigneeOptions();
+    if (entryId) return;
+    if (nextEntryIdPreview) {
+      setPreviewNextId(nextEntryIdPreview);
+      return;
+    }
+    let cancelled = false;
+    reserveGlobalProcessParameterId("PP", 4).then((nextId) => {
+      if (!cancelled) setPreviewNextId(nextId);
+    });
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, []);
+  }, [entryId, nextEntryIdPreview]);
 
   useEffect(() => {
     setForm((current) => ({
@@ -375,6 +354,16 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     });
   };
 
+  const findLatestVersionByCountName = (countName) => {
+    const normalized = String(countName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      versions
+        .filter((version) => String(version.data.countName || "").trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.data.creationDate || 0) - new Date(a.data.creationDate || 0))[0] || null
+    );
+  };
+
   const handleFieldChange = (field, value) => {
     const fieldDef = fieldDefs.find((item) => item.key === field);
     const nextValue = fieldDef?.numeric
@@ -386,6 +375,13 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       : value;
 
     setForm((current) => {
+      if (field === "countName" && !entryId && !current.versionId) {
+        const match = findLatestVersionByCountName(nextValue);
+        if (match) {
+          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId, type: selectedType };
+        }
+      }
+
       const nextForm = { ...current, [field]: nextValue };
       if (
         (field === "countName" || field === "consigneeName") &&
@@ -436,7 +432,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     { label: "Type", value: selectedType || "-" },
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
-    { label: "Entry ID", value: reservedEntryId || "-" },
+    { label: "Entry ID", value: form.paramId || entryId || "-" },
     ...fieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -449,19 +445,19 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     try {
       setIsSubmitting(true);
       setSubmitError("");
-      const payload = buildPayload(form, reservedEntryId);
-      await submitAutoconerQ2Entry(payload);
+      const payload = buildPayload(form, entryId);
+      const response = form.versionId
+        ? await updateAutoconerQ2Entry(form.versionId, payload)
+        : await submitAutoconerQ2Entry(payload);
+
+      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
+      setForm((current) => ({ ...current, paramId: nextParamId }));
+      registerProcessParameterId(response, "Autoconer");
 
       await loadVersions();
-      await reserveEntryId();
       return true;
     } catch (error) {
-      const errorMessage = String(error?.message || "");
-      setSubmitError(
-        /duplicate entry_id/i.test(errorMessage)
-          ? "Entry ID already exists. Please clear and save again to generate next ID."
-          : errorMessage || "Unable to submit the form."
-      );
+      setSubmitError(error?.message || "Unable to submit the form.");
       return false;
     } finally {
       setIsSubmitting(false);
@@ -488,11 +484,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
 
   const historySection = (
     <div className={styles.historyWrap}>
-      {loadingVersions ? <div className={styles.infoBox}>Loading saved versions...</div> : null}
-      {!loadingVersions && versionsError ? (
-        <div className={styles.errorMessage}>{versionsError}</div>
-      ) : null}
-      {!loadingVersions && !versionsError && versions.length === 0 ? (
+      {versions.length === 0 ? (
         <div className={styles.infoBox}>No saved versions found in the database.</div>
       ) : null}
 
@@ -578,31 +570,25 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
 
           <div className={styles.fieldGroup}>
             <label>Count Name</label>
-              <SearchableSelect
-                className={`${styles.field}${errors.countName ? ` ${styles.errorField}` : ""}`}
-                value={form.countName || ""}
-                onChange={(value) => handleFieldChange("countName", value)}
+            <SearchableSelect
+              className={`${styles.field}${errors.countName ? ` ${styles.errorField}` : ""}`}
+              value={form.countName || ""}
+              onChange={(value) => handleFieldChange("countName", value)}
               options={countOptions}
-              placeholder={
-                loadingCountOptions
-                  ? "Loading count names..."
-                  : countOptionsError
-                    ? "Search or type count name"
-                    : "Search or select count name"
-              }
+              placeholder="Search or select count name"
               ariaLabel="Count Name"
             />
           </div>
 
           <div className={styles.fieldGroup}>
             <label>Consignee Name</label>
-              <SearchableSelect
-                className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
-                value={form.consigneeName || ""}
-                onChange={(value) => handleFieldChange("consigneeName", value)}
-              options={consigneeOptions}
-              placeholder="Search or enter consignee name"
-              ariaLabel="Consignee Name"
+            <input
+              type="text"
+              className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
+              value={form.consigneeName || ""}
+              onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
+              placeholder="Type consignee name"
+              aria-label="Consignee Name"
             />
           </div>
 

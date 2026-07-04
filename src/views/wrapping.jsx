@@ -10,6 +10,8 @@ const MACHINE_FIELDS = [
   "S.No",
   "Date",
   "ID",
+  "Test ID",
+  "Report Date",
   "Mac Name",
   "Shift",
   "Std. Hank",
@@ -23,6 +25,8 @@ const OCR_TABLE_COLUMN_WIDTHS = {
   "S.No": 46,
   Date: 118,
   ID: 96,
+  "Test ID": 112,
+  "Report Date": 118,
   "Mac Name": 104,
   Shift: 88,
   "Std. Hank": 118,
@@ -41,6 +45,12 @@ const WRAPPING_SAVE_ENDPOINTS = {
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 
 const toDocType = (type) => String(type || "Carding").trim().toLowerCase();
+const formatSavedRecordMessage = (selectedType, payload) => {
+  const resolvedId = String(payload?.id ?? payload?.entry_id ?? payload?.entryId ?? "").trim();
+  return resolvedId
+    ? `Saved ${selectedType} OCR record #${resolvedId}.`
+    : `Saved ${selectedType} OCR record.`;
+};
 
 function Wrapping({ fixedType = "", backPath = "/departments/quality-control", title = "Quality Control - Wrapping Notebook" }) {
   const router = useRouter();
@@ -173,7 +183,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || `Server error ${response.status}`);
-      setMessage(`Saved ${selectedType} OCR record #${payload.id}.`);
+      setMessage(formatSavedRecordMessage(selectedType, payload));
     } catch (error) {
       setMessage(`Save failed: ${error.message || "Unknown error"}`);
       setIsErrorMessage(true);

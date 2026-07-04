@@ -41,7 +41,7 @@ export const getMachineCardDefaults = (processType) => {
 };
 
 export const formatMetric = (value) =>
-  Number.isFinite(value) ? value.toFixed(2) : "";
+  Number.isFinite(value) ? value.toFixed(4) : "";
 
 export const emptyMetric = () => ({
   avg: "",

@@ -15,7 +15,7 @@ const initialForm = {
 };
 
 const NUMERIC_FIELDS = new Set([
-    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd',
+    'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd', 'colourGrade',
 ]);
 
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
@@ -82,7 +82,7 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         invisible_loss_percentage: Number(formData.invisibleLossPercent) || 0,
         trash_content_percentage: Number(formData.trashContentPercent) || 0,
         rd:              Number(formData.rd)          || 0,
-        colour_grade:    String(formData.colourGrade || "").trim(),
+        colour_grade:    Number(formData.colourGrade) || 0,
     });
 
     const handleSubmit = async (overrideEntryId) => {
@@ -171,13 +171,15 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         getPayload: buildPayload,
         validate,
         applyOcrData: (raw) => {
-            const list =
+            const rows =
                 raw?.json_output ||
                 raw?.data ||
                 raw?.result?.json_output ||
                 raw?.result?.data ||
-                [];
-            const source = Array.isArray(list) ? (list[0] || {}) : (raw?.result || raw || {});
+                null;
+            const source = Array.isArray(rows) && rows.length
+                ? (rows[0] || {})
+                : (raw?.values || raw?.result || raw || {});
             const pick = (...keys) => {
                 for (const key of keys) {
                     const v = source?.[key];

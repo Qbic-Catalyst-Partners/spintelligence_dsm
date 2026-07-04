@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "@/styles/u%dataentry.module.css";
 import Footer from "@/components/Footer";
 import SearchableSelect from "@/components/SearchableSelect";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@/apis/carding";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
@@ -24,6 +25,16 @@ export const STATIC_MC_NO_OPTIONS = [
   "BR SB-20","BR TD7-1","BR TD7-2","BR TD7-3","BR TD7-4","BR TD7-5","BR TD7-6",
 ].map((mc_no) => ({ mc_no }));
 
+const CDG_MC_NO_OPTIONS = STATIC_MC_NO_OPTIONS.filter((item) =>
+  String(item?.mc_no || "").toUpperCase().startsWith("CDG")
+);
+
+const normalizeCardingUqcMachineOptions = (rows = []) =>
+  rows
+    .map((row) => String(row?.mc_no ?? row?.mcName ?? row?.value ?? row ?? "").trim())
+    .filter((mcNo) => mcNo.toUpperCase().startsWith("CDG"))
+    .map((mc_no) => ({ mc_no }));
+
 function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) {
   const dispatch = useDispatch();
   const { isLoading, uqc, error } = useSelector((state) => state.carding ?? {});
@@ -41,8 +52,9 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
   const [errors, setErrors] = useState({});
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [varietyOptions, setVarietyOptions] = useState([]);
-  const [mcNoOptions, setMcNoOptions] = useState(STATIC_MC_NO_OPTIONS);
+  const [mcNoOptions, setMcNoOptions] = useState(CDG_MC_NO_OPTIONS);
   const [shiftOptions] = useState(STATIC_SHIFT_OPTIONS);
 
   const handleChange = (field, value) => {
@@ -95,19 +107,29 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
     let active = true;
     (async () => {
       try {
-        const dropdownOptions = await fetchCardingUqcMasterDropdown();
+        const dropdownOptions = await fetchCardingUqcMasterDropdown({
+          prefix: "CDG",
+          mc_no_prefix: "CDG",
+          department_code: "CDG",
+        });
         if (!active) return;
         const masterVarieties = dropdownOptions.varieties?.map((row) => row.variety_name).filter(Boolean) || [];
-        const masterMcNos = dropdownOptions.mcNos || [];
+        const masterMcNos = normalizeCardingUqcMachineOptions(dropdownOptions.mcNos || []);
         setVarietyOptions(masterVarieties.length ? masterVarieties : await fetchCardingUqcMasterVarieties());
-        if (masterMcNos.length) setMcNoOptions(masterMcNos);
+        setMcNoOptions(masterMcNos.length ? masterMcNos : CDG_MC_NO_OPTIONS);
       } catch (_err) {
         if (active) {
           try {
             const options = await fetchCardingUqcMasterVarieties();
-            if (active) setVarietyOptions(Array.isArray(options) ? options : []);
+            if (active) {
+              setVarietyOptions(Array.isArray(options) ? options : []);
+              setMcNoOptions(CDG_MC_NO_OPTIONS);
+            }
           } catch {
-            if (active) setVarietyOptions([]);
+            if (active) {
+              setVarietyOptions([]);
+              setMcNoOptions(CDG_MC_NO_OPTIONS);
+            }
           }
         }
       }
@@ -121,6 +143,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
     if (uqc?.message) {
       resetForm();
       setIsError(false);
+      setShowSuccess(true);
       dispatch(getCardingUqcEntries({ page: 1, limit: 10 }));
       dispatch(clearCardingState());
     }
@@ -285,6 +308,10 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
         />
       </div>
 
+      <SuccessModal
+        open={showSuccess}
+        onClose={() => setShowSuccess(false)}
+      />
     </div>
   );
 }

@@ -10,11 +10,11 @@ import styles from "./ribbonLapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
 const STATIC_RIBBON_LAP_MACHINE_OPTIONS = [
-    "Lap former",
-    "Rippon Lap",
-    "Blow Room - 1",
-    "Blow Room - 2",
-    "Blow Room - 3",
+    "Lap Former",
+    "Ribbon Lap",
+    "Blow Room-1",
+    "Blow Room-2",
+    "Blow Room-3",
 ];
 
 const createEmptySamples = (count) => Array.from({ length: count }, () => "");
@@ -69,14 +69,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                 ]);
                 if (active && varieties.length) setVarietyOptions(varieties);
                 if (active && machines.length) {
-                    setMachineOptions(
-                        Array.from(
-                            new Set([
-                                ...machines.map((item) => item.mc_name || item.mc_no).filter(Boolean),
-                                ...STATIC_RIBBON_LAP_MACHINE_OPTIONS,
-                            ])
-                        )
-                    );
+                    setMachineOptions(STATIC_RIBBON_LAP_MACHINE_OPTIONS);
                 } else if (active) {
                     setMachineOptions(STATIC_RIBBON_LAP_MACHINE_OPTIONS);
                 }

@@ -74,6 +74,25 @@ const DRAW_FRAME_MACHINE_MASTER_ENDPOINTS = [
     "/drawframe/uqc/master/machine-nos",
 ];
 
+const normalizeMachineName = (item = {}) => {
+    const fallback = String(
+        item?.machine_number ??
+            item?.machineNumber ??
+            item?.machine_no ??
+            item?.machineNo ??
+            item?.mc_no ??
+            item?.mcNo ??
+            item?.mc_name ??
+            item?.machineName ??
+            item?.name ??
+            item?.label ??
+            item?.text ??
+            ""
+    ).trim();
+
+    return fallback.replace(/^\d+\s*\/\s*/, "").trim();
+};
+
 const emitFetchSuccess = () => {
     emitGlobalSuccessModal({
         message: "Data Submitted",
@@ -726,17 +745,24 @@ export const fetchDrawFrameFinisherEntries = async ({ page = 1, limit = 10 } = {
     }
 };
 
-export const fetchDrawFrameMachineMaster = async ({ prefix = "" } = {}) => {
-    const query = prefix ? `?prefix=${encodeURIComponent(prefix)}` : "";
+export const fetchDrawFrameMachineMaster = async ({ prefix = "", departmentCode = "", deptCode = "" } = {}) => {
+    const params = {
+        prefix,
+        mc_no_prefix: prefix,
+        machine_prefix: prefix,
+        ...(departmentCode ? { dept_code: departmentCode } : {}),
+        ...(deptCode ? { department_code: deptCode } : {}),
+    };
+    const queryParams = new URLSearchParams();
+    if (prefix) queryParams.set("prefix", prefix);
+    if (departmentCode) queryParams.set("dept_code", departmentCode);
+    if (deptCode) queryParams.set("department_code", deptCode);
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
     let lastError = null;
 
     for (const endpoint of DRAW_FRAME_MACHINE_MASTER_ENDPOINTS) {
         try {
-            const response = await apiConfig.get(
-                endpoint,
-                { prefix, mc_no_prefix: prefix, machine_prefix: prefix },
-                { skipGlobalErrorModal: true }
-            );
+            const response = await apiConfig.get(endpoint, params, { skipGlobalErrorModal: true });
             const rows = normalizeMachineMasterRows(response?.data);
             if (rows.length) return rows;
         } catch (error) {

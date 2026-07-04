@@ -45,9 +45,7 @@ const shouldShowGlobalErrorModal = (error) => {
         return false;
     }
 
-    const status = error.response?.status;
-
-    return !error.response || status === 404;
+    return true;
 };
 
 const shouldShowGlobalSuccessModal = (response) => {

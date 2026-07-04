@@ -1,5 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { fetchSimplexMachineMaster } from "@/apis/simplex";
+import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import {
   getSimplexCotsChangeEntries,
   submitSimplexCotsChange,
@@ -11,24 +13,10 @@ const detailItems = [
   "Cots Tilting",
   "Cradle Lifting",
   "Condensor Missing",
+  "Others 1",
+  "Others 2",
 ];
 
-const machineOptions = [
-  "SMX 002",
-  "SMX 01",
-  "SMX 02",
-  "SMX 03",
-  "SMX 04",
-  "SMX 05",
-  "SMX 06",
-  "SMX 07",
-  "SMX 08",
-  "SMX 09",
-  "SMX 10",
-  "SMX 11",
-  "SMX 12",
-  "SMX 13",
-];
 const today = new Date().toISOString().split("T")[0];
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
 const defaultTableFieldStyle = { backgroundColor: "#ffffff" };
@@ -61,6 +49,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   const [details, setDetails] = useState(createDetailRows);
   const [errors, setErrors] = useState({});
   const [isMcDropdownOpen, setIsMcDropdownOpen] = useState(false);
+  const [machineOptions, setMachineOptions] = useState(createSmxMachineOptions);
   const mcDropdownRef = useRef(null);
 
   useEffect(() => {
@@ -75,6 +64,39 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, [isMcDropdownOpen]);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchSimplexMachineMaster()
+      .then((options) => {
+        if (!active) return;
+        const apiOptions = Array.isArray(options) ? options : [];
+        const merged = [
+          ...createSmxMachineOptions(),
+          ...apiOptions.map((item) => {
+            const machineName = String(item?.label || item?.value || item?.mc_name || item?.mc_no || item || "").trim();
+            return machineName ? { value: machineName, label: machineName } : null;
+          }).filter(Boolean),
+        ];
+        const seen = new Set();
+        setMachineOptions(
+          merged.filter((item) => {
+            if (seen.has(item.value)) return false;
+            seen.add(item.value);
+            return true;
+          })
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setMachineOptions(createSmxMachineOptions());
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleFormChange = (field, value) => {
     setForm((current) => ({
@@ -274,21 +296,24 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
               >
                 -- Select MC Name --
               </button>
-              {machineOptions.map((machine) => (
+              {machineOptions.map((machine) => {
+                const machineName = String(machine?.label || machine?.value || machine?.mc_name || machine?.mc_no || machine || "").trim();
+                return machineName ? (
                 <button
-                  key={machine}
+                  key={machineName}
                   type="button"
                   className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
                   onClick={() => {
-                    handleFormChange("mcName", machine);
+                    handleFormChange("mcName", machineName);
                     setIsMcDropdownOpen(false);
                   }}
                   role="option"
-                  aria-selected={form.mcName === machine}
+                  aria-selected={form.mcName === machineName}
                 >
-                  {machine}
+                  {machineName}
                 </button>
-              ))}
+                ) : null;
+              })}
             </div>
           ) : null}
         </div>

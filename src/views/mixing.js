@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
@@ -39,7 +39,7 @@ const mixingDepartmentTypes = [
     { id: 2, name: "Fibre Data Entry", aliases: ["Fibre Data Entry", "Fiber Data Entry"], component: FibreDataEntry, needsLotNo: true },
     { id: 3, name: "AFIS Data Entry", aliases: ["AFIS Data Entry", "Afis Data Entry"], component: AfisDataEntry, needsLotNo: true },
     { id: 4, name: "Moisture Data Entry", aliases: ["Moisture Data Entry"], component: MoistureDataEntry, needsLotNo: true },
-    { id: 5, name: "Openness Data Entry", aliases: ["Openness Data Entry"], component: OpennessDataEntry, needsLotNo: false },
+    { id: 5, name: "Openness Data Entry", aliases: ["Openness Data Entry"], component: OpennessDataEntry, needsLotNo: true },
 ];
 
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
@@ -58,31 +58,57 @@ const MIXING_ENTRY_ID_CONFIG = {
 const getEntryConfigForType = (typeName) =>
     MIXING_ENTRY_ID_CONFIG[typeName] || { prefix: "MIX" };
 
+const PROCESS_PARAMETER_CREATED_IDS_KEY = "mixing-process-parameter-created-ids";
+
+const readCreatedProcessParameterIds = () => {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = window.localStorage.getItem(PROCESS_PARAMETER_CREATED_IDS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    } catch {
+        return [];
+    }
+};
+
+const writeCreatedProcessParameterIds = (ids) => {
+    if (typeof window === "undefined") return;
+    try {
+        window.localStorage.setItem(
+            PROCESS_PARAMETER_CREATED_IDS_KEY,
+            JSON.stringify(Array.from(new Set((ids || []).map((value) => String(value || "").trim()).filter(Boolean))))
+        );
+    } catch {}
+};
+
 function Mixing() {
     const router = useRouter();
     const childRef = useRef(null);
     const successHandledRef = useRef(false);
+    const lotDetailsFetchKeyRef = useRef("");
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-    const currentDate = getCurrentDate();
     const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
     const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
-    const fullTypeOptions = filterOptionsByDepartmentAccess(
-        mixingDepartmentTypes,
-        accessByDepartment,
-        user,
-        "Mixing"
-    );
-    const typeOptions = isProcessParameterRequest
-        ? fullTypeOptions
-        : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
-    const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
+    const typeOptions = useMemo(() => {
+        const fullTypeOptions = filterOptionsByDepartmentAccess(
+            mixingDepartmentTypes,
+            accessByDepartment,
+            user,
+            "Mixing"
+        );
+        return isProcessParameterRequest
+            ? fullTypeOptions
+            : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
+    }, [accessByDepartment, user, isProcessParameterRequest]);
+    const [selectedTypeName, setSelectedTypeName] = useState(() => typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
     const [selectedLotDetails, setSelectedLotDetails] = useState(null);
     const [mixingValue, setMixingValue] = useState("");
+    const [target, setTarget] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
@@ -90,7 +116,7 @@ function Mixing() {
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
-    const [currentDateLabel, setCurrentDateLabel] = useState("");
+    const currentDateLabel = useMemo(() => new Date().toLocaleDateString("en-IN"), []);
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -133,23 +159,31 @@ function Mixing() {
             reserveEntryId();
             showSuccessOnce();
         }
-    }, [actionSuccess]);
+    }, [actionSuccess, reserveEntryId]);
 
     useEffect(() => {
-        setDate(getCurrentDate());
-    }, [router.asPath]);
-
-    useEffect(() => {
-        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+        setDate((current) => current || getCurrentDate());
     }, []);
     const handleTypeChange = (value) => {
+        if (value === selectedTypeName) return;
         setSelectedTypeName(value);
         setLotNo("");
         setSelectedLotDetails(null);
         setMixingValue("");
+        setTarget("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
+    };
+
+    const handleTargetChange = (value) => {
+        setTarget(value);
+        setHeaderErrors((prev) => {
+            if (!prev.target) return prev;
+            const next = { ...prev };
+            delete next.target;
+            return next;
+        });
     };
 
     const handleLotChange = (value) => {
@@ -168,6 +202,7 @@ function Mixing() {
         setLotNo("");
         setSelectedLotDetails(null);
         setMixingValue("");
+        setTarget("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
@@ -230,6 +265,7 @@ function Mixing() {
         const errors = {};
         if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
         if (selectedTypeName === "Openness Data Entry" && !mixingValue) errors.mixing = true;
+        if (selectedTypeName === "Openness Data Entry" && !target) errors.target = true;
 
         setHeaderErrors(errors);
 
@@ -289,6 +325,17 @@ function Mixing() {
         showSuccessOnce();
     };
 
+    const handleProcessParameterSubmitSuccess = (response) => {
+        const createdId = String(
+            response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || ""
+        ).trim();
+
+        if (createdId) {
+            const currentIds = readCreatedProcessParameterIds();
+            writeCreatedProcessParameterIds([createdId, ...currentIds]);
+        }
+    };
+
     useEffect(() => {
         const raw = typeof window !== "undefined" ? window.localStorage.getItem("ocr_prefill") : "";
         if (!raw) return;
@@ -339,7 +386,9 @@ function Mixing() {
                     <h1 className="text-[24px] font-extrabold text-slate-900 m-0">
                         Quality Control - Mixing Notebook
                     </h1>
-          <div className="mt-2 text-right text-base font-semibold text-slate-600">Current Date: {currentDateLabel}</div>
+                    <div className="mt-2 text-right text-base font-semibold text-slate-600">
+                        Current Date: {currentDateLabel}
+                    </div>
                     <p className="text-[14px] text-slate-500 mt-1.5 mb-0">
                     </p>
                 </div>
@@ -362,7 +411,7 @@ function Mixing() {
                             </div>
 
                             <div className="flex flex-col gap-4">
-                                <div className="grid grid-cols-3 gap-[18px]">
+                                <div className="grid grid-cols-1 gap-[18px] items-start md:grid-cols-2 xl:grid-cols-3">
                                     <div className="flex flex-col gap-1.5 min-w-0">
                                         <label className="text-[14px] font-semibold text-slate-700">Type</label>
                                         <select
@@ -380,16 +429,6 @@ function Mixing() {
                                         </select>
                                     </div>
 
-                                    {selectedTypeName === "Openness Data Entry" && (
-                                        <CustomInput
-                                            label="Mixing"
-                                            placeholder="Enter Mixing"
-                                            value={mixingValue}
-                                            onChange={(value) => setMixingValue(value)}
-                                            error={headerErrors.mixing}
-                                        />
-                                    )}
-
                                     <CustomInput
                                         label="Entry ID"
                                         value={entryId}
@@ -397,7 +436,7 @@ function Mixing() {
                                         disabled
                                     />
 
-                                    {selectedType?.needsLotNo !== false && (
+                                    {selectedType?.needsLotNo !== false ? (
                                         <div className="flex flex-col gap-1.5 min-w-0 w-full">
                                             <label className="text-[14px] font-semibold text-slate-700 truncate">
                                                 Lot No
@@ -411,17 +450,26 @@ function Mixing() {
                                                 value={lotNo}
                                                 onChange={handleLotChange}
                                                 options={lotOptions}
-                                                placeholder={
-                                                    loadingLotOptions
-                                                        ? "Loading lots..."
-                                                        : lotOptionsError
-                                                            ? "Type lot number"
-                                                            : "Select Lot Number"
-                                                }
-                                                ariaLabel="Lot No"
+                                            placeholder={
+                                                loadingLotOptions
+                                                    ? "Loading lots..."
+                                                    : lotOptionsError
+                                                        ? "Type lot number"
+                                                        : "Select Lot Number"
+                                            }
+                                            ariaLabel="Lot No"
                                             />
                                         </div>
-                                    )}
+                                    ) : selectedTypeName === "Openness Data Entry" ? (
+                                        <CustomInput
+                                            label="Actual Specific Volume (Target)"
+                                            placeholder="1.0"
+                                            value={target}
+                                            onChange={handleTargetChange}
+                                            error={headerErrors.target}
+                                            numericConfig={{ precision: 20, scale: 10 }}
+                                        />
+                                    ) : null}
                                 </div>
 
                                 {SelectedComponent ? (
@@ -432,10 +480,15 @@ function Mixing() {
                                         lotNo={lotNo}
                                         selectedLotDetails={selectedLotDetails}
                                         mixing={mixingValue}
+                                        target={target}
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}
                                         onTypeChange={handleTypeChange}
-                                        onSubmitSuccess={handleOpennessSubmitSuccess}
+                                        onSubmitSuccess={
+                                            isProcessParameter
+                                                ? handleProcessParameterSubmitSuccess
+                                                : handleOpennessSubmitSuccess
+                                        }
                                     />
                                 ) : (
                                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
@@ -454,7 +507,11 @@ function Mixing() {
                             selectedTypeName={selectedTypeName}
                             typeOptions={typeOptions}
                             onTypeChange={handleTypeChange}
-                            onSubmitSuccess={handleOpennessSubmitSuccess}
+                            onSubmitSuccess={
+                                isProcessParameter
+                                    ? handleProcessParameterSubmitSuccess
+                                    : handleOpennessSubmitSuccess
+                            }
                             standaloneSection
                             savedVersionsTargetId="mixing-process-parameter-saved-versions"
                         />

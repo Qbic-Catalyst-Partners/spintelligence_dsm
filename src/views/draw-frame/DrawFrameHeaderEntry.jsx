@@ -9,14 +9,7 @@ import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
-import {
-  fetchDrawFrameFinisherEntries,
-  fetchDrawFrameHeaderEntries,
-  submitDrawFrameFinisherEntry,
-  submitDrawFrameHeaderEntry,
-  updateDrawFrameFinisherEntry,
-  updateDrawFrameHeaderEntry,
-} from "@/apis/draw-frame";
+import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -24,15 +17,19 @@ import {
 } from "@/data/processParameterMasterOptions";
 import styles from "@/styles/draw-frame.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
-import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { normalizeProcessParameterId } from "@/utils/processParameterId";
+import {
+  normalizeProcessParameterId,
+  resolveProcessParameterDisplayId,
+  reserveGlobalProcessParameterId,
+} from "@/utils/processParameterId";
+import { registerProcessParameterId } from "@/utils/processParameterRegistry";
+import { loadLocalEntries, saveLocalEntry } from "@/utils/localProcessParameterStore";
 
 const today = new Date().toISOString().split("T")[0];
 
 const TYPE_CONFIG = {
   "PP - Breaker Drawing": {
-    fetchEntries: fetchDrawFrameHeaderEntries,
-    submitEntry: submitDrawFrameHeaderEntry,
+    namespace: "draw-frame-breaker",
     successMessage: "Draw frame breaker entry created successfully",
     entryLabel: "breaker",
     topRow: [
@@ -85,7 +82,6 @@ const TYPE_CONFIG = {
       deliverySpeed: "",
       pressureBar: "",
     }),
-    updateEntry: updateDrawFrameHeaderEntry,
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
       type: form.type,
@@ -107,8 +103,7 @@ const TYPE_CONFIG = {
     normalizeEntries: normalizeBreakerEntries,
   },
   "PP - Finisher Drawing": {
-    fetchEntries: fetchDrawFrameFinisherEntries,
-    submitEntry: submitDrawFrameFinisherEntry,
+    namespace: "draw-frame-finisher",
     successMessage: "Draw frame finisher entry created successfully",
     entryLabel: "finisher",
     topRow: [
@@ -167,7 +162,6 @@ const TYPE_CONFIG = {
       pressureBar: "",
       scanningRollsSize: "",
     }),
-    updateEntry: updateDrawFrameFinisherEntry,
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
       entry_scope: "finisher",
@@ -224,17 +218,13 @@ function normalizeBreakerEntries(payload) {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
   return rows.map((entry, index) => ({
     id: String(entry?.ins_id || entry?.id || index),
-    paramId: normalizeProcessParameterId(
-      entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id
-    ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id || "-").trim(),
+    paramId: getDisplayEntryId(entry),
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: entry?.creation_date || "",
     data: {
       versionId: String(entry?.ins_id || entry?.id || index),
-      paramId: normalizeProcessParameterId(
-        entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id
-      ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.parameter_id || entry?.ins_id || entry?.id || "").trim(),
+      paramId: getDisplayEntryId(entry),
       type: "PP - Breaker Drawing",
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
@@ -269,17 +259,13 @@ function normalizeFinisherEntries(payload) {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
   return rows.map((entry, index) => ({
     id: String(entry?.id || index),
-    paramId: normalizeProcessParameterId(
-      entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id
-    ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id || "-").trim(),
+    paramId: getDisplayEntryId(entry),
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: entry?.creation_date || "",
     data: {
       versionId: String(entry?.id || index),
-      paramId: normalizeProcessParameterId(
-        entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id
-      ) || String(entry?.entry_id || entry?.process_parameter_id || entry?.param_id || entry?.id || "").trim(),
+      paramId: getDisplayEntryId(entry),
       type: "PP - Finisher Drawing",
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
@@ -321,6 +307,19 @@ function displaySavedValue(value) {
   return normalized && normalized !== "-" ? normalized : "-";
 }
 
+function getDisplayEntryId(entry, fallback = "") {
+  return (
+    normalizeProcessParameterId(
+      entry?.entry_id ||
+        entry?.process_parameter_id ||
+        entry?.param_id ||
+        entry?.parameter_id ||
+        entry?.id ||
+        fallback
+    ) || String(fallback || "").trim()
+  );
+}
+
 function isEntryComplete(entry) {
   return Array.isArray(entry?.details) && entry.details.some((detail) => String(detail?.value ?? "").trim());
 }
@@ -345,7 +344,7 @@ function getEntrySortValue(entry) {
   return 0;
 }
 
-function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeChange }) {
+function DrawFrameHeaderEntry({ entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess }) {
   const router = useRouter();
   const activeType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
   const activeConfig = TYPE_CONFIG[activeType];
@@ -355,7 +354,6 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [recentEntries, setRecentEntries] = useState([]);
   const [expandedEntryId, setExpandedEntryId] = useState(null);
@@ -372,33 +370,29 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
     [activeConfig]
   );
 
-  const loadEntries = async (type = activeType) => {
-    try {
-      setIsLoadingEntries(true);
-      const config = TYPE_CONFIG[type];
-      const response = await config.fetchEntries({ page: 1, limit: 10 });
-      const normalizedEntries = config
-        .normalizeEntries(response)
-        .sort((left, right) => getEntrySortValue(right) - getEntrySortValue(left));
-      setRecentEntries(normalizedEntries);
-      setFormMessage("");
+  const loadEntries = (type = activeType) => {
+    const config = TYPE_CONFIG[type];
+    const rows = loadLocalEntries(config.namespace);
+    const normalizedEntries = config
+      .normalizeEntries(rows)
+      .sort((left, right) => getEntrySortValue(right) - getEntrySortValue(left));
+    setRecentEntries(normalizedEntries);
+    setFormMessage("");
 
-      if (normalizedEntries.length > 0) {
-        setForm((current) => {
-          const activeEntry =
-            normalizedEntries.find((entry) => String(entry.id) === String(current.versionId)) ||
-            normalizedEntries[0];
-          return { ...activeEntry.data, versionId: activeEntry.id };
-        });
-      } else {
-        setForm(config.createForm(type));
-      }
-    } catch (error) {
-      setRecentEntries([]);
-      setForm(TYPE_CONFIG[type].createForm(type));
-      setFormMessage(error.message || `Unable to load draw frame ${TYPE_CONFIG[type].entryLabel} entries.`);
-    } finally {
-      setIsLoadingEntries(false);
+    const matchByEntryId = entryId
+      ? normalizedEntries.find(
+          (entry) => normalizeProcessParameterId(entry.paramId) === normalizeProcessParameterId(entryId)
+        )
+      : null;
+
+    if (matchByEntryId) {
+      setForm({
+        ...matchByEntryId.data,
+        versionId: matchByEntryId.id,
+        paramId: entryId || matchByEntryId.data.paramId || "",
+      });
+    } else {
+      setForm({ ...config.createForm(type), paramId: entryId || "" });
     }
   };
 
@@ -419,14 +413,17 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
     );
   }, [recentEntries]);
 
+  const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countNameOptions = useMemo(
     () =>
       buildProcessParameterOptions(
-        PROCESS_PARAMETER_COUNT_OPTIONS,
-        recentEntries.map((entry) => String(entry.countName || "").trim()),
+        masterCountOptions.length
+          ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+          : PROCESS_PARAMETER_COUNT_OPTIONS,
+        [],
         form.countName
       ),
-    [form.countName, recentEntries]
+    [form.countName, masterCountOptions]
   );
 
   const consigneeOptions = useMemo(
@@ -457,12 +454,29 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
     setFormMessage("");
   };
 
+  const findLatestEntryByCountName = (countName) => {
+    const normalized = String(countName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      recentEntries
+        .filter((entry) => String(entry.data.countName || "").trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.data.creationDate || 0) - new Date(a.data.creationDate || 0))[0] || null
+    );
+  };
+
   const handleFieldChange = (field, value) => {
     const nextValue = numericFields.has(field)
       ? sanitizeNumericInput(value, { precision: 10, scale: 2 })
       : value;
 
     setForm((current) => {
+      if (field === "countName" && !entryId && !current.versionId) {
+        const match = findLatestEntryByCountName(nextValue);
+        if (match) {
+          return { ...match.data, countName: nextValue, versionId: "", paramId: current.paramId };
+        }
+      }
+
       const nextForm = {
         ...current,
         [field]: nextValue,
@@ -519,35 +533,28 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      const payload = activeConfig.buildPayload(form, entryId);
       const selectedExistingEntry = recentEntries.find(
         (entry) => String(entry.id) === String(form.versionId)
       );
+      const versionId = selectedExistingEntry ? selectedExistingEntry.id : String(Date.now());
+      const paramId = selectedExistingEntry
+        ? form.paramId || entryId
+        : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
+      const payload = activeConfig.buildPayload(form, entryId);
+      const savedEntry = saveLocalEntry(activeConfig.namespace, {
+        ...payload,
+        id: versionId,
+        ins_id: versionId,
+        param_id: paramId,
+      });
 
-      if (selectedExistingEntry) {
-        await activeConfig.updateEntry(selectedExistingEntry.id, payload);
-      } else {
-        await activeConfig.submitEntry(payload);
-      }
-
-      try {
-        await createThresholdViolationTickets({
-          department: "Quality Control",
-          subDepartment: "Draw Frame",
-          screenName: activeType,
-          machineName: activeType,
-          values: allFields
-            .filter((field) => !["type", "creationDate"].includes(field.key))
-            .map((field) => ({
-              label: field.label,
-              value: form[field.key],
-            })),
-        });
-      } catch (ticketError) {
-        console.error("Threshold ticket generation failed:", ticketError);
-      }
-
-      await loadEntries(activeType);
+      registerProcessParameterId(savedEntry, activeType);
+      setForm((current) => ({
+        ...current,
+        paramId: resolveProcessParameterDisplayId(savedEntry, current.paramId || entryId),
+      }));
+      loadEntries(activeType);
+      onSubmitSuccess?.(savedEntry);
       setShowPreview(false);
       setShowSuccess(true);
     } catch (error) {
@@ -647,7 +654,7 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
           <label className={styles.label}>{field.label}</label>
           <input
             type="text"
-            value={entryId || ""}
+            value={form.paramId || entryId || nextEntryIdPreview || "Generated on save"}
             readOnly
             disabled
             className={`${styles.input} ${hasError ? styles.inputError : ""}`}
@@ -732,9 +739,7 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
       />
 
       <div className={styles.headerEntryList}>
-        {isLoadingEntries ? (
-          <p className={styles.messageInfo}>Loading entries...</p>
-        ) : recentEntries.length ? (
+        {recentEntries.length ? (
           recentEntries.map((entry, index) => (
             <div key={`${entry.id}-${index}`} className={styles.headerEntryCard}>
               <div className={styles.headerEntryCardHeader}>
@@ -744,7 +749,7 @@ function DrawFrameHeaderEntry({ entryId = "", typeOptions, selectedType, onTypeC
                   onClick={() => handleEntrySelect(entry)}
                 >
                   <span className={styles.headerEntryMetaLabel}>Param ID</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.paramId)}</span>
+                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.paramId || entry.id)}</span>
                 </button>
                 <button
                   type="button"

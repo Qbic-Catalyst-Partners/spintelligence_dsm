@@ -301,6 +301,7 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 760px;
+  table-layout: fixed;
 }
 
 .countChangeTable th,
@@ -317,10 +318,110 @@
   font-weight: 700;
 }
 
+.countHeaderFormula {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .countChangeTable td {
   color: #1e293b;
   font-size: 11px;
   font-weight: 500;
+}
+
+.countChangeTable th:nth-child(1),
+.countChangeTable td:nth-child(1) {
+  width: 90px;
+}
+
+.countChangeTable th:nth-child(2),
+.countChangeTable td:nth-child(2),
+.countChangeTable th:nth-child(3),
+.countChangeTable td:nth-child(3),
+.countChangeTable th:nth-child(4),
+.countChangeTable td:nth-child(4),
+.countChangeTable th:nth-child(5),
+.countChangeTable td:nth-child(5),
+.countChangeTable th:nth-child(6),
+.countChangeTable td:nth-child(6),
+.countChangeTable th:nth-child(7),
+.countChangeTable td:nth-child(7),
+.countChangeTable th:nth-child(8),
+.countChangeTable td:nth-child(8) {
+  width: calc((100% - 90px) / 7);
+}
+
+.countChangeInput {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid #d8e2f3;
+  background: #f8fbff;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.countChangeTable td:nth-child(2) .countChangeInput,
+.countChangeTable td:nth-child(5) .countChangeInput {
+  width: 80px;
+  min-width: 80px;
+}
+
+.countChangeInput:focus {
+  outline: none;
+  border-color: #4965b7;
+  box-shadow: 0 0 0 2px rgba(73, 101, 183, 0.12);
+}
+
+.countChangeReadingNoCell {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.countChangeEmptyState {
+  padding: 20px 12px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.countChangeSummaryBox {
+  width: 180px;
+  margin-top: 14px;
+  margin-left: auto;
+  padding: 12px 14px;
+  border: 1px solid #d8e2f3;
+  border-radius: 10px;
+  background: #f8fbff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.countChangeSummaryLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.countChangeSummaryValue {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.countChangeSummaryHint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
 }
 
 .ringFrameTableWrap {

@@ -5,7 +5,6 @@ import { mixingOpennessDataEntry } from "@/apis/mixing";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const initialForm = {
-  target: "",
   entries: "",
 };
 
@@ -14,17 +13,7 @@ const parseNumber = (value) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const roundToDecimals = (value, decimals) => {
-  const factor = 10 ** decimals;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
-};
-
-const normalizeTargetSpecificVolume = (value) => {
-  const numericValue = parseNumber(value);
-  if (numericValue <= 0) return 0;
-
-  return roundToDecimals(numericValue > 1 ? numericValue / 100 : numericValue, 10);
-};
+const BASE_AOV = 0.649350649;
 
 const createStages = (totalEntries) => {
   const stages = [];
@@ -34,15 +23,17 @@ const createStages = (totalEntries) => {
   while (remaining > 0) {
     const rowCount = Math.min(5, remaining);
 
-    stages.push({
-      stageName: `Stage ${stageIndex + 1}`,
-      rows: Array.from({ length: rowCount }, () => ({
-        weight: "",
-        vol1: "",
-        vol2: "",
-        asv: "",
-        aov: "",
-      })),
+      stages.push({
+        stageName: `Stage ${stageIndex + 1}`,
+        rows: Array.from({ length: rowCount }, () => ({
+          weight: "",
+          vol1: "",
+          vol2: "",
+          avgVol: "",
+          asv: "",
+          aov: "",
+        })),
+      avgWeight: "",
       avgVol: "",
       avgAsv: "",
       avgAov: "",
@@ -73,7 +64,7 @@ function ReadOnlyField({ label, value }) {
 }
 
 const OpennessDataEntry = forwardRef(function OpennessDataEntry(
-  { date, mixing, onSubmitSuccess },
+  { date, mixing, target, onSubmitSuccess },
   ref
 ) {
   const [form, setForm] = useState(initialForm);
@@ -82,12 +73,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const [errors, setErrors] = useState({});
 
   const handleFormChange = (field, value) => {
-    const nextValue =
-      field === "entries"
-        ? sanitizeIntegerInput(value, 9)
-        : field === "target"
-          ? sanitizeNumericInput(value, { precision: 20, scale: 10 })
-          : value;
+    const nextValue = field === "entries" ? sanitizeIntegerInput(value, 9) : value;
 
     setForm((current) => ({
       ...current,
@@ -106,7 +92,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
     setStages(createStages(totalEntries));
     setOverallOpen("");
-    setErrors((prev) => ({ ...prev, target: !form.target, entries: !form.entries }));
+    setErrors((prev) => ({ ...prev, entries: !form.entries }));
   };
 
   const handleRowChange = (stageIndex, rowIndex, field, value) => {
@@ -132,14 +118,12 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
             if (weight > 0 && volumeOne > 0 && volumeTwo > 0) {
               const avgVolume = (volumeOne + volumeTwo) / 2;
               const apparentSpecificVolume = (avgVolume / weight);
-              const targetSpecificVolume = normalizeTargetSpecificVolume(form.target);
-              const actualOpennessValue =
-                  targetSpecificVolume > 0
-                  ? (((apparentSpecificVolume - targetSpecificVolume) / targetSpecificVolume).toFixed(2))
-                  : "";
+              const actualOpennessValue = ((apparentSpecificVolume - BASE_AOV) / BASE_AOV).toFixed(2);
+              nextRow.avgVol = avgVolume.toFixed(2);
               nextRow.asv = apparentSpecificVolume.toFixed(2);
               nextRow.aov = actualOpennessValue;
             } else {
+              nextRow.avgVol = "";
               nextRow.asv = "";
               nextRow.aov = "";
             }
@@ -149,7 +133,9 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           return row;
         });
 
+        let totalWeight = 0;
         let totalVol = 0;
+        let totalAsv = 0;
         let totalAov = 0;
         let validRows = 0;
 
@@ -157,47 +143,75 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           const weight = parseNumber(row.weight);
           const vol1 = parseNumber(row.vol1);
           const vol2 = parseNumber(row.vol2);
+          const avgVolume = parseNumber(row.avgVol);
 
           if (weight > 0 && vol1 > 0 && vol2 > 0) {
-            const avgVolume = (vol1 + vol2) / 2;
+            const apparentSpecificVolume = parseNumber(row.asv);
+            totalWeight += weight;
             totalVol += avgVolume;
+            totalAsv += apparentSpecificVolume;
             totalAov += parseNumber(row.aov);
             validRows += 1;
           }
         });
 
+        const avgWeight = validRows ? (totalWeight / validRows).toFixed(2) : "";
         const avgVol = validRows ? (totalVol / validRows).toFixed(2) : "";
+        const avgAsv = validRows ? (totalAsv / validRows).toFixed(2) : "";
         const avgAov = validRows ? (totalAov / validRows).toFixed(2) : "";
-        const openness = avgAov;
-
-        return { ...stage, rows: updatedRows, avgVol, avgAov, openness };
+        return { ...stage, rows: updatedRows, avgWeight, avgVol, avgAsv, avgAov, openness: "" };
       });
 
-      const validStages = updated.filter((stage) => stage.openness !== "");
+      const withOpenness = updated.map((stage, stageIndex) => {
+        if (stageIndex === 0 || stageIndex === updated.length - 1 || stage.avgAov === "") {
+          return { ...stage, openness: "" };
+        }
+
+        const previousStageAvgAov = parseNumber(updated[stageIndex - 1].avgAov);
+        if (previousStageAvgAov === 0) {
+          return { ...stage, openness: "" };
+        }
+
+        const openness = (((parseNumber(stage.avgAov) - previousStageAvgAov) / previousStageAvgAov) * 100).toFixed(2);
+        return { ...stage, openness };
+      });
+
+      const firstStage = withOpenness[0];
+      const lastStage = withOpenness[withOpenness.length - 1];
+      const firstAov = firstStage ? parseNumber(firstStage.avgAov) : 0;
+      const lastAov = lastStage ? parseNumber(lastStage.avgAov) : 0;
       const overall =
-        validStages.length > 0
-          ? (
-              validStages.reduce((sum, stage) => sum + parseNumber(stage.openness), 0) /
-              validStages.length
-            ).toFixed(2)
+        firstAov > 0 && lastAov > 0
+          ? (((lastAov - firstAov) / lastAov) * 100).toFixed(2)
           : "";
       setOverallOpen(overall);
 
-      return updated;
+      return withOpenness;
     });
   };
 
+  const handleStageNameChange = (stageIndex, value) => {
+    setStages((current) =>
+      current.map((stage, currentStageIndex) =>
+        currentStageIndex === stageIndex ? { ...stage, stageName: value } : stage
+      )
+    );
+  };
+
   const canSubmit = useMemo(() => {
-    if (!date || !mixing?.trim() || !form.target.trim() || !form.entries.trim()) return false;
+    if (!date || !String(target || "").trim() || !form.entries.trim()) return false;
     if (!stages.length) return false;
 
     return stages.every(
       (stage) =>
-        stage.rows.every((row) => row.weight !== "" && row.vol1 !== "" && row.vol2 !== "") &&
+        stage.rows.every((row) => row.weight !== "" && row.vol1 !== "" && row.vol2 !== "" && row.avgVol !== "") &&
+        stage.avgWeight !== "" &&
         stage.avgVol !== "" &&
-        stage.openness !== ""
+        stage.avgAsv !== "" &&
+        stage.avgAov !== "" &&
+        (stage === stages[0] || stage === stages[stages.length - 1] ? true : stage.openness !== "")
     );
-  }, [date, mixing, form, stages]);
+  }, [date, target, form, stages]);
 
   const handleClear = () => {
     setForm(initialForm);
@@ -209,7 +223,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const buildPayload = () => ({
     inspection_date: date,
     mixing,
-    actual_specific_volume_target: Number(form.target),
+    actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
     entries: stages.flatMap((stage) =>
       stage.rows.map((row) => ({
@@ -237,14 +251,14 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     const header = [
       { label: "Date", value: date },
       { label: "Mixing", value: mixing },
-      { label: "Target (ASV)", value: form.target },
+      { label: "Target (ASV)", value: target },
       { label: "Entries (N)", value: form.entries },
     ];
 
     const stageRows = stages.flatMap((stage) =>
-      stage.rows.map((row, rowIndex) => ({
+        stage.rows.map((row, rowIndex) => ({
         label: `${stage.stageName} - Row ${rowIndex + 1}`,
-        value: `W:${row.weight} | V1:${row.vol1} | V2:${row.vol2} | ASV:${row.asv} | AOV:${row.aov}`,
+        value: `W:${row.weight} | V1:${row.vol1} | V2:${row.vol2} | V:${row.avgVol} | ASV:${row.asv} | AOV:${row.aov}`,
       }))
     );
 
@@ -263,7 +277,6 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     getPayload: buildPayload,
     validate: () => {
       const nextErrors = {};
-      if (!form.target) nextErrors.target = true;
       if (!form.entries) nextErrors.entries = true;
       stages.forEach((stage, sIdx) => {
         stage.rows.forEach((row, rIdx) => {
@@ -284,14 +297,6 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   return (
     <div className={styles.wrapper}>
       <div className={styles.topGrid}>
-        <CustomInput
-          label="Actual Specific Volume (Target)"
-          placeholder="1.0"
-          value={form.target}
-          onChange={(value) => handleFormChange("target", value)}
-          error={errors.target}
-        />
-
         <div className={styles.generateField}>
           <CustomInput
             label="No. of Entries (N)"
@@ -307,64 +312,79 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       </div>
 
       {stages.map((stage, stageIndex) => (
-        <div key={stage.stageName} className={styles.stageBox}>
-          <h3 className={styles.stageTitle}>Machine Stage {stageIndex + 1}</h3>
-          <input className={styles.stageNameInput} value={stage.stageName} readOnly />
+        <div key={stageIndex} className={styles.stageBox}>
+          <label className={styles.stageLabel} htmlFor={`stage-name-${stageIndex}`}>
+            Machine Name
+          </label>
+          <input
+            id={`stage-name-${stageIndex}`}
+            className={styles.stageNameInput}
+            value={stage.stageName}
+            onChange={(e) => handleStageNameChange(stageIndex, e.target.value)}
+            aria-label={`Stage ${stageIndex + 1} name`}
+          />
 
           {stage.rows.map((row, rowIndex) => {
             runningIndex += 1;
             return (
               <div key={`${stage.stageName}-${rowIndex}`} className={styles.rowBox}>
                 <div className={styles.rowNumber}>{runningIndex}</div>
-                <div className={styles.rowGrid}>
-                  <CustomInput
-                    label="Weight in Gms"
-                    placeholder="0.00"
-                    value={row.weight}
-                    onChange={(value) => handleRowChange(stageIndex, rowIndex, "weight", value)}
-                    error={errors[`stage-${stageIndex}-row-${rowIndex}-weight`]}
-                  />
-                  <CustomInput
-                    label="Volume 1 in CC"
-                    placeholder="0.00"
-                    value={row.vol1}
-                    onChange={(value) => handleRowChange(stageIndex, rowIndex, "vol1", value)}
-                    error={errors[`stage-${stageIndex}-row-${rowIndex}-vol1`]}
-                  />
-                  <CustomInput
-                    label="Volume 2 in CC"
-                    placeholder="0.00"
-                    value={row.vol2}
-                    onChange={(value) => handleRowChange(stageIndex, rowIndex, "vol2", value)}
-                    error={errors[`stage-${stageIndex}-row-${rowIndex}-vol2`]}
-                  />
-                </div>
+                <div className={styles.rowContent}>
+                  <div className={styles.rowGrid}>
+                    <CustomInput
+                      label="Weight (M)"
+                      placeholder=""
+                      value={row.weight}
+                      onChange={(value) => handleRowChange(stageIndex, rowIndex, "weight", value)}
+                      error={errors[`stage-${stageIndex}-row-${rowIndex}-weight`]}
+                    />
+                    <CustomInput
+                      label="Volume 1"
+                      placeholder=""
+                      value={row.vol1}
+                      onChange={(value) => handleRowChange(stageIndex, rowIndex, "vol1", value)}
+                      error={errors[`stage-${stageIndex}-row-${rowIndex}-vol1`]}
+                    />
+                    <CustomInput
+                      label="Volume 2"
+                      placeholder=""
+                      value={row.vol2}
+                      onChange={(value) => handleRowChange(stageIndex, rowIndex, "vol2", value)}
+                      error={errors[`stage-${stageIndex}-row-${rowIndex}-vol2`]}
+                    />
+                  </div>
 
-                <div className={styles.rowGrid}>
-                  <ReadOnlyField label="Apparent Specific Vol (A=V/M)" value={row.asv} />
-                  <ReadOnlyField label="Actual Op. Value (AOV)" value={row.aov} />
-                  <div />
+                  <div className={styles.rowGrid}>
+                    <ReadOnlyField label="Average Volume (V)" value={row.avgVol} />
+                    <ReadOnlyField label="Apparent Specific Vol (A=V/M)" value={row.asv} />
+                    <ReadOnlyField label="Actual Op. Value (AOV)" value={row.aov} />
+                  </div>
                 </div>
               </div>
             );
           })}
 
           <div className={styles.avgSection}>
-            <h4 className={styles.avgTitle}>Stage {stageIndex + 1} Averages</h4>
-            <div className={styles.rowGrid}>
+            <h4 className={styles.avgTitle}>Averages</h4>
+            <div className={styles.avgGrid}>
+              <ReadOnlyField label="Avg. Weight (M)" value={stage.avgWeight} />
               <ReadOnlyField label="Avg. Volume (V)" value={stage.avgVol} />
-              <ReadOnlyField label="Actual Op. Value (AOV)" value={stage.avgAov} />
-            </div>
-            <div className={styles.opennessField}>
-              <ReadOnlyField label="Openness %" value={stage.openness} />
+              <ReadOnlyField label="Average of Apparent Specific Vol (A=V/M)" value={stage.avgAsv} />
+              <ReadOnlyField label="Average of Actual Op. Value (AOV)" value={stage.avgAov} />
+              {stageIndex > 0 && stageIndex < stages.length - 1 ? (
+                <ReadOnlyField label="Avg. Openness %" value={stage.openness} />
+              ) : (
+                <div />
+              )}
             </div>
           </div>
+
         </div>
       ))}
 
       {stages.length > 0 && (
         <div className={styles.overallBox}>
-          <h3 className={styles.overallTitle}>Overall Openness Percentage</h3>
+          <h3 className={styles.overallTitle}>Overall Openness Efficiency (%)</h3>
           <input className={styles.overallInput} value={overallOpen} readOnly />
         </div>
       )}
