@@ -367,7 +367,7 @@ function Comber() {
                     </tr>
                 ) : uqcEntries.length ? uqcEntries.map((entry, i) => (
                     <tr
-                        key={entry.id}
+                        key={`${entry.id ?? "row"}-${i}`}
                         style={{
                             backgroundColor: i % 2 === 0 ? entryTableTheme.rowEven : entryTableTheme.rowOdd,
                         }}

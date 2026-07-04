@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "@/styles/u%dataentry.module.css";
 import Footer from "@/components/Footer";
 import SearchableSelect from "@/components/SearchableSelect";
+import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@/apis/carding";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
@@ -51,6 +52,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
   const [errors, setErrors] = useState({});
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [varietyOptions, setVarietyOptions] = useState([]);
   const [mcNoOptions, setMcNoOptions] = useState(CDG_MC_NO_OPTIONS);
   const [shiftOptions] = useState(STATIC_SHIFT_OPTIONS);
@@ -141,6 +143,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
     if (uqc?.message) {
       resetForm();
       setIsError(false);
+      setShowSuccess(true);
       dispatch(getCardingUqcEntries({ page: 1, limit: 10 }));
       dispatch(clearCardingState());
     }
@@ -305,6 +308,10 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
         />
       </div>
 
+      <SuccessModal
+        open={showSuccess}
+        onClose={() => setShowSuccess(false)}
+      />
     </div>
   );
 }

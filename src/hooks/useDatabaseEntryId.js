@@ -67,19 +67,36 @@ export default function useDatabaseEntryId({
       }
       const response = await apiConfig.get(fetchPath, query, { skipGlobalErrorModal: true });
       const rows = extractRows(response?.data || response);
+      console.debug("[entry-id] fetch existing rows resolved", {
+        department,
+        typeName,
+        routePath: fetchPath,
+        rowCount: rows.length,
+        responseKeys: response?.data && typeof response.data === "object" ? Object.keys(response.data) : typeof response?.data,
+      });
       if (!rows.length) return null;
 
       const highestSequence = rows.reduce((max, row) => {
-        const candidate = extractSequence(
-          row?.entry_id ||
-            row?.entryId ||
-            row?.value ||
-            row?.id ||
-            row?.ticket_id ||
-            row?.ticketId
+        const candidate = Math.max(
+          extractSequence(row?.entry_id),
+          extractSequence(row?.entryId),
+          extractSequence(row?.waste_study_id),
+          extractSequence(row?.wasteStudyId),
+          extractSequence(row?.value),
+          extractSequence(row?.id),
+          extractSequence(row?.ticket_id),
+          extractSequence(row?.ticketId)
         );
         return candidate > max ? candidate : max;
       }, 0);
+
+      console.debug("[entry-id] fetch existing rows computed", {
+        department,
+        typeName,
+        routePath: fetchPath,
+        highestSequence,
+        sampleRow: rows[0],
+      });
 
       if (!highestSequence) return null;
       return formatEntryId({
@@ -88,7 +105,14 @@ export default function useDatabaseEntryId({
         width: resolvedWidth,
         leadingHash,
       });
-    } catch (_error) {
+    } catch (error) {
+      console.debug("[entry-id] fetch existing rows failed", {
+        department,
+        typeName,
+        routePath: fetchPath,
+        message: error?.message || String(error),
+        status: error?.response?.status,
+      });
       return null;
     }
   }, [fetchPath, leadingHash, resolvedPrefix, resolvedWidth, scope]);

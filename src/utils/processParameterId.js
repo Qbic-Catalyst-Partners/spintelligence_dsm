@@ -57,3 +57,25 @@ export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fal
   return `${prefix}-${String(nextSequence).padStart(width, "0")}`;
 };
 
+export const coerceProcessParameterId = (value) => String(value ?? "").trim();
+
+const GLOBAL_PROCESS_PARAMETER_COUNTER_KEY = "pp-global-id-counter";
+
+export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
+  const prefix = String(fallbackPrefix || "PP").trim().toUpperCase();
+  const width = Number(fallbackWidth) || 4;
+
+  if (typeof window === "undefined") {
+    return `${prefix}-${String(1).padStart(width, "0")}`;
+  }
+
+  try {
+    const current = Number(window.localStorage.getItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY)) || 0;
+    const next = current + 1;
+    window.localStorage.setItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY, String(next));
+    return `${prefix}-${String(next).padStart(width, "0")}`;
+  } catch {
+    return `${prefix}-${String(1).padStart(width, "0")}`;
+  }
+};
+

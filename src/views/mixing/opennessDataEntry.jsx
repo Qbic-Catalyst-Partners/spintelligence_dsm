@@ -5,7 +5,6 @@ import { mixingOpennessDataEntry } from "@/apis/mixing";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const initialForm = {
-  target: "",
   entries: "",
 };
 
@@ -65,7 +64,7 @@ function ReadOnlyField({ label, value }) {
 }
 
 const OpennessDataEntry = forwardRef(function OpennessDataEntry(
-  { date, mixing, onSubmitSuccess },
+  { date, mixing, target, onSubmitSuccess },
   ref
 ) {
   const [form, setForm] = useState(initialForm);
@@ -74,12 +73,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const [errors, setErrors] = useState({});
 
   const handleFormChange = (field, value) => {
-    const nextValue =
-      field === "entries"
-        ? sanitizeIntegerInput(value, 9)
-        : field === "target"
-          ? sanitizeNumericInput(value, { precision: 20, scale: 10 })
-          : value;
+    const nextValue = field === "entries" ? sanitizeIntegerInput(value, 9) : value;
 
     setForm((current) => ({
       ...current,
@@ -98,7 +92,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
     setStages(createStages(totalEntries));
     setOverallOpen("");
-    setErrors((prev) => ({ ...prev, target: !form.target, entries: !form.entries }));
+    setErrors((prev) => ({ ...prev, entries: !form.entries }));
   };
 
   const handleRowChange = (stageIndex, rowIndex, field, value) => {
@@ -205,7 +199,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   };
 
   const canSubmit = useMemo(() => {
-    if (!date || !mixing?.trim() || !form.target.trim() || !form.entries.trim()) return false;
+    if (!date || !String(target || "").trim() || !form.entries.trim()) return false;
     if (!stages.length) return false;
 
     return stages.every(
@@ -217,7 +211,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         stage.avgAov !== "" &&
         (stage === stages[0] || stage === stages[stages.length - 1] ? true : stage.openness !== "")
     );
-  }, [date, mixing, form, stages]);
+  }, [date, target, form, stages]);
 
   const handleClear = () => {
     setForm(initialForm);
@@ -229,7 +223,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const buildPayload = () => ({
     inspection_date: date,
     mixing,
-    actual_specific_volume_target: Number(form.target),
+    actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
     entries: stages.flatMap((stage) =>
       stage.rows.map((row) => ({
@@ -257,7 +251,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     const header = [
       { label: "Date", value: date },
       { label: "Mixing", value: mixing },
-      { label: "Target (ASV)", value: form.target },
+      { label: "Target (ASV)", value: target },
       { label: "Entries (N)", value: form.entries },
     ];
 
@@ -283,7 +277,6 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     getPayload: buildPayload,
     validate: () => {
       const nextErrors = {};
-      if (!form.target) nextErrors.target = true;
       if (!form.entries) nextErrors.entries = true;
       stages.forEach((stage, sIdx) => {
         stage.rows.forEach((row, rIdx) => {
@@ -304,14 +297,6 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   return (
     <div className={styles.wrapper}>
       <div className={styles.topGrid}>
-        <CustomInput
-          label="Actual Specific Volume (Target)"
-          placeholder="1.0"
-          value={form.target}
-          onChange={(value) => handleFormChange("target", value)}
-          error={errors.target}
-        />
-
         <div className={styles.generateField}>
           <CustomInput
             label="No. of Entries (N)"

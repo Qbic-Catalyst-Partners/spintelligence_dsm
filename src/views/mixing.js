@@ -108,6 +108,7 @@ function Mixing() {
     const [lotNo, setLotNo] = useState("");
     const [selectedLotDetails, setSelectedLotDetails] = useState(null);
     const [mixingValue, setMixingValue] = useState("");
+    const [target, setTarget] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
@@ -169,9 +170,20 @@ function Mixing() {
         setLotNo("");
         setSelectedLotDetails(null);
         setMixingValue("");
+        setTarget("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
+    };
+
+    const handleTargetChange = (value) => {
+        setTarget(value);
+        setHeaderErrors((prev) => {
+            if (!prev.target) return prev;
+            const next = { ...prev };
+            delete next.target;
+            return next;
+        });
     };
 
     const handleLotChange = (value) => {
@@ -190,6 +202,7 @@ function Mixing() {
         setLotNo("");
         setSelectedLotDetails(null);
         setMixingValue("");
+        setTarget("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
@@ -252,6 +265,7 @@ function Mixing() {
         const errors = {};
         if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
         if (selectedTypeName === "Openness Data Entry" && !mixingValue) errors.mixing = true;
+        if (selectedTypeName === "Openness Data Entry" && !target) errors.target = true;
 
         setHeaderErrors(errors);
 
@@ -446,14 +460,16 @@ function Mixing() {
                                             ariaLabel="Lot No"
                                             />
                                         </div>
-                                    ) : (
-                                        <div aria-hidden="true" className="flex flex-col gap-1.5 min-w-0 w-full">
-                                            <label className="text-[14px] font-semibold text-slate-700 truncate">
-                                                Lot No
-                                            </label>
-                                            <div className="h-9.5 w-full rounded-lg border border-transparent bg-transparent" />
-                                        </div>
-                                    )}
+                                    ) : selectedTypeName === "Openness Data Entry" ? (
+                                        <CustomInput
+                                            label="Actual Specific Volume (Target)"
+                                            placeholder="1.0"
+                                            value={target}
+                                            onChange={handleTargetChange}
+                                            error={headerErrors.target}
+                                            numericConfig={{ precision: 20, scale: 10 }}
+                                        />
+                                    ) : null}
                                 </div>
 
                                 {SelectedComponent ? (
@@ -464,6 +480,7 @@ function Mixing() {
                                         lotNo={lotNo}
                                         selectedLotDetails={selectedLotDetails}
                                         mixing={mixingValue}
+                                        target={target}
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}
                                         onTypeChange={handleTypeChange}

@@ -170,7 +170,9 @@ function BlowRoom() {
       await reserveEntryId();
       showSuccessOnce();
     } catch (e) {
-      // submission error handled by slices/toasts; keep modal closed
+      // submission error is shown via the global error modal; refresh the
+      // reserved entry ID so a duplicate-ID rejection doesn't repeat on retry
+      await reserveEntryId();
     }
   };
 

@@ -1619,7 +1619,12 @@ function DrawFrame() {
         const fulfilled = isCots
           ? submitDrawFrameCotsInspection.fulfilled.match(result)
           : submitDrawFrameYarnCvInspection.fulfilled.match(result);
-        if (!fulfilled) return;
+        if (!fulfilled) {
+          // submission error is shown via the global error modal; refresh the
+          // reserved entry ID so a duplicate-ID rejection doesn't repeat on retry
+          void reserveEntryId();
+          return;
+        }
         recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",

@@ -195,21 +195,27 @@ function Carding() {
 
     const confirmSubmit = async () => {
         setShowPreview(false);
-        const ok = await childRef.current?.submit?.();
-        if (ok) {
-            storeCreatedProcessParameterId(ok);
-            await recordSubmittedNotebook({
-                department: "Quality Control",
-                subDepartment: "Carding",
-                notebookName: selectedType,
-                entryId,
-                lotNo,
-                childRef,
-                previewItems,
-                user,
-            });
+        try {
+            const ok = await childRef.current?.submit?.();
+            if (ok) {
+                storeCreatedProcessParameterId(ok);
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    notebookName: selectedType,
+                    entryId,
+                    lotNo,
+                    childRef,
+                    previewItems,
+                    user,
+                });
+                await reserveEntryId();
+                setShowSuccess(true);
+            }
+        } catch (e) {
+            // submission error is shown via the global error modal; refresh the
+            // reserved entry ID so a duplicate-ID rejection doesn't repeat on retry
             await reserveEntryId();
-            setShowSuccess(true);
         }
     };
 
@@ -373,6 +379,7 @@ function Carding() {
                             onTypeChange={handleTypeChange}
       showForm={selectedType === "Thick place & CV"}
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
                         />
                     ) : null}
 
