@@ -37,6 +37,8 @@ export default async function handler(req, res) {
     leadingHash = false,
   } = req.body || {};
   const scope = buildEntryIdScope(department, typeName, prefix);
+  const effectivePrefix = scope === "pp-global" ? "PP" : String(prefix || "ENT").trim().toUpperCase();
+  const effectiveWidth = scope === "pp-global" ? 4 : Number(width) || 3;
 
   if (!scope || !prefix) {
     return res.status(400).json({ message: "department, typeName, and prefix are required" });
@@ -79,7 +81,7 @@ export default async function handler(req, res) {
           updated_at = NOW()
         RETURNING next_value - 1 AS sequence, prefix, width, leading_hash
       `,
-      [scope, prefix, Number(width) || 3, Boolean(leadingHash)]
+      [scope, effectivePrefix, effectiveWidth, Boolean(leadingHash)]
     );
 
     await client.query("COMMIT");

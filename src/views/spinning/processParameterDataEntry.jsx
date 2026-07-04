@@ -4,20 +4,20 @@ import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
-import {
-  getSpinningProcessParameterEntries,
-  spinningProcessParameterDataEntry,
-  updateSpinningProcessParameterEntry,
-} from "@/apis/spinning";
-import useSpinningCountOptions from "@/hooks/useSpinningCountOptions";
+import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
-import { createThresholdViolationTickets } from "@/utils/thresholdTicketing";
-import { coerceProcessParameterId, reserveGlobalProcessParameterId } from "@/utils/processParameterId";
+import {
+  coerceProcessParameterId,
+  normalizeProcessParameterId,
+  resolveProcessParameterDisplayId,
+  reserveGlobalProcessParameterId,
+} from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
+import { loadLocalEntries, saveLocalEntry } from "@/utils/localProcessParameterStore";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -365,6 +365,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     typeOptions = [],
     onTypeChange,
     entryId = "#SPN-001",
+    nextEntryIdPreview = "",
     standaloneSection = false,
     savedVersionsTargetId = "",
   },
@@ -375,19 +376,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [form, setForm] = useState(createDefaultForm);
   const [errors, setErrors] = useState({});
   const [expandedVersionId, setExpandedVersionId] = useState(null);
-  const [loadingVersions, setLoadingVersions] = useState(false);
-  const [versionsError, setVersionsError] = useState("");
   const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
-  const { countOptions: masterCountOptions, countOptionsError, loadingCountOptions } = useSpinningCountOptions("master");
-
-  const countOptions = buildProcessParameterOptions(
-    masterCountOptions.length
-      ? masterCountOptions.map((option) => option.label || option.value)
-      : PROCESS_PARAMETER_COUNT_OPTIONS,
-    versions.map((version) => version?.data?.countName),
-    form.countName
-  );
 
   const consigneeOptions = buildProcessParameterOptions(
     PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -395,48 +385,54 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     form.consigneeName
   );
 
-  const loadVersions = async () => {
-    setLoadingVersions(true);
-    try {
-      const response = await getSpinningProcessParameterEntries({ page: 1, limit: 100 });
-      const nextVersions = Array.isArray(response?.data)
-        ? response.data.map(mapApiEntryToVersion)
-        : [];
+  const { countOptions: masterCountOptions } = useMixingCountOptions();
+  const countOptions = buildProcessParameterOptions(
+    masterCountOptions.length
+      ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
+      : PROCESS_PARAMETER_COUNT_OPTIONS,
+    [],
+    form.countName
+  );
 
-      setVersions(nextVersions);
+  const loadVersions = () => {
+    const nextVersions = loadLocalEntries("spinning").map(mapApiEntryToVersion);
 
-      if (nextVersions.length > 0) {
-        const nextProcessParameterId = await reserveGlobalProcessParameterId("PP", 4);
-        setSavedProcessParameterId(nextProcessParameterId);
-        setForm((current) => {
-          const activeVersion =
-            nextVersions.find((item) => item.id === current.versionId) || nextVersions[0];
-          return {
-            ...cloneForm(activeVersion.data),
-            versionId: "",
-            paramId: "",
-          };
-        });
-        const latestCompleteVersion = nextVersions.find(isVersionComplete);
-        setExpandedVersionId(latestCompleteVersion?.id || null);
-      } else {
-        setForm(createDefaultForm());
-        setExpandedVersionId(null);
-        setSavedProcessParameterId(await reserveGlobalProcessParameterId("PP", 4));
-      }
-      setVersionsError("");
-    } catch (error) {
-      setVersions([]);
+    setVersions(nextVersions);
+
+    const matchByEntryId = entryId
+      ? nextVersions.find(
+          (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(entryId)
+        )
+      : null;
+
+    if (matchByEntryId) {
+      setForm({
+        ...cloneForm(matchByEntryId.data),
+        versionId: matchByEntryId.id,
+        paramId: entryId || matchByEntryId.data.paramId || "",
+      });
+    } else {
+      setForm({ ...createDefaultForm(), paramId: entryId || "" });
+    }
+
+    if (nextVersions.length > 0) {
+      const latestCompleteVersion = nextVersions.find(isVersionComplete);
+      setExpandedVersionId(latestCompleteVersion?.id || null);
+    } else {
       setExpandedVersionId(null);
-      setVersionsError(error.message || "Unable to load saved versions.");
-    } finally {
-      setLoadingVersions(false);
+      setSavedProcessParameterId("");
     }
   };
 
   useEffect(() => {
     loadVersions();
   }, []);
+
+  useEffect(() => {
+    if (entryId) {
+      setSavedProcessParameterId(entryId);
+    }
+  }, [entryId]);
 
   useEffect(() => {
     if (!standaloneSection || !savedVersionsTargetId) {
@@ -456,11 +452,26 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     });
   };
 
+  const findLatestVersionByCountName = (countName) => {
+    const normalized = String(countName || "").trim().toLowerCase();
+    if (!normalized) return null;
+    return (
+      versions
+        .filter((version) => String(version.data.countName || "").trim().toLowerCase() === normalized)
+        .sort((a, b) => new Date(b.data.creationDate || 0) - new Date(a.data.creationDate || 0))[0] || null
+    );
+  };
+
   const handleFieldChange = (field, value) => {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setForm((current) => {
+      if (field === "countName" && !entryId && !current.versionId) {
+        const match = findLatestVersionByCountName(value);
+        if (match) {
+          return { ...cloneForm(match.data), countName: value, versionId: "", paramId: current.paramId };
+        }
+      }
+      return { ...current, [field]: value };
+    });
     clearError(field);
   };
 
@@ -533,31 +544,20 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const submit = async () => {
     if (!validate()) return false;
 
+    const versionId = form.versionId || String(Date.now());
+    const paramId = form.versionId
+      ? form.paramId || savedProcessParameterId
+      : savedProcessParameterId || entryId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
     const payload = buildPayload();
-    const response = form.versionId
-      ? await updateSpinningProcessParameterEntry(form.versionId, payload)
-      : await spinningProcessParameterDataEntry(payload);
-    setSavedProcessParameterId(
-      String(response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || "").trim()
-    );
-    registerProcessParameterId(response, "Spinning");
+    const savedEntry = saveLocalEntry("spinning", {
+      ...payload,
+      qc_id: versionId,
+      param_id: paramId,
+    });
+    setSavedProcessParameterId(resolveProcessParameterDisplayId(savedEntry, paramId));
+    registerProcessParameterId(savedEntry, "Spinning");
 
-    try {
-      await createThresholdViolationTickets({
-        department: "Quality Control",
-        subDepartment: "Spinning",
-        screenName: selectedTypeName || "Process Parameter",
-        machineName: form.machineNo || selectedTypeName || "Process Parameter",
-        values: fieldDefs.map((field) => ({
-          label: field.label,
-          value: form[field.key],
-        })),
-      });
-    } catch (ticketError) {
-      console.error("Threshold ticket generation failed:", ticketError);
-    }
-
-    await loadVersions();
+    loadVersions();
     onSubmitSuccess?.();
     return true;
   };
@@ -612,13 +612,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
             value={form.countName}
             onChange={(value) => handleFieldChange("countName", value)}
             options={countOptions}
-            placeholder={
-              loadingCountOptions
-                ? "Loading count names..."
-                : countOptionsError
-                  ? "Search or type count name"
-                  : "Search or select count name"
-            }
+            placeholder="Search or select count name"
             ariaLabel="Count Name"
           />
         </div>
@@ -640,7 +634,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
           <input
             type="text"
             className={topFieldClass}
-            value={form.versionId ? (form.paramId || savedProcessParameterId || "") : (savedProcessParameterId || "Generated on save")}
+            value={form.versionId ? (form.paramId || entryId || savedProcessParameterId || "") : (entryId || savedProcessParameterId || nextEntryIdPreview || "Generated on save")}
             readOnly
             disabled
           />
@@ -684,8 +678,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
                 expandedVersionId={expandedVersionId}
                 onVersionSelect={handleVersionSelect}
                 onVersionToggle={handleVersionToggle}
-                loading={loadingVersions}
-                errorMessage={versionsError}
+                loading={false}
+                errorMessage=""
               />,
               savedVersionsPortal
             )
