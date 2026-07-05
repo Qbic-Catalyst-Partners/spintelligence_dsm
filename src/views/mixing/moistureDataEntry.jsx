@@ -60,12 +60,14 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
             ...prev,
             partyLotNo: selectedLotDetails?.lot_no || lotNo || prev.partyLotNo,
             variety: selectedLotDetails?.variety || prev.variety,
+            partyName: selectedLotDetails?.party_name || prev.partyName,
             prNo: selectedLotDetails?.invoice_no || prev.prNo,
         }));
         setErrors((prev) => {
             const next = { ...prev };
             if (selectedLotDetails?.lot_no || lotNo) delete next.partyLotNo;
             if (selectedLotDetails?.variety) delete next.variety;
+            if (selectedLotDetails?.party_name) delete next.partyName;
             if (selectedLotDetails?.invoice_no) delete next.prNo;
             return next;
         });
