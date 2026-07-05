@@ -1,5 +1,3 @@
-import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
-
 export const normalizeProcessParameterId = (value) => {
   const raw = String(value ?? "").trim().toUpperCase();
 

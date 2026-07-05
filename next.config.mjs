@@ -18,7 +18,7 @@ const allowedDevOrigins = (() => {
 
 const nextConfig = {
   reactStrictMode: true,
-  devIndicators: false,
+  images: { unoptimized: true },
   allowedDevOrigins,
   async rewrites() {
     return [

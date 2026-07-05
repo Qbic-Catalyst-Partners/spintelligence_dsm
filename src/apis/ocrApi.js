@@ -1,5 +1,14 @@
-const OCR_ENDPOINT = "/api/ocr-machine/ocr";
-const OCR_JSON_ENDPOINT = "/api/ocr-machine/ocr-json";
+const OCR_BASE_URL = (
+  process.env.NEXT_PUBLIC_OCR_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  ""
+).replace(/\/+$/, "");
+const OCR_ENDPOINT = OCR_BASE_URL
+  ? `${OCR_BASE_URL}/ocr-machine/api/ocr`
+  : "/api/ocr-machine/ocr";
+const OCR_JSON_ENDPOINT = OCR_BASE_URL
+  ? `${OCR_BASE_URL}/ocr-machine/api/ocr-json`
+  : "/ocr-machine/api/ocr-json";
 
 export const runOcrForDocument = async ({ file, docType }) => {
   const form = new FormData();

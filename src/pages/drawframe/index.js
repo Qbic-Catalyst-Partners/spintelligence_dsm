@@ -1,12 +1,12 @@
-export async function getServerSideProps() {
-  return {
-    redirect: {
-      destination: "/draw-frame",
-      permanent: false,
-    },
-  };
-}
+import { useEffect } from "react";
+import { useRouter } from "next/router";
 
 export default function DrawFrameIndexPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/draw-frame");
+  }, [router]);
+
   return null;
 }
