@@ -48,14 +48,6 @@ export const fetchMixingMasterVarieties = async ({ prefix = "" } = {}) => {
     };
 
     const endpoints = [
-        '/mixing/wheel-change/master/varieties',
-        '/mixing/wheel-change/dropdown',
-        '/mixing/wheel-change/mixings',
-        '/mixing/wheel-change/mixing-dropdown',
-        '/mixing/change-control/master/varieties',
-        '/mixing/change-control/dropdown',
-        '/mixing/change-control/mixings',
-        '/mixing/change-control/mixing-dropdown',
         '/mixing/master/varieties',
         '/blowroom/master/varieties',
         '/carding/master/varieties',

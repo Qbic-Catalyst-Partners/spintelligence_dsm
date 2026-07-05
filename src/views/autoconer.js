@@ -79,7 +79,7 @@ const AUTOCONER_ENTRY_ID_CONFIG = {
   "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking", pagePath: "/autoconer/lycra-checking" },
   "Count Wise Cuts Record": { prefix: "ACW", width: 4, routePath: "/autoconer/count-wise-cuts", pagePath: "/autoconer/count-wise-cuts" },
   "Splice Strength": { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength", pagePath: "/autoconer/splice-strength" },
-  "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise-appearance", pagePath: "/autoconer/drum-wise-appearance" },
+  "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise", pagePath: "/autoconer/drum-wise-appearance" },
   "CSP Parameter Entries": { prefix: "ACS", width: 4, routePath: "/autoconer/parameter-entries/pending-csp", pagePath: "/autoconer/parameter-entries/pending-csp" },
   "U% Parameter Entries": { prefix: "AUP", width: 4, routePath: "/autoconer/parameter-entries/pending-quality", pagePath: "/autoconer/parameter-entries/pending-quality" },
 };
