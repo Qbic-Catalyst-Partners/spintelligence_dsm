@@ -13,7 +13,6 @@ import ProcessParameterDataEntry from "./spinning/processParameterDataEntry";
 import WheelChange from "./spinning/WheelChange";
 import { submitSpinningRecord, resetSpinningState } from "../store/slices/spinSlice";
 import {
-    fetchSpinningBottomApronEmployeeNames,
     fetchSpinningCountChangeDropdown,
     fetchSpinningCountChangeRfNos,
     fetchSpinningMachineNumberOptions,
@@ -305,8 +304,6 @@ function SpinningDepartment() {
 
     const [checkingType, setCheckingType] = useState(findCheckingOption(queryType)?.name || checkingOptions[0]?.name || "");
     const [selectedMachine, setSelectedMachine] = useState("");
-    const [employeeSearch, setEmployeeSearch] = useState("");
-    const [showEmployeeList, setShowEmployeeList] = useState(false);
     const [displaySpeed, setDisplaySpeed] = useState("");
     const [spindleSpeed, setSpindleSpeed] = useState("");
     const [countChangeMode, setCountChangeMode] = useState("");
@@ -335,7 +332,6 @@ function SpinningDepartment() {
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
     const [spinningMachineOptions, setSpinningMachineOptions] = useState([]);
-    const [bottomApronEmployeeOptions, setBottomApronEmployeeOptions] = useState([]);
     const [countChangeRfOptions, setCountChangeRfOptions] = useState([]);
     const [countChangeCountNameFromOptions, setCountChangeCountNameFromOptions] = useState(
         []
@@ -348,12 +344,8 @@ function SpinningDepartment() {
     const [checkerName, setCheckerName] = useState("");
     const successHandledRef = useRef(false);
 
-    const dropdownRef = useRef(null);
     const MAX_CHARS = 500;
     const fallbackMachineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"].map((value) => ({ value, label: value }));
-    const employees = bottomApronEmployeeOptions.length
-        ? bottomApronEmployeeOptions.map((option) => option.label || option.value).filter(Boolean)
-        : ["Ramesh", "Suresh", "Mahesh", "Karthik", "Anitha"];
     const selectedCheckingOption = checkingOptions.find((item) => item.name === checkingType) || null;
     const SelectedComponent = selectedCheckingOption?.component ?? null;
     const isProcessParameter = checkingType === "Process Parameter";
@@ -364,7 +356,6 @@ function SpinningDepartment() {
     const isRsmChecking =
         checkingType === "RSM & Lycrasensor Checking Online" ||
         checkingType === "RSM & Lycrasensor Checking Offline";
-    const isBottomApronChecking = checkingType === "Bottom Apron Checking";
     const countHeadingValue = (() => {
         const selectedReadingsCount = Number.parseInt(countReadingCount, 10);
         if (!Number.isFinite(selectedReadingsCount) || selectedReadingsCount <= 0) return "";
@@ -459,28 +450,6 @@ function SpinningDepartment() {
     }, [checkingType, isCotsChecking, isCountChange, isProcessParameter, isRingFrame, isWheelChange]);
 
     useEffect(() => {
-        if (!isBottomApronChecking) {
-            setBottomApronEmployeeOptions([]);
-            return;
-        }
-
-        let isMounted = true;
-        fetchSpinningBottomApronEmployeeNames()
-            .then((payload) => {
-                if (!isMounted) return;
-                const options = normalizeMachineOptions(payload).filter((option) => option.value);
-                setBottomApronEmployeeOptions(options);
-            })
-            .catch(() => {
-                if (isMounted) setBottomApronEmployeeOptions([]);
-            });
-
-        return () => {
-            isMounted = false;
-        };
-    }, [isBottomApronChecking]);
-
-    useEffect(() => {
         if (!isCountChange) return;
 
         let isMounted = true;
@@ -562,14 +531,6 @@ function SpinningDepartment() {
         if (error) dispatch(resetSpinningState());
     }, [success, error, dispatch]);
 
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setShowEmployeeList(false);
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
     const getTodayDate = () => new Date().toISOString().split("T")[0];
     const parseNumericInput = (value) => (value === "" ? null : Number.isNaN(Number.parseFloat(value)) ? null : Number.parseFloat(value));
     const parseDecimalPayloadValue = (value) => {
@@ -638,7 +599,6 @@ function SpinningDepartment() {
             return next;
         });
     };
-    const filteredEmployees = employees.filter((emp) => emp.toLowerCase().includes(employeeSearch.toLowerCase()));
     const displaySpeedValue = parseNumericInput(displaySpeed);
     const spindleSpeedValue = parseNumericInput(spindleSpeed);
     const calculatedDifferenceValue = displaySpeedValue !== null && spindleSpeedValue !== null ? Number((displaySpeedValue - spindleSpeedValue).toFixed(2)) : null;
@@ -747,7 +707,6 @@ function SpinningDepartment() {
         }
         setCheckingType("");
         setSelectedMachine("");
-        setEmployeeSearch("");
         setDate("");
         setDisplaySpeed("");
         setSpindleSpeed("");
@@ -825,8 +784,6 @@ function SpinningDepartment() {
                 if (!Number.isInteger(rhsNumber) || rhsNumber < 0 || rhsNumber > COTS_SIDE_MAX) {
                     nextErrors.rhsValue = true;
                 }
-            } else if (!employeeSearch.trim()) {
-                nextErrors.employeeSearch = true;
             }
             if (!lhsRemarks.trim()) nextErrors.lhsRemarks = true;
             if (!rhsRemarks.trim()) nextErrors.rhsRemarks = true;

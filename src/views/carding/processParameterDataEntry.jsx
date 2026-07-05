@@ -489,7 +489,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   };
 
   const buildPayload = () => ({
-    entry_id: (form.paramId || entryId || savedProcessParameterId) || undefined,
+    entry_id: String(form.paramId || entryId || savedProcessParameterId || "").trim() || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,

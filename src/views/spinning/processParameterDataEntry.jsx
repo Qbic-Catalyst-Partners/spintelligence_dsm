@@ -405,14 +405,17 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
         )
       : null;
 
+    const existingParamId = entryId || matchByEntryId?.data?.paramId || "";
+    setSavedProcessParameterId(existingParamId);
+
     if (matchByEntryId) {
       setForm({
         ...cloneForm(matchByEntryId.data),
         versionId: matchByEntryId.id,
-        paramId: entryId || matchByEntryId.data.paramId || "",
+        paramId: existingParamId,
       });
     } else {
-      setForm({ ...createDefaultForm(), paramId: entryId || "" });
+      setForm({ ...createDefaultForm(), paramId: existingParamId });
     }
 
     if (nextVersions.length > 0) {
@@ -514,8 +517,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   };
 
   const buildPayload = () => ({
+    entry_id: String(form.paramId || savedProcessParameterId || entryId || "").trim() || undefined,
     count_name: form.countName,
-    consignee_name: form.consigneeName,
     creation_date: form.creationDate,
     machine_no: parseNumberValue(form.machineNo),
     bottom_roll_setting: form.bottomRollSetting,

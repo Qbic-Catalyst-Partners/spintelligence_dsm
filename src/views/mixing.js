@@ -86,6 +86,7 @@ function Mixing() {
     const childRef = useRef(null);
     const successHandledRef = useRef(false);
     const lotDetailsFetchKeyRef = useRef("");
+    const appliedRequestedTypeRef = useRef("");
     const dispatch = useDispatch();
     const { actionLoading, actionSuccess } = useSelector((state) => state.mixing);
     const user = useSelector((state) => state.auth?.user);
@@ -107,7 +108,6 @@ function Mixing() {
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
     const [selectedLotDetails, setSelectedLotDetails] = useState(null);
-    const [mixingValue, setMixingValue] = useState("");
     const [target, setTarget] = useState("");
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
@@ -139,14 +139,16 @@ function Mixing() {
 
     useEffect(() => {
         if (!requestedType || !typeOptions.length) return;
+        if (appliedRequestedTypeRef.current === requestedType) return;
         const requested = normalizeTypeName(requestedType);
         const matchedType = typeOptions.find((item) =>
             [item.name, ...(item.aliases || [])].map(normalizeTypeName).includes(requested)
         );
-        if (matchedType && matchedType.name !== selectedTypeName) {
+        if (matchedType) {
+            appliedRequestedTypeRef.current = requestedType;
             setSelectedTypeName(matchedType.name);
         }
-    }, [requestedType, selectedTypeName, typeOptions]);
+    }, [requestedType, typeOptions]);
 
     const showSuccessOnce = () => {
         if (successHandledRef.current) return;
@@ -169,7 +171,6 @@ function Mixing() {
         setSelectedTypeName(value);
         setLotNo("");
         setSelectedLotDetails(null);
-        setMixingValue("");
         setTarget("");
         setHeaderErrors({});
         setValidationMessage("");
@@ -201,7 +202,6 @@ function Mixing() {
         setDate(getCurrentDate());
         setLotNo("");
         setSelectedLotDetails(null);
-        setMixingValue("");
         setTarget("");
         setHeaderErrors({});
         setValidationMessage("");
@@ -251,9 +251,6 @@ function Mixing() {
         if (selectedType?.needsLotNo !== false) {
             list.push({ label: "Lot No", value: lotNo });
         }
-        if (selectedTypeName === "Openness Data Entry") {
-            list.push({ label: "Mixing", value: mixingValue });
-        }
         return list;
     };
 
@@ -264,7 +261,6 @@ function Mixing() {
         }
         const errors = {};
         if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
-        if (selectedTypeName === "Openness Data Entry" && !mixingValue) errors.mixing = true;
         if (selectedTypeName === "Openness Data Entry" && !target) errors.target = true;
 
         setHeaderErrors(errors);
@@ -479,7 +475,6 @@ function Mixing() {
                                         entryId={entryId}
                                         lotNo={lotNo}
                                         selectedLotDetails={selectedLotDetails}
-                                        mixing={mixingValue}
                                         target={target}
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}
@@ -503,7 +498,6 @@ function Mixing() {
                             date={date}
                             entryId={entryId}
                             lotNo={lotNo}
-                            mixing={mixingValue}
                             selectedTypeName={selectedTypeName}
                             typeOptions={typeOptions}
                             onTypeChange={handleTypeChange}

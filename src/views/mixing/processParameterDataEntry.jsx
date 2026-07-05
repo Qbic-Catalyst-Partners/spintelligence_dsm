@@ -378,15 +378,16 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
             (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(entryId)
           )
         : null;
-      setSavedProcessParameterId(entryId || "");
+      const existingParamId = entryId || matchByEntryId?.data?.paramId || "";
+      setSavedProcessParameterId(existingParamId);
       if (matchByEntryId) {
         setForm({
           ...cloneForm(matchByEntryId.data),
           versionId: matchByEntryId.id,
-          paramId: entryId || "",
+          paramId: existingParamId,
         });
       } else {
-        setForm({ ...createDefaultForm(), paramId: entryId || "" });
+        setForm({ ...createDefaultForm(), paramId: existingParamId });
       }
       const latestCompleteVersion = nextVersions.find(isVersionComplete);
       setExpandedVersionId(latestCompleteVersion?.id || null);
@@ -537,7 +538,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const buildPayload = () => ({
-    entry_id: (form.paramId || entryId || savedProcessParameterId) || undefined,
+    entry_id: String(form.paramId || entryId || savedProcessParameterId || "").trim() || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
