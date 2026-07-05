@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
-import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
+import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeBlendPercentInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
@@ -203,9 +203,10 @@ const normalizeTd7DraftValue = (value) => {
   return Number.isFinite(parsed) ? parsed.toString() : "";
 };
 
-const getTd7G1G2ForTotalDraft = (value) => {
+const getTd7G1G2ForTotalDraft = (value, wheelChangeType = "") => {
   const normalizedValue = normalizeTd7DraftValue(value);
-  return TD7_TOTAL_DRAFT_TO_G1_G2_MAP[normalizedValue] || "";
+  const map = wheelChangeType === "Type 2 (TD7)" ? TD7_TOTAL_DRAFT_TO_G1_G2_MAP : TD9_TOTAL_DRAFT_TO_G1_G2_MAP;
+  return map[normalizedValue] || "";
 };
 
 const applyType2Td7AutoFill = (nextValues, changedRowKey = "", wheelChangeType = "") => {
@@ -213,7 +214,7 @@ const applyType2Td7AutoFill = (nextValues, changedRowKey = "", wheelChangeType =
   if (!["totalDraftGear", "totalDraftFormula"].includes(changedRowKey)) return nextValues;
 
   const draftValue = nextValues.totalDraftGear?.existing || nextValues.totalDraftGear?.proposed || "";
-  const autoG1G2 = getTd7G1G2ForTotalDraft(draftValue);
+  const autoG1G2 = getTd7G1G2ForTotalDraft(draftValue, wheelChangeType);
   if (!autoG1G2) return nextValues;
 
   const currentExisting = nextValues.g1G2?.existing ?? "";
@@ -269,11 +270,28 @@ const computeType4Ldf3sTotalDraft = ({ deliveryHank, feedHank, noOfEnds }) => {
 };
 
 const DRAW_FRAME_NW_OPTIONS = Array.from({ length: 70 - 23 + 1 }, (_, index) => String(23 + index));
-const DRAW_FRAME_BREAK_DRAFT_OPTIONS = Array.from({ length: 70 - 52 + 1 }, (_, index) => String(52 + index));
+const DRAW_FRAME_BREAK_DRAFT_OPTIONS = [
+  "77.4 / 1.05",
+  "72.2 / 1.13",
+  "703 / 1.16",
+  "65.5 / 1.24",
+  "63.8 / 1.28",
+  "59.6 / 1.36",
+  "57.9 / 1.41",
+  "54 / 1.5",
+  "52.7 / 1.55",
+  "49.1 / 1.66",
+  "48 / 1.7",
+  "44.8 / 1.82",
+  "43.5 / 1.87",
+  "40.7 / 2",
+  "39.6 / 2.06",
+  "36.9 / 2.2",
+];
 const DRAW_FRAME_LRSB_NW_OPTIONS = ["35", "37", "41", "44", "46", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68", "69", "70"];
-const DRAW_FRAME_W1VWZ_OPTIONS = ["143.9", "145.3", "146.7", "148.1", "149.5", "152.3"];
-const DRAW_FRAME_W3DR_OPTIONS = ["0.9", "1", "1.01", "1.02", "1.03"];
-const DRAW_FRAME_W8DR_OPTIONS = ["0.97", "0.98", "0.99", "1", "1.02", "1.03"];
+const DRAW_FRAME_W1VWZ_OPTIONS = ["143.9 / 0.99", "145.3 / 1", "146.7 / 1.01", "148.1 / 1.03", "149.5 / 1.04", "152.3 / 1.06"];
+const DRAW_FRAME_W3DR_OPTIONS = ["143.1 / 0.9", "141.6 / 1", "140.2 / 1.01", "138.8 / 1.02", "137.5 / 1.03"];
+const DRAW_FRAME_W8DR_OPTIONS = ["79 / 0.97", "80 / 0.98", "81 / 0.99", "82 / 1", "83 / 1.02", "84 / 1.03"];
 const DRAW_FRAME_W4_OPTIONS = ["31.6", "34.8", "38.3", "42.2", "46.4", "51", "56.1", "61.7"];
 const DRAW_FRAME_LRSB_VV_OPTIONS = ["30", "28"];
 const DRAW_FRAME_LRSB_W1_OPTIONS = ["143.9 / 0.999", "145.3 / 1.008", "146.7 / 1.018", "148.1 / 1.028", "149.5 / 1.038"];
@@ -502,7 +520,7 @@ const DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS = [
   { value: "5.6", label: "5.6" },
   { value: "5.7", label: "5.7" },
   { value: "5.9", label: "5.9" },
-  { value: "6.1", label: "6.1" },
+  { value: "6", label: "6" },
   { value: "6.2", label: "6.2" },
   { value: "6.4", label: "6.4" },
   { value: "6.6", label: "6.6" },
@@ -522,186 +540,307 @@ const DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS = [
   { value: "10", label: "10" },
 ];
 const TD7_TOTAL_DRAFT_TO_G1_G2_MAP = {
-  "4": "62.98/40",
-  "4.2": "60.05/40",
-  "4.3": "58.59/40",
-  "4.4": "57.12/40",
-  "4.6": "55.66/40",
-  "4.7": "54.19/40",
-  "4.8": "52.73/40",
-  "5": "51.26/40",
-  "5.1": "49.8/40",
-  "5.3": "48.33/40",
-  "5.5": "60.05/31",
-  "5.6": "58.59/31",
-  "5.7": "57.12/31",
-  "5.9": "55.66/31",
-  "6.1": "54.19/31",
-  "6.2": "52.73/31",
-  "6.4": "51.26/31",
-  "6.6": "49.8/31",
-  "6.8": "48.33/31",
-  "7": "46.87/31",
-  "7.2": "45.4/31",
-  "7.4": "57.12/24",
-  "7.6": "55.66/24",
-  "7.8": "54.19/24",
-  "8": "52.73/24",
-  "8.3": "51.26/24",
-  "8.5": "49.8/24",
-  "8.8": "48.33/24",
-  "9": "46.87/24",
-  "9.3": "45.4/24",
-  "9.6": "43.94/24",
-  "10": "42.27/24",
+  "4": "43/40",
+  "4.2": "41/40",
+  "4.3": "40/40",
+  "4.4": "39/40",
+  "4.6": "38/40",
+  "4.7": "37/40",
+  "4.8": "36/40",
+  "5": "35/40",
+  "5.1": "34/40",
+  "5.3": "33/40",
+  "5.5": "41/31",
+  "5.6": "40/31",
+  "5.7": "39/31",
+  "5.9": "38/31",
+  "6": "37/31",
+  "6.2": "36/31",
+  "6.4": "35/31",
+  "6.6": "34/31",
+  "6.8": "33/31",
+  "7": "32/31",
+  "7.2": "31/31",
+  "7.4": "39/24",
+  "7.6": "38/24",
+  "7.8": "37/24",
+  "8": "36/24",
+  "8.3": "35/24",
+  "8.5": "34/24",
+  "8.8": "33/24",
+  "9": "32/24",
+  "9.3": "31/24",
+  "9.6": "30/24",
+  "10": "29/24",
 };
 const DRAW_FRAME_TD7_G1_G2_OPTIONS = [
-  { value: "62.98/40", label: "62.98 / 40" },
-  { value: "60.05/40", label: "60.05 / 40" },
-  { value: "58.59/40", label: "58.59 / 40" },
-  { value: "57.12/40", label: "57.12 / 40" },
-  { value: "55.66/40", label: "55.66 / 40" },
-  { value: "54.19/40", label: "54.19 / 40" },
-  { value: "52.73/40", label: "52.73 / 40" },
-  { value: "51.26/40", label: "51.26 / 40" },
-  { value: "49.8/40", label: "49.8 / 40" },
-  { value: "48.33/40", label: "48.33 / 40" },
-  { value: "60.05/31", label: "60.05 / 31" },
-  { value: "58.59/31", label: "58.59 / 31" },
-  { value: "57.12/31", label: "57.12 / 31" },
-  { value: "55.66/31", label: "55.66 / 31" },
-  { value: "54.19/31", label: "54.19 / 31" },
-  { value: "52.73/31", label: "52.73 / 31" },
-  { value: "51.26/31", label: "51.26 / 31" },
-  { value: "49.8/31", label: "49.8 / 31" },
-  { value: "48.33/31", label: "48.33 / 31" },
-  { value: "46.87/31", label: "46.87 / 31" },
-  { value: "45.4/31", label: "45.4 / 31" },
-  { value: "57.12/24", label: "57.12 / 24" },
-  { value: "55.66/24", label: "55.66 / 24" },
-  { value: "54.19/24", label: "54.19 / 24" },
-  { value: "52.73/24", label: "52.73 / 24" },
-  { value: "51.26/24", label: "51.26 / 24" },
-  { value: "49.8/24", label: "49.8 / 24" },
-  { value: "48.33/24", label: "48.33 / 24" },
-  { value: "46.87/24", label: "46.87 / 24" },
-  { value: "45.4/24", label: "45.4 / 24" },
-  { value: "43.94/24", label: "43.94 / 24" },
-  { value: "42.27/24", label: "42.27 / 24" },
-];
-const DRAW_FRAME_TD7_BDCP_OPTIONS = [
-  { value: "1.038", label: "1.038 / 26" },
-  { value: "1.080", label: "1.080 / 25" },
-  { value: "1.125", label: "1.125 / 24" },
-  { value: "1.174", label: "1.174 / 23" },
-  { value: "1.227", label: "1.227 / 22" },
-  { value: "1.286", label: "1.286 / 21" },
-  { value: "1.350", label: "1.350 / 20" },
-  { value: "1.421", label: "1.421 / 19" },
-  { value: "1.500", label: "1.500 / 18" },
-  { value: "1.588", label: "1.588 / 17" },
-  { value: "1.688", label: "1.688 / 16" },
+  { value: "43/40", label: "43 / 40" },
+  { value: "41/40", label: "41 / 40" },
+  { value: "40/40", label: "40 / 40" },
+  { value: "39/40", label: "39 / 40" },
+  { value: "38/40", label: "38 / 40" },
+  { value: "37/40", label: "37 / 40" },
+  { value: "36/40", label: "36 / 40" },
+  { value: "35/40", label: "35 / 40" },
+  { value: "34/40", label: "34 / 40" },
+  { value: "33/40", label: "33 / 40" },
+  { value: "41/31", label: "41 / 31" },
+  { value: "40/31", label: "40 / 31" },
+  { value: "39/31", label: "39 / 31" },
+  { value: "38/31", label: "38 / 31" },
+  { value: "37/31", label: "37 / 31" },
+  { value: "36/31", label: "36 / 31" },
+  { value: "35/31", label: "35 / 31" },
+  { value: "34/31", label: "34 / 31" },
+  { value: "33/31", label: "33 / 31" },
+  { value: "32/31", label: "32 / 31" },
+  { value: "31/31", label: "31 / 31" },
+  { value: "39/24", label: "39 / 24" },
+  { value: "38/24", label: "38 / 24" },
+  { value: "37/24", label: "37 / 24" },
+  { value: "36/24", label: "36 / 24" },
+  { value: "35/24", label: "35 / 24" },
+  { value: "34/24", label: "34 / 24" },
+  { value: "33/24", label: "33 / 24" },
+  { value: "32/24", label: "32 / 24" },
+  { value: "31/24", label: "31 / 24" },
+  { value: "30/24", label: "30 / 24" },
+  { value: "29/24", label: "29 / 24" },
 ];
 const DRAW_FRAME_TD7_WEB_TENSION_OPTIONS = [
-  { value: "87", label: "87 / 0.99" },
-  { value: "86.5", label: "86.5 / 0.995" },
-  { value: "86.1", label: "86.1 / 1" },
-  { value: "85.7", label: "85.7 / 1.005" },
-  { value: "85.2", label: "85.2 / 1.011" },
-  { value: "84.8", label: "84.8 / 1.015" },
-  { value: "84.4", label: "84.4 / 1.02" },
-  { value: "84", label: "84 / 1.025" },
-  { value: "83.6", label: "83.6 / 1.03" },
-  { value: "83.2", label: "83.2 / 1.035" },
-  { value: "82.8", label: "82.8 / 1.04" },
-  { value: "82.4", label: "82.4 / 1.045" },
-  { value: "82", label: "82 / 1.05" },
-  { value: "81.6", label: "81.6 / 1.055" },
-  { value: "81.2", label: "81.2 / 1.06" },
-  { value: "80.8", label: "80.8 / 1.066" },
-  { value: "80.5", label: "80.5 / 1.07" },
+  { value: "46.2 / 0.99", label: "46.2 / 0.99" },
+  { value: "46.43 / 0.995", label: "46.43 / 0.995" },
+  { value: "46.67 / 1", label: "46.67 / 1" },
+  { value: "46.9 / 1.005", label: "46.9 / 1.005" },
+  { value: "47.13 / 1.01", label: "47.13 / 1.01" },
+  { value: "47.37 / 1.01", label: "47.37 / 1.01" },
+  { value: "47.6 / 1.02", label: "47.6 / 1.02" },
+  { value: "47.83 / 1.025", label: "47.83 / 1.025" },
+  { value: "48.07 / 1.03", label: "48.07 / 1.03" },
+  { value: "48.3 / 1.035", label: "48.3 / 1.035" },
+  { value: "48.53 / 1.04", label: "48.53 / 1.04" },
+  { value: "48.77 / 1.045", label: "48.77 / 1.045" },
+  { value: "49 / 1.05", label: "49 / 1.05" },
+  { value: "49.23 / 1.055", label: "49.23 / 1.055" },
+  { value: "49.47 / 1.06", label: "49.47 / 1.06" },
+  { value: "49.7 / 1.065", label: "49.7 / 1.065" },
+  { value: "49.93 / 1.07", label: "49.93 / 1.07" },
+];
+const DRAW_FRAME_TD9_TOTAL_DRAFT_OPTIONS = [
+  { value: "4", label: "4" },
+  { value: "4.2", label: "4.2" },
+  { value: "4.3", label: "4.3" },
+  { value: "4.4", label: "4.4" },
+  { value: "4.6", label: "4.6" },
+  { value: "4.7", label: "4.7" },
+  { value: "4.8", label: "4.8" },
+  { value: "5", label: "5" },
+  { value: "5.1", label: "5.1" },
+  { value: "5.3", label: "5.3" },
+  { value: "5.5", label: "5.5" },
+  { value: "5.6", label: "5.6" },
+  { value: "5.7", label: "5.7" },
+  { value: "5.9", label: "5.9" },
+  { value: "6.1", label: "6.1" },
+  { value: "6.2", label: "6.2" },
+  { value: "6.4", label: "6.4" },
+  { value: "6.6", label: "6.6" },
+  { value: "6.8", label: "6.8" },
+  { value: "7", label: "7" },
+  { value: "7.2", label: "7.2" },
+  { value: "7.4", label: "7.4" },
+  { value: "7.6", label: "7.6" },
+  { value: "7.8", label: "7.8" },
+  { value: "8", label: "8" },
+  { value: "8.3", label: "8.3" },
+  { value: "8.5", label: "8.5" },
+  { value: "8.8", label: "8.8" },
+  { value: "9", label: "9" },
+  { value: "9.3", label: "9.3" },
+  { value: "9.6", label: "9.6" },
+  { value: "10", label: "10" },
+];
+const TD9_TOTAL_DRAFT_TO_G1_G2_MAP = {
+  "4": "62.98 / 40",
+  "4.2": "60.05 / 40",
+  "4.3": "58.59 / 40",
+  "4.4": "57.12 / 40",
+  "4.6": "55.66 / 40",
+  "4.7": "54.19 / 40",
+  "4.8": "52.73 / 40",
+  "5": "51.26 / 40",
+  "5.1": "49.8 / 40",
+  "5.3": "48.33 / 40",
+  "5.5": "60.05 / 31",
+  "5.6": "58.59 / 31",
+  "5.7": "57.12 / 31",
+  "5.9": "55.66 / 31",
+  "6.1": "54.19 / 31",
+  "6.2": "52.73 / 31",
+  "6.4": "51.26 / 31",
+  "6.6": "49.8 / 31",
+  "6.8": "48.33 / 31",
+  "7": "46.87 / 31",
+  "7.2": "45.4 / 31",
+  "7.4": "57.12 / 24",
+  "7.6": "55.66 / 24",
+  "7.8": "54.19 / 24",
+  "8": "52.73 / 24",
+  "8.3": "51.26 / 24",
+  "8.5": "49.8 / 24",
+  "8.8": "48.33 / 24",
+  "9": "46.87 / 24",
+  "9.3": "45.4 / 24",
+  "9.6": "43.94 / 24",
+  "10": "42.27 / 24",
+};
+const DRAW_FRAME_TD9_G1_G2_OPTIONS = [
+  { value: "62.98 / 40", label: "62.98 / 40" },
+  { value: "60.05 / 40", label: "60.05 / 40" },
+  { value: "58.59 / 40", label: "58.59 / 40" },
+  { value: "57.12 / 40", label: "57.12 / 40" },
+  { value: "55.66 / 40", label: "55.66 / 40" },
+  { value: "54.19 / 40", label: "54.19 / 40" },
+  { value: "52.73 / 40", label: "52.73 / 40" },
+  { value: "51.26 / 40", label: "51.26 / 40" },
+  { value: "49.8 / 40", label: "49.8 / 40" },
+  { value: "48.33 / 40", label: "48.33 / 40" },
+  { value: "60.05 / 31", label: "60.05 / 31" },
+  { value: "58.59 / 31", label: "58.59 / 31" },
+  { value: "57.12 / 31", label: "57.12 / 31" },
+  { value: "55.66 / 31", label: "55.66 / 31" },
+  { value: "54.19 / 31", label: "54.19 / 31" },
+  { value: "52.73 / 31", label: "52.73 / 31" },
+  { value: "51.26 / 31", label: "51.26 / 31" },
+  { value: "49.8 / 31", label: "49.8 / 31" },
+  { value: "48.33 / 31", label: "48.33 / 31" },
+  { value: "46.87 / 31", label: "46.87 / 31" },
+  { value: "45.4 / 31", label: "45.4 / 31" },
+  { value: "57.12 / 24", label: "57.12 / 24" },
+  { value: "55.66 / 24", label: "55.66 / 24" },
+  { value: "54.19 / 24", label: "54.19 / 24" },
+  { value: "52.73 / 24", label: "52.73 / 24" },
+  { value: "51.26 / 24", label: "51.26 / 24" },
+  { value: "49.8 / 24", label: "49.8 / 24" },
+  { value: "48.33 / 24", label: "48.33 / 24" },
+  { value: "46.87 / 24", label: "46.87 / 24" },
+  { value: "45.4 / 24", label: "45.4 / 24" },
+  { value: "43.94 / 24", label: "43.94 / 24" },
+  { value: "42.27 / 24", label: "42.27 / 24" },
+];
+const DRAW_FRAME_TD7_BDCP_OPTIONS = [
+  { value: "1.038 / 26", label: "1.038 / 26" },
+  { value: "1.080 / 25", label: "1.080 / 25" },
+  { value: "1.125 / 24", label: "1.125 / 24" },
+  { value: "1.174 / 23", label: "1.174 / 23" },
+  { value: "1.227 / 22", label: "1.227 / 22" },
+  { value: "1.286 / 21", label: "1.286 / 21" },
+  { value: "1.350 / 20", label: "1.350 / 20" },
+  { value: "1.421 / 19", label: "1.421 / 19" },
+  { value: "1.500 / 18", label: "1.500 / 18" },
+  { value: "1.588 / 17", label: "1.588 / 17" },
+  { value: "1.688 / 16", label: "1.688 / 16" },
+];
+const DRAW_FRAME_TD9_WEB_TENSION_OPTIONS = [
+  { value: "87 / 0.99", label: "87 / 0.99" },
+  { value: "86.5 / 0.995", label: "86.5 / 0.995" },
+  { value: "86.1 / 1", label: "86.1 / 1" },
+  { value: "85.7 / 1.005", label: "85.7 / 1.005" },
+  { value: "85.2 / 1.011", label: "85.2 / 1.011" },
+  { value: "84.8 / 1.015", label: "84.8 / 1.015" },
+  { value: "84.4 / 1.02", label: "84.4 / 1.02" },
+  { value: "84 / 1.025", label: "84 / 1.025" },
+  { value: "83.6 / 1.03", label: "83.6 / 1.03" },
+  { value: "83.2 / 1.035", label: "83.2 / 1.035" },
+  { value: "82.8 / 1.04", label: "82.8 / 1.04" },
+  { value: "82.4 / 1.045", label: "82.4 / 1.045" },
+  { value: "82 / 1.05", label: "82 / 1.05" },
+  { value: "81.6 / 1.055", label: "81.6 / 1.055" },
+  { value: "81.2 / 1.06", label: "81.2 / 1.06" },
+  { value: "80.8 / 1.066", label: "80.8 / 1.066" },
+  { value: "80.5 / 1.07", label: "80.5 / 1.07" },
 ];
 const DRAW_FRAME_TD7_BOTTOM_ROLLER_FRONT_OPTIONS = [
-  { value: "37.8", label: "37.8 / 1.5" },
-  { value: "38.4", label: "38.4 / 2" },
-  { value: "38.9", label: "38.9 / 2.5" },
-  { value: "39.4", label: "39.4 / 3" },
-  { value: "39.9", label: "39.9 / 3.5" },
-  { value: "40.4", label: "40.4 / 4" },
-  { value: "40.9", label: "40.9 / 4.5" },
-  { value: "41.4", label: "41.4 / 5" },
-  { value: "42", label: "42 / 5.5" },
-  { value: "42.5", label: "42.5 / 6" },
-  { value: "43", label: "43 / 6.5" },
-  { value: "43.5", label: "43.5 / 7" },
-  { value: "44", label: "44 / 7.5" },
-  { value: "44.5", label: "44.5 / 8" },
-  { value: "45", label: "45 / 8.5" },
-  { value: "45.5", label: "45.5 / 9" },
-  { value: "46", label: "46 / 9.5" },
-  { value: "46.6", label: "46.6 / 10" },
-  { value: "47.1", label: "47.1 / 10.5" },
-  { value: "47.6", label: "47.6 / 11" },
-  { value: "48.1", label: "48.1 / 11.5" },
-  { value: "48.6", label: "48.6 / 12" },
-  { value: "49.1", label: "49.1 / 12.5" },
-  { value: "49.6", label: "49.6 / 13" },
-  { value: "50.1", label: "50.1 / 13.5" },
-  { value: "50.6", label: "50.6 / 14" },
-  { value: "51.1", label: "51.1 / 14.5" },
-  { value: "51.6", label: "51.6 / 15" },
-  { value: "52.2", label: "52.2 / 15.5" },
-  { value: "52.7", label: "52.7 / 16" },
-  { value: "53.2", label: "53.2 / 16.5" },
-  { value: "53.7", label: "53.7 / 17" },
-  { value: "54.2", label: "54.2 / 17.5" },
-  { value: "54.7", label: "54.7 / 18" },
-  { value: "55.2", label: "55.2 / 18.5" },
-  { value: "55.7", label: "55.7 / 19" },
-  { value: "56.2", label: "56.2 / 19.5" },
-  { value: "56.7", label: "56.7 / 20" },
-  { value: "57.2", label: "57.2 / 20.5" },
-  { value: "57.7", label: "57.7 / 21" },
-  { value: "58.2", label: "58.2 / 21.5" },
-  { value: "58.8", label: "58.8 / 22" },
-  { value: "59.3", label: "59.3 / 22.5" },
-  { value: "59.8", label: "59.8 / 23" },
+  { value: "37.8 / 1.5", label: "37.8 / 1.5" },
+  { value: "38.4 / 2", label: "38.4 / 2" },
+  { value: "38.9 / 2.5", label: "38.9 / 2.5" },
+  { value: "39.4 / 3", label: "39.4 / 3" },
+  { value: "39.9 / 3.5", label: "39.9 / 3.5" },
+  { value: "40.4 / 4", label: "40.4 / 4" },
+  { value: "40.9 / 4.5", label: "40.9 / 4.5" },
+  { value: "41.4 / 5", label: "41.4 / 5" },
+  { value: "42 / 5.5", label: "42 / 5.5" },
+  { value: "42.5 / 6", label: "42.5 / 6" },
+  { value: "43 / 6.5", label: "43 / 6.5" },
+  { value: "43.5 / 7", label: "43.5 / 7" },
+  { value: "44 / 7.5", label: "44 / 7.5" },
+  { value: "44.5 / 8", label: "44.5 / 8" },
+  { value: "45 / 8.5", label: "45 / 8.5" },
+  { value: "45.5 / 9", label: "45.5 / 9" },
+  { value: "46 / 9.5", label: "46 / 9.5" },
+  { value: "46.6 / 10", label: "46.6 / 10" },
+  { value: "47.1 / 10.5", label: "47.1 / 10.5" },
+  { value: "47.6 / 11", label: "47.6 / 11" },
+  { value: "48.1 / 11.5", label: "48.1 / 11.5" },
+  { value: "48.6 / 12", label: "48.6 / 12" },
+  { value: "49.1 / 12.5", label: "49.1 / 12.5" },
+  { value: "49.6 / 13", label: "49.6 / 13" },
+  { value: "50.1 / 13.5", label: "50.1 / 13.5" },
+  { value: "50.6 / 14", label: "50.6 / 14" },
+  { value: "51.1 / 14.5", label: "51.1 / 14.5" },
+  { value: "51.6 / 15", label: "51.6 / 15" },
+  { value: "52.2 / 15.5", label: "52.2 / 15.5" },
+  { value: "52.7 / 16", label: "52.7 / 16" },
+  { value: "53.2 / 16.5", label: "53.2 / 16.5" },
+  { value: "53.7 / 17", label: "53.7 / 17" },
+  { value: "54.2 / 17.5", label: "54.2 / 17.5" },
+  { value: "54.7 / 18", label: "54.7 / 18" },
+  { value: "55.2 / 18.5", label: "55.2 / 18.5" },
+  { value: "55.7 / 19", label: "55.7 / 19" },
+  { value: "56.2 / 19.5", label: "56.2 / 19.5" },
+  { value: "56.7 / 20", label: "56.7 / 20" },
+  { value: "57.2 / 20.5", label: "57.2 / 20.5" },
+  { value: "57.7 / 21", label: "57.7 / 21" },
+  { value: "58.2 / 21.5", label: "58.2 / 21.5" },
+  { value: "58.8 / 22", label: "58.8 / 22" },
+  { value: "59.3 / 22.5", label: "59.3 / 22.5" },
+  { value: "59.8 / 23", label: "59.8 / 23" },
 ];
 const DRAW_FRAME_TD7_BOTTOM_ROLLER_BACK_OPTIONS = [
-  { value: "44.5", label: "44.5 / 6.5" },
-  { value: "45", label: "45 / 7" },
-  { value: "45.5", label: "45.5 / 7.5" },
-  { value: "46", label: "46 / 8" },
-  { value: "46.5", label: "46.5 / 8.5" },
-  { value: "47", label: "47 / 9" },
-  { value: "47.5", label: "47.5 / 9.5" },
-  { value: "48", label: "48 / 10" },
-  { value: "48.5", label: "48.5 / 10.5" },
-  { value: "49", label: "49 / 11" },
-  { value: "49.5", label: "49.5 / 11.5" },
-  { value: "50", label: "50 / 12" },
-  { value: "50.5", label: "50.5 / 12.5" },
-  { value: "51", label: "51 / 13" },
-  { value: "51.5", label: "51.5 / 13.5" },
-  { value: "52", label: "52 / 14" },
-  { value: "52.5", label: "52.5 / 14.5" },
-  { value: "53", label: "53 / 15" },
-  { value: "53.5", label: "53.5 / 15.5" },
-  { value: "54", label: "54 / 16" },
-  { value: "54.5", label: "54.5 / 16.5" },
-  { value: "55", label: "55 / 17" },
-  { value: "55.5", label: "55.5 / 17.5" },
-  { value: "56", label: "56 / 18" },
-  { value: "56.5", label: "56.5 / 18.5" },
-  { value: "57", label: "57 / 19" },
-  { value: "57.5", label: "57.5 / 19.5" },
-  { value: "58", label: "58 / 20" },
-  { value: "58.5", label: "58.5 / 20.5" },
-  { value: "59", label: "59 / 21" },
-  { value: "59.5", label: "59.5 / 21.5" },
-  { value: "60", label: "60 / 22" },
-  { value: "60.5", label: "60.5 / 22.5" },
-  { value: "61", label: "61 / 23" },
+  { value: "44.5 / 6.5", label: "44.5 / 6.5" },
+  { value: "45 / 7", label: "45 / 7" },
+  { value: "45.5 / 7.5", label: "45.5 / 7.5" },
+  { value: "46 / 8", label: "46 / 8" },
+  { value: "46.5 / 8.5", label: "46.5 / 8.5" },
+  { value: "47 / 9", label: "47 / 9" },
+  { value: "47.5 / 9.5", label: "47.5 / 9.5" },
+  { value: "48 / 10", label: "48 / 10" },
+  { value: "48.5 / 10.5", label: "48.5 / 10.5" },
+  { value: "49 / 11", label: "49 / 11" },
+  { value: "49.5 / 11.5", label: "49.5 / 11.5" },
+  { value: "50 / 12", label: "50 / 12" },
+  { value: "50.5 / 12.5", label: "50.5 / 12.5" },
+  { value: "51 / 13", label: "51 / 13" },
+  { value: "51.5 / 13.5", label: "51.5 / 13.5" },
+  { value: "52 / 14", label: "52 / 14" },
+  { value: "52.5 / 14.5", label: "52.5 / 14.5" },
+  { value: "53 / 15", label: "53 / 15" },
+  { value: "53.5 / 15.5", label: "53.5 / 15.5" },
+  { value: "54 / 16", label: "54 / 16" },
+  { value: "54.5 / 16.5", label: "54.5 / 16.5" },
+  { value: "55 / 17", label: "55 / 17" },
+  { value: "55.5 / 17.5", label: "55.5 / 17.5" },
+  { value: "56 / 18", label: "56 / 18" },
+  { value: "56.5 / 18.5", label: "56.5 / 18.5" },
+  { value: "57 / 19", label: "57 / 19" },
+  { value: "57.5 / 19.5", label: "57.5 / 19.5" },
+  { value: "58 / 20", label: "58 / 20" },
+  { value: "58.5 / 20.5", label: "58.5 / 20.5" },
+  { value: "59 / 21", label: "59 / 21" },
+  { value: "59.5 / 21.5", label: "59.5 / 21.5" },
+  { value: "60 / 22", label: "60 / 22" },
+  { value: "60.5 / 22.5", label: "60.5 / 22.5" },
+  { value: "61 / 23", label: "61 / 23" },
 ];
 const DRAW_FRAME_BOTTOM_ROLLER_FRONT_OPTIONS = [
   "35 / 1.5",
@@ -818,15 +957,16 @@ const DRAW_FRAME_SELECT_OPTIONS = {
 
 const getSelectOptions = (rowKey, wheelChangeType = "") => {
   if (TD7_LIKE_WHEEL_CHANGE_TYPES.includes(wheelChangeType)) {
+    const isTd9 = wheelChangeType === "Type 3 (TD9)";
     switch (rowKey) {
       case "totalDraftGear":
-        return DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS;
+        return isTd9 ? DRAW_FRAME_TD9_TOTAL_DRAFT_OPTIONS : DRAW_FRAME_TD7_TOTAL_DRAFT_OPTIONS;
       case "g1G2":
-        return DRAW_FRAME_TD7_G1_G2_OPTIONS;
+        return isTd9 ? DRAW_FRAME_TD9_G1_G2_OPTIONS : DRAW_FRAME_TD7_G1_G2_OPTIONS;
       case "bdcp":
         return DRAW_FRAME_TD7_BDCP_OPTIONS;
       case "webTension":
-        return DRAW_FRAME_TD7_WEB_TENSION_OPTIONS;
+        return isTd9 ? DRAW_FRAME_TD9_WEB_TENSION_OPTIONS : DRAW_FRAME_TD7_WEB_TENSION_OPTIONS;
       case "bottomRollerFront":
         return DRAW_FRAME_TD7_BOTTOM_ROLLER_FRONT_OPTIONS;
       case "bottomRollerBack":
@@ -1069,14 +1209,14 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     const loadDropdowns = async () => {
       setLoadingVarietyOptions(true);
       try {
-        const dropdown = await fetchSimplexUqcMasterDropdown({ department: "SIMPLEX" });
+        const dropdown = await fetchDrawFrameUqcMasterDropdown();
         if (!active) return;
         setMixingOptions(Array.isArray(dropdown?.varietyNames) ? dropdown.varietyNames : []);
         setVarietyOptionsError("");
       } catch (error) {
         if (!active) return;
         setMixingOptions([]);
-        setVarietyOptionsError(error.message || "Unable to load simplex mixing options.");
+        setVarietyOptionsError(error.message || "Unable to load draw frame mixing options.");
       } finally {
         if (active) setLoadingVarietyOptions(false);
       }
@@ -1355,7 +1495,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     if (!TD7_LIKE_WHEEL_CHANGE_TYPES.includes(wheelChangeType)) return;
 
     const draftValue = values.totalDraftGear?.existing || values.totalDraftGear?.proposed || "";
-    const autoG1G2 = getTd7G1G2ForTotalDraft(draftValue);
+    const autoG1G2 = getTd7G1G2ForTotalDraft(draftValue, wheelChangeType);
     if (!autoG1G2) return;
     if ((values.g1G2?.existing || values.g1G2?.proposed || "") === autoG1G2) return;
 
