@@ -110,10 +110,12 @@ const normalizeLotRows = (payload) => {
             const lotNo = String(row?.lot_no ?? row?.lotNo ?? row?.value ?? "").trim();
             if (!lotNo) return null;
             return {
+                ...row,
                 lot_no: lotNo,
                 value: lotNo,
                 label: lotNo,
                 variety: String(row?.variety ?? row?.variety_name ?? row?.varietyName ?? "").trim(),
+                party_name: String(row?.party_name ?? row?.partyname ?? row?.partyName ?? row?.Ledger_Name ?? "").trim(),
                 lot_date: row?.lot_date || row?.date || "",
                 date: row?.date || row?.lot_date || "",
                 ref_no: String(row?.ref_no ?? row?.refno ?? "").trim(),

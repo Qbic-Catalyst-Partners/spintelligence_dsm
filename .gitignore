@@ -53,3 +53,8 @@ node_modules/
 backend_bundle.zip
 _backend_tmp/
 
+# excel files
+*.xlsx
+*.xls
+*.xlsm
+
