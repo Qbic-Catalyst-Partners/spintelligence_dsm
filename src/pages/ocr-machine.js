@@ -2,6 +2,61 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { runOcrForDocument } from "@/apis/ocrApi";
 
+const HVI_LABEL_MAP = [
+  { label: "SCI",  field: "SCI" },
+  { label: "SL2",  field: "Span Length (2.5%)" },
+  { label: "Mic",  field: "Mic" },
+  { label: "Mat",  field: "Maturity" },
+  { label: "UR",   field: "UR" },
+  { label: "Str",  field: "Elongation" },
+  { label: "+b",   field: "Yellow + B" },
+  { label: "Rd",   field: "RD" },
+];
+
+const extractHviFields = (rawText, fields = []) => {
+  if (!rawText) return {};
+  const lines = rawText.split("\n").map((s) => s.trim());
+  const isNumericLine = (s) => /^[0-9]/.test(s) && !/[A-Za-z]/.test(s) && !isNaN(parseFloat(s));
+
+  const numericAverageAt = (labelIdx) => {
+    const nums = [];
+    for (let i = labelIdx + 1; i < lines.length && nums.length < 12; i++) {
+      const line = lines[i];
+      if (/^\[/.test(line) || /^\(/.test(line)) continue;
+      if (isNumericLine(line)) nums.push(line);
+      else if (nums.length > 0) break;
+    }
+    return nums[4] ?? nums[nums.length - 1] ?? "";
+  };
+
+  const gradeMode = (labelIdx) => {
+    const grades = [];
+    for (let i = labelIdx + 1; i < lines.length && grades.length < 8; i++) {
+      const line = lines[i];
+      if (/^\d+-\d+$/.test(line)) grades.push(line);
+      else if (grades.length > 0) break;
+    }
+    if (!grades.length) return "";
+    const counts = {};
+    grades.forEach((g) => { counts[g] = (counts[g] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  };
+
+  const result = {};
+  HVI_LABEL_MAP.forEach(({ label, field }) => {
+    if (fields.length && !fields.includes(field)) return;
+    const idx = lines.indexOf(label);
+    if (idx !== -1) result[field] = numericAverageAt(idx);
+  });
+
+  const cGrdIdx = lines.indexOf("CGrd");
+  if (cGrdIdx !== -1 && (!fields.length || fields.includes("Colour Grade"))) {
+    result["Colour Grade"] = gradeMode(cGrdIdx);
+  }
+
+  return result;
+};
+
 const DOC_TYPES = [
   { label: "HVI Data Entry", value: "hvi" },
   { label: "AFIS Data Entry", value: "afis" },
@@ -273,6 +328,13 @@ export default function OcrMachinePage() {
           : Array.isArray(result?.data)
             ? result.data
             : [];
+      // const firstHasData = rawParsed[0] && Object.keys(rawParsed[0]).length > 0;
+      // const parsed = firstHasData
+      //   ? rawParsed
+      //   : (() => {
+      //       const extracted = extractHviFields(result?.raw_text, result?.fields || []);
+      //       return Object.keys(extracted).length > 0 ? [extracted] : rawParsed;
+      //     })();
       if (docType === "bwc") {
         const rawText = String(result?.raw_text || "").toLowerCase();
         const looksLikeHviReport =

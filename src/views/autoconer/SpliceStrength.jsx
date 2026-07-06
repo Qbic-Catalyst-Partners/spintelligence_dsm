@@ -81,6 +81,7 @@ function SpliceStrength({
   const autoconerState = useSelector((state) => state.autoconer) || {};
   const { isLoading = false, isFetching = false, spliceStrength: savedEntries = [] } = autoconerState;
   const [date, setDate] = useState(todayDate);
+  const [testNo, setTestNo] = useState("");
   const [countName, setCountName] = useState(countOptions[0]);
   const [countCode, setCountCode] = useState("");
   const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
@@ -162,6 +163,7 @@ function SpliceStrength({
 
   const resetForm = () => {
     setDate(todayDate);
+    setTestNo("");
     setCountName(countDropdownOptions[0]?.label || countOptions[0]);
     setCountCode(countDropdownOptions[0]?.code || "");
     setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0]);
@@ -178,6 +180,7 @@ function SpliceStrength({
     const nextErrors = {};
     if (!String(selectedType || "").trim()) nextErrors.type = true;
     if (!String(date || "").trim()) nextErrors.date = true;
+    if (!String(testNo || "").trim()) nextErrors.testNo = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
     if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
     if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
@@ -197,6 +200,7 @@ function SpliceStrength({
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
     { label: "Entry ID", value: entryId || "-" },
+    { label: "Test No", value: testNo || "-" },
     { label: "Count Name", value: countName || "-" },
     { label: "Auto Coner No.", value: autoconerNo || "-" },
     { label: "Drum From", value: drumFrom || "-" },
@@ -215,6 +219,7 @@ function SpliceStrength({
     try {
       const payload = {
         type: "Splice Strength Test",
+        test_no: testNo,
         inspection_date: date,
         count_name: countName,
         cntcode: countCode || undefined,
@@ -347,6 +352,7 @@ function SpliceStrength({
     dispatch,
     isLoading,
     date,
+    testNo,
     countName,
     autoconerNo,
     drumFrom,
@@ -449,6 +455,25 @@ function SpliceStrength({
           <div className={styles.field}>
             <label>Entry ID</label>
             <input type="text" value={entryId} readOnly disabled />
+          </div>
+
+          <div className={styles.field}>
+            <label>Test No</label>
+            <input
+              type="text"
+              value={testNo}
+              onChange={(e) => {
+                setTestNo(e.target.value);
+                setErrors((current) => {
+                  if (!current.testNo) return current;
+                  const next = { ...current };
+                  delete next.testNo;
+                  return next;
+                });
+              }}
+              style={errorStyle(errors.testNo)}
+              placeholder="Enter Test No"
+            />
           </div>
 
           <div className={styles.field}>

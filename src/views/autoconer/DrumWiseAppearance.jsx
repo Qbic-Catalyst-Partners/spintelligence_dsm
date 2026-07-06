@@ -86,6 +86,7 @@ function DrumWiseAppearance({
   const autoconerState = useSelector((state) => state.autoconer) || {};
   const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
   const [entryDate, setEntryDate] = useState(todayDate);
+  const [testNo, setTestNo] = useState("");
   const [countName, setCountName] = useState(countOptions[0].value);
   const [countCode, setCountCode] = useState("");
   const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0].value);
@@ -137,6 +138,7 @@ function DrumWiseAppearance({
 
   const resetForm = () => {
     setEntryDate(todayDate);
+    setTestNo("");
     setCountName(countDropdownOptions[0]?.label || countOptions[0].value);
     setCountCode(countDropdownOptions[0]?.code || "");
     setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0].value);
@@ -151,6 +153,7 @@ function DrumWiseAppearance({
     const nextErrors = {};
     if (!String(selectedType || "").trim()) nextErrors.type = true;
     if (!String(entryDate || "").trim()) nextErrors.entryDate = true;
+    if (!String(testNo || "").trim()) nextErrors.testNo = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
     if (!String(autoconerNo || "").trim()) nextErrors.autoconerNo = true;
     if (!String(drumFrom || "").trim()) nextErrors.drumFrom = true;
@@ -169,6 +172,7 @@ function DrumWiseAppearance({
   const getPreviewData = () => [
     { label: "Type", value: selectedType || "-" },
     { label: "Entry ID", value: entryId || "-" },
+    { label: "Test No", value: testNo || "-" },
     { label: "Count Name", value: selectedCountLabel || "-" },
     { label: "Auto Coner No.", value: selectedMachineLabel || "-" },
     { label: "Drum From", value: drumFrom || "-" },
@@ -185,6 +189,7 @@ function DrumWiseAppearance({
     try {
       const payload = {
         entry_date: entryDate,
+        test_no: testNo,
         type: "Drum Inspection",
         machine_id: Number(autoconerNo) || null,
         count_id: Number(countName) || null,
@@ -304,6 +309,7 @@ function DrumWiseAppearance({
     onRegisterActions,
     selectedType,
     entryDate,
+    testNo,
     countName,
     autoconerNo,
     drumFrom,
@@ -429,6 +435,25 @@ function DrumWiseAppearance({
           <div className={styles.field}>
             <label>Entry ID</label>
             <input type="text" value={entryId} readOnly disabled />
+          </div>
+
+          <div className={styles.field}>
+            <label>Test No</label>
+            <input
+              type="text"
+              value={testNo}
+              onChange={(e) => {
+                setTestNo(e.target.value);
+                setErrors((current) => {
+                  if (!current.testNo) return current;
+                  const next = { ...current };
+                  delete next.testNo;
+                  return next;
+                });
+              }}
+              style={errorStyle(errors.testNo)}
+              placeholder="Enter Test No"
+            />
           </div>
 
           <div className={styles.field}>

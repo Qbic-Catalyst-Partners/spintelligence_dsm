@@ -566,45 +566,6 @@ export const fetchSpinningRingFrameCheckerNames = async (params = {}) => {
   }
 };
 
-export const fetchSpinningBottomApronEmployeeNames = async (params = {}) => {
-  const endpoints = [
-    "/spinning/bottom-apron-checking/master/employee-names",
-    "/spinning/bottom-apron-checking/master/checker-names",
-    "/spinning/master/employee-names",
-    "/spinning/master/employee-dropdown",
-  ];
-  let lastError = null;
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await api.get(
-        endpoint,
-        params,
-        { skipGlobalErrorModal: true }
-      );
-      return response.data;
-    } catch (error) {
-      lastError = error;
-      if (error.response?.status !== 404) {
-        break;
-      }
-    }
-  }
-
-  try {
-    throw lastError || new Error("Failed to load Bottom Apron employee names.");
-  } catch (error) {
-    if (error.response?.data) {
-      throw new Error(
-        error.response.data.message ||
-          error.response.data.error ||
-          "Failed to load Bottom Apron employee names."
-      );
-    }
-    throw new Error(error.message || "Server error occurred");
-  }
-};
-
 export const fetchSpinningRingFrameShifts = async (params = {}) => {
   const endpoints = [
     "/spinning/shifts",

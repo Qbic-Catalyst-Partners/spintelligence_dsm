@@ -1,5 +1,3 @@
-import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
-
 export const normalizeProcessParameterId = (value) => {
   const raw = String(value ?? "").trim().toUpperCase();
 
@@ -41,19 +39,32 @@ const extractSequence = (value) => {
   return match ? Number(match[1]) || 0 : 0;
 };
 
+const GLOBAL_PROCESS_PARAMETER_COUNTER_KEY = "pp-global-id-counter";
+
 export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
   const prefix = String(fallbackPrefix || "PP").trim().toUpperCase();
   const width = Number(fallbackWidth) || 4;
+
   const registry = readProcessParameterRegistry();
   const highestSequence = registry.reduce((max, row) => {
     const displayId = String(row?.displayId || row?.entryId || row?.id || "").trim().toUpperCase();
-    // Ignore legacy/foreign IDs (e.g. "#MQ-0001") that don't use this prefix — only
-    // count real "PP-000N" rows so the next reserved ID reflects how many PP entries exist.
     if (!displayId.startsWith(`${prefix}-`)) return max;
     const candidate = extractSequence(displayId);
     return candidate > max ? candidate : max;
   }, 0);
-  const nextSequence = Math.max(1, highestSequence + 1);
+
+  let nextSequence = Math.max(1, highestSequence + 1);
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = Number(window.localStorage.getItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY)) || 0;
+      nextSequence = Math.max(nextSequence, stored + 1);
+      window.localStorage.setItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY, String(nextSequence));
+    } catch {
+      // fall back to the registry-based sequence when storage is unavailable
+    }
+  }
+
   return `${prefix}-${String(nextSequence).padStart(width, "0")}`;
 };
 

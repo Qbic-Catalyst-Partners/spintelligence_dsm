@@ -48,14 +48,6 @@ export const fetchMixingMasterVarieties = async ({ prefix = "" } = {}) => {
     };
 
     const endpoints = [
-        '/mixing/wheel-change/master/varieties',
-        '/mixing/wheel-change/dropdown',
-        '/mixing/wheel-change/mixings',
-        '/mixing/wheel-change/mixing-dropdown',
-        '/mixing/change-control/master/varieties',
-        '/mixing/change-control/dropdown',
-        '/mixing/change-control/mixings',
-        '/mixing/change-control/mixing-dropdown',
         '/mixing/master/varieties',
         '/blowroom/master/varieties',
         '/carding/master/varieties',
@@ -110,10 +102,12 @@ const normalizeLotRows = (payload) => {
             const lotNo = String(row?.lot_no ?? row?.lotNo ?? row?.value ?? "").trim();
             if (!lotNo) return null;
             return {
+                ...row,
                 lot_no: lotNo,
                 value: lotNo,
                 label: lotNo,
                 variety: String(row?.variety ?? row?.variety_name ?? row?.varietyName ?? "").trim(),
+                party_name: String(row?.party_name ?? row?.partyname ?? row?.partyName ?? row?.Ledger_Name ?? "").trim(),
                 lot_date: row?.lot_date || row?.date || "",
                 date: row?.date || row?.lot_date || "",
                 ref_no: String(row?.ref_no ?? row?.refno ?? "").trim(),

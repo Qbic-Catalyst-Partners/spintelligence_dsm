@@ -64,7 +64,7 @@ function ReadOnlyField({ label, value }) {
 }
 
 const OpennessDataEntry = forwardRef(function OpennessDataEntry(
-  { date, mixing, target, onSubmitSuccess },
+  { date, target, onSubmitSuccess },
   ref
 ) {
   const [form, setForm] = useState(initialForm);
@@ -222,7 +222,6 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
   const buildPayload = () => ({
     inspection_date: date,
-    mixing,
     actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
     entries: stages.flatMap((stage) =>
@@ -250,7 +249,6 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const getPreviewData = () => {
     const header = [
       { label: "Date", value: date },
-      { label: "Mixing", value: mixing },
       { label: "Target (ASV)", value: target },
       { label: "Entries (N)", value: form.entries },
     ];

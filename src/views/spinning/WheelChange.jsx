@@ -749,6 +749,7 @@ const WheelChange = forwardRef(function WheelChange(
 ) {
   const [wheelChangeType, setWheelChangeType] = useState("");
   const [machineNumber, setMachineNumber] = useState("");
+  const [testNo, setTestNo] = useState("");
   const [date, setDate] = useState(getTodayDate);
   const [values, setValues] = useState(createWheelChangeValues);
   const [errors, setErrors] = useState({});
@@ -772,6 +773,7 @@ const WheelChange = forwardRef(function WheelChange(
       if (stored && typeof stored === "object") {
         setWheelChangeType(typeof stored.wheelChangeType === "string" ? stored.wheelChangeType : "");
         setMachineNumber(typeof stored.machineNumber === "string" ? stored.machineNumber : "");
+        setTestNo(typeof stored.testNo === "string" ? stored.testNo : "");
         setDate(typeof stored.date === "string" && stored.date ? stored.date : getTodayDate());
         setValues({
           ...createWheelChangeValues(),
@@ -792,11 +794,12 @@ const WheelChange = forwardRef(function WheelChange(
       JSON.stringify({
         wheelChangeType,
         machineNumber,
+        testNo,
         date,
         values,
       })
     );
-  }, [date, draftLoaded, machineNumber, values, wheelChangeType]);
+  }, [date, draftLoaded, machineNumber, testNo, values, wheelChangeType]);
 
   const selectedVariety = String(values.countForm?.existing || values.countForm?.proposed || "").trim();
 
@@ -967,6 +970,7 @@ const WheelChange = forwardRef(function WheelChange(
   const clear = () => {
     setWheelChangeType("");
     setMachineNumber("");
+    setTestNo("");
     setDate(getTodayDate());
     setValues(createWheelChangeValues());
     setErrors({});
@@ -982,6 +986,7 @@ const WheelChange = forwardRef(function WheelChange(
     if (!wheelChangeType.trim()) nextErrors.wheelChangeType = true;
     if (!date) nextErrors.date = true;
     if (!machineNumber.trim()) nextErrors.machineNumber = true;
+    if (!testNo.trim()) nextErrors.testNo = true;
 
     const valueErrors = {};
     activeRows.forEach((row) => {
@@ -1028,7 +1033,7 @@ const WheelChange = forwardRef(function WheelChange(
         type: selectedTypeName,
         wheel_change_type: "",
         date: date || getTodayDate(),
-        test_no: "",
+        test_no: getTextValue(testNo),
       };
     }
 
@@ -1037,7 +1042,7 @@ const WheelChange = forwardRef(function WheelChange(
       type: selectedTypeName,
       wheel_change_type: typeCode,
       date: date || getTodayDate(),
-      test_no: "",
+      test_no: getTextValue(testNo),
       [typeFieldConfig.referenceField]: getTextValue(machineNumber),
       machine_no: getTextValue(machineNumber),
       machine_number: getTextValue(machineNumber),
@@ -1067,6 +1072,7 @@ const WheelChange = forwardRef(function WheelChange(
     { label: "Checking Type", value: selectedTypeName || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "#SPN-001" },
+    { label: "Test No", value: testNo || "-" },
     { label: referenceLabel, value: machineNumber || "-" },
     ...activeRows.flatMap((row) => [
       { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
@@ -1217,7 +1223,19 @@ const WheelChange = forwardRef(function WheelChange(
             />
           </div>
 
-          <div className={styles.field} aria-hidden="true" />
+          <div className={styles.field}>
+            <label>Test No</label>
+            <input
+              type="text"
+              className={`${styles.topInput} ${errors.testNo ? styles.errorInput : ""}`}
+              value={testNo}
+              onChange={(event) => {
+                setTestNo(event.target.value);
+                clearFieldError("testNo");
+              }}
+              placeholder="Enter Test No"
+            />
+          </div>
         </div>
 
         <div className={styles.tableWrap}>
