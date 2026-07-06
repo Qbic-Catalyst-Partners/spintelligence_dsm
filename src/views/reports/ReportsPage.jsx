@@ -672,6 +672,36 @@ const flattenRecord = (record, { includeArrays = false, prefix = "" } = {}) => {
   }, {});
 };
 
+const getReportValueSources = (row) => {
+  const sources = [row, row?.data, row?.record, row?.details, row?.summary, row?.form, row?.payload];
+  return sources.filter(isRecordObject);
+};
+
+const findValueByNormalizedKey = (row, targetKey) => {
+  const normalizedTarget = normalizeLookupKey(targetKey);
+  if (!normalizedTarget) return null;
+
+  for (const source of getReportValueSources(row)) {
+    const flatSource = flattenRecord(source, { includeArrays: true });
+    const matchedKey = Object.keys(flatSource).find((rowKey) => {
+      const normalizedRowKey = normalizeLookupKey(rowKey);
+      return (
+        normalizedRowKey === normalizedTarget ||
+        normalizedRowKey.includes(normalizedTarget) ||
+        normalizedTarget.includes(normalizedRowKey)
+      );
+    });
+    if (matchedKey) {
+      const matchedValue = flatSource[matchedKey];
+      if (matchedValue !== null && typeof matchedValue !== "undefined" && matchedValue !== "") {
+        return matchedValue;
+      }
+    }
+  }
+
+  return null;
+};
+
 const expandNestedRows = (rows) =>
   rows.flatMap((row) => {
     if (!isRecordObject(row)) return row;
@@ -879,9 +909,32 @@ const getReportFieldValue = (row, field) => {
   for (const key of keys) {
     if (row?.[key] !== null && typeof row?.[key] !== "undefined" && row?.[key] !== "") return row[key];
     const target = normalizeLookupKey(key);
-    const matchedKey = Object.keys(row || {}).find((rowKey) => normalizeLookupKey(rowKey) === target);
+    const matchedKey = Object.keys(row || {}).find((rowKey) => {
+      const normalizedRowKey = normalizeLookupKey(rowKey);
+      return (
+        normalizedRowKey === target ||
+        normalizedRowKey.includes(target) ||
+        target.includes(normalizedRowKey)
+      );
+    });
     if (matchedKey && row[matchedKey] !== null && typeof row[matchedKey] !== "undefined" && row[matchedKey] !== "") {
       return row[matchedKey];
+    }
+
+    const nestedValue = findValueByNormalizedKey(row, key);
+    if (nestedValue !== null && typeof nestedValue !== "undefined" && nestedValue !== "") {
+      return nestedValue;
+    }
+  }
+
+  const fallbackSource = getReportValueSources(row);
+  for (const source of fallbackSource) {
+    const values = Object.values(flattenRecord(source, { includeArrays: true }));
+    const firstMeaningful = values.find(
+      (value) => value !== null && typeof value !== "undefined" && String(value).trim() !== ""
+    );
+    if (typeof firstMeaningful !== "undefined") {
+      return firstMeaningful;
     }
   }
 

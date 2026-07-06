@@ -392,7 +392,6 @@
 }
 
 .countChangeSummaryBox {
-  width: 180px;
   margin-top: 14px;
   margin-left: auto;
   padding: 12px 14px;
@@ -400,6 +399,19 @@
   border-radius: 10px;
   background: #f8fbff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.countChangeSummaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #d8e2f3;
+}
+
+.countChangeSummaryItem {
+  min-width: 120px;
 }
 
 .countChangeSummaryLabel {
@@ -412,7 +424,7 @@
 
 .countChangeSummaryValue {
   margin-top: 6px;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   color: #0f172a;
   line-height: 1.1;
@@ -422,6 +434,46 @@
   margin-top: 4px;
   font-size: 11px;
   color: #64748b;
+}
+
+.countChangeSummaryItemLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.countChangeSummaryItemValue {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+}
+
+.countChangeFooterRow td {
+  border-top: 1px solid #e6eef8;
+  padding: 12px 8px;
+}
+
+.countChangeFooterCell {
+  vertical-align: middle;
+}
+
+.countChangeFooterLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.countChangeFooterValue {
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
 }
 
 .ringFrameTableWrap {

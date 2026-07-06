@@ -113,7 +113,10 @@ const STATIC_BR_COTS_MACHINE_NAMES = [
 const STATIC_FR_MACHINE_NAMES = ["FR (HSR 1000-2)", "FR (HSR 1000-1)"];
 
 const processTypeOptions = ["Breaker", "Finisher"];
-const shiftOptions = ["General", "A Shift", "B Shift", "C Shift"];
+const shiftOptions = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
+const yesNoOptions = ["YES", "NO"];
+const onOffOptions = ["ON", "OFF"];
+const cleanUncleanOptions = ["Clean", "Unclean"];
 const STATIC_SHIFT_OPTIONS = [
   { value: "General", label: "General" },
   { value: "Day", label: "Day" },
@@ -1224,15 +1227,9 @@ function DrawFrame() {
 
   useEffect(() => {
     if (form.type !== "Draw Frame Cots Data Entry") return;
-    setMachineEntries((current) => {
-      const names = machineNameOptions;
-
-      return names.map((machineName, index) => ({
-        ...createMachineEntry(machineName),
-        ...current[index],
-        machineName,
-      }));
-    });
+    setMachineEntries(
+      machineNameOptions.map((machineName) => createMachineEntry(machineName))
+    );
   }, [form.processType, form.type, machineNameOptions]);
 
   useEffect(() => {
@@ -1376,10 +1373,10 @@ function DrawFrame() {
         items.push({ label: "Cot Change", value: m.cotChange || "-" });
         items.push({ label: "Stripper Waste", value: m.stripperWaste || "-" });
         if (form.processType === "Finisher") {
-          items.push({ label: "Auto Level", value: m.autoLevel || "-" });
+          items.push({ label: "Auto Leveller Status", value: m.autoLevel || "-" });
           items.push({ label: "Silver Monitor", value: m.silverMon || "-" });
           items.push({ label: "Mass Thick Place", value: m.massThick || "-" });
-          items.push({ label: "Scanning Roller", value: m.scanningR || "-" });
+          items.push({ label: "Scanning Roller Area", value: m.scanningR || "-" });
         }
       });
     } else if (form.type === "U% Data Entry") {
@@ -1585,14 +1582,14 @@ function DrawFrame() {
           machines: machineEntries.map((item) => ({
             mc_name: item.machineName,
             mc_no: item.mcNo || item.machineName,
-            fan_waste: Number(item.fanWaste) || 0,
-            cot_change: Number(item.cotChange) || 0,
-            stripper_w: Number(item.stripperWaste) || 0,
+            fan_waste: item.fanWaste || "",
+            cot_change: item.cotChange || "",
+            stripper_w: item.stripperWaste || "",
             thick_place: Number(item.thickPlace) || 0,
-            auto_level: Number(item.autoLevel) || 0,
-            silver_worn: Number(item.silverMon) || 0,
+            auto_level: item.autoLevel || "",
+            silver_worn: item.silverMon || "",
             main_tin: Number(item.massThick) || 0,
-            scanning: Number(item.scanningR) || 0,
+            scanning: item.scanningR || "",
           })),
         }
       : {
@@ -2076,81 +2073,126 @@ function DrawFrame() {
                       <div className={styles.machineGrid}>
                         <div className={styles.field}>
                           <label className={styles.label}>Fan Waste</label>
-                          <input
-                            value={machine.fanWaste}
-                            onChange={(e) => handleMachineChange(index, "fanWaste", e.target.value)}
-                            className={`${styles.input} ${
-                              errors.machines?.[index]?.fanWaste ? styles.inputError : ""
-                            }`}
-                          />
+                          <div className={styles.radioGroup}>
+                            {cleanUncleanOptions.map((option) => (
+                              <label key={option} className={styles.radioOption}>
+                                <input
+                                  type="radio"
+                                  name={`fanWaste-${index}`}
+                                  value={option}
+                                  checked={machine.fanWaste === option}
+                                  onChange={(e) => handleMachineChange(index, "fanWaste", e.target.value)}
+                                />
+                                <span>{option}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
 
                         <div className={styles.field}>
                           <label className={styles.label}>Cot Change</label>
-                          <input
-                            value={machine.cotChange}
-                            onChange={(e) => handleMachineChange(index, "cotChange", e.target.value)}
-                            className={`${styles.input} ${
-                              errors.machines?.[index]?.cotChange ? styles.inputError : ""
-                            }`}
-                          />
+                          <div className={styles.radioGroup}>
+                            {yesNoOptions.map((option) => (
+                              <label key={option} className={styles.radioOption}>
+                                <input
+                                  type="radio"
+                                  name={`cotChange-${index}`}
+                                  value={option}
+                                  checked={machine.cotChange === option}
+                                  onChange={(e) => handleMachineChange(index, "cotChange", e.target.value)}
+                                />
+                                <span>{option}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
 
                         <div className={styles.field}>
                           <label className={styles.label}>Stripper Waste</label>
-                          <input
-                            value={machine.stripperWaste}
-                            onChange={(e) => handleMachineChange(index, "stripperWaste", e.target.value)}
-                            className={`${styles.input} ${
-                              errors.machines?.[index]?.stripperWaste ? styles.inputError : ""
-                            }`}
-                          />
+                          <div className={styles.radioGroup}>
+                            {cleanUncleanOptions.map((option) => (
+                              <label key={option} className={styles.radioOption}>
+                                <input
+                                  type="radio"
+                                  name={`stripperWaste-${index}`}
+                                  value={option}
+                                  checked={machine.stripperWaste === option}
+                                  onChange={(e) => handleMachineChange(index, "stripperWaste", e.target.value)}
+                                />
+                                <span>{option}</span>
+                              </label>
+                            ))}
+                          </div>
                         </div>
 
                         {form.processType === "Finisher" ? (
                           <>
                             <div className={styles.field}>
-                              <label className={styles.label}>Auto Level</label>
-                                <input
-                                  value={machine.autoLevel}
-                                  onChange={(e) => handleMachineChange(index, "autoLevel", e.target.value)}
-                                  className={`${styles.input} ${
-                                    errors.machines?.[index]?.autoLevel ? styles.inputError : ""
-                                  }`}
-                                />
+                              <label className={styles.label}>Auto Leveller Status</label>
+                              <div className={styles.radioGroup}>
+                                {onOffOptions.map((option) => (
+                                  <label key={option} className={styles.radioOption}>
+                                    <input
+                                      type="radio"
+                                      name={`autoLevel-${index}`}
+                                      value={option}
+                                      checked={machine.autoLevel === option}
+                                      onChange={(e) => handleMachineChange(index, "autoLevel", e.target.value)}
+                                    />
+                                    <span>{option}</span>
+                                  </label>
+                                ))}
+                              </div>
                             </div>
 
                             <div className={styles.field}>
                               <label className={styles.label}>Silver Monitor</label>
-                                <input
-                                  value={machine.silverMon}
-                                  onChange={(e) => handleMachineChange(index, "silverMon", e.target.value)}
-                                  className={`${styles.input} ${
-                                    errors.machines?.[index]?.silverMon ? styles.inputError : ""
-                                  }`}
-                                />
+                              <div className={styles.radioGroup}>
+                                {onOffOptions.map((option) => (
+                                  <label key={option} className={styles.radioOption}>
+                                    <input
+                                      type="radio"
+                                      name={`silverMon-${index}`}
+                                      value={option}
+                                      checked={machine.silverMon === option}
+                                      onChange={(e) => handleMachineChange(index, "silverMon", e.target.value)}
+                                    />
+                                    <span>{option}</span>
+                                  </label>
+                                ))}
+                              </div>
                             </div>
 
                             <div className={styles.field}>
                               <label className={styles.label}>Mass Thick Place</label>
-                                <input
-                                  value={machine.massThick}
-                                  onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
-                                  className={`${styles.input} ${
-                                    errors.machines?.[index]?.massThick ? styles.inputError : ""
-                                  }`}
-                                />
+                              <input
+                                value={machine.massThick}
+                                onChange={(e) => handleMachineChange(index, "massThick", e.target.value)}
+                                className={`${styles.input} ${
+                                  errors.machines?.[index]?.massThick ? styles.inputError : ""
+                                }`}
+                                inputMode="decimal"
+                                type="number"
+                                step="any"
+                              />
                             </div>
 
                             <div className={styles.field}>
-                              <label className={styles.label}>Scanning Roller</label>
-                                <input
-                                  value={machine.scanningR}
-                                  onChange={(e) => handleMachineChange(index, "scanningR", e.target.value)}
-                                  className={`${styles.input} ${
-                                    errors.machines?.[index]?.scanningR ? styles.inputError : ""
-                                  }`}
-                                />
+                              <label className={styles.label}>Scanning Roller Area</label>
+                              <div className={styles.radioGroup}>
+                                {cleanUncleanOptions.map((option) => (
+                                  <label key={option} className={styles.radioOption}>
+                                    <input
+                                      type="radio"
+                                      name={`scanningR-${index}`}
+                                      value={option}
+                                      checked={machine.scanningR === option}
+                                      onChange={(e) => handleMachineChange(index, "scanningR", e.target.value)}
+                                    />
+                                    <span>{option}</span>
+                                  </label>
+                                ))}
+                              </div>
                             </div>
                           </>
                         ) : null}

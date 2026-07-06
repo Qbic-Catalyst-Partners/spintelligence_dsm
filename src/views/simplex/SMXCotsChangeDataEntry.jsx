@@ -8,11 +8,18 @@ import {
 } from "@/store/slices/simplex";
 
 const detailItems = [
-  "Cots Damage",
+  "Front Cots Damage",
+  "Third Cots Damage",
+  "Back Cots Damage",
   "Apron Damage",
-  "Cots Tilting",
+  "Front Cots Tilting",
+  "Second Cots Tilting",
+  "Third Cots Tilting",
+  "Back Cots Tilting",
   "Cradle Lifting",
-  "Condensor Missing",
+  "Floating",
+  "Middle Condensor Missing",
+  "Back",
   "Others 1",
   "Others 2",
 ];
@@ -20,6 +27,8 @@ const detailItems = [
 const today = new Date().toISOString().split("T")[0];
 const defaultFieldStyle = { backgroundColor: "#f1f5f9" };
 const defaultTableFieldStyle = { backgroundColor: "#ffffff" };
+const topInputClass =
+  "w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors disabled:bg-slate-100 disabled:text-slate-700 disabled:opacity-100";
 const getFieldStyle = (flag, variant = "default") =>
   flag
     ? { borderColor: "#ef4444", backgroundColor: "#fff1f2" }
@@ -30,8 +39,7 @@ const getFieldStyle = (flag, variant = "default") =>
 const createDetailRows = () =>
   detailItems.map((item) => ({
     item,
-    statusValue: "",
-    remarks: "",
+    value: "",
   }));
 
 const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
@@ -42,7 +50,6 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   const { isLoading } = useSelector((state) => state.simplex ?? {});
   const [form, setForm] = useState({
     type: "SMXCots Change Data Entry",
-    serialNo: "1",
     date: today,
     mcName: "",
   });
@@ -135,7 +142,6 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   const clear = () => {
     setForm({
       type: "SMXCots Change Data Entry",
-      serialNo: "1",
       date: today,
       mcName: "",
     });
@@ -150,14 +156,12 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     };
 
     if (!form.type.trim()) nextErrors.form.type = true;
-    if (!form.serialNo.trim()) nextErrors.form.serialNo = true;
     if (!form.date.trim()) nextErrors.form.date = true;
     if (!form.mcName.trim()) nextErrors.form.mcName = true;
 
     details.forEach((detail, index) => {
       const detailErrors = {};
-      if (!detail.statusValue.trim()) detailErrors.statusValue = true;
-      if (!detail.remarks.trim()) detailErrors.remarks = true;
+      if (!detail.value.trim()) detailErrors.value = true;
       if (Object.keys(detailErrors).length) nextErrors.details[index] = detailErrors;
     });
 
@@ -170,13 +174,11 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
 
   const buildPayload = () => ({
     type: selectedTypeName || form.type,
-    s_no: form.serialNo,
     entry_date: form.date,
     machine_name: form.mcName,
     items: details.map((detail) => ({
       item_name: detail.item,
-      status_value: detail.statusValue,
-      remarks: detail.remarks,
+      status_value: detail.value,
     })),
   });
 
@@ -195,14 +197,12 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   const getPreviewData = () => {
     const items = [
       { label: "Type", value: form.type },
-      { label: "S. No.", value: form.serialNo },
       { label: "Entry ID", value: entryId || "-" },
       { label: "MC Name", value: form.mcName },
     ];
 
     details.forEach((detail, index) => {
-      items.push({ label: `${index + 1}. ${detail.item} - Status`, value: detail.statusValue || "-" });
-      items.push({ label: `${index + 1}. ${detail.item} - Remarks`, value: detail.remarks || "-" });
+      items.push({ label: `${index + 1}. ${detail.item}`, value: detail.value || "-" });
     });
 
     return items;
@@ -218,9 +218,9 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-3 gap-[18px]">
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">Type</label>
-          <select
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <label className="text-[14px] font-semibold text-slate-700">Type</label>
+            <select
             className={`h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
               errors.form?.type ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
             }`}
@@ -233,27 +233,15 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
                 {type}
               </option>
             ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">S. No.</label>
-          <input
-            type="text"
-            className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-              errors.form?.serialNo ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
-            }`}
-            style={getFieldStyle(errors.form?.serialNo)}
-            value={form.serialNo}
-            onChange={(e) => handleFormChange("serialNo", e.target.value)}
-          />
-        </div>
+            </select>
+          </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
           <input
             type="text"
-            className="w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
+            className={topInputClass}
+            style={{ backgroundColor: "#f1f5f9" }}
             value={entryId}
             disabled
             readOnly
@@ -317,47 +305,24 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
             </div>
           ) : null}
         </div>
-
-        <div />
-        <div />
       </div>
 
       <div className="flex flex-col gap-4">
         <h3 className="m-0 text-[14px] font-bold text-slate-900">Damage / Status Details</h3>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="grid grid-cols-[1.1fr_1fr_1.4fr] gap-3 px-4 pb-3 text-[14px] font-bold text-slate-800">
-            <div>Item</div>
-            <div>Status / Value</div>
-            <div>Remarks</div>
-          </div>
-
-          <div className="flex flex-col gap-3">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
             {details.map((detail, index) => (
-              <div
-                key={detail.item}
-                className="grid grid-cols-[1.1fr_1fr_1.4fr] items-center gap-3 px-4"
-              >
-                <div className="text-[14px] text-slate-700">{detail.item}</div>
-
+              <div key={detail.item} className="flex flex-col gap-1.5 min-w-0">
+                <label className="text-[14px] font-semibold text-slate-700">{detail.item}</label>
                 <input
                   type="text"
-                  className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-                    errors.details?.[index]?.statusValue ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
+                  className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
+                    errors.details?.[index]?.value ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
                   }`}
-                  style={getFieldStyle(errors.details?.[index]?.statusValue, "table")}
-                  value={detail.statusValue}
-                  onChange={(e) => handleDetailChange(index, "statusValue", e.target.value)}
-                />
-
-                <input
-                  type="text"
-                  className={`w-full h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-white text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors ${
-                    errors.details?.[index]?.remarks ? "border-red-500 focus:ring-red-400 focus:border-red-500" : ""
-                  }`}
-                  style={getFieldStyle(errors.details?.[index]?.remarks, "table")}
-                  value={detail.remarks}
-                  onChange={(e) => handleDetailChange(index, "remarks", e.target.value)}
+                  style={getFieldStyle(errors.details?.[index]?.value)}
+                  value={detail.value}
+                  onChange={(e) => handleDetailChange(index, "value", e.target.value)}
                 />
               </div>
             ))}

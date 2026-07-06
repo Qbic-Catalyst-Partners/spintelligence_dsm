@@ -414,9 +414,9 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     { label: "Total Minutes", field: "totalTime", type: "readonly", value: totalTime ? `${totalTime} mins` : "0 mins" },
     { label: "TPI", field: "tpi", type: "text" },
     { label: "TPM", field: "tpm", type: "text" },
+    { label: "Average Speed", field: "averageSpeed", type: "text" },
     { label: "Start HK", field: "startHk", type: "text" },
     { label: "Finish HK", field: "finishHk", type: "text" },
-    { label: "Average Speed", field: "averageSpeed", type: "text" },
     { label: "Hank", field: "hank", type: "readonly", value: calculatedHank || "0" },
     { label: "Mixing", field: "mixing", type: "text" },
     { label: "Roving HK", field: "rovingHk", type: "text" },
@@ -521,7 +521,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_repeat(9,minmax(0,1fr))] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700"> No.of Breaks / 100 Spindles</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700"> No. of breaks 100 spindles / hr</div>
             {percentageBreakColumns.map((columnLabel) => (
               <input
                 key={`percent-${columnLabel}`}
@@ -536,7 +536,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_minmax(0,160px)] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Grand Total Breaks %</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">Total number of breaks / 100 spindles / hr (number of breaks /100SH)</div>
             <input
               type="text"
               readOnly

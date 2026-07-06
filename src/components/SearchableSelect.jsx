@@ -11,6 +11,8 @@ function SearchableSelect({
   name,
   ariaLabel,
   dropUp = false,
+  includeEmptyOption = false,
+  emptyOptionLabel = "Select",
 }) {
   const containerRef = useRef(null);
   const inputRef = useRef(null);
@@ -20,7 +22,7 @@ function SearchableSelect({
   const normalizedOptions = useMemo(
     () => {
       const seen = new Set();
-      return (Array.isArray(options) ? options : [])
+      const baseOptions = (Array.isArray(options) ? options : [])
         .map((option) => {
           if (option && typeof option === "object") {
             const value = String(option.value ?? option.label ?? option.text ?? "").trim();
@@ -36,8 +38,12 @@ function SearchableSelect({
           seen.add(option.value);
           return true;
         });
+
+      if (!includeEmptyOption) return baseOptions;
+
+      return [{ value: "", label: emptyOptionLabel }, ...baseOptions];
     },
-    [options]
+    [emptyOptionLabel, includeEmptyOption, options]
   );
 
   const selectedOption = useMemo(
@@ -77,6 +83,14 @@ function SearchableSelect({
             label: String(option.label ?? option.text ?? option.value ?? "").trim(),
           }
         : { value: "", label: "" };
+
+    if (!safeOption.value && includeEmptyOption) {
+      onChange?.("");
+      setSearchTerm(emptyOptionLabel);
+      setIsOpen(false);
+      inputRef.current?.focus();
+      return;
+    }
 
     if (!safeOption.value) return;
     onChange?.(safeOption.value);

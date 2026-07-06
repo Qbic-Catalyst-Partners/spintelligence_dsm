@@ -45,7 +45,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
     selectedType,
     onTypeChange,
     departmentValue,
-    shiftOptions = ["Shift A", "Shift B", "Shift C"],
+    shiftOptions = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"],
     varietyOptions = ["Cotton"],
     machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"],
     submitHandler,

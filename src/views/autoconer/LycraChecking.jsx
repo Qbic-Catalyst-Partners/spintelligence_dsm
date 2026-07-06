@@ -320,12 +320,20 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
 
         <div className={styles.field}>
           <label>Lycra Weight</label>
-          <input value={lycraWeight} onChange={(e) => setLycraWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraWeight)} />
+          <input
+            value={lycraWeight}
+            onChange={(e) => setLycraWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
+            style={errorStyle(errors.lycraWeight)}
+          />
         </div>
 
         <div className={styles.field}>
           <label>Fabric Weight</label>
-          <input value={fabricWeight} onChange={(e) => setFabricWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.fabricWeight)} />
+          <input
+            value={fabricWeight}
+            onChange={(e) => setFabricWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
+            style={errorStyle(errors.fabricWeight)}
+          />
         </div>
 
         <div className={styles.field}>

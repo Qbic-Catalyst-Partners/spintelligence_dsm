@@ -44,7 +44,7 @@ const createCountChangeRows = (readingCount) => {
     }));
 };
 
-const SHIFT_OPTIONS = ["1", "2", "3"];
+const SHIFT_OPTIONS = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
 const RING_FRAME_CHECKERS = [];
 const SPINNING_CHECKING_OPTIONS = [
     { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
@@ -53,7 +53,7 @@ const SPINNING_CHECKING_OPTIONS = [
     { id: 3, name: "Ring Frame Log Book", aliases: ["Ring Frame Log Book", "RING FRAME LOG BOOK"] },
     { id: 4, name: "Speed Checking", aliases: ["Speed Checking", "SPEED CHECKING"] },
     { id: 6, name: "Bottom Apron Checking", aliases: ["Bottom Apron Checking", "BOTTOM APRON CHECKING"] },
-    { id: 7, name: "Lycra Centering", aliases: ["Lycra Centering", "LYCRA CENTERING"] },
+    { id: 7, name: "Lycra out of Centering", aliases: ["Lycra Centering", "LYCRA CENTERING"] },
     { id: 8, name: "RSM & Lycrasensor Checking Online", aliases: ["RSM & Lycrasensor Checking Online", "RSM AND LYCRASENSOR CHECKING ONLINE"] },
     { id: 9, name: "RSM & Lycrasensor Checking Offline", aliases: ["RSM & Lycrasensor Checking Offline", "RSM AND LYCRASENSOR CHECKING OFFLINE"] },
     { id: 10, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"], component: WheelChange },
@@ -593,13 +593,7 @@ function SpinningDepartment() {
                 setRingFrameCheckerOptions([]);
             }
 
-            if (shiftResult.status === "fulfilled") {
-                const options = normalizeMachineOptions(shiftResult.value)
-                    .filter((option) => option.value);
-                setRingFrameShiftOptions(options.length ? options : SHIFT_OPTIONS);
-            } else {
-                setRingFrameShiftOptions(SHIFT_OPTIONS);
-            }
+            setRingFrameShiftOptions(SHIFT_OPTIONS);
         });
 
         return () => {
@@ -700,7 +694,7 @@ function SpinningDepartment() {
     const calculatedDifferenceValue = displaySpeedValue !== null && spindleSpeedValue !== null ? Number((displaySpeedValue - spindleSpeedValue).toFixed(2)) : null;
     const calculatedDifference = calculatedDifferenceValue !== null ? calculatedDifferenceValue.toFixed(2) : "";
     const isCountMode = countChangeMode === "Count";
-    const isCsvMode = countChangeMode === "CSV";
+    const isCspMode = countChangeMode === "CSP";
     const countChangeReadingValues = countChangeRows
         .map((row) => parseNumericInput(row.reading_value))
         .filter((value) => value !== null);
@@ -775,6 +769,27 @@ function SpinningDepartment() {
         };
     };
     const displayedCountChangeRows = countChangeRows.map((row, rowIndex) => deriveCountChangeRow(row, rowIndex));
+    const averageReadingValue = (() => {
+        const values = displayedCountChangeRows
+            .map((row) => parseNumericInput(row.reading_value))
+            .filter((value) => value !== null);
+        if (!values.length) return "";
+        return roundTo(values.reduce((total, value) => total + value, 0) / values.length, 2).toFixed(2);
+    })();
+    const averageCountValue = (() => {
+        const values = displayedCountChangeRows
+            .map((row) => parseNumericInput(row.count))
+            .filter((value) => value !== null);
+        if (!values.length) return "";
+        return roundTo(values.reduce((total, value) => total + value, 0) / values.length, 2).toFixed(2);
+    })();
+        const averageStrengthValue = (() => {
+            const values = displayedCountChangeRows
+                .map((row) => parseNumericInput(row.strength))
+                .filter((value) => value !== null);
+            if (!values.length) return "";
+            return roundTo(values.reduce((total, value) => total + value, 0) / values.length, 2).toFixed(2);
+        })();
     const renderCountChangeCell = (value, fallback = "-") => {
         const text = String(value ?? "").trim();
         return text ? text : fallback;
@@ -895,11 +910,11 @@ function SpinningDepartment() {
             }
             if (!lhsValue.trim()) {
                 nextErrors.lhsValue = true;
-                missingFields.push("LHS Value");
+                missingFields.push("Spindle Number Value");
             }
             if (!rhsValue.trim()) {
                 nextErrors.rhsValue = true;
-                missingFields.push("RHS Value");
+                missingFields.push("Spindle Number Value");
             }
             if (isCotsChecking) {
                 const lhsNumber = Number(lhsValue);
@@ -916,11 +931,11 @@ function SpinningDepartment() {
             }
             if (!lhsRemarks.trim()) {
                 nextErrors.lhsRemarks = true;
-                missingFields.push("LHS Remarks");
+                missingFields.push("Spindle Number Remarks");
             }
             if (!rhsRemarks.trim()) {
                 nextErrors.rhsRemarks = true;
-                missingFields.push("RHS Remarks");
+                missingFields.push("Spindle Number Remarks");
             }
         }
         if (checkingType === "Speed Checking") {
@@ -1195,10 +1210,10 @@ function SpinningDepartment() {
                     ]))
                 ]
             : [
-                { label: "LHS Value", value: lhsValue || "-" },
-                { label: "RHS Value", value: rhsValue || "-" },
-                { label: "LHS Remarks", value: lhsRemarks || "-" },
-                { label: "RHS Remarks", value: rhsRemarks || "-" },
+                { label: "Spindle Number Value", value: lhsValue || "-" },
+                { label: "Spindle Number Value", value: rhsValue || "-" },
+                { label: "Spindle Number Remarks", value: lhsRemarks || "-" },
+                { label: "Spindle Number Remarks", value: rhsRemarks || "-" },
             ];
 
         if (checkingType === "Speed Checking") {
@@ -1283,7 +1298,7 @@ function SpinningDepartment() {
                                     <div className={styles["sp-form-group"]}>
                                         <label className={styles.countTypeSpacer}>&nbsp;</label>
                                         <div className={`${styles.segmentedControl} ${styles.countChangeSegmented} ${errors.countChangeMode ? styles["segmented-error"] : ""}`} role="group" aria-label="Count change type">
-                                            {["Count", "CSV"].map((mode) => (
+                                            {["Count", "CSP"].map((mode) => (
                                                 <button key={mode} type="button" className={`${styles.segmentButton} ${countChangeMode === mode ? styles.segmentButtonActive : ""}`} onClick={() => { setCountChangeMode(mode); clearFieldError("countChangeMode"); }}>
                                                     {mode}
                                                 </button>
@@ -1340,10 +1355,7 @@ function SpinningDepartment() {
                                                 <th>READING NO.</th>
                                                 <th>READINGS</th>
                                                 <th>COUNT</th>
-                                                <th>CV%</th>
                                                 <th>STRENGTH</th>
-                                                <th>MEAN</th>
-                                                <th>CV%</th>
                                                 <th>CSP</th>
                                             </tr>
                                         </thead>
@@ -1374,10 +1386,7 @@ function SpinningDepartment() {
                                                         <span className={styles.countChangeCellText}>{renderCountChangeCell(row.count, "")}</span>
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent, "")}</span>
-                                                    </td>
-                                                    <td>
-                                                        {isCsvMode ? (
+                                                        {isCspMode ? (
                                                             <input
                                                                 type="text"
                                                                 inputMode="decimal"
@@ -1390,25 +1399,50 @@ function SpinningDepartment() {
                                                         )}
                                                     </td>
                                                     <td>
-                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.mean, "")}</span>
-                                                    </td>
-                                                    <td>
-                                                        <span className={styles.countChangeCellText}>{renderCountChangeCell(row.cv_percent_2, "")}</span>
-                                                    </td>
-                                                    <td>
                                                         <span className={styles.countChangeCellText}>{renderCountChangeCell(row.csp, "")}</span>
                                                     </td>
                                                 </tr>
                                             )) : null}
                                         </tbody>
+                                        {countChangeRows.length > 0 ? (
+                                            <tfoot>
+                                                <tr className={styles.countChangeFooterRow}>
+                                                    <td></td>
+                                                    <td className={styles.countChangeFooterCell}>
+                                                        <div className={styles.countChangeFooterLabel}>Avg</div>
+                                                        <div className={styles.countChangeFooterValue}>{averageReadingValue || "-"}</div>
+                                                    </td>
+                                                    <td className={styles.countChangeFooterCell}>
+                                                        <div className={styles.countChangeFooterLabel}>Avg</div>
+                                                        <div className={styles.countChangeFooterValue}>{averageCountValue || "-"}</div>
+                                                    </td>
+                                                    <td className={styles.countChangeFooterCell}>
+                                                        <div className={styles.countChangeFooterLabel}>Avg</div>
+                                                        <div className={styles.countChangeFooterValue}>{averageStrengthValue || "-"}</div>
+                                                    </td>
+                                                    <td className={styles.countChangeFooterCell}>
+                                                        <div className={styles.countChangeFooterLabel}>Overall CSP</div>
+                                                        <div className={styles.countChangeFooterValue}>{overallAverageCsp || "-"}</div>
+                                                    </td>
+                                                </tr>
+
+                                                <tr className={styles.countChangeFooterRow}>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td className={styles.countChangeFooterCell}>
+                                                        <div className={styles.countChangeFooterLabel}>CV%</div>
+                                                        <div className={styles.countChangeFooterValue}>{countModeCvPercent || "-"}</div>
+                                                    </td>
+                                                    <td className={styles.countChangeFooterCell}>
+                                                        <div className={styles.countChangeFooterLabel}>CV%</div>
+                                                        <div className={styles.countChangeFooterValue}>{csvStrengthCvPercent || "-"}</div>
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                            </tfoot>
+                                        ) : null}
                                     </table>
                                 </div>
-                                {countChangeRows.length > 0 ? (
-                                    <div className={styles.countChangeSummaryBox}>
-                                        <div className={styles.countChangeSummaryLabel}>Overall CSP</div>
-                                        <div className={styles.countChangeSummaryValue}>{overallAverageCsp || "-"}</div>
-                                    </div>
-                                ) : null}
                             </>
                         ) : isRingFrame ? (
                             <>
@@ -1626,7 +1660,7 @@ function SpinningDepartment() {
                                     <div className={styles["comparison-row"]}>
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
-                                                <label>LHS (Left Hand Side)</label>
+                                                <label>Spindle Number</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
                                             <input
@@ -1638,18 +1672,18 @@ function SpinningDepartment() {
                                                 className={errors.lhsValue ? styles["input-error"] : ""}
                                             />
                                             <div className={styles["remarks-header"]}>
-                                                <span>LHS Remarks</span>
+                                                <span>Spindle Number Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
                                                     <AiOutlineAudio className={styles["mic-icon"]} />
                                                 </div>
                                             </div>
-                                            <textarea placeholder="LHS specific notes..." value={lhsRemarks} maxLength={MAX_CHARS} onChange={(e) => { setLhsRemarks(e.target.value); clearFieldError("lhsRemarks"); }} className={errors.lhsRemarks ? styles["input-error"] : ""} />
+                                            <textarea placeholder="Spindle Number notes..." value={lhsRemarks} maxLength={MAX_CHARS} onChange={(e) => { setLhsRemarks(e.target.value); clearFieldError("lhsRemarks"); }} className={errors.lhsRemarks ? styles["input-error"] : ""} />
                                             <div className={styles["char-count"]}>{lhsRemarks.length}/{MAX_CHARS}</div>
                                         </div>
 
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
-                                                <label>RHS (Right Hand Side)</label>
+                                                <label>Spindle Number</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
                                             <input
@@ -1661,12 +1695,12 @@ function SpinningDepartment() {
                                                 className={errors.rhsValue ? styles["input-error"] : ""}
                                             />
                                             <div className={styles["remarks-header"]}>
-                                                <span>RHS Remarks</span>
+                                                <span>Spindle Number Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
                                                     <AiOutlineAudio className={styles["mic-icon"]} />
                                                 </div>
                                             </div>
-                                            <textarea placeholder="RHS specific notes..." value={rhsRemarks} maxLength={MAX_CHARS} onChange={(e) => { setRhsRemarks(e.target.value); clearFieldError("rhsRemarks"); }} className={errors.rhsRemarks ? styles["input-error"] : ""} />
+                                            <textarea placeholder="Spindle Number notes..." value={rhsRemarks} maxLength={MAX_CHARS} onChange={(e) => { setRhsRemarks(e.target.value); clearFieldError("rhsRemarks"); }} className={errors.rhsRemarks ? styles["input-error"] : ""} />
                                             <div className={styles["char-count"]}>{rhsRemarks.length}/{MAX_CHARS}</div>
                                         </div>
                                     </div>

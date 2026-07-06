@@ -45,6 +45,16 @@ const SIMPLEX_ENTRY_ID_CONFIG = {
 const getSimplexEntryConfig = (typeName) =>
   SIMPLEX_ENTRY_ID_CONFIG[typeName] || { prefix: "SIM" };
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
+const formatTimeHM = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+};
 
 function Simplex() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -435,10 +445,10 @@ function Simplex() {
                 fontSize: "14px",
                 minWidth: "700px",
               }}
-            >
+              >
               <thead style={{ backgroundColor: entryTableTheme.header }}>
                 <tr>
-                  {["Type", "S. No.", "Date", "MC Name", "Created At"].map((head) => (
+                  {["Type", "Date", "MC Name", "Created Time"].map((head) => (
                     <th
                       key={head}
                       style={{
@@ -460,7 +470,7 @@ function Simplex() {
                 {listLoading ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={4}
                       style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       Loading entries...
@@ -476,14 +486,11 @@ function Simplex() {
                     >
                       {[
                         entry.type || "-",
-                        entry.s_no || "-",
                         entry.entry_date
                           ? new Date(entry.entry_date).toLocaleDateString("en-GB")
                           : "-",
                         entry.machine_name || "-",
-                        entry.created_at
-                          ? new Date(entry.created_at).toLocaleString("en-GB")
-                          : "-",
+                        formatTimeHM(entry.created_at),
                       ].map((cell, idx) => (
                         <td
                           key={idx}
@@ -501,7 +508,7 @@ function Simplex() {
                 ) : (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={4}
                       style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       No entries found.

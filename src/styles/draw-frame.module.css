@@ -536,6 +536,26 @@
     gap: 1rem;
 }
 
+.radioGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    padding: 0.25rem 0 0.125rem;
+}
+
+.radioOption {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.radioOption input {
+    margin: 0;
+}
+
 .machineFieldCompact {
     max-width: 180px;
 }

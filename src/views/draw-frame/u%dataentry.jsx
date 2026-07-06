@@ -7,7 +7,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
-const SHIFT_OPTIONS = ["General"];
+const SHIFT_OPTIONS = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
 const VARIETY_OPTIONS = ["WPSF 0.90"];
 const DEPARTMENT_OPTIONS = ["FR Drawing"];
 const MC_NO_OPTIONS = ["FR DSS-1"];
@@ -43,7 +43,7 @@ function UPercentDataEntry() {
       try {
         const dropdown = await fetchDrawFrameUqcMasterDropdown();
         if (!active) return;
-        if (dropdown.shifts?.length) setShiftOptions(dropdown.shifts);
+        setShiftOptions(SHIFT_OPTIONS);
         if (dropdown.varietyNames?.length) setVarietyOptions(dropdown.varietyNames);
         if (dropdown.departmentNames?.length) setDepartmentOptions(dropdown.departmentNames);
         if (dropdown.mcNos?.length) setMcNoOptions(dropdown.mcNos);
@@ -160,7 +160,9 @@ function UPercentDataEntry() {
             onChange={(value) => handleChange("shift", value)}
             className={errors.shift ? styles.errorField : ""}
             options={shiftOptions}
-            placeholder="Select"
+            placeholder="Select Shift"
+            includeEmptyOption
+            emptyOptionLabel="Select Shift"
             ariaLabel="Shift"
           />
         </div>

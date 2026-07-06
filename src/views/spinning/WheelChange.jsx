@@ -5,11 +5,12 @@ import { fetchSpinningMachineNumberOptions, fetchSpinningWheelChangeDropdown, fe
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
-const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
+const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3", "Type 4"];
 const WHEEL_CHANGE_API_TYPES = {
   "Type 1": "type1",
   "Type 2": "type2",
   "Type 3": "type3",
+  "Type 4": "type1",
 };
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
 const STATIC_RF_NO_OPTIONS = ["1", "2", "3", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "20", "24"];
@@ -205,10 +206,41 @@ const WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE = {
   "Type 1": TYPE_1_PARAMETER_ROWS,
   "Type 2": TYPE_2_PARAMETER_ROWS,
   "Type 3": TYPE_3_PARAMETER_ROWS,
+  "Type 4": TYPE_1_PARAMETER_ROWS,
 };
 
 const WHEEL_CHANGE_FIELD_MAP = {
   "Type 1": {
+    referenceField: "fm_no",
+    rows: {
+      countForm: "count_from",
+      lycraType: "lycra_type",
+      lycraDraft: "lycra_draft",
+      tmDisc: "slub_code",
+      range: "range",
+      offsetDia: "offset",
+      gapsCourseCondition: "core_condition",
+      diameterDoffSpeed: "production",
+      rovingHank: "roving_hank",
+      rh: "eow",
+      bd: "epi",
+      dca: "dca",
+      dcb: "dcb",
+      dpc: "dfc",
+      dc: "dc",
+      tdv: "tcw",
+      tm: "tw",
+      tciTm: "tpm",
+      travellerDia: "travelers_no",
+      spacer: "spacer",
+      capWeight: "cop_weight",
+      spindleMotorRpm: "speed_front",
+      empaleeColour: "speed_rpm",
+      traveller: "empires_colour",
+      totalDraft: "total_draft",
+    },
+  },
+  "Type 4": {
     referenceField: "fm_no",
     rows: {
       countForm: "count_from",
@@ -302,6 +334,18 @@ const WHEEL_CHANGE_FIELD_MAP = {
 
 const WHEEL_CHANGE_NUMERIC_FIELDS = {
   "Type 1": new Set([
+    "lycra_draft",
+    "production",
+    "roving_hank",
+    "epi",
+    "dcb",
+    "tpm",
+    "cop_weight",
+    "speed_front",
+    "speed_rpm",
+    "total_draft",
+  ]),
+  "Type 4": new Set([
     "lycra_draft",
     "production",
     "roving_hank",
@@ -1043,8 +1087,11 @@ const WheelChange = forwardRef(function WheelChange(
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
+    const isType4NonCountDropdown =
+      wheelChangeType === "Type 4" && row.key !== "countForm";
     const shouldUseSelect =
       row.inputType === "select" &&
+      !isType4NonCountDropdown &&
       (wheelChangeType !== "Type 1" || !["tdv", "tm", "tciTm"].includes(row.key) || Boolean(machineNumber));
 
     if (shouldUseSelect) {

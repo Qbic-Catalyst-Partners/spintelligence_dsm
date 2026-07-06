@@ -6,7 +6,10 @@ export const primaryTypeOptions = [
 ];
 
 export const processTypeOptions = ["Breaker", "Finisher"];
-export const shiftOptions = ["General", "Day", "Half Night", "Full Night"];
+export const shiftOptions = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
+export const yesNoOptions = ["YES", "NO"];
+export const onOffOptions = ["ON", "OFF"];
+export const cleanUncleanOptions = ["Clean", "Unclean"];
 export const cvMachineOptions = [
   "FR (HSR 1000-1)",
   "FR (HSR 1000-2)",

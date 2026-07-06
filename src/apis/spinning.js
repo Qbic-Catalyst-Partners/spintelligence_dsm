@@ -20,13 +20,14 @@ const resolveWheelChangeEndpoint = (endpoint, payload) => {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const allowedTypes = new Set(["type1", "type2", "type3"]);
+  const allowedTypes = new Set(["type1", "type2", "type3", "type4"]);
+  const mappedType = wheelType === "type4" ? "type1" : wheelType;
 
   if (!allowedTypes.has(wheelType)) {
-    throw new Error("Invalid wheel change type. Use Type 1, Type 2, or Type 3.");
+    throw new Error("Invalid wheel change type. Use Type 1, Type 2, Type 3, or Type 4.");
   }
 
-  return `${endpoint}/${wheelType}`;
+  return `${endpoint}/${mappedType}`;
 };
 
 // POST API
@@ -697,8 +698,9 @@ export const fetchSpinningWheelChangeDropdown = async (wheelType = "", params = 
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const typeEndpoint = ["type1", "type2", "type3"].includes(normalizedType)
-    ? `/spinning/wheel-change/${normalizedType}/master/dropdown`
+  const backendType = normalizedType === "type4" ? "type1" : normalizedType;
+  const typeEndpoint = ["type1", "type2", "type3", "type4"].includes(normalizedType)
+    ? `/spinning/wheel-change/${backendType}/master/dropdown`
     : null;
   const endpoints = [
     typeEndpoint,
@@ -764,9 +766,10 @@ export const fetchSpinningWheelChangeLatestRecord = async (wheelType = "", param
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
+  const backendType = normalizedType === "type4" ? "type1" : normalizedType;
 
-  const endpoints = ["type1", "type2", "type3"].includes(normalizedType)
-    ? [`/spinning/wheel-change/${normalizedType}`]
+  const endpoints = ["type1", "type2", "type3", "type4"].includes(normalizedType)
+    ? [`/spinning/wheel-change/${backendType}`]
     : [
         "/spinning/wheel-change/type1",
         "/spinning/wheel-change/type2",

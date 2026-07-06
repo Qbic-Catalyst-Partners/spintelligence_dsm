@@ -34,7 +34,7 @@ const dropdownButtonStyle = {
   textAlign: "left",
   outline: "none",
 };
-const SHIFT_OPTIONS = ["General", "Day", "Half Night", "Full Night"];
+const SHIFT_OPTIONS = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
 const MC_NO_OPTIONS = createSmxMachineOptions();
 const VARIETY_OPTIONS = ["WPSF 0.90"];
 
@@ -60,7 +60,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     fetchSimplexUqcMasterDropdown()
       .then((dropdown) => {
         if (!active) return;
-        if (dropdown.shifts?.length) setShiftOptions(dropdown.shifts);
+        setShiftOptions(SHIFT_OPTIONS);
         if (dropdown.varietyNames?.length) setVarietyOptions(dropdown.varietyNames);
       })
       .catch(() => {
@@ -211,7 +211,9 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             onChange={(value) => handleChange("shift", value)}
             className={errors.shift ? styles.errorField : ""}
             options={shiftOptions}
-            placeholder="Select"
+            placeholder="Select Shift"
+            includeEmptyOption
+            emptyOptionLabel="Select Shift"
             ariaLabel="Shift"
           />
         </div>
