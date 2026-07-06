@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -344,7 +344,10 @@ function getEntrySortValue(entry) {
   return 0;
 }
 
-function DrawFrameHeaderEntry({ entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess }) {
+const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
+  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess },
+  ref
+) {
   const router = useRouter();
   const activeType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
   const activeConfig = TYPE_CONFIG[activeType];
@@ -447,6 +450,13 @@ function DrawFrameHeaderEntry({ entryId = "", nextEntryIdPreview = "", typeOptio
       })),
     [allFields, form]
   );
+
+  useImperativeHandle(ref, () => ({
+    getPreviewData: () => [
+      { label: "Process Parameter ID", value: form.paramId || "-" },
+      ...previewItems,
+    ],
+  }));
 
   const resetForm = () => {
     setForm(activeConfig.createForm(activeType));
@@ -824,6 +834,6 @@ function DrawFrameHeaderEntry({ entryId = "", nextEntryIdPreview = "", typeOptio
       </div>
     </>
   );
-}
+});
 
 export default DrawFrameHeaderEntry;

@@ -41,12 +41,7 @@ const createDefaultForm = () => ({
   countName: "",
   consigneeName: "",
   creationDate: new Date().toISOString().split("T")[0],
-  rows: [
-    createBlankRow("Blend-1"),
-    createBlankRow("Blend-2"),
-    createBlankRow("Blend-3"),
-    createBlankRow("Blend-4"),
-  ],
+  rows: [createBlankRow("Blend-1")],
 });
 
 const formatDisplayDate = (dateString) => {
@@ -61,6 +56,8 @@ const cloneForm = (form) => ({
   ...form,
   rows: form.rows.map((row) => ({ ...row })),
 });
+
+const createNextBlendLabel = (rows = []) => `Blend-${rows.length + 1}`;
 
 const isValueZeroLike = (value) => {
   const normalized = String(value ?? "").trim();
@@ -286,7 +283,7 @@ const SavedVersionsSection = ({
                   {version.data.rows.map((row) => (
                     <div
                       key={`${version.id}-${row.label}`}
-                      className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6"
+                      className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
                     >
                       <div className="mixing-process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
                         <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -299,28 +296,6 @@ const SavedVersionsSection = ({
                           {row.label}
                         </div>
                         <div className="mt-1 text-[13px] font-bold text-slate-900">{displaySavedValue(row.blend)}</div>
-                      </div>
-                      <div className="mixing-process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                          Cut Length
-                        </div>
-                        <div className="mt-1 text-[13px] font-bold text-slate-900">
-                          {displaySavedValue(row.cutLength)}
-                        </div>
-                      </div>
-                      <div className="mixing-process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                          Tenacity
-                        </div>
-                        <div className="mt-1 text-[13px] font-bold text-slate-900">{displaySavedValue(row.tenacity)}</div>
-                      </div>
-                      <div className="mixing-process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
-                        <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                          Elongation
-                        </div>
-                        <div className="mt-1 text-[13px] font-bold text-slate-900">
-                          {displaySavedValue(row.elongation)}
-                        </div>
                       </div>
                       <div className="mixing-process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
                         <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
@@ -504,6 +479,13 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       ),
     }));
     clearError(`row-${index}-${field}`);
+  };
+
+  const handleAddRow = () => {
+    setForm((current) => ({
+      ...current,
+      rows: [...current.rows, createBlankRow(createNextBlendLabel(current.rows))],
+    }));
   };
 
   const handleVersionSelect = (version) => {
@@ -728,7 +710,17 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-semibold text-slate-700">Merge No.</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-[13px] font-semibold text-slate-700">Merge No.</label>
+                <button
+                  type="button"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 text-[14px] font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Add another blend row"
+                  onClick={handleAddRow}
+                >
+                  +
+                </button>
+              </div>
               <input
                 type="text"
                 className={`${topFieldClass}${errors[`row-${index}-mergeNo`] ? " border-red-500 bg-red-50" : ""}`}

@@ -6,9 +6,12 @@ const OCR_BASE_URL = (
 const OCR_ENDPOINT = OCR_BASE_URL
   ? `${OCR_BASE_URL}/ocr-machine/api/ocr`
   : "/api/ocr-machine/ocr";
-const OCR_JSON_ENDPOINT = OCR_BASE_URL
-  ? `${OCR_BASE_URL}/ocr-machine/api/ocr-json`
-  : "/ocr-machine/api/ocr-json";
+// Always routed through the Next.js proxy (src/pages/api/ocr-machine/ocr-json.js), never
+// called directly on the upstream OCR backend — the proxy forwards to that same backend
+// itself (see getBackendBaseUrl there) but also enriches the response with fields the
+// backend doesn't return as structured table cells (e.g. noils' Test ID / Machine ID,
+// extracted from the raw PDF text). Calling the backend directly would skip that step.
+const OCR_JSON_ENDPOINT = "/api/ocr-machine/ocr-json";
 
 export const runOcrForDocument = async ({ file, docType }) => {
   const form = new FormData();

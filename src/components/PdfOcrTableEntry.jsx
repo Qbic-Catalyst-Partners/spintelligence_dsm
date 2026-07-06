@@ -21,6 +21,7 @@ const FIELD_ALIASES = {
   "Table No": ["Table No", "Table No.", "Table Number", "table_no"],
   "Label": ["Label", "Summary", "Metric"],
   "Test ID": ["Test ID", "Test Id", "test_id"],
+  "Machine ID": ["Machine ID", "Machine Id", "machine_id", "Machine No", "Machine No.", "Machine", "MC No", "MC No."],
   "Total Test": ["Total Test", "Total Tests", "total_test"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "Entries", "N"],
   "Length": ["Length"],
@@ -42,6 +43,8 @@ const OCR_DOC_COLUMNS = {
     "Row Type",
     "Table No",
     "Label",
+    "Test ID",
+    "Machine ID",
     "Total Test",
     "Number of Entries (N)",
     "Tester",
@@ -84,6 +87,7 @@ const inferRowType = (row) => {
   if (
     [
       "Test ID",
+      "Machine ID",
       "Total Test",
       "Number of Entries (N)",
       "Length",
@@ -104,7 +108,7 @@ const OCR_REPORT_CONFIG = {
   noils: {
     sampleColumns: ["Sample No", "Sliver Wt", "Noils Wt", "Noils %"],
     summaryColumns: ["Label", "Sliver Wt", "Noils Wt", "Noils %"],
-    metaFields: ["Total Test", "Number of Entries (N)", "Tester", "Std. Noils %", "Noils %"],
+    metaFields: ["Test ID", "Machine ID", "Total Test", "Number of Entries (N)", "Tester", "Std. Noils %", "Noils %"],
   },
   strech: {
     sampleColumns: ["Sample No", "Initial Bobbin", "Full Bobbin"],

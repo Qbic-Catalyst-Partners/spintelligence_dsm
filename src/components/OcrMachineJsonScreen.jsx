@@ -147,6 +147,7 @@ const FIELD_ALIASES = {
   "Full Bobbin": ["Full Bobbin", "Full Bobbin Wt", "Full Bobbin Weight"],
   "Table No": ["Table No", "Table No.", "Table Number"],
   "Test ID": ["Test ID", "Test Id"],
+  "Machine ID": ["Machine ID", "Machine Id", "Machine"],
   "Total Test": ["Total Test", "Total Tests"],
   "Number of Entries (N)": ["Number of Entries (N)", "Number of Entries", "N"],
   "Length": ["Length"],
@@ -197,7 +198,7 @@ const REPORT_CONFIG = {
     docType: "noils",
     sampleColumns: ["Sample No", "Sliver Wt", "Noils Wt", "Noils %"],
     summaryColumns: ["Label", "Sliver Wt", "Noils Wt", "Noils %"],
-    metaFields: ["Total Test", "Number of Entries (N)", "Tester", "Std. Noils %", "Noils %"],
+    metaFields: ["Test ID", "Machine ID", "Total Test", "Number of Entries (N)", "Tester", "Std. Noils %", "Noils %"],
   },
   strech: {
     title: "Stretch",

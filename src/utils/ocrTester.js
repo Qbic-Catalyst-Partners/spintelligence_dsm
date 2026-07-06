@@ -199,6 +199,48 @@ export const mergeTesterIntoRows = (rows = [], tester = "") => {
   });
 };
 
+export const getFieldValueFromRow = (row, aliases = []) => {
+  for (const alias of aliases) {
+    const value = stringifyValue(row?.[alias]);
+    if (value) return value;
+  }
+  return "";
+};
+
+export const mergeFieldIntoRows = (rows = [], fieldName = "", value = "", aliases = [fieldName]) => {
+  if (!value) return rows;
+
+  let patched = false;
+  let sawMetaRow = false;
+  const nextRows = rows.map((row) => {
+    if (!isPlainObject(row)) return row;
+    const rowType = String(row["Row Type"] || row.row_type || row.type || "").trim().toLowerCase();
+    const isMetaRow =
+      rowType === "meta" ||
+      (!rowType && !String(row["Sample No"] || row["Sample No."] || row["Label"] || "").trim());
+    if (isMetaRow) sawMetaRow = true;
+    if (!isMetaRow || getFieldValueFromRow(row, aliases)) return row;
+
+    patched = true;
+    const existingKey = Object.keys(row).find((key) => toLookupKey(key) === toLookupKey(fieldName));
+    return {
+      ...row,
+      [existingKey || fieldName]: value,
+    };
+  });
+
+  if (patched) return nextRows;
+
+  if (!sawMetaRow) {
+    return [{ "Row Type": "Meta", [fieldName]: value }, ...rows];
+  }
+
+  return rows.map((row, index) => {
+    if (index !== 0 || !isPlainObject(row) || getFieldValueFromRow(row, aliases)) return row;
+    return { ...row, [fieldName]: value };
+  });
+};
+
 export const getTesterFromResult = (result = {}) =>
   extractTesterFromText(result?.raw_text || result?.text || "") ||
   extractTesterFromLines(result?.raw_lines || result?.lines || []);

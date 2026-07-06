@@ -18,6 +18,7 @@ import {
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 import { loadLocalEntries, saveLocalEntry } from "@/utils/localProcessParameterStore";
+import styles from "@/styles/spinning.module.css";
 
 const createDefaultForm = () => ({
   versionId: "",
@@ -47,6 +48,10 @@ const createDefaultForm = () => ({
   thicknessMax: "",
   ramp: "",
   offset: "",
+  lickerin: "",
+  cylinder: "",
+  doffer: "",
+  flats: "",
   lycraDraft: "",
   lycraPercent: "",
 });
@@ -99,6 +104,10 @@ const isVersionComplete = (version) =>
     "thicknessMax",
     "ramp",
     "offset",
+    "lickerin",
+    "cylinder",
+    "doffer",
+    "flats",
     "lycraDraft",
     "lycraPercent",
   ].every((field) => String(version?.data?.[field] || "").trim());
@@ -232,7 +241,7 @@ const fieldDefs = [
   { key: "make", label: "Make" },
   { key: "denier", label: "Denier" },
   { key: "mergeNo", label: "Mergen Number" },
-  { key: "slubPartcyCode", label: "Slub Partcy Code", section: "Slub Specification (Slub - Thickness Max)" },
+  { key: "slubPartcyCode", label: "Slub Partcy Code" },
   { key: "slubMtr", label: "Slub / Mtr" },
   { key: "pauseMin", label: "Pause Min" },
   { key: "pauseMax", label: "Pause Max" },
@@ -245,6 +254,56 @@ const fieldDefs = [
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "lycraPercent", label: "Lycra %" },
 ];
+
+const slubFieldKeys = new Set([
+  "slubPartcyCode",
+  "slubMtr",
+  "pauseMin",
+  "pauseMax",
+  "slubMin",
+  "slubMax",
+  "thicknessMin",
+  "thicknessMax",
+  "ramp",
+  "offset",
+]);
+
+const renderFieldInput = (field, form, errors, handleFieldChange, topFieldClass) =>
+  field.inputType === "onOff" ? (
+    <div key={field.key} className="flex flex-col gap-1.5">
+      <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
+      <div className={styles.segmentedControl}>
+        <button
+          type="button"
+          className={`${styles.segmentButton} ${
+            String(form[field.key] || "").toLowerCase() === "on" ? styles.segmentButtonActive : ""
+          }`}
+          onClick={() => handleFieldChange(field.key, "on")}
+        >
+          On
+        </button>
+        <button
+          type="button"
+          className={`${styles.segmentButton} ${
+            String(form[field.key] || "").toLowerCase() === "off" ? styles.segmentButtonActive : ""
+          }`}
+          onClick={() => handleFieldChange(field.key, "off")}
+        >
+          Off
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div key={field.key} className="flex flex-col gap-1.5">
+      <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
+      <input
+        type="text"
+        className={`${topFieldClass}${errors[field.key] ? " border-red-500 bg-red-50" : ""}`}
+        value={form[field.key]}
+        onChange={(event) => handleFieldChange(field.key, event.target.value)}
+      />
+    </div>
+  );
 
 const SavedVersionsSection = ({
   versions,
@@ -340,17 +399,37 @@ const SavedVersionsSection = ({
 
             {isExpanded ? (
               <div className="process-version-body border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {fieldDefs.map((field) => (
-                    <div
-                      key={`${version.id}-${field.key}`}
-                      className="process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
-                    >
-                      <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        {field.label}
+                <div className="grid grid-cols-1 gap-4">
+                  {[
+                    {
+                      title: "General Specification",
+                      fields: fieldDefs.filter((field) => !slubFieldKeys.has(field.key)),
+                      cols: "md:grid-cols-2 xl:grid-cols-4",
+                    },
+                    {
+                      title: "Slub Specification",
+                      fields: fieldDefs.filter((field) => slubFieldKeys.has(field.key)),
+                      cols: "md:grid-cols-2 xl:grid-cols-4",
+                    },
+                  ].map((section) => (
+                    <div key={`${version.id}-${section.title}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="mb-4">
+                        <h4 className="text-[15px] font-bold text-slate-900">{section.title}</h4>
                       </div>
-                      <div className="mt-1 text-[13px] font-bold text-slate-900">
-                        {displaySavedValue(version.data[field.key])}
+                      <div className={`grid grid-cols-1 gap-3 ${section.cols}`}>
+                        {section.fields.map((field) => (
+                          <div
+                            key={`${version.id}-${field.key}`}
+                            className="process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                          >
+                            <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                              {field.label}
+                            </div>
+                            <div className="mt-1 text-[13px] font-bold text-slate-900">
+                              {displaySavedValue(version.data[field.key])}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -669,19 +748,24 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
         </div>
       </div>
 
-  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {fieldDefs.map((field) => (
-          <div key={field.key} className="flex flex-col gap-1.5">
-            <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
-            <input
-              type="text"
-              className={`${topFieldClass}${errors[field.key] ? " border-red-500 bg-red-50" : ""}`}
-              value={form[field.key]}
-              onChange={(event) => handleFieldChange(field.key, event.target.value)}
-            />
-          </div>
-        ))}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {fieldDefs
+          .filter((field) => !slubFieldKeys.has(field.key))
+          .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}
       </div>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+        <div className="mb-4">
+          <h3 className="text-[16px] font-bold text-slate-900">Slub Specification</h3>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {fieldDefs
+            .filter((field) => slubFieldKeys.has(field.key))
+            .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}
+        </div>
+      </div>
+
     </div>
   );
 

@@ -1,4 +1,4 @@
-import { forwardRef, Fragment, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -37,7 +37,6 @@ const createDefaultForm = () => ({
   draftSpeed: "",
   tensionDraft: "",
   deliveryHank: "",
-  setting: "",
   feedRollToLickerin: "",
   lickerinToCylinder: "",
   cylinderToFlats: "",
@@ -62,18 +61,38 @@ const fieldDefs = [
   { key: "draftSpeed", label: "Draft" },
   { key: "tensionDraft", label: "Tension Draft" },
   { key: "deliveryHank", label: "Delivery Hank" },
-  { key: "setting", label: "Setting", section: "Setting (Feed roll lickerin - SFD)" },
   { key: "feedRollToLickerin", label: "Feed Roll to Lickerin" },
   { key: "lickerinToCylinder", label: "Lickerin to Cylinder" },
   { key: "cylinderToFlats", label: "Cylinder to Flats" },
   { key: "cylinderToDoffer", label: "Cylinder to Doffer" },
   { key: "sfl", label: "SFL" },
   { key: "sfd", label: "SFD" },
-  { key: "lickerin", label: "Lickerin", section: "Wire Speck (Lickerin - Flats)" },
+  { key: "lickerin", label: "Lickerin" },
   { key: "cylinder", label: "Cylinder" },
   { key: "doffer", label: "Doffer" },
   { key: "flats", label: "Flats" },
 ];
+
+const settingFieldDefs = fieldDefs.filter((field) =>
+  ["feedRollToLickerin", "lickerinToCylinder", "cylinderToFlats", "cylinderToDoffer", "sfl", "sfd"].includes(field.key)
+);
+
+const wireSpeckFieldDefs = fieldDefs.filter((field) =>
+  ["lickerin", "cylinder", "doffer", "flats"].includes(field.key)
+);
+
+const topMachineFieldDefs = fieldDefs.filter((field) =>
+  [
+    "machineNo",
+    "lickerinSpeed",
+    "cylinderSpeed",
+    "flatsSpeed",
+    "deliverySpeed",
+    "draftSpeed",
+    "tensionDraft",
+    "deliveryHank",
+  ].includes(field.key)
+);
 
 const InspectionEntryIcon = () => (
   <svg
@@ -147,7 +166,6 @@ const mapApiEntryToVersion = (entry) => {
       draftSpeed: entry?.draft_speed == null ? "" : String(entry.draft_speed),
       tensionDraft: entry?.tension_draft == null ? "" : String(entry.tension_draft),
       deliveryHank: entry?.delivery_hank == null ? "" : String(entry.delivery_hank),
-      setting: entry?.setting || "",
       feedRollToLickerin:
         entry?.feed_roll_to_lickerin == null ? "" : String(entry.feed_roll_to_lickerin),
       lickerinToCylinder:
@@ -271,20 +289,48 @@ const SavedVersionsSection = ({
 
             {isExpanded ? (
               <div className="process-version-body border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {fieldDefs.map((field) => (
-                    <div
-                      key={`${version.id}-${field.key}`}
-                      className="process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
-                    >
-                      <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        {field.label}
-                      </div>
-                      <div className="mt-1 text-[13px] font-bold text-slate-900">
-                        {displaySavedValue(version.data[field.key])}
-                      </div>
+                <div className="space-y-4">
+                  <div>
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                      Setting
                     </div>
-                  ))}
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {settingFieldDefs.map((field) => (
+                        <div
+                          key={`${version.id}-${field.key}`}
+                          className="process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                        >
+                          <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            {field.label}
+                          </div>
+                          <div className="mt-1 text-[13px] font-bold text-slate-900">
+                            {displaySavedValue(version.data[field.key])}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                      Wire Speck
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {wireSpeckFieldDefs.map((field) => (
+                        <div
+                          key={`${version.id}-${field.key}`}
+                          className="process-saved-field rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                        >
+                          <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            {field.label}
+                          </div>
+                          <div className="mt-1 text-[13px] font-bold text-slate-900">
+                            {displaySavedValue(version.data[field.key])}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-3 text-[12px] text-slate-500">{version.label}</div>
               </div>
@@ -511,7 +557,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     draft_speed: parseNumberValue(form.draftSpeed),
     tension_draft: parseNumberValue(form.tensionDraft),
     delivery_hank: parseNumberValue(form.deliveryHank),
-    setting: form.setting,
+    setting: "",
     feed_roll_to_lickerin: parseNumberValue(form.feedRollToLickerin),
     lickerin_to_cylinder: parseNumberValue(form.lickerinToCylinder),
     cylinder_to_flats: parseNumberValue(form.cylinderToFlats),
@@ -536,7 +582,13 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     { label: "Count Name", value: form.countName || "-" },
     { label: "Consignee Name", value: form.consigneeName || "-" },
     { label: "Process Parameter ID", value: form.paramId || savedProcessParameterId || "-" },
-    ...fieldDefs.map((field) => ({
+    { label: "Setting", value: " " },
+    ...settingFieldDefs.map((field) => ({
+      label: field.label,
+      value: form[field.key] || "-",
+    })),
+    { label: "Wire Speck", value: " " },
+    ...wireSpeckFieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
     })),
@@ -644,15 +696,10 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-            {fieldDefs.map((field) => (
-              <Fragment key={field.key}>
-                {field.section ? (
-                  <div className="col-span-full mt-2 text-[13px] font-bold uppercase tracking-wide text-slate-600">
-                    {field.section}
-                  </div>
-                ) : null}
-                <div className="flex flex-col gap-1.5">
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {topMachineFieldDefs.map((field) => (
+                <div key={field.key} className="flex flex-col gap-1.5">
                   <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
                   <input
                     type="text"
@@ -661,8 +708,46 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
                     onChange={(event) => handleFieldChange(field.key, event.target.value)}
                   />
                 </div>
-              </Fragment>
-            ))}
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-4 text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                Setting
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {settingFieldDefs.map((field) => (
+                  <div key={field.key} className="flex flex-col gap-1.5">
+                    <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
+                    <input
+                      type="text"
+                      className={`${topFieldClass}${errors[field.key] ? " border-red-500 bg-red-50" : ""}`}
+                      value={form[field.key]}
+                      onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-4 text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                Wire Speck
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {wireSpeckFieldDefs.map((field) => (
+                  <div key={field.key} className="flex flex-col gap-1.5">
+                    <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
+                    <input
+                      type="text"
+                      className={`${topFieldClass}${errors[field.key] ? " border-red-500 bg-red-50" : ""}`}
+                      value={form[field.key]}
+                      onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
-import { extractTesterFromLines, extractTesterFromText, getTesterValueFromRow, mergeTesterIntoRows } from "@/utils/ocrTester";
+import { extractTesterFromLines, extractTesterFromText, getTesterValueFromRow, mergeTesterIntoRows, getFieldValueFromRow, mergeFieldIntoRows } from "@/utils/ocrTester";
 
 const getBackendBaseUrl = () =>
   String(
@@ -268,6 +268,43 @@ const firstValueAfterLabels = (cells, labels) => {
   return "";
 };
 
+const lineText = (line) =>
+  Array.isArray(line?.cells) ? line.cells.map((cell) => String(cell || "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim() : "";
+
+const valueFromLabelLineOrNextLine = (lines, labels) => {
+  for (let index = 0; index < lines.length; index += 1) {
+    const currentText = lineText(lines[index]);
+    if (!currentText) continue;
+
+    for (const label of labels) {
+      const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const currentPattern = new RegExp(`^\\s*${escapedLabel}\\s*(?:[:\\-]\\s*)?(.*)$`, "i");
+      const currentMatch = currentText.match(currentPattern);
+      if (currentMatch) {
+        const inlineValue = String(currentMatch[1] || "").trim();
+        if (inlineValue) return inlineValue;
+
+        const nextText = lineText(lines[index + 1]);
+        if (nextText && !new RegExp(`^\\s*${escapedLabel}\\s*(?:[:\\-]\\s*)?$`, "i").test(nextText)) {
+          return nextText;
+        }
+      }
+
+      const loosePattern = new RegExp(`\\b${escapedLabel}\\b\\s*(?:[:\\-]\\s*)?(.*)$`, "i");
+      const looseMatch = currentText.match(loosePattern);
+      if (looseMatch) {
+        const inlineValue = String(looseMatch[1] || "").trim();
+        if (inlineValue) return inlineValue;
+
+        const nextText = lineText(lines[index + 1]);
+        if (nextText) return nextText;
+      }
+    }
+  }
+
+  return "";
+};
+
 const isPlainObject = (value) => value && typeof value === "object" && !Array.isArray(value);
 
 const KNOWN_OCR_LABELS = [
@@ -318,6 +355,25 @@ const extractLabelValue = (text = "", labels = []) => {
   return "";
 };
 
+const extractNoilsTestIdAndMachineId = (lines) => {
+  const allCells = lines.flatMap((line) => line.cells);
+  const joinedText = lines.map((line) => line.cells.join(" ")).join("\n");
+  const testId =
+    valueAfterLabel(allCells, "Test ID") ||
+    valueFromLabelLineOrNextLine(lines, ["Test ID", "Test Id", "test_id", "ID"]) ||
+    valueFromLabelLine(lines, "Test ID") ||
+    extractLabelValue(joinedText, ["Test ID", "Test Id", "test_id", "ID"]);
+  const machineId =
+    valueAfterLabel(allCells, "Machine ID") ||
+    valueAfterLabel(allCells, "Machine") ||
+    valueFromLabelLineOrNextLine(lines, ["Machine ID", "Machine Id", "machine_id", "Machine No", "Machine No.", "Machine", "MC No", "MC No."]) ||
+    valueFromLabelLine(lines, "Machine ID") ||
+    valueFromLabelLine(lines, "Machine") ||
+    extractLabelValue(joinedText, ["Machine ID", "Machine Id", "machine_id", "Machine No", "Machine No.", "Machine", "MC No", "MC No."]);
+
+  return { testId, machineId };
+};
+
 const parseNoilsPdfRows = (lines) => {
   const rows = [];
   const allCells = lines.flatMap((line) => line.cells);
@@ -325,9 +381,12 @@ const parseNoilsPdfRows = (lines) => {
   const stdNoils = valueAfterLabel(allCells, "Std. Noils%") || valueAfterLabel(allCells, "Std. Noils %");
   const noilsPercent = valueAfterLabel(allCells, "Noils%");
   const tester = extractTesterFromLines(lines);
+  const { testId, machineId } = extractNoilsTestIdAndMachineId(lines);
 
   rows.push({
     "Row Type": "Meta",
+    "Test ID": testId,
+    "Machine ID": machineId,
     "Total Test": totalTest,
     "Number of Entries (N)": totalTest,
     Tester: tester,
@@ -525,7 +584,8 @@ export default async function handler(req, res) {
     if (upstreamContentType.includes("application/json")) {
       const payload = JSON.parse(upstreamBody.toString("utf8") || "{}");
       const { fields = {}, files = {} } = parseMultipartBody(requestBody, contentType);
-      const extractedRows = extractRowsFromPdf(files.file?.buffer, fields.doc_type || payload.doc_type);
+      const docType = fields.doc_type || payload.doc_type;
+      const extractedRows = extractRowsFromPdf(files.file?.buffer, docType);
       const fallbackRows = hasAnyRowArray(payload) ? [] : extractedRows;
       const parsedPdfLines = groupPdfLines(extractPdfTextItems(files.file?.buffer || Buffer.alloc(0)));
       const parsedRawText = parsedPdfLines.map((line) => line.cells.join(" ")).join("\n");
@@ -533,19 +593,47 @@ export default async function handler(req, res) {
       const testerFallback = extractTesterFromLines(parsedPdfLines) || extractTesterFromText(payload.raw_text || payload.text || parsedRawText);
       const tester = getTesterValueFromRow(testerFromRows) || testerFallback;
 
+      const applyNoilsMetaFields = (rows) => {
+        if (docType !== "noils") return rows;
+        const { testId, machineId } = extractNoilsTestIdAndMachineId(parsedPdfLines);
+        const testIdFallback = [...collectPayloadRows(payload), ...extractedRows].find((row) => getFieldValueFromRow(row, ["Test ID", "Test Id"]));
+        const machineIdFallback = [...collectPayloadRows(payload), ...extractedRows].find((row) => getFieldValueFromRow(row, ["Machine ID", "Machine Id", "Machine"]));
+        const resolvedTestId = getFieldValueFromRow(testIdFallback, ["Test ID", "Test Id"]) || testId;
+        const resolvedMachineId = getFieldValueFromRow(machineIdFallback, ["Machine ID", "Machine Id", "Machine"]) || machineId;
+        return mergeFieldIntoRows(
+          mergeFieldIntoRows(rows, "Test ID", resolvedTestId, ["Test ID", "Test Id"]),
+          "Machine ID",
+          resolvedMachineId,
+          ["Machine ID", "Machine Id", "Machine"]
+        );
+      };
+
       if (fallbackRows.length) {
+        const patchedRows = applyNoilsMetaFields(mergeTesterIntoRows(fallbackRows, tester));
         return res.status(upstream.status).json({
           ...payload,
-          data: mergeTesterIntoRows(fallbackRows, tester),
-          raw_tables: mergeTesterIntoRows(fallbackRows, tester),
+          data: patchedRows,
+          raw_tables: patchedRows,
           raw_text: payload.raw_text || parsedRawText,
           meta: { tester },
           fallback_source: "embedded_pdf_text",
         });
       }
 
-      if (tester) {
+      if (tester || docType === "noils") {
         const patchedPayload = mergeTesterIntoPayloadRows(payload, tester);
+        ["raw_tables", "extracted_tables", "data", "json_output"].forEach((key) => {
+          if (Array.isArray(patchedPayload[key])) {
+            patchedPayload[key] = applyNoilsMetaFields(patchedPayload[key]);
+          }
+        });
+        if (isPlainObject(patchedPayload.result)) {
+          ["raw_tables", "extracted_tables", "data", "json_output"].forEach((key) => {
+            if (Array.isArray(patchedPayload.result[key])) {
+              patchedPayload.result[key] = applyNoilsMetaFields(patchedPayload.result[key]);
+            }
+          });
+        }
         return res.status(upstream.status).json({
           ...patchedPayload,
           raw_text: payload.raw_text || parsedRawText,

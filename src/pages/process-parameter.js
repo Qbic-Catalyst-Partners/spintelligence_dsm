@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { MdPrint, MdSearch } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import CombinedProcessParameterPreview from "@/components/CombinedProcessParameterPreview";
 import MixingProcessParameter from "@/views/mixing/processParameterDataEntry";
 import CardingProcessParameter from "@/views/carding/processParameterDataEntry";
 import BlowRoomProcessParameter from "@/views/blowroom/ProcessParameter";
@@ -13,8 +15,8 @@ import AutoconerQ2 from "@/views/autoconer/AutoconerQ2";
 import AutoconerQ3 from "@/views/autoconer/AutoconerQ3";
 import { hasSubDepartmentAccess } from "@/utils/accessControl";
 import { normalizeProcessParameterId, resolveProcessParameterDisplayId } from "@/utils/processParameterId";
-import { readProcessParameterRegistry, removeProcessParameterId } from "@/utils/processParameterRegistry";
-import { loadLocalEntries, removeLocalEntriesByParamId } from "@/utils/localProcessParameterStore";
+import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
+import { loadLocalEntries } from "@/utils/localProcessParameterStore";
 import { getMixingProcessParameterEntries } from "@/apis/mixing";
 import { fetchBlowroomProcessParametersApi } from "@/apis/blowroom";
 import { getCardingProcessParameterEntries } from "@/apis/carding";
@@ -242,6 +244,30 @@ const getDepartmentFormProps = (department, selectedTypeName, typeOptions) => {
   };
 };
 
+// One entry per matrix column (same order as updateExistingColumns.slice(1)), used to
+// mount a hidden instance of each department's own form so its real getPreviewData() output
+// can be read for the combined PP preview modal.
+const COMBINED_PREVIEW_COLUMNS = [
+  { key: "Mixing", label: "Mixing", department: "Mixing", typeName: "Process Parameter", Component: MixingProcessParameter },
+  { key: "Blow Room", label: "Blow Room", department: "Blow Room", typeName: "Process Parameter", Component: BlowRoomProcessParameter },
+  { key: "Carding", label: "Carding", department: "Carding", typeName: "Process Parameter", Component: CardingProcessParameter },
+  { key: "Draw Frame Breaker", label: "Draw Frame Breaker", department: "Draw Frame", typeName: "PP - Breaker Drawing", Component: DrawFrameHeaderEntry },
+  { key: "Draw Frame Finisher", label: "Draw Frame Finisher", department: "Draw Frame", typeName: "PP - Finisher Drawing", Component: DrawFrameHeaderEntry },
+  { key: "Simplex", label: "Simplex", department: "Simplex", typeName: "Process Parameter", Component: SimplexProcessParameter },
+  { key: "Spinning", label: "Spinning", department: "Spinning", typeName: "Process Parameter", Component: SpinningProcessParameter },
+  { key: "Autoconer PP", label: "Autoconer PP", department: "Autoconer", typeName: "Process Parameter", Component: AutoconerProcessParameter },
+  { key: "AC-Q2", label: "AC-Q2", department: "Autoconer", typeName: "PP - Autoconer Q2", Component: AutoconerQ2 },
+  { key: "AC-Q3", label: "AC-Q3", department: "Autoconer", typeName: "PP - Autoconer Q3", Component: AutoconerQ3 },
+];
+
+const getHiddenPreviewProps = (column) => {
+  const typeOptions = DEPARTMENT_TYPE_OPTION_OBJECTS[column.department] || [
+    makeTypeOption(1, column.typeName, [column.typeName]),
+  ];
+  const baseProps = getDepartmentFormProps(column.department, column.typeName, typeOptions);
+  return { ...baseProps, savedVersionsTargetId: "" };
+};
+
 export default function ProcessParameterPage() {
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -254,6 +280,12 @@ export default function ProcessParameterPage() {
   const [dynamicRows, setDynamicRows] = useState([]);
   const [remoteStatusMap, setRemoteStatusMap] = useState({});
   const componentRef = useRef(null);
+  const [previewPpId, setPreviewPpId] = useState("");
+  const [previewData, setPreviewData] = useState({});
+  const previewRefs = useRef({});
+  const [printMode, setPrintMode] = useState(null); // null | "matrix" | "row"
+  const [pendingPrintRowId, setPendingPrintRowId] = useState("");
+  const [openEditTabs, setOpenEditTabs] = useState([]);
 
   const visibleSubDepartments = useMemo(
     () => subDepartments.filter((item) => hasSubDepartmentAccess(accessByDepartment, item.value, user)),
@@ -338,9 +370,15 @@ export default function ProcessParameterPage() {
     selectedSubDepartment
   );
   const isEditingFromExisting = activeTab === "existing" && Boolean(selectedSubDepartment) && Boolean(selectedEntryId);
-  const showFormCard = activeTab === "new" || isEditingFromExisting;
+  const isEditingViaTab = openEditTabs.some((tab) => tab.tabId === activeTab);
+  const showFormCard = activeTab === "new" || isEditingFromExisting || isEditingViaTab;
   const showListCard = activeTab === "existing";
   const [searchTerm, setSearchTerm] = useState("");
+
+  const getPpSequence = (id) => {
+    const match = String(id || "").match(/^PP-(\d+)$/i);
+    return match ? Number(match[1]) || 0 : 0;
+  };
 
   const mergedRows = useMemo(() => {
     const byId = new Map();
@@ -349,19 +387,19 @@ export default function ProcessParameterPage() {
       if (!byId.has(id)) byId.set(id, { id, statuses: createBlankStatusRow().statuses });
     });
 
-    return Array.from(byId.values()).map((row) => ({
-      ...row,
-      statuses: row.statuses.map((done, index) => done || Boolean(remoteStatusMap[row.id]?.[index])),
-    }));
+    return Array.from(byId.values())
+      .map((row) => ({
+        ...row,
+        statuses: row.statuses.map((done, index) => done || Boolean(remoteStatusMap[row.id]?.[index])),
+      }))
+      .sort((a, b) => getPpSequence(b.id) - getPpSequence(a.id));
   }, [dynamicRows, remoteStatusMap]);
 
   const nextAvailableId = useMemo(() => {
-    const highestSequence = mergedRows.reduce((max, row) => {
-      const match = String(row.id || "").match(/^PP-(\d+)$/i);
-      if (!match) return max;
-      const sequence = Number(match[1]) || 0;
-      return sequence > max ? sequence : max;
-    }, 0);
+    const highestSequence = mergedRows.reduce(
+      (max, row) => Math.max(max, getPpSequence(row.id)),
+      0
+    );
     return `PP-${String(highestSequence + 1).padStart(4, "0")}`;
   }, [mergedRows]);
 
@@ -376,25 +414,119 @@ export default function ProcessParameterPage() {
     return base.map((done, index) => done || Boolean(overrides[index]));
   };
 
-  const handleRemoveRow = (rowId) => {
-    if (!rowId) return;
-    if (typeof window !== "undefined" && !window.confirm(`Remove ${rowId} from this list?`)) return;
-
-    removeProcessParameterId(rowId);
-    removeLocalEntriesByParamId("draw-frame-breaker", rowId);
-    removeLocalEntriesByParamId("draw-frame-finisher", rowId);
-    removeLocalEntriesByParamId("spinning", rowId);
-
-    setCompletedCells((current) => {
-      if (!current[rowId]) return current;
-      const next = { ...current };
-      delete next[rowId];
-      return next;
-    });
-
-    setDynamicRows(loadRegistryRows());
-    loadRemoteStatuses();
+  const findIdentifierValue = (items) => {
+    const match = items.find(
+      (item) => item?.label === "Process Parameter ID" || item?.label === "Entry ID"
+    );
+    return match?.value;
   };
+
+  useEffect(() => {
+    if (!previewPpId) {
+      setPreviewData({});
+      return;
+    }
+
+    // Only columns marked "done" for this row actually have an entryId passed to their
+    // hidden instance (see the hidden-mount render below), so only those need to be polled
+    // for a real backend match. Pending columns are mounted with no entryId at all — they
+    // never attempt a fetch/match and their blank getPreviewData() output is correct and
+    // available immediately, so we don't want to sit there polling/timing-out for them.
+    const doneStatuses = getRowStatuses(previewPpId);
+    const pendingKeys = new Set(
+      COMBINED_PREVIEW_COLUMNS.filter((_, index) => doneStatuses[index]).map((column) => column.key)
+    );
+    const immediateKeys = COMBINED_PREVIEW_COLUMNS.filter((_, index) => !doneStatuses[index]).map(
+      (column) => column.key
+    );
+    const targetId = normalizeProcessParameterId(previewPpId);
+    const startedAt = Date.now();
+
+    const poll = () => {
+      [...pendingKeys, ...immediateKeys].forEach((key) => {
+        const items = previewRefs.current[key]?.getPreviewData?.();
+        if (!Array.isArray(items)) return;
+
+        if (!pendingKeys.has(key)) {
+          // Pending (not-done) column: no entryId was passed, so its blank output is final.
+          setPreviewData((current) => (current[key]?.ready ? current : { ...current, [key]: { items, ready: true } }));
+          return;
+        }
+
+        const identifier = findIdentifierValue(items);
+        const isReady = Boolean(identifier) && normalizeProcessParameterId(identifier) === targetId;
+        const timedOut = Date.now() - startedAt > 15000;
+
+        if (isReady || timedOut) {
+          pendingKeys.delete(key);
+          setPreviewData((current) => ({ ...current, [key]: { items, ready: true } }));
+        }
+      });
+
+      if (!pendingKeys.size) clearInterval(intervalId);
+    };
+
+    const intervalId = setInterval(poll, 250);
+    poll();
+
+    return () => clearInterval(intervalId);
+  }, [previewPpId]);
+
+  const openCombinedPreview = (rowId) => {
+    if (!rowId) return;
+    previewRefs.current = {};
+    setPreviewData({});
+    setPreviewPpId(rowId);
+  };
+
+  const closeCombinedPreview = () => {
+    setPreviewPpId("");
+    setPreviewData({});
+  };
+
+  const handlePrintMatrix = () => {
+    setPrintMode("matrix");
+  };
+
+  const handlePrintRow = (rowId) => {
+    if (!rowId) return;
+    openCombinedPreview(rowId);
+    setPendingPrintRowId(rowId);
+    setPrintMode("row");
+  };
+
+  // Resets print mode once the browser's print dialog closes (works for both the
+  // "Print" button flow and Ctrl+P / the OS print shortcut).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAfterPrint = () => {
+      if (printMode === "row") closeCombinedPreview();
+      setPrintMode(null);
+      setPendingPrintRowId("");
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => window.removeEventListener("afterprint", handleAfterPrint);
+  }, [printMode]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("pp-printing", Boolean(printMode));
+    return () => document.body.classList.remove("pp-printing");
+  }, [printMode]);
+
+  useEffect(() => {
+    if (printMode !== "matrix") return;
+    const frame = requestAnimationFrame(() => window.print());
+    return () => cancelAnimationFrame(frame);
+  }, [printMode]);
+
+  useEffect(() => {
+    if (printMode !== "row" || !pendingPrintRowId || pendingPrintRowId !== previewPpId) return;
+    const allReady = COMBINED_PREVIEW_COLUMNS.every((column) => previewData[column.key]?.ready);
+    if (!allReady) return;
+    const frame = requestAnimationFrame(() => window.print());
+    return () => cancelAnimationFrame(frame);
+  }, [printMode, pendingPrintRowId, previewPpId, previewData]);
 
   const upsertRowStatus = (rowId, columnIndex, isDone = true) => {
     if (!rowId) return;
@@ -491,24 +623,66 @@ export default function ProcessParameterPage() {
     }
   }, [activeTab, selectedSubDepartment, selectedEntryId, drawFrameType, autoconerType]);
 
-  const handleMatrixCellClick = (rowId, columnIndex) => {
+  const handleMatrixCellClick = (rowId, columnIndex, done) => {
     const columnName = updateExistingColumns[columnIndex + 1];
     const department = COLUMN_TO_DEPARTMENT[columnName];
     if (!department) return;
+
+    const nextDrawFrameType =
+      department === "Draw Frame"
+        ? columnName === "Draw Frame Finisher"
+          ? "PP - Finisher Drawing"
+          : "PP - Breaker Drawing"
+        : null;
+    const nextAutoconerType =
+      department === "Autoconer"
+        ? columnName === "AC-Q2"
+          ? "PP - Autoconer Q2"
+          : columnName === "AC-Q3"
+            ? "PP - Autoconer Q3"
+            : "Process Parameter"
+        : null;
+
+    // Pending cells open their own tab in the tab bar (alongside "Create New PP" /
+    // "Update Existing PP") instead of editing inline below the matrix, so several
+    // pending entries can be worked on side by side without losing the matrix view.
+    if (!done) {
+      const tabId = `edit:${rowId}:${columnName}`;
+      setOpenEditTabs((current) =>
+        current.some((tab) => tab.tabId === tabId)
+          ? current
+          : [...current, { tabId, rowId, department, drawFrameType: nextDrawFrameType, autoconerType: nextAutoconerType, label: `${rowId} · ${columnName}` }]
+      );
+      setSelectedEntryId(rowId);
+      setSelectedSubDepartment(department);
+      if (nextDrawFrameType) setDrawFrameType(nextDrawFrameType);
+      if (nextAutoconerType) setAutoconerType(nextAutoconerType);
+      setActiveTab(tabId);
+      return;
+    }
 
     setSelectedEntryId(rowId);
     setSelectedSubDepartment(department);
     setActiveTab("existing");
 
-    if (department === "Draw Frame") {
-      setDrawFrameType(columnName === "Draw Frame Finisher" ? "PP - Finisher Drawing" : "PP - Breaker Drawing");
-    }
+    if (nextDrawFrameType) setDrawFrameType(nextDrawFrameType);
+    if (nextAutoconerType) setAutoconerType(nextAutoconerType);
+  };
 
-    if (department === "Autoconer") {
-      if (columnName === "AC-Q2") setAutoconerType("PP - Autoconer Q2");
-      else if (columnName === "AC-Q3") setAutoconerType("PP - Autoconer Q3");
-      else setAutoconerType("Process Parameter");
-    }
+  const handleSelectEditTab = (tabId) => {
+    const tab = openEditTabs.find((item) => item.tabId === tabId);
+    if (!tab) return;
+    setSelectedEntryId(tab.rowId);
+    setSelectedSubDepartment(tab.department);
+    if (tab.drawFrameType) setDrawFrameType(tab.drawFrameType);
+    if (tab.autoconerType) setAutoconerType(tab.autoconerType);
+    setActiveTab(tabId);
+  };
+
+  const handleCloseEditTab = (tabId, event) => {
+    event.stopPropagation();
+    setOpenEditTabs((current) => current.filter((tab) => tab.tabId !== tabId));
+    setActiveTab((current) => (current === tabId ? "existing" : current));
   };
 
   const handleCloseInlineEdit = () => {
@@ -531,7 +705,11 @@ export default function ProcessParameterPage() {
   };
 
   return (
-    <section className={styles.page}>
+    <section
+      className={`${styles.page} ${printMode === "matrix" ? styles.printMatrixMode : ""} ${
+        printMode === "row" ? styles.printRowMode : ""
+      }`}
+    >
       <div className={styles.shell}>
         <div className={styles.panel}>
           <header className={styles.header}>
@@ -577,18 +755,52 @@ export default function ProcessParameterPage() {
             >
               Update Existing PP
             </button>
+            {openEditTabs.map((tab) => (
+              <button
+                key={tab.tabId}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.tabId}
+                className={`${styles.tabButton} ${styles.editTabButton} ${
+                  activeTab === tab.tabId ? styles.tabButtonActive : ""
+                }`}
+                onClick={() => handleSelectEditTab(tab.tabId)}
+              >
+                {tab.label}
+                <span
+                  className={styles.editTabClose}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Close ${tab.label} tab`}
+                  onClick={(event) => handleCloseEditTab(tab.tabId, event)}
+                >
+                  ×
+                </span>
+              </button>
+            ))}
           </div>
 
           {showListCard ? (
             <div className={styles.listCard}>
               <div className={styles.listToolbar}>
-                <input
-                  type="text"
-                  className={styles.searchInput}
-                  placeholder="Search"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                />
+                <div className={styles.searchInputWrap}>
+                  <MdSearch className={styles.searchIcon} />
+                  <input
+                    type="text"
+                    className={styles.searchInput}
+                    placeholder="Search"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className={styles.printMatrixButton}
+                  onClick={handlePrintMatrix}
+                  title="Print this matrix"
+                >
+                  <MdPrint /> Print Matrix
+                </button>
               </div>
 
               <div className={styles.matrixWrap}>
@@ -604,36 +816,38 @@ export default function ProcessParameterPage() {
                   <tbody>
                     {filteredRows.map((row) => (
                       <tr key={row.id}>
-                        <td className={styles.matrixIdCell}>{row.id}</td>
+                        <td className={styles.matrixIdCell}>
+                          <button
+                            type="button"
+                            className={styles.matrixIdButton}
+                            onClick={() => openCombinedPreview(row.id)}
+                            title="View combined preview"
+                          >
+                            {row.id}
+                          </button>
+                        </td>
                         {getRowStatuses(row.id).map((done, index) => (
                           <td key={`${row.id}-${index}`} className={styles.matrixStatusCell}>
                             <button
                               type="button"
                               className={done ? styles.statusDone : styles.statusPending}
-                              onClick={() => handleMatrixCellClick(row.id, index)}
+                              onClick={() => handleMatrixCellClick(row.id, index, done)}
                               aria-label={`${row.id} ${updateExistingColumns[index + 1]} ${done ? "completed" : "pending"}`}
+                              title={done ? undefined : "Opens in a new tab"}
                             >
                               {done ? "✓" : ""}
                             </button>
                           </td>
                         ))}
-                        <td>
+                        <td className={styles.matrixActionCell}>
                           <button
                             type="button"
-                            onClick={() => handleRemoveRow(row.id)}
-                            aria-label={`Remove ${row.id}`}
-                            title="Remove this PP ID from the list"
-                            style={{
-                              border: "none",
-                              background: "transparent",
-                              color: "#94a3b8",
-                              cursor: "pointer",
-                              fontSize: "16px",
-                              lineHeight: 1,
-                              padding: "4px 8px",
-                            }}
+                            className={styles.matrixPrintButton}
+                            onClick={() => handlePrintRow(row.id)}
+                            aria-label={`Print ${row.id}`}
+                            title="Print this row's preview"
                           >
-                            ×
+                            <MdPrint />
                           </button>
                         </td>
                       </tr>
@@ -739,6 +953,48 @@ export default function ProcessParameterPage() {
           <div id="process-parameter-saved-versions" className={styles.savedVersionsSlot} />
         </div>
       </div>
+
+      {previewPpId ? (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            width: 0,
+            height: 0,
+            overflow: "hidden",
+            opacity: 0,
+            pointerEvents: "none",
+          }}
+        >
+          {COMBINED_PREVIEW_COLUMNS.map((column, index) => {
+            const HiddenComponent = column.Component;
+            const isDone = Boolean(getRowStatuses(previewPpId)[index]);
+            return (
+              <HiddenComponent
+                key={`${previewPpId}-${column.key}`}
+                ref={(instance) => {
+                  previewRefs.current[column.key] = instance;
+                }}
+                entryId={isDone ? previewPpId : ""}
+                {...getHiddenPreviewProps(column)}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
+      <CombinedProcessParameterPreview
+        open={Boolean(previewPpId)}
+        ppId={previewPpId}
+        columns={COMBINED_PREVIEW_COLUMNS}
+        doneMap={previewPpId ? getRowStatuses(previewPpId) : []}
+        dataByColumn={previewData}
+        onClose={closeCombinedPreview}
+        onPrint={() => {
+          setPendingPrintRowId(previewPpId);
+          setPrintMode("row");
+        }}
+      />
     </section>
   );
 }
