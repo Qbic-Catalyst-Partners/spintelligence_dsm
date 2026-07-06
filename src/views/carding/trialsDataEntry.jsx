@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import {
+    fetchCardingMasterMachines,
     fetchTrialsAutoconerMachines,
     fetchTrialsSpinningMachines,
     submitTrialsDataEntry,
@@ -34,17 +35,14 @@ const cutsGridFields = [
 ];
 
 const requiredFields = [
-    "trialId",
+    "cardingMachine",
     "machine",
     "autoMachine",
     "count",
-    "purpose",
-    "trialname",
+    "product",
     "trialtype",
     "nature",
-    "unit",
-    "material",
-    "mixing",
+    "materialMixing",
     "yarnresults",
     "totalCuts",
     "nepsCuts",
@@ -128,6 +126,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     const [isError, setIsError] = useState(false);
     const [spinningMachineOptions, setSpinningMachineOptions] = useState([]);
     const [autoconerMachineOptions, setAutoconerMachineOptions] = useState([]);
+    const [cardingMachineOptions, setCardingMachineOptions] = useState([]);
     const [machinesLoading, setMachinesLoading] = useState(false);
     const [machinesError, setMachinesError] = useState("");
     const { countOptions, countOptionsError, loadingCountOptions } = useCardingCountOptions("trials");
@@ -147,18 +146,21 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             setMachinesLoading(true);
             setMachinesError("");
             try {
-                const [spinningOptions, autoconerOptions] = await Promise.all([
+                const [spinningOptions, autoconerOptions, cardingOptions] = await Promise.all([
                     fetchTrialsSpinningMachines({ prefix: "" }),
                     fetchTrialsAutoconerMachines({ prefix: "" }),
+                    fetchCardingMasterMachines({ prefix: "CDG" }),
                 ]);
 
                 if (cancelled) return;
                 setSpinningMachineOptions(spinningOptions);
                 setAutoconerMachineOptions(autoconerOptions);
+                setCardingMachineOptions(cardingOptions);
             } catch (error) {
                 if (cancelled) return;
                 setSpinningMachineOptions([]);
                 setAutoconerMachineOptions([]);
+                setCardingMachineOptions([]);
                 setMachinesError(error.message || "Unable to load machine dropdown options.");
             } finally {
                 if (!cancelled) {
@@ -263,19 +265,14 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             entry_date: date,
             entry_time: time,
             entry_type: selectedType,
-            trial_id: formData.trialId || "",
+            mc_no: formData.cardingMachine || "",
             spinning_machine: formData.machine || "",
             autoconer_machine: formData.autoMachine || "",
             count_name: formData.count || "",
-            purpose: formData.purpose || "",
-            trial_id_name: formData.trialname || "",
-            trial_name: formData.trialname || "",
+            product: formData.product || "",
             trial_type: formData.trialtype || "",
             nature: formData.nature || "",
-            unit_no: formData.unit || "",
-            material: formData.material || "",
-            raw_material: formData.material || "",
-            mixing: formData.mixing || "",
+            raw_material_mixing: formData.materialMixing || "",
             yarn_results: formData.yarnresults || "",
             user_id: formData.userId || "",
             u_percent: formData.uPercent || "",
@@ -382,13 +379,14 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                     </div>
 
                     <div className={styles.cardFormGroup}>
-                        <label>Basic Information</label>
-                        <input
-                            name="trialId"
-                            placeholder="TRL-20260304-001"
-                            value={formData.trialId || ""}
-                            onChange={handleChange}
-                            className={fieldClass("trialId")}
+                        <label>Carding Machine No.</label>
+                        <SearchableSelect
+                            value={formData.cardingMachine || ""}
+                            onChange={(value) => setFieldValue("cardingMachine", value)}
+                            options={cardingMachineOptions}
+                            placeholder={machinesLoading ? "Loading machines..." : "Select"}
+                            className={fieldClass("cardingMachine")}
+                            ariaLabel="Carding Machine No."
                         />
                     </div>
                 </div>
@@ -405,9 +403,32 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                                 <label>Time</label>
                                 <input type="text" value={time} readOnly />
                             </div>
+
+                            <div className={styles.cardFormGroup}>
+                                <label>Raw Material / Mixing</label>
+                                <input name="materialMixing" value={formData.materialMixing || ""} onChange={handleChange} className={fieldClass("materialMixing")} />
+                            </div>
                         </div>
 
                         <div className={styles.cardRow}>
+                            <div className={styles.cardFormGroup}>
+                                <label>Count Name</label>
+                                <SearchableSelect
+                                    value={formData.count || ""}
+                                    onChange={(value) => setFieldValue("count", value)}
+                                    options={countNameOptions}
+                                    placeholder={
+                                        loadingCountOptions
+                                            ? "Loading count names..."
+                                            : countOptionsError
+                                                ? "Type count name"
+                                                : "Select Count Name"
+                                    }
+                                    className={fieldClass("count")}
+                                    ariaLabel="Count Name"
+                                />
+                            </div>
+
                             <div className={styles.cardFormGroup}>
                                 <label>Spinning Machine Name</label>
                                 <SearchableSelect
@@ -431,24 +452,6 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                                     ariaLabel="Autoconer Machine Name"
                                 />
                             </div>
-
-                            <div className={styles.cardFormGroup}>
-                                <label>Count Name</label>
-                                <SearchableSelect
-                                    value={formData.count || ""}
-                                    onChange={(value) => setFieldValue("count", value)}
-                                    options={countNameOptions}
-                                    placeholder={
-                                        loadingCountOptions
-                                            ? "Loading count names..."
-                                            : countOptionsError
-                                                ? "Type count name"
-                                                : "Select Count Name"
-                                    }
-                                    className={fieldClass("count")}
-                                    ariaLabel="Count Name"
-                                />
-                            </div>
                         </div>
 
                         {machinesLoading ? <p>Loading machine options...</p> : null}
@@ -456,13 +459,13 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
                         <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
-                                <label>Purpose</label>
-                                <input name="purpose" value={formData.purpose || ""} onChange={handleChange} className={fieldClass("purpose")} />
-                            </div>
-
-                            <div className={styles.cardFormGroup}>
-                                <label>Trial Name / ID</label>
-                                <input name="trialname" value={formData.trialname || ""} onChange={handleChange} className={fieldClass("trialname")} />
+                                <label>Product</label>
+                                <input
+                                    name="product"
+                                    value={formData.product || ""}
+                                    onChange={handleChange}
+                                    className={fieldClass("product")}
+                                />
                             </div>
 
                             <div className={styles.cardFormGroup}>
@@ -481,34 +484,10 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                                     ))}
                                 </select>
                             </div>
-                        </div>
 
-                        <div className={styles.cardRow}>
                             <div className={styles.cardFormGroup}>
-                                <label>Nature</label>
+                                <label>Nature of Trial</label>
                                 <input name="nature" value={formData.nature || ""} onChange={handleChange} className={fieldClass("nature")} />
-                            </div>
-
-                            <div className={styles.cardFormGroup}>
-                                <label>Unit No.</label>
-                                <input name="unit" value={formData.unit || ""} onChange={handleChange} className={fieldClass("unit")} />
-                            </div>
-
-                            <div className={styles.cardFormGroup}>
-                                <label>Raw Material</label>
-                                <input name="material" value={formData.material || ""} onChange={handleChange} className={fieldClass("material")} />
-                            </div>
-                        </div>
-
-                        <div className={styles.cardRow}>
-                            <div className={styles.cardFormGroup}>
-                                <label>Mixing</label>
-                                <input name="mixing" value={formData.mixing || ""} onChange={handleChange} className={fieldClass("mixing")} />
-                            </div>
-
-                            <div className={`${styles.cardFormGroup} ${styles.fullWidth}`}>
-                                <label>Yarn Results</label>
-                                <textarea name="yarnresults" value={formData.yarnresults || ""} onChange={handleChange} className={fieldClass("yarnresults")} />
                             </div>
                         </div>
                     </>
@@ -631,6 +610,13 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                             ))}
                         </div>
                     </div>
+
+                    <div className={styles.cardRow}>
+                        <div className={`${styles.cardFormGroup} ${styles.fullWidth}`}>
+                            <label>Yarn Remarks</label>
+                            <textarea name="yarnresults" value={formData.yarnresults || ""} onChange={handleChange} className={fieldClass("yarnresults")} />
+                        </div>
+                    </div>
                 </>
             )}
 
@@ -657,7 +643,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             <PreviewModal
                 open={showPreview}
                 title="Carding Preview"
-                subtitle="Carding Notebook / Trials Data Entry Form"
+                subtitle="Carding Notebook / Individual Card performance Data"
                 items={previewItems}
                 typeValue={selectedType}
                 onCancel={() => setShowPreview(false)}

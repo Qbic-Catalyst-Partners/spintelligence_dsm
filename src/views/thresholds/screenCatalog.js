@@ -15,10 +15,10 @@ export const thresholdScreenCatalog = {
             "Drop Test Data Entry",
         ],
         carding: [
-            "Trials Data Entry Form",
+            "Individual Card performance Data",
             "Nati Data Entry",
             "U% Data Entry",
-            "Card Waste Study",
+            "Individual Card Waste Study",
         ],
         comber: [
             "Nati Data Entry",

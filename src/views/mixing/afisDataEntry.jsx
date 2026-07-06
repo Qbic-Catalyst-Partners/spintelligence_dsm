@@ -98,7 +98,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                     { label: "SFC(W)", value: formData.sfcW },
                     { label: "Maturity", value: formData.maturity },
                     { label: "Fineness", value: formData.fineness },
-                    { label: "SCN (gms)", value: formData.scnGms },
+                    { label: "SCN/gm", value: formData.scnGms },
                 ],
             });
         } catch (ticketError) {
@@ -126,7 +126,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
         { label: "SFC(W)", value: formData.sfcW },
         { label: "Maturity", value: formData.maturity },
         { label: "Fineness", value: formData.fineness },
-        { label: "SCN (gms)", value: formData.scnGms },
+        { label: "SCN/gm", value: formData.scnGms },
     ]);
 
     const validate = () => {
@@ -176,7 +176,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                 sfcW: pick("sfc_w", "sfcW", "SFC(W)"),
                 maturity: pick("maturity", "Maturity"),
                 fineness: pick("fineness", "Fineness"),
-                scnGms: pick("scn_gms", "scnGms", "SCN (gms)"),
+                scnGms: pick("scn_gms", "scnGms", "SCN/gm"),
             }));
         },
     }));
@@ -274,7 +274,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                 />
             </div>
 
-            {/* Row 4: Maturity, Fineness, SCN (gms) */}
+            {/* Row 4: Maturity, Fineness, SCN/gm */}
             <div className={styles['mixx-row']}>
                 <CustomInput
                     label="Maturity"
@@ -293,8 +293,8 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                 />
 
                 <CustomInput
-                    label="SCN (gms)"
-                    placeholder="Enter SCN (gms)"
+                    label="SCN/gm"
+                    placeholder="Enter SCN/gm"
                     value={formData.scnGms}
                     onChange={(value) => handleChange('scnGms', value)}
                     error={errors.scnGms}

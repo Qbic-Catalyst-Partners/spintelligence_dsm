@@ -44,6 +44,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const [sampleCount, setSampleCount] = useState(defaultSampleCount);
     const [samples, setSamples] = useState(createEmptySamples(defaultSampleCount));
     const [lapWeight, setLapWeight] = useState("");
+    const [lapLength, setLapLength] = useState("");
     const [machine, setMachine] = useState("");
     const [variety, setVariety] = useState("");
     const [date, setDate] = useState("");
@@ -53,7 +54,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const [machineOptions, setMachineOptions] = useState([]);
     const [varietyOptions, setVarietyOptions] = useState(["Cotton", "Polyester", "PC Blend"]);
 
-    const isCVEntry = selectedType === "Ribbon Lap CV Data Entry";
+    const isCVEntry = selectedType === "Comber Lap 1mCV Data Entry";
 
     useEffect(() => {
         setDate(new Date().toISOString().split("T")[0]);
@@ -108,10 +109,18 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         [samples]
     );
 
+    const gramsPerMeter = useMemo(() => {
+        const weightKg = parseFloat(lapWeight);
+        const lengthM = parseFloat(lapLength);
+        if (!weightKg || !lengthM) return "";
+        return ((weightKg * 1000) / lengthM).toFixed(2);
+    }, [lapWeight, lapLength]);
+
     const resetForm = () => {
         setSampleCount(defaultSampleCount);
         setSamples(createEmptySamples(defaultSampleCount));
         setLapWeight("");
+        setLapLength("");
         setMachine("");
         setVariety("");
         setDate(new Date().toISOString().split("T")[0]);
@@ -192,6 +201,8 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
             variety,
             type: "Ribbon Lap",
             lap_weight: lapWeight ? Number(lapWeight) : null,
+            lap_length: lapLength ? Number(lapLength) : null,
+            grams_per_meter: gramsPerMeter ? Number(gramsPerMeter) : null,
             samples: samples
                 .map((value) => parseFloat(value))
                 .filter((value) => !Number.isNaN(value)),
@@ -210,6 +221,9 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         if (isCVEntry) {
             if (!lapWeight) {
                 nextErrors.lapWeight = true;
+            }
+            if (!lapLength) {
+                nextErrors.lapLength = true;
             }
             if (!stats.avg) {
                 nextErrors.stats = true;
@@ -249,13 +263,15 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
     const getPreviewData = () => {
         const base = [
-            { label: "Type", value: selectedType || "Ribbon Lap CV Data Entry" },
+            { label: "Type", value: selectedType || "Comber Lap 1mCV Data Entry" },
             { label: "Entry ID", value: entryId || "-" },
             { label: "Machine Name", value: machine },
             { label: "Variety", value: variety },
         ];
 
-        if (lapWeight) base.push({ label: "Lap Weight", value: lapWeight });
+        if (lapWeight) base.push({ label: "Lap Weight (KGs)", value: lapWeight });
+        if (lapLength) base.push({ label: "Lap Length (Mts)", value: lapLength });
+        if (gramsPerMeter) base.push({ label: "Grams / Meter", value: gramsPerMeter });
 
         const sampleItems = samples
             .map((value, index) => ({ label: `Sample ${index + 1}`, value: value || "-" }))
@@ -388,7 +404,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
                         <div className={styles["cb-row"]}>
                             <div className={styles["cb-form-group"]}>
-                                <label>Lap Weight</label>
+                                <label>Lap Weight (KGs)</label>
                                 <input
                                     className={errors.lapWeight ? styles["input-error"] : ""}
                                     value={lapWeight}
@@ -403,6 +419,29 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                                         });
                                     }}
                                 />
+                            </div>
+
+                            <div className={styles["cb-form-group"]}>
+                                <label>Lap Length (Mts)</label>
+                                <input
+                                    className={errors.lapLength ? styles["input-error"] : ""}
+                                    value={lapLength}
+                                    inputMode="decimal"
+                                    onChange={(e) => {
+                                        setLapLength(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }));
+                                        setErrors((prev) => {
+                                            if (!prev.lapLength) return prev;
+                                            const next = { ...prev };
+                                            delete next.lapLength;
+                                            return next;
+                                        });
+                                    }}
+                                />
+                            </div>
+
+                            <div className={styles["cb-form-group"]}>
+                                <label>Grams / Meter</label>
+                                <input value={gramsPerMeter} readOnly />
                             </div>
                         </div>
 

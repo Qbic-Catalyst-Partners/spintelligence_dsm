@@ -9,10 +9,9 @@ import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 
 export const STATIC_SHIFT_OPTIONS = [
-  { value: "General", label: "General" },
-  { value: "Day", label: "Day" },
-  { value: "Half Night", label: "Half Night" },
-  { value: "Full Night", label: "Full Night" },
+  { value: "Shift -1", label: "Shift -1" },
+  { value: "Shift -2", label: "Shift -2" },
+  { value: "Shift -3", label: "Shift -3" },
 ];
 
 export const STATIC_MC_NO_OPTIONS = [
@@ -266,17 +265,17 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
           </div>
 
           <div>
-            <label>CV in Metres</label>
+            <label>CVM</label>
             <input value={form.cvm} onChange={(e) => handleChange("cvm", e.target.value)} className={errors.cvm ? styles.errorField : ""} />
           </div>
 
         <div>
-          <label>1m CV in Metres</label>
+          <label>1mCV</label>
           <input value={form.im_cvm} onChange={(e) => handleChange("im_cvm", e.target.value)} className={errors.im_cvm ? styles.errorField : ""} />
         </div>
 
           <div>
-            <label>3m CV in Metres</label>
+            <label>3 mCV</label>
             <input value={form.m3_cvm} onChange={(e) => handleChange("m3_cvm", e.target.value)} className={errors.m3_cvm ? styles.errorField : ""} />
           </div>
 

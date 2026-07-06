@@ -25,6 +25,8 @@ const createStages = (totalEntries) => {
 
       stages.push({
         stageName: `Stage ${stageIndex + 1}`,
+        beaterType: "",
+        beaterSpeed: "",
         rows: Array.from({ length: rowCount }, () => ({
           weight: "",
           vol1: "",
@@ -198,6 +200,15 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     );
   };
 
+  const handleStageFieldChange = (stageIndex, field, value) => {
+    const nextValue = field === "beaterSpeed" ? sanitizeNumericInput(value, { precision: 10, scale: 2 }) : value;
+    setStages((current) =>
+      current.map((stage, currentStageIndex) =>
+        currentStageIndex === stageIndex ? { ...stage, [field]: nextValue } : stage
+      )
+    );
+  };
+
   const canSubmit = useMemo(() => {
     if (!date || !String(target || "").trim() || !form.entries.trim()) return false;
     if (!stages.length) return false;
@@ -227,6 +238,8 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     entries: stages.flatMap((stage) =>
       stage.rows.map((row) => ({
         machine_name: stage.stageName,
+        beater_type: stage.beaterType,
+        beater_speed_rpm: Number(stage.beaterSpeed) || 0,
         weight: Number(row.weight),
         volume_1: Number(row.vol1),
         volume_2: Number(row.vol2),
@@ -253,6 +266,11 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       { label: "Entries (N)", value: form.entries },
     ];
 
+    const stageMeta = stages.flatMap((stage) => [
+      { label: `${stage.stageName} - Beater Type`, value: stage.beaterType },
+      { label: `${stage.stageName} - Beater Speed (RPM)`, value: stage.beaterSpeed },
+    ]);
+
     const stageRows = stages.flatMap((stage) =>
         stage.rows.map((row, rowIndex) => ({
         label: `${stage.stageName} - Row ${rowIndex + 1}`,
@@ -265,7 +283,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       value: stage.openness,
     }));
 
-    return [...header, ...stageRows, ...stageSummaries, { label: "Overall Openness %", value: overallOpen }];
+    return [...header, ...stageMeta, ...stageRows, ...stageSummaries, { label: "Overall Openness %", value: overallOpen }];
   };
 
   useImperativeHandle(ref, () => ({
@@ -311,16 +329,32 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
       {stages.map((stage, stageIndex) => (
         <div key={stageIndex} className={styles.stageBox}>
-          <label className={styles.stageLabel} htmlFor={`stage-name-${stageIndex}`}>
-            Machine Name
-          </label>
-          <input
-            id={`stage-name-${stageIndex}`}
-            className={styles.stageNameInput}
-            value={stage.stageName}
-            onChange={(e) => handleStageNameChange(stageIndex, e.target.value)}
-            aria-label={`Stage ${stageIndex + 1} name`}
-          />
+          <div className={styles.rowGrid}>
+            <div>
+              <label className={styles.stageLabel} htmlFor={`stage-name-${stageIndex}`}>
+                Machine Name
+              </label>
+              <input
+                id={`stage-name-${stageIndex}`}
+                className={styles.stageNameInput}
+                value={stage.stageName}
+                onChange={(e) => handleStageNameChange(stageIndex, e.target.value)}
+                aria-label={`Stage ${stageIndex + 1} name`}
+              />
+            </div>
+            <CustomInput
+              label="Beater Type"
+              placeholder="Enter Beater Type"
+              value={stage.beaterType}
+              onChange={(value) => handleStageFieldChange(stageIndex, "beaterType", value)}
+            />
+            <CustomInput
+              label="Beater Speed (RPM)"
+              placeholder="Enter Beater Speed"
+              value={stage.beaterSpeed}
+              onChange={(value) => handleStageFieldChange(stageIndex, "beaterSpeed", value)}
+            />
+          </div>
 
           {stage.rows.map((row, rowIndex) => {
             runningIndex += 1;
@@ -370,7 +404,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
               <ReadOnlyField label="Average of Apparent Specific Vol (A=V/M)" value={stage.avgAsv} />
               <ReadOnlyField label="Average of Actual Op. Value (AOV)" value={stage.avgAov} />
               {stageIndex > 0 && stageIndex < stages.length - 1 ? (
-                <ReadOnlyField label="Avg. Openness %" value={stage.openness} />
+                <ReadOnlyField label="Openness %" value={stage.openness} />
               ) : (
                 <div />
               )}

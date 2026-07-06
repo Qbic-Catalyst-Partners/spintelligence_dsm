@@ -70,6 +70,29 @@
     align-self: flex-end;
 }
 
+.mixx-total-spacer {
+    visibility: hidden;
+}
+
+.mixx-total-label-col {
+    align-items: flex-end;
+}
+
+.mixx-total-label {
+    display: flex;
+    align-items: center;
+    height: 38px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.mixx-total-input {
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    background: #eef2ff !important;
+}
+
 .section-title {
     margin-top: 6px;
     font-size: 20px;

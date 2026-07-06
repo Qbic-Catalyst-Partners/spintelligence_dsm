@@ -52,6 +52,13 @@ const normalizeHankValue = (value) => {
     return sanitizeNumericInput(cleaned, { precision: 10, scale: 4 });
 };
 
+const padHankDecimal = (value) => {
+    const normalized = normalizeHankValue(value);
+    if (!normalized) return "";
+    const [intPart, decPart = ""] = normalized.split(".");
+    return `${intPart || "0"}.${decPart.padEnd(4, "0")}`;
+};
+
 const normalizeDateForInput = (value) => {
     const text = String(value ?? "").trim();
     if (!text) return "";
@@ -230,7 +237,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     `Sample_Weight_${index + 1}`,
                     `sample_weight_${index + 1}`
                 )),
-                hank: normalizeNumericValue(pick(`Hank ${index + 1}`, `hank_${index + 1}`)),
+                hank: padHankDecimal(pick(`Hank ${index + 1}`, `hank_${index + 1}`)),
             }));
 
             const nextMachine = pick("Machine Name", "MC Name", "mc_name", "machine_name", "machine");

@@ -68,7 +68,7 @@ export const thresholdFieldCatalog = {
         "SFC(W)",
         "Maturity",
         "Fineness",
-        "SCN (gms)",
+        "SCN/gm",
     ],
     "Moisture Data Entry": [
         "Party Lot No",
@@ -121,7 +121,7 @@ export const thresholdFieldCatalog = {
         "Time",
         "Machine Reading",
     ],
-    "Trials Data Entry Form": [
+    "Individual Card performance Data": [
         "Trial ID",
         "Date",
         "Time",
@@ -158,7 +158,7 @@ export const thresholdFieldCatalog = {
         "3m CVM",
         "Remarks",
     ],
-    "Card DFK Pressure Checking": [
+    "Card DFK Data": [
         "DFK",
         "CCD",
         "ICFD (1)",
@@ -356,12 +356,14 @@ export const thresholdFieldCatalog = {
         "LC-Wing Setting",
         "DK-NK Beater Speed",
     ],
-    "Ribbon Lap CV Data Entry": [
+    "Comber Lap 1mCV Data Entry": [
         "Record Date",
         "Machine Name",
         "Variety",
         "Lap Type",
-        "Lap Weight",
+        "Lap Weight (KGs)",
+        "Lap Length (Mts)",
+        "Grams / Meter",
         "Sample 1",
         "Sample 2",
         "Sample 3",

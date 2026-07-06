@@ -10,6 +10,15 @@ import {
   fetchBlowroomData,
 } from "../../store/slices/blowroomSlice";
 
+const formatSecondsToHHMMSS = (totalSeconds) => {
+  const seconds = Math.max(0, Math.round(totalSeconds || 0));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+};
+
 const todayValue = new Date().toISOString().split("T")[0];
 const DEFAULT_BLOWROOM_STATE = {
   loading: false,
@@ -42,7 +51,6 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     variety: "",
     checkedBy: "",
     beater: "",
-    totalTime: "",
   });
 
   const availableTypeOptions = typeOptions.length
@@ -87,24 +95,6 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     });
   };
 
-  const calculateStats = (key) => {
-    const values = tableData
-      .map((row) => parseFloat(row[key]))
-      .filter((val) => !Number.isNaN(val));
-
-    if (!values.length) {
-      return { avg: "0.00", min: "0.00", max: "0.00", range: "0.00" };
-    }
-
-    const sum = values.reduce((a, b) => a + b, 0);
-    const avg = (sum / values.length).toFixed(2);
-    const min = Math.min(...values).toFixed(2);
-    const max = Math.max(...values).toFixed(2);
-    const range = (Number(max) - Number(min)).toFixed(2);
-
-    return { avg, min, max, range };
-  };
-
   const handleGenerate = () => {
     if (!rows || rows <= 0) return;
 
@@ -123,7 +113,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 
   const handleSave = async () => {
     const nextErrors = {};
-    ["lineNo", "variety", "checkedBy", "beater", "totalTime"].forEach((key) => {
+    ["lineNo", "variety", "checkedBy", "beater"].forEach((key) => {
       if (!String(form[key] || "").trim()) nextErrors[key] = true;
     });
     if (!form.entryDate) nextErrors.entryDate = true;
@@ -147,7 +137,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           variety: form.variety,
           checked_by: form.checkedBy,
           beater: form.beater,
-          total_time: form.totalTime,
+          total_time: grandTotalTime,
           entries: tableData.map((row) => ({
             value_a: Number(row.a) || 0,
             value_b: Number(row.b) || 0,
@@ -174,7 +164,6 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       variety: "",
       checkedBy: "",
       beater: "",
-      totalTime: "",
     });
   };
 
@@ -191,6 +180,12 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     });
   };
 
+  const totalRunSeconds = tableData.reduce((sum, row) => sum + (parseFloat(row.a) || 0), 0);
+  const totalIdleSeconds = tableData.reduce((sum, row) => sum + (parseFloat(row.b) || 0), 0);
+  const totalSubSeconds = totalRunSeconds + totalIdleSeconds;
+  const totalSyncPercentage = totalSubSeconds > 0 ? ((totalRunSeconds / totalSubSeconds) * 100).toFixed(2) : "";
+  const grandTotalTime = tableData.length ? formatSecondsToHHMMSS(totalSubSeconds) : "";
+
   const focusNextRowA = (index) => {
     const nextRowInput = rowAInputRefs.current[index + 1];
     if (nextRowInput) {
@@ -204,7 +199,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     clear: handleClear,
     validate: () => {
       const nextErrors = {};
-      ["lineNo", "variety", "checkedBy", "beater", "totalTime"].forEach((key) => {
+      ["lineNo", "variety", "checkedBy", "beater"].forEach((key) => {
         if (!String(form[key] || "").trim()) nextErrors[key] = true;
       });
       if (!form.entryDate) nextErrors.entryDate = true;
@@ -227,13 +222,19 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
         { label: "Variety", value: form.variety },
         { label: "Checked By", value: form.checkedBy },
         { label: "Beater", value: form.beater },
-        { label: "Total Time", value: form.totalTime },
+        { label: "Grand Total Time", value: grandTotalTime },
       ];
       const rowsData = tableData.map((row, idx) => ({
         label: `Row ${idx + 1}`,
-        value: `A:${row.a} | B:${row.b} | C:${row.c} | Sync:${row.sync ? `${row.sync}%` : ""}`,
+        value: `Run Time:${row.a}s | Idle Time:${row.b}s | Sub Total:${row.c !== "" ? formatSecondsToHHMMSS(Number(row.c)) : ""} | Sync:${row.sync ? `${row.sync}%` : ""}`,
       }));
-      return [...header, ...rowsData];
+      const totalsRow = tableData.length
+        ? [{
+            label: "Totals",
+            value: `Run Time:${totalRunSeconds.toFixed(2)}s | Idle Time:${totalIdleSeconds.toFixed(2)}s | Sub Total:${formatSecondsToHHMMSS(totalSubSeconds)} | Sync:${totalSyncPercentage ? `${totalSyncPercentage}%` : ""}`,
+          }]
+        : [];
+      return [...header, ...rowsData, ...totalsRow];
     },
   }));
 
@@ -318,16 +319,6 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           />
         </div>
 
-        <div className={styles.group}>
-          <label>Total Time (HH:MM)</label>
-          <input
-            type="time"
-            step="60"
-            value={form.totalTime ? form.totalTime.slice(0, 5) : ""}
-            onChange={(e) => handleFormChange("totalTime", e.target.value)}
-            className={errors.totalTime ? styles.errorField : undefined}
-          />
-        </div>
       </div>
 
       <div className={styles.subsection}>
@@ -354,9 +345,9 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
         <div className={styles.gridWrap}>
           <div className={styles.tableHeader}>
             <span>S. No.</span>
-            <span>Value A</span>
-            <span>Value B</span>
-            <span>Value C (A+B)</span>
+            <span>Run Time (Seconds)</span>
+            <span>Idle Time (Seconds)</span>
+            <span>Sub Total Time</span>
             <span>Sync Percentage (%)</span>
           </div>
 
@@ -384,34 +375,49 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
                 className={errors[`row-${i}-b`] ? styles.errorField : undefined}
               />
               <input
-                value={row.c}
+                value={row.c !== "" ? formatSecondsToHHMMSS(Number(row.c)) : ""}
                 readOnly
                 tabIndex={-1}
               />
               <input value={row.sync ? `${row.sync}%` : ""} readOnly tabIndex={-1} />
             </div>
           ))}
+
+          {tableData.length > 0 && (
+            <div className={`${styles.tableRow} ${styles.totalRow}`}>
+              <span className={styles.serial}>Total</span>
+              <input
+                className={styles.totalInput}
+                value={totalRunSeconds.toFixed(2)}
+                readOnly
+                tabIndex={-1}
+              />
+              <input
+                className={styles.totalInput}
+                value={totalIdleSeconds.toFixed(2)}
+                readOnly
+                tabIndex={-1}
+              />
+              <input
+                className={styles.totalInput}
+                value={formatSecondsToHHMMSS(totalSubSeconds)}
+                readOnly
+                tabIndex={-1}
+              />
+              <input
+                className={styles.totalInput}
+                value={totalSyncPercentage ? `${totalSyncPercentage}%` : ""}
+                readOnly
+                tabIndex={-1}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      <div className={styles.stats}>
-        {[
-          { label: "Value A Stats", key: "a" },
-          { label: "Value B Stats", key: "b" },
-          { label: "Value C Stats", key: "c" },
-          { label: "Sync Percentage Stats", key: "sync" },
-        ].map((item) => {
-          const s = calculateStats(item.key);
-          return (
-            <div key={item.key} className={styles.statCard}>
-              <h5>{item.label}</h5>
-              <p>Avg : {s.avg}</p>
-              <p>Min : {s.min}</p>
-              <p>Max : {s.max}</p>
-              <p>Range : {s.range}</p>
-            </div>
-          );
-        })}
+      <div className={`${styles.group} ${styles.grandTotalRow}`}>
+        <label>Grand Total Time (HH:MM:SS)</label>
+        <input type="text" value={grandTotalTime} readOnly tabIndex={-1} />
       </div>
 
       {loading && <p className={styles.loading}>Saving...</p>}

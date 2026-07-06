@@ -140,7 +140,7 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo
     const validate = () => {
         const required = [
             "variety","invoiceNo","invoiceDate","cutLength","lengthCV","meanDenier","cvPerDenier",
-            "tenacity","cvPerTenacity","elongation","cvPerElongation","crimp","whitenessIndex","spinFinish"
+            "tenacity","cvPerTenacity","elongation","cvPerElongation","crimp"
         ];
         const nextErrors = required.reduce((acc, key) => {
             if (String(formData[key] || "").trim() === "") acc[key] = true;
@@ -225,9 +225,9 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo
             <div className={styles['mixx-row']}>
                 <CustomInput label="Crimp (ARC/CM)" placeholder="Enter Crimp"
                     value={formData.crimp} onChange={v => handleChange('crimp', v)} error={errors.crimp} />
-                <CustomInput label="Whiteness Index" placeholder="Enter Whiteness Index"
+                <CustomInput label="Whiteness Index (optional)" placeholder="Enter Whiteness Index"
                     value={formData.whitenessIndex} onChange={v => handleChange('whitenessIndex', v)} error={errors.whitenessIndex} />
-                <CustomInput label="Spin Finish" placeholder="Enter Spin Finish"
+                <CustomInput label="Spin Finish (optional)" placeholder="Enter Spin Finish"
                     value={formData.spinFinish} onChange={v => handleChange('spinFinish', v)} error={errors.spinFinish} />
             </div>
 

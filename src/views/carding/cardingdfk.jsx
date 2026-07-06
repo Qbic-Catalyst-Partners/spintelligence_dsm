@@ -9,7 +9,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import styles from "./cardingdfk.module.css";
 
-const DFK_TYPE = "Card DFK Pressure Checking";
+const DFK_TYPE = "Card DFK Data";
 const MACHINE_NAMES = Array.from({ length: 27 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
 const TABLE_COLUMNS = [
   { key: "cw", label: "DFK" },
@@ -315,7 +315,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" 
       <PreviewModal
         open={showPreview}
         title="Carding Preview"
-        subtitle="Carding Notebook / Card DFK Pressure Checking"
+        subtitle="Carding Notebook / Card DFK Data"
         items={previewItems}
         typeValue={selectedType || DFK_TYPE}
         onCancel={() => setShowPreview(false)}

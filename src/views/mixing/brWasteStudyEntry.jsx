@@ -48,7 +48,6 @@ const emptyWasteKgRow = () => ({ wasteType: '', wasteKgValue: '', wasteKgPercent
 const initialForm = { variety: '', cardingProduction: '', studyType: '' };
 const DEFAULT_BLOWROOM_STATE = { success: false };
 const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
-const TYPE_1_MAX_ENTRIES = 10;
 const TYPE_3_MAX_ENTRIES = 10;
 const WASTE_KG_MAX_TYPES = 25;
 
@@ -161,6 +160,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     entryTypeLabel = "BR Waste Study Entry",
     useBlowroomRedux = true,
     showEntryId = true,
+    variety: externalVariety,
+    onVarietyChange = null,
+    hideVarietyField = false,
 }, ref) {
     const dispatch = useDispatch();
     const { success } = useSelector((state) => state.blowroom ?? DEFAULT_BLOWROOM_STATE);
@@ -183,7 +185,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [wasteTypeSaveStatus, setWasteTypeSaveStatus] = useState({});
     const wasteTypeAttemptRef = useRef({});
 
-    const [type1CountInput, setType1CountInput] = useState('1');
     const [type2CountInput, setType2CountInput] = useState("1");
     const [type3CountInput, setType3CountInput] = useState('3');
     const [wasteKgCountInput, setWasteKgCountInput] = useState('1');
@@ -196,6 +197,17 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [overallWaste, setOverallWaste] = useState('');
     const [remarks, setRemarks] = useState('');
     const { studyType } = formData;
+
+    useEffect(() => {
+        if (onVarietyChange && externalVariety !== undefined && externalVariety !== formData.variety) {
+            setFormData((prev) => ({ ...prev, variety: externalVariety }));
+        }
+    }, [externalVariety, onVarietyChange]);
+
+    const handleVarietyChange = (value) => {
+        handleChange('variety', value);
+        onVarietyChange?.(value);
+    };
 
     const mapEntryToForm = (entry) => {
         const typeRows = Array.isArray(entry?.type_rows) ? entry.type_rows : [];
@@ -227,7 +239,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     }))
                     : [emptyType1Row()]
             );
-            setType1CountInput(String(typeRows.length || 1));
         }
 
         if (studyType === "Type 2") {
@@ -282,8 +293,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const calculateWastePercent = (wasteKgValue, production) => {
         const waste = Number(wasteKgValue) || 0;
         const prod = Number(production) || 0;
-        if (prod <= 0 || waste <= 0) return '';
-        return ((waste / prod) * 100).toFixed(2);
+        const denominator = prod + waste;
+        if (denominator <= 0 || waste <= 0) return '';
+        return ((waste / denominator) * 100).toFixed(2);
     };
 
     const handleChange = (field, value) => {
@@ -379,15 +391,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         });
     };
 
-    const applyType1Count = () => {
-        const n = Math.min(TYPE_1_MAX_ENTRIES, Math.max(1, parseInt(type1CountInput) || 1));
-        setType1Rows(prev => {
-            const arr = [...prev];
-            while (arr.length < n) arr.push(emptyType1Row());
-            return arr.slice(0, n);
-        });
-    };
-
     const applyType3Count = () => {
         const n = Math.min(TYPE_3_MAX_ENTRIES, Math.max(1, parseInt(type3CountInput) || 1));
         setType3Rows(prev => {
@@ -463,18 +466,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         });
     };
 
-    const calculateOverallWaste = () => {
-        let total = 0;
-        setWasteKgRows((prev) =>
-            prev.map((row) => {
-                const percent = calculateWastePercent(row.wasteKgValue, formData.cardingProduction);
-                total += Number(percent) || 0;
-                return { ...row, wasteKgPercent: percent };
-            })
-        );
-        setOverallWaste(formatWastePercent(total));
-    };
-
     useEffect(() => {
         const loadMachines = async () => {
             if (!fetchMachineOptionsApi) return;
@@ -542,6 +533,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             setRemarks('');
             setWasteTypeSaveStatus({});
             wasteTypeAttemptRef.current = {};
+            onVarietyChange?.('');
         }
     }, [success, localSubmitTick, dispatch, useBlowroomRedux]);
 
@@ -584,6 +576,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         setRemarks('');
         setWasteTypeSaveStatus({});
         wasteTypeAttemptRef.current = {};
+        onVarietyChange?.('');
         if (useBlowroomRedux) {
             dispatch(resetState());
         }
@@ -657,39 +650,31 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         getPreviewData,
     }));
 
+    const totalWasteKgValue = wasteKgRows.reduce((sum, row) => sum + (Number(row.wasteKgValue) || 0), 0);
+
     return (
         <>
             <div className={styles['mixx-row']}>
-                <div className={styles['mixx-group']}>
-                    <label>Entry Date</label>
-                    <input
-                        type="date"
-                        className={styles['mixx-input']}
-                        value={date}
-                        disabled
-                    />
-                </div>
+                {!hideVarietyField && (
+                    <div className={styles['mixx-group']}>
+                        <label>Variety</label>
+                        <SearchableSelect
+                            className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
+                            value={formData.variety}
+                            onChange={handleVarietyChange}
+                            options={varietyOptions}
+                            placeholder={
+                                loadingVarietyOptions
+                                    ? 'Loading varieties...'
+                                    : varietyOptionsError
+                                        ? 'Type variety'
+                                        : 'Select Variety'
+                            }
+                            ariaLabel="Variety"
+                        />
+                    </div>
+                )}
 
-                <div className={styles['mixx-group']}>
-                    <label>Variety</label>
-                    <SearchableSelect
-                        className={`${styles['mixx-input']} ${errors.variety ? styles['mixx-error'] : ''}`}
-                        value={formData.variety}
-                        onChange={(value) => handleChange('variety', value)}
-                        options={varietyOptions}
-                        placeholder={
-                            loadingVarietyOptions
-                                ? 'Loading varieties...'
-                                : varietyOptionsError
-                                    ? 'Type variety'
-                                    : 'Select Variety'
-                        }
-                        ariaLabel="Variety"
-                    />
-                </div>
-            </div>
-
-            <div className={styles['mixx-row']}>
                 <CustomInput
                     label="Carding Production (KGs)"
                     placeholder="0.00"
@@ -712,33 +697,12 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                         <option value="Type 3">Type 3</option>
                     </select>
                 </div>
-
-                <div className={styles['mixx-empty']} />
             </div>
 
             {/* ===== TYPE 1 ===== */}
             {studyType === 'Type 1' && (
                 <>
                     <div className={styles['section-title']}>Type 1 Study Details</div>
-                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
-                        <div className={styles['mixx-group']}>
-                            <label>Number of Type 1 Entries (Max {TYPE_1_MAX_ENTRIES})</label>
-                            <input
-                                type="number"
-                                className={styles['mixx-input']}
-                                value={type1CountInput}
-                                min={1}
-                                onChange={e => setType1CountInput(sanitizeIntegerInput(e.target.value, 2))}
-                                onWheel={e => e.target.blur()}
-                            />
-                        </div>
-                        <div className={styles['mixx-group']}>
-                            <button className={styles['mixx-btn-primary']} onClick={applyType1Count}>
-                                Apply Type 1 Entries
-                            </button>
-                        </div>
-                    </div>
-
                     <div className={`${styles['type1-table']} ${styles['desktop-view']}`}>
                         <div className={styles['type1-header']}>
                             <span>#</span>
@@ -1044,21 +1008,29 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                         </div>
                     ))}
 
-                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
+                    <div className={styles['mixx-row']}>
+                        <div className={`${styles['mixx-group']} ${styles['mixx-total-label-col']}`}>
+                            <label className={styles['mixx-total-spacer']}>&nbsp;</label>
+                            <span className={styles['mixx-total-label']}>Total</span>
+                        </div>
                         <div className={styles['mixx-group']}>
-                            <label>Overall Waste %</label>
+                            <label>Total Waste KGs Value</label>
                             <input
-                                className={styles['mixx-input']}
-                                value={overallWaste || "0.00"}
+                                className={`${styles['mixx-input']} ${styles['mixx-total-input']}`}
+                                value={totalWasteKgValue.toFixed(4)}
                                 readOnly
                             />
                         </div>
                         <div className={styles['mixx-group']}>
-                            <button className={styles['mixx-btn-primary']} onClick={calculateOverallWaste}>
-                                Calculate Percentage
-                            </button>
+                            <label>Total Waste KGs %</label>
+                            <input
+                                className={`${styles['mixx-input']} ${styles['mixx-total-input']}`}
+                                value={`${formatWastePercent(getTotalWastePercent(wasteKgRows))} %`}
+                                readOnly
+                            />
                         </div>
                     </div>
+
 
                     <div className={styles['mixx-row']}>
                         <div className={styles['mixx-group']}>
