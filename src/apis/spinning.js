@@ -9,7 +9,7 @@ const endpoints = {
   "Speed Checking": "/spinning/speed-checking",
   "Lycra Missing": "/spinning/lycra-missing",
   "Bottom Apron Checking": "/spinning/bottom-apron-checking",
-  "Lycra Centering": "/spinning/lycra-centering",
+  "Lycra out of Centering": "/spinning/lycra-centering",
   "RSM & Lycrasensor Checking Online": "/spinning/rsm-lycra-online",
   "RSM & Lycrasensor Checking Offline": "/spinning/rsm-lycra-offline",
   "Wheel Change": "/spinning/wheel-change",

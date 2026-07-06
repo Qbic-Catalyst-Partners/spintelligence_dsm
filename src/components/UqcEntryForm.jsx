@@ -1,5 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useState } from "react";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -45,7 +46,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
     selectedType,
     onTypeChange,
     departmentValue,
-    shiftOptions = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"],
+    shiftOptions = ["Shift 1", "Shift 2", "Shift 3"],
     varietyOptions = ["Cotton"],
     machineOptions = ["MC-01", "MC-02", "MC-03", "MC-04"],
     submitHandler,
@@ -125,8 +126,8 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
     { label: "MC No.", value: form.mc_no || "-" },
     { label: "U%", value: form.u_percent || "-" },
     { label: "CVM", value: form.cvm || "-" },
-    { label: "1m CVM", value: form.cvm_1m || "-" },
-    { label: "3m CVM", value: form.cvm_3m || "-" },
+    { label: "1mCV", value: form.cvm_1m || "-" },
+    { label: "3mCV", value: form.cvm_3m || "-" },
     { label: "Remarks", value: form.remarks || "-" },
   ];
 
@@ -172,22 +173,14 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
 
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Shift</label>
-          <select
-            className={`${topFieldClass}${errorClass(errors.shift)}`}
+          <SearchableSelect
             value={form.shift}
-            onChange={(e) => handleChange("shift", e.target.value)}
-            style={errorStyle(errors.shift)}
-          >
-            <option value="">Select Shift</option>
-            {shiftOptions.map((option) => {
-              const optionText = toOptionText(option);
-              return optionText ? (
-                <option key={optionText} value={optionText}>
-                  {optionText}
-                </option>
-              ) : null;
-            })}
-          </select>
+            onChange={(value) => handleChange("shift", value)}
+            className={errors.shift ? "border-red-500" : ""}
+            options={shiftOptions}
+            placeholder="Shift"
+            ariaLabel="Shift"
+          />
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
@@ -268,7 +261,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">1m CVM</label>
+          <label className="text-[14px] font-semibold text-slate-700">1mCV</label>
           <input
             type="number"
             step="0.01"
@@ -281,7 +274,7 @@ const UqcEntryForm = forwardRef(function UqcEntryForm(
         </div>
 
         <div className="flex flex-col gap-1.5 min-w-0">
-          <label className="text-[14px] font-semibold text-slate-700">3m CVM</label>
+          <label className="text-[14px] font-semibold text-slate-700">3mCV</label>
           <input
             type="number"
             step="0.01"

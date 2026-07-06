@@ -122,6 +122,11 @@ function SearchableSelect({
           setSearchTerm(selectedOption?.label || value);
           setIsOpen(true);
         }}
+        onClick={() => {
+          if (disabled) return;
+          setSearchTerm(selectedOption?.label || value);
+          setIsOpen(true);
+        }}
         placeholder={placeholder}
         autoComplete="off"
         disabled={disabled}

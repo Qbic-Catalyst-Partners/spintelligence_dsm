@@ -7,9 +7,8 @@ import SuccessModal from "@/components/SuccessModal";
 import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
-const SHIFT_OPTIONS = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
+const SHIFT_OPTIONS = ["Select Shift", "Shift 1", "Shift 2", "Shift 3"];
 const VARIETY_OPTIONS = ["WPSF 0.90"];
-const DEPARTMENT_OPTIONS = ["FR Drawing"];
 const MC_NO_OPTIONS = ["FR DSS-1"];
 
 function UPercentDataEntry() {
@@ -17,7 +16,6 @@ function UPercentDataEntry() {
     date: new Date().toISOString().split("T")[0],
     shift: "",
     variety: "",
-    department: "",
     mc_no: "",
     u_percent: "",
     cvm: "",
@@ -33,7 +31,6 @@ function UPercentDataEntry() {
   const selectedType = "Draw Frame U% Data Entry";
   const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
   const [varietyOptions, setVarietyOptions] = useState(VARIETY_OPTIONS);
-  const [departmentOptions, setDepartmentOptions] = useState(DEPARTMENT_OPTIONS);
   const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
 
   useEffect(() => {
@@ -45,13 +42,11 @@ function UPercentDataEntry() {
         if (!active) return;
         setShiftOptions(SHIFT_OPTIONS);
         if (dropdown.varietyNames?.length) setVarietyOptions(dropdown.varietyNames);
-        if (dropdown.departmentNames?.length) setDepartmentOptions(dropdown.departmentNames);
         if (dropdown.mcNos?.length) setMcNoOptions(dropdown.mcNos);
       } catch (_error) {
         if (!active) return;
         setShiftOptions(SHIFT_OPTIONS);
         setVarietyOptions(VARIETY_OPTIONS);
-        setDepartmentOptions(DEPARTMENT_OPTIONS);
         setMcNoOptions(MC_NO_OPTIONS);
       }
     })();
@@ -78,7 +73,6 @@ function UPercentDataEntry() {
       date: new Date().toISOString().split("T")[0],
       shift: "",
       variety: "",
-      department: "",
       mc_no: "",
       u_percent: "",
       cvm: "",
@@ -122,12 +116,11 @@ function UPercentDataEntry() {
     { label: "Date", value: form.date },
     { label: "Shift", value: form.shift },
     { label: "Variety", value: form.variety },
-    { label: "Department", value: form.department },
     { label: "MC No.", value: form.mc_no },
     { label: "U%", value: form.u_percent },
-    { label: "CV in Metres", value: form.cvm },
-    { label: "1m CV in Metres", value: form.im_cvm },
-    { label: "3m CV in Metres", value: form.m3_cvm },
+    { label: "CVM", value: form.cvm },
+    { label: "1mCV", value: form.im_cvm },
+    { label: "3mCV", value: form.m3_cvm },
     { label: "Remarks", value: form.remarks },
   ];
 
@@ -180,18 +173,6 @@ function UPercentDataEntry() {
         </div>
 
         <div>
-          <label>Department</label>
-          <SearchableSelect
-            value={form.department}
-            onChange={(value) => handleChange("department", value)}
-            className={errors.department ? styles.errorField : ""}
-            options={departmentOptions}
-            placeholder="Select Department"
-            ariaLabel="Department"
-          />
-        </div>
-
-        <div>
           <label>MC No.</label>
           <SearchableSelect
             value={form.mc_no}
@@ -209,17 +190,17 @@ function UPercentDataEntry() {
         </div>
 
         <div>
-          <label>CV in Metres</label>
+          <label>CVM</label>
           <input value={form.cvm} onChange={(e) => handleChange("cvm", e.target.value)} className={errors.cvm ? styles.errorField : ""} />
         </div>
 
         <div>
-          <label>1m CV in Metres</label>
+          <label>1mCV</label>
           <input value={form.im_cvm} onChange={(e) => handleChange("im_cvm", e.target.value)} className={errors.im_cvm ? styles.errorField : ""} />
         </div>
 
         <div>
-          <label>3m CV in Metres</label>
+          <label>3mCV</label>
           <input value={form.m3_cvm} onChange={(e) => handleChange("m3_cvm", e.target.value)} className={errors.m3_cvm ? styles.errorField : ""} />
         </div>
 

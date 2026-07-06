@@ -55,6 +55,22 @@ const formatTimeHM = (value) => {
     hour12: false,
   }).format(date);
 };
+const getEntryCreatedTime = (entry = {}) =>
+  entry?.created_at ||
+  entry?.createdAt ||
+  entry?.created_time ||
+  entry?.createdTime ||
+  entry?.created_on ||
+  entry?.createdOn ||
+  entry?.updated_at ||
+  entry?.updatedAt ||
+  Object.entries(entry || {}).find(([key, value]) => {
+    if (!value) return false;
+    const normalizedKey = String(key || "").toLowerCase();
+    if (!/(created|updated|time|date)/.test(normalizedKey)) return false;
+    return !Number.isNaN(new Date(value).getTime());
+  })?.[1] ||
+  "";
 
 function Simplex() {
   const currentDateLabel = new Date().toLocaleDateString("en-IN");
@@ -328,11 +344,10 @@ function Simplex() {
             >
               <thead style={{ backgroundColor: entryTableTheme.header }}>
                 <tr>
-                  {[
+                {[
                     "Date",
                     "Shift",
                     "Variety",
-                    "Department",
                     "MC No.",
                     "U%",
                     "CVM",
@@ -361,7 +376,7 @@ function Simplex() {
                 {listLoading ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={9}
                       style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       Loading entries...
@@ -380,7 +395,6 @@ function Simplex() {
                         : "-",
                       entry.shift || "-",
                       entry.variety || "-",
-                      entry.department || "-",
                       entry.mc_no || "-",
                       entry.u_percent || "-",
                       entry.cvm || "-",
@@ -404,7 +418,7 @@ function Simplex() {
                 )) : (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={9}
                       style={{ padding: "16px", textAlign: "center", color: entryTableTheme.muted }}
                     >
                       No entries found.
@@ -490,7 +504,7 @@ function Simplex() {
                           ? new Date(entry.entry_date).toLocaleDateString("en-GB")
                           : "-",
                         entry.machine_name || "-",
-                        formatTimeHM(entry.created_at),
+                        formatTimeHM(getEntryCreatedTime(entry)),
                       ].map((cell, idx) => (
                         <td
                           key={idx}

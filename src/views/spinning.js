@@ -97,7 +97,7 @@ const SPINNING_ENTRY_ID_CONFIG = {
     "Speed Checking": { prefix: "SSD", width: 4, routePath: "/spinning/speed-checking" },
     "Lycra Missing": { prefix: "SLM", width: 4, routePath: "/spinning/lycra-missing" },
     "Bottom Apron Checking": { prefix: "SBA", width: 4, routePath: "/spinning/bottom-apron-checking" },
-    "Lycra Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
+    "Lycra out of Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
     "RSM & Lycrasensor Checking Online": { prefix: "SRO", width: 4, routePath: "/spinning/rsm-lycra-online" },
     "RSM & Lycrasensor Checking Offline": { prefix: "SFO", width: 4, routePath: "/spinning/rsm-lycra-offline" },
     "Wheel Change": { prefix: "SWC", width: 4, routePath: "/spinning/wheel-change" },
@@ -481,7 +481,7 @@ function SpinningDepartment() {
 
         const screenMap = {
             "Lycra Missing": "lycra-missing",
-            "Lycra Centering": "lycra-centering",
+            "Lycra out of Centering": "lycra-centering",
             "RSM & Lycrasensor Checking Online": "rsm-lycra-online",
             "RSM & Lycrasensor Checking Offline": "rsm-lycra-offline",
         };
@@ -576,7 +576,10 @@ function SpinningDepartment() {
             clearFormValues();
             dispatch(resetSpinningState());
         }
-        if (error) dispatch(resetSpinningState());
+        if (error) {
+            setValidationMessage(typeof error === "string" ? error : "Failed to save record. Please try again.");
+            dispatch(resetSpinningState());
+        }
     }, [success, error, dispatch, clearFormValues]);
 
     const getTodayDate = () => new Date().toISOString().split("T")[0];
@@ -810,10 +813,6 @@ function SpinningDepartment() {
         if (!checkingType) {
             nextErrors.checkingType = true;
             missingFields.push("Checking Type");
-        }
-        if (!date) {
-            nextErrors.date = true;
-            missingFields.push("Date");
         }
         if (isCountChange) {
             if (!rfNo.trim()) {

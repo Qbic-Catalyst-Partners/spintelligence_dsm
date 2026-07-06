@@ -66,6 +66,12 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     return ((lycra / total) * 100).toFixed(2);
   }, [lycraWeight, totalWeight]);
 
+  useEffect(() => {
+    const lycra = parseFloat(lycraWeight) || 0;
+    const fabric = parseFloat(fabricWeight) || 0;
+    setTotalWeight(lycra || fabric ? String((lycra + fabric).toFixed(4)) : "");
+  }, [lycraWeight, fabricWeight]);
+
   const averageLength = useMemo(() => {
     const values = generatedRows
       .map((row) => parseFloat(row.length))
@@ -143,7 +149,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     { label: "Count Name", value: countName || "-" },
     { label: "No. of Readings", value: readingsCount || "-" },
     { label: "Lycra Weight", value: lycraWeight || "-" },
-    { label: "Fabric Weight", value: fabricWeight || "-" },
+    { label: "Fibre Weight", value: fabricWeight || "-" },
     { label: "Total Weight", value: totalWeight || "-" },
     { label: "Lycra %", value: lycraPercent || "-" },
     ...generatedRows.map((row, index) => ({
@@ -304,20 +310,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           />
         </div>
 
-        <div className={styles.generateField}>
-          <div className={styles.field}>
-            <label>No. of Readings</label>
-            <input
-              value={readingsCount}
-              onChange={(e) => setReadingsCount(sanitizeIntegerInput(e.target.value, 10))}
-              style={errorStyle(errors.readingsCount || errors.generatedRows)}
-            />
-          </div>
-          <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
-            Generate
-          </button>
-        </div>
-
         <div className={styles.field}>
           <label>Lycra Weight</label>
           <input
@@ -328,7 +320,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
         </div>
 
         <div className={styles.field}>
-          <label>Fabric Weight</label>
+          <label>Fibre Weight</label>
           <input
             value={fabricWeight}
             onChange={(e) => setFabricWeight(sanitizeNumericInput(e.target.value, { precision: 10, scale: 4 }))}
@@ -349,6 +341,20 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           <label>Lycra %</label>
           <input value={lycraPercent} readOnly />
         </div>
+
+        <div className={styles.generateField}>
+          <div className={styles.field}>
+            <label>No. of Readings</label>
+            <input
+              value={readingsCount}
+              onChange={(e) => setReadingsCount(sanitizeIntegerInput(e.target.value, 10))}
+              style={errorStyle(errors.readingsCount || errors.generatedRows)}
+            />
+          </div>
+          <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
+            Generate
+          </button>
+        </div>
       </div>
 
       {generatedRows.length > 0 && (
@@ -358,11 +364,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
               <tr>
                 <th>READING NO.</th>
                 <th>READINGS (LENGTH in mm)</th>
-                <th>LYCRA WEIGHT (gms)</th>
-                <th>FABRIC WEIGHT (gms)</th>
-                <th>TOTAL WEIGHT (gms)</th>
-                <th>LYCRA % (Lycra Wt / Total Wt)</th>
-                <th>AVG LYCRA %</th>
               </tr>
             </thead>
             <tbody>
@@ -376,21 +377,11 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
                       style={errorStyle(errors[`row-${index}`])}
                     />
                   </td>
-                  <td>{lycraWeight}</td>
-                  <td>{fabricWeight}</td>
-                  <td>{totalWeight}</td>
-                  <td>{lycraPercent}</td>
-                  <td>{averageLycraPercent}</td>
                 </tr>
               ))}
               <tr className={styles.summaryRow}>
-                <td>SUMMARY</td>
+                <td>Average</td>
                 <td>{averageLength}</td>
-                <td>{lycraWeight}</td>
-                <td>{fabricWeight}</td>
-                <td>{totalWeight}</td>
-                <td>{lycraPercent}</td>
-                <td>{averageLycraPercent}</td>
               </tr>
             </tbody>
           </table>

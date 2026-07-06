@@ -732,7 +732,6 @@ function DrawFrame() {
     date: today,
     shift: "",
     variety: "",
-    department: "",
     mcNo: "",
     uPercent: "",
     cvm: "",
@@ -740,11 +739,8 @@ function DrawFrame() {
     threeMeterCvm: "",
     remarks: "",
   });
-  const [uPercentShiftOptions, setUPercentShiftOptions] = useState(STATIC_SHIFT_OPTIONS.map((option) => option.value));
+  const [uPercentShiftOptions, setUPercentShiftOptions] = useState(shiftOptions);
   const [uPercentVarietyOptions, setUPercentVarietyOptions] = useState([]);
-  const [uPercentDepartmentOptions, setUPercentDepartmentOptions] = useState(
-    STATIC_DEPARTMENT_OPTIONS.map((item) => item.dept_name)
-  );
   const [uPercentMcNoOptions, setUPercentMcNoOptions] = useState(
     STATIC_MC_NO_OPTIONS.map((item) => item.mc_no)
   );
@@ -907,13 +903,8 @@ function DrawFrame() {
     fetchDrawFrameUqcMasterDropdown()
       .then((dropdown) => {
         if (!isMounted) return;
-        setUPercentShiftOptions(dropdown.shifts?.length ? dropdown.shifts : STATIC_SHIFT_OPTIONS.map((option) => option.value));
+        setUPercentShiftOptions(shiftOptions);
         setUPercentVarietyOptions(dropdown.varietyNames?.length ? dropdown.varietyNames : []);
-        setUPercentDepartmentOptions(
-          dropdown.departmentNames?.length
-            ? dropdown.departmentNames
-            : STATIC_DEPARTMENT_OPTIONS.map((item) => item.dept_name)
-        );
         setUPercentMcNoOptions(
           dropdown.mcNos?.length
             ? dropdown.mcNos
@@ -922,9 +913,8 @@ function DrawFrame() {
       })
       .catch(() => {
         if (!isMounted) return;
-        setUPercentShiftOptions(STATIC_SHIFT_OPTIONS.map((option) => option.value));
+        setUPercentShiftOptions(shiftOptions);
         setUPercentVarietyOptions([]);
-        setUPercentDepartmentOptions(STATIC_DEPARTMENT_OPTIONS.map((item) => item.dept_name));
         setUPercentMcNoOptions(STATIC_MC_NO_OPTIONS.map((item) => item.mc_no));
       });
 
@@ -1199,7 +1189,6 @@ function DrawFrame() {
       date: today,
       shift: "",
       variety: "",
-      department: "",
       mcNo: "",
       uPercent: "",
       cvm: "",
@@ -1254,7 +1243,6 @@ function DrawFrame() {
       const uPercentErrors = {};
       if (!uPercentForm.shift) uPercentErrors.shift = true;
       if (!uPercentForm.variety) uPercentErrors.variety = true;
-      if (!uPercentForm.department) uPercentErrors.department = true;
       if (!uPercentForm.mcNo) uPercentErrors.mcNo = true;
       if (!uPercentForm.uPercent) uPercentErrors.uPercent = true;
       if (!uPercentForm.cvm) uPercentErrors.cvm = true;
@@ -1384,12 +1372,11 @@ function DrawFrame() {
       items.push({ label: "Date", value: uPercentForm.date });
       items.push({ label: "Shift", value: uPercentForm.shift });
       items.push({ label: "Variety", value: uPercentForm.variety });
-      items.push({ label: "Department", value: uPercentForm.department });
       items.push({ label: "MC No.", value: uPercentForm.mcNo });
       items.push({ label: "U%", value: uPercentForm.uPercent });
-      items.push({ label: "CV in Metres", value: uPercentForm.cvm });
-      items.push({ label: "1m CV in Metres", value: uPercentForm.oneMeterCvm });
-      items.push({ label: "3m CV in Metres", value: uPercentForm.threeMeterCvm });
+      items.push({ label: "CVM", value: uPercentForm.cvm });
+      items.push({ label: "1mCV", value: uPercentForm.oneMeterCvm });
+      items.push({ label: "3mCV", value: uPercentForm.threeMeterCvm });
       items.push({ label: "Remarks", value: uPercentForm.remarks });
     } else if (form.type === "A%") {
       items.push({ label: "Type", value: form.type });
@@ -1465,12 +1452,11 @@ function DrawFrame() {
         submitDrawFrameUqcInspection({
           entry_id: entryId,
           entry_type: form.type,
-          entry_date: uPercentForm.date,
-          shift: uPercentForm.shift,
-          variety: uPercentForm.variety,
-          department: uPercentForm.department,
-          mc_no: uPercentForm.mcNo,
-          u_percent: uPercentForm.uPercent,
+        entry_date: uPercentForm.date,
+        shift: uPercentForm.shift,
+        variety: uPercentForm.variety,
+        mc_no: uPercentForm.mcNo,
+        u_percent: uPercentForm.uPercent,
           cvm: uPercentForm.cvm,
           cvm_1m: uPercentForm.oneMeterCvm,
           cvm_3m: uPercentForm.threeMeterCvm,
@@ -1492,7 +1478,6 @@ function DrawFrame() {
                 entry_date: uPercentForm.date,
                 shift: uPercentForm.shift,
                 variety: uPercentForm.variety,
-                department: uPercentForm.department,
                 mc_no: uPercentForm.mcNo,
                 u_percent: uPercentForm.uPercent,
                 cvm: uPercentForm.cvm,
@@ -1880,18 +1865,6 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>Department</label>
-                  <SearchableSelect
-                    value={uPercentForm.department}
-                    onChange={(value) => handleUPercentChange("department", value)}
-                    className={errors.uPercent?.department ? uPercentStyles.errorField : ""}
-                    options={uPercentDepartmentOptions}
-                    placeholder="Select Department"
-                    ariaLabel="Department"
-                  />
-                </div>
-
-                <div className={uPercentStyles.field}>
                   <label>MC No.</label>
                   <SearchableSelect
                     value={uPercentForm.mcNo}
@@ -1913,7 +1886,7 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>CV in Metres</label>
+                  <label>CVM</label>
                   <input
                     value={uPercentForm.cvm}
                     onChange={(e) => handleUPercentChange("cvm", e.target.value)}
@@ -1922,7 +1895,7 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>1m CV in Metres</label>
+                  <label>1mCV</label>
                   <input
                     value={uPercentForm.oneMeterCvm}
                     onChange={(e) => handleUPercentChange("oneMeterCvm", e.target.value)}
@@ -1931,7 +1904,7 @@ function DrawFrame() {
                 </div>
 
                 <div className={uPercentStyles.field}>
-                  <label>3m CV in Metres</label>
+                  <label>3mCV</label>
                   <input
                     value={uPercentForm.threeMeterCvm}
                     onChange={(e) => handleUPercentChange("threeMeterCvm", e.target.value)}
@@ -2350,7 +2323,6 @@ function DrawFrame() {
             "Date",
             "Shift",
             "Variety",
-            "Department",
             "MC No.",
             "U%",
             "CVM",
@@ -2378,7 +2350,7 @@ function DrawFrame() {
       <tbody>
         {listLoading ? (
           <tr>
-            <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted, backgroundColor: entryTableTheme.rowEven }}>
+            <td colSpan={9} style={{ padding: "14px", color: entryTableTheme.muted, backgroundColor: entryTableTheme.rowEven }}>
               Loading entries...
             </td>
           </tr>
@@ -2395,7 +2367,6 @@ function DrawFrame() {
                 : "-",
               entry.shift || "-",
               entry.variety || "-",
-              entry.department || "-",
               entry.mc_no || "-",
               entry.u_percent || "-",
               entry.cvm || "-",
@@ -2419,7 +2390,7 @@ function DrawFrame() {
           </tr>
         )) : (
           <tr>
-            <td colSpan={10} style={{ padding: "14px", color: entryTableTheme.muted, backgroundColor: entryTableTheme.rowEven }}>
+            <td colSpan={9} style={{ padding: "14px", color: entryTableTheme.muted, backgroundColor: entryTableTheme.rowEven }}>
               No entries found.
             </td>
           </tr>
