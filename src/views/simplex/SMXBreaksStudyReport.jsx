@@ -424,8 +424,8 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     { label: "RH%", field: "rhPercent", type: "text" },
     { label: "TEMP%", field: "tempPercent", type: "text" },
     { label: "Total Spindles", field: "ttSpdl", type: "text" },
-    { label: "Running Spindles", field: "runningSpdl", type: "readonly", value: calculatedRunningSpdl || "0" },
     { label: "Idle Spindles", field: "ideals", type: "text", placeholder: "Lorem Ipsum" },
+    { label: "Running Spindles", field: "runningSpdl", type: "readonly", value: calculatedRunningSpdl || "0" },
     {
       label: "Sider Name",
       field: "sName",

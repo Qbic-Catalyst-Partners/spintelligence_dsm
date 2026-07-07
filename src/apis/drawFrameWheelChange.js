@@ -43,6 +43,7 @@ export const fetchDrawFrameWheelChangeEntries = async ({
   page = 1,
   limit = 1,
   wheelChangeType = "",
+  ...filters
 } = {}) => {
   const normalizedType = normalizeWheelChangeType(wheelChangeType);
 
@@ -53,6 +54,7 @@ export const fetchDrawFrameWheelChangeEntries = async ({
         page,
         limit,
         wheel_change_type: normalizedType || undefined,
+        ...filters,
       },
       { skipGlobalErrorModal: true }
     );

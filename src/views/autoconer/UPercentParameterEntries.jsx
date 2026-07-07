@@ -649,6 +649,7 @@ function UPercentParameterEntries({
         </div>
 
         <div className={styles.sectionBlock}>
+          <div className="mb-3 text-[14px] text-[14px] font-bold text-[#1f2b3d]">Normal IPI</div>
           <div className={styles.sectionGridFive}>
             {REGULAR_IPI_FIELDS.map((field) =>
               renderField(field, { value: values[field.key] || "", error: errors[field.key] })
@@ -658,6 +659,7 @@ function UPercentParameterEntries({
         </div>
 
         <div className={styles.sectionBlock}>
+          <div className="mb-3 text-[14px] text-[14px] font-bold text-[#1f2b3d]">Extra Sensitive IPI</div>
           <div className={styles.sectionGridFive}>
             {HS_IPI_FIELDS.filter((field) => field.key !== "thickPlus70").map((field) =>
               renderField(field, { value: values[field.key] || "", error: errors[field.key] })

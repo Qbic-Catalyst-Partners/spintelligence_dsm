@@ -787,6 +787,7 @@ const getNotebookSourceEndpoint = (notebook) => {
     );
 
     if (name.includes("cotton") || name.includes("hvi")) return "/mixing/cotton-hvi";
+    if (name.includes("afis-6") || name.includes("afis6")) return "/mixing/afis-6-cotton";
     if (name.includes("fibre") || name.includes("fiber")) return "/mixing/fibre";
     if (name.includes("afis")) return "/mixing/afis";
     if (name.includes("moisture")) return "/mixing/moisture";

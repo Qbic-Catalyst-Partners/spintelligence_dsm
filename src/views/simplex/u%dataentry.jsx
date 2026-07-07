@@ -12,8 +12,6 @@ const initialForm = () => ({
   shift: "",
   variety: "",
   mc_no: "",
-  smx_no: "",
-  smx_no_proposed: "",
   u_percent: "",
   cvm: "",
   im_cvm: "",
@@ -34,7 +32,7 @@ const dropdownButtonStyle = {
   textAlign: "left",
   outline: "none",
 };
-const SHIFT_OPTIONS = ["Select Shift" , "Shift 1", "Shift 2", "Shift 3"];
+const SHIFT_OPTIONS = ["Select Shift", "Shift 1", "Shift 2", "Shift 3"];
 const MC_NO_OPTIONS = createSmxMachineOptions();
 const VARIETY_OPTIONS = ["WPSF 0.90"];
 
@@ -114,8 +112,6 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     if (!String(form.shift || "").trim()) nextErrors.shift = true;
     if (!String(form.variety || "").trim()) nextErrors.variety = true;
     if (!String(form.mc_no || "").trim()) nextErrors.mc_no = true;
-    if (!String(form.smx_no || "").trim()) nextErrors.smx_no = true;
-    if (!String(form.smx_no_proposed || "").trim()) nextErrors.smx_no_proposed = true;
     if (!String(form.u_percent || "").trim()) nextErrors.u_percent = true;
     if (!String(form.cvm || "").trim()) nextErrors.cvm = true;
     if (!String(form.im_cvm || "").trim()) nextErrors.im_cvm = true;
@@ -130,12 +126,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     { label: "Shift", value: form.shift },
     { label: "Variety", value: form.variety },
     { label: "MC No.", value: form.mc_no },
-    { label: "SMX No.", value: form.smx_no },
-    { label: "SMX No. (Proposed)", value: form.smx_no_proposed },
     { label: "U%", value: form.u_percent },
-    { label: "CV in Metres", value: form.cvm },
-    { label: "1m CV in Metres", value: form.im_cvm },
-    { label: "3m CV in Metres", value: form.m3_cvm },
+    { label: "CVM", value: form.cvm },
+    { label: "1mCV", value: form.im_cvm },
+    { label: "3mCV", value: form.m3_cvm },
     { label: "Remarks", value: form.remarks },
   ];
 
@@ -148,8 +142,6 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         shift: form.shift,
         variety: form.variety,
         mc_no: form.mc_no,
-        smx_no: form.smx_no,
-        smx_no_proposed: form.smx_no_proposed,
         u_percent: form.u_percent,
         cvm: form.cvm,
         cvm_1m: form.im_cvm,
@@ -210,9 +202,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
             onChange={(value) => handleChange("shift", value)}
             className={errors.shift ? styles.errorField : ""}
             options={shiftOptions}
-            placeholder="Select Shift"
-            includeEmptyOption
-            emptyOptionLabel="Select Shift"
+            placeholder="-- Select Shift --"
             ariaLabel="Shift"
           />
         </div>
@@ -280,108 +270,6 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div className={styles.field}>
-          <label>SMX No.</label>
-          <div
-            ref={(node) => {
-              dropdownRefs.current.smx_no = node;
-            }}
-            style={{ position: "relative" }}
-          >
-            <button
-              type="button"
-              className={errors.smx_no ? styles.errorField : ""}
-              style={errors.smx_no ? undefined : { ...dropdownButtonStyle, ...defaultFieldStyle }}
-              onClick={() => setOpenField((current) => (current === "smx_no" ? "" : "smx_no"))}
-            >
-              <span className={form.smx_no ? "text-slate-900" : "text-slate-500"}>
-                {form.smx_no || "-- Select SMX No. --"}
-              </span>
-            </button>
-            {openField === "smx_no" ? (
-              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg">
-                <button
-                  type="button"
-                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
-                  onClick={() => {
-                    handleChange("smx_no", "");
-                    setOpenField("");
-                  }}
-                >
-                  -- Select SMX No. --
-                </button>
-                {mcNoOptions.map((machine) => {
-                  const machineName = String(machine?.label || machine?.value || "").trim();
-                  return machineName ? (
-                    <button
-                      key={machineName}
-                      type="button"
-                      className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
-                      onClick={() => {
-                        handleChange("smx_no", machineName);
-                        setOpenField("");
-                      }}
-                    >
-                      {machineName}
-                    </button>
-                  ) : null;
-                })}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className={styles.field}>
-          <label>SMX No. (Proposed)</label>
-          <div
-            ref={(node) => {
-              dropdownRefs.current.smx_no_proposed = node;
-            }}
-            style={{ position: "relative" }}
-          >
-            <button
-              type="button"
-              className={errors.smx_no_proposed ? styles.errorField : ""}
-              style={errors.smx_no_proposed ? undefined : { ...dropdownButtonStyle, ...defaultFieldStyle }}
-              onClick={() => setOpenField((current) => (current === "smx_no_proposed" ? "" : "smx_no_proposed"))}
-            >
-              <span className={form.smx_no_proposed ? "text-slate-900" : "text-slate-500"}>
-                {form.smx_no_proposed || "-- Select SMX No. --"}
-              </span>
-            </button>
-            {openField === "smx_no_proposed" ? (
-              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg">
-                <button
-                  type="button"
-                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
-                  onClick={() => {
-                    handleChange("smx_no_proposed", "");
-                    setOpenField("");
-                  }}
-                >
-                  -- Select SMX No. --
-                </button>
-                {mcNoOptions.map((machine) => {
-                  const machineName = String(machine?.label || machine?.value || "").trim();
-                  return machineName ? (
-                    <button
-                      key={machineName}
-                      type="button"
-                      className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
-                      onClick={() => {
-                        handleChange("smx_no_proposed", machineName);
-                        setOpenField("");
-                      }}
-                    >
-                      {machineName}
-                    </button>
-                  ) : null;
-                })}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className={styles.field}>
           <label>U%</label>
           <input
             value={form.u_percent}
@@ -392,7 +280,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div className={styles.field}>
-          <label>CV in Metres</label>
+          <label>CVM</label>
           <input
             value={form.cvm}
             onChange={(e) => handleChange("cvm", e.target.value)}
@@ -402,7 +290,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div className={styles.field}>
-          <label>1m CV in Metres</label>
+          <label>1mCV</label>
           <input
             value={form.im_cvm}
             onChange={(e) => handleChange("im_cvm", e.target.value)}
@@ -412,7 +300,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div className={styles.field}>
-          <label>3m CV in Metres</label>
+          <label>3mCV</label>
           <input
             value={form.m3_cvm}
             onChange={(e) => handleChange("m3_cvm", e.target.value)}

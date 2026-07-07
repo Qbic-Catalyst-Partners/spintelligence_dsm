@@ -35,6 +35,7 @@ import {
     isFullAccessUser,
     isSubmittedNotebookManagerUser,
     isSupervisorNavUser,
+    isWheelChangeApproverUser,
     routeDepartmentMap,
 } from "@/utils/accessControl";
 import { useThemeMode } from "@/utils/useThemeMode";
@@ -92,6 +93,7 @@ const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },
     { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
     { href: "/activity-log", label: "Activity Log" },
+    { href: "/wheel-change-approvals", label: "Wheel Change Approvals", wheelChangeApproval: true },
 ];
 const analyticsHubLinks = [
     { href: "/statistics-analysis", label: "Statistics Analytics" },
@@ -106,6 +108,7 @@ const analyticsHubLinks = [
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
+    { href: "/pp-batch-threshold", label: "PP Batch Completion Threshold" },
 ];
 const reportLinks = [
     { href: "/reports/general", label: "General Report" },
@@ -138,6 +141,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const hasFullAccess = isFullAccessUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
+    const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
+    const hasManagementHubAccess = hasSubmittedNotebookAccess || hasWheelChangeApprovalAccess;
     const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess;
     const defaultTicketingRoute = getDefaultTicketingRoute(user);
@@ -177,7 +182,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return hasTicketingHubAccess || visibleHrefSet.has("/operator");
         }
         if (link.section === "management") {
-            return hasSubmittedNotebookAccess;
+            return hasManagementHubAccess;
         }
         if (link.section === "teamPerformance") {
             return hasAnalyticsHubAccess || visibleHrefSet.has("/l1-analysis") || visibleHrefSet.has("/l2-analysis");
@@ -282,6 +287,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return currentPath === "/activity-log";
         }
 
+        if (href === "/wheel-change-approvals") {
+            return currentPath === "/wheel-change-approvals";
+        }
+
         if (href === "/settings") {
             return currentPath === "/settings" || currentPath.startsWith("/settings/");
         }
@@ -329,8 +338,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const handleManagementHubClick = () => {
         setIsManagementHubOpen((isOpen) => {
             const nextIsOpen = !isOpen;
-            if (nextIsOpen && router.asPath?.split("?")[0] !== "/submitted-notebooks") {
-                router.push("/submitted-notebooks");
+            const defaultManagementRoute = hasSubmittedNotebookAccess
+                ? "/submitted-notebooks"
+                : "/wheel-change-approvals";
+            if (nextIsOpen && router.asPath?.split("?")[0] !== defaultManagementRoute) {
+                router.push(defaultManagementRoute);
             }
             return nextIsOpen;
         });
@@ -496,7 +508,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         setIsManagementHubOpen(
             currentPath === "/submitted-notebooks" ||
             currentPath === "/submitted-notebook-threshold" ||
-            currentPath === "/activity-log"
+            currentPath === "/activity-log" ||
+            currentPath === "/wheel-change-approvals"
         );
         setIsAnalyticsHubOpen(
             currentPath === "/statistics-analysis" ||
@@ -511,7 +524,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/threshold-values" ||
             currentPath.startsWith("/threshold-values/") ||
             currentPath === "/submission-threshold" ||
-            currentPath.startsWith("/submission-threshold/")
+            currentPath.startsWith("/submission-threshold/") ||
+            currentPath === "/pp-batch-threshold" ||
+            currentPath.startsWith("/pp-batch-threshold/")
         );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
         setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
@@ -570,7 +585,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/threshold-values" ||
                             currentPath.startsWith("/threshold-values/") ||
                             currentPath === "/submission-threshold" ||
-                            currentPath.startsWith("/submission-threshold/")
+                            currentPath.startsWith("/submission-threshold/") ||
+                            currentPath === "/pp-batch-threshold" ||
+                            currentPath.startsWith("/pp-batch-threshold/")
                         );
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
@@ -586,7 +603,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         const isManagementGroupActive = isManagementGroup && (
                             currentPath === "/submitted-notebooks" ||
                             currentPath === "/submitted-notebook-threshold" ||
-                            currentPath === "/activity-log"
+                            currentPath === "/activity-log" ||
+                            currentPath === "/wheel-change-approvals"
                         );
                         const isAnalyticsHubGroupActive = isAnalyticsHubGroup && (
                             currentPath === "/statistics-analysis" ||
@@ -752,7 +770,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                 </div>
                             );
                         }
-                        if (link.section === "management" && hasSubmittedNotebookAccess) {
+                        if (link.section === "management" && hasManagementHubAccess) {
                             return (
                                 <div key={link.href} className={styles["side-nav-group"]}>
                                     <button
@@ -766,7 +784,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         <FiChevronDown className={`${styles["department-chevron"]} ${isManagementHubOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
                                     <div className={`${styles["side-subnav"]} ${isManagementHubOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {managementHubLinks.map((managementLink) => (
+                                        {visibleManagementHubLinks.map((managementLink) => (
                                             <Link
                                                 key={managementLink.href}
                                                 href={managementLink.href}

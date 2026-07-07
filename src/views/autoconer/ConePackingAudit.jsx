@@ -18,6 +18,7 @@ const countNameOptions = [
   "10 COTTON POLY LINEN 60/20/20...",
   "20 COTTON POLY LINEN 60/20/20...",
 ];
+const centerPadOptions = ["1", "2", "3", "4"];
 
 const createInitialForm = () => ({
   type: "Cone Packing Audit",
@@ -332,7 +333,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     { label: "Stap Cone", field: "stapCone", type: "radio", options: ["Yes", "No"] },
     { label: "Disk", field: "disk", type: "radio", options: ["Yes", "No"] },
     { label: "Barcode", field: "barcode", type: "radio", options: ["Yes", "No"] },
-    { label: "Center Pad", field: "centerPad", type: "text", placeholder: "Enter center pad" },
+    { label: "Center Pad", field: "centerPad", type: "select", options: centerPadOptions, placeholder: "Select center pad" },
     { label: "Net Weight", field: "netWeight", type: "text", placeholder: "Enter net weight" },
     { label: "Tare Weight", field: "tareWeight", type: "text", placeholder: "Enter tare weight" },
     { label: "Strap Colour", field: "strapColour", type: "text", placeholder: "Enter strap colour" },

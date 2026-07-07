@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/router";
 import CottonHVIDataEntry from "./mixing/cottonHVIDataEntry";
+import Afis6CottonDataEntry from "./mixing/afis6CottonDataEntry";
+import Afis6MmfDataEntry from "./mixing/afis6MmfDataEntry";
 import FibreDataEntry from "./mixing/fibreDataEntry";
 import CustomInput from "@/components/CustomInput";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -17,8 +19,11 @@ import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
+import { fetchMixingAfis6CottonEntries, fetchMixingAfis6MmfEntries } from "@/apis/mixing";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 import { fetchMixingLotDetails } from "@/apis/mixing";
+import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { submitAfis6Cotton, submitAfis6Mmf } from "@/store/slices/mixing";
 
 const mixingDepartmentTypes = [
     {
@@ -37,9 +42,23 @@ const mixingDepartmentTypes = [
     },
     { id: 1, name: "Cotton HVI Data Entry", aliases: ["Cotton HVI Data Entry", "Cotton HVI"], component: CottonHVIDataEntry, needsLotNo: true },
     { id: 2, name: "AFIS Data Entry", aliases: ["AFIS Data Entry", "Afis Data Entry"], component: AfisDataEntry, needsLotNo: true },
-    { id: 3, name: "Fibre Data Entry", aliases: ["Fibre Data Entry", "Fiber Data Entry"], component: FibreDataEntry, needsLotNo: true },
-    { id: 4, name: "Moisture Data Entry", aliases: ["Moisture Data Entry"], component: MoistureDataEntry, needsLotNo: true },
-    { id: 5, name: "Openness Data Entry", aliases: ["Openness Data Entry"], component: OpennessDataEntry, needsLotNo: false },
+    {
+        id: 3,
+        name: "AFIS-6 Cotton Data Entry",
+        aliases: ["AFIS-6 Cotton Data Entry", "AFIS 6 Cotton Data Entry", "AFIS6 Cotton Data Entry"],
+        component: Afis6CottonDataEntry,
+        needsLotNo: false,
+    },
+    {
+        id: 4,
+        name: "AFIS-6 MMF Data Entry",
+        aliases: ["AFIS-6 MMF Data Entry", "AFIS 6 MMF Data Entry", "AFIS6 MMF Data Entry"],
+        component: Afis6MmfDataEntry,
+        needsLotNo: false,
+    },
+    { id: 5, name: "Fibre Data Entry", aliases: ["Fibre Data Entry", "Fiber Data Entry"], component: FibreDataEntry, needsLotNo: true },
+    { id: 6, name: "Moisture Data Entry", aliases: ["Moisture Data Entry"], component: MoistureDataEntry, needsLotNo: true },
+    { id: 7, name: "Openness Data Entry", aliases: ["Openness Data Entry"], component: OpennessDataEntry, needsLotNo: false },
 ];
 
 export const MIXING_INPUT_SCREEN_COUNT = mixingDepartmentTypes.length;
@@ -48,6 +67,18 @@ const getCurrentDate = () => new Date().toISOString().split("T")[0];
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 const MIXING_ENTRY_ID_CONFIG = {
     "Cotton HVI Data Entry": { prefix: "COT", width: 4, routePath: "/mixing/cotton-hvi" },
+    "AFIS-6 Cotton Data Entry": {
+        prefix: "AFIC",
+        width: 4,
+        routePath: "/mixing?type=AFIS-6%20Cotton%20Data%20Entry",
+        fetchPath: "/mixing/afis6-cotton",
+    },
+    "AFIS-6 MMF Data Entry": {
+        prefix: "AFIM",
+        width: 4,
+        routePath: "/mixing?type=AFIS-6%20MMF%20Data%20Entry",
+        fetchPath: "/mixing/afis6-mmf",
+    },
     "Fibre Data Entry": { prefix: "FIB", width: 4, routePath: "/mixing/fibre" },
     "AFIS Data Entry": { prefix: "AFI", width: 4, routePath: "/mixing/afis" },
     "Moisture Data Entry": { prefix: "MOI", width: 4, routePath: "/mixing/moisture" },
@@ -104,6 +135,16 @@ function Mixing() {
             ? fullTypeOptions
             : fullTypeOptions.filter((item) => item.name !== "Process Parameter");
     }, [accessByDepartment, user, isProcessParameterRequest]);
+    const mixingNavigationOptions = useMemo(
+        () =>
+            filterOptionsByDepartmentAccess(
+                mixingDepartmentTypes,
+                accessByDepartment,
+                user,
+                "Mixing"
+            ).filter((item) => item.name !== "Process Parameter"),
+        [accessByDepartment, user]
+    );
     const [selectedTypeName, setSelectedTypeName] = useState(() => typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
@@ -116,11 +157,56 @@ function Mixing() {
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
+    const [afis6Form, setAfis6Form] = useState({
+        material_class: "",
+        comment: "",
+        total_nep_count_g: "",
+        total_nep_mean_size_um: "",
+        fiber_nep_count_g: "",
+        fiber_nep_mean_size_um: "",
+        scnep_count_g: "",
+        scnep_mean_size_um: "",
+        l_w_mm: "",
+        l_w_cv: "",
+        sfc_w_percent: "",
+        uql_w_mm: "",
+        l_n_mm: "",
+        l_n_cv_percent: "",
+        sfc_n_percent: "",
+        five_pct_l_n_mm: "",
+        fineness_mtex: "",
+        maturity_ratio_mat1: "",
+        ifc_percent: "",
+    });
+    const [afis6Errors, setAfis6Errors] = useState({});
+    const [afis6Records, setAfis6Records] = useState([]);
+    const [afis6RecordsLoading, setAfis6RecordsLoading] = useState(false);
+    const [afis6RecordsError, setAfis6RecordsError] = useState("");
+    const [afis6MmfForm, setAfis6MmfForm] = useState({
+        material_class: "",
+        comment: "",
+        total_nep_count_g: "",
+        total_nep_mean_size_um: "",
+        cut_length_n_mm: "",
+        l_n_cv_percent: "",
+        sfc_n_percent: "",
+        five_pct_l_n_mm: "",
+        fineness_den: "",
+        fineness_cv_percent: "",
+        long_fiber_gt_46_80_percent: "",
+        long_fiber_count_gt_46_80: "",
+    });
+    const [afis6MmfErrors, setAfis6MmfErrors] = useState({});
+    const [afis6MmfRecords, setAfis6MmfRecords] = useState([]);
+    const [afis6MmfRecordsLoading, setAfis6MmfRecordsLoading] = useState(false);
+    const [afis6MmfRecordsError, setAfis6MmfRecordsError] = useState("");
     const currentDateLabel = useMemo(() => new Date().toLocaleDateString("en-IN"), []);
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
     const isProcessParameter = selectedTypeName === "Process Parameter";
+    const isAfis6Cotton = selectedTypeName === "AFIS-6 Cotton Data Entry";
+    const isAfis6Mmf = selectedTypeName === "AFIS-6 MMF Data Entry";
     const shouldLoadLots = selectedType?.needsLotNo !== false && selectedTypeName !== "Openness Data Entry";
     const { lotOptions, lotOptionsError, loadingLotOptions } = useMixingLotOptions(
         shouldLoadLots ? selectedTypeName : ""
@@ -321,6 +407,281 @@ function Mixing() {
         showSuccessOnce();
     };
 
+    const afis6FieldDefs = [
+        { key: "total_nep_count_g", label: "Total Nep Count / g" },
+        { key: "total_nep_mean_size_um", label: "Total Nep Mean Size µm" },
+        { key: "fiber_nep_count_g", label: "Fiber Nep Count / g" },
+        { key: "fiber_nep_mean_size_um", label: "Fiber Nep Mean Size µm" },
+        { key: "scnep_count_g", label: "SCNep Count / g" },
+        { key: "scnep_mean_size_um", label: "SCNep Mean Size µm" },
+        { key: "l_w_mm", label: "L(w) mm" },
+        { key: "l_w_cv", label: "L(w) CV" },
+        { key: "sfc_w_percent", label: "SFC(w) <12.70 mm %" },
+        { key: "uql_w_mm", label: "UQL(w) mm" },
+        { key: "l_n_mm", label: "L(n) mm" },
+        { key: "l_n_cv_percent", label: "L(n) CV %" },
+        { key: "sfc_n_percent", label: "SFC(n) <12.70 mm %" },
+        { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
+        { key: "fineness_mtex", label: "Fineness mtex" },
+        { key: "maturity_ratio_mat1", label: "Maturity ratio mat 1" },
+        { key: "ifc_percent", label: "IFC %" },
+    ];
+
+    const handleAfis6Change = (key, value) => {
+        const nextValue = afis6FieldDefs.some((field) => field.key === key)
+            ? sanitizeNumericInput(value, { precision: 12, scale: 3 })
+            : value;
+        setAfis6Form((prev) => ({ ...prev, [key]: nextValue }));
+        setAfis6Errors((prev) => {
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    };
+
+    const buildAfis6Payload = () => {
+        const normalizeNumeric = (value) => {
+            const trimmed = String(value ?? "").trim();
+            if (trimmed === "") return "";
+            const parsed = Number(trimmed);
+            return Number.isFinite(parsed) ? parsed : Number.NaN;
+        };
+
+        const payload = {
+            inspection_date: date || "",
+            material_class: String(afis6Form.material_class || "").trim(),
+            comment: String(afis6Form.comment || "").trim(),
+            total_nep_count_g: normalizeNumeric(afis6Form.total_nep_count_g),
+            total_nep_mean_size_um: normalizeNumeric(afis6Form.total_nep_mean_size_um),
+            fiber_nep_count_g: normalizeNumeric(afis6Form.fiber_nep_count_g),
+            fiber_nep_mean_size_um: normalizeNumeric(afis6Form.fiber_nep_mean_size_um),
+            scnep_count_g: normalizeNumeric(afis6Form.scnep_count_g),
+            scnep_mean_size_um: normalizeNumeric(afis6Form.scnep_mean_size_um),
+            l_w_mm: normalizeNumeric(afis6Form.l_w_mm),
+            l_w_cv: normalizeNumeric(afis6Form.l_w_cv),
+            sfc_w_percent: normalizeNumeric(afis6Form.sfc_w_percent),
+            uql_w_mm: normalizeNumeric(afis6Form.uql_w_mm),
+            l_n_mm: normalizeNumeric(afis6Form.l_n_mm),
+            l_n_cv_percent: normalizeNumeric(afis6Form.l_n_cv_percent),
+            sfc_n_percent: normalizeNumeric(afis6Form.sfc_n_percent),
+            five_pct_l_n_mm: normalizeNumeric(afis6Form.five_pct_l_n_mm),
+            fineness_mtex: normalizeNumeric(afis6Form.fineness_mtex),
+            maturity_ratio_mat1: normalizeNumeric(afis6Form.maturity_ratio_mat1),
+            ifc_percent: normalizeNumeric(afis6Form.ifc_percent),
+            machine_name: "AFIS-6",
+            department: "Mixing",
+            sub_department: "Quality Control",
+            user_name: user?.name || user?.user_name || user?.username || "",
+        };
+
+        return Object.fromEntries(
+            Object.entries(payload).filter(([, value]) => value !== undefined && value !== null)
+        );
+    };
+
+    const refreshAfis6Records = useCallback(async () => {
+        setAfis6RecordsLoading(true);
+        setAfis6RecordsError("");
+
+        try {
+            const response = await fetchMixingAfis6CottonEntries({ limit: 10 });
+            const rows = Array.isArray(response?.data)
+                ? response.data
+                : Array.isArray(response?.records)
+                    ? response.records
+                    : Array.isArray(response)
+                        ? response
+                        : [];
+            setAfis6Records(rows);
+        } catch (error) {
+            setAfis6RecordsError(error?.message || "Failed to load AFIS-6 Cotton entries.");
+            setAfis6Records([]);
+        } finally {
+            setAfis6RecordsLoading(false);
+        }
+    }, []);
+
+    const handleAfis6Clear = () => {
+        setAfis6Form({
+            material_class: "",
+            comment: "",
+            total_nep_count_g: "",
+            total_nep_mean_size_um: "",
+            fiber_nep_count_g: "",
+            fiber_nep_mean_size_um: "",
+            scnep_count_g: "",
+            scnep_mean_size_um: "",
+            l_w_mm: "",
+            l_w_cv: "",
+            sfc_w_percent: "",
+            uql_w_mm: "",
+            l_n_mm: "",
+            l_n_cv_percent: "",
+            sfc_n_percent: "",
+            five_pct_l_n_mm: "",
+            fineness_mtex: "",
+            maturity_ratio_mat1: "",
+            ifc_percent: "",
+        });
+        setAfis6Errors({});
+        setValidationMessage("");
+    };
+
+    const handleAfis6Submit = async () => {
+        const numericKeys = afis6FieldDefs.map((field) => field.key);
+        const nextErrors = numericKeys.reduce((acc, key) => {
+            const trimmed = String(afis6Form[key] ?? "").trim();
+            const parsed = trimmed === "" ? "" : Number(trimmed);
+            if (Number.isNaN(parsed)) acc[key] = "Must be a number";
+            return acc;
+        }, {});
+        setAfis6Errors(nextErrors);
+        if (Object.keys(nextErrors).length > 0) {
+            setValidationMessage("Please correct the numeric fields before saving.");
+            return;
+        }
+
+        setValidationMessage("");
+        await dispatch(submitAfis6Cotton(buildAfis6Payload())).unwrap();
+        await reserveEntryId();
+        await refreshAfis6Records();
+        handleAfis6Clear();
+        showSuccessOnce();
+    };
+
+    useEffect(() => {
+        if (!isAfis6Cotton) return undefined;
+        refreshAfis6Records();
+    }, [isAfis6Cotton, refreshAfis6Records, showSuccess]);
+
+    const afis6MmfFieldDefs = [
+        { key: "total_nep_count_g", label: "Total Nep Count / g" },
+        { key: "total_nep_mean_size_um", label: "Total Nep Mean Size µm" },
+        { key: "cut_length_n_mm", label: "Cut Length (n) mm" },
+        { key: "l_n_cv_percent", label: "L(n) CV %" },
+        { key: "sfc_n_percent", label: "SFC(n) <12.70 mm %" },
+        { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
+        { key: "fineness_den", label: "Fineness den" },
+        { key: "fineness_cv_percent", label: "Fineness CV %" },
+        { key: "long_fiber_gt_46_80_percent", label: "Long Fiber >46.80 mm %" },
+        { key: "long_fiber_count_gt_46_80", label: "Long Fiber Count > 46.80 mm" },
+    ];
+
+    const handleAfis6MmfChange = (key, value) => {
+        const nextValue = afis6MmfFieldDefs.some((field) => field.key === key)
+            ? sanitizeNumericInput(value, { precision: 12, scale: 3 })
+            : value;
+        setAfis6MmfForm((prev) => ({ ...prev, [key]: nextValue }));
+        setAfis6MmfErrors((prev) => {
+            if (!prev[key]) return prev;
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+    };
+
+    const buildAfis6MmfPayload = () => {
+        const normalizeNumeric = (value) => {
+            const trimmed = String(value ?? "").trim();
+            if (trimmed === "") return "";
+            const parsed = Number(trimmed);
+            return Number.isFinite(parsed) ? parsed : Number.NaN;
+        };
+
+        const payload = {
+            inspection_date: date || "",
+            material_class: String(afis6MmfForm.material_class || "").trim(),
+            comment: String(afis6MmfForm.comment || "").trim(),
+            total_nep_count_g: normalizeNumeric(afis6MmfForm.total_nep_count_g),
+            total_nep_mean_size_um: normalizeNumeric(afis6MmfForm.total_nep_mean_size_um),
+            cut_length_n_mm: normalizeNumeric(afis6MmfForm.cut_length_n_mm),
+            l_n_cv_percent: normalizeNumeric(afis6MmfForm.l_n_cv_percent),
+            sfc_n_percent: normalizeNumeric(afis6MmfForm.sfc_n_percent),
+            five_pct_l_n_mm: normalizeNumeric(afis6MmfForm.five_pct_l_n_mm),
+            fineness_den: normalizeNumeric(afis6MmfForm.fineness_den),
+            fineness_cv_percent: normalizeNumeric(afis6MmfForm.fineness_cv_percent),
+            long_fiber_gt_46_80_percent: normalizeNumeric(afis6MmfForm.long_fiber_gt_46_80_percent),
+            long_fiber_count_gt_46_80: normalizeNumeric(afis6MmfForm.long_fiber_count_gt_46_80),
+            machine_name: "AFIS-6",
+            department: "Mixing",
+            sub_department: "Quality Control",
+            user_name: user?.name || user?.user_name || user?.username || "",
+        };
+
+        return Object.fromEntries(
+            Object.entries(payload).filter(([, value]) => value !== undefined && value !== null)
+        );
+    };
+
+    const refreshAfis6MmfRecords = useCallback(async () => {
+        setAfis6MmfRecordsLoading(true);
+        setAfis6MmfRecordsError("");
+
+        try {
+            const response = await fetchMixingAfis6MmfEntries({ limit: 10 });
+            const rows = Array.isArray(response?.data)
+                ? response.data
+                : Array.isArray(response?.records)
+                    ? response.records
+                    : Array.isArray(response)
+                        ? response
+                        : [];
+            setAfis6MmfRecords(rows);
+        } catch (error) {
+            setAfis6MmfRecordsError(error?.message || "Failed to load AFIS-6 MMF entries.");
+            setAfis6MmfRecords([]);
+        } finally {
+            setAfis6MmfRecordsLoading(false);
+        }
+    }, []);
+
+    const handleAfis6MmfClear = () => {
+        setAfis6MmfForm({
+            material_class: "",
+            comment: "",
+            total_nep_count_g: "",
+            total_nep_mean_size_um: "",
+            cut_length_n_mm: "",
+            l_n_cv_percent: "",
+            sfc_n_percent: "",
+            five_pct_l_n_mm: "",
+            fineness_den: "",
+            fineness_cv_percent: "",
+            long_fiber_gt_46_80_percent: "",
+            long_fiber_count_gt_46_80: "",
+        });
+        setAfis6MmfErrors({});
+        setValidationMessage("");
+    };
+
+    const handleAfis6MmfSubmit = async () => {
+        const numericKeys = afis6MmfFieldDefs.map((field) => field.key);
+        const nextErrors = numericKeys.reduce((acc, key) => {
+            const trimmed = String(afis6MmfForm[key] ?? "").trim();
+            const parsed = trimmed === "" ? "" : Number(trimmed);
+            if (Number.isNaN(parsed)) acc[key] = "Must be a number";
+            return acc;
+        }, {});
+        setAfis6MmfErrors(nextErrors);
+        if (Object.keys(nextErrors).length > 0) {
+            setValidationMessage("Please correct the numeric fields before saving.");
+            return;
+        }
+
+        setValidationMessage("");
+        await dispatch(submitAfis6Mmf(buildAfis6MmfPayload())).unwrap();
+        await reserveEntryId();
+        await refreshAfis6MmfRecords();
+        handleAfis6MmfClear();
+        showSuccessOnce();
+    };
+
+    useEffect(() => {
+        if (!isAfis6Mmf) return undefined;
+        refreshAfis6MmfRecords();
+    }, [isAfis6Mmf, refreshAfis6MmfRecords, showSuccess]);
+
     const handleProcessParameterSubmitSuccess = (response) => {
         const createdId = String(
             response?.entry_id || response?.param_id || response?.process_parameter_id || response?.id || ""
@@ -390,7 +751,7 @@ function Mixing() {
                 </div>
 
                 <div className="bg-white rounded-xl border border-slate-200">
-                    {!isProcessParameter ? (
+                    {!isProcessParameter && !isAfis6Cotton && !isAfis6Mmf ? (
                         <div className="p-5">
                             <div className="flex items-center justify-between gap-3 mb-4">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -492,6 +853,242 @@ function Mixing() {
                                 )}
                             </div>
                         </div>
+                    ) : isAfis6Cotton ? (
+                        <div className="p-5">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[#3d539f] text-xl leading-none">&#8801;&#9998;</span>
+                                    <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+                                </div>
+                                <InputScreenUploadButton
+                                    visible={false}
+                                    disabled={ocrBusy}
+                                    returnTo="/mixing"
+                                    docType="afis"
+                                    screenName={selectedTypeName}
+                                />
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Type</label>
+                                    <select
+                                        className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
+                                        style={{ backgroundColor: "#f1f5f9" }}
+                                        value={selectedTypeName}
+                                        onChange={(e) => handleTypeChange(e.target.value)}
+                                    >
+                                        <option value="">Select Type</option>
+                                        {mixingNavigationOptions.map((item) => (
+                                            <option key={item.id} value={item.name}>
+                                                {item.displayName ?? item.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
+                                    <input
+                                        readOnly
+                                        value={entryId}
+                                        className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px]"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Material Class</label>
+                                    <input
+                                        placeholder="Enter Material Class"
+                                        value={afis6Form.material_class}
+                                        onChange={(e) => handleAfis6Change("material_class", e.target.value)}
+                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.material_class ? "border-red-500" : "border-slate-200"}`}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Comment</label>
+                                    <input
+                                        placeholder="Enter Comment"
+                                        value={afis6Form.comment}
+                                        onChange={(e) => handleAfis6Change("comment", e.target.value)}
+                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.comment ? "border-red-500" : "border-slate-200"}`}
+                                    />
+                                </div>
+                                {afis6FieldDefs.map((field) => (
+                                    <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                        <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            placeholder="Enter"
+                                            value={afis6Form[field.key]}
+                                            onChange={(e) => handleAfis6Change(field.key, e.target.value)}
+                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <h4 className="text-[15px] font-semibold text-slate-800">Submitted Records</h4>
+                                    {afis6RecordsLoading ? (
+                                        <span className="text-sm text-slate-500">Loading...</span>
+                                    ) : null}
+                                </div>
+                                {afis6RecordsError ? (
+                                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                        {afis6RecordsError}
+                                    </div>
+                                ) : null}
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full border-collapse text-[12px] text-slate-700">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 text-left uppercase tracking-wide text-slate-500">
+                                                <th className="px-2 py-2 font-semibold">Inspection Date</th>
+                                                <th className="px-2 py-2 font-semibold">Material Class</th>
+                                                <th className="px-2 py-2 font-semibold">Comment</th>
+                                                <th className="px-2 py-2 font-semibold">Entry ID</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {afis6Records.length ? (
+                                                afis6Records.map((record, index) => (
+                                                    <tr key={`${record.entry_id || record.id || index}`} className="border-b border-slate-100 last:border-b-0">
+                                                        <td className="px-2 py-2">{record.inspection_date || record.inspectionDate || "-"}</td>
+                                                        <td className="px-2 py-2">{record.material_class || record.materialClass || "-"}</td>
+                                                        <td className="px-2 py-2">{record.comment || "-"}</td>
+                                                        <td className="px-2 py-2">{record.entry_id || record.entryId || record.id || "-"}</td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan={4} className="px-2 py-4 text-center text-slate-400">
+                                                        No AFIS-6 Cotton records available.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    ) : isAfis6Mmf ? (
+                        <div className="p-5">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[#3d539f] text-xl leading-none">&#8801;&#9998;</span>
+                                    <span className="text-[18px] font-bold text-slate-900">Inspection Data Entry</span>
+                                </div>
+                                <InputScreenUploadButton
+                                    visible={false}
+                                    disabled={ocrBusy}
+                                    returnTo="/mixing"
+                                    docType="afis"
+                                    screenName={selectedTypeName}
+                                />
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Type</label>
+                                    <select
+                                        className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors"
+                                        style={{ backgroundColor: "#f1f5f9" }}
+                                        value={selectedTypeName}
+                                        onChange={(e) => handleTypeChange(e.target.value)}
+                                    >
+                                        <option value="">Select Type</option>
+                                        {mixingNavigationOptions.map((item) => (
+                                            <option key={item.id} value={item.name}>
+                                                {item.displayName ?? item.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
+                                    <input
+                                        readOnly
+                                        value={entryId}
+                                        className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px]"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Material Class</label>
+                                    <input
+                                        placeholder="Enter Material Class"
+                                        value={afis6MmfForm.material_class}
+                                        onChange={(e) => handleAfis6MmfChange("material_class", e.target.value)}
+                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.material_class ? "border-red-500" : "border-slate-200"}`}
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 min-w-0">
+                                    <label className="text-[14px] font-semibold text-slate-700">Comment</label>
+                                    <input
+                                        placeholder="Enter Comment"
+                                        value={afis6MmfForm.comment}
+                                        onChange={(e) => handleAfis6MmfChange("comment", e.target.value)}
+                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.comment ? "border-red-500" : "border-slate-200"}`}
+                                    />
+                                </div>
+                                {afis6MmfFieldDefs.map((field) => (
+                                    <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                        <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            placeholder="Enter"
+                                            value={afis6MmfForm[field.key]}
+                                            onChange={(e) => handleAfis6MmfChange(field.key, e.target.value)}
+                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <h4 className="text-[15px] font-semibold text-slate-800">Submitted Records</h4>
+                                    {afis6MmfRecordsLoading ? (
+                                        <span className="text-sm text-slate-500">Loading...</span>
+                                    ) : null}
+                                </div>
+                                {afis6MmfRecordsError ? (
+                                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                        {afis6MmfRecordsError}
+                                    </div>
+                                ) : null}
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full border-collapse text-[12px] text-slate-700">
+                                        <thead>
+                                            <tr className="border-b border-slate-200 text-left uppercase tracking-wide text-slate-500">
+                                                <th className="px-2 py-2 font-semibold">Inspection Date</th>
+                                                <th className="px-2 py-2 font-semibold">Material Class</th>
+                                                <th className="px-2 py-2 font-semibold">Comment</th>
+                                                <th className="px-2 py-2 font-semibold">Entry ID</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {afis6MmfRecords.length ? (
+                                                afis6MmfRecords.map((record, index) => (
+                                                    <tr key={`${record.entry_id || record.id || index}`} className="border-b border-slate-100 last:border-b-0">
+                                                        <td className="px-2 py-2">{record.inspection_date || record.inspectionDate || "-"}</td>
+                                                        <td className="px-2 py-2">{record.material_class || record.materialClass || "-"}</td>
+                                                        <td className="px-2 py-2">{record.comment || "-"}</td>
+                                                        <td className="px-2 py-2">{record.entry_id || record.entryId || record.id || "-"}</td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan={4} className="px-2 py-4 text-center text-slate-400">
+                                                        No AFIS-6 MMF records available.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     ) : SelectedComponent ? (
                         <SelectedComponent
                             ref={childRef}
@@ -527,8 +1124,8 @@ function Mixing() {
 
                     <Footer
                         onBack={() => router.push("/departments/quality-control")}
-                        onClear={handleClear}
-                        onSave={openPreview}
+                        onClear={isAfis6Cotton ? handleAfis6Clear : isAfis6Mmf ? handleAfis6MmfClear : handleClear}
+                        onSave={isAfis6Cotton ? handleAfis6Submit : isAfis6Mmf ? handleAfis6MmfSubmit : openPreview}
                         saveLabel={actionLoading ? "Submitting..." : "Save Record"}
                         disabled={actionLoading || entryIdLoading}
                     />

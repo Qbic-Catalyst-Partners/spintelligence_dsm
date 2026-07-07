@@ -15,6 +15,7 @@ export const thresholdScreenCatalog = {
             "Drop Test Data Entry",
         ],
         carding: [
+            "Process Parameter",
             "Individual Card performance Data",
             "Nati Data Entry",
             "U% Data Entry",

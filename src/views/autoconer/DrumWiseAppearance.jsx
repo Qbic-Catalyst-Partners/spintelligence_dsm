@@ -48,7 +48,7 @@ const buildRowsFromRange = (from, to) => {
   return Array.from({ length: end - start + 1 }, (_, index) => ({
     drumNo: String(start + index),
     ok: 0,
-    notOk: 1,
+    notOk: 0,
   }));
 };
 

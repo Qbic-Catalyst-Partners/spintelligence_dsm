@@ -13,6 +13,7 @@ const getEmployeeKey = (user) =>
   normalizeName(user?.employee_id || user?.employeeId || user?.emp_id || "");
 
 const isSupervisorEmployeeKey = (employeeKey) => /^sup\s*0*\d+$/.test(employeeKey);
+const isAdminEmployeeKey = (employeeKey) => /^admin\s*0*\d+$/.test(employeeKey);
 
 const getRoleKeys = (user) =>
   [
@@ -37,13 +38,20 @@ const isAnonymousDirectAccess = (accessByDepartment, user) =>
 
 export const isFullAccessUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role)) ||
-  getNameKeys(user).some((name) => FULL_ACCESS_USER_NAMES.includes(name));
+  getNameKeys(user).some((name) => FULL_ACCESS_USER_NAMES.includes(name)) ||
+  isAdminEmployeeKey(getEmployeeKey(user));
 
 export const isSupervisorNavUser = (user) =>
   isSupervisorEmployeeKey(getEmployeeKey(user));
 
 export const isSubmittedNotebookManagerUser = (user) =>
   isFullAccessUser(user) || isSupervisorNavUser(user);
+
+const getUserLevelKey = (user) =>
+  String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
+
+export const isWheelChangeApproverUser = (user) =>
+  isFullAccessUser(user) || getUserLevelKey(user) === "L2";
 
 export const isDashboardManagerUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));

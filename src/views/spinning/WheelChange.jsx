@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import { fetchSpinningMachineNumberOptions, fetchSpinningWheelChangeDropdown, fetchSpinningWheelChangeLatestRecord } from "@/apis/spinning";
@@ -10,7 +11,7 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 1": "type1",
   "Type 2": "type2",
   "Type 3": "type3",
-  "Type 4": "type1",
+  "Type 4": "type4",
 };
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
 const STATIC_RF_NO_OPTIONS = ["1", "2", "3", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "20", "24"];
@@ -242,11 +243,49 @@ const TYPE_3_PARAMETER_ROWS = [
   { key: "totalDraft", label: "Total Draft", darkInput: true },
 ];
 
+// Type 4 has its own dedicated backend fields (POST /spinning/wheel-change/type4) —
+// unlike Type 1/2/3 it has no derived/computed fields, so every row besides
+// Count From is a plain input; `numeric` marks which ones the backend stores
+// as numbers. Count From uses the shared "countForm" key (same as Type 1) so
+// it plugs into the existing variety dropdown and approved-record lookup.
+const TYPE_4_PARAMETER_ROWS = [
+  { key: "countForm", label: "Count From", inputType: "select" },
+  { key: "type4LycraType", label: "Lycra Type" },
+  { key: "type4LycraDraft", label: "Lycra Draft", numeric: true },
+  { key: "type4SlubCode", label: "Slub Code" },
+  { key: "type4Range", label: "Range" },
+  { key: "type4Offset", label: "Offset On/Off" },
+  { key: "type4CoreCondition", label: "Core Condition" },
+  { key: "type4Production", label: "Production (Kgs)", numeric: true },
+  { key: "type4RovingHank", label: "Roving Hank", numeric: true },
+  { key: "type4Eow", label: "EOW" },
+  { key: "type4Epi", label: "EPI", numeric: true },
+  { key: "type4Dca", label: "DCA" },
+  { key: "type4Dcb", label: "DCB", numeric: true },
+  { key: "type4Dfc", label: "DFC" },
+  { key: "type4Dc", label: "DC" },
+  { key: "type4Tcw", label: "TCW" },
+  { key: "type4Tw", label: "TW" },
+  { key: "type4Tpm", label: "TPM", numeric: true },
+  { key: "type4TravelersNo", label: "Travellers No." },
+  { key: "type4Spacer", label: "Spacer" },
+  { key: "type4CopWeight", label: "Cop Weight", numeric: true },
+  { key: "type4SpeedFront", label: "Speed Front (RPM)", numeric: true },
+  { key: "type4SpeedRpm", label: "Speed (RPM)", numeric: true },
+  { key: "type4EmpiresColour", label: "Empties Colour" },
+  { key: "type4TotalDraft", label: "Total Draft", numeric: true },
+  { key: "type4Bdw", label: "BDW" },
+  { key: "type4Bd", label: "BD", numeric: true },
+  { key: "type4WindingE", label: "Winding E", numeric: true },
+  { key: "type4WindingF", label: "Winding F", numeric: true },
+  { key: "type4WindingLength", label: "Winding Length", numeric: true },
+];
+
 const WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE = {
   "Type 1": TYPE_1_PARAMETER_ROWS,
   "Type 2": TYPE_2_PARAMETER_ROWS,
   "Type 3": TYPE_3_PARAMETER_ROWS,
-  "Type 4": TYPE_1_PARAMETER_ROWS,
+  "Type 4": TYPE_4_PARAMETER_ROWS,
 };
 
 const WHEEL_CHANGE_FIELD_MAP = {
@@ -284,30 +323,35 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fm_no",
     rows: {
       countForm: "count_from",
-      lycraType: "lycra_type",
-      lycraDraft: "lycra_draft",
-      tmDisc: "slub_code",
-      range: "range",
-      offsetDia: "offset",
-      gapsCourseCondition: "core_condition",
-      diameterDoffSpeed: "production",
-      rovingHank: "roving_hank",
-      rh: "eow",
-      bd: "epi",
-      dca: "dca",
-      dcb: "dcb",
-      dpc: "dfc",
-      dc: "dc",
-      tdv: "tcw",
-      tm: "tw",
-      tciTm: "tpm",
-      travellerDia: "travelers_no",
-      spacer: "spacer",
-      capWeight: "cop_weight",
-      spindleMotorRpm: "speed_front",
-      empaleeColour: "speed_rpm",
-      traveller: "empires_colour",
-      totalDraft: "total_draft",
+      type4LycraType: "lycra_type",
+      type4LycraDraft: "lycra_draft",
+      type4SlubCode: "slub_code",
+      type4Range: "range",
+      type4Offset: "offset",
+      type4CoreCondition: "core_condition",
+      type4Production: "production",
+      type4RovingHank: "roving_hank",
+      type4Eow: "eow",
+      type4Epi: "epi",
+      type4Dca: "dca",
+      type4Dcb: "dcb",
+      type4Dfc: "dfc",
+      type4Dc: "dc",
+      type4Tcw: "tcw",
+      type4Tw: "tw",
+      type4Tpm: "tpm",
+      type4TravelersNo: "travelers_no",
+      type4Spacer: "spacer",
+      type4CopWeight: "cop_weight",
+      type4SpeedFront: "speed_front",
+      type4SpeedRpm: "speed_rpm",
+      type4EmpiresColour: "empires_colour",
+      type4TotalDraft: "total_draft",
+      type4Bdw: "bdw",
+      type4Bd: "bd",
+      type4WindingE: "winding_e",
+      type4WindingF: "winding_f",
+      type4WindingLength: "winding_length",
     },
   },
   "Type 2": {
@@ -398,6 +442,10 @@ const WHEEL_CHANGE_NUMERIC_FIELDS = {
     "speed_front",
     "speed_rpm",
     "total_draft",
+    "bd",
+    "winding_e",
+    "winding_f",
+    "winding_length",
   ]),
   "Type 2": new Set([
     "lycra_draft",
@@ -481,6 +529,11 @@ const getParameterInputType = (row) => {
   if (label === "coporconecondition") return "copCone";
   return "number";
 };
+
+// Type 4 rows declare `numeric` explicitly (its text fields, e.g. Slub Code or
+// DCA, don't follow the label-based guess above), so prefer that when present.
+const isNumericParameterRow = (row) =>
+  typeof row.numeric === "boolean" ? row.numeric : getParameterInputType(row) === "number";
 
 const createWheelChangeValues = () =>
   ALL_WHEEL_CHANGE_PARAMETER_ROWS.reduce(
@@ -839,6 +892,8 @@ const WheelChange = forwardRef(function WheelChange(
   },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
+  const operatorName = getTextValue(user?.name || user?.full_name || user?.user_name || user?.username || "");
   const [wheelChangeType, setWheelChangeType] = useState("");
   const [machineNumber, setMachineNumber] = useState("");
   const [testNo, setTestNo] = useState("");
@@ -1033,6 +1088,8 @@ const WheelChange = forwardRef(function WheelChange(
       variety: selectedVariety,
       variety_name: selectedVariety,
       mixing: selectedVariety,
+      approval_status: "approved",
+      status: "approved",
     })
       .then((latestRecord) => {
         if (cancelled || !latestRecord) return;
@@ -1089,11 +1146,12 @@ const WheelChange = forwardRef(function WheelChange(
       const rowValues = values[row.key] || {};
       const rowErrors = {};
       if (!row.computed) {
-        if (!hasTextValue(rowValues.existing)) rowErrors.existing = true;
+        // Existing values come from approved history; a first-time entry has
+        // none, so only the proposed column is required.
         if (!hasTextValue(rowValues.proposed)) rowErrors.proposed = true;
       }
 
-      if (getParameterInputType(row) === "number") {
+      if (isNumericParameterRow(row)) {
         if (hasTextValue(rowValues.existing) && parseNumericValue(rowValues.existing) === null) {
           rowErrors.existing = true;
         }
@@ -1114,6 +1172,43 @@ const WheelChange = forwardRef(function WheelChange(
   const getPayload = () => {
     const typeFieldConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
     const typeCode = WHEEL_CHANGE_API_TYPES[wheelChangeType];
+
+    if (wheelChangeType === "Type 4") {
+      const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS["Type 4"] || new Set();
+      const payload = {
+        // Routing hint only, read by apis/spinning.js to pick the
+        // /spinning/wheel-change/type4 endpoint — stripped before the POST body
+        // is sent, since the backend expects `wheel_change_type` to hold the
+        // "Wheel Change" label, not the type code.
+        wheel_change_sub_type: typeCode,
+        wheel_change_type: selectedTypeName || "Wheel Change",
+        department: "Spinning",
+        approval_status: "pending",
+        operator: operatorName,
+        date: date || getTodayDate(),
+        test_no: getTextValue(testNo),
+        fm_no: getTextValue(machineNumber),
+      };
+
+      activeRows.forEach((row) => {
+        const fieldBase = typeFieldConfig?.rows?.[row.key];
+        if (!fieldBase) return;
+        const existingValue = getTextValue(values[row.key]?.existing);
+        const proposedValue = getTextValue(values[row.key]?.proposed);
+        const isNumeric = numericFields.has(fieldBase);
+
+        // Omit a blank *_existing entirely (rather than sending "" or null) so
+        // the backend carries it forward from the machine's last saved value.
+        if (existingValue) {
+          payload[`${fieldBase}_existing`] = isNumeric ? parseNumericValue(existingValue) : existingValue;
+        }
+
+        payload[`${fieldBase}_proposed`] = isNumeric ? parseNumericValue(proposedValue) : proposedValue;
+      });
+
+      return payload;
+    }
+
     const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS[wheelChangeType] || new Set();
     const aliases = WHEEL_CHANGE_PAYLOAD_ALIASES[wheelChangeType] || {};
     const setPayloadValue = (fieldName, suffix, value) => {
@@ -1127,8 +1222,10 @@ const WheelChange = forwardRef(function WheelChange(
 
     if (!typeFieldConfig || !typeCode) {
       return {
-        entry_id: entryId,
         type: selectedTypeName,
+        department: "Spinning",
+        approval_status: "pending",
+        operator: operatorName,
         wheel_change_type: "",
         date: date || getTodayDate(),
         test_no: getTextValue(testNo),
@@ -1136,8 +1233,10 @@ const WheelChange = forwardRef(function WheelChange(
     }
 
     const payload = {
-      entry_id: entryId,
       type: selectedTypeName,
+      department: "Spinning",
+      approval_status: "pending",
+      operator: operatorName,
       wheel_change_type: typeCode,
       date: date || getTodayDate(),
       test_no: getTextValue(testNo),
@@ -1187,15 +1286,11 @@ const WheelChange = forwardRef(function WheelChange(
 
   const renderControl = (row, column) => {
     const value = values[row.key]?.[column] || "";
-    const parameterInputType = getParameterInputType(row);
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
-    const isType4NonCountDropdown =
-      wheelChangeType === "Type 4" && row.key !== "countForm";
     const shouldUseSelect =
       row.inputType === "select" &&
-      !isType4NonCountDropdown &&
       (wheelChangeType !== "Type 1" || !["tdv", "tm", "tciTm"].includes(row.key) || Boolean(machineNumber));
 
     if (shouldUseSelect) {
@@ -1229,18 +1324,19 @@ const WheelChange = forwardRef(function WheelChange(
     }
 
     const isReadOnly = row.computed === true;
+    const isNumericInput = isNumericParameterRow(row);
 
     return (
       <input
-        type={parameterInputType === "number" ? "number" : "text"}
-        inputMode={parameterInputType === "number" ? "decimal" : undefined}
-        step={parameterInputType === "number" ? "any" : undefined}
+        type={isNumericInput ? "number" : "text"}
+        inputMode={isNumericInput ? "decimal" : undefined}
+        step={isNumericInput ? "any" : undefined}
         placeholder={row.placeholder || ""}
         className={className}
         value={value}
         readOnly={isReadOnly}
         onChange={
-          parameterInputType === "number"
+          isNumericInput
             ? handleNumericValueChange(row.key, column)
             : handleValueChange(row.key, column)
         }

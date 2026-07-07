@@ -3,6 +3,8 @@ import {
     mixingProcessParameterDataEntry as processParameterApi,
     updateMixingProcessParameterEntry as updateProcessParameterApi,
     mixingCottonHVIDataEntry  as cottonHVIApi,
+    mixingAfis6CottonDataEntry as afis6CottonApi,
+    mixingAfis6MmfDataEntry as afis6MmfApi,
     mixingFibreDataEntry      as fibreApi,
     mixingAfisDataEntry       as afisApi,
     mixingMoistureDataEntry   as moistureApi,
@@ -49,6 +51,22 @@ export const submitAfis = createAsyncThunk(
     'mixing/submitAfis',
     async (payload, { rejectWithValue }) => {
         try { return await afisApi(payload); }
+        catch (e) { return rejectWithValue(e.message); }
+    }
+);
+
+export const submitAfis6Cotton = createAsyncThunk(
+    'mixing/submitAfis6Cotton',
+    async (payload, { rejectWithValue }) => {
+        try { return await afis6CottonApi(payload); }
+        catch (e) { return rejectWithValue(e.message); }
+    }
+);
+
+export const submitAfis6Mmf = createAsyncThunk(
+    'mixing/submitAfis6Mmf',
+    async (payload, { rejectWithValue }) => {
+        try { return await afis6MmfApi(payload); }
         catch (e) { return rejectWithValue(e.message); }
     }
 );
@@ -132,7 +150,7 @@ const mixingSlice = createSlice({
         },
     },
     extraReducers: (builder) => {
-        [submitProcessParameter, updateProcessParameter, submitCottonHVI, submitFibre, submitAfis, submitMoisture, submitBrWaste, submitDropTest, submitOpenness]
+        [submitProcessParameter, updateProcessParameter, submitCottonHVI, submitAfis6Cotton, submitAfis6Mmf, submitFibre, submitAfis, submitMoisture, submitBrWaste, submitDropTest, submitOpenness]
             .forEach(thunk => {
                 builder
                     .addCase(thunk.pending,   pending)

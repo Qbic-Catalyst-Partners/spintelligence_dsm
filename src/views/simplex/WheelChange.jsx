@@ -61,14 +61,19 @@ const rowGroups = {
   ],
 };
 
-const createEmptyRows = () =>
-  rowGroups["Type 1 (LRSB)"].map((row) => ({
+const SIMPLEX_WHEEL_CHANGE_TYPES = Object.keys(rowGroups);
+const DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE = SIMPLEX_WHEEL_CHANGE_TYPES[0];
+
+const getRowGroupForType = (type) => rowGroups[type] || rowGroups[DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE];
+
+const createEmptyRows = (type = DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE) =>
+  getRowGroupForType(type).map((row) => ({
     key: row.key,
     existing: "",
     proposed: "",
   }));
 
-const normalizeRows = (rows = []) => {
+const normalizeRows = (rows = [], type = DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE) => {
   const sourceRows = Array.isArray(rows)
     ? rows
     : rows && typeof rows === "object"
@@ -78,7 +83,7 @@ const normalizeRows = (rows = []) => {
         }))
       : [];
 
-  return rowGroups["Type 1 (LRSB)"].map((row) => {
+  return getRowGroupForType(type).map((row) => {
     const saved = sourceRows.find(
       (item) =>
         String(item?.key ?? item?.label ?? "").trim() === row.key ||
@@ -91,6 +96,25 @@ const normalizeRows = (rows = []) => {
       proposed: "",
     };
   });
+};
+
+// Matches history by BOTH the selected Wheel Change Type (LRSB vs SB20 use
+// entirely different fields) and Count Name/mixing — never falls back across
+// types, since one type's saved values don't map onto another's fields.
+const findLatestEntryForSelection = (entries = [], { mixing = "", type = "" } = {}) => {
+  const normalizedMixing = String(mixing || "").trim().toLowerCase();
+  const normalizedType = String(type || "").trim().toLowerCase();
+
+  const getEntryType = (entry) =>
+    String(entry?.wheel_change_type ?? entry?.wheel_change_type_label ?? "").trim().toLowerCase();
+  const getEntryMixing = (entry) =>
+    String(entry?.mixing ?? entry?.mixing_name ?? entry?.prep_variety_name ?? entry?.variety ?? "").trim().toLowerCase();
+
+  const sameType = normalizedType ? entries.filter((entry) => getEntryType(entry) === normalizedType) : entries;
+  if (!sameType.length) return null;
+  if (!normalizedMixing) return sameType[0];
+
+  return sameType.find((entry) => getEntryMixing(entry) === normalizedMixing) || sameType[0];
 };
 
 const extractSequence = (value) => {
@@ -110,6 +134,10 @@ const mapApiEntryToVersion = (entry) => {
   const mixingRow = paramRows.find((row) =>
     String(row?.key ?? row?.label ?? "").trim().toLowerCase().includes("mixing")
   );
+  const entryType =
+    SIMPLEX_WHEEL_CHANGE_TYPES.find(
+      (type) => type.toLowerCase() === String(entry?.wheel_change_type ?? entry?.wheel_change_type_label ?? "").trim().toLowerCase()
+    ) || DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE;
 
   return {
     id: String(entry?.entry_id ?? entry?.id ?? Date.now()),
@@ -117,10 +145,11 @@ const mapApiEntryToVersion = (entry) => {
     data: {
       entryId: String(entry?.entry_id || ""),
       date: normalizedDate || today,
+      type: entryType,
       smxNo: String(entry?.sap_no || ""),
       smxNoProposed: String(entry?.proposed_sap_no || ""),
       mixing: String(mixingRow?.existing || mixingRow?.proposed || ""),
-      rows: normalizeRows(paramRows),
+      rows: normalizeRows(paramRows, entryType),
     },
   };
 };
@@ -372,6 +401,7 @@ const WheelChange = forwardRef(function WheelChange(
   ref
 ) {
   const [form, setForm] = useState(createInitialForm);
+  const [wheelChangeType, setWheelChangeType] = useState(DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE);
   const [rows, setRows] = useState(createEmptyRows);
   const [machineOptions, setMachineOptions] = useState([]);
   const [mixingOptions, setMixingOptions] = useState([]);
@@ -380,18 +410,7 @@ const WheelChange = forwardRef(function WheelChange(
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const skipMixingRefreshRef = useRef(false);
-
-  const findLatestEntryForMixing = (entries = [], mixing = "") => {
-    const normalizedMixing = String(mixing || "").trim().toLowerCase();
-    if (!normalizedMixing) return entries[0] || null;
-    return (
-      entries.find((entry) =>
-        String(entry?.mixing ?? entry?.mixing_name ?? entry?.prep_variety_name ?? entry?.variety ?? "").trim().toLowerCase() === normalizedMixing
-      ) ||
-      entries[0] ||
-      null
-    );
-  };
+  const skipTypeRefreshRef = useRef(false);
 
   useEffect(() => {
     setForm((current) => ({ ...current, entryId }));
@@ -421,21 +440,37 @@ const WheelChange = forwardRef(function WheelChange(
       }
     };
 
-    const loadLatest = async (requestedMixing = "") => {
+    loadMachineOptions();
+    loadMixingOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Re-runs whenever the Wheel Change Type changes (LRSB vs SB20 use entirely
+  // different fields), seeding the form from the most recent approved entry
+  // of that type — Count Name/mixing is applied separately below.
+  useEffect(() => {
+    if (skipTypeRefreshRef.current) {
+      skipTypeRefreshRef.current = false;
+      return undefined;
+    }
+
+    let cancelled = false;
+    setRows(createEmptyRows(wheelChangeType));
+
+    const loadLatestForType = async () => {
       try {
-        const payload = await fetchSimplexWheelChangeNotebookEntries({ page: 1, limit: 100 });
+        const payload = await fetchSimplexWheelChangeNotebookEntries({ page: 1, limit: 100, approval_status: "approved" });
         if (cancelled) return;
-        const rows = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.rows) ? payload.rows : Array.isArray(payload) ? payload : [];
-        const latest = findLatestEntryForMixing(rows, requestedMixing);
+        const entries = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.rows) ? payload.rows : Array.isArray(payload) ? payload : [];
+        const latest = findLatestEntryForSelection(entries, { type: wheelChangeType });
         if (!latest) return;
 
         setForm((current) => ({
           ...current,
           entryId: String(latest.entry_id || latest.entryId || entryId || current.entryId || ""),
-          date:
-            String(latest.entry_date || latest.date || current.date || today)
-              .slice(0, 10)
-              .replace(/-/g, "-"),
+          date: String(latest.entry_date || latest.date || current.date || today).slice(0, 10),
           smxNo: String(latest.sap_no || latest.smx_no || latest.smxNo || current.smxNo || ""),
           smxNoProposed: String(
             latest.proposed_sap_no || latest.proposedSapNo || latest.smx_no_proposed || current.smxNoProposed || ""
@@ -451,23 +486,22 @@ const WheelChange = forwardRef(function WheelChange(
               : latest.rows && typeof latest.rows === "object"
                 ? latest.rows
                 : [];
-        setRows(normalizeRows(savedRows));
+        setRows(normalizeRows(savedRows, wheelChangeType));
       } catch {
-        if (!cancelled) setRows(createEmptyRows());
+        // Keep the freshly-cleared rows for this type when history isn't available.
       }
     };
 
-    loadMachineOptions();
-    loadMixingOptions();
-    loadLatest();
+    loadLatestForType();
     return () => {
       cancelled = true;
     };
-  }, [entryId]);
+  }, [wheelChangeType]);
 
   const clear = () => {
     setForm(createInitialForm());
-    setRows(createEmptyRows());
+    setWheelChangeType(DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE);
+    setRows(createEmptyRows(DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE));
     setSubmitError("");
   };
 
@@ -475,6 +509,7 @@ const WheelChange = forwardRef(function WheelChange(
 
   const getPreviewData = () => [
     { label: "Type", value: selectedTypeName || "-" },
+    { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "-" },
     { label: "Date", value: form.date || "-" },
     { label: "SMX No.", value: form.smxNo || "-" },
@@ -490,6 +525,8 @@ const WheelChange = forwardRef(function WheelChange(
     const payload = {
       entry_id: entryId || form.entryId || undefined,
       notebook_type: "Wheel Change",
+      department: "Simplex",
+      approval_status: "pending",
       entry_date: form.date,
       sap_no: form.smxNo,
       proposed_sap_no: form.smxNoProposed,
@@ -502,6 +539,7 @@ const WheelChange = forwardRef(function WheelChange(
           proposed: current.proposed || "",
         };
       }),
+      wheel_change_type: wheelChangeType,
       notes: {
         type: selectedTypeName,
       },
@@ -509,10 +547,11 @@ const WheelChange = forwardRef(function WheelChange(
 
     try {
       await submitSimplexWheelChangeNotebookEntry(payload);
+      // Existing values only change once an L2 user approves the proposal,
+      // so keep the current baseline and just clear the proposed column.
       setRows((current) =>
         current.map((item) => ({
           ...item,
-          existing: item.proposed || item.existing || "",
           proposed: "",
         }))
       );
@@ -531,10 +570,7 @@ const WheelChange = forwardRef(function WheelChange(
     submit,
   }));
 
-  const selectedRows = useMemo(
-    () => rowGroups[form.smxNoProposed] || rowGroups["Type 1 (LRSB)"],
-    [form.smxNoProposed]
-  );
+  const selectedRows = useMemo(() => getRowGroupForType(wheelChangeType), [wheelChangeType]);
 
   const selectedMixing = useMemo(() => {
     const row = rows.find((item) => item.key === "mixing");
@@ -551,10 +587,10 @@ const WheelChange = forwardRef(function WheelChange(
       }
       if (!selectedMixing) return;
       try {
-        const payload = await fetchSimplexWheelChangeNotebookEntries({ page: 1, limit: 100 });
+        const payload = await fetchSimplexWheelChangeNotebookEntries({ page: 1, limit: 100, approval_status: "approved" });
         if (cancelled) return;
         const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.rows) ? payload.rows : Array.isArray(payload) ? payload : [];
-        const latest = findLatestEntryForMixing(list, selectedMixing);
+        const latest = findLatestEntryForSelection(list, { mixing: selectedMixing, type: wheelChangeType });
         if (!latest) return;
         const savedRows = Array.isArray(latest.parameter_rows)
           ? latest.parameter_rows
@@ -567,7 +603,7 @@ const WheelChange = forwardRef(function WheelChange(
                 : [];
         setRows((current) => {
           const currentMixing = current.find((item) => item.key === "mixing");
-          return normalizeRows(savedRows).map((item) =>
+          return normalizeRows(savedRows, wheelChangeType).map((item) =>
             item.key === "mixing" && currentMixing
               ? { ...item, existing: currentMixing.existing, proposed: currentMixing.proposed }
               : item
@@ -582,7 +618,7 @@ const WheelChange = forwardRef(function WheelChange(
     return () => {
       cancelled = true;
     };
-  }, [selectedMixing]);
+  }, [selectedMixing, wheelChangeType]);
 
   const loadVersions = async () => {
     setLoadingVersions(true);
@@ -612,6 +648,8 @@ const WheelChange = forwardRef(function WheelChange(
 
   const handleVersionSelect = (version) => {
     skipMixingRefreshRef.current = true;
+    skipTypeRefreshRef.current = true;
+    setWheelChangeType(version.data.type || DEFAULT_SIMPLEX_WHEEL_CHANGE_TYPE);
     setForm((current) => ({
       ...current,
       entryId: version.data.entryId,
@@ -787,6 +825,21 @@ const WheelChange = forwardRef(function WheelChange(
           </div>
 
           <div className="flex min-w-0 flex-col gap-2">
+            <label className="text-[14px] font-semibold text-slate-700">Wheel Change Type</label>
+            <select
+              className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
+              value={wheelChangeType}
+              onChange={(e) => setWheelChangeType(e.target.value)}
+            >
+              {SIMPLEX_WHEEL_CHANGE_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">Entry ID</label>
             <input
               className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
@@ -921,7 +974,7 @@ const WheelChange = forwardRef(function WheelChange(
                   {isExpanded ? (
                     <div className="border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {rowGroups["Type 1 (LRSB)"].map((field) => (
+                        {getRowGroupForType(version.data.type).map((field) => (
                           <div
                             key={`${version.id}-${field.key}`}
                             className="rounded-lg border border-[#c8d9f0] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.05)]"

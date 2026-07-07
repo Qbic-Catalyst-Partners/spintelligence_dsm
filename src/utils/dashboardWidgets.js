@@ -42,6 +42,7 @@ const screenEndpoints = {
   "Quality Control": {
     Mixing: {
       "Process Parameter": "/mixing/qc",
+      "AFIS-6 Cotton Data Entry": "/mixing/afis-6-cotton",
       "Cotton HVI Data Entry": "/mixing/cotton-hvi",
       "Fibre Data Entry": "/mixing/fibre",
       "AFIS Data Entry": "/mixing/afis",

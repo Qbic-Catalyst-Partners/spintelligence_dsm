@@ -96,7 +96,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
 
   const loadLatestSaved = async (mixingValue = "") => {
-    const params = { page: 1, limit: 1 };
+    const params = { page: 1, limit: 1, approval_status: "approved", status: "approved" };
     const trimmedMixing = String(mixingValue || "").trim();
     if (trimmedMixing) {
       params.variety = trimmedMixing;
@@ -248,7 +248,8 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     const valueErrors = {};
     parameterRows.forEach((row) => {
       const rowErrors = {};
-      if (!hasValue(values[row.key]?.existing)) rowErrors.existing = true;
+      // Existing values come from previously approved data; a first-time entry
+      // has none, so only the proposed column is required.
       if (!hasValue(values[row.key]?.proposed)) rowErrors.proposed = true;
       if (Object.keys(rowErrors).length) valueErrors[row.key] = rowErrors;
     });
@@ -273,6 +274,8 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
 
     return {
       type: CHANGE_CONTROL_TYPE,
+      department: "Carding",
+      approval_status: "pending",
       entry_date: entryDate || getTodayDate(),
       cdo_no: cdoNo,
       cdg_no_proposed: proposedCdgNos,

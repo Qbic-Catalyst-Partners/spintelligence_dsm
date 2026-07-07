@@ -402,8 +402,8 @@ function SpliceStrength({
             <th>DRUM NO.</th>
             <th>READING NUMBER</th>
             <th>SPLICE STRENGTH</th>
-            <th>PARENT YARN</th>
-            <th>PREGENT YARN</th>
+            <th>PARENT YARN STRENGTH</th>
+            <th>PERCENT YARN</th>
           </tr>
         </thead>
         <tbody>
@@ -582,8 +582,8 @@ function SpliceStrength({
               <th>DRUM NO.</th>
               <th>READING NUMBER</th>
               <th>SPLICE STRENGTH</th>
-              <th>PARENT YARN</th>
-              <th>PREGENT YARN</th>
+              <th>PARENT YARN STRENGTH</th>
+              <th>PERCENT YARN</th>
             </tr>
           </thead>
           <tbody>

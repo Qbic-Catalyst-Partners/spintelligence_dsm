@@ -164,9 +164,9 @@ export const submitCardingChangeControlEntry = async (payload) => {
     }
 };
 
-export const fetchCardingChangeControlEntries = async ({ page = 1, limit = 10 } = {}) => {
+export const fetchCardingChangeControlEntries = async ({ page = 1, limit = 10, ...filters } = {}) => {
     try {
-        const response = await apiConfig.get("/carding/change-control", { page, limit });
+        const response = await apiConfig.get("/carding/change-control", { page, limit, ...filters });
         return response.data;
     } catch (error) {
         throw new Error(getCardingApiErrorMessage(error, "Unable to fetch entries."));

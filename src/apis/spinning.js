@@ -9,25 +9,28 @@ const endpoints = {
   "Speed Checking": "/spinning/speed-checking",
   "Lycra Missing": "/spinning/lycra-missing",
   "Bottom Apron Checking": "/spinning/bottom-apron-checking",
-  "Lycra Centering": "/spinning/lycra-centering",
+  "Lycra out of Centering": "/spinning/lycra-centering",
   "RSM & Lycrasensor Checking Online": "/spinning/rsm-lycra-online",
   "RSM & Lycrasensor Checking Offline": "/spinning/rsm-lycra-offline",
   "Wheel Change": "/spinning/wheel-change",
 };
 
 const resolveWheelChangeEndpoint = (endpoint, payload) => {
-  const wheelType = String(payload?.wheel_change_type || "")
+  // `wheel_change_sub_type` is an internal routing hint (Type 4 sends the
+  // canonical "type4" here while `wheel_change_type` itself holds the
+  // backend's expected "Wheel Change" label) — Type 1/2/3 don't set it, so
+  // this falls back to reading `wheel_change_type` as before.
+  const wheelType = String(payload?.wheel_change_sub_type || payload?.wheel_change_type || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
   const allowedTypes = new Set(["type1", "type2", "type3", "type4"]);
-  const mappedType = wheelType === "type4" ? "type1" : wheelType;
 
   if (!allowedTypes.has(wheelType)) {
     throw new Error("Invalid wheel change type. Use Type 1, Type 2, Type 3, or Type 4.");
   }
 
-  return `${endpoint}/${mappedType}`;
+  return `${endpoint}/${wheelType}`;
 };
 
 // POST API
@@ -36,12 +39,17 @@ export const saveSpinningRecord = async (type, payload) => {
   let endpoint = baseEndpoint;
   if (!baseEndpoint) throw new Error("Invalid checking type");
 
+  let requestPayload = payload;
   if (type === "Wheel Change") {
     endpoint = resolveWheelChangeEndpoint(baseEndpoint, payload);
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "wheel_change_sub_type")) {
+      const { wheel_change_sub_type, ...rest } = payload;
+      requestPayload = rest;
+    }
   }
 
   try {
-    const response = await api.post(endpoint, payload);
+    const response = await api.post(endpoint, requestPayload);
     return response.data;
   } catch (error) {
     if (error.response && error.response.data) {
@@ -659,9 +667,8 @@ export const fetchSpinningWheelChangeDropdown = async (wheelType = "", params = 
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const backendType = normalizedType === "type4" ? "type1" : normalizedType;
   const typeEndpoint = ["type1", "type2", "type3", "type4"].includes(normalizedType)
-    ? `/spinning/wheel-change/${backendType}/master/dropdown`
+    ? `/spinning/wheel-change/${normalizedType}/master/dropdown`
     : null;
   const endpoints = [
     typeEndpoint,
@@ -727,10 +734,8 @@ export const fetchSpinningWheelChangeLatestRecord = async (wheelType = "", param
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const backendType = normalizedType === "type4" ? "type1" : normalizedType;
-
   const endpoints = ["type1", "type2", "type3", "type4"].includes(normalizedType)
-    ? [`/spinning/wheel-change/${backendType}`]
+    ? [`/spinning/wheel-change/${normalizedType}`]
     : [
         "/spinning/wheel-change/type1",
         "/spinning/wheel-change/type2",

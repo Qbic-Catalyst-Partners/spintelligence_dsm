@@ -388,6 +388,33 @@ export const mixingAfisDataEntry = async (payload) => {
 export const fetchMixingAfisEntries = async (params = {}) =>
     fetchMixingEntries('/mixing/afis', params, 'Failed to load AFIS entries.');
 
+/* ===== AFIS-6 Cotton ===== */
+export const mixingAfis6CottonDataEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post('/mixing/afis6-cotton', payload, { skipGlobalSuccessModal: true });
+        return response.data;
+    } catch (error) {
+        if (error.response?.data) throw new Error(error.response.data.message || 'Invalid payload.');
+        throw new Error(error.message || 'Server error occurred');
+    }
+};
+
+export const fetchMixingAfis6CottonEntries = async (params = {}) =>
+    fetchMixingEntries('/mixing/afis6-cotton', params, 'Failed to load AFIS-6 Cotton entries.');
+
+export const mixingAfis6MmfDataEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post('/mixing/afis6-mmf', payload, { skipGlobalSuccessModal: true });
+        return response.data;
+    } catch (error) {
+        if (error.response?.data) throw new Error(error.response.data.message || 'Invalid payload.');
+        throw new Error(error.message || 'Server error occurred');
+    }
+};
+
+export const fetchMixingAfis6MmfEntries = async (params = {}) =>
+    fetchMixingEntries('/mixing/afis6-mmf', params, 'Failed to load AFIS-6 MMF entries.');
+
 /* ===== Moisture ===== */
 export const mixingMoistureDataEntry = async (payload) => {
     try {

@@ -97,7 +97,7 @@ const SPINNING_ENTRY_ID_CONFIG = {
     "Speed Checking": { prefix: "SSD", width: 4, routePath: "/spinning/speed-checking" },
     "Lycra Missing": { prefix: "SLM", width: 4, routePath: "/spinning/lycra-missing" },
     "Bottom Apron Checking": { prefix: "SBA", width: 4, routePath: "/spinning/bottom-apron-checking" },
-    "Lycra Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
+    "Lycra out of Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
     "RSM & Lycrasensor Checking Online": { prefix: "SRO", width: 4, routePath: "/spinning/rsm-lycra-online" },
     "RSM & Lycrasensor Checking Offline": { prefix: "SFO", width: 4, routePath: "/spinning/rsm-lycra-offline" },
     "Wheel Change": { prefix: "SWC", width: 4, routePath: "/spinning/wheel-change" },
@@ -330,6 +330,7 @@ function SpinningDepartment() {
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [confirmedEntryId, setConfirmedEntryId] = useState("");
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
@@ -481,7 +482,7 @@ function SpinningDepartment() {
 
         const screenMap = {
             "Lycra Missing": "lycra-missing",
-            "Lycra Centering": "lycra-centering",
+            "Lycra out of Centering": "lycra-centering",
             "RSM & Lycrasensor Checking Online": "rsm-lycra-online",
             "RSM & Lycrasensor Checking Offline": "rsm-lycra-offline",
         };
@@ -576,7 +577,10 @@ function SpinningDepartment() {
             clearFormValues();
             dispatch(resetSpinningState());
         }
-        if (error) dispatch(resetSpinningState());
+        if (error) {
+            setValidationMessage(typeof error === "string" ? error : "Failed to save record. Please try again.");
+            dispatch(resetSpinningState());
+        }
     }, [success, error, dispatch, clearFormValues]);
 
     const getTodayDate = () => new Date().toISOString().split("T")[0];
@@ -811,10 +815,6 @@ function SpinningDepartment() {
             nextErrors.checkingType = true;
             missingFields.push("Checking Type");
         }
-        if (!date) {
-            nextErrors.date = true;
-            missingFields.push("Date");
-        }
         if (isCountChange) {
             if (!rfNo.trim()) {
                 nextErrors.rfNo = true;
@@ -1035,11 +1035,20 @@ function SpinningDepartment() {
         setShowPreview(false);
         const result = await dispatch(submitSpinningRecord({ type: checkingType, payload }));
         if (submitSpinningRecord.fulfilled.match(result)) {
+            // The backend assigns its own entry_id for some screens (e.g. Wheel
+            // Change Type 4 — see SW4-NNNN in its create response) rather than
+            // using the locally-reserved placeholder, so prefer whatever the
+            // response actually returned.
+            const responseData = result.payload?.data ?? result.payload;
+            const realEntryId = String(
+                responseData?.entry_id ?? responseData?.entryId ?? entryId ?? ""
+            ).trim();
+            setConfirmedEntryId(realEntryId);
             await recordSubmittedNotebook({
                 department: "Quality Control",
                 subDepartment: "Spinning",
                 notebookName: checkingType,
-                entryId,
+                entryId: realEntryId || entryId,
                 previewItems,
                 user,
                 extra: {
@@ -1708,8 +1717,10 @@ function SpinningDepartment() {
 
             <SuccessModal
                 open={showSuccess}
+                message={confirmedEntryId ? `Data Submitted (Entry ID: ${confirmedEntryId})` : undefined}
                 onClose={() => {
                     setShowSuccess(false);
+                    setConfirmedEntryId("");
                     successHandledRef.current = false;
                     handleClearForm();
                 }}

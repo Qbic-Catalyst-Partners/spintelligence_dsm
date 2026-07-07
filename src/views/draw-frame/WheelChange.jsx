@@ -1348,6 +1348,8 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       page: 1,
       limit: 1,
       wheelChangeType: apiWheelChangeType,
+      approval_status: "approved",
+      status: "approved",
     };
     const trimmedMixing = String(mixingValue || "").trim();
     if (trimmedMixing) {
@@ -1809,6 +1811,8 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     const payload = {
       entry_id: entryId,
       type: selectedTypeName,
+      department: "Draw Frame",
+      approval_status: "pending",
       line_type: lineType,
       wheel_change_type: getApiWheelChangeType(wheelChangeType),
       wheel_change_type_label: wheelChangeType,
