@@ -503,7 +503,7 @@ export default function operatorboard() {
                             <tr
                                 key={t.id} // Use 't.id', not 'ticket.id'
                                 style={{ cursor: "pointer" }}
-                                onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}`)}
+                                onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`)}
                             >
                                 <td className={styles["ticket-link"]}>{t.id}</td>
                                 <td>{t.machine}</td>
@@ -623,7 +623,7 @@ export default function operatorboard() {
                 )}
 
                 {displayTickets.map((t) => (
-                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}`)}>
+                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`)}>
                         <div className={styles["card-top"]}>
                             <div className={styles["left-section"]}>
                                 <div className={styles["card-id-machine"]}>{t.id} | {t.machine}</div>

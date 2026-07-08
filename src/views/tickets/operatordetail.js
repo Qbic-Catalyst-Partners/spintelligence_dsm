@@ -35,7 +35,7 @@ const fixImgSrc = "/fix.png";
 export default function TicketDetails() {
   const router = useRouter();
   const dispatch = useDispatch();
-  const { ticketId } = router.query;
+  const { ticketId, ticketType } = router.query;
 
   const {
     tickets,
@@ -127,7 +127,13 @@ export default function TicketDetails() {
   };
 
   const rawParameterNames = getTicketParameterNames(resolvedTicket);
-  const isSubmissionTicket = isSubmissionTicketRecord(resolvedTicket);
+  // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,
+  // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
+  // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
+  const isSubmissionTicket = ticketType
+    ? ticketType === "submission"
+    : isSubmissionTicketRecord(resolvedTicket) ||
+      String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
   const submissionParameterNames = rawParameterNames.filter(
     (param) => isSubmissionFrequencyParameterName(param) || isNotebookAcknowledgementParameterName(param)
   );
@@ -164,9 +170,16 @@ export default function TicketDetails() {
     (isSubmissionTicket
       ? `Submission alert for ${machineName}. Please complete and resubmit the required entry.`
       : `Alert generated for machine ${machineName}. Please review and complete the fix before resubmitting.`);
-  const submissionFrequency = resolvedTicket?.frequency || resolvedTicket?.threshold_value?.expected_frequency || "-";
+  const submissionFrequency =
+    resolvedTicket?.frequency ||
+    resolvedTicket?.submission_frequency ||
+    resolvedTicket?.check_frequency ||
+    resolvedTicket?.threshold_value?.expected_frequency ||
+    "-";
   const submissionOccurrences =
     resolvedTicket?.occurrences ??
+    resolvedTicket?.occurrence_count ??
+    resolvedTicket?.count ??
     resolvedTicket?.violation_details?.checks?.expected_occurrences ??
     resolvedTicket?.violation_details?.checks?.actual_occurrences ??
     "-";

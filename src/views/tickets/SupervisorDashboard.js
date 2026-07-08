@@ -295,7 +295,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
   const handleTicketClick = (ticketId) => {
     const id = ticketId?.startsWith("#") ? ticketId : `#${ticketId}`;
-    router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}`);
+    router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}&ticketType=${activeTicketingView}`);
   };
 
   const handleDashboardTicketClick = (ticket) => {

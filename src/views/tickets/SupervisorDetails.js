@@ -93,7 +93,7 @@ const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_K
 
 export default function SupervisorDetails() {
   const router = useRouter();
-  const { ticketId } = router.query;
+  const { ticketId, ticketType } = router.query;
 
   const dispatch = useDispatch();
   const { actionLoading, ticket: ticketDetail, tickets, isLoading, error } = useSelector((state) => state.supervisor);
@@ -295,7 +295,13 @@ export default function SupervisorDetails() {
   if (error && !ticket) return <p className={styles.loading}>{error}</p>;
   if (!ticket) return <p className={styles.loading}>No ticket found</p>;
 
-  const isSubmissionTicket = isSubmissionTicketRecord(ticket);
+  // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,
+  // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
+  // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
+  const isSubmissionTicket = ticketType
+    ? ticketType === "submission"
+    : isSubmissionTicketRecord(ticket) ||
+      String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
   const rawParameterNames = getTicketParameterNames(ticket);
   const submissionParameterNames = rawParameterNames.filter(
     (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)

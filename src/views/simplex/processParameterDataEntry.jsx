@@ -444,6 +444,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
       const nextForm = { ...current, [field]: value };
 
       if (
+        !entryId &&
         (field === "countName" || field === "consigneeName") &&
         String(current[field] || "").trim() !== String(value || "").trim()
       ) {
@@ -537,8 +538,15 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
     try {
       const payload = buildPayload();
-      const response = form.versionId
-        ? await updateSimplexProcessParameterEntry(form.versionId, payload)
+      const targetIdForMatch = entryId || form.paramId;
+      const existingVersion = targetIdForMatch
+        ? versions.find(
+            (v) => normalizeProcessParameterId(v.data.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          )
+        : null;
+      const targetVersionId = form.versionId || existingVersion?.id;
+      const response = targetVersionId
+        ? await updateSimplexProcessParameterEntry(targetVersionId, payload)
         : await submitSimplexProcessParameterEntry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);

@@ -21,6 +21,8 @@ import {
   submitAutoconerQ3Entry,
   updateAutoconerQ3Entry,
   fetchAutoconerQ3Entries,
+  submitAutoconerQ2Entry,
+  fetchAutoconerQ2Entries,
 } from "@/apis/autoconer";
 import styles from "@/styles/AutoconerQ2.module.css";
 
@@ -218,8 +220,26 @@ const isVersionComplete = (version) =>
     String(version?.data?.[field] || "").trim()
   );
 
+const buildZeroFilledQ2Payload = ({ entryId, countName, consigneeName, creationDate }) => ({
+  entry_id: entryId || undefined,
+  count_name: countName,
+  consignee_name: consigneeName,
+  creation_date: creationDate,
+  n_value: 0, s_value: 0, l_value: 0,
+  lh1: 0, lh2: 0, lh3: 0, lh4: 0, lh5: 0, lh6: 0,
+  tht: 0, th1: 0, th2: 0, th3: 0, th4: 0, th5: 0, th6: 0,
+  cp: 0, cm: 0, ccp: 0, ccm: 0, pc: 0,
+  fault_distance: 0, no_of_faults: 0,
+  jp: 0, jm: 0, up: 0,
+  fl: 0, flh1: 0, flh2: 0, flh3: 0, flh4: 0,
+  fd: 0, fdh1: 0, fdh2: 0, fdh3: 0, fdh4: 0, fdh5: 0,
+  reference_length: 0, measurement: 0,
+  upper_alarm_limit: 0, lower_alarm_limit: 0,
+  action: "0",
+});
+
 const buildPayload = (form, entryId = "") => ({
-  entry_id: (form.paramId || entryId) || undefined,
+  entry_id: (entryId || form.paramId) || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -313,7 +333,6 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       setVersions([]);
       setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
       setExpandedVersionId(null);
-      setSavedProcessParameterId(entryId || "");
       return;
     }
     const rows = Array.isArray(response?.data) ? response.data : [];
@@ -436,6 +455,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
 
       const nextForm = { ...current, [field]: nextValue };
       if (
+        !entryId &&
         (field === "countName" || field === "consigneeName") &&
         String(current[field] || "").trim() !== String(nextValue || "").trim()
       ) {
@@ -498,14 +518,22 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload(form, entryId);
-      const response = form.versionId
-        ? await updateAutoconerQ3Entry(form.versionId, payload)
+      const targetIdForMatch = entryId || form.paramId;
+      const existingVersion = targetIdForMatch
+        ? versions.find(
+            (v) => normalizeProcessParameterId(v.data.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          )
+        : null;
+      const targetVersionId = form.versionId || existingVersion?.id;
+      const response = targetVersionId
+        ? await updateAutoconerQ3Entry(targetVersionId, payload)
         : await submitAutoconerQ3Entry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
       setForm((current) => ({ ...current, paramId: nextParamId }));
       registerProcessParameterId(response, "Autoconer", form.countName);
 
+      await ensureSiblingQ2Entry(nextParamId);
       await loadVersions();
       return true;
     } catch (error) {
@@ -513,6 +541,31 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       return false;
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const ensureSiblingQ2Entry = async (paramId) => {
+    if (!paramId) return;
+    try {
+      const q2Response = await fetchAutoconerQ2Entries({ page: 1, limit: 200 });
+      const q2Rows = Array.isArray(q2Response?.data) ? q2Response.data : [];
+      const alreadyExists = q2Rows.some(
+        (row) =>
+          normalizeProcessParameterId(row?.entry_id || row?.ins_code || "") ===
+          normalizeProcessParameterId(paramId)
+      );
+      if (alreadyExists) return;
+
+      await submitAutoconerQ2Entry(
+        buildZeroFilledQ2Payload({
+          entryId: paramId,
+          countName: form.countName,
+          consigneeName: form.consigneeName,
+          creationDate: form.creationDate,
+        })
+      );
+    } catch {
+      // Sibling auto-submit is best-effort; ignore failures here.
     }
   };
 

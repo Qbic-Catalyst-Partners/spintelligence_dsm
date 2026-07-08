@@ -60,3 +60,12 @@ export const removeLocalEntriesByParamId = (namespace, paramId) => {
   );
   safeWrite(`${STORE_PREFIX}${namespace}`, next);
 };
+
+export const clearLocalEntries = (namespace) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(`${STORE_PREFIX}${namespace}`);
+  } catch {
+    // ignore storage failures
+  }
+};

@@ -509,8 +509,10 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
 
       // If the user changes only the header identity fields, keep the previous
       // machine/process values but treat it as a new entry instead of updating
-      // the selected saved version.
+      // the selected saved version. Skip this when editing an existing PP id
+      // (entryId set) so the update path is preserved.
       if (
+        !entryId &&
         (field === "countName" || field === "consigneeName") &&
         String(current[field] || "").trim() !== String(value || "").trim()
       ) {
@@ -561,7 +563,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   };
 
   const buildPayload = () => ({
-    entry_id: String(form.paramId || entryId || savedProcessParameterId || "").trim() || undefined,
+    entry_id: String(entryId || form.paramId || savedProcessParameterId || "").trim() || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -618,8 +620,15 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload();
-      const response = form.versionId
-        ? await updateCardingProcessParameterEntry(form.versionId, payload)
+      const targetIdForMatch = entryId || form.paramId;
+      const existingVersion = targetIdForMatch
+        ? versions.find(
+            (v) => normalizeProcessParameterId(v.data.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          )
+        : null;
+      const targetVersionId = form.versionId || existingVersion?.id;
+      const response = targetVersionId
+        ? await updateCardingProcessParameterEntry(targetVersionId, payload)
         : await submitCardingProcessParameterEntry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);

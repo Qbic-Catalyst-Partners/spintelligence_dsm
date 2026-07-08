@@ -101,7 +101,7 @@ const getEntryId = (entry) =>
   String(entry?.br_id ?? entry?.id ?? entry?._id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? "");
 
 const getDisplayEntryId = (entry) =>
-  String(entry?.display_entry_id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? entry?.br_code ?? "");
+  String(entry?.entry_id ?? entry?.display_entry_id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? entry?.br_code ?? "");
 
 const mapApiEntryToVersion = (entry) => ({
   id: getEntryId(entry),
@@ -314,6 +314,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
       const nextForm = { ...current, [field]: nextValue };
       if (
+        !entryId &&
         (field === "countName" || field === "consigneeName") &&
         String(current[field] || "").trim() !== String(nextValue || "").trim()
       ) {
@@ -355,7 +356,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const buildPayload = () => ({
-    entry_id: (form.paramId || entryId || savedProcessParameterId) || undefined,
+    entry_id: (entryId || form.paramId || savedProcessParameterId) || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -404,8 +405,15 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload();
-      const response = form.versionId
-        ? await updateBlowroomProcessParameterApi(form.versionId, payload)
+      const targetIdForMatch = entryId || form.paramId;
+      const existingVersion = targetIdForMatch
+        ? versions.find(
+            (v) => normalizeProcessParameterId(v.data.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          )
+        : null;
+      const targetVersionId = form.versionId || existingVersion?.id;
+      const response = targetVersionId
+        ? await updateBlowroomProcessParameterApi(targetVersionId, payload)
         : await saveBlowroomProcessParameterApi(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);

@@ -15,7 +15,11 @@ import AutoconerQ2 from "@/views/autoconer/AutoconerQ2";
 import AutoconerQ3 from "@/views/autoconer/AutoconerQ3";
 import { hasSubDepartmentAccess } from "@/utils/accessControl";
 import { normalizeProcessParameterId, resolveProcessParameterDisplayId } from "@/utils/processParameterId";
-import { getProcessParameterCountName, readProcessParameterRegistry } from "@/utils/processParameterRegistry";
+import {
+  getProcessParameterCountName,
+  readProcessParameterRegistry,
+  resetProcessParameterLocalState,
+} from "@/utils/processParameterRegistry";
 import { loadLocalEntries } from "@/utils/localProcessParameterStore";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
@@ -131,7 +135,7 @@ const REMOTE_STATUS_SOURCES = [
     index: 1,
     fetch: (filters) => fetchBlowroomProcessParametersApi({ page: 1, limit: 200, ...buildFilterParams(filters) }),
     getId: (entry) =>
-      entry?.display_entry_id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? entry?.br_code,
+      entry?.entry_id ?? entry?.display_entry_id ?? entry?.process_parameter_id ?? entry?.parameter_id ?? entry?.param_id ?? entry?.br_code,
     isDone: () => true,
     getDetails: getEntryDetails,
   },
@@ -554,6 +558,20 @@ export default function ProcessParameterPage() {
     return match?.value;
   };
 
+  // The identifier alone isn't proof the form actually loaded matching data — every
+  // department's form falls back to displaying the requested entryId as its "Process
+  // Parameter ID"/"Entry ID" even when it found no saved version for it (all other
+  // fields stay blank/zero in that case). So also require at least one non-identifier
+  // field to hold a real value before treating a column as genuinely loaded.
+  const hasNonIdentifierData = (items) =>
+    items.some((item) => {
+      if (item?.label === "Process Parameter ID" || item?.label === "Entry ID" || item?.label === "Type") {
+        return false;
+      }
+      const value = String(item?.value ?? "").trim();
+      return value && value !== "-" && value !== "0";
+    });
+
   useEffect(() => {
     if (!previewPpId) {
       setPreviewData({});
@@ -575,8 +593,12 @@ export default function ProcessParameterPage() {
         if (!Array.isArray(items)) return;
 
         const identifier = findIdentifierValue(items);
-        const isReady = Boolean(identifier) && normalizeProcessParameterId(identifier) === targetId;
+        const identifierMatches = Boolean(identifier) && normalizeProcessParameterId(identifier) === targetId;
         const timedOut = Date.now() - startedAt > 15000;
+        // Before the timeout, only accept a match once real field data has loaded —
+        // otherwise we lock in the blank/zero fallback the instant the form mounts,
+        // before its own fetch has had a chance to find the saved version.
+        const isReady = identifierMatches && (hasNonIdentifierData(items) || timedOut);
 
         if (isReady || timedOut) {
           pendingKeys.delete(key);
@@ -874,6 +896,27 @@ export default function ProcessParameterPage() {
                   <MdPrint /> Print Matrix
                 </button>
               ) : null}
+              <button
+                type="button"
+                className={styles.printMatrixButton}
+                title="Clears this browser's PP id counter and locally-stored Draw Frame/Spinning entries so new PPs start from PP-0001 again. Does not delete backend records (Mixing/Blow Room/Carding/Simplex/Autoconer/Q2/Q3) — those must be removed from the database separately."
+                onClick={() => {
+                  const confirmed = window.confirm(
+                    "This clears the PP id counter and locally-stored Draw Frame/Spinning entries on this browser so new PPs start from PP-0001.\n\n" +
+                      "It does NOT delete backend records (Mixing, Blow Room, Carding, Simplex, Autoconer, AC-Q2, AC-Q3) — those must be deleted from the database first, otherwise their rows and PP ids will still appear.\n\n" +
+                      "Continue?"
+                  );
+                  if (!confirmed) return;
+                  resetProcessParameterLocalState();
+                  setDynamicRows(loadRegistryRows());
+                  loadRemoteStatuses();
+                  setSelectedEntryId("");
+                  setOpenEditTabs([]);
+                  setActiveTab("new");
+                }}
+              >
+                Reset Local PP Data
+              </button>
               <div className={styles.currentDate}>Current Date : {currentDate}</div>
             </div>
           </div>

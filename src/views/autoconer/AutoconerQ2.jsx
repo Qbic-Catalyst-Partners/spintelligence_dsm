@@ -21,6 +21,8 @@ import {
   submitAutoconerQ2Entry,
   updateAutoconerQ2Entry,
   fetchAutoconerQ2Entries,
+  submitAutoconerQ3Entry,
+  fetchAutoconerQ3Entries,
 } from "@/apis/autoconer";
 import styles from "@/styles/AutoconerQ2.module.css";
 
@@ -209,8 +211,27 @@ const isVersionComplete = (version) =>
     String(version?.data?.[field] || "").trim()
   );
 
+const buildZeroFilledQ3Payload = ({ entryId, countName, consigneeName, creationDate }) => ({
+  entry_id: entryId || undefined,
+  count_name: countName,
+  consignee_name: consigneeName,
+  creation_date: creationDate,
+  nsl1: 0, nsl2: 0, nsl3: 0, nsl4: 0, nsl5: 0, nsl6: 0, nsl7: 0,
+  t1: 0, t2: 0, t3: 0, t4: 0, t5: 0,
+  pf_sensing: 0, pf_no_of_periods: 0,
+  oc: 0, cp: 0, cm: 0, ccp1: 0, ccp2: 0, ccm1: 0, ccm2: 0,
+  jp1: 0, jp2: 0, jp3: 0, jp4: 0, jp5: 0, jp6: 0, jp7: 0,
+  jp_clearing: 0, jp_u_percent: 0, jp_jm: 0,
+  fd1: 0, fd2: 0, fd3: 0, fd4: 0, fd5: 0, fd6: 0,
+  reference_length: 0, suction: 0, measurement: 0,
+  upper_limit: 0, lower_limit: 0,
+  action: "0",
+  suction_status: "0",
+  blocking: "0",
+});
+
 const buildPayload = (form, entryId = "") => ({
-  entry_id: (form.paramId || entryId) || undefined,
+  entry_id: (entryId || form.paramId) || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -277,7 +298,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
-  const displayEntryId = form.paramId || entryId || previewNextId || "Generating next ID...";
+  const displayEntryId = entryId || form.paramId || previewNextId || "Generating next ID...";
 
   const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countOptions = buildProcessParameterOptions(
@@ -301,7 +322,6 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       setVersions([]);
       setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
       setExpandedVersionId(null);
-      setSavedProcessParameterId(entryId || "");
       return;
     }
     const rows = Array.isArray(response?.data) ? response.data : [];
@@ -424,6 +444,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
 
       const nextForm = { ...current, [field]: nextValue };
       if (
+        !entryId &&
         (field === "countName" || field === "consigneeName") &&
         String(current[field] || "").trim() !== String(nextValue || "").trim()
       ) {
@@ -486,14 +507,22 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       setIsSubmitting(true);
       setSubmitError("");
       const payload = buildPayload(form, entryId);
-      const response = form.versionId
-        ? await updateAutoconerQ2Entry(form.versionId, payload)
+      const targetIdForMatch = entryId || form.paramId;
+      const existingVersion = targetIdForMatch
+        ? versions.find(
+            (v) => normalizeProcessParameterId(v.data.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          )
+        : null;
+      const targetVersionId = form.versionId || existingVersion?.id;
+      const response = targetVersionId
+        ? await updateAutoconerQ2Entry(targetVersionId, payload)
         : await submitAutoconerQ2Entry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
       setForm((current) => ({ ...current, paramId: nextParamId }));
       registerProcessParameterId(response, "Autoconer", form.countName);
 
+      await ensureSiblingQ3Entry(nextParamId);
       await loadVersions();
       return true;
     } catch (error) {
@@ -501,6 +530,31 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       return false;
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const ensureSiblingQ3Entry = async (paramId) => {
+    if (!paramId) return;
+    try {
+      const q3Response = await fetchAutoconerQ3Entries({ page: 1, limit: 200 });
+      const q3Rows = Array.isArray(q3Response?.data) ? q3Response.data : [];
+      const alreadyExists = q3Rows.some(
+        (row) =>
+          normalizeProcessParameterId(row?.entry_id || row?.ins_code || "") ===
+          normalizeProcessParameterId(paramId)
+      );
+      if (alreadyExists) return;
+
+      await submitAutoconerQ3Entry(
+        buildZeroFilledQ3Payload({
+          entryId: paramId,
+          countName: form.countName,
+          consigneeName: form.consigneeName,
+          creationDate: form.creationDate,
+        })
+      );
+    } catch {
+      // Sibling auto-submit is best-effort; ignore failures here.
     }
   };
 
