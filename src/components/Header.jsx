@@ -208,6 +208,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleTicketingLinks = hasFullAccess
         ? ticketingLinks
         : ticketingLinks.filter((link) => link.href !== "/l3-ticketing");
+    const visibleManagementHubLinks = hasFullAccess
+        ? managementHubLinks
+        : managementHubLinks.filter((link) =>
+            link.wheelChangeApproval ? hasWheelChangeApprovalAccess : hasSubmittedNotebookAccess
+        );
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
