@@ -536,7 +536,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
         <div className="mt-4 border-t border-slate-200 pt-4">
           <div className="grid grid-cols-[100px_minmax(0,160px)] items-center gap-x-3 gap-y-3">
-            <div className="text-[12px] font-semibold uppercase text-slate-700">Total number of breaks / 100 spindles / hr (number of breaks /100SH)</div>
+            <div className="text-[12px] font-semibold uppercase text-slate-700">TOTAL No. OF BREAKS/100SH</div>
             <input
               type="text"
               readOnly

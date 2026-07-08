@@ -1238,7 +1238,6 @@ function DrawFrame() {
       if (!uPercentForm.cvm) uPercentErrors.cvm = true;
       if (!uPercentForm.oneMeterCvm) uPercentErrors.oneMeterCvm = true;
       if (!uPercentForm.threeMeterCvm) uPercentErrors.threeMeterCvm = true;
-
       const hasErrors =
         Object.keys(headerErrors).length > 0 || Object.keys(uPercentErrors).length > 0;
 

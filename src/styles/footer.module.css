@@ -19,16 +19,10 @@
   background: transparent;
 }
 
-.left-actions {
-  margin-right: auto;
-}
-
 .right-actions {
   margin-left: auto;
 }
 
-
-.left-actions,
 .right-actions {
   display: flex;
   gap: 8px;
@@ -67,7 +61,6 @@
   box-shadow: none;
 }
 
-.back-btn,
 .secondary-btn {
   background: #ffffff;
   color: #334155;
@@ -99,16 +92,11 @@
   border-color: #3D539F !important;
 }
 
-.secondary-btn:hover,
-.back-btn:hover {
+.secondary-btn:hover {
   background: #f8f9fb;
 }
 
 @media (max-width: 767px) {
-  .left-actions {
-    display: none;
-  }
-
   .footer-container {
     display: flex;
     justify-content: center;  
