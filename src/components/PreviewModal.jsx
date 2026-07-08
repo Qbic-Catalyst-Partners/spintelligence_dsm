@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { AiOutlinePrinter } from "react-icons/ai";
 import styles from "@/styles/previewModal.module.css";
 
 const formatValue = (value) => {
@@ -15,13 +17,28 @@ function PreviewModal({
   items = [],
   onCancel,
   onConfirm,
+  onPrint,
   confirmLabel = "Submit",
   typeLabel = "Type",
   typeValue,
 }) {
-  if (!open) return null;
+  const [isMounted, setIsMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!open || !isMounted) return null;
+
+  const handlePrint = () => {
+    if (onPrint) {
+      onPrint();
+      return;
+    }
+    window.print();
+  };
+
+  return createPortal(
     <div className={styles.overlay}>
       <div className={styles.modal}>
         <div className={styles.headerRow}>
@@ -29,12 +46,24 @@ function PreviewModal({
             {subtitle ? <div className={styles.breadcrumb}>{subtitle}</div> : null}
             <h2 className={styles.title}>{title}</h2>
           </div>
-          {typeValue ? (
-            <div className={styles.typePill}>
-              <div className={styles.typeLabel}>{typeLabel}</div>
-              <div className={styles.typeValue}>{formatValue(typeValue)}</div>
-            </div>
-          ) : null}
+          <div className={styles.headerRight}>
+            <button
+              type="button"
+              className={styles.printButton}
+              onClick={handlePrint}
+              aria-label="Print"
+              title="Print"
+            >
+              <AiOutlinePrinter size={16} />
+              Print
+            </button>
+            {typeValue ? (
+              <div className={styles.typePill}>
+                <div className={styles.typeLabel}>{typeLabel}</div>
+                <div className={styles.typeValue}>{formatValue(typeValue)}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.grid}>
@@ -58,7 +87,8 @@ function PreviewModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

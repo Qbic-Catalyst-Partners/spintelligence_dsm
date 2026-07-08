@@ -1180,10 +1180,10 @@ function SpinningDepartment() {
                     ]))
                 ]
             : [
-                { label: "Spindle Number Value", value: lhsValue || "-" },
-                { label: "Spindle Number Value", value: rhsValue || "-" },
-                { label: "Spindle Number Remarks", value: lhsRemarks || "-" },
-                { label: "Spindle Number Remarks", value: rhsRemarks || "-" },
+                { label: "LHS (Spindle Number)", value: lhsValue || "-" },
+                { label: "RHS (Spindle Number)", value: rhsValue || "-" },
+                { label: "Remarks", value: lhsRemarks || "-" },
+                { label: "Remarks", value: rhsRemarks || "-" },
             ];
 
         if (checkingType === "Speed Checking") {
@@ -1630,7 +1630,7 @@ function SpinningDepartment() {
                                     <div className={styles["comparison-row"]}>
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
-                                                <label>Spindle Number</label>
+                                                <label>LHS (Spindle Number)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
                                             <input
@@ -1642,7 +1642,7 @@ function SpinningDepartment() {
                                                 className={errors.lhsValue ? styles["input-error"] : ""}
                                             />
                                             <div className={styles["remarks-header"]}>
-                                                <span>Spindle Number Remarks</span>
+                                                <span>Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
                                                     <AiOutlineAudio className={styles["mic-icon"]} />
                                                 </div>
@@ -1653,7 +1653,7 @@ function SpinningDepartment() {
 
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
-                                                <label>Spindle Number</label>
+                                                <label>RHS (Spindle Number)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
                                             <input
@@ -1665,7 +1665,7 @@ function SpinningDepartment() {
                                                 className={errors.rhsValue ? styles["input-error"] : ""}
                                             />
                                             <div className={styles["remarks-header"]}>
-                                                <span>Spindle Number Remarks</span>
+                                                <span>Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
                                                     <AiOutlineAudio className={styles["mic-icon"]} />
                                                 </div>

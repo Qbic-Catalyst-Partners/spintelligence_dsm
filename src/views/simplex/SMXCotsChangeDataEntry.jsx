@@ -17,9 +17,9 @@ const detailItems = [
   "Third Cots Tilting",
   "Back Cots Tilting",
   "Cradle Lifting",
-  "Floating",
+  "Floating Condensor Missing",
   "Middle Condensor Missing",
-  "Back",
+  "Back Condensor Missing",
   "Others 1",
   "Others 2",
 ];

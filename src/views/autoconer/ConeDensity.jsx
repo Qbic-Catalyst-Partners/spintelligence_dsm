@@ -296,6 +296,7 @@ const ConeDensity = forwardRef(function ConeDensity(
   const validate = () => {
     const nextErrors = {};
     Object.entries(form).forEach(([key, value]) => {
+      if (key === "remarks") return;
       if (String(value).trim() === "") nextErrors[key] = true;
     });
     if (!isValidDrumRange(form.drumFrom, form.drumTo)) {

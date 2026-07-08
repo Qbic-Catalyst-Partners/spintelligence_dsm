@@ -116,7 +116,6 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     if (!String(form.cvm || "").trim()) nextErrors.cvm = true;
     if (!String(form.im_cvm || "").trim()) nextErrors.im_cvm = true;
     if (!String(form.m3_cvm || "").trim()) nextErrors.m3_cvm = true;
-    if (!String(form.remarks || "").trim()) nextErrors.remarks = true;
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;

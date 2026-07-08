@@ -163,7 +163,6 @@ function DrumWiseAppearance({
       nextErrors.drumTo = true;
       nextErrors.rows = true;
     }
-    if (!String(remarks || "").trim()) nextErrors.remarks = true;
     if (!rows.length) nextErrors.rows = true;
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;

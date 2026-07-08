@@ -1248,8 +1248,6 @@ function DrawFrame() {
       if (!uPercentForm.cvm) uPercentErrors.cvm = true;
       if (!uPercentForm.oneMeterCvm) uPercentErrors.oneMeterCvm = true;
       if (!uPercentForm.threeMeterCvm) uPercentErrors.threeMeterCvm = true;
-      if (!uPercentForm.remarks.trim()) uPercentErrors.remarks = true;
-
       const hasErrors =
         Object.keys(headerErrors).length > 0 || Object.keys(uPercentErrors).length > 0;
 
@@ -1314,7 +1312,6 @@ function DrawFrame() {
     } else {
       if (!form.date.trim()) headerErrors.date = true;
       if (!form.machineNumber.trim()) headerErrors.machineNumber = true;
-      if (!form.remarks.trim()) headerErrors.remarks = true;
       if (!form.readingCount || form.readingCount <= 0) headerErrors.readingCount = true;
 
       const ensureMetricCount = Math.max(form.readingCount || 0, 1);
