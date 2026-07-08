@@ -103,8 +103,27 @@ const SPINNING_ENTRY_ID_CONFIG = {
     "Wheel Change": { prefix: "SWC", width: 4, routePath: "/spinning/wheel-change" },
 };
 
-const getSpinningEntryConfig = (typeName) =>
-    SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN" };
+// Wheel Change has 4 independently-tabled sub-types (Type 1-4, see
+// WheelChange.jsx's `wheelChangeType` state and its `/spinning/wheel-change/type{N}`
+// endpoints). The generic "Wheel Change" config above points at the shared
+// aggregate route, which only ever reflects Type 1-3's table — Type 4 posts
+// to its own dedicated table (its create response returns ids like
+// "SW4-0007"), so reserving/guessing the next id from the aggregate route
+// produces the wrong sequence (and even the wrong prefix) once a sub-type is
+// selected. Scope the reservation to the actual sub-type's table instead.
+const WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE = {
+    "Type 1": { prefix: "SW1", width: 4, routePath: "/spinning/wheel-change/type1" },
+    "Type 2": { prefix: "SW2", width: 4, routePath: "/spinning/wheel-change/type2" },
+    "Type 3": { prefix: "SW3", width: 4, routePath: "/spinning/wheel-change/type3" },
+    "Type 4": { prefix: "SW4", width: 4, routePath: "/spinning/wheel-change/type4" },
+};
+
+const getSpinningEntryConfig = (typeName, wheelChangeSubType) => {
+    if (typeName === "Wheel Change") {
+        return WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE[wheelChangeSubType] || SPINNING_ENTRY_ID_CONFIG[typeName];
+    }
+    return SPINNING_ENTRY_ID_CONFIG[typeName] || { prefix: "SPN" };
+};
 const normalizeTypeName = (value = "") => String(value).trim().toLowerCase();
 
 const getMachineText = (value) => {
@@ -331,6 +350,10 @@ function SpinningDepartment() {
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [confirmedEntryId, setConfirmedEntryId] = useState("");
+    // Which of Wheel Change's 4 sub-types (Type 1-4) is currently selected inside
+    // WheelChange.jsx, reported up via onWheelChangeTypeChange so the entry-id
+    // reservation below can scope itself to that sub-type's own table.
+    const [wheelChangeSubType, setWheelChangeSubType] = useState("");
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
@@ -367,7 +390,7 @@ function SpinningDepartment() {
     const { entryId, reserveEntryId } = useDatabaseEntryId({
         department: "Spinning",
         typeName: checkingType,
-        config: getSpinningEntryConfig(checkingType),
+        config: getSpinningEntryConfig(checkingType, wheelChangeSubType),
     });
     const machineOptions = isCotsChecking && cotsMachineOptions.length
         ? cotsMachineOptions
@@ -763,6 +786,7 @@ function SpinningDepartment() {
                 ? eventOrValue
                 : eventOrValue?.target?.value || "";
         setCheckingType(selectedType);
+        if (selectedType !== "Wheel Change") setWheelChangeSubType("");
         clearFieldError("checkingType");
         if (selectedType) {
             setDate(getTodayDate());
@@ -774,6 +798,7 @@ function SpinningDepartment() {
     const handleClearForm = () => {
         if (isProcessParameter || isWheelChange) {
             childRef.current?.clear?.();
+            if (isWheelChange) setWheelChangeSubType("");
             setErrors({});
             setValidationMessage("");
             return;
@@ -1190,10 +1215,10 @@ function SpinningDepartment() {
                     ]))
                 ]
             : [
-                { label: "Spindle Number Value", value: lhsValue || "-" },
-                { label: "Spindle Number Value", value: rhsValue || "-" },
-                { label: "Spindle Number Remarks", value: lhsRemarks || "-" },
-                { label: "Spindle Number Remarks", value: rhsRemarks || "-" },
+                { label: "LHS (Spindle Number)", value: lhsValue || "-" },
+                { label: "RHS (Spindle Number)", value: rhsValue || "-" },
+                { label: "Remarks", value: lhsRemarks || "-" },
+                { label: "Remarks", value: rhsRemarks || "-" },
             ];
 
         if (checkingType === "Speed Checking") {
@@ -1227,6 +1252,7 @@ function SpinningDepartment() {
                             typeOptions={checkingOptions}
                             entryId={entryId}
                             onTypeChange={(value) => handleTypeChange({ target: { value } })}
+                            onWheelChangeTypeChange={isWheelChange ? setWheelChangeSubType : undefined}
                             onSubmitSuccess={showSuccessOnce}
                             standaloneSection={isProcessParameter}
                             savedVersionsTargetId={isProcessParameter ? "spinning-process-parameter-saved-versions" : ""}
@@ -1640,7 +1666,7 @@ function SpinningDepartment() {
                                     <div className={styles["comparison-row"]}>
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
-                                                <label>Spindle Number</label>
+                                                <label>LHS (Spindle Number)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
                                             <input
@@ -1652,7 +1678,7 @@ function SpinningDepartment() {
                                                 className={errors.lhsValue ? styles["input-error"] : ""}
                                             />
                                             <div className={styles["remarks-header"]}>
-                                                <span>Spindle Number Remarks</span>
+                                                <span>Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
                                                     <AiOutlineAudio className={styles["mic-icon"]} />
                                                 </div>
@@ -1663,7 +1689,7 @@ function SpinningDepartment() {
 
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
-                                                <label>Spindle Number</label>
+                                                <label>RHS (Spindle Number)</label>
                                                 <span className={styles.required}>REQUIRED</span>
                                             </div>
                                             <input
@@ -1675,7 +1701,7 @@ function SpinningDepartment() {
                                                 className={errors.rhsValue ? styles["input-error"] : ""}
                                             />
                                             <div className={styles["remarks-header"]}>
-                                                <span>Spindle Number Remarks</span>
+                                                <span>Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
                                                     <AiOutlineAudio className={styles["mic-icon"]} />
                                                 </div>

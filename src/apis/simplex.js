@@ -264,6 +264,88 @@ export const submitSimplexWheelChangeNotebookEntry = async (payload) => {
   }
 };
 
+/*
+ * Dedicated simplex.wheel_change table (separate from the generic
+ * /simplex/notebook catch-all above). JSONB parameters/rows blob, keyed by
+ * machine_no for existing-value carry-forward and pending/rejected
+ * supersede-on-resubmit, mirroring spinning/carding/drawframe.
+ *
+ * POST /simplex/wheel-change   requires entry_date, machine_no
+ * GET  /simplex/wheel-change   ?machine_no=&wheel_change_type=&approval_status=
+ * GET  /simplex/wheel-change/approvals            ?status=pending|approved
+ * POST /simplex/wheel-change/approvals/:id/approve  body: { department }
+ * POST /simplex/wheel-change/approvals/:id/reject   body: { department, reason }
+ */
+export const submitSimplexWheelChangeEntry = async (payload) => {
+  try {
+    const response = await apiConfig.post("/simplex/wheel-change", payload);
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to submit simplex wheel change entry."));
+  }
+};
+
+export const fetchSimplexWheelChangeEntries = async (params = {}) => {
+  try {
+    const response = await apiConfig.get("/simplex/wheel-change", params, { skipGlobalErrorModal: true });
+    return response?.data || {};
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to fetch simplex wheel change entries."));
+  }
+};
+
+export const fetchPendingSimplexWheelChangeApprovals = async (params = {}) => {
+  try {
+    const response = await apiConfig.get(
+      "/simplex/wheel-change/approvals",
+      { status: "pending", ...params },
+      { skipGlobalErrorModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to load pending simplex wheel change approvals."));
+  }
+};
+
+export const fetchApprovedSimplexWheelChangeApprovals = async (params = {}) => {
+  try {
+    const response = await apiConfig.get(
+      "/simplex/wheel-change/approvals",
+      { status: "approved", ...params },
+      { skipGlobalErrorModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to load existing simplex wheel change approvals."));
+  }
+};
+
+export const approveSimplexWheelChangeApproval = async (id, { department = "" } = {}) => {
+  try {
+    const response = await apiConfig.post(
+      `/simplex/wheel-change/approvals/${encodeURIComponent(id)}/approve`,
+      { department },
+      { skipGlobalSuccessModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to approve simplex wheel change entry."));
+  }
+};
+
+export const rejectSimplexWheelChangeApproval = async (id, { department = "", reason = "" } = {}) => {
+  try {
+    const response = await apiConfig.post(
+      `/simplex/wheel-change/approvals/${encodeURIComponent(id)}/reject`,
+      { department, reason },
+      { skipGlobalSuccessModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error, "Unable to reject simplex wheel change entry."));
+  }
+};
+
 export const submitSimplexUqcEntry = async (payload) => {
   try {
     const response = await apiConfig.post("/simplex/uqc", payload);

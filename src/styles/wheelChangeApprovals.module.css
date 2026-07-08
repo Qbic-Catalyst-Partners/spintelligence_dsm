@@ -5,15 +5,8 @@
     color: #111827;
 }
 
-.breadcrumb {
-    margin-bottom: 18px;
-    color: #718096;
-    font-size: 12px;
-    font-weight: 600;
-}
-
 .title {
-    margin: 0;
+    margin: 0 0 20px;
     color: #111827;
     font-size: 26px;
     line-height: 1.15;
@@ -21,51 +14,67 @@
     letter-spacing: 0;
 }
 
-.titleBar {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.filterBar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 14px;
-    width: 100%;
-}
-
-.filterField {
-    display: grid;
-    gap: 4px;
-}
-
-.filterField small {
-    color: #7b8494;
-    font-size: 10px;
-    line-height: 1;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
-.filterSelect {
-    min-width: 150px;
-    height: 34px;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
+.accessNotice {
+    max-width: 1180px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
     background: #ffffff;
-    color: #111827;
-    padding: 0 10px;
-    font-size: 12px;
+    padding: 24px;
+    color: #475569;
+    font-size: 14px;
+}
+
+.tabs {
+    display: flex;
+    gap: 6px;
+    max-width: 1180px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e5e9f0;
+}
+
+.tab {
+    padding: 10px 18px;
+    border: none;
+    background: none;
+    color: #6b7280;
+    font-size: 13px;
     font-weight: 700;
+    cursor: pointer;
+}
+
+.tab:hover {
+    color: #334155;
+}
+
+.tabActive {
+    color: #4056a8;
+    border-bottom: 2px solid #4056a8;
+}
+
+.groups {
+    display: grid;
+    gap: 28px;
+    max-width: 1180px;
+}
+
+.group {
+    display: grid;
+    gap: 10px;
+}
+
+.groupTitle {
+    margin: 0;
+    padding-left: 20px;
+    color: #111827;
+    font-size: 15px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: 0;
 }
 
 .list {
     display: grid;
     gap: 8px;
-    max-width: 1180px;
 }
 
 .row {
@@ -95,6 +104,12 @@
     display: grid;
     gap: 7px;
     min-width: 0;
+}
+
+.rowTitleLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .rowMain strong {
@@ -152,6 +167,19 @@
     font-size: 14px;
     font-weight: 700;
     text-align: center;
+    max-width: 1180px;
+}
+
+.errorState {
+    max-width: 1180px;
+    margin-bottom: 16px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    padding: 12px 16px;
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .overlay {
@@ -170,11 +198,36 @@
     display: flex;
     flex-direction: column;
     width: min(820px, 100%);
-    max-height: min(76vh, 620px);
+    max-height: min(80vh, 640px);
     border-radius: 8px;
     background: #ffffff;
     padding: 32px 42px 30px;
     box-shadow: 0 20px 48px rgba(15, 23, 42, 0.26);
+}
+
+.closeButton {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e5e9f0;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.closeButton:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #b91c1c;
 }
 
 .modalHeader {
@@ -182,7 +235,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 32px;
     align-items: start;
-    margin-bottom: 28px;
+    margin-bottom: 20px;
 }
 
 .modalHeader h2 {
@@ -192,6 +245,12 @@
     line-height: 1.2;
     font-weight: 800;
     letter-spacing: 0;
+}
+
+.modalHeaderTitleLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .modalHeader p {
@@ -213,8 +272,8 @@
     align-items: start;
     gap: 14px 18px;
     overflow-y: auto;
-    max-height: 360px;
-    margin: 0 -8px 26px 0;
+    max-height: 320px;
+    margin: 0 -8px 20px 0;
     padding-right: 8px;
 }
 
@@ -239,169 +298,127 @@
     white-space: normal;
 }
 
-.ackButton {
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.statusBadgePending {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fbbf24;
+}
+
+.statusBadgeApproved {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+.statusBadgeRejected {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+
+.rejectPanel {
+    max-width: 1180px;
+    margin: 0 0 20px;
+}
+
+.rejectForm {
+    margin-bottom: 20px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 14px 16px;
+}
+
+.rejectForm label {
+    display: block;
+    margin-bottom: 8px;
+    color: #7b8494;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.rejectTextarea {
+    width: 100%;
+    min-height: 72px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 10px 12px;
+    color: #111827;
+    font-size: 13px;
+    resize: vertical;
+}
+
+.rejectTextarea:focus {
+    outline: none;
+    border-color: #4056a8;
+}
+
+.actions {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.approveButton,
+.rejectButton,
+.confirmRejectButton {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     min-width: 118px;
     min-height: 34px;
-    margin: 0 auto;
-    border: none;
     border-radius: 6px;
-    background: #4056a8;
-    color: #ffffff;
     padding: 0 18px;
     font-size: 12px;
     font-weight: 800;
     cursor: pointer;
 }
 
-.ackButton:disabled {
-    cursor: wait;
-    opacity: 0.72;
-}
-
-.confirmOverlay {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    border-radius: 8px;
-    background: rgba(15, 23, 42, 0.38);
-}
-
-.confirmDialog {
-    width: min(420px, 100%);
-    min-height: 190px;
-    border: 1px solid #e5e9f0;
-    border-radius: 8px;
-    background: #ffffff;
-    padding: 36px 26px 28px;
-    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
-    text-align: center;
-}
-
-.confirmDialog h3 {
-    margin: 12px 0 30px;
-    color: #111827;
-    font-size: 16px;
-    line-height: 1.4;
-    font-weight: 800;
-    letter-spacing: 0;
-}
-
-.confirmActions {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-}
-
-.confirmNoButton,
-.confirmYesButton {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 86px;
-    min-height: 36px;
-    border-radius: 6px;
-    padding: 0 18px;
-    font-size: 13px;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.confirmNoButton {
-    border: 1px solid #cbd5e1;
-    background: #ffffff;
-    color: #334155;
-}
-
-.confirmYesButton {
-    border: 1px solid #4056a8;
+.approveButton {
+    border: none;
     background: #4056a8;
     color: #ffffff;
 }
 
-.confirmNoButton:disabled,
-.confirmYesButton:disabled {
+.rejectButton {
+    border: 1px solid #fca5a5;
+    background: #ffffff;
+    color: #b91c1c;
+}
+
+.rejectButton:hover {
+    background: #fef2f2;
+}
+
+.confirmRejectButton {
+    border: none;
+    background: #dc2626;
+    color: #ffffff;
+}
+
+.approveButton:disabled,
+.rejectButton:disabled,
+.confirmRejectButton:disabled {
     cursor: wait;
     opacity: 0.72;
 }
 
-:global(:root[data-theme="dark"]) .page {
-    background: #0f172a;
-    color: #e5e7eb;
-}
-
-:global(:root[data-theme="dark"]) .title,
-:global(:root[data-theme="dark"]) .rowMain strong,
-:global(:root[data-theme="dark"]) .rowMeta strong,
-:global(:root[data-theme="dark"]) .modalHeader h2,
-:global(:root[data-theme="dark"]) .modalMeta strong,
-:global(:root[data-theme="dark"]) .fieldCard strong {
-    color: #f8fafc;
-}
-
-:global(:root[data-theme="dark"]) .row,
-:global(:root[data-theme="dark"]) .modal,
-:global(:root[data-theme="dark"]) .emptyState {
-    border-color: #334155;
-    background: #111827;
-}
-
-:global(:root[data-theme="dark"]) .fieldCard {
-    border-color: #334155;
-    background: #1f2937;
-}
-
-:global(:root[data-theme="dark"]) .filterField small {
-    color: #94a3b8;
-}
-
-:global(:root[data-theme="dark"]) .filterSelect {
-    border-color: #334155;
-    background: #111827;
-    color: #e5e7eb;
-}
-
-:global(:root[data-theme="dark"]) .confirmDialog {
-    border-color: #334155;
-    background: #111827;
-}
-
-:global(:root[data-theme="dark"]) .confirmDialog h3 {
-    color: #f8fafc;
-}
-
-:global(:root[data-theme="dark"]) .confirmNoButton {
-    border-color: #475569;
-    background: #1f2937;
-    color: #e2e8f0;
-}
-
-:global(:root[data-theme="dark"]) .rowMain span,
-:global(:root[data-theme="dark"]) .modalHeader p,
-:global(:root[data-theme="dark"]) .breadcrumb,
-:global(:root[data-theme="dark"]) .emptyState {
-    color: #94a3b8;
-}
-
 @media (max-width: 860px) {
-    .filterBar {
-        gap: 10px;
-    }
-
-    .filterField {
-        flex: 1 1 140px;
-    }
-
-    .filterSelect {
-        width: 100%;
-    }
-
     .row {
         grid-template-columns: 1fr;
         gap: 12px;
@@ -425,7 +442,7 @@
     }
 
     .fieldGrid {
-        max-height: 420px;
+        max-height: 380px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

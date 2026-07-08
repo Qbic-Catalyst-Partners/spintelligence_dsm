@@ -93,7 +93,10 @@ const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },
     { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
     { href: "/activity-log", label: "Activity Log" },
-    { href: "/wheel-change-approvals", label: "Wheel Change Approvals", wheelChangeApproval: true },
+    { href: "/wheel-change-approvals", label: "Spinning Wheel Change Approvals", wheelChangeApproval: true },
+    { href: "/drawframe-wheel-change-approvals", label: "Draw Frame Wheel Change Approvals", wheelChangeApproval: true },
+    { href: "/carding-change-control-approvals", label: "Carding Change Control Approvals", wheelChangeApproval: true },
+    { href: "/simplex-wheel-change-approvals", label: "Simplex Wheel Change Approvals", wheelChangeApproval: true },
 ];
 const analyticsHubLinks = [
     { href: "/statistics-analysis", label: "Statistics Analytics" },
@@ -208,6 +211,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleTicketingLinks = hasFullAccess
         ? ticketingLinks
         : ticketingLinks.filter((link) => link.href !== "/l3-ticketing");
+    const visibleManagementHubLinks = hasFullAccess
+        ? managementHubLinks
+        : managementHubLinks.filter((link) =>
+            link.wheelChangeApproval ? hasWheelChangeApprovalAccess : hasSubmittedNotebookAccess
+        );
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -509,7 +517,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/submitted-notebooks" ||
             currentPath === "/submitted-notebook-threshold" ||
             currentPath === "/activity-log" ||
-            currentPath === "/wheel-change-approvals"
+            currentPath === "/wheel-change-approvals" ||
+            currentPath === "/drawframe-wheel-change-approvals" ||
+            currentPath === "/carding-change-control-approvals" ||
+            currentPath === "/simplex-wheel-change-approvals"
         );
         setIsAnalyticsHubOpen(
             currentPath === "/statistics-analysis" ||
@@ -604,7 +615,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/submitted-notebooks" ||
                             currentPath === "/submitted-notebook-threshold" ||
                             currentPath === "/activity-log" ||
-                            currentPath === "/wheel-change-approvals"
+                            currentPath === "/wheel-change-approvals" ||
+                            currentPath === "/drawframe-wheel-change-approvals" ||
+                            currentPath === "/carding-change-control-approvals" ||
+                            currentPath === "/simplex-wheel-change-approvals"
                         );
                         const isAnalyticsHubGroupActive = isAnalyticsHubGroup && (
                             currentPath === "/statistics-analysis" ||

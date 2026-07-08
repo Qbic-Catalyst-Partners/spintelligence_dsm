@@ -15,11 +15,13 @@ import {
   formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  getTicketKind,
   getTicketParameterNames,
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
   isSubmissionFrequencyParameterName,
   isSubmissionTicketRecord,
+  TICKET_KIND,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
 import {
@@ -87,11 +89,7 @@ const buildPreviewTicket = (preview) => {
   };
 };
 
-const isAcknowledgeActionTicket = (ticket) => {
-  const actionMode = String(ticket?.action_mode || ticket?.actionMode || "").trim().toUpperCase();
-  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
-  return actionMode === "ACKNOWLEDGE" || ticketType.includes("ACKNOWLEDG");
-};
+const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK;
 
 export default function SupervisorDetails() {
   const router = useRouter();

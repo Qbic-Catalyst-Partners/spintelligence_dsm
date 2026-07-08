@@ -28,6 +28,7 @@ import {
 } from "@/apis/reportSchedulesApi";
 import { fetchAnalysisRankingApi, fetchL1AnalysisApi, fetchL2AnalysisApi } from "@/apis/analysisApi";
 import { fetchUsersAPI } from "@/apis/userApi";
+import { fetchSubmittedNotebooksApi } from "@/apis/submittedNotebooksApi";
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { notifyAdminAction } from "@/utils/adminActionNotifications";
@@ -236,6 +237,23 @@ const reportSources = {
     },
   },
 };
+
+const reportTypeUsageCount = (() => {
+  const counts = new Map();
+  Object.values(reportSources).forEach((subDepartmentMap) => {
+    Object.values(subDepartmentMap).forEach((typeMap) => {
+      Object.keys(typeMap).forEach((typeName) => {
+        counts.set(typeName, (counts.get(typeName) || 0) + 1);
+      });
+    });
+  });
+  return counts;
+})();
+
+// A handful of type names (e.g. "Process Parameter") are reused across unrelated departments
+// with different field sets in the threshold field catalog. Names unique to a single
+// department/sub-department combination can be trusted outright.
+const isAmbiguousReportType = (typeName) => (reportTypeUsageCount.get(typeName) || 0) > 1;
 
 const optionNameKeys = [
   "department_name",
@@ -806,7 +824,7 @@ const getRowSignature = (rows) =>
     .map((row) => stringifyForSignature(row))
     .join("|");
 
-const fetchAllReportRows = async (reportFetcher, baseParams = {}) => {
+const fetchAllReportRows = async (reportFetcher, baseParams = {}, extractRows = normalizeRows) => {
   const allRows = [];
   const seenPageSignatures = new Set();
   let totalPages = 0;
@@ -818,7 +836,7 @@ const fetchAllReportRows = async (reportFetcher, baseParams = {}) => {
         setTimeout(() => reject(new Error("Report data request timed out. Please check the backend connection.")), reportPageRequestTimeoutMs)
       ),
     ]);
-    const pageRows = normalizeRows(response);
+    const pageRows = extractRows(response);
     const pageSignature = `${pageRows.length}:${getRowSignature(pageRows)}`;
 
     if (page > 1 && seenPageSignatures.has(pageSignature)) {
@@ -854,6 +872,46 @@ const getRowDate = (row) =>
   row?.date ||
   row?.created_at ||
   row?.generated_at;
+
+const OPERATOR_FIELD_KEY = "operator";
+const OPERATOR_FIELD = { key: OPERATOR_FIELD_KEY, label: "Operator" };
+
+const normalizeEntryKey = (value) => String(value ?? "").trim().toLowerCase();
+
+const getRowEntryKey = (row) =>
+  normalizeEntryKey(row?.entry_id ?? row?.entryId ?? row?.lot_no ?? row?.lotNo ?? row?.id ?? "");
+
+const extractSubmittedNotebookRows = (data) => {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.submitted_notebooks)) return data.submitted_notebooks;
+  if (Array.isArray(data?.submittedNotebooks)) return data.submittedNotebooks;
+  if (Array.isArray(data?.notebooks)) return data.notebooks;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+};
+
+const getSubmittedNotebookEntryKey = (notebook) =>
+  normalizeEntryKey(notebook?.entry_id ?? notebook?.entryId ?? notebook?.lot_no ?? notebook?.lotNo ?? "");
+
+const getSubmittedNotebookOperatorName = (notebook) =>
+  String(
+    notebook?.operator_name ||
+      notebook?.operatorName ||
+      notebook?.submitted_by_name ||
+      notebook?.submittedByName ||
+      ""
+  ).trim();
+
+const buildOperatorByEntryKey = (data) => {
+  const map = {};
+  extractSubmittedNotebookRows(data).forEach((notebook) => {
+    const key = getSubmittedNotebookEntryKey(notebook);
+    const operatorName = getSubmittedNotebookOperatorName(notebook);
+    if (key && operatorName) map[key] = operatorName;
+  });
+  return map;
+};
 
 const inferFields = (rows) => {
   const keys = Array.from(
@@ -941,7 +999,12 @@ const getReportFieldValue = (row, field) => {
   return null;
 };
 
-const getCellValue = (row, field) => {
+const getCellValue = (row, field, operatorByEntryKey = {}) => {
+  if (field.key === OPERATOR_FIELD_KEY) {
+    const entryKey = getRowEntryKey(row);
+    return (entryKey && operatorByEntryKey[entryKey]) || "-";
+  }
+
   if (
     field.key === "inspection_date" ||
     field.key === "creation_date" ||
@@ -1175,6 +1238,7 @@ function ReportsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [operatorByEntryKey, setOperatorByEntryKey] = useState({});
   const [builderOptions, setBuilderOptions] = useState({
     departments: [],
     sub_departments: [],
@@ -1293,27 +1357,39 @@ function ReportsPage() {
   }, [accessibleReportSources, department, departments, reportType, subDepartment]);
 
   const availableFields = useMemo(() => {
-    const configuredFields = uniqueOptions([
-      ...builderOptions.input_fields,
-      ...getThresholdFieldsForScreen(reportType),
-    ])
-      .map(toReportField)
-      .filter(Boolean);
-    const sourceFields = [...configuredFields, ...inferFields(rows)].filter(
+    const inferredFields = inferFields(rows);
+    const inferredKeys = new Set(inferredFields.map(getCanonicalReportFieldKey));
+    const backendFields = uniqueOptions(builderOptions.input_fields).map(toReportField).filter(Boolean);
+    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(reportType)).map(toReportField).filter(Boolean);
+    // getThresholdFieldsForScreen is keyed by type name only, and a few names (e.g. "Process
+    // Parameter") are reused across unrelated departments with different field sets — for those,
+    // only keep catalog fields that actually exist on the rows fetched for this dept/type. Names
+    // unique to one department are trusted outright, so fields still show before any rows load.
+    const catalogFields = isAmbiguousReportType(reportType)
+      ? rawCatalogFields.filter((field) => inferredKeys.has(getCanonicalReportFieldKey(field)))
+      : rawCatalogFields;
+    const definedFields = [...backendFields, ...catalogFields].filter(
       (field, index, list) =>
         field?.key &&
         index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
     );
+    // When this notebook type has a defined field set, show only those fields — no extra
+    // columns pulled in from the raw row shape (ids, internal/meta keys, etc). Only fall back
+    // to inferring fields from the rows when nothing is defined for this screen at all.
+    const sourceFields = definedFields.length ? definedFields : inferredFields;
+    // Every notebook type entry is submitted by someone — surface who, resolved against the
+    // submitted-notebooks record for that entry id, regardless of dept/type.
+    const withOperator = isTeamPerformanceReport ? sourceFields : [...sourceFields, OPERATOR_FIELD];
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
-    return sourceFields.filter((field) => !selectedKeys.has(field.key));
-  }, [builderOptions.input_fields, reportType, rows, selectedFields]);
+    return withOperator.filter((field) => !selectedKeys.has(field.key));
+  }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields]);
 
   const filteredRows = useMemo(() => {
     if (isInvoiceDataReport) return rows;
     if (!dateFilterActive) return rows;
 
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(`${endDate}T23:59:59`) : null;
+    const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
+    const end = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
 
     return rows.filter((row) => {
       const rawDate = getRowDate(row);
@@ -1325,6 +1401,30 @@ function ReportsPage() {
       return true;
     });
   }, [dateFilterActive, endDate, isInvoiceDataReport, rows, startDate]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadOperators = async () => {
+      try {
+        // The backend paginates /submitted-notebooks like every other list endpoint — fetching
+        // without page/limit only returns the first page, so most entries had no match and
+        // showed "-". Page through all of it so every entry id can resolve an operator.
+        const notebookRows = await fetchAllReportRows(
+          fetchSubmittedNotebooksApi,
+          {},
+          extractSubmittedNotebookRows
+        );
+        if (!isMounted) return;
+        setOperatorByEntryKey(buildOperatorByEntryKey(notebookRows));
+      } catch {
+        if (isMounted) setOperatorByEntryKey({});
+      }
+    };
+    loadOperators();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -1806,7 +1906,7 @@ function ReportsPage() {
       fields: reportFields,
       rows: reportRows.map((row) =>
         reportFields.reduce((record, field) => {
-          record[field.label] = getCellValue(row, field);
+          record[field.label] = getCellValue(row, field, operatorByEntryKey);
           return record;
         }, {})
       ),
@@ -2061,7 +2161,7 @@ function ReportsPage() {
     const body = exportRows
       .map((row) =>
         selectedFields
-          .map((field) => `"${getCellValue(row, field).replace(/"/g, '""')}"`)
+          .map((field) => `"${getCellValue(row, field, operatorByEntryKey).replace(/"/g, '""')}"`)
           .join(",")
       )
       .join("\n");
@@ -2121,7 +2221,7 @@ function ReportsPage() {
       sheet.addRow(fields.map((field) => field.label));
       if (exportRows.length && selectedFields.length) {
         exportRows.forEach((row) => {
-          sheet.addRow(fields.map((field) => getCellValue(row, field)));
+          sheet.addRow(fields.map((field) => getCellValue(row, field, operatorByEntryKey)));
         });
       } else {
         sheet.addRow(["No report details found."]);
@@ -2227,7 +2327,7 @@ function ReportsPage() {
             <tbody>${exportRows
               .map(
                 (row) =>
-                  `<tr>${selectedFields.map((field) => `<td>${escapeHtmlText(getCellValue(row, field))}</td>`).join("")}</tr>`
+                  `<tr>${selectedFields.map((field) => `<td>${escapeHtmlText(getCellValue(row, field, operatorByEntryKey))}</td>`).join("")}</tr>`
               )
               .join("")}</tbody>
           </table>
@@ -2462,7 +2562,7 @@ function ReportsPage() {
                       ? filteredRows.map((row, rowIndex) => (
                           <tr key={row?.id || row?.qc_id || row?.param_id || rowIndex}>
                             {selectedFields.map((field) => (
-                              <td key={field.key}>{getCellValue(row, field)}</td>
+                              <td key={field.key}>{getCellValue(row, field, operatorByEntryKey)}</td>
                             ))}
                           </tr>
                         ))

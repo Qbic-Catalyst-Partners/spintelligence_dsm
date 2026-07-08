@@ -20,7 +20,7 @@ const NUMERIC_FIELDS = [
 
 const EMPTY_FORM = NUMERIC_FIELDS.reduce(
   (acc, field) => ({ ...acc, [field.key]: "" }),
-  { material_class: "", comment: "" }
+  { machine: "", material_class: "", comment: "" }
 );
 
 const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
@@ -66,7 +66,7 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
     fineness_cv_percent: Number(formData.fineness_cv_percent) || 0,
     long_fiber_gt_46_80_percent: Number(formData.long_fiber_gt_46_80_percent) || 0,
     long_fiber_count_gt_46_80: Number(formData.long_fiber_count_gt_46_80) || 0,
-    machine_name: "AFIS-6",
+    machine_name: String(formData.machine || "").trim() || "AFIS-6",
     department: "Mixing",
     sub_department: "Quality Control",
     user_name: "Sneha",
@@ -85,6 +85,7 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
 
   const getPreviewData = () => [
     { label: "Inspection Date", value: date },
+    { label: "Machine", value: formData.machine },
     { label: "Material Class", value: formData.material_class },
     { label: "Comment", value: formData.comment },
     ...NUMERIC_FIELDS.map((field) => ({ label: field.label, value: formData[field.key] })),
@@ -152,6 +153,17 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
         <Field label="Entry ID">
           <input readOnly value={entryId} className={styles["mixx-input"]} />
         </Field>
+      </div>
+
+      <div className={styles["mixx-row"]}>
+        <Field label="Machine (Optional)">
+          <input
+            placeholder="Enter Machine"
+            value={formData.machine}
+            onChange={(e) => handleChange("machine", e.target.value)}
+            className={styles["mixx-input"]}
+          />
+        </Field>
         <Field label="Material Class">
           <input
             placeholder="Enter Material Class"
@@ -160,9 +172,6 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
             className={`${styles["mixx-input"]} ${errors.material_class ? styles["mixx-error"] : ""}`}
           />
         </Field>
-      </div>
-
-      <div className={styles["mixx-row"]}>
         <Field label="Comment">
           <input
             placeholder="Enter Comment"

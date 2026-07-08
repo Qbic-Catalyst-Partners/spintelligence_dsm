@@ -13,7 +13,11 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 3": "type3",
   "Type 4": "type4",
 };
-const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values";
+// Bumped to _v2 to invalidate any stale cached drafts from before the
+// pending/rejected approval workflow existed — old-keyed drafts are simply
+// never read and get swept away below.
+const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values_v2";
+const WHEEL_CHANGE_DRAFT_STORAGE_KEY_LEGACY = "spinning_wheel_change_last_values";
 const STATIC_RF_NO_OPTIONS = ["1", "2", "3", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "20", "24"];
 const STATIC_TYPE_1_DROPDOWN_OPTIONS = {
   rh: ["40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68"],
@@ -742,6 +746,32 @@ const buildWheelChangeValuesFromRecord = (record = {}, wheelChangeType = "", mac
   if (wheelChangeType === "Type 1") return buildType1DerivedValues(values, machineNumber);
   return values;
 };
+// A pending (not-yet-L2-approved) record only supplies the Proposed column —
+// its Existing baseline is whatever was last approved, already carried in
+// `baseValues`. Overlaying it lets an operator see (and knowingly overwrite)
+// the submission still sitting in the temporary/pending table.
+const buildWheelChangeProposedValuesFromRecord = (record = {}, wheelChangeType = "", machineNumber = "", baseValues = {}) => {
+  const typeConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
+  const rows = typeConfig?.rows || {};
+  const values = ALL_WHEEL_CHANGE_PARAMETER_ROWS.reduce((values, row) => {
+    const fieldBase = rows[row.key];
+    const proposedValue = fieldBase
+      ? normalizeWheelChangeRecordValue(record?.[`${fieldBase}_proposed`] ?? record?.[fieldBase])
+      : "";
+
+    return {
+      ...values,
+      [row.key]: {
+        existing: getTextValue(baseValues?.[row.key]?.existing),
+        proposed: proposedValue,
+      },
+    };
+  }, {});
+
+  if (wheelChangeType === "Type 2") return buildType2DerivedValues(values);
+  if (wheelChangeType === "Type 1") return buildType1DerivedValues(values, machineNumber);
+  return values;
+};
 const parseNumericValue = (value) => {
   const parsed = Number.parseFloat(String(value ?? "").trim());
   return Number.isFinite(parsed) ? parsed : null;
@@ -889,6 +919,7 @@ const WheelChange = forwardRef(function WheelChange(
     typeOptions = [],
     entryId = "#SPN-001",
     onTypeChange,
+    onWheelChangeTypeChange,
   },
   ref
 ) {
@@ -903,6 +934,11 @@ const WheelChange = forwardRef(function WheelChange(
   const [machineOptions, setMachineOptions] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
+  // The most recent *unapproved* submission for the selected variety, if any
+  // — either still awaiting L2 review or previously rejected. Either way it
+  // is still the row sitting in the temp table, so its Proposed values are
+  // shown (and will be silently overwritten on the next submit).
+  const [unapprovedEntry, setUnapprovedEntry] = useState(null);
   const lastLoadedVarietyRef = useRef("");
   const activeRows = WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE[wheelChangeType] || TYPE_1_PARAMETER_ROWS;
   const referenceLabel = "R/F No.";
@@ -913,8 +949,16 @@ const WheelChange = forwardRef(function WheelChange(
     []
   );
 
+  // Type 1-4 each post to their own backend table (see WHEEL_CHANGE_API_TYPES
+  // above); report the current selection up so the parent can reserve the
+  // Entry ID from that same table instead of a generic/shared one.
+  useEffect(() => {
+    onWheelChangeTypeChange?.(wheelChangeType);
+  }, [onWheelChangeTypeChange, wheelChangeType]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
+    window.localStorage.removeItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY_LEGACY);
     try {
       const stored = JSON.parse(window.localStorage.getItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY) || "{}");
       if (stored && typeof stored === "object") {
@@ -1076,6 +1120,7 @@ const WheelChange = forwardRef(function WheelChange(
   useEffect(() => {
     if (!wheelChangeType || !selectedVariety) {
       lastLoadedVarietyRef.current = "";
+      setUnapprovedEntry(null);
       return;
     }
 
@@ -1084,36 +1129,79 @@ const WheelChange = forwardRef(function WheelChange(
 
     let cancelled = false;
 
-    fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
-      variety: selectedVariety,
-      variety_name: selectedVariety,
-      mixing: selectedVariety,
-      approval_status: "approved",
-      status: "approved",
-    })
-      .then((latestRecord) => {
-        if (cancelled || !latestRecord) return;
+    Promise.allSettled([
+      fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+        variety: selectedVariety,
+        variety_name: selectedVariety,
+        mixing: selectedVariety,
+        approval_status: "approved",
+        status: "approved",
+      }),
+      // A submission the operator already made for this variety may still be
+      // sitting in the temp/pending table awaiting L2 review, or it may have
+      // been rejected (which leaves it in the same temp table, not deleted).
+      // Surface whichever exists so re-submitting knowingly overwrites it
+      // instead of silently losing track of it.
+      fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+        variety: selectedVariety,
+        variety_name: selectedVariety,
+        mixing: selectedVariety,
+        approval_status: "pending",
+        status: "pending",
+      }),
+      fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+        variety: selectedVariety,
+        variety_name: selectedVariety,
+        mixing: selectedVariety,
+        approval_status: "rejected",
+        status: "rejected",
+      }),
+    ]).then(([approvedResult, pendingResult, rejectedResult]) => {
+      if (cancelled) return;
 
-        lastLoadedVarietyRef.current = selectionKey;
-        setMachineNumber((current) => current || getTextValue(
-          latestRecord?.[WHEEL_CHANGE_FIELD_MAP[wheelChangeType]?.referenceField] ||
-            latestRecord?.machine_no ||
-            latestRecord?.machine_number ||
-            latestRecord?.mc_no ||
-            ""
-        ));
-        setValues((current) => {
-          const nextValues = buildWheelChangeValuesFromRecord(latestRecord, wheelChangeType, machineNumber);
-          return {
-            ...nextValues,
-            countForm: {
-              existing: selectedVariety,
-              proposed: current.countForm?.proposed || "",
-            },
-          };
-        });
-      })
-      .catch(() => {});
+      const approvedRecord = approvedResult.status === "fulfilled" ? approvedResult.value : null;
+      const pendingRecord = pendingResult.status === "fulfilled" ? pendingResult.value : null;
+      const rejectedRecord = rejectedResult.status === "fulfilled" ? rejectedResult.value : null;
+      const unapprovedRecord = pendingRecord || rejectedRecord;
+      if (!approvedRecord && !unapprovedRecord) return;
+
+      lastLoadedVarietyRef.current = selectionKey;
+      const referenceRecord = approvedRecord || unapprovedRecord;
+      setMachineNumber((current) => current || getTextValue(
+        referenceRecord?.[WHEEL_CHANGE_FIELD_MAP[wheelChangeType]?.referenceField] ||
+          referenceRecord?.machine_no ||
+          referenceRecord?.machine_number ||
+          referenceRecord?.mc_no ||
+          ""
+      ));
+      setUnapprovedEntry(
+        unapprovedRecord
+          ? {
+              status: pendingRecord ? "pending" : "rejected",
+              remarks: getTextValue(
+                unapprovedRecord?.review_remarks ?? unapprovedRecord?.reviewRemarks ?? ""
+              ),
+              reviewedBy: getTextValue(
+                unapprovedRecord?.reviewed_by ?? unapprovedRecord?.reviewedBy ?? ""
+              ),
+              reviewedAt: unapprovedRecord?.reviewed_at ?? unapprovedRecord?.reviewedAt ?? "",
+            }
+          : null
+      );
+      setValues((current) => {
+        let nextValues = buildWheelChangeValuesFromRecord(approvedRecord || {}, wheelChangeType, machineNumber);
+        if (unapprovedRecord) {
+          nextValues = buildWheelChangeProposedValuesFromRecord(unapprovedRecord, wheelChangeType, machineNumber, nextValues);
+        }
+        return {
+          ...nextValues,
+          countForm: {
+            existing: selectedVariety,
+            proposed: current.countForm?.proposed || "",
+          },
+        };
+      });
+    });
 
     return () => {
       cancelled = true;
@@ -1127,6 +1215,7 @@ const WheelChange = forwardRef(function WheelChange(
     setDate(getTodayDate());
     setValues(createWheelChangeValues());
     setErrors({});
+    setUnapprovedEntry(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY);
     }
@@ -1266,6 +1355,18 @@ const WheelChange = forwardRef(function WheelChange(
   };
 
   const getPreviewData = () => [
+    ...(unapprovedEntry
+      ? [
+          {
+            label: "⚠ Overwrite Warning",
+            value:
+              unapprovedEntry.status === "rejected"
+                ? "This machine/variety has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
+                : "This machine/variety already has an entry awaiting L2 verification. Submitting will overwrite it — there is no undo.",
+            wide: true,
+          },
+        ]
+      : []),
     { label: "Checking Type", value: selectedTypeName || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "#SPN-001" },
@@ -1349,6 +1450,15 @@ const WheelChange = forwardRef(function WheelChange(
       <div className={styles.titleRow}>
         <InspectionEntryIcon />
         <h3 className={styles.sectionTitle}>Inspection Data Entry</h3>
+        {unapprovedEntry?.status && (
+          <span
+            className={`${styles.statusBadge} ${
+              unapprovedEntry.status === "rejected" ? styles.statusBadgeRejected : styles.statusBadgePending
+            }`}
+          >
+            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L2"}
+          </span>
+        )}
         <InputScreenUploadButton className="ml-auto" />
       </div>
 
@@ -1431,6 +1541,26 @@ const WheelChange = forwardRef(function WheelChange(
             />
           </div>
         </div>
+
+        {unapprovedEntry?.status === "pending" && (
+          <div className={styles.pendingNotice}>
+            A proposed entry for this variety is still awaiting L2 approval. The Proposed column below shows that
+            pending submission — submitting again will overwrite it.
+          </div>
+        )}
+
+        {unapprovedEntry?.status === "rejected" && (
+          <div className={styles.rejectedNotice}>
+            <div>
+              This entry was rejected by L2{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
+              {unapprovedEntry.reviewedAt ? ` Reviewed ${unapprovedEntry.reviewedAt}.` : ""} The Proposed column
+              below shows the rejected submission — resubmitting will overwrite it.
+            </div>
+            {unapprovedEntry.remarks && (
+              <div className={styles.rejectedRemarks}>Reviewer remarks: {unapprovedEntry.remarks}</div>
+            )}
+          </div>
+        )}
 
         <div className={styles.tableWrap}>
           <table className={styles.table}>

@@ -11,19 +11,6 @@ import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
-const PP_REQUIRED_NOTEBOOKS = [
-  { subDepartment: "Mixing", screenName: "Process Parameter" },
-  { subDepartment: "Blow Room", screenName: "Process Parameter" },
-  { subDepartment: "Carding", screenName: "Process Parameter" },
-  { subDepartment: "Draw Frame", screenName: "PP - Breaker Drawing" },
-  { subDepartment: "Draw Frame", screenName: "PP - Finisher Drawing" },
-  { subDepartment: "Simplex", screenName: "Process Parameter" },
-  { subDepartment: "Spinning", screenName: "Process Parameter" },
-  { subDepartment: "Autoconer", screenName: "Process Parameter" },
-  { subDepartment: "Autoconer", screenName: "PP - Autoconer Q2" },
-  { subDepartment: "Autoconer", screenName: "PP - Autoconer Q3" },
-];
-
 const createFormState = () => ({
   completionThresholdHours: "",
   l2TatHours: "",
@@ -66,6 +53,27 @@ const formatTimestamp = (value) => {
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${day}/${month}/${year}, ${hours}:${minutes}`;
 };
+
+const getSubDepartmentName = (group) =>
+  String(group?.sub_department || group?.subDepartment || group?.name || "").trim();
+
+const getGroupNotebooks = (group) =>
+  Array.isArray(group?.notebooks) ? group.notebooks : Array.isArray(group?.screens) ? group.screens : [];
+
+const getNotebookIdentifier = (notebook) =>
+  String(notebook?.notebook || notebook?.notebook_name || notebook?.screen_name || notebook?.name || "").trim();
+
+const getNotebookLabel = (notebook) =>
+  String(notebook?.label || notebook?.display_label || "").trim() || getNotebookIdentifier(notebook);
+
+const getLastSavedEntry = (notebook) => {
+  const entry = notebook?.last_saved_entry || notebook?.lastSavedEntry;
+  return entry && typeof entry === "object" ? entry : null;
+};
+
+const getEntrySubmittedAt = (entry) => entry?.submitted_at || entry?.submittedAt || "";
+const getEntrySubmittedBy = (entry) => entry?.submitted_by_name || entry?.submittedByName || "-";
+const getEntryId = (entry) => entry?.entry_id || entry?.entryId || "-";
 
 function MultiUserSelect({
   value = [],
@@ -163,6 +171,7 @@ export default function PPNotebookBatchThresholdPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState("");
+  const [subDepartments, setSubDepartments] = useState([]);
 
   const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
   const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
@@ -182,8 +191,9 @@ export default function PPNotebookBatchThresholdPage() {
     if (!canAccessPage) return;
     setLoading(true);
     try {
-      const config = await fetchPpNotebookBatchConfigAPI();
+      const { config, subDepartments: nextSubDepartments } = await fetchPpNotebookBatchConfigAPI();
       populateFromConfig(config);
+      setSubDepartments(nextSubDepartments);
       setError("");
     } catch (err) {
       setError(err?.message || "Unable to load the PP batch completion threshold.");
@@ -264,37 +274,11 @@ export default function PPNotebookBatchThresholdPage() {
       <div className={styles.shell}>
         <div className={styles.intro}>
           <h1>PP Batch Completion Threshold</h1>
-          <p>
-            One PP Entry ID spans up to 10 department screens. L1 is responsible for getting all of
-            them completed within the threshold below. A ticket is only raised once L1 has already
-            missed that deadline — it's created in L1's name for review, and escalated to L2 to
-            approve. If L2 doesn't act within the L2 TAT, the ticket expires.
-          </p>
+          <p>Set how long L1 has to complete a PP batch, and who reviews it.</p>
         </div>
 
         <form className={styles.stack} onSubmit={handleSave}>
           <section className={styles.sectionPlain}>
-            <div className={styles.sectionHeader}>
-              <h2>Tracked Screens</h2>
-            </div>
-            <p style={{ color: "#7b89a0", fontSize: "13px", marginTop: 0 }}>
-              A batch (single Entry ID) is considered complete only once all of the following have a
-              logged submission:
-            </p>
-            <ul style={{ margin: "0 0 8px", paddingLeft: "20px", color: "#42516a", fontSize: "13px" }}>
-              {PP_REQUIRED_NOTEBOOKS.map((item) => (
-                <li key={`${item.subDepartment}-${item.screenName}`}>
-                  {item.subDepartment} — {item.screenName}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className={styles.sectionPlain}>
-            <div className={styles.sectionHeader}>
-              <h2>Set the Completion Threshold</h2>
-            </div>
-
             <div className={styles.ruleCard}>
               <div className={styles.ruleGrid}>
                 <label className={styles.field}>
@@ -369,6 +353,62 @@ export default function PPNotebookBatchThresholdPage() {
             {error ? <p className={styles.errorMessage}>{error}</p> : null}
           </section>
         </form>
+
+        <section className={`${styles.card} ${styles.existingThresholdCard}`}>
+          <div className={styles.sectionHeader}>
+            <h2>Tracked Notebooks</h2>
+          </div>
+          <div className={styles.tableWrap}>
+            <table className={`${styles.table} ${styles.existingThresholdTable}`}>
+              <thead>
+                <tr>
+                  <th>Sub-Department</th>
+                  <th>Notebook</th>
+                  <th>Last Entry ID</th>
+                  <th>Submitted By</th>
+                  <th>Submitted At</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6}>Loading...</td>
+                  </tr>
+                ) : !subDepartments.length ? (
+                  <tr>
+                    <td colSpan={6}>No tracked notebooks found.</td>
+                  </tr>
+                ) : (
+                  subDepartments.flatMap((group) =>
+                    getGroupNotebooks(group).map((notebook, index) => {
+                      const entry = getLastSavedEntry(notebook);
+                      const rowKey = `${getSubDepartmentName(group)}-${getNotebookIdentifier(notebook)}-${index}`;
+                      return (
+                        <tr key={rowKey}>
+                          <td>{getSubDepartmentName(group) || "-"}</td>
+                          <td>{getNotebookLabel(notebook) || "-"}</td>
+                          <td>{entry ? getEntryId(entry) : "-"}</td>
+                          <td>{entry ? getEntrySubmittedBy(entry) : "-"}</td>
+                          <td>{entry ? formatTimestamp(getEntrySubmittedAt(entry)) : "-"}</td>
+                          <td>
+                            <span
+                              className={`${styles.statusBadge} ${
+                                entry ? styles.statusActive : styles.statusInactive
+                              }`}
+                            >
+                              {entry ? "Reporting" : "Never Submitted"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
   );
