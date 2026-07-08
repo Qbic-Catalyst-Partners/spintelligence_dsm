@@ -7,6 +7,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
+  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
   PROCESS_PARAMETER_COUNT_OPTIONS,
 } from "@/data/processParameterMasterOptions";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
@@ -297,6 +298,11 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       : PROCESS_PARAMETER_COUNT_OPTIONS,
     [],
     form.countName
+  );
+  const consigneeOptions = buildProcessParameterOptions(
+    PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
+    versions.map((version) => version?.data?.consigneeName),
+    form.consigneeName
   );
 
   const loadVersions = async () => {
@@ -629,13 +635,13 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
 
           <div className={styles.fieldGroup}>
             <label>Consignee Name</label>
-            <input
-              type="text"
+            <SearchableSelect
               className={`${styles.field}${errors.consigneeName ? ` ${styles.errorField}` : ""}`}
               value={form.consigneeName || ""}
-              onChange={(event) => handleFieldChange("consigneeName", event.target.value)}
-              placeholder="Type consignee name"
-              aria-label="Consignee Name"
+              onChange={(value) => handleFieldChange("consigneeName", value)}
+              options={consigneeOptions}
+              placeholder="Search or select consignee name"
+              ariaLabel="Consignee Name"
             />
           </div>
 

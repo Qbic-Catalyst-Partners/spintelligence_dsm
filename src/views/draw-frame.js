@@ -73,8 +73,29 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "Wheel Change": { prefix: "DWC", width: 4, routePath: "/drawframe/wheel-change" },
 };
 
-const getDrawFrameEntryConfig = (type = "") =>
-  DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRA" };
+// Wheel Change has 7 independently-tabled sub-types (see WheelChange.jsx's
+// WHEEL_CHANGE_API_TYPES / drawFrameWheelChange.js's WHEEL_CHANGE_ENDPOINTS).
+// The generic "Wheel Change" config above points at the shared/unrouted base
+// path, which doesn't reflect any single sub-type's table — reserving/guessing
+// the next id from it produces the wrong sequence (and collides across all 7
+// sub-types) once one is selected. Scope the reservation to the actual
+// sub-type's table instead, keyed by the same label WheelChange.jsx uses.
+const DRAW_FRAME_WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE = {
+  "Type 1 (SB20)": { prefix: "DW1", width: 4, routePath: "/drawframe/wheel-change/type1" },
+  "Type 2 (TD7)": { prefix: "DW2", width: 4, routePath: "/drawframe/wheel-change/type2" },
+  "Type 3 (TD9)": { prefix: "DW3", width: 4, routePath: "/drawframe/wheel-change/type3" },
+  "Type 1 (LRSB)": { prefix: "DW4", width: 4, routePath: "/drawframe/wheel-change/finisher-type1-lrsb" },
+  "Type 2 (D40)": { prefix: "DW5", width: 4, routePath: "/drawframe/wheel-change/type2-d40" },
+  "Type 3 (D50/D55)": { prefix: "DW6", width: 4, routePath: "/drawframe/wheel-change/type3-d50-d55" },
+  "Type 4 (LDF3S)": { prefix: "DW7", width: 4, routePath: "/drawframe/wheel-change/type4-ldf3s" },
+};
+
+const getDrawFrameEntryConfig = (type = "", wheelChangeSubType = "") => {
+  if (type === "Wheel Change") {
+    return DRAW_FRAME_WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE[wheelChangeSubType] || DRAW_FRAME_ENTRY_ID_CONFIG[type];
+  }
+  return DRAW_FRAME_ENTRY_ID_CONFIG[type] || { prefix: "DRA" };
+};
 
 const normalizeTypeName = (value = "") =>
   String(value).trim().toLowerCase();
@@ -739,11 +760,16 @@ function DrawFrame() {
   const isWheelChangeEntry = form.type === "Wheel Change";
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
+  // Which of Wheel Change's 7 sub-types (Type 1 (SB20)..Type 4 (LDF3S)) is
+  // currently selected inside WheelChange.jsx, reported up via
+  // onWheelChangeTypeChange so the entry-id reservation below can scope
+  // itself to that sub-type's own table (see getDrawFrameEntryConfig).
+  const [wheelChangeSubType, setWheelChangeSubType] = useState("");
   const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
     department: "Draw Frame",
     typeName: form.type,
     config: {
-      ...getDrawFrameEntryConfig(form.type),
+      ...getDrawFrameEntryConfig(form.type, wheelChangeSubType),
       scope: form.type === "PP - Finisher Drawing" ? "finisher" : form.type === "PP - Breaker Drawing" ? "breaker" : "",
     },
   });
@@ -916,6 +942,7 @@ function DrawFrame() {
   const handleFormChange = (field, value) => {
     const normalizedValue = field === "type" ? getTypeName(value) : value;
     const nextValue = field === "readingCount" ? Number(value) || 0 : normalizedValue;
+    if (field === "type" && nextValue !== "Wheel Change") setWheelChangeSubType("");
     setForm((current) => ({
       ...current,
       [field]: nextValue,
@@ -1188,6 +1215,7 @@ function DrawFrame() {
     });
     setErrors({});
     wheelChangeRef.current?.clear?.();
+    setWheelChangeSubType("");
     dispatch(clearDrawFrameState());
   };
 
@@ -1658,6 +1686,7 @@ function DrawFrame() {
                 typeOptions={typeOptions}
                 entryId={entryId}
                 onTypeChange={(value) => handleFormChange("type", value)}
+                onWheelChangeTypeChange={setWheelChangeSubType}
               />
 
               {error ? <p className={styles.messageError}>{error}</p> : null}

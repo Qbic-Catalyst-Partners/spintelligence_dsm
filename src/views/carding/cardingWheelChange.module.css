@@ -29,6 +29,56 @@
   padding-bottom: 0;
 }
 
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.statusBadgePending {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+
+.statusBadgeRejected {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.pendingNotice {
+  padding: 10px 14px;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.rejectedNotice {
+  padding: 10px 14px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.rejectedRemarks {
+  margin-top: 6px;
+  font-weight: 700;
+}
+
 .row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

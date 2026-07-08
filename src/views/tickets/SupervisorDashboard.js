@@ -20,7 +20,8 @@ import {
   isFullAccessUser,
 } from "../../utils/accessControl";
 import {
-  isNotebookAcknowledgementParameterName,
+  isNotebookAcknowledgementTicketRecord as isAcknowledgementReviewTicket,
+  isPpBatchCompletionTicketRecord,
   isSubmissionTicketRecord,
   transformTicket,
 } from "../../utils/ticketTransformer";
@@ -44,7 +45,6 @@ const formatDateDisplay = (value) => {
   return year && month && day ? `${day}-${month}-${year}` : String(value);
 };
 
-const normalizeText = (value) => String(value || "").trim().toLowerCase();
 const parseMaybeJson = (value) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -98,61 +98,6 @@ const REVIEW_STATUS_FILTER_OPTIONS = [
   "Submit",
   "Reopened",
 ];
-
-const isAcknowledgementReviewTicket = (ticket) => {
-  const actionMode = normalizeText(ticket?.action_mode || ticket?.actionMode).toUpperCase();
-  if (actionMode === "ACKNOWLEDGE") return true;
-
-  const violationDetails = parseMaybeJson(ticket?.violation_details || ticket?.violationDetails);
-  const violationTicketType = violationDetails && typeof violationDetails === "object"
-    ? violationDetails.ticket_type || violationDetails.ticketType
-    : "";
-  const violationActionType = violationDetails && typeof violationDetails === "object"
-    ? violationDetails.action_type || violationDetails.actionType
-    : "";
-  const violationText = normalizeText(
-    [
-      violationTicketType,
-      violationActionType,
-      violationDetails && typeof violationDetails === "object" ? violationDetails.category : "",
-      violationDetails && typeof violationDetails === "object" ? violationDetails.reason : "",
-    ].join(" ")
-  );
-  const parameterNames = Array.isArray(ticket?.parameter_name)
-    ? ticket.parameter_name
-    : [ticket?.parameter_name, ticket?.parameter].filter(Boolean);
-  const typeText = normalizeText(
-    [
-      ticket?.ticket_type,
-      ticket?.ticketType,
-      ticket?.acknowledgement_ticket_type,
-      ticket?.notebook_type,
-      ticket?.notebookType,
-      ticket?.notebook,
-      ticket?.machine_name,
-      ticket?.description,
-      ticket?.message,
-      ticket?.ticket_reason,
-      ticket?.ticketReason,
-    ].join(" ")
-  );
-  const isReviewType = normalizeText(ticket?.ticket_type || ticket?.ticketType) === "review";
-  const statusText = normalizeText(
-    ticket?.status || ticket?.ticket_status || ticket?.current_status || ticket?.state
-  );
-
-  return (
-    isReviewType ||
-    violationText.includes("notebook_ack_overdue") ||
-    violationText.includes("acknowledge_only") ||
-    typeText.includes("acknowledge") ||
-    typeText.includes("acknowledgement") ||
-    typeText.includes("missing_value") ||
-    statusText.includes("pending approval") ||
-    statusText.includes("pending acknowledgement") ||
-    parameterNames.some(isNotebookAcknowledgementParameterName)
-  );
-};
 
 const getReviewSubDepartment = (ticket) =>
   firstText(
@@ -696,8 +641,12 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                           <td>{t.user_name}</td>
                           <td>{getTicketNotebookLabel(t)}</td>
                           <td>{primaryParam}</td>
-                          <td>{t.frequency || t.submission_frequency || t.check_frequency || "-"}</td>
-                          <td>{t.occurrences || t.occurrence_count || t.count || "-"}</td>
+                          <td>
+                            {isPpBatchCompletionTicketRecord(t)
+                              ? `${Math.max(0, Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60)))}h`
+                              : t.frequency || t.submission_frequency || t.check_frequency || "-"}
+                          </td>
+                          <td>{isPpBatchCompletionTicketRecord(t) ? 1 : t.occurrences || t.occurrence_count || t.count || "-"}</td>
                           <td>
                             <span
                               className={`${styles["sup-badge"]} ${
@@ -862,7 +811,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                       {activeTicketingView === "review"
                         ? `${Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60))}h`
                         : activeTicketingView === "submission"
-                        ? t.frequency || t.submission_frequency || t.check_frequency || "-"
+                        ? isPpBatchCompletionTicketRecord(t)
+                          ? `${Math.max(0, Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60)))}h`
+                          : t.frequency || t.submission_frequency || t.check_frequency || "-"
                         : t.actual ?? "-"}
                     </div>
                   </div>

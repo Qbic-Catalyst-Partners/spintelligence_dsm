@@ -91,6 +91,11 @@ const normalizeRegistryId = (value) => String(value || "").trim();
 // the next reserved ID.
 const isCanonicalPpId = (value) => /^PP-\d+$/i.test(String(value || "").trim());
 
+const getPpSequence = (id) => {
+  const match = String(id || "").trim().match(/^PP-(\d+)$/i);
+  return match ? Number(match[1]) || 0 : 0;
+};
+
 const getEntryRows = (response) =>
   Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
 

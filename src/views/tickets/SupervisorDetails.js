@@ -15,11 +15,13 @@ import {
   formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  getTicketKind,
   getTicketParameterNames,
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
   isSubmissionFrequencyParameterName,
   isSubmissionTicketRecord,
+  TICKET_KIND,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
 import {
@@ -87,11 +89,7 @@ const buildPreviewTicket = (preview) => {
   };
 };
 
-const isAcknowledgeActionTicket = (ticket) => {
-  const actionMode = String(ticket?.action_mode || ticket?.actionMode || "").trim().toUpperCase();
-  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
-  return actionMode === "ACKNOWLEDGE" || ticketType.includes("ACKNOWLEDG");
-};
+const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK;
 
 export default function SupervisorDetails() {
   const router = useRouter();
@@ -297,8 +295,7 @@ export default function SupervisorDetails() {
   if (error && !ticket) return <p className={styles.loading}>{error}</p>;
   if (!ticket) return <p className={styles.loading}>No ticket found</p>;
 
-  const isSubmissionTicket = isSubmissionTicketRecord(ticket) ||
-    String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const isSubmissionTicket = isSubmissionTicketRecord(ticket);
   const rawParameterNames = getTicketParameterNames(ticket);
   const submissionParameterNames = rawParameterNames.filter(
     (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)

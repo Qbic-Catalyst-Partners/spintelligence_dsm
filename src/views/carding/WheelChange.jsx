@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import { useSelector } from "react-redux";
 import { MdEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
@@ -74,8 +75,24 @@ const buildExistingValuesFromEntry = (entry) =>
     return record;
   }, {});
 
+// Overlays only the Proposed column from a still-unapproved (pending or
+// rejected) entry onto an already-built Existing baseline. The Existing
+// baseline always comes from the last *approved* entry only — carrying a
+// rejected/pending row's values into Existing would let an unreviewed
+// submission masquerade as the approved machine state.
+const applyUnapprovedProposedValues = (existingValues, entry) =>
+  parameterRows.reduce((record, row) => {
+    record[row.key] = {
+      existing: existingValues[row.key]?.existing || "",
+      proposed: trimValue(entry?.[`${row.field}_proposed`] ?? ""),
+    };
+    return record;
+  }, {});
+
 function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
   const router = useRouter();
+  const user = useSelector((state) => state.auth?.user);
+  const operatorName = trimValue(user?.name || user?.full_name || user?.user_name || user?.username || "");
   const [entryDate, setEntryDate] = useState(getTodayDate);
   const [cdoNo, setCdoNo] = useState("");
   const [proposedCdgNos, setProposedCdgNos] = useState([]);
@@ -94,27 +111,54 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [varietyOptionsError, setVarietyOptionsError] = useState("");
   const lastLoadedMixingRef = useRef("");
   const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
+  // The most recent *unapproved* submission for this mixing, if any — either
+  // still awaiting L2 review or previously rejected. It's the row still sitting
+  // in the pending table, so its Proposed values are shown (and will be
+  // silently overwritten on the next submit).
+  const [unapprovedEntry, setUnapprovedEntry] = useState(null);
 
   const loadLatestSaved = async (mixingValue = "") => {
-    const params = { page: 1, limit: 1, approval_status: "approved", status: "approved" };
+    const baseParams = { page: 1, limit: 1 };
     const trimmedMixing = String(mixingValue || "").trim();
     if (trimmedMixing) {
-      params.variety = trimmedMixing;
-      params.variety_name = trimmedMixing;
-      params.mixing = trimmedMixing;
+      baseParams.variety = trimmedMixing;
+      baseParams.variety_name = trimmedMixing;
+      baseParams.mixing = trimmedMixing;
     }
 
-    const payload = await fetchCardingChangeControlEntries(params);
-    const latest = extractLatestEntry(payload);
-    if (!latest) return null;
+    const [approvedResult, pendingResult, rejectedResult] = await Promise.allSettled([
+      fetchCardingChangeControlEntries({ ...baseParams, approval_status: "approved", status: "approved" }),
+      fetchCardingChangeControlEntries({ ...baseParams, approval_status: "pending", status: "pending" }),
+      fetchCardingChangeControlEntries({ ...baseParams, approval_status: "rejected", status: "rejected" }),
+    ]);
 
-    const previousProposedCdgList = normalizeCdgProposedList(latest.cdg_no_proposed);
-    setCdoNo(previousProposedCdgList[0] || trimValue(latest.cdo_no ?? ""));
-    setProposedCdgNos([]);
-    setValues(buildExistingValuesFromEntry(latest));
+    const approved = approvedResult.status === "fulfilled" ? extractLatestEntry(approvedResult.value) : null;
+    const pending = pendingResult.status === "fulfilled" ? extractLatestEntry(pendingResult.value) : null;
+    const rejected = rejectedResult.status === "fulfilled" ? extractLatestEntry(rejectedResult.value) : null;
+    const unapproved = pending || rejected;
+    if (!approved && !unapproved) return null;
+
+    setUnapprovedEntry(
+      unapproved
+        ? {
+            status: pending ? "pending" : "rejected",
+            remarks: trimValue(unapproved?.review_remarks ?? unapproved?.reviewRemarks ?? ""),
+            reviewedBy: trimValue(unapproved?.reviewed_by ?? unapproved?.reviewedBy ?? ""),
+            reviewedAt: unapproved?.reviewed_at ?? unapproved?.reviewedAt ?? "",
+          }
+        : null
+    );
+
+    const previousProposedCdgList = normalizeCdgProposedList(approved?.cdg_no_proposed);
+    setCdoNo(previousProposedCdgList[0] || trimValue(approved?.cdo_no ?? ""));
+    setProposedCdgNos(unapproved ? normalizeCdgProposedList(unapproved.cdg_no_proposed) : []);
+    setValues(() => {
+      const baseline = buildExistingValuesFromEntry(approved || {});
+      return unapproved ? applyUnapprovedProposedValues(baseline, unapproved) : baseline;
+    });
     setRemarks("");
     setErrors({});
-    return latest;
+    return approved || unapproved;
   };
 
   useEffect(() => {
@@ -166,6 +210,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   useEffect(() => {
     if (!selectedMixing) {
       lastLoadedMixingRef.current = "";
+      setUnapprovedEntry(null);
       return;
     }
 
@@ -186,6 +231,18 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
 
   const previewItems = useMemo(
     () => [
+      ...(unapprovedEntry
+        ? [
+            {
+              label: "⚠ Overwrite Warning",
+              value:
+                unapprovedEntry.status === "rejected"
+                  ? "This mixing has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
+                  : "This mixing already has an entry awaiting L2 verification. Submitting will overwrite it — there is no undo.",
+              wide: true,
+            },
+          ]
+        : []),
       { label: "Type", value: selectedType || "WheelChange" },
       { label: "Entry ID", value: entryId || "-" },
       { label: "CDG No. (Existing)", value: cdoNo || "-" },
@@ -196,7 +253,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       ]),
       { label: "Remarks", value: remarks || "-" },
     ],
-    [cdoNo, entryId, proposedCdgNos, remarks, selectedType, values]
+    [cdoNo, entryId, proposedCdgNos, remarks, selectedType, unapprovedEntry, values]
   );
 
   const clearError = (field) => {
@@ -276,6 +333,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       type: CHANGE_CONTROL_TYPE,
       department: "Carding",
       approval_status: "pending",
+      operator: operatorName,
       entry_date: entryDate || getTodayDate(),
       cdo_no: cdoNo,
       cdg_no_proposed: proposedCdgNos,
@@ -302,6 +360,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setErrors({});
     setMessage("");
     setShowPreview(false);
+    setUnapprovedEntry(null);
     lastLoadedMixingRef.current = "";
   };
 
@@ -371,10 +430,39 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       <div className={styles.titleRow}>
         <MdEditNote className={styles.titleIcon} />
         <h3 className={styles.sectionTitle}>Inspection Data Entry</h3>
+        {unapprovedEntry?.status && (
+          <span
+            className={`${styles.statusBadge} ${
+              unapprovedEntry.status === "rejected" ? styles.statusBadgeRejected : styles.statusBadgePending
+            }`}
+          >
+            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L2"}
+          </span>
+        )}
         <InputScreenUploadButton className="ml-auto" />
       </div>
 
       <div className={styles.form}>
+        {unapprovedEntry?.status === "pending" && (
+          <div className={styles.pendingNotice}>
+            A proposed entry for this mixing is still awaiting L2 approval. The Proposed column below shows that
+            pending submission — submitting again will overwrite it.
+          </div>
+        )}
+
+        {unapprovedEntry?.status === "rejected" && (
+          <div className={styles.rejectedNotice}>
+            <div>
+              This entry was rejected by L2{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
+              {unapprovedEntry.reviewedAt ? ` Reviewed ${unapprovedEntry.reviewedAt}.` : ""} The Proposed column
+              below shows the rejected submission — resubmitting will overwrite it.
+            </div>
+            {unapprovedEntry.remarks && (
+              <div className={styles.rejectedRemarks}>Reviewer remarks: {unapprovedEntry.remarks}</div>
+            )}
+          </div>
+        )}
+
         <div className={`${styles.row} ${styles.topRow}`}>
           <div className={styles.field}>
             <label>Type</label>

@@ -1,0 +1,467 @@
+.page {
+    min-height: calc(100vh - 72px);
+    padding: 20px clamp(18px, 4vw, 54px) 44px;
+    background: #f4f6f9;
+    color: #111827;
+}
+
+.title {
+    margin: 0 0 20px;
+    color: #111827;
+    font-size: 26px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.accessNotice {
+    max-width: 1180px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 24px;
+    color: #475569;
+    font-size: 14px;
+}
+
+.tabs {
+    display: flex;
+    gap: 6px;
+    max-width: 1180px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e5e9f0;
+}
+
+.tab {
+    padding: 10px 18px;
+    border: none;
+    background: none;
+    color: #6b7280;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.tab:hover {
+    color: #334155;
+}
+
+.tabActive {
+    color: #4056a8;
+    border-bottom: 2px solid #4056a8;
+}
+
+.groups {
+    display: grid;
+    gap: 28px;
+    max-width: 1180px;
+}
+
+.group {
+    display: grid;
+    gap: 10px;
+}
+
+.groupTitle {
+    margin: 0;
+    padding-left: 20px;
+    color: #111827;
+    font-size: 15px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.list {
+    display: grid;
+    gap: 8px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    min-height: 74px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 14px 22px;
+    text-align: left;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+    cursor: pointer;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.row:hover {
+    border-color: #cdd6f6;
+    box-shadow: 0 6px 16px rgba(44, 62, 128, 0.1);
+    transform: translateY(-1px);
+}
+
+.rowMain {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.rowTitleLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rowMain strong {
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.15;
+    font-weight: 800;
+}
+
+.rowMain span {
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.rowMeta {
+    display: flex;
+    align-items: center;
+    gap: 38px;
+    min-width: 320px;
+}
+
+.rowMeta span,
+.modalMeta span {
+    display: grid;
+    gap: 4px;
+}
+
+.rowMeta small,
+.modalMeta small,
+.fieldCard small {
+    color: #7b8494;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.rowMeta strong,
+.modalMeta strong {
+    color: #111827;
+    font-size: 13px;
+    line-height: 1.1;
+    font-weight: 800;
+}
+
+.emptyState {
+    width: 100%;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 28px;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    max-width: 1180px;
+}
+
+.errorState {
+    max-width: 1180px;
+    margin-bottom: 16px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    padding: 12px 16px;
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 86px 24px 28px;
+    background: rgba(0, 0, 0, 0.58);
+}
+
+.modal {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: min(820px, 100%);
+    max-height: min(80vh, 640px);
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 32px 42px 30px;
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.26);
+}
+
+.closeButton {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e5e9f0;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.closeButton:hover {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #b91c1c;
+}
+
+.modalHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 32px;
+    align-items: start;
+    margin-bottom: 20px;
+}
+
+.modalHeader h2 {
+    margin: 0 0 8px;
+    color: #111827;
+    font-size: 15px;
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.modalHeaderTitleLine {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modalHeader p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.modalMeta {
+    display: flex;
+    align-items: flex-start;
+    gap: 36px;
+}
+
+.fieldGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    gap: 14px 18px;
+    overflow-y: auto;
+    max-height: 320px;
+    margin: 0 -8px 20px 0;
+    padding-right: 8px;
+}
+
+.fieldCard {
+    min-height: 72px;
+    border: 1px solid #e4e8ef;
+    border-radius: 6px;
+    background: #f4f6f8;
+    padding: 12px 14px;
+    overflow: hidden;
+}
+
+.fieldCard strong {
+    display: block;
+    margin-top: 9px;
+    color: #111827;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: normal;
+}
+
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.statusBadgePending {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fbbf24;
+}
+
+.statusBadgeApproved {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+.statusBadgeRejected {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+
+.rejectPanel {
+    max-width: 1180px;
+    margin: 0 0 20px;
+}
+
+.rejectForm {
+    margin-bottom: 20px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 14px 16px;
+}
+
+.rejectForm label {
+    display: block;
+    margin-bottom: 8px;
+    color: #7b8494;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.rejectTextarea {
+    width: 100%;
+    min-height: 72px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    padding: 10px 12px;
+    color: #111827;
+    font-size: 13px;
+    resize: vertical;
+}
+
+.rejectTextarea:focus {
+    outline: none;
+    border-color: #4056a8;
+}
+
+.actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.approveButton,
+.rejectButton,
+.confirmRejectButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 118px;
+    min-height: 34px;
+    border-radius: 6px;
+    padding: 0 18px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.approveButton {
+    border: none;
+    background: #4056a8;
+    color: #ffffff;
+}
+
+.rejectButton {
+    border: 1px solid #fca5a5;
+    background: #ffffff;
+    color: #b91c1c;
+}
+
+.rejectButton:hover {
+    background: #fef2f2;
+}
+
+.confirmRejectButton {
+    border: none;
+    background: #dc2626;
+    color: #ffffff;
+}
+
+.approveButton:disabled,
+.rejectButton:disabled,
+.confirmRejectButton:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+@media (max-width: 860px) {
+    .row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .rowMeta,
+    .modalMeta {
+        width: 100%;
+        justify-content: space-between;
+        gap: 18px;
+    }
+
+    .modal {
+        max-height: 82vh;
+        padding: 26px 22px 28px;
+    }
+
+    .modalHeader {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .fieldGrid {
+        max-height: 380px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .page {
+        padding: 18px 14px 34px;
+    }
+
+    .title {
+        font-size: 22px;
+    }
+
+    .overlay {
+        padding: 72px 12px 18px;
+    }
+
+    .fieldGrid {
+        max-height: 52vh;
+        grid-template-columns: 1fr;
+    }
+}

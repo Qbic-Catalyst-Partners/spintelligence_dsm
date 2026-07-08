@@ -10,6 +10,11 @@ const normalizeConfig = (data) => {
   return candidate && typeof candidate === "object" && !Array.isArray(candidate) ? candidate : null;
 };
 
+const normalizeSubDepartments = (data) => {
+  const candidate = data?.sub_departments || data?.subDepartments || data?.data?.sub_departments || data?.data?.subDepartments;
+  return Array.isArray(candidate) ? candidate : [];
+};
+
 export const fetchPpNotebookBatchConfigAPI = async () => {
   try {
     const response = await apiConfig.get(
@@ -17,7 +22,10 @@ export const fetchPpNotebookBatchConfigAPI = async () => {
       {},
       { skipGlobalSuccessModal: true }
     );
-    return normalizeConfig(response?.data);
+    return {
+      config: normalizeConfig(response?.data),
+      subDepartments: normalizeSubDepartments(response?.data),
+    };
   } catch (error) {
     if (error.request) {
       throw new Error(

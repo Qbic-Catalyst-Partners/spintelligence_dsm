@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useSelector } from "react-redux";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
-import { fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
+import { fetchDrawFrameMachineMaster, fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeBlendPercentInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
@@ -32,7 +33,11 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 3 (D50/D55)": "type3_d50_d55",
   "Type 4 (LDF3S)": "type4_ldf3s",
 };
-const DRAFT_STORAGE_KEY = "draw_frame_wheel_change_last_values";
+// Bumped to _v2 to invalidate any stale cached drafts from before the
+// machine_no/pending/rejected approval workflow existed — old-keyed drafts
+// are simply never read and get swept away below.
+const DRAFT_STORAGE_KEY = "draw_frame_wheel_change_last_values_v2";
+const DRAFT_STORAGE_KEY_LEGACY = "draw_frame_wheel_change_last_values";
 const TD7_LIKE_WHEEL_CHANGE_TYPES = ["Type 2 (TD7)", "Type 3 (TD9)"];
 
 const TYPE_1_ROWS = [
@@ -1199,6 +1204,26 @@ const buildValuesFromParameters = (parameters) => {
 const getApiWheelChangeType = (wheelChangeType = "") =>
   WHEEL_CHANGE_API_TYPES[wheelChangeType] || wheelChangeType;
 
+// Overlays only the Proposed column from a still-unapproved (pending or
+// rejected) entry onto an already-built Existing baseline. The Existing
+// baseline always comes from the last *approved* entry only.
+const applyUnapprovedProposedValues = (existingValues, entry) => {
+  const rows = normalizeParameters(pickSavedRows(entry));
+  const nextValues = { ...existingValues };
+  Object.entries(rows).forEach(([key, rowValue]) => {
+    if (!nextValues[key]) return;
+    const proposedValue =
+      rowValue && typeof rowValue === "object" && !Array.isArray(rowValue)
+        ? String(rowValue.proposed ?? "")
+        : "";
+    nextValues[key] = {
+      existing: nextValues[key]?.existing || "",
+      proposed: proposedValue,
+    };
+  });
+  return nextValues;
+};
+
 const getLineTypeForWheelChangeType = (wheelChangeType = "") =>
   Object.entries(WHEEL_CHANGE_TYPES_BY_LINE).find(([, types]) => types.includes(wheelChangeType))?.[0] || "";
 
@@ -1255,11 +1280,18 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     typeOptions = [],
     entryId = "#DWC-001",
     onTypeChange,
+    onWheelChangeTypeChange,
   },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
+  const operatorName = String(
+    user?.name || user?.full_name || user?.user_name || user?.username || ""
+  ).trim();
   const [wheelChangeType, setWheelChangeType] = useState("");
   const [lineType, setLineType] = useState("");
+  const [machineNo, setMachineNo] = useState("");
+  const [machineOptions, setMachineOptions] = useState([]);
   const [date, setDate] = useState(getTodayDate);
   const [values, setValues] = useState(createValues);
   const [errors, setErrors] = useState({});
@@ -1267,8 +1299,19 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [mixingOptions, setMixingOptions] = useState([]);
   const [loadingVarietyOptions, setLoadingVarietyOptions] = useState(false);
   const [varietyOptionsError, setVarietyOptionsError] = useState("");
+  // The most recent *unapproved* submission for this sub-type + machine, if
+  // any — either still awaiting L2 review or previously rejected. It's the
+  // row still sitting in the pending table, so its Proposed values are shown
+  // (and will be silently overwritten on the next submit).
+  const [unapprovedEntry, setUnapprovedEntry] = useState(null);
   const lastLoadedMixingRef = useRef("");
-  const mixingEditedRef = useRef(false);
+
+  // Type 1-4 (SB20/TD7/TD9/LRSB/D40/D50-D55/LDF3S) each post to their own
+  // backend table; report the current selection up so the parent can reserve
+  // the Entry ID from that same table instead of a generic/shared one.
+  useEffect(() => {
+    onWheelChangeTypeChange?.(wheelChangeType);
+  }, [onWheelChangeTypeChange, wheelChangeType]);
 
   const activeRows = useMemo(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
@@ -1285,11 +1328,13 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY_LEGACY);
     try {
       const stored = JSON.parse(window.localStorage.getItem(DRAFT_STORAGE_KEY) || "{}");
       if (stored && typeof stored === "object") {
         setWheelChangeType(typeof stored.wheelChangeType === "string" ? stored.wheelChangeType : "");
         setLineType(typeof stored.lineType === "string" ? stored.lineType : "");
+        setMachineNo(typeof stored.machineNo === "string" ? stored.machineNo : "");
         setDate(typeof stored.date === "string" && stored.date ? stored.date : getTodayDate());
         setValues({
           ...createValues(),
@@ -1330,56 +1375,108 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    const loadMachines = async () => {
+      try {
+        const machines = await fetchDrawFrameMachineMaster();
+        if (!active) return;
+        const names = Array.from(
+          new Set(
+            machines
+              .map((item) => String(item?.mc_name || item?.machine_number || item?.machine_no || "").trim())
+              .filter(Boolean)
+          )
+        );
+        setMachineOptions(names);
+      } catch {
+        if (active) setMachineOptions([]);
+      }
+    };
+
+    loadMachines();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!draftLoaded || typeof window === "undefined") return;
     window.localStorage.setItem(
       DRAFT_STORAGE_KEY,
       JSON.stringify({
         wheelChangeType,
         lineType,
+        machineNo,
         date,
         values,
       })
     );
-  }, [date, draftLoaded, lineType, values, wheelChangeType]);
+  }, [date, draftLoaded, lineType, machineNo, values, wheelChangeType]);
 
   const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType, mixingValue = "") => {
     const apiWheelChangeType = getApiWheelChangeType(requestedWheelChangeType);
-    const params = {
-      page: 1,
-      limit: 1,
-      wheelChangeType: apiWheelChangeType,
-      approval_status: "approved",
-      status: "approved",
-    };
+    const baseParams = { page: 1, limit: 1, wheelChangeType: apiWheelChangeType };
     const trimmedMixing = String(mixingValue || "").trim();
     if (trimmedMixing) {
-      params.variety = trimmedMixing;
-      params.variety_name = trimmedMixing;
-      params.mixing = trimmedMixing;
+      // Fetch/pre-populate is keyed by Mixing/Process, matching Spinning and
+      // Carding. machine_no is still sent on submit below since the backend
+      // uses it as its own carry-forward/supersede key, but the frontend's
+      // "what was last approved" lookup goes by mixing here.
+      baseParams.variety = trimmedMixing;
+      baseParams.variety_name = trimmedMixing;
+      baseParams.mixing = trimmedMixing;
     }
-    const payload = await fetchDrawFrameWheelChangeEntries(params);
-    const latest = extractLatestEntry(payload);
-    if (!latest) return null;
 
+    const [approvedResult, pendingResult, rejectedResult] = await Promise.allSettled([
+      fetchDrawFrameWheelChangeEntries({ ...baseParams, approval_status: "approved", status: "approved" }),
+      fetchDrawFrameWheelChangeEntries({ ...baseParams, approval_status: "pending", status: "pending" }),
+      fetchDrawFrameWheelChangeEntries({ ...baseParams, approval_status: "rejected", status: "rejected" }),
+    ]);
+
+    const approved = approvedResult.status === "fulfilled" ? extractLatestEntry(approvedResult.value) : null;
+    const pending = pendingResult.status === "fulfilled" ? extractLatestEntry(pendingResult.value) : null;
+    const rejected = rejectedResult.status === "fulfilled" ? extractLatestEntry(rejectedResult.value) : null;
+    const unapproved = pending || rejected;
+    if (!approved && !unapproved) return null;
+
+    const referenceEntry = approved || unapproved;
     const savedWheelChangeType =
-      WHEEL_CHANGE_TYPES.includes(latest.wheel_change_type_label)
-        ? latest.wheel_change_type_label
-        : normalizeApiWheelChangeType(latest.wheel_change_type);
+      WHEEL_CHANGE_TYPES.includes(referenceEntry.wheel_change_type_label)
+        ? referenceEntry.wheel_change_type_label
+        : normalizeApiWheelChangeType(referenceEntry.wheel_change_type);
     const savedLineType =
-      String(latest.line_type || "") ||
+      String(referenceEntry.line_type || "") ||
       getLineTypeForWheelChangeType(savedWheelChangeType || requestedWheelChangeType);
 
     setWheelChangeType(savedWheelChangeType || requestedWheelChangeType);
     setLineType(savedLineType);
-    setDate(toInputDate(latest.entry_date || latest.date || latest.created_at) || getTodayDate());
-    setValues(buildValuesFromParameters(pickSavedRows(latest)));
+    setDate(
+      toInputDate(referenceEntry.entry_date || referenceEntry.date || referenceEntry.created_at) || getTodayDate()
+    );
+    setUnapprovedEntry(
+      unapproved
+        ? {
+            status: pending ? "pending" : "rejected",
+            remarks: String(unapproved?.review_remarks ?? unapproved?.reviewRemarks ?? "").trim(),
+            reviewedBy: String(unapproved?.reviewed_by ?? unapproved?.reviewedBy ?? "").trim(),
+            reviewedAt: unapproved?.reviewed_at ?? unapproved?.reviewedAt ?? "",
+          }
+        : null
+    );
+    setValues(() => {
+      const baseline = buildValuesFromParameters(pickSavedRows(approved || {}));
+      return unapproved ? applyUnapprovedProposedValues(baseline, unapproved) : baseline;
+    });
     setErrors({});
-    return latest;
+    return referenceEntry;
   };
 
   useEffect(() => {
-    if (mixingEditedRef.current || !draftLoaded || !wheelChangeType || !selectedMixingExisting) {
+    if (!draftLoaded || !wheelChangeType || !selectedMixingExisting) {
       lastLoadedMixingRef.current = "";
+      setUnapprovedEntry(null);
       return;
     }
 
@@ -1753,11 +1850,12 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const clear = () => {
     setWheelChangeType("");
     setLineType("");
+    setMachineNo("");
     setDate(getTodayDate());
     setValues(createValues());
     setErrors({});
+    setUnapprovedEntry(null);
     lastLoadedMixingRef.current = "";
-    mixingEditedRef.current = false;
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(DRAFT_STORAGE_KEY);
     }
@@ -1768,6 +1866,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     if (!selectedTypeName) nextErrors.selectedTypeName = true;
     if (!lineType.trim()) nextErrors.lineType = true;
     if (!wheelChangeType.trim()) nextErrors.wheelChangeType = true;
+    if (!machineNo.trim()) nextErrors.machineNo = true;
     if (!date) nextErrors.date = true;
 
     const valueErrors = {};
@@ -1813,7 +1912,9 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       type: selectedTypeName,
       department: "Draw Frame",
       approval_status: "pending",
+      operator: operatorName,
       line_type: lineType,
+      machine_no: machineNo,
       wheel_change_type: getApiWheelChangeType(wheelChangeType),
       wheel_change_type_label: wheelChangeType,
       entry_date: date || getTodayDate(),
@@ -1837,8 +1938,21 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   };
 
   const getPreviewData = () => [
+    ...(unapprovedEntry
+      ? [
+          {
+            label: "⚠ Overwrite Warning",
+            value:
+              unapprovedEntry.status === "rejected"
+                ? "This mixing has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
+                : "This mixing already has an entry awaiting L2 verification. Submitting will overwrite it — there is no undo.",
+            wide: true,
+          },
+        ]
+      : []),
     { label: "Checking Type", value: selectedTypeName || "-" },
     { label: "Line Type", value: lineType || "-" },
+    { label: "Machine No.", value: machineNo || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "#DWC-001" },
     { label: "Date", value: date || "-" },
@@ -1869,7 +1983,6 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
           className={className}
           value={value}
           onChange={(nextValue) => {
-            mixingEditedRef.current = true;
             setValues((current) => {
               const updatedValues = applyFinisherType1LrsbComputedValues(applyType1Sb20ComputedValues({
                 ...current,
@@ -1951,10 +2064,39 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       <div className={styles.titleRow}>
         <InspectionEntryIcon />
         <h3 className={styles.sectionTitle}>Inspection Data Entry</h3>
+        {unapprovedEntry?.status && (
+          <span
+            className={`${styles.statusBadge} ${
+              unapprovedEntry.status === "rejected" ? styles.statusBadgeRejected : styles.statusBadgePending
+            }`}
+          >
+            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L2"}
+          </span>
+        )}
         <InputScreenUploadButton className="ml-auto" />
       </div>
 
       <div className={styles.form}>
+        {unapprovedEntry?.status === "pending" && (
+          <div className={styles.pendingNotice}>
+            A proposed entry for this mixing is still awaiting L2 approval. The Proposed column below shows that
+            pending submission — submitting again will overwrite it.
+          </div>
+        )}
+
+        {unapprovedEntry?.status === "rejected" && (
+          <div className={styles.rejectedNotice}>
+            <div>
+              This entry was rejected by L2{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
+              {unapprovedEntry.reviewedAt ? ` Reviewed ${unapprovedEntry.reviewedAt}.` : ""} The Proposed column
+              below shows the rejected submission — resubmitting will overwrite it.
+            </div>
+            {unapprovedEntry.remarks && (
+              <div className={styles.rejectedRemarks}>Reviewer remarks: {unapprovedEntry.remarks}</div>
+            )}
+          </div>
+        )}
+
         <div className={styles.row}>
           <div className={styles.field}>
             <label>Type</label>
@@ -2040,7 +2182,20 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
             />
           </div>
 
-          <div className={styles.field} aria-hidden="true" />
+          <div className={styles.field}>
+            <label>Machine No.</label>
+            <SearchableSelect
+              className={`${styles.topInput} ${errors.machineNo ? styles.errorInput : ""}`}
+              value={machineNo}
+              onChange={(nextValue) => {
+                setMachineNo(nextValue);
+                clearFieldError("machineNo");
+              }}
+              options={machineOptions}
+              placeholder="Select Machine No."
+              ariaLabel="Machine No."
+            />
+          </div>
         </div>
 
         <div className={styles.tableWrap}>

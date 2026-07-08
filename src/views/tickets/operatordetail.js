@@ -127,8 +127,7 @@ export default function TicketDetails() {
   };
 
   const rawParameterNames = getTicketParameterNames(resolvedTicket);
-  const isSubmissionTicket = isSubmissionTicketRecord(resolvedTicket) ||
-    String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+  const isSubmissionTicket = isSubmissionTicketRecord(resolvedTicket);
   const submissionParameterNames = rawParameterNames.filter(
     (param) => isSubmissionFrequencyParameterName(param) || isNotebookAcknowledgementParameterName(param)
   );
