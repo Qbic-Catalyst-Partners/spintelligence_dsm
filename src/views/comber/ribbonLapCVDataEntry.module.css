@@ -302,6 +302,16 @@
   font-size: 14px;
 }
 
+@media print {
+  .cb-sample-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .cb-stats-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
 /* ================= MOBILE ================= */
 
 @media (max-width: 768px) {

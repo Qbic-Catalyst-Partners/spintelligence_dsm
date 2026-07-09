@@ -52,7 +52,7 @@ const SPINNING_CHECKING_OPTIONS = [
     { id: 3, name: "Ring Frame Log Book", aliases: ["Ring Frame Log Book", "RING FRAME LOG BOOK"] },
     { id: 4, name: "Speed Checking", aliases: ["Speed Checking", "SPEED CHECKING"] },
     { id: 6, name: "Bottom Apron Checking", aliases: ["Bottom Apron Checking", "BOTTOM APRON CHECKING"] },
-    { id: 7, name: "Lycra out of Centering", aliases: ["Lycra Centering", "LYCRA CENTERING"] },
+    { id: 7, name: "Lycra Out of Centering", aliases: ["Lycra Centering", "Lycra out of Centering", "LYCRA CENTERING"] },
     { id: 8, name: "RSM & Lycrasensor Checking Online", aliases: ["RSM & Lycrasensor Checking Online", "RSM AND LYCRASENSOR CHECKING ONLINE"] },
     { id: 9, name: "RSM & Lycrasensor Checking Offline", aliases: ["RSM & Lycrasensor Checking Offline", "RSM AND LYCRASENSOR CHECKING OFFLINE"] },
     { id: 10, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"], component: WheelChange },
@@ -97,7 +97,7 @@ const SPINNING_ENTRY_ID_CONFIG = {
     "Speed Checking": { prefix: "SSD", width: 4, routePath: "/spinning/speed-checking" },
     "Lycra Missing": { prefix: "SLM", width: 4, routePath: "/spinning/lycra-missing" },
     "Bottom Apron Checking": { prefix: "SBA", width: 4, routePath: "/spinning/bottom-apron-checking" },
-    "Lycra out of Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
+    "Lycra Out of Centering": { prefix: "SLC", width: 4, routePath: "/spinning/lycra-centering" },
     "RSM & Lycrasensor Checking Online": { prefix: "SRO", width: 4, routePath: "/spinning/rsm-lycra-online" },
     "RSM & Lycrasensor Checking Offline": { prefix: "SFO", width: 4, routePath: "/spinning/rsm-lycra-offline" },
     "Wheel Change": { prefix: "SWC", width: 4, routePath: "/spinning/wheel-change" },
@@ -482,7 +482,7 @@ function SpinningDepartment() {
 
         const screenMap = {
             "Lycra Missing": "lycra-missing",
-            "Lycra out of Centering": "lycra-centering",
+            "Lycra Out of Centering": "lycra-centering",
             "RSM & Lycrasensor Checking Online": "rsm-lycra-online",
             "RSM & Lycrasensor Checking Offline": "rsm-lycra-offline",
         };

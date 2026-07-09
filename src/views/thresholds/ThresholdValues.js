@@ -27,6 +27,7 @@ const createRule = () => ({
     fieldName: "",
     comparison: "more_and_less_than",
     actualValue: "",
+    valueMode: "number",
     positiveTolerance: "",
     negativeTolerance: "",
     criticality: "",
@@ -56,6 +57,45 @@ const getScreenFieldOptions = (screenName, thresholds) => {
         .filter(Boolean);
 
     return Array.from(new Set(inferredFields)).sort();
+};
+
+const formatToleranceDisplay = (item, absoluteValue, percentValue) => {
+    if (item?.value_mode === "percent" && percentValue !== undefined && percentValue !== null && percentValue !== "") {
+        return `${percentValue} (%)`;
+    }
+
+    return absoluteValue ?? "-";
+};
+
+const PERCENT_MODE_STORAGE_KEY = "thresholdValuesPercentModeCache";
+
+const loadPercentModeCacheFromStorage = () => {
+    if (typeof window === "undefined") {
+        return new Map();
+    }
+
+    try {
+        const raw = window.localStorage.getItem(PERCENT_MODE_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return new Map(Object.entries(parsed));
+    } catch {
+        return new Map();
+    }
+};
+
+const savePercentModeCacheToStorage = (cache) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            PERCENT_MODE_STORAGE_KEY,
+            JSON.stringify(Object.fromEntries(cache))
+        );
+    } catch {
+        // ignore storage failures (e.g. private browsing quota)
+    }
 };
 
 const getCriticalityLabel = (item) => {
@@ -357,6 +397,41 @@ export default function ThresholdValues() {
     const [existingMessage, setExistingMessage] = useState("");
     const [existingError, setExistingError] = useState("");
 
+    const percentModeCacheRef = useRef(null);
+    if (percentModeCacheRef.current === null) {
+        percentModeCacheRef.current = loadPercentModeCacheFromStorage();
+    }
+
+    const normalizeKeyText = (value) => String(value ?? "").trim().toLowerCase();
+
+    const normalizeKeyNumber = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? String(num) : normalizeKeyText(value);
+    };
+
+    const getPercentCacheKey = (item) =>
+        [
+            normalizeKeyText(item?.input_screen || item?.machine_name),
+            normalizeKeyText(item?.input_field || item?.parameter_name),
+            normalizeKeyNumber(item?.actual_value),
+        ].join("::");
+
+    const rememberPercentMode = (item) => {
+        const key = getPercentCacheKey(item);
+        percentModeCacheRef.current.set(key, {
+            value_mode: item.value_mode,
+            positive_tolerance_percent: item.positive_tolerance_percent,
+            negative_tolerance_percent: item.negative_tolerance_percent,
+        });
+        savePercentModeCacheToStorage(percentModeCacheRef.current);
+    };
+
+    const applyPercentModeCache = (data) =>
+        (Array.isArray(data) ? data : []).map((item) => {
+            const cached = percentModeCacheRef.current.get(getPercentCacheKey(item));
+            return cached ? { ...item, ...cached } : item;
+        });
+
     const loadThresholds = async () => {
         if (!canAccessPage) {
             return;
@@ -366,7 +441,7 @@ export default function ThresholdValues() {
 
         try {
             const data = await fetchThresholdsAPI();
-            setThresholds(data);
+            setThresholds(applyPercentModeCache(data));
             setLoadError("");
         } catch (error) {
             setThresholds([]);
@@ -606,8 +681,15 @@ export default function ThresholdValues() {
                 fieldName: item?.input_field || item?.parameter_name || "",
                 comparison: item?.comparison_operator || item?.condition_level || "more_and_less_than",
                 actualValue: String(item?.actual_value ?? ""),
-                positiveTolerance: String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
-                negativeTolerance: String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
+                valueMode: item?.value_mode === "percent" ? "percent" : "number",
+                positiveTolerance:
+                    item?.value_mode === "percent"
+                        ? String(item?.positive_tolerance_percent ?? "")
+                        : String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
+                negativeTolerance:
+                    item?.value_mode === "percent"
+                        ? String(item?.negative_tolerance_percent ?? "")
+                        : String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
                 criticality: getCriticalityLabel(item),
                 approvalL1: normalizeNameList(
                     item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
@@ -786,9 +868,27 @@ export default function ThresholdValues() {
                 return;
             }
 
+            const isPercentMode = rule.valueMode === "percent";
             const numericActualValue = Number(rawActualValue);
-            const numericPositiveTolerance = Number(rawPositiveTolerance);
-            const numericNegativeTolerance = Number(rawNegativeTolerance);
+            const rawNumericPositiveTolerance = Number(rawPositiveTolerance);
+            const rawNumericNegativeTolerance = Number(rawNegativeTolerance);
+
+            const roundToTwo = (value) => Number(value.toFixed(2));
+
+            const numericPositiveTolerance =
+                isPercentMode &&
+                rawPositiveTolerance !== "" &&
+                Number.isFinite(numericActualValue) &&
+                Number.isFinite(rawNumericPositiveTolerance)
+                    ? roundToTwo(numericActualValue * (rawNumericPositiveTolerance / 100))
+                    : rawNumericPositiveTolerance;
+            const numericNegativeTolerance =
+                isPercentMode &&
+                rawNegativeTolerance !== "" &&
+                Number.isFinite(numericActualValue) &&
+                Number.isFinite(rawNumericNegativeTolerance)
+                    ? roundToTwo(numericActualValue * (rawNumericNegativeTolerance / 100))
+                    : rawNumericNegativeTolerance;
 
             thresholdItems.push({
                 department: selectedDepartment.name,
@@ -834,6 +934,9 @@ export default function ThresholdValues() {
                     rawNegativeTolerance !== "" && Number.isFinite(numericNegativeTolerance)
                         ? numericNegativeTolerance
                         : rawNegativeTolerance,
+                value_mode: rule.valueMode || "number",
+                positive_tolerance_percent: isPercentMode ? rawPositiveTolerance : "",
+                negative_tolerance_percent: isPercentMode ? rawNegativeTolerance : "",
                 min_allowed_value:
                     rawActualValue !== "" &&
                     rawNegativeTolerance !== "" &&
@@ -851,6 +954,8 @@ export default function ThresholdValues() {
                 is_active: editingThreshold?.is_active ?? true,
             });
         }
+
+        thresholdItems.forEach(rememberPercentMode);
 
         setSubmitting(true);
         setFormError("");
@@ -1108,7 +1213,33 @@ export default function ThresholdValues() {
 
                                                     <div className={styles.ruleBottomGrid}>
                                                         <label className={styles.field}>
-                                                            <span>Actual Value</span>
+                                                            <span className={styles.fieldLabelRow}>
+                                                                Actual Value
+                                                                <span className={styles.valueModeGroup} role="radiogroup" aria-label="Value type">
+                                                                    <label className={styles.valueModeOption}>
+                                                                        <input
+                                                                            type="radio"
+                                                                            name={`value-mode-${rule.id}`}
+                                                                            checked={(rule.valueMode || "number") === "number"}
+                                                                            onChange={() =>
+                                                                                handleRuleChange(rule.id, "valueMode", "number")
+                                                                            }
+                                                                        />
+                                                                        Numbers
+                                                                    </label>
+                                                                    <label className={styles.valueModeOption}>
+                                                                        <input
+                                                                            type="radio"
+                                                                            name={`value-mode-${rule.id}`}
+                                                                            checked={rule.valueMode === "percent"}
+                                                                            onChange={() =>
+                                                                                handleRuleChange(rule.id, "valueMode", "percent")
+                                                                            }
+                                                                        />
+                                                                        Percentage
+                                                                    </label>
+                                                                </span>
+                                                            </span>
                                                             <input
                                                                 value={rule.actualValue}
                                                                 onChange={(event) =>
@@ -1119,24 +1250,32 @@ export default function ThresholdValues() {
                                                         </label>
 
                                                         <label className={styles.field}>
-                                                            <span>Plus (+)</span>
+                                                            <span>Plus (+){rule.valueMode === "percent" ? " %" : ""}</span>
                                                             <input
                                                                 value={rule.positiveTolerance}
                                                                 onChange={(event) =>
                                                                     handleRuleChange(rule.id, "positiveTolerance", event.target.value)
                                                                 }
-                                                                placeholder="Enter + tolerance"
+                                                                placeholder={
+                                                                    rule.valueMode === "percent"
+                                                                        ? "Enter + % (e.g. 5)"
+                                                                        : "Enter + tolerance"
+                                                                }
                                                             />
                                                         </label>
 
                                                         <label className={styles.field}>
-                                                            <span>Minus (-)</span>
+                                                            <span>Minus (-){rule.valueMode === "percent" ? " %" : ""} (optional)</span>
                                                             <input
                                                                 value={rule.negativeTolerance}
                                                                 onChange={(event) =>
                                                                     handleRuleChange(rule.id, "negativeTolerance", event.target.value)
                                                                 }
-                                                                placeholder="Enter - tolerance"
+                                                                placeholder={
+                                                                    rule.valueMode === "percent"
+                                                                        ? "Enter - % (e.g. 5)"
+                                                                        : "Enter - tolerance"
+                                                                }
                                                             />
                                                         </label>
 
@@ -1383,10 +1522,18 @@ export default function ThresholdValues() {
                                                     </td>
                                                     <td>{item.actual_value ?? "-"}</td>
                                                     <td className={styles.positiveValue}>
-                                                        {item.plus_threshold ?? item.positive_tolerance ?? "-"}
+                                                        {formatToleranceDisplay(
+                                                            item,
+                                                            item.plus_threshold ?? item.positive_tolerance,
+                                                            item.positive_tolerance_percent
+                                                        )}
                                                     </td>
                                                     <td className={styles.negativeValue}>
-                                                        {item.minus_threshold ?? item.negative_tolerance ?? "-"}
+                                                        {formatToleranceDisplay(
+                                                            item,
+                                                            item.minus_threshold ?? item.negative_tolerance,
+                                                            item.negative_tolerance_percent
+                                                        )}
                                                     </td>
                                                     <td>
                                                         <span

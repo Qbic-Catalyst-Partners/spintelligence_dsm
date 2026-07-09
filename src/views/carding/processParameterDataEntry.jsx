@@ -204,7 +204,7 @@ const SavedVersionsSection = ({
   loading,
   errorMessage,
 }) => (
-  <div className="process-parameter-history">
+  <div className="process-parameter-history print:hidden">
     {loading ? (
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
         Loading saved versions...
@@ -660,7 +660,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
         </div>
 
         <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
             <div className="flex flex-col gap-1.5 min-w-0">
               <label className="text-[14px] font-semibold text-slate-700">Type</label>
               <select
@@ -715,7 +715,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
           </div>
 
           <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
               {topMachineFieldDefs.map((field) => (
                 <div key={field.key} className="flex flex-col gap-1.5">
                   <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
@@ -733,7 +733,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
               <div className="mb-4 text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
                 Setting
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
                 {settingFieldDefs.map((field) => (
                   <div key={field.key} className="flex flex-col gap-1.5">
                     <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>
@@ -752,7 +752,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
               <div className="mb-4 text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
                 Wire Speck
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
                 {wireSpeckFieldDefs.map((field) => (
                   <div key={field.key} className="flex flex-col gap-1.5">
                     <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>

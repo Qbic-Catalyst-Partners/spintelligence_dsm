@@ -195,7 +195,7 @@ const SavedVersionsSection = ({
   loading,
   errorMessage,
 }) => (
-  <div className="mixing-process-parameter-history">
+  <div className="mixing-process-parameter-history print:hidden">
 
     {loading ? (
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -621,7 +621,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
   const formContent = (
     <div ref={formSectionRef} className="mixing-process-parameter-form flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Type</label>
           <select
@@ -679,7 +679,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
         {form.rows.map((row, index) => (
           <div
             key={row.label}
-            className="mixing-process-row grid grid-cols-1 gap-3 rounded-[0px] border border-[transparent] bg-white p-4 md:grid-cols-2 xl:grid-cols-6"
+            className="mixing-process-row grid grid-cols-1 gap-3 rounded-[0px] border border-[transparent] bg-white p-4 md:grid-cols-2 xl:grid-cols-6 print:grid-cols-6"
           >
             <div className="flex flex-col gap-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Lot No.</label>

@@ -553,13 +553,13 @@ const calculateGmsPerLitre = (row = {}) => {
         {readingRows.map((row, index) => (
           <div key={`${row.drumNo}-${index}`} className="rounded-[14px] border border-[#cfe2ff] bg-[#f8fbff] px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="mb-5 text-[15px] font-semibold text-slate-900">Drum No : {row.drumNo}</div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-7 print:grid-cols-7">
               {drumCardFields.map((item) => {
                 const colSpanClass = item.span === 4
-                  ? "xl:col-span-4"
+                  ? "xl:col-span-4 print:col-span-4"
                   : item.span === 2
-                    ? "xl:col-span-2"
-                    : "xl:col-span-1";
+                    ? "xl:col-span-2 print:col-span-2"
+                    : "xl:col-span-1 print:col-span-1";
                 return (
                   <div key={item.field} className={`flex flex-col gap-2 ${colSpanClass}`}>
                     <label className="text-[13px] font-semibold text-slate-500">{item.label}</label>
@@ -595,7 +595,7 @@ const calculateGmsPerLitre = (row = {}) => {
   );
 
   const summarySection = (
-    <div className="flex flex-col gap-8 pt-6">
+    <div className="flex flex-col gap-8 pt-6 print:hidden">
       <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
         <div className="overflow-x-auto">
@@ -656,7 +656,7 @@ const calculateGmsPerLitre = (row = {}) => {
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
         {formFields.map(({ label, field, type, options = [], value, placeholder }) => {
           if (type === "pair") {
             return (

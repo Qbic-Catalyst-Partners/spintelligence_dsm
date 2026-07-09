@@ -314,7 +314,7 @@ const SavedVersionsSection = ({
   loading,
   errorMessage,
 }) => (
-  <div className="process-parameter-history">
+  <div className="process-parameter-history print:hidden">
     {loading ? (
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
         Loading saved versions...
@@ -703,7 +703,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
 
   const formContent = (
     <div ref={formSectionRef} className="process-parameter-form flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Type</label>
           <select
@@ -757,7 +757,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
         {fieldDefs
           .filter((field) => !slubFieldKeys.has(field.key))
           .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}
@@ -768,7 +768,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
           <h3 className="text-[16px] font-bold text-slate-900">Slub Specification</h3>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
           {fieldDefs
             .filter((field) => slubFieldKeys.has(field.key))
             .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}

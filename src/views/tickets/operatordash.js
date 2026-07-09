@@ -8,7 +8,9 @@ import { useSelector } from "react-redux";
 import { getOperatorTickets, getSubmissionTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
 import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
+    applyOneTimeThresholdTicketReset,
     isSubmissionTicketRecord,
+    isThresholdTicketRecord,
     transformTicket,
 } from "../../utils/ticketTransformer";
 import { isSupervisorNavUser } from "../../utils/accessControl";
@@ -148,7 +150,9 @@ export default function operatorboard() {
                 : response?.data || response?.tickets || [];
 
             const normalizedTickets = applyStoredTicketStatuses(ticketsArray);
-            const thresholdTickets = normalizedTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
+            const thresholdTickets = applyOneTimeThresholdTicketReset(
+                normalizedTickets.filter(isThresholdTicketRecord)
+            );
             const submissionTickets = normalizedTickets.filter(isSubmissionTicketRecord);
 
             const formattedData = thresholdTickets

@@ -318,6 +318,8 @@ export const createThresholdViolationTickets = async ({
       threshold_value: thresholdValues,
       status: "Open",
       description: `System generated alert: ${parameterNames.length} threshold breach(es) detected.`,
+      source: "Threshold",
+      ticket_type: "Threshold",
     });
 
     return [createdTicket];

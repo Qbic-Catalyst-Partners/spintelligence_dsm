@@ -588,6 +588,47 @@
     margin-top: 2rem;
 }
 
+@media print {
+  .headerEntryList {
+    display: none !important;
+  }
+
+  .formGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .headerEntryGridTop {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .headerEntryGridMiddle,
+  .headerEntryGridBottom {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+
+  .fieldWide,
+  .uPercentRemarksField {
+    grid-column: span 2 !important;
+  }
+
+  .metricsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .resultCard .metricsGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .machineGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .readingsHeader,
+  .readingsRow {
+    grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+}
+
 .headerEntryFooter {
     margin: 1.5rem -1.5rem -1.5rem;
     position: relative;

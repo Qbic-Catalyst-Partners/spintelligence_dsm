@@ -131,6 +131,20 @@
   overflow: hidden;
 }
 
+@media print {
+  .tableSection {
+    display: none !important;
+  }
+
+  .formGrid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+
+  .remarksWide {
+    grid-column: span 2 !important;
+  }
+}
+
 .messageError {
   background: #fef2f2;
   color: #b91c1c;

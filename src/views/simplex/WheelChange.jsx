@@ -804,7 +804,7 @@ const WheelChange = forwardRef(function WheelChange(
           <InputScreenUploadButton className="ml-auto" />
         </div>
 
-        <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">Type</label>
             <select

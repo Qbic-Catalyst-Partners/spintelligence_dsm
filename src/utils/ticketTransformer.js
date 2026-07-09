@@ -29,6 +29,11 @@ export const isNotebookAcknowledgementParameterName = (parameterName) => {
   );
 };
 
+// Generic notebook-header labels like "Spinning QC Header" / "Mixing QC Header" are
+// not a real measured field, so they should never be treated as a threshold breach.
+export const isGenericQcHeaderParameterName = (parameterName) =>
+  /qc\s*header$/i.test(String(parameterName || "").trim());
+
 export const formatTicketIdForDisplay = (ticketId) => {
   const rawId = String(ticketId || "").trim();
   if (!rawId) return "-";
@@ -130,6 +135,20 @@ export const getTicketParameterNames = (ticket) => {
 };
 
 export const isSubmissionTicketRecord = (ticket) => {
+  const discriminator = String(
+    ticket?.ticket_type ||
+    ticket?.source ||
+    ""
+  ).toLowerCase();
+
+  if (discriminator === "threshold") {
+    return false;
+  }
+
+  if (discriminator === "submission" || discriminator === "manual") {
+    return discriminator === "submission";
+  }
+
   const notebookType = String(
     ticket?.notebook_type ||
     ticket?.notebookType ||
@@ -165,6 +184,104 @@ export const isSubmissionTicketRecord = (ticket) => {
       isSubmissionFrequencyParameterName(parameterName) ||
       isNotebookAcknowledgementParameterName(parameterName)
   );
+};
+
+const hasMeaningfulValue = (value) => {
+  if (value === undefined || value === null) return false;
+
+  if (typeof value === "object") {
+    return Object.values(value).some(
+      (nested) => nested !== undefined && nested !== null && String(nested).trim() !== ""
+    );
+  }
+
+  const text = String(value).trim();
+  return text !== "" && text !== "-";
+};
+
+// Some backend flows raise notebook-header tickets with a generic parameter
+// label (e.g. "Spinning QC Header") but no actual/threshold values attached.
+// Those aren't real threshold breaches, so exclude them from the Threshold tab.
+export const ticketHasThresholdBreachData = (ticket) => {
+  const parameterNames = getTicketParameterNames(ticket);
+  if (!parameterNames.length) return false;
+
+  return parameterNames.some((parameterName) => {
+    const actualValue = getTicketValueForParameter(ticket?.actual_value, parameterName);
+    const thresholdValue = getTicketValueForParameter(ticket?.threshold_value, parameterName);
+    return hasMeaningfulValue(actualValue) || hasMeaningfulValue(thresholdValue);
+  });
+};
+
+const DISMISSED_THRESHOLD_TICKET_IDS_KEY = "dismissedThresholdTicketIds";
+const THRESHOLD_TICKET_RESET_DONE_KEY = "thresholdTicketOneTimeResetDone";
+
+export const getTicketRecordId = (ticket) =>
+  String(ticket?.ticket_id ?? ticket?.id ?? ticket?._id ?? "").trim();
+
+const loadDismissedThresholdTicketIds = () => {
+  if (typeof window === "undefined") return new Set();
+
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_THRESHOLD_TICKET_IDS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const saveDismissedThresholdTicketIds = (ids) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(DISMISSED_THRESHOLD_TICKET_IDS_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // ignore storage failures (e.g. private browsing quota)
+  }
+};
+
+// One-time cleanup: the first time this runs in a browser, whatever threshold
+// tickets are currently visible get permanently dismissed (they were noise from
+// before the QC-Header/breach-data filtering existed). Anything created after
+// this point is unaffected and displays normally.
+export const applyOneTimeThresholdTicketReset = (thresholdTickets) => {
+  if (typeof window === "undefined") {
+    return thresholdTickets;
+  }
+
+  const alreadyDone = window.localStorage.getItem(THRESHOLD_TICKET_RESET_DONE_KEY) === "true";
+  const dismissedIds = loadDismissedThresholdTicketIds();
+
+  if (!alreadyDone) {
+    thresholdTickets.forEach((ticket) => {
+      const id = getTicketRecordId(ticket);
+      if (id) dismissedIds.add(id);
+    });
+    saveDismissedThresholdTicketIds(dismissedIds);
+
+    try {
+      window.localStorage.setItem(THRESHOLD_TICKET_RESET_DONE_KEY, "true");
+    } catch {
+      // ignore storage failures
+    }
+
+    return [];
+  }
+
+  return thresholdTickets.filter((ticket) => !dismissedIds.has(getTicketRecordId(ticket)));
+};
+
+export const isThresholdTicketRecord = (ticket) => {
+  if (isSubmissionTicketRecord(ticket)) {
+    return false;
+  }
+
+  const parameterNames = getTicketParameterNames(ticket);
+  if (parameterNames.length && parameterNames.every(isGenericQcHeaderParameterName)) {
+    return false;
+  }
+
+  return ticketHasThresholdBreachData(ticket);
 };
 
 export const getTicketValueForParameter = (source, parameterName) => {
