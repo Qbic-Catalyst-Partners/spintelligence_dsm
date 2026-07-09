@@ -29,6 +29,11 @@ export const isNotebookAcknowledgementParameterName = (parameterName) => {
   );
 };
 
+// Generic notebook-header labels like "Spinning QC Header" / "Mixing QC Header" are
+// not a real measured field, so they should never be treated as a threshold breach.
+export const isGenericQcHeaderParameterName = (parameterName) =>
+  /qc\s*header$/i.test(String(parameterName || "").trim());
+
 export const formatTicketIdForDisplay = (ticketId) => {
   const rawId = String(ticketId || "").trim();
   if (!rawId) return "-";

@@ -1010,7 +1010,7 @@ export default function ProcessParameterPage() {
                     value={dateFrom}
                     onChange={(event) => setDateFrom(event.target.value)}
                   />
-                </div>
+                </label>
 
                 <div className={styles.selectFilterWrap}>
                   <select

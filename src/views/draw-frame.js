@@ -2311,7 +2311,7 @@ function DrawFrame() {
         )}
         {form.type === "U% Data Entry" && (
   <div
-    className={uPercentStyles.tableSection}
+    className={`${uPercentStyles.tableSection} print:hidden`}
     style={{
       background: entryTableTheme.surface,
       padding: "16px",

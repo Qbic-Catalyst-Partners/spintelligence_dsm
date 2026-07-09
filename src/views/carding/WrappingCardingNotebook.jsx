@@ -291,7 +291,7 @@ const WrappingCardingNotebook = forwardRef(function WrappingCardingNotebook({ en
       {message ? <div className={styles["message-box"]}>{message}</div> : null}
       {loading ? <div className={styles["message-box"]}>Saving...</div> : null}
 
-      <div className={styles["card-machine-section"]}>
+      <div className={`${styles["card-machine-section"]} print:hidden`}>
         <div className={styles["card-machine-header"]}>
           <h4>Last 10 Entries</h4>
         </div>

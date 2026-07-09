@@ -179,6 +179,37 @@
     font-weight: 600;
 }
 
+.fieldLabelRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.valueModeGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.valueModeOption {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #6b7690;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: none;
+    cursor: pointer;
+}
+
+.valueModeOption input[type="radio"] {
+    width: 10px;
+    height: 10px;
+    accent-color: #5b74c7;
+    cursor: pointer;
+}
+
 .field select,
 .field input,
 .statusField select {

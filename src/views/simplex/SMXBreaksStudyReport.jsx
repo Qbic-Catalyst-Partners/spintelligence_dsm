@@ -632,7 +632,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
         {formFields.map(({ label, field, type, options = [], placeholder, value }) => {
           const fieldValue = value ?? form[field] ?? "";
 
