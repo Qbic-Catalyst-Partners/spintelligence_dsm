@@ -52,7 +52,9 @@ export const getOperatorTickets = async (params = {}) => {
 // GET Submission Ticketing table
 export const getSubmissionTickets = async (params = {}) => {
   try {
-    const response = await apiConfig.get("/operator-tickets/submission-ticketing", params);
+    const response = await apiConfig.get("/operator-tickets/submission-ticketing", params, {
+      skipGlobalErrorModal: true,
+    });
     return response.data;
   } catch (error) {
     const status = error?.response?.status;
@@ -176,7 +178,7 @@ const manualTicketInputScreenEndpoints = {
       "Speed Checking": "/spinning/speed-checking",
       "Lycra Missing": "/spinning/lycra-missing",
       "Bottom Apron Checking": "/spinning/bottom-apron-checking",
-      "Lycra Centering": "/spinning/lycra-centering",
+      "Lycra Out of Centering": "/spinning/lycra-centering",
       "RSM & Lycrasensor Checking Online": "/spinning/rsm-lycra-online",
       "RSM & Lycrasensor Checking Offline": "/spinning/rsm-lycra-offline",
       "Wheel Change": "/spinning/wheel-change",
@@ -188,7 +190,7 @@ const manualTicketInputScreenEndpoints = {
       "Rewinding Study": "/autoconer/rewinding-study",
       "Cone Density": "/autoconer/cone-density",
       "Cone Packing Audit": "/autoconer/cone-packing-audit",
-      "Lycra Checking": "/autoconer/lycra-checking",
+      "Lycra % Checking": "/autoconer/lycra-checking",
       "Count Wise Cuts Record": "/autoconer/count-wise-cuts",
       "Splice Strength": "/autoconer/splice-strength",
       "Drum wise Appearance": "/autoconer/drum-wise-appearance",

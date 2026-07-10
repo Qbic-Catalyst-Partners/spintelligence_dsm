@@ -311,7 +311,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
         <h3 className="m-0 text-[14px] font-bold text-slate-900">Damage / Status Details</h3>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
             {details.map((detail, index) => (
               <div key={detail.item} className="flex flex-col gap-1.5 min-w-0">
                 <label className="text-[14px] font-semibold text-slate-700">{detail.item}</label>

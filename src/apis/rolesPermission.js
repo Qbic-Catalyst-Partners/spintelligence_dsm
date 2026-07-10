@@ -72,7 +72,9 @@ export const createRoleAPI = async (payload) => {
     return response.data;
   } catch (error) {
     if (error.response && error.response.data) {
-      throw new Error(error.response.data.message || "Failed to create role.");
+      throw new Error(
+        error.response.data.message || error.response.data.error || "Failed to create role."
+      );
     }
     throw new Error(error.message || "Server error occurred");
   }

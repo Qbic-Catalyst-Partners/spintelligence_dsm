@@ -314,6 +314,7 @@ function Simplex() {
 
         {showUqcEntries && (
           <div
+            className="print:hidden"
             style={{
               marginTop: "20px",
               background: entryTableTheme.surface,
@@ -432,6 +433,7 @@ function Simplex() {
 
         {showCotsChangeEntries && (
           <div
+            className="print:hidden"
             style={{
               marginTop: "20px",
               background: entryTableTheme.surface,

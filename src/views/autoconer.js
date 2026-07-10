@@ -32,7 +32,7 @@ const autoconerTypes = [
   { id: 3, name: "Rewinding Study", aliases: ["Rewinding Study"], component: RewindingStudy },
   { id: 4, name: "Cone Density", aliases: ["Cone Density"], component: ConeDensity },
   { id: 5, name: "Cone Packing Audit", aliases: ["Cone Packing Audit"], component: ConePackingAudit },
-  { id: 6, name: "Lycra% Checking", aliases: ["Lycra Checking"], component: LycraChecking },
+  { id: 6, name: "Lycra % Checking", aliases: ["Lycra Checking", "Lycra% Checking"], component: LycraChecking },
   { id: 7, name: "Count Wise Cuts Record", aliases: ["Count Wise Cuts Record", "Countwise Cuts Record"], component: CoastWasteCrateRecord },
   { id: 8, name: "Splice Strength", aliases: ["Splice Strength"], component: SpliceStrength },
   { id: 9, name: "Drum wise Appearance", aliases: ["Drum wise Appearance", "Drum Wise Appearance"], component: DrumWiseAppearance },
@@ -76,7 +76,7 @@ const AUTOCONER_ENTRY_ID_CONFIG = {
   },
   "Cone Density": { prefix: "ACD", width: 4, routePath: "/autoconer/cone-density", pagePath: "/autoconer/cone-density" },
   "Cone Packing Audit": { prefix: "ACP", width: 4, routePath: "/autoconer/cone-packing-audit", pagePath: "/autoconer/cone-packing-audit" },
-  "Lycra Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking", pagePath: "/autoconer/lycra-checking" },
+  "Lycra % Checking": { prefix: "ALC", width: 4, routePath: "/autoconer/lycra-checking", pagePath: "/autoconer/lycra-checking" },
   "Count Wise Cuts Record": { prefix: "ACW", width: 4, routePath: "/autoconer/count-wise-cuts", pagePath: "/autoconer/count-wise-cuts" },
   "Splice Strength": { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength", pagePath: "/autoconer/splice-strength" },
   "Drum wise Appearance": { prefix: "ADA", width: 4, routePath: "/autoconer/drum-wise", pagePath: "/autoconer/drum-wise-appearance" },
@@ -174,7 +174,7 @@ function Autoconer() {
       selectedType === "Rewinding Study" ||
       selectedType === "Cone Density" ||
       selectedType === "Cone Packing Audit" ||
-      selectedType === "Lycra% Checking" ||
+      selectedType === "Lycra % Checking" ||
       selectedType === "Count Wise Cuts Record" ||
       selectedType === "Splice Strength" ||
       selectedType === "Drum wise Appearance" ||

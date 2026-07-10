@@ -428,6 +428,7 @@ function Carding() {
                 {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
                 {selectedType === "U% Data Entry" && (
                     <div
+                        className="print:hidden"
                         style={{
                             margin: "20px auto 0",
                             maxWidth: "1120px",

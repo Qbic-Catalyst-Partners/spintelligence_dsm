@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { useDispatch } from "react-redux";
 import { FaCheckCircle } from "react-icons/fa";
+import { FiTrash2 } from "react-icons/fi";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -195,7 +196,7 @@ const SavedVersionsSection = ({
   loading,
   errorMessage,
 }) => (
-  <div className="mixing-process-parameter-history">
+  <div className="mixing-process-parameter-history print:hidden">
 
     {loading ? (
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -509,6 +510,13 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     }));
   };
 
+  const handleRemoveRow = (index) => {
+    setForm((current) => ({
+      ...current,
+      rows: current.rows.filter((_, rowIndex) => rowIndex !== index),
+    }));
+  };
+
   const handleVersionSelect = (version) => {
     setForm({
       ...cloneForm(version.data),
@@ -621,7 +629,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
   const formContent = (
     <div ref={formSectionRef} className="mixing-process-parameter-form flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
         <div className="flex flex-col gap-1.5 min-w-0">
           <label className="text-[14px] font-semibold text-slate-700">Type</label>
           <select
@@ -679,7 +687,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
         {form.rows.map((row, index) => (
           <div
             key={row.label}
-            className="mixing-process-row grid grid-cols-1 gap-3 rounded-[0px] border border-[transparent] bg-white p-4 md:grid-cols-2 xl:grid-cols-6"
+            className="mixing-process-row grid grid-cols-1 gap-3 rounded-[0px] border border-[transparent] bg-white p-4 md:grid-cols-2 xl:grid-cols-7"
           >
             <div className="flex flex-col gap-1.5">
               <label className="text-[13px] font-semibold text-slate-700">Lot No.</label>
@@ -732,23 +740,39 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-[13px] font-semibold text-slate-700">Merge No.</label>
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 text-[14px] font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-                  aria-label="Add another blend row"
-                  onClick={handleAddRow}
-                >
-                  +
-                </button>
-              </div>
+              <label className="text-[13px] font-semibold text-slate-700">Merge No.</label>
               <input
                 type="text"
                 className={`${topFieldClass}${errors[`row-${index}-mergeNo`] ? " border-red-500 bg-red-50" : ""}`}
                 value={row.mergeNo}
                 onChange={(event) => handleRowChange(index, "mergeNo", event.target.value)}
               />
+            </div>
+
+            <div className="flex items-end gap-1.5">
+              {index === form.rows.length - 1 ? (
+                <button
+                  type="button"
+                  className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg text-white transition-colors"
+                  style={{ background: "#3D539F" }}
+                  onMouseEnter={(event) => { event.currentTarget.style.background = "#2F4180"; }}
+                  onMouseLeave={(event) => { event.currentTarget.style.background = "#3D539F"; }}
+                  aria-label="Add another blend row"
+                  onClick={handleAddRow}
+                >
+                  +
+                </button>
+              ) : null}
+              {form.rows.length > 1 ? (
+                <button
+                  type="button"
+                  className="inline-flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-500 transition-colors hover:bg-red-100"
+                  aria-label="Remove this blend row"
+                  onClick={() => handleRemoveRow(index)}
+                >
+                  <FiTrash2 size={14} />
+                </button>
+              ) : null}
             </div>
           </div>
         ))}

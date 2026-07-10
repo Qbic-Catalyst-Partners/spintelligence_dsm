@@ -179,6 +179,37 @@
     font-weight: 600;
 }
 
+.fieldLabelRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.valueModeGroup {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.valueModeOption {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #6b7690;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: none;
+    cursor: pointer;
+}
+
+.valueModeOption input[type="radio"] {
+    width: 10px;
+    height: 10px;
+    accent-color: #5b74c7;
+    cursor: pointer;
+}
+
 .field select,
 .field input,
 .statusField select {
@@ -199,6 +230,79 @@
 .statusField select:focus {
     border-color: #5b74c7;
     box-shadow: 0 0 0 3px rgba(91, 116, 199, 0.12);
+}
+
+.tatTimeWrap {
+    position: relative;
+    overflow: visible;
+}
+
+.tatTimeWrap input {
+    padding-right: 46px;
+}
+
+.tatTimeButton {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    width: 30px;
+    height: 30px;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #42516a;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-50%);
+    cursor: pointer;
+}
+
+.tatTimeButton svg {
+    width: 16px;
+    height: 16px;
+}
+
+.tatTimeMenu {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 170px;
+    border: 1px solid #dbe2ec;
+    border-radius: 9px;
+    background: #ffffff;
+    padding: 10px;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.14);
+}
+
+.tatTimeMenu label {
+    display: grid;
+    gap: 6px;
+}
+
+.tatTimeMenu label span {
+    color: #667085;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.tatTimeMenu select {
+    width: 100%;
+    height: 40px;
+    min-height: 40px;
+    border: 1px solid #dbe2ec;
+    border-radius: 7px;
+    background: #f8fbff;
+    color: #344054;
+    font-size: 13px;
+    text-align: center;
+    padding: 0 8px;
+    outline: none;
+    cursor: pointer;
 }
 
 .rulesTable {
@@ -896,10 +1000,31 @@
 :global(:root[data-theme="dark"]) .field select,
 :global(:root[data-theme="dark"]) .field input,
 :global(:root[data-theme="dark"]) .statusField select,
-:global(:root[data-theme="dark"]) .multiSelectButton {
+:global(:root[data-theme="dark"]) .multiSelectButton,
+:global(:root[data-theme="dark"]) .tatTimeMenu select {
     border-color: #5f5f5f;
     background: #242424;
     color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .tatTimeMenu label span {
+    color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .tatTimeButton {
+    border: 1px solid #3b3b3b;
+    background: #3b3b3b;
+    color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .tatTimeButton:hover {
+    background: #4a4a4a;
+}
+
+:global(:root[data-theme="dark"]) .tatTimeMenu {
+    border-color: #5f5f5f;
+    background: #242424;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.4);
 }
 
 :global(:root[data-theme="dark"]) .field select:disabled,
