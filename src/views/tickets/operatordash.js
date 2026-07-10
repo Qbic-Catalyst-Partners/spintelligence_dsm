@@ -8,8 +8,10 @@ import { useSelector } from "react-redux";
 import { getOperatorTickets, getSubmissionTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
 import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
+    applyOneTimeThresholdTicketReset,
     isPpBatchCompletionTicketRecord,
     isSubmissionTicketRecord,
+    isThresholdTicketRecord,
     transformTicket,
 } from "../../utils/ticketTransformer";
 import { isSupervisorNavUser } from "../../utils/accessControl";
@@ -167,7 +169,11 @@ export default function operatorboard() {
             }
 
             const normalizedTickets = applyStoredTicketStatuses(ticketsArray);
-            const thresholdTickets = normalizedTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
+            const thresholdTickets = applyOneTimeThresholdTicketReset(
+                normalizedTickets.filter(
+                    (ticket) => isThresholdTicketRecord(ticket) && !isSubmissionTicketRecord(ticket)
+                )
+            );
             const submissionTickets = normalizedTickets.filter(isSubmissionTicketRecord);
 
             const formattedData = thresholdTickets
@@ -184,6 +190,7 @@ export default function operatorboard() {
                         actual: transformedTicket.actual,
                         standard: transformedTicket.standard,
                         threshold: transformedTicket.threshold,
+                        deviation: transformedTicket.deviation,
                         frequency: transformedTicket.frequency || transformedTicket.submission_frequency || transformedTicket.check_frequency || "-",
                         occurrences: transformedTicket.occurrences || transformedTicket.occurrence_count || transformedTicket.count || "-",
                         severity: transformedTicket.severity,
@@ -191,7 +198,13 @@ export default function operatorboard() {
                         rawCreatedAt: transformedTicket.rawCreatedAt,
                         createdAt: transformedTicket.createdAt,
                     };
-                });
+                })
+                .filter(
+                    (ticket) =>
+                        [ticket.actual, ticket.standard, ticket.threshold].some(
+                            (value) => String(value ?? "").trim() !== "" && String(value ?? "").trim() !== "-"
+                        )
+                );
 
             setTicketData(formattedData);
             setOperatorSubmissionTicketData(submissionTickets.map(formatSubmissionTicket));
@@ -232,14 +245,32 @@ export default function operatorboard() {
         }
     };
 
+    const applyTicketStatus = (ticketId, nextStatus) => {
+        const updateMatching = (tickets) =>
+            tickets.map((ticket) => (ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket));
+
+        setTicketData(updateMatching);
+        setApiSubmissionTicketData(updateMatching);
+        setOperatorSubmissionTicketData(updateMatching);
+    };
+
     const handleStatusChange = async (ticketId, nextStatus) => {
         if (!ticketId || !nextStatus) return;
+
+        const previousStatus = displayTickets.find((ticket) => ticket.id === ticketId)?.status;
+
+        // Reflect the change immediately so the dropdown doesn't sit stale while the request
+        // is in flight; roll back only if the update actually fails.
+        applyTicketStatus(ticketId, nextStatus);
 
         try {
             setStatusUpdatingId(ticketId);
             await updateOperatorTicketStatus(ticketId, nextStatus);
             await fetchTickets();
         } catch (updateError) {
+            if (previousStatus !== undefined) {
+                applyTicketStatus(ticketId, previousStatus);
+            }
             setThresholdError(updateError.message || "Failed to update ticket status.");
         } finally {
             setStatusUpdatingId("");
@@ -490,6 +521,7 @@ export default function operatorboard() {
                                     <th>ACTUAL</th>
                                     <th>STANDARD</th>
                                     <th>THRESHOLD</th>
+                                    <th>DEVIATION</th>
                                 </>
                             )}
                             <th>SEVERITY</th>
@@ -518,6 +550,7 @@ export default function operatorboard() {
                                         <td>{t.actual}</td>
                                         <td>{t.standard}</td>
                                         <td>{t.threshold}</td>
+                                        <td>{t.deviation}</td>
                                     </>
                                 )}
                                 <td>

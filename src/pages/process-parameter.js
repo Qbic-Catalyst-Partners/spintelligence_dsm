@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
-import { MdCalendarToday, MdClose, MdPrint, MdSearch } from "react-icons/md";
+import { MdPrint, MdSearch } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import CombinedProcessParameterPreview from "@/components/CombinedProcessParameterPreview";
@@ -21,7 +21,6 @@ import {
   resetProcessParameterLocalState,
 } from "@/utils/processParameterRegistry";
 import { loadLocalEntries } from "@/utils/localProcessParameterStore";
-import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_COUNT_OPTIONS,
@@ -318,13 +317,10 @@ export default function ProcessParameterPage() {
   const [remoteCountNameMap, setRemoteCountNameMap] = useState({});
   const [remoteConsigneeNameMap, setRemoteConsigneeNameMap] = useState({});
   const [remoteDateMap, setRemoteDateMap] = useState({});
-  const [countNameFilter, setCountNameFilter] = useState("");
-  const [consigneeNameFilter, setConsigneeNameFilter] = useState("");
-  const [dateFromFilter, setDateFromFilter] = useState("");
-  const [dateToFilter, setDateToFilter] = useState("");
-  const { countOptions: masterCountOptions } = useMixingCountOptions();
-  const dateFromInputRef = useRef(null);
-  const dateToInputRef = useRef(null);
+  const [consigneeFilter, setConsigneeFilter] = useState("");
+  const [countFilter, setCountFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const componentRef = useRef(null);
   const [previewPpId, setPreviewPpId] = useState("");
   const [previewData, setPreviewData] = useState({});
@@ -496,36 +492,16 @@ export default function ProcessParameterPage() {
   const getRowConsigneeNames = (rowId) => remoteConsigneeNameMap[rowId] || [];
   const getRowDate = (rowId) => remoteDateMap[rowId] || "";
 
-  // Same master option lists (plus whatever backend values aren't in them yet) used by
-  // the PP data-entry forms, so the filter dropdowns offer the full catalogue rather than
-  // only the count/consignee names that already appear in the matrix.
-  const countNameFilterOptions = useMemo(() => {
-    const baseCountNames = masterCountOptions.length
-      ? masterCountOptions.map((option) => option.count_name || option.label || option.value)
-      : PROCESS_PARAMETER_COUNT_OPTIONS;
-    const usedCountNames = mergedRows.map((row) => getRowCountName(row.id)).filter(Boolean);
-    return buildProcessParameterOptions(baseCountNames, usedCountNames).sort((a, b) =>
-      a.localeCompare(b)
-    );
-  }, [mergedRows, remoteCountNameMap, masterCountOptions]);
-
-  const consigneeNameFilterOptions = useMemo(() => {
-    const usedConsigneeNames = mergedRows.flatMap((row) => getRowConsigneeNames(row.id));
-    return buildProcessParameterOptions(PROCESS_PARAMETER_CONSIGNEE_OPTIONS, usedConsigneeNames).sort(
-      (a, b) => a.localeCompare(b)
-    );
-  }, [mergedRows, remoteConsigneeNameMap]);
-
   const filteredRows = mergedRows.filter((row) => {
     if (!String(row.id).toLowerCase().includes(String(searchTerm).toLowerCase())) return false;
 
-    if (countNameFilter && getRowCountName(row.id) !== countNameFilter) return false;
+    if (countFilter && getRowCountName(row.id) !== countFilter) return false;
 
-    if (consigneeNameFilter && !getRowConsigneeNames(row.id).includes(consigneeNameFilter)) return false;
+    if (consigneeFilter && !getRowConsigneeNames(row.id).includes(consigneeFilter)) return false;
 
     const rowDate = getRowDate(row.id);
-    if (dateFromFilter && (!rowDate || rowDate < dateFromFilter)) return false;
-    if (dateToFilter && (!rowDate || rowDate > dateToFilter)) return false;
+    if (dateFrom && (!rowDate || rowDate < dateFrom)) return false;
+    if (dateTo && (!rowDate || rowDate > dateTo)) return false;
 
     return true;
   });
@@ -617,22 +593,12 @@ export default function ProcessParameterPage() {
     setPrintMode("matrix");
   };
 
-  const openDatePicker = (inputRef) => {
-    const input = inputRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === "function") {
-      input.showPicker();
-    } else {
-      input.focus();
-    }
-  };
-
   const clearAllFilters = () => {
     setSearchTerm("");
-    setConsigneeNameFilter("");
-    setCountNameFilter("");
-    setDateFromFilter("");
-    setDateToFilter("");
+    setConsigneeFilter("");
+    setCountFilter("");
+    setDateFrom("");
+    setDateTo("");
   };
 
   const handlePrintRow = (rowId) => {
@@ -963,141 +929,23 @@ export default function ProcessParameterPage() {
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
                   />
-                </div>
+                </label>
 
-                <div className={styles.selectFilterWrap}>
-                  <select
-                    className={styles.filterSelect}
-                    value={consigneeNameFilter}
-                    onChange={(event) => setConsigneeNameFilter(event.target.value)}
-                    aria-label="Filter by consignee name"
-                  >
-                    <option value="">Consignee Name</option>
-                    {consigneeNameFilterOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className={styles.dateClearButton}
-                    onClick={() => setConsigneeNameFilter("")}
-                    disabled={!consigneeNameFilter}
-                    aria-label="Clear consignee name filter"
-                    title="Clear consignee name filter"
-                  >
-                    <MdClose />
-                  </button>
-                </div>
-
-                <div className={styles.selectFilterWrap}>
-                  <select
-                    className={styles.filterSelect}
-                    value={countNameFilter}
-                    onChange={(event) => setCountNameFilter(event.target.value)}
-                    aria-label="Filter by count name"
-                  >
-                    <option value="">Count Name</option>
-                    {countNameFilterOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className={styles.dateClearButton}
-                    onClick={() => setCountNameFilter("")}
-                    disabled={!countNameFilter}
-                    aria-label="Clear count name filter"
-                    title="Clear count name filter"
-                  >
-                    <MdClose />
-                  </button>
-                </div>
-
-                <div className={styles.dateRangeFilter}>
-                  <label className={styles.dateFieldWrap}>
-                    <span className={styles.dateFieldLabel}>From Date</span>
-                    <div className={styles.dateInputWrap}>
-                      <button
-                        type="button"
-                        className={styles.dateCalendarButton}
-                        onClick={() => openDatePicker(dateFromInputRef)}
-                        aria-label="Open from date calendar"
-                        title="Open calendar"
-                      >
-                        <MdCalendarToday />
-                      </button>
-                      <input
-                        ref={dateFromInputRef}
-                        type="date"
-                        className={styles.filterDateInput}
-                        value={dateFromFilter}
-                        onChange={(event) => setDateFromFilter(event.target.value)}
-                        aria-label="Filter from date"
-                      />
-                      {dateFromFilter ? (
-                        <button
-                          type="button"
-                          className={styles.dateClearButton}
-                          onClick={() => setDateFromFilter("")}
-                          aria-label="Clear from date"
-                          title="Clear from date"
-                        >
-                          <MdClose />
-                        </button>
-                      ) : null}
-                    </div>
-                  </label>
-                  <span className={styles.dateRangeSeparator}>to</span>
-                  <label className={styles.dateFieldWrap}>
-                    <span className={styles.dateFieldLabel}>To Date</span>
-                    <div className={styles.dateInputWrap}>
-                      <button
-                        type="button"
-                        className={styles.dateCalendarButton}
-                        onClick={() => openDatePicker(dateToInputRef)}
-                        aria-label="Open to date calendar"
-                        title="Open calendar"
-                      >
-                        <MdCalendarToday />
-                      </button>
-                      <input
-                        ref={dateToInputRef}
-                        type="date"
-                        className={styles.filterDateInput}
-                        value={dateToFilter}
-                        onChange={(event) => setDateToFilter(event.target.value)}
-                        aria-label="Filter to date"
-                      />
-                      {dateToFilter ? (
-                        <button
-                          type="button"
-                          className={styles.dateClearButton}
-                          onClick={() => setDateToFilter("")}
-                          aria-label="Clear to date"
-                          title="Clear to date"
-                        >
-                          <MdClose />
-                        </button>
-                      ) : null}
-                    </div>
-                  </label>
-                </div>
+                <label className={styles.filterField}>
+                  <span>Date To</span>
+                  <input
+                    type="date"
+                    className={styles.filterInput}
+                    value={dateTo}
+                    onChange={(event) => setDateTo(event.target.value)}
+                  />
+                </label>
 
                 <button
                   type="button"
                   className={styles.clearFiltersButton}
                   onClick={clearAllFilters}
-                  disabled={
-                    !searchTerm &&
-                    !consigneeNameFilter &&
-                    !countNameFilter &&
-                    !dateFromFilter &&
-                    !dateToFilter
-                  }
+                  disabled={!searchTerm && !consigneeFilter && !countFilter && !dateFrom && !dateTo}
                   title="Clear all filters"
                 >
                   Clear Filter

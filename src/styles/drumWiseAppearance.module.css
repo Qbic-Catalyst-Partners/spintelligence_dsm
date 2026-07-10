@@ -350,3 +350,17 @@
     padding: 16px;
   }
 }
+
+@media print {
+  .summaryCard {
+    display: none !important;
+  }
+
+  .formGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .appearanceSection {
+    grid-template-columns: 380px minmax(0, 1fr) !important;
+  }
+}

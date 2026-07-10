@@ -874,3 +874,10 @@
         text-overflow: ellipsis;
     }
 }
+
+@media print {
+    .sidebar,
+    .top-actions {
+        display: none !important;
+    }
+}

@@ -6,6 +6,7 @@ import {
     FiChevronLeft,
     FiChevronRight,
     FiCheckCircle,
+    FiClock,
     FiMoreVertical,
     FiPlus,
     FiSlash,
@@ -27,12 +28,127 @@ const createRule = () => ({
     fieldName: "",
     comparison: "more_and_less_than",
     actualValue: "",
+    valueMode: "number",
     positiveTolerance: "",
     negativeTolerance: "",
     criticality: "",
     approvalL1: [],
     approvalL2: [],
+    approvalL1Tat: "08:00",
+    approvalL2Tat: "08:00",
 });
+
+// TAT (turn-around time) helpers — 24-hour, hours-and-minutes only, no AM/PM.
+// Kept in sync with the same logic in SubmissionThreshold.js.
+const tatHourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const tatMinuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+const parseTatParts = (value) => {
+    const normalizedValue = String(value || "08:00").trim().toUpperCase();
+    const match = normalizedValue.match(/^(\d{1,2})(?::(\d{1,2}))?\s*(A|P|AM|PM)?$/);
+
+    if (!match) {
+        return { hour: "08", minute: "00" };
+    }
+
+    const parsedHour = Number(match[1]);
+    const parsedMinute = Number(match[2] || 0);
+    // Historical values may still carry a 12-hour "AM/PM" suffix — fold PM hours into 24-hour form.
+    const meridiem = match[3]?.startsWith("P") ? "PM" : match[3]?.startsWith("A") ? "AM" : null;
+    let hourNumber = parsedHour || 8;
+    if (meridiem === "PM" && hourNumber < 12) hourNumber += 12;
+    if (meridiem === "AM" && hourNumber === 12) hourNumber = 0;
+
+    const hour = String(Math.min(Math.max(hourNumber, 0), 23)).padStart(2, "0");
+    const minute = String(Math.min(Math.max(parsedMinute || 0, 0), 59)).padStart(2, "0");
+
+    return { hour, minute };
+};
+
+const formatTatValue = (hour, minute) => `${hour}:${minute}`;
+
+const formatTatHours = (value) => {
+    const hours = Number(value);
+    if (!Number.isInteger(hours) || hours <= 0) return "08:00";
+
+    const normalizedHour = Math.min(Math.max(hours, 0), 23);
+    return `${String(normalizedHour).padStart(2, "0")}:00`;
+};
+
+const tatValueToHours = (value) => {
+    const { hour, minute } = parseTatParts(value);
+    const hourNumber = Number(hour);
+    const minuteNumber = Number(minute);
+    return Math.max(1, hourNumber + (minuteNumber > 0 ? 1 : 0));
+};
+
+function TatTimePicker({ value, onChange, label }) {
+    const containerRef = useRef(null);
+    const [isOpen, setIsOpen] = useState(false);
+    const { hour, minute } = parseTatParts(value);
+
+    useEffect(() => {
+        const handleOutsideClick = (event) => {
+            if (!containerRef.current?.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+        };
+    }, []);
+
+    const syncTime = (nextHour, nextMinute) => {
+        onChange?.(formatTatValue(nextHour, nextMinute));
+    };
+
+    return (
+        <div className={styles.tatTimeWrap} ref={containerRef}>
+            <input
+                type="text"
+                value={value}
+                placeholder="08:00"
+                onFocus={() => setIsOpen(true)}
+                onClick={() => setIsOpen(true)}
+                onChange={(event) => onChange?.(event.target.value)}
+            />
+            <button
+                type="button"
+                className={styles.tatTimeButton}
+                onClick={() => setIsOpen((current) => !current)}
+                aria-label={`Select ${label} turn around time`}
+            >
+                <FiClock />
+            </button>
+            {isOpen ? (
+                <div className={styles.tatTimeMenu}>
+                    <label>
+                        <span>Hrs</span>
+                        <select value={hour} onChange={(event) => syncTime(event.target.value, minute)}>
+                            {tatHourOptions.map((option) => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <label>
+                        <span>Mins</span>
+                        <select value={minute} onChange={(event) => syncTime(hour, event.target.value)}>
+                            {tatMinuteOptions.map((option) => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            ) : null}
+        </div>
+    );
+}
 
 const EXISTING_ROWS_PER_PAGE = 6;
 
@@ -56,6 +172,45 @@ const getScreenFieldOptions = (screenName, thresholds) => {
         .filter(Boolean);
 
     return Array.from(new Set(inferredFields)).sort();
+};
+
+const formatToleranceDisplay = (item, absoluteValue, percentValue) => {
+    if (item?.value_mode === "percent" && percentValue !== undefined && percentValue !== null && percentValue !== "") {
+        return `${percentValue} (%)`;
+    }
+
+    return absoluteValue ?? "-";
+};
+
+const PERCENT_MODE_STORAGE_KEY = "thresholdValuesPercentModeCache";
+
+const loadPercentModeCacheFromStorage = () => {
+    if (typeof window === "undefined") {
+        return new Map();
+    }
+
+    try {
+        const raw = window.localStorage.getItem(PERCENT_MODE_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return new Map(Object.entries(parsed));
+    } catch {
+        return new Map();
+    }
+};
+
+const savePercentModeCacheToStorage = (cache) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            PERCENT_MODE_STORAGE_KEY,
+            JSON.stringify(Object.fromEntries(cache))
+        );
+    } catch {
+        // ignore storage failures (e.g. private browsing quota)
+    }
 };
 
 const getCriticalityLabel = (item) => {
@@ -357,6 +512,41 @@ export default function ThresholdValues() {
     const [existingMessage, setExistingMessage] = useState("");
     const [existingError, setExistingError] = useState("");
 
+    const percentModeCacheRef = useRef(null);
+    if (percentModeCacheRef.current === null) {
+        percentModeCacheRef.current = loadPercentModeCacheFromStorage();
+    }
+
+    const normalizeKeyText = (value) => String(value ?? "").trim().toLowerCase();
+
+    const normalizeKeyNumber = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? String(num) : normalizeKeyText(value);
+    };
+
+    const getPercentCacheKey = (item) =>
+        [
+            normalizeKeyText(item?.input_screen || item?.machine_name),
+            normalizeKeyText(item?.input_field || item?.parameter_name),
+            normalizeKeyNumber(item?.actual_value),
+        ].join("::");
+
+    const rememberPercentMode = (item) => {
+        const key = getPercentCacheKey(item);
+        percentModeCacheRef.current.set(key, {
+            value_mode: item.value_mode,
+            positive_tolerance_percent: item.positive_tolerance_percent,
+            negative_tolerance_percent: item.negative_tolerance_percent,
+        });
+        savePercentModeCacheToStorage(percentModeCacheRef.current);
+    };
+
+    const applyPercentModeCache = (data) =>
+        (Array.isArray(data) ? data : []).map((item) => {
+            const cached = percentModeCacheRef.current.get(getPercentCacheKey(item));
+            return cached ? { ...item, ...cached } : item;
+        });
+
     const loadThresholds = async () => {
         if (!canAccessPage) {
             return;
@@ -366,7 +556,7 @@ export default function ThresholdValues() {
 
         try {
             const data = await fetchThresholdsAPI();
-            setThresholds(data);
+            setThresholds(applyPercentModeCache(data));
             setLoadError("");
         } catch (error) {
             setThresholds([]);
@@ -606,8 +796,15 @@ export default function ThresholdValues() {
                 fieldName: item?.input_field || item?.parameter_name || "",
                 comparison: item?.comparison_operator || item?.condition_level || "more_and_less_than",
                 actualValue: String(item?.actual_value ?? ""),
-                positiveTolerance: String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
-                negativeTolerance: String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
+                valueMode: item?.value_mode === "percent" ? "percent" : "number",
+                positiveTolerance:
+                    item?.value_mode === "percent"
+                        ? String(item?.positive_tolerance_percent ?? "")
+                        : String(item?.plus_threshold ?? item?.positive_tolerance ?? ""),
+                negativeTolerance:
+                    item?.value_mode === "percent"
+                        ? String(item?.negative_tolerance_percent ?? "")
+                        : String(item?.minus_threshold ?? item?.negative_tolerance ?? ""),
                 criticality: getCriticalityLabel(item),
                 approvalL1: normalizeNameList(
                     item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1
@@ -615,6 +812,8 @@ export default function ThresholdValues() {
                 approvalL2: normalizeNameList(
                     item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
                 ),
+                approvalL1Tat: formatTatHours(item?.l1_tat_hours),
+                approvalL2Tat: formatTatHours(item?.l2_tat_hours),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
@@ -786,9 +985,27 @@ export default function ThresholdValues() {
                 return;
             }
 
+            const isPercentMode = rule.valueMode === "percent";
             const numericActualValue = Number(rawActualValue);
-            const numericPositiveTolerance = Number(rawPositiveTolerance);
-            const numericNegativeTolerance = Number(rawNegativeTolerance);
+            const rawNumericPositiveTolerance = Number(rawPositiveTolerance);
+            const rawNumericNegativeTolerance = Number(rawNegativeTolerance);
+
+            const roundToTwo = (value) => Number(value.toFixed(2));
+
+            const numericPositiveTolerance =
+                isPercentMode &&
+                rawPositiveTolerance !== "" &&
+                Number.isFinite(numericActualValue) &&
+                Number.isFinite(rawNumericPositiveTolerance)
+                    ? roundToTwo(numericActualValue * (rawNumericPositiveTolerance / 100))
+                    : rawNumericPositiveTolerance;
+            const numericNegativeTolerance =
+                isPercentMode &&
+                rawNegativeTolerance !== "" &&
+                Number.isFinite(numericActualValue) &&
+                Number.isFinite(rawNumericNegativeTolerance)
+                    ? roundToTwo(numericActualValue * (rawNumericNegativeTolerance / 100))
+                    : rawNumericNegativeTolerance;
 
             thresholdItems.push({
                 department: selectedDepartment.name,
@@ -807,11 +1024,13 @@ export default function ThresholdValues() {
                 approval_l1_user_id: primaryApprovalL1Id || null,
                 approval_l1_names: approvalL1Names,
                 approval_l1_ids: approvalL1Ids,
+                l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
                 approval_l2: primaryApprovalL2Id || primaryApprovalL2Name,
                 approval_l2_name: primaryApprovalL2Name,
                 approval_l2_user_id: primaryApprovalL2Id || null,
                 approval_l2_names: approvalL2Names,
                 approval_l2_ids: approvalL2Ids,
+                l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -834,6 +1053,9 @@ export default function ThresholdValues() {
                     rawNegativeTolerance !== "" && Number.isFinite(numericNegativeTolerance)
                         ? numericNegativeTolerance
                         : rawNegativeTolerance,
+                value_mode: rule.valueMode || "number",
+                positive_tolerance_percent: isPercentMode ? rawPositiveTolerance : "",
+                negative_tolerance_percent: isPercentMode ? rawNegativeTolerance : "",
                 min_allowed_value:
                     rawActualValue !== "" &&
                     rawNegativeTolerance !== "" &&
@@ -851,6 +1073,8 @@ export default function ThresholdValues() {
                 is_active: editingThreshold?.is_active ?? true,
             });
         }
+
+        thresholdItems.forEach(rememberPercentMode);
 
         setSubmitting(true);
         setFormError("");
@@ -1077,7 +1301,9 @@ export default function ThresholdValues() {
                                                                 <option value="High">High</option>
                                                             </select>
                                                         </label>
+                                                    </div>
 
+                                                    <div className={styles.ruleTopGrid}>
                                                         <label className={styles.field}>
                                                             <span>L1</span>
                                                             <MultiSelectDropdown
@@ -1087,6 +1313,17 @@ export default function ThresholdValues() {
                                                                 placeholder={l1Options.length ? "Select" : "No L1 users available"}
                                                                 onChange={(nextValues) =>
                                                                     handleRuleChange(rule.id, "approvalL1", nextValues)
+                                                                }
+                                                            />
+                                                        </label>
+
+                                                        <label className={styles.field}>
+                                                            <span>TAT</span>
+                                                            <TatTimePicker
+                                                                label="L1 TAT"
+                                                                value={rule.approvalL1Tat}
+                                                                onChange={(nextValue) =>
+                                                                    handleRuleChange(rule.id, "approvalL1Tat", nextValue)
                                                                 }
                                                             />
                                                         </label>
@@ -1104,11 +1341,48 @@ export default function ThresholdValues() {
                                                                 emptyLabel="No L2 users available"
                                                             />
                                                         </label>
+
+                                                        <label className={styles.field}>
+                                                            <span>TAT</span>
+                                                            <TatTimePicker
+                                                                label="L2 TAT"
+                                                                value={rule.approvalL2Tat}
+                                                                onChange={(nextValue) =>
+                                                                    handleRuleChange(rule.id, "approvalL2Tat", nextValue)
+                                                                }
+                                                            />
+                                                        </label>
                                                     </div>
 
                                                     <div className={styles.ruleBottomGrid}>
                                                         <label className={styles.field}>
-                                                            <span>Actual Value</span>
+                                                            <span className={styles.fieldLabelRow}>
+                                                                Actual Value
+                                                                <span className={styles.valueModeGroup} role="radiogroup" aria-label="Value type">
+                                                                    <label className={styles.valueModeOption}>
+                                                                        <input
+                                                                            type="radio"
+                                                                            name={`value-mode-${rule.id}`}
+                                                                            checked={(rule.valueMode || "number") === "number"}
+                                                                            onChange={() =>
+                                                                                handleRuleChange(rule.id, "valueMode", "number")
+                                                                            }
+                                                                        />
+                                                                        Numbers
+                                                                    </label>
+                                                                    <label className={styles.valueModeOption}>
+                                                                        <input
+                                                                            type="radio"
+                                                                            name={`value-mode-${rule.id}`}
+                                                                            checked={rule.valueMode === "percent"}
+                                                                            onChange={() =>
+                                                                                handleRuleChange(rule.id, "valueMode", "percent")
+                                                                            }
+                                                                        />
+                                                                        Percentage
+                                                                    </label>
+                                                                </span>
+                                                            </span>
                                                             <input
                                                                 value={rule.actualValue}
                                                                 onChange={(event) =>
@@ -1119,24 +1393,32 @@ export default function ThresholdValues() {
                                                         </label>
 
                                                         <label className={styles.field}>
-                                                            <span>Plus (+)</span>
+                                                            <span>Plus (+){rule.valueMode === "percent" ? " %" : ""}</span>
                                                             <input
                                                                 value={rule.positiveTolerance}
                                                                 onChange={(event) =>
                                                                     handleRuleChange(rule.id, "positiveTolerance", event.target.value)
                                                                 }
-                                                                placeholder="Enter + tolerance"
+                                                                placeholder={
+                                                                    rule.valueMode === "percent"
+                                                                        ? "Enter + % (e.g. 5)"
+                                                                        : "Enter + tolerance"
+                                                                }
                                                             />
                                                         </label>
 
                                                         <label className={styles.field}>
-                                                            <span>Minus (-)</span>
+                                                            <span>Minus (-){rule.valueMode === "percent" ? " %" : ""} (optional)</span>
                                                             <input
                                                                 value={rule.negativeTolerance}
                                                                 onChange={(event) =>
                                                                     handleRuleChange(rule.id, "negativeTolerance", event.target.value)
                                                                 }
-                                                                placeholder="Enter - tolerance"
+                                                                placeholder={
+                                                                    rule.valueMode === "percent"
+                                                                        ? "Enter - % (e.g. 5)"
+                                                                        : "Enter - tolerance"
+                                                                }
                                                             />
                                                         </label>
 
@@ -1383,10 +1665,18 @@ export default function ThresholdValues() {
                                                     </td>
                                                     <td>{item.actual_value ?? "-"}</td>
                                                     <td className={styles.positiveValue}>
-                                                        {item.plus_threshold ?? item.positive_tolerance ?? "-"}
+                                                        {formatToleranceDisplay(
+                                                            item,
+                                                            item.plus_threshold ?? item.positive_tolerance,
+                                                            item.positive_tolerance_percent
+                                                        )}
                                                     </td>
                                                     <td className={styles.negativeValue}>
-                                                        {item.minus_threshold ?? item.negative_tolerance ?? "-"}
+                                                        {formatToleranceDisplay(
+                                                            item,
+                                                            item.minus_threshold ?? item.negative_tolerance,
+                                                            item.negative_tolerance_percent
+                                                        )}
                                                     </td>
                                                     <td>
                                                         <span

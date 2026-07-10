@@ -175,7 +175,7 @@ const SavedVersionsSection = ({
   loading,
   errorMessage,
 }) => (
-  <div className="process-parameter-history">
+  <div className="process-parameter-history print:hidden">
     {loading ? (
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
         Loading saved versions...
@@ -585,7 +585,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
           <InputScreenUploadButton />
         </div>
 
-        <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
           <div className="flex flex-col gap-1.5 min-w-0">
             <label className="text-[14px] font-semibold text-slate-700">Type</label>
             <select
@@ -638,7 +638,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
           </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6 print:grid-cols-6">
           {fieldDefs.map((field) => (
             <div key={field.key} className="flex flex-col gap-1.5">
               <label className="text-[13px] font-semibold text-slate-700">{field.label}</label>

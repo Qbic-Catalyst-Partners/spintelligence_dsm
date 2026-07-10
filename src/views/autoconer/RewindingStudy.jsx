@@ -976,7 +976,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   );
 
   const summarySection = (
-    <div className="mt-6 overflow-x-auto rounded-[12px] border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="mt-6 overflow-x-auto rounded-[12px] border border-slate-200 bg-white p-4 shadow-sm print:hidden">
       <div className="mb-3 flex items-center justify-between">
         <h4 className="text-[15px] font-semibold text-slate-800">Last 10 Entries</h4>
       </div>
@@ -1056,7 +1056,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
         {formFields.map(({ label, field, type, options = [], value, placeholder, className = "", wrapperClassName = "" }) => {
           if (type === "pair") {
             return (

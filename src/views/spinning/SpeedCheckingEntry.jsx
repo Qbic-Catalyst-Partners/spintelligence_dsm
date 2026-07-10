@@ -47,7 +47,7 @@ function SpeedCheckingEntry({
                 <div className={styles["comparison-row"]}>
                     <div className={styles.side}>
                         <div className={styles["side-header"]}>
-                            <label>LHS (Left Hand Side)</label>
+                            <label>LHS (Spindle Number)</label>
                             <span className={styles.required}>REQUIRED</span>
                         </div>
                         <input type="text" inputMode="decimal" placeholder="Enter value..." value={lhsValue} onChange={(e) => setLhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />
@@ -61,7 +61,7 @@ function SpeedCheckingEntry({
 
                     <div className={styles.side}>
                         <div className={styles["side-header"]}>
-                            <label>RHS (Right Hand Side)</label>
+                            <label>RHS (Spindle Number)</label>
                             <span className={styles.required}>REQUIRED</span>
                         </div>
                         <input type="text" inputMode="decimal" placeholder="Enter value..." value={rhsValue} onChange={(e) => setRhsValue(sanitizeNumericInput(e.target.value, DECIMAL_10_2_CONFIG))} />

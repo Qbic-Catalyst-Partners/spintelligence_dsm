@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { ChevronRight, FileEdit, Upload, ArrowLeft, Save, Bell, Moon } from "lucide-react";
+import { FiChevronRight, FiEdit, FiUpload, FiArrowLeft, FiSave, FiBell, FiMoon } from "react-icons/fi";
 
 import { fetchMixingAfis6MmfEntries } from "@/apis/mixing";
 import { submitAfis6Mmf, clearMixingState } from "@/store/slices/mixing";
@@ -127,18 +127,18 @@ export default function Afis6MmfPage() {
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-blue-500 text-white">
-            <FileEdit className="h-4 w-4" />
+            <FiEdit className="h-4 w-4" />
           </div>
           <span className="text-base font-semibold text-indigo-600">Spintelligence™</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
-            <Bell className="h-5 w-5 text-slate-500" />
+            <FiBell className="h-5 w-5 text-slate-500" />
             <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
               4
             </span>
           </div>
-          <Moon className="h-5 w-5 text-slate-500" />
+          <FiMoon className="h-5 w-5 text-slate-500" />
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white">
             HB
           </div>
@@ -149,9 +149,9 @@ export default function Afis6MmfPage() {
       <div className="px-6 py-6">
         <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-400">
           <span>Home</span>
-          <ChevronRight className="h-3.5 w-3.5" />
+          <FiChevronRight className="h-3.5 w-3.5" />
           <span>Dashboard</span>
-          <ChevronRight className="h-3.5 w-3.5" />
+          <FiChevronRight className="h-3.5 w-3.5" />
           <span className="text-slate-600">Mixing Notebook QC</span>
         </div>
 
@@ -161,14 +161,14 @@ export default function Afis6MmfPage() {
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
             <div className="flex items-center gap-2">
-              <FileEdit className="h-5 w-5 text-indigo-500" />
+              <FiEdit className="h-5 w-5 text-indigo-500" />
               <h2 className="text-[15px] font-semibold text-slate-900">Inspection Data Entry</h2>
             </div>
             <button
               type="button"
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
             >
-              <Upload className="h-4 w-4" />
+              <FiUpload className="h-4 w-4" />
               Upload
             </button>
           </div>
@@ -283,7 +283,7 @@ export default function Afis6MmfPage() {
               type="button"
               className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <FiArrowLeft className="h-4 w-4" />
               Back to Dashboard
             </button>
 
@@ -301,7 +301,7 @@ export default function Afis6MmfPage() {
                 disabled={isBusy}
                 className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
               >
-                <Save className="h-4 w-4" />
+                <FiSave className="h-4 w-4" />
                 {isBusy ? "Saving..." : "Save Record"}
               </button>
             </div>

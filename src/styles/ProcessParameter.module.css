@@ -200,6 +200,20 @@
   color: #b91c1c;
 }
 
+@media print {
+  .historyWrap {
+    display: none !important;
+  }
+
+  .topGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .fieldsGrid {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+}
+
 @media (max-width: 1200px) {
   .fieldsGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));

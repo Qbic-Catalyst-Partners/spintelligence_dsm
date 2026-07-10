@@ -299,6 +299,7 @@ function Comber() {
                 </div>
                     {selectedType === "U% Data Entry" && (
     <div
+        className="print:hidden"
         style={{
             marginTop: "20px",
             background: entryTableTheme.surface,

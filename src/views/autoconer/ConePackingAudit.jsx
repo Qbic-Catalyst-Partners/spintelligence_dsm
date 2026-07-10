@@ -279,7 +279,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       : null;
 
   const lowerSection = (
-    <div className="pt-6">
+    <div className="pt-6 print:hidden">
       <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
         <div className="overflow-x-auto">
@@ -427,11 +427,11 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   return (
     <>
       <div className="flex flex-col gap-10">
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
           {formFields.map(renderField)}
         </div>
 
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 xl:grid-cols-[184px_184px_184px]">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 xl:grid-cols-[184px_184px_184px] print:grid-cols-[184px_184px_184px]">
           {renderField({
             label: "Count Name",
             field: "countName",
@@ -441,7 +441,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
           })}
         </div>
 
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">
           {detailFields.map(renderField)}
         </div>
       </div>
