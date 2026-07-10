@@ -155,7 +155,7 @@ function DrawFrameCotsSection({
                     </div>
 
                     <div className={styles.field}>
-                      <label className={styles.label}>Silver Monitor</label>
+                      <label className={styles.label}>Sliver Monitor</label>
                       <div className={styles.radioGroup}>
                         {onOffOptions.map((option) => (
                           <label key={option} className={styles.radioOption}>

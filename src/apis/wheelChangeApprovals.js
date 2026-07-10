@@ -21,9 +21,18 @@ import apiConfig from "./apiConfig";
  *    - Marks the row `approval_status: "approved"`. Approved rows become the
  *      auto-populate source for the entry screens.
  *
+ * 3b. POST /wheel-change/approvals/:id/reject   body: { department, reason }
+ *    - Marks the row `approval_status: "rejected"` and stores `reason` as
+ *      `review_remarks` (plus `reviewed_by`/`reviewed_at`). The row stays in
+ *      the same temp table — it is NOT deleted — so the entry screen can
+ *      still show it as the pending Proposed values and surface the remarks
+ *      to the operator until they resubmit (which silently overwrites it).
+ *
  * 4. Existing GET list/latest endpoints accept `approval_status=approved`
  *    (plus the mixing/variety filters already sent) so the entry screens
- *    only auto-populate from approved data for the selected mixing.
+ *    only auto-populate from approved data for the selected mixing. The same
+ *    `GET /wheel-change/approvals?status=approved` list backs the reviewer's
+ *    "Existing Approvals" tab.
  */
 
 const extractApiError = (error, fallbackMessage) => {
@@ -45,6 +54,19 @@ export const fetchPendingWheelChangeApprovals = async (params = {}) => {
     }
 };
 
+export const fetchApprovedWheelChangeApprovals = async (params = {}) => {
+    try {
+        const response = await apiConfig.get(
+            "/wheel-change/approvals",
+            { status: "approved", ...params },
+            { skipGlobalErrorModal: true }
+        );
+        return response.data;
+    } catch (error) {
+        throw new Error(extractApiError(error, "Unable to load existing wheel change approvals."));
+    }
+};
+
 export const approveWheelChangeApproval = async (id, { department = "" } = {}) => {
     try {
         const response = await apiConfig.post(
@@ -55,5 +77,18 @@ export const approveWheelChangeApproval = async (id, { department = "" } = {}) =
         return response.data;
     } catch (error) {
         throw new Error(extractApiError(error, "Unable to approve wheel change entry."));
+    }
+};
+
+export const rejectWheelChangeApproval = async (id, { department = "", reason = "" } = {}) => {
+    try {
+        const response = await apiConfig.post(
+            `/wheel-change/approvals/${encodeURIComponent(id)}/reject`,
+            { department, reason },
+            { skipGlobalSuccessModal: true }
+        );
+        return response.data;
+    } catch (error) {
+        throw new Error(extractApiError(error, "Unable to reject wheel change entry."));
     }
 };

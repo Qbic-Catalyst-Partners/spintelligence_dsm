@@ -7,6 +7,7 @@ import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { TICKET_KIND } from "@/utils/ticketTransformer";
 
 import styles from "../../styles/operator.module.css";
 
@@ -22,7 +23,15 @@ const initialForm = {
   minusThreshold: "",
   severity: "Low",
   description: "",
+  ticketKind: TICKET_KIND.THRESHOLD,
 };
+
+const TICKET_KIND_OPTIONS = [
+  { value: TICKET_KIND.THRESHOLD, label: "Threshold" },
+  { value: TICKET_KIND.SUBMISSION_FREQUENCY, label: "Submission Frequency" },
+  { value: TICKET_KIND.PP_BATCH, label: "PP Batch" },
+  { value: TICKET_KIND.NOTEBOOK_ACK, label: "Notebook Acknowledgement" },
+];
 
 const COTTON_HVI_NUMERIC_FIELDS = new Set([
   "SCI",
@@ -308,6 +317,7 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
       status: "Open",
       description: form.description.trim(),
       source: "Manual",
+      ticket_kind: form.ticketKind,
     };
 
     const inputScreenPayload = hasScreenFields
@@ -465,6 +475,19 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
                 <option>Low</option>
                 <option>Medium</option>
                 <option>High</option>
+              </select>
+            </Field>
+
+            <Field label="Ticket Type" required>
+              <select
+                value={form.ticketKind}
+                onChange={(event) => updateField("ticketKind", event.target.value)}
+              >
+                {TICKET_KIND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </Field>
 

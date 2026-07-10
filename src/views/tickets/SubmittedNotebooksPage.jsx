@@ -30,6 +30,8 @@ const FIELD_LABELS = {
     rd: "RD",
 };
 
+const FILTER_CASCADE = ["department", "subDepartment", "notebookType", "operator", "supervisor"];
+
 const FALLBACK_FIELDS = [
     "date",
     "inspection_date",
@@ -459,23 +461,16 @@ const formatDateValue = (value) => {
     ].join("-");
 };
 
+const formatDateTime = (value) => {
+    if (!value) return "--";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return `${formatDateValue(value)} | ${formatTime(value)}`;
+};
+
 const isDateField = (key) => {
     const normalized = normalizeKey(key);
     return normalized === "date" || normalized.endsWith("date");
-};
-
-const getGroupLabel = (value) => {
-    const date = value ? new Date(value) : null;
-    if (!date || Number.isNaN(date.getTime())) return "Older";
-
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const itemDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    const diff = Math.round((today - itemDay) / 86400000);
-
-    if (diff === 0) return "Today";
-    if (diff === 1) return "Yesterday";
-    return date.toLocaleDateString("en-GB");
 };
 
 const normalizeList = (data) => {
@@ -549,9 +544,13 @@ const getNotebookApproverValues = (notebook) =>
         ...normalizeIdentityList(notebook?.approval_l2),
         ...normalizeIdentityList(notebook?.approval_l2_name),
         ...normalizeIdentityList(notebook?.approval_l2_names),
+        ...normalizeIdentityList(notebook?.approval_l2_employee_id),
+        ...normalizeIdentityList(notebook?.approvalL2EmployeeId),
         ...normalizeIdentityList(notebook?.approval_l2_user_id),
         ...normalizeIdentityList(notebook?.approval_l2_user_ids),
         ...normalizeIdentityList(notebook?.approvalL2UserIds),
+        ...normalizeIdentityList(notebook?.l2_approver_employee_id),
+        ...normalizeIdentityList(notebook?.l2ApproverEmployeeId),
         ...normalizeIdentityList(notebook?.l2_approver_user_id),
         ...normalizeIdentityList(notebook?.l2_approver_user_ids),
         ...normalizeIdentityList(notebook?.l2ApproverUserIds),
@@ -705,8 +704,12 @@ const getNotebookSupervisorName = (notebook, users = []) => {
 
     const ids = resolveDisplayValues(users, [
         ...normalizeNameList(notebook?.approval_l2),
+        ...normalizeNameList(notebook?.approval_l2_employee_id),
+        ...normalizeNameList(notebook?.approvalL2EmployeeId),
         ...normalizeNameList(notebook?.approval_l2_user_id),
         ...normalizeNameList(notebook?.approval_l2_user_ids),
+        ...normalizeNameList(notebook?.l2_approver_employee_id),
+        ...normalizeNameList(notebook?.l2ApproverEmployeeId),
         ...normalizeNameList(notebook?.l2_approver_user_id),
         ...normalizeNameList(notebook?.l2_approver_user_ids),
     ]);
@@ -736,12 +739,56 @@ const getNotebookSupervisorName = (notebook, users = []) => {
 
     const rawIds = [
         ...normalizeNameList(notebook?.approval_l2),
+        ...normalizeNameList(notebook?.approval_l2_employee_id),
+        ...normalizeNameList(notebook?.approvalL2EmployeeId),
         ...normalizeNameList(notebook?.approval_l2_user_id),
         ...normalizeNameList(notebook?.approval_l2_user_ids),
+        ...normalizeNameList(notebook?.l2_approver_employee_id),
+        ...normalizeNameList(notebook?.l2ApproverEmployeeId),
         ...normalizeNameList(notebook?.l2_approver_user_id),
         ...normalizeNameList(notebook?.l2_approver_user_ids),
     ];
     return rawIds[0] || "--";
+};
+
+const getNotebookOperatorName = (notebook, users = []) => {
+    const names = resolveDisplayValues(users, [
+        ...normalizeNameList(notebook?.operator_name),
+        ...normalizeNameList(notebook?.operatorName),
+        ...normalizeNameList(notebook?.submitted_by_name),
+        ...normalizeNameList(notebook?.submittedByName),
+    ]);
+    if (names.length) return names[0];
+
+    const ids = resolveDisplayValues(users, [
+        ...normalizeNameList(notebook?.submitted_by_user_id),
+        ...normalizeNameList(notebook?.submittedByUserId),
+        ...normalizeNameList(notebook?.submitted_user_id),
+        ...normalizeNameList(notebook?.submittedUserId),
+        ...normalizeNameList(notebook?.user_id),
+        ...normalizeNameList(notebook?.userId),
+    ]);
+    if (ids.length) return ids[0];
+
+    const rawNames = [
+        ...normalizeNameList(notebook?.operator_name),
+        ...normalizeNameList(notebook?.operatorName),
+        ...normalizeNameList(notebook?.submitted_by_name),
+        ...normalizeNameList(notebook?.submittedByName),
+    ];
+    return rawNames[0] || "--";
+};
+
+const getNotebookTitle = (notebook) => {
+    const payload = getPayload(notebook);
+    return (
+        notebook?.notebook_name ||
+        notebook?.notebookName ||
+        notebook?.notebook ||
+        notebook?.title ||
+        payload?.notebook_name ||
+        "Cotton HVI"
+    );
 };
 
 const getNotebookL2ApprovalName = (notebook) => {
@@ -1058,6 +1105,13 @@ const SubmittedNotebooksPage = () => {
     const [acknowledgingId, setAcknowledgingId] = useState(null);
     const [showAcknowledgeConfirm, setShowAcknowledgeConfirm] = useState(false);
     const [users, setUsers] = useState([]);
+    const [filters, setFilters] = useState({
+        department: "",
+        subDepartment: "",
+        notebookType: "",
+        operator: "",
+        supervisor: "",
+    });
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
 
@@ -1120,15 +1174,73 @@ const SubmittedNotebooksPage = () => {
         };
     }, []);
 
-    const groupedNotebooks = useMemo(() => {
-        const groups = new Map();
-        notebooks.forEach((notebook) => {
-            const label = getGroupLabel(getCreatedDate(notebook));
-            if (!groups.has(label)) groups.set(label, []);
-            groups.get(label).push(notebook);
+    const enrichedNotebooks = useMemo(
+        () =>
+            notebooks.map((notebook) => {
+                const { department, subDepartment } = resolveNotebookDepartment(notebook);
+                return {
+                    notebook,
+                    id: getNotebookId(notebook),
+                    department,
+                    subDepartment,
+                    title: getNotebookTitle(notebook),
+                    operator: getNotebookOperatorName(notebook, users),
+                    supervisor: getNotebookSupervisorName(notebook, users),
+                    createdAt: getCreatedDate(notebook),
+                };
+            }),
+        [notebooks, users]
+    );
+
+    const uniqueValues = (values) => Array.from(new Set(values.filter((value) => value && value !== "--")));
+
+    const filterOptions = useMemo(() => {
+        const byDepartment = enrichedNotebooks.filter(
+            (item) => !filters.department || item.department === filters.department
+        );
+        const bySubDepartment = byDepartment.filter(
+            (item) => !filters.subDepartment || item.subDepartment === filters.subDepartment
+        );
+        const byNotebookType = bySubDepartment.filter(
+            (item) => !filters.notebookType || item.title === filters.notebookType
+        );
+        const byOperator = byNotebookType.filter(
+            (item) => !filters.operator || item.operator === filters.operator
+        );
+
+        return {
+            departments: uniqueValues(enrichedNotebooks.map((item) => item.department)),
+            subDepartments: uniqueValues(byDepartment.map((item) => item.subDepartment)),
+            notebookTypes: uniqueValues(bySubDepartment.map((item) => item.title)),
+            operators: uniqueValues(byNotebookType.map((item) => item.operator)),
+            supervisors: uniqueValues(byOperator.map((item) => item.supervisor)),
+        };
+    }, [enrichedNotebooks, filters.department, filters.subDepartment, filters.notebookType, filters.operator]);
+
+    const filteredNotebooks = useMemo(
+        () =>
+            enrichedNotebooks
+                .filter(
+                    (item) =>
+                        (!filters.department || item.department === filters.department) &&
+                        (!filters.subDepartment || item.subDepartment === filters.subDepartment) &&
+                        (!filters.notebookType || item.title === filters.notebookType) &&
+                        (!filters.operator || item.operator === filters.operator) &&
+                        (!filters.supervisor || item.supervisor === filters.supervisor)
+                )
+                .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0)),
+        [enrichedNotebooks, filters]
+    );
+
+    const handleFilterChange = (field, value) => {
+        setFilters((current) => {
+            const next = { ...current, [field]: value };
+            FILTER_CASCADE.slice(FILTER_CASCADE.indexOf(field) + 1).forEach((key) => {
+                next[key] = "";
+            });
+            return next;
         });
-        return Array.from(groups.entries()).map(([label, rows]) => ({ label, rows }));
-    }, [notebooks]);
+    };
 
     const openNotebook = async (notebook) => {
         const id = getNotebookId(notebook);
@@ -1189,59 +1301,114 @@ const SubmittedNotebooksPage = () => {
 
     return (
         <section className={styles.page}>
-            <h1 className={styles.title}>Submitted Notebooks</h1>
+            <div className={styles.titleBar}>
+                <h1 className={styles.title}>Submitted Notebooks</h1>
+                <div className={styles.filterBar}>
+                    <label className={styles.filterField}>
+                        <small>Department</small>
+                        <select
+                            className={styles.filterSelect}
+                            value={filters.department}
+                            onChange={(event) => handleFilterChange("department", event.target.value)}
+                        >
+                            <option value="">All</option>
+                            {filterOptions.departments.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>Sub Department</small>
+                        <select
+                            className={styles.filterSelect}
+                            value={filters.subDepartment}
+                            onChange={(event) => handleFilterChange("subDepartment", event.target.value)}
+                        >
+                            <option value="">All</option>
+                            {filterOptions.subDepartments.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>Notebook Type</small>
+                        <select
+                            className={styles.filterSelect}
+                            value={filters.notebookType}
+                            onChange={(event) => handleFilterChange("notebookType", event.target.value)}
+                        >
+                            <option value="">All</option>
+                            {filterOptions.notebookTypes.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>Operator</small>
+                        <select
+                            className={styles.filterSelect}
+                            value={filters.operator}
+                            onChange={(event) => handleFilterChange("operator", event.target.value)}
+                        >
+                            <option value="">All</option>
+                            {filterOptions.operators.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>Supervisor</small>
+                        <select
+                            className={styles.filterSelect}
+                            value={filters.supervisor}
+                            onChange={(event) => handleFilterChange("supervisor", event.target.value)}
+                        >
+                            <option value="">All</option>
+                            {filterOptions.supervisors.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            </div>
 
             {isLoading ? (
                 <div className={styles.emptyState}>Loading submitted notebooks...</div>
             ) : error ? (
                 <div className={styles.emptyState}>{error}</div>
-            ) : groupedNotebooks.length ? (
-                <div className={styles.groups}>
-                    {groupedNotebooks.map((group) => (
-                        <section key={group.label} className={styles.group}>
-                            <h2 className={styles.groupTitle}>{group.label}</h2>
-                            <div className={styles.list}>
-                                {group.rows.map((notebook, index) => {
-                                    const id = getNotebookId(notebook) || `${group.label}-${index}`;
-                                    const payload = getPayload(notebook);
-                                    const title = notebook?.notebook_name || notebook?.notebookName || notebook?.notebook || notebook?.title || payload?.notebook_name || "Cotton HVI";
-                                    const department = notebook?.department || payload?.department || "Quality Control";
-                                    const subDepartment = notebook?.sub_department || notebook?.subDepartment || payload?.sub_department || "Mixing Department";
-                                    const operator = notebook?.operator_name || notebook?.operatorName || notebook?.submitted_by_name || notebook?.submittedByName || "John Doe";
-                                    const supervisor = getNotebookSupervisorName(notebook, users);
-                                    const createdAt = getCreatedDate(notebook);
+            ) : filteredNotebooks.length ? (
+                <div className={styles.list}>
+                    {filteredNotebooks.map((item, index) => {
+                        const id = item.id || `notebook-${index}`;
 
-                                    return (
-                                        <button
-                                            type="button"
-                                            key={id}
-                                            className={styles.row}
-                                            onClick={() => openNotebook(notebook)}
-                                        >
-                                            <span className={styles.rowMain}>
-                                                <strong>{title}</strong>
-                                                <span>{department} &gt; {subDepartment}</span>
-                                            </span>
-                                            <span className={styles.rowMeta}>
-                                                <span>
-                                                    <small>Supervisor</small>
-                                                    <strong>{supervisor}</strong>
-                                                </span>
-                                                <span>
-                                                    <small>Operator</small>
-                                                    <strong>{operator}</strong>
-                                                </span>
-                                                <span>
-                                                    <small>Created At</small>
-                                                    <strong>{formatTime(createdAt)}</strong>
-                                                </span>
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </section>
-                    ))}
+                        return (
+                            <button
+                                type="button"
+                                key={id}
+                                className={styles.row}
+                                onClick={() => openNotebook(item.notebook)}
+                            >
+                                <span className={styles.rowMain}>
+                                    <strong>{item.title}</strong>
+                                    <span>{item.department} &gt; {item.subDepartment}</span>
+                                </span>
+                                <span className={styles.rowMeta}>
+                                    <span>
+                                        <small>Supervisor</small>
+                                        <strong>{item.supervisor}</strong>
+                                    </span>
+                                    <span>
+                                        <small>Operator</small>
+                                        <strong>{item.operator}</strong>
+                                    </span>
+                                    <span>
+                                        <small>Created At</small>
+                                        <strong>{formatDateTime(item.createdAt)}</strong>
+                                    </span>
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             ) : (
                 <div className={styles.emptyState}>No submitted notebooks found.</div>
@@ -1279,11 +1446,11 @@ const SubmittedNotebooksPage = () => {
                                 </span>
                                 <span>
                                     <small>Operator</small>
-                                    <strong>{selectedNotebook?.operator_name || selectedNotebook?.submitted_by_name || "John Doe"}</strong>
+                                    <strong>{getNotebookOperatorName(selectedNotebook, users)}</strong>
                                 </span>
                                 <span>
                                     <small>Created At</small>
-                                    <strong>{formatTime(getCreatedDate(selectedNotebook))}</strong>
+                                    <strong>{formatDateTime(getCreatedDate(selectedNotebook))}</strong>
                                 </span>
                             </div>
                         </div>

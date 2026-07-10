@@ -9,6 +9,7 @@
 }
 
 .modal {
+  position: relative;
   width: min(1180px, 94vw);
   max-height: 86vh;
   background: #fff;
@@ -20,6 +21,32 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.printButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid #3d539f;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #3d539f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.printButton:hover {
+  background: #eef1fb;
 }
 
 .header {
@@ -181,5 +208,123 @@
 @media (max-width: 768px) {
   .cardWide {
     grid-column: span 1;
+  }
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
+
+  :global(html),
+  :global(body) {
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* The modal is portaled to a direct child of <body>, so the rest of the app
+     (everything under #__next) can just be removed from layout entirely —
+     no leftover invisible-but-space-occupying content to pad out extra pages. */
+  :global(#__next) {
+    display: none !important;
+  }
+
+  .overlay {
+    position: static;
+    background: none;
+    height: auto;
+    min-height: 0;
+    width: 100%;
+    display: block;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    box-shadow: none;
+    border: none;
+    padding: 0;
+    overflow: visible;
+    display: block;
+    gap: 0;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 6px;
+    overflow: visible;
+  }
+
+  .card {
+    min-height: 0;
+    padding: 4px 8px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .label {
+    font-size: 10px;
+    margin-bottom: 1px;
+  }
+
+  .value {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .headerRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    margin-bottom: 14px;
+  }
+
+  .title {
+    font-size: 15px;
+  }
+
+  .breadcrumb {
+    font-size: 11px;
+  }
+
+  .headerRight {
+    margin-top: 6px;
+  }
+
+  .typePill {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+    background: none;
+    box-shadow: none;
+    color: #0f172a;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+    height: auto;
+  }
+
+  .typeLabel {
+    text-transform: none;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 1;
+  }
+
+  .typeValue {
+    margin-top: 0;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .printButton,
+  .footer {
+    display: none;
   }
 }

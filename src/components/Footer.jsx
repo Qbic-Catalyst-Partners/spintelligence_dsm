@@ -1,14 +1,11 @@
 import React from "react";
-import { AiOutlineArrowLeft } from "react-icons/ai";
 import { AiOutlineSave } from "react-icons/ai";
 import styles from "../styles/footer.module.css";
 
 const Footer = ({
-  onBack,
   onClear,
   onSecondary,
   onSave,
-  isMobile,
   variant = "default",
   secondaryLabel = "Clear Form",
   saveLabel = "Save Record",
@@ -22,21 +19,6 @@ const Footer = ({
         variant === "compact" ? styles["footer-container-compact"] : ""
       }`}
     >
-      {!isMobile && onBack && (
-        <div className={styles["left-actions"]}>
-          <button
-            type="button"
-            className={`${styles["button-base"]} ${
-              variant === "compact" ? styles["button-base-compact"] : ""
-            } ${styles["back-btn"]}`}
-            onClick={onBack}
-          >
-            <AiOutlineArrowLeft size={14} />
-            Back to Dashboard
-          </button>
-        </div>
-      )}
-
       <div className={styles["right-actions"]}>
         {secondaryHandler && (
           <button
