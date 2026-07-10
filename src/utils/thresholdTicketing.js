@@ -258,6 +258,12 @@ export const createThresholdViolationTickets = async ({
         return null;
       }
 
+      // The criticality configured on the threshold rule itself (Value Threshold page) is
+      // authoritative — only fall back to the distance-based ratio when no criticality was set.
+      const configuredCriticality = String(
+        threshold?.severity || threshold?.criticality || threshold?.priority || ""
+      ).trim();
+
       return {
         label,
         ticketField:
@@ -274,12 +280,14 @@ export const createThresholdViolationTickets = async ({
           plus_threshold: plusTolerance,
           minus_threshold: minusTolerance,
         },
-        severity: getSeverity(
-          actualValue,
-          violationCheck.minValue ?? violationCheck.referenceValue ?? targetValue,
-          violationCheck.maxValue ?? violationCheck.referenceValue ?? targetValue,
-          Math.max(plusTolerance ?? 0, minusTolerance ?? 0)
-        ),
+        severity:
+          configuredCriticality ||
+          getSeverity(
+            actualValue,
+            violationCheck.minValue ?? violationCheck.referenceValue ?? targetValue,
+            violationCheck.maxValue ?? violationCheck.referenceValue ?? targetValue,
+            Math.max(plusTolerance ?? 0, minusTolerance ?? 0)
+          ),
       };
     })
     .filter(Boolean);
@@ -287,6 +295,12 @@ export const createThresholdViolationTickets = async ({
   if (!violations.length) {
     return [];
   }
+
+  const SEVERITY_RANK = { High: 3, Medium: 2, Low: 1 };
+  const ticketSeverity = violations.reduce((highest, violation) => {
+    const rank = SEVERITY_RANK[violation.severity] || 0;
+    return rank > (SEVERITY_RANK[highest] || 0) ? violation.severity : highest;
+  }, violations[0].severity);
 
   const actualValues = {};
   const thresholdValues = {};
@@ -316,6 +330,7 @@ export const createThresholdViolationTickets = async ({
       parameter_name: parameterNames,
       actual_value: actualValues,
       threshold_value: thresholdValues,
+      severity: ticketSeverity,
       status: "Open",
       description: `System generated alert: ${parameterNames.length} threshold breach(es) detected.`,
       source: "Threshold",

@@ -6,6 +6,7 @@ import {
     FiChevronLeft,
     FiChevronRight,
     FiCheckCircle,
+    FiClock,
     FiMoreVertical,
     FiPlus,
     FiSlash,
@@ -33,7 +34,121 @@ const createRule = () => ({
     criticality: "",
     approvalL1: [],
     approvalL2: [],
+    approvalL1Tat: "08:00",
+    approvalL2Tat: "08:00",
 });
+
+// TAT (turn-around time) helpers — 24-hour, hours-and-minutes only, no AM/PM.
+// Kept in sync with the same logic in SubmissionThreshold.js.
+const tatHourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
+const tatMinuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
+
+const parseTatParts = (value) => {
+    const normalizedValue = String(value || "08:00").trim().toUpperCase();
+    const match = normalizedValue.match(/^(\d{1,2})(?::(\d{1,2}))?\s*(A|P|AM|PM)?$/);
+
+    if (!match) {
+        return { hour: "08", minute: "00" };
+    }
+
+    const parsedHour = Number(match[1]);
+    const parsedMinute = Number(match[2] || 0);
+    // Historical values may still carry a 12-hour "AM/PM" suffix — fold PM hours into 24-hour form.
+    const meridiem = match[3]?.startsWith("P") ? "PM" : match[3]?.startsWith("A") ? "AM" : null;
+    let hourNumber = parsedHour || 8;
+    if (meridiem === "PM" && hourNumber < 12) hourNumber += 12;
+    if (meridiem === "AM" && hourNumber === 12) hourNumber = 0;
+
+    const hour = String(Math.min(Math.max(hourNumber, 0), 23)).padStart(2, "0");
+    const minute = String(Math.min(Math.max(parsedMinute || 0, 0), 59)).padStart(2, "0");
+
+    return { hour, minute };
+};
+
+const formatTatValue = (hour, minute) => `${hour}:${minute}`;
+
+const formatTatHours = (value) => {
+    const hours = Number(value);
+    if (!Number.isInteger(hours) || hours <= 0) return "08:00";
+
+    const normalizedHour = Math.min(Math.max(hours, 0), 23);
+    return `${String(normalizedHour).padStart(2, "0")}:00`;
+};
+
+const tatValueToHours = (value) => {
+    const { hour, minute } = parseTatParts(value);
+    const hourNumber = Number(hour);
+    const minuteNumber = Number(minute);
+    return Math.max(1, hourNumber + (minuteNumber > 0 ? 1 : 0));
+};
+
+function TatTimePicker({ value, onChange, label }) {
+    const containerRef = useRef(null);
+    const [isOpen, setIsOpen] = useState(false);
+    const { hour, minute } = parseTatParts(value);
+
+    useEffect(() => {
+        const handleOutsideClick = (event) => {
+            if (!containerRef.current?.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+        };
+    }, []);
+
+    const syncTime = (nextHour, nextMinute) => {
+        onChange?.(formatTatValue(nextHour, nextMinute));
+    };
+
+    return (
+        <div className={styles.tatTimeWrap} ref={containerRef}>
+            <input
+                type="text"
+                value={value}
+                placeholder="08:00"
+                onFocus={() => setIsOpen(true)}
+                onClick={() => setIsOpen(true)}
+                onChange={(event) => onChange?.(event.target.value)}
+            />
+            <button
+                type="button"
+                className={styles.tatTimeButton}
+                onClick={() => setIsOpen((current) => !current)}
+                aria-label={`Select ${label} turn around time`}
+            >
+                <FiClock />
+            </button>
+            {isOpen ? (
+                <div className={styles.tatTimeMenu}>
+                    <label>
+                        <span>Hrs</span>
+                        <select value={hour} onChange={(event) => syncTime(event.target.value, minute)}>
+                            {tatHourOptions.map((option) => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <label>
+                        <span>Mins</span>
+                        <select value={minute} onChange={(event) => syncTime(hour, event.target.value)}>
+                            {tatMinuteOptions.map((option) => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            ) : null}
+        </div>
+    );
+}
 
 const EXISTING_ROWS_PER_PAGE = 6;
 
@@ -697,6 +812,8 @@ export default function ThresholdValues() {
                 approvalL2: normalizeNameList(
                     item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2
                 ),
+                approvalL1Tat: formatTatHours(item?.l1_tat_hours),
+                approvalL2Tat: formatTatHours(item?.l2_tat_hours),
             },
         ]);
         setEditingThresholdId(getThresholdIdentifier(item));
@@ -907,11 +1024,13 @@ export default function ThresholdValues() {
                 approval_l1_user_id: primaryApprovalL1Id || null,
                 approval_l1_names: approvalL1Names,
                 approval_l1_ids: approvalL1Ids,
+                l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
                 approval_l2: primaryApprovalL2Id || primaryApprovalL2Name,
                 approval_l2_name: primaryApprovalL2Name,
                 approval_l2_user_id: primaryApprovalL2Id || null,
                 approval_l2_names: approvalL2Names,
                 approval_l2_ids: approvalL2Ids,
+                l2_tat_hours: tatValueToHours(rule.approvalL2Tat),
                 comparison_operator: rule.comparison,
                 condition_level: rule.comparison,
                 actual_value:
@@ -1182,7 +1301,9 @@ export default function ThresholdValues() {
                                                                 <option value="High">High</option>
                                                             </select>
                                                         </label>
+                                                    </div>
 
+                                                    <div className={styles.ruleTopGrid}>
                                                         <label className={styles.field}>
                                                             <span>L1</span>
                                                             <MultiSelectDropdown
@@ -1192,6 +1313,17 @@ export default function ThresholdValues() {
                                                                 placeholder={l1Options.length ? "Select" : "No L1 users available"}
                                                                 onChange={(nextValues) =>
                                                                     handleRuleChange(rule.id, "approvalL1", nextValues)
+                                                                }
+                                                            />
+                                                        </label>
+
+                                                        <label className={styles.field}>
+                                                            <span>TAT</span>
+                                                            <TatTimePicker
+                                                                label="L1 TAT"
+                                                                value={rule.approvalL1Tat}
+                                                                onChange={(nextValue) =>
+                                                                    handleRuleChange(rule.id, "approvalL1Tat", nextValue)
                                                                 }
                                                             />
                                                         </label>
@@ -1207,6 +1339,17 @@ export default function ThresholdValues() {
                                                                     handleRuleChange(rule.id, "approvalL2", nextValues)
                                                                 }
                                                                 emptyLabel="No L2 users available"
+                                                            />
+                                                        </label>
+
+                                                        <label className={styles.field}>
+                                                            <span>TAT</span>
+                                                            <TatTimePicker
+                                                                label="L2 TAT"
+                                                                value={rule.approvalL2Tat}
+                                                                onChange={(nextValue) =>
+                                                                    handleRuleChange(rule.id, "approvalL2Tat", nextValue)
+                                                                }
                                                             />
                                                         </label>
                                                     </div>

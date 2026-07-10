@@ -191,6 +191,29 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     dispatch(fetchSupervisorTickets(supervisorTicketQuery));
   }, [dispatch, isAdminUser]);
 
+  // Operators can change a ticket's status from their own dashboard while an admin/supervisor
+  // already has this page open — refetch on refocus so those changes show up without a manual reload.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const refreshFromServer = () => {
+      dispatch(fetchSupervisorTickets(supervisorTicketQuery));
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshFromServer();
+      }
+    };
+
+    window.addEventListener("focus", refreshFromServer);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", refreshFromServer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [dispatch, isAdminUser]);
+
   const openCalendarPicker = (inputRef) => {
     const input = inputRef.current;
     if (!input) return;

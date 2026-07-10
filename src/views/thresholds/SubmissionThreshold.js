@@ -23,8 +23,8 @@ const createRule = () => ({
   screenName: "",
   approvalL1: [],
   approvalL2: [],
-  approvalL1Tat: "08:00 AM",
-  approvalL2Tat: "08:00 AM",
+  approvalL1Tat: "08:00",
+  approvalL2Tat: "08:00",
   frequencyLabel: "Daily",
   occurrences: "4",
   isActive: true,
@@ -40,7 +40,7 @@ const frequencyOptions = [
 ];
 
 const occurrenceOptions = Array.from({ length: 10 }, (_, index) => String(index + 1));
-const hourOptions = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
+const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
 
 const buildExistingFilters = () => ({
@@ -141,39 +141,43 @@ const normalizeNameList = (value) => {
 };
 
 const parseTatParts = (value) => {
-  const normalizedValue = String(value || "08:00 AM").trim().toUpperCase();
+  const normalizedValue = String(value || "08:00").trim().toUpperCase();
   const match = normalizedValue.match(/^(\d{1,2})(?::(\d{1,2}))?\s*(A|P|AM|PM)?$/);
 
   if (!match) {
-    return { hour: "08", minute: "00", meridiem: "AM" };
+    return { hour: "08", minute: "00" };
   }
 
   const parsedHour = Number(match[1]);
   const parsedMinute = Number(match[2] || 0);
-  const hour = String(Math.min(Math.max(parsedHour || 8, 1), 12)).padStart(2, "0");
-  const minute = String(Math.min(Math.max(parsedMinute || 0, 0), 59)).padStart(2, "0");
-  const meridiem = match[3]?.startsWith("P") ? "PM" : "AM";
+  // Historical values may still carry a 12-hour "AM/PM" suffix from before the switch
+  // to a 24-hour picker — fold PM hours into 24-hour form so old data keeps displaying correctly.
+  const meridiem = match[3]?.startsWith("P") ? "PM" : match[3]?.startsWith("A") ? "AM" : null;
+  let hourNumber = parsedHour || 8;
+  if (meridiem === "PM" && hourNumber < 12) hourNumber += 12;
+  if (meridiem === "AM" && hourNumber === 12) hourNumber = 0;
 
-  return { hour, minute, meridiem };
+  const hour = String(Math.min(Math.max(hourNumber, 0), 23)).padStart(2, "0");
+  const minute = String(Math.min(Math.max(parsedMinute || 0, 0), 59)).padStart(2, "0");
+
+  return { hour, minute };
 };
 
-const formatTatValue = (hour, minute, meridiem) => `${hour}:${minute} ${meridiem}`;
+const formatTatValue = (hour, minute) => `${hour}:${minute}`;
 
 const formatTatHours = (value) => {
   const hours = Number(value);
-  if (!Number.isInteger(hours) || hours <= 0) return "08:00 AM";
+  if (!Number.isInteger(hours) || hours <= 0) return "08:00";
 
-  const normalizedHour = ((hours - 1) % 12) + 1;
-  const meridiem = hours > 12 ? "PM" : "AM";
-  return `${String(normalizedHour).padStart(2, "0")}:00 ${meridiem}`;
+  const normalizedHour = Math.min(Math.max(hours, 0), 23);
+  return `${String(normalizedHour).padStart(2, "0")}:00`;
 };
 
 const tatValueToHours = (value) => {
-  const { hour, minute, meridiem } = parseTatParts(value);
+  const { hour, minute } = parseTatParts(value);
   const hourNumber = Number(hour);
   const minuteNumber = Number(minute);
-  const hourValue = meridiem === "PM" && hourNumber < 12 ? hourNumber + 12 : hourNumber;
-  return Math.max(1, hourValue + (minuteNumber > 0 ? 1 : 0));
+  return Math.max(1, hourNumber + (minuteNumber > 0 ? 1 : 0));
 };
 
 const resolveUsers = (users, values) =>
@@ -321,7 +325,7 @@ function SingleSelectDropdown({
 function TatTimePicker({ value, onChange, label }) {
   const containerRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
-  const { hour, minute, meridiem } = parseTatParts(value);
+  const { hour, minute } = parseTatParts(value);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -336,13 +340,12 @@ function TatTimePicker({ value, onChange, label }) {
     };
   }, []);
 
-  const syncTime = (nextHour, nextMinute, nextMeridiem) => {
-    onChange?.(formatTatValue(nextHour, nextMinute, nextMeridiem));
+  const syncTime = (nextHour, nextMinute) => {
+    onChange?.(formatTatValue(nextHour, nextMinute));
   };
 
   const handleTextChange = (nextValue) => {
-    const upperValue = nextValue.toUpperCase();
-    onChange?.(upperValue);
+    onChange?.(nextValue);
   };
 
   return (
@@ -350,7 +353,7 @@ function TatTimePicker({ value, onChange, label }) {
       <input
         type="text"
         value={value}
-        placeholder="08:00 AM"
+        placeholder="08:00"
         onFocus={() => setIsOpen(true)}
         onClick={() => setIsOpen(true)}
         onChange={(event) => handleTextChange(event.target.value)}
@@ -367,7 +370,7 @@ function TatTimePicker({ value, onChange, label }) {
         <div className={styles.tatTimeMenu}>
           <label>
             <span>Hrs</span>
-            <select value={hour} onChange={(event) => syncTime(event.target.value, minute, meridiem)}>
+            <select value={hour} onChange={(event) => syncTime(event.target.value, minute)}>
               {hourOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -377,19 +380,12 @@ function TatTimePicker({ value, onChange, label }) {
           </label>
           <label>
             <span>Mins</span>
-            <select value={minute} onChange={(event) => syncTime(hour, event.target.value, meridiem)}>
+            <select value={minute} onChange={(event) => syncTime(hour, event.target.value)}>
               {minuteOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
               ))}
-            </select>
-          </label>
-          <label>
-            <span>AM/PM</span>
-            <select value={meridiem} onChange={(event) => syncTime(hour, minute, event.target.value)}>
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
             </select>
           </label>
         </div>

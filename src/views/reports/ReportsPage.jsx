@@ -946,6 +946,9 @@ const reportFieldAliases = {
   "Colour Grade": ["colour_grade", "color_grade", "colourGrade", "colorGrade"],
   "U%": ["u_percent", "uPercent"],
   "CV%": ["cv_percent", "cvPercent"],
+  "Ratio into size-1.0": ["ratio_size_1", "ratioSize1"],
+  "Ratio into size-0.7": ["ratio_size_07", "ratioSize07"],
+  "Ratio into size-0.5": ["ratio_size_05", "ratioSize05"],
 };
 
 const getCanonicalReportFieldKey = (field) => {
@@ -1365,8 +1368,12 @@ function ReportsPage() {
     // Parameter") are reused across unrelated departments with different field sets — for those,
     // only keep catalog fields that actually exist on the rows fetched for this dept/type. Names
     // unique to one department are trusted outright, so fields still show before any rows load.
-    const catalogFields = isAmbiguousReportType(reportType)
-      ? rawCatalogFields.filter((field) => inferredKeys.has(getCanonicalReportFieldKey(field)))
+    // If nothing in the catalog matches the fetched rows (no rows loaded yet, or this dept/type's
+    // field set genuinely equals the shared catalog entry), fall back to the full catalog rather
+    // than showing no fields at all.
+    const matchedCatalogFields = rawCatalogFields.filter((field) => inferredKeys.has(getCanonicalReportFieldKey(field)));
+    const catalogFields = isAmbiguousReportType(reportType) && matchedCatalogFields.length
+      ? matchedCatalogFields
       : rawCatalogFields;
     const definedFields = [...backendFields, ...catalogFields].filter(
       (field, index, list) =>
@@ -1594,12 +1601,10 @@ function ReportsPage() {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setRows([]);
-    setSelectedFields([]);
     setError("");
 
     if (!department || !subDepartment || !reportType) {
       setRows([]);
-      setSelectedFields([]);
       setError("No report screens are assigned to this user.");
       return;
     }
@@ -1644,7 +1649,6 @@ function ReportsPage() {
 
         if (isActive && requestIdRef.current === requestId) {
           setRows(nextRows);
-          setSelectedFields([]);
           setError("");
         }
       } catch (requestError) {
@@ -1662,6 +1666,10 @@ function ReportsPage() {
       isActive = false;
     };
   }, [department, endDate, reportType, selectedReportSource, startDate, subDepartment]);
+
+  useEffect(() => {
+    setSelectedFields([]);
+  }, [department, reportType, selectedReportSource, subDepartment]);
 
   useEffect(() => {
     if (!timePickerOpen) return undefined;
