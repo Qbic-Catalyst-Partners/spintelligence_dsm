@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { FaInfoCircle } from "react-icons/fa";
 import styles from "../../styles/createrole.module.css";
 import { fetchScreens, createRole } from "../../store/slices/rolesSlice";
+import ScreenAccessPanel, { isUnregisteredScreenId } from "@/components/ScreenAccessPanel";
 
 export default function CreateRole() {
   const router = useRouter();
@@ -18,14 +19,6 @@ export default function CreateRole() {
     dispatch(fetchScreens());
   }, [dispatch]);
 
-  const handleScreenChange = (id) => {
-    if (selectedScreens.includes(id)) {
-      setSelectedScreens(selectedScreens.filter((screenId) => screenId !== id));
-    } else {
-      setSelectedScreens([...selectedScreens, id]);
-    }
-  };
-
   const handleSelectAll = () => {
     if (selectedScreens.length === screens.length) {
       setSelectedScreens([]);
@@ -35,11 +28,25 @@ export default function CreateRole() {
   };
 
   const handleCreateRole = async () => {
+    const screenIds = selectedScreens.filter((id) => !isUnregisteredScreenId(id));
+
+    // Derive the departments from the selected screens' backend department_id.
+    const selectedSet = new Set(screenIds.map(String));
+    const departmentIds = [
+      ...new Set(
+        screens
+          .filter((screen) => selectedSet.has(String(screen.id)))
+          .map((screen) => screen.department_id)
+          .filter((id) => id != null)
+      ),
+    ];
+
     const newRole = {
       name: roleName,
       description,
       status: true,
-      screen_ids: selectedScreens,
+      screen_ids: screenIds,
+      department_ids: departmentIds,
     };
 
     if (!newRole.name) {
@@ -47,22 +54,26 @@ export default function CreateRole() {
       return;
     }
 
+    if (!newRole.screen_ids.length) {
+      alert("Please select at least one screen");
+      return;
+    }
+
+    if (!newRole.department_ids.length) {
+      alert("Selected screens are not linked to any department");
+      return;
+    }
+
     try {
       await dispatch(createRole(newRole)).unwrap();
       router.push("/rolespermission");
     } catch (error) {
-      console.error("CREATE ROLE ERROR:", error.message);
-      alert(error.message);
+      const message =
+        typeof error === "string" ? error : error?.message || "Failed to create role.";
+      console.error("CREATE ROLE ERROR:", message);
+      alert(message);
     }
   };
-
-  const toTitleCase = (value = "") =>
-    value
-      .toLowerCase()
-      .split(" ")
-      .filter(Boolean)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ");
 
   return (
     <div className={styles["role"]}>
@@ -123,19 +134,11 @@ export default function CreateRole() {
               </div>
             </div>
 
-            <div className={styles["rolepage-checkboxgrid"]}>
-              {screens.map((screen) => (
-                <label className={styles["rolepage-checkboxcard"]} key={screen.id}>
-                  <input
-                    type="checkbox"
-                    className={styles["checkbox"]}
-                    checked={selectedScreens.includes(screen.id)}
-                    onChange={() => handleScreenChange(screen.id)}
-                  />
-                  {toTitleCase(screen.name)}
-                </label>
-              ))}
-            </div>
+            <ScreenAccessPanel
+              screens={screens}
+              selectedScreenIds={selectedScreens}
+              onChange={setSelectedScreens}
+            />
           </div>
         </div>
 

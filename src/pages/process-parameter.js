@@ -36,12 +36,6 @@ import {
   fetchAutoconerQ2Entries,
   fetchAutoconerQ3Entries,
 } from "@/apis/autoconer";
-import SearchableSelect from "@/components/SearchableSelect";
-import {
-  buildProcessParameterOptions,
-  PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
-  PROCESS_PARAMETER_COUNT_OPTIONS,
-} from "@/data/processParameterMasterOptions";
 import styles from "@/styles/processParameterPage.module.css";
 
 const updateExistingColumns = [
@@ -94,6 +88,11 @@ const normalizeRegistryId = (value) => String(value || "").trim();
 // from before the PP-prefixed scheme was adopted shouldn't surface here or count toward
 // the next reserved ID.
 const isCanonicalPpId = (value) => /^PP-\d+$/i.test(String(value || "").trim());
+
+const getPpSequence = (value) => {
+  const match = /^PP-(\d+)$/i.exec(String(value || "").trim());
+  return match ? Number(match[1]) : 0;
+};
 
 const getEntryRows = (response) =>
   Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
@@ -362,7 +361,12 @@ export default function ProcessParameterPage() {
   }, []);
 
   const loadRemoteStatuses = async () => {
-    const filters = { consigneeFilter, countFilter, dateFrom, dateTo };
+    const filters = {
+      consigneeFilter: consigneeNameFilter,
+      countFilter: countNameFilter,
+      dateFrom: dateFromFilter,
+      dateTo: dateToFilter,
+    };
     const results = await Promise.allSettled(
       REMOTE_STATUS_SOURCES.map((source) => source.fetch(filters))
     );
@@ -419,7 +423,7 @@ export default function ProcessParameterPage() {
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consigneeFilter, countFilter, dateFrom, dateTo]);
+  }, [consigneeNameFilter, countNameFilter, dateFromFilter, dateToFilter]);
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -469,14 +473,6 @@ export default function ProcessParameterPage() {
   const showListCard = activeTab === "existing";
   const [searchTerm, setSearchTerm] = useState("");
 
-  const consigneeFilterOptions = useMemo(
-    () => buildProcessParameterOptions(PROCESS_PARAMETER_CONSIGNEE_OPTIONS, [], consigneeFilter),
-    [consigneeFilter]
-  );
-  const countFilterOptions = useMemo(
-    () => buildProcessParameterOptions(PROCESS_PARAMETER_COUNT_OPTIONS, [], countFilter),
-    [countFilter]
-  );
 
   const mergedRows = useMemo(() => {
     const byId = new Map();
@@ -962,48 +958,15 @@ export default function ProcessParameterPage() {
 
           {showListCard ? (
             <div className={styles.listCard}>
-              <div className={styles.listToolbar}>
-                <input
-                  type="text"
-                  className={styles.searchInput}
-                  placeholder="Search"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                />
-              </div>
-
               <div className={styles.filterRow}>
-                <label className={styles.filterField}>
-                  <span>Consignee Name</span>
-                  <SearchableSelect
-                    className={styles.filterInput}
-                    value={consigneeFilter}
-                    onChange={setConsigneeFilter}
-                    options={consigneeFilterOptions}
-                    placeholder="Search or select consignee name"
-                    ariaLabel="Filter by Consignee Name"
-                  />
-                </label>
-
-                <label className={styles.filterField}>
-                  <span>Count Name</span>
-                  <SearchableSelect
-                    className={styles.filterInput}
-                    value={countFilter}
-                    onChange={setCountFilter}
-                    options={countFilterOptions}
-                    placeholder="Search or select count name"
-                    ariaLabel="Filter by Count Name"
-                  />
-                </label>
-
-                <label className={styles.filterField}>
-                  <span>Date From</span>
+                <div className={styles.searchInputWrap}>
+                  <MdSearch className={styles.searchIcon} />
                   <input
-                    type="date"
-                    className={styles.filterInput}
-                    value={dateFrom}
-                    onChange={(event) => setDateFrom(event.target.value)}
+                    type="text"
+                    className={styles.searchInput}
+                    placeholder="Search"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
                   />
                 </div>
 

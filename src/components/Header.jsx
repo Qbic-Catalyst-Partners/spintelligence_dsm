@@ -784,7 +784,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         <FiChevronDown className={`${styles["department-chevron"]} ${isManagementHubOpen ? styles["department-chevron-open"] : ""}`} />
                                     </button>
                                     <div className={`${styles["side-subnav"]} ${isManagementHubOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {visibleManagementHubLinks.map((managementLink) => (
+                                        {managementHubLinks.map((managementLink) => (
                                             <Link
                                                 key={managementLink.href}
                                                 href={managementLink.href}

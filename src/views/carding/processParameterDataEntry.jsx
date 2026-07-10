@@ -313,7 +313,7 @@ const SavedVersionsSection = ({
 
                   <div>
                     <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-                      Wire Speck
+                      Wire Spec
                     </div>
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                       {wireSpeckFieldDefs.map((field) => (
@@ -606,7 +606,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       label: field.label,
       value: form[field.key] || "-",
     })),
-    { label: "Wire Speck", value: " " },
+    { label: "Wire Spec", value: " " },
     ...wireSpeckFieldDefs.map((field) => ({
       label: field.label,
       value: form[field.key] || "-",
@@ -759,7 +759,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-4 text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
-                Wire Speck
+                Wire Spec
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {wireSpeckFieldDefs.map((field) => (

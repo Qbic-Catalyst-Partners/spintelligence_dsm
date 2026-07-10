@@ -6,6 +6,7 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { RiIdCardFill } from "react-icons/ri";
 import { getAccessibleScreensByRole } from "@/apis/login";
+import ScreenAccessPanel, { isUnregisteredScreenId } from "@/components/ScreenAccessPanel";
 
 import {
     fetchRoleById,
@@ -185,11 +186,27 @@ export default function EditRole() {
 
     const handleUpdateRole = async () => {
         try {
+            const screenIds = [...new Set(selectedScreens)]
+                .filter((screenId) => !isUnregisteredScreenId(screenId))
+                .map(toApiScreenId);
+
+            // Derive departments from the selected screens' backend department_id.
+            const selectedSet = new Set(screenIds.map(String));
+            const departmentIds = [
+                ...new Set(
+                    screens
+                        .filter((screen) => selectedSet.has(String(screen.id)))
+                        .map((screen) => screen.department_id)
+                        .filter((deptId) => deptId != null)
+                ),
+            ];
+
             const payload = {
                 name: roleName,
                 description,
                 status: true,
-                screen_ids: [...new Set(selectedScreens)].map(toApiScreenId),
+                screen_ids: screenIds,
+                department_ids: departmentIds,
             };
 
             await dispatch(updateRole({ id, payload })).unwrap();
@@ -198,14 +215,6 @@ export default function EditRole() {
             alert(error.message || "Update failed");
         }
     };
-
-    const toTitleCase = (value = "") =>
-        value
-            .toLowerCase()
-            .split(" ")
-            .filter(Boolean)
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(" ");
 
     return (
         <div className={styles["edit-page-container"]}>
@@ -260,37 +269,11 @@ export default function EditRole() {
                         Screen Access
                     </div>
 
-                    <div className={styles["edit-module-grid"]}>
-                        {screens.map((screen) => {
-                            const screenId = String(screen.id);
-                            const isSelected = selectedScreens.includes(screenId);
-
-                            return (
-                                <label
-                                    key={screen.id}
-                                    className={`${styles["edit-module-item"]} ${isSelected
-                                        ? styles["active-module"]
-                                        : ""
-                                        }`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={() => {
-                                            if (isSelected) {
-                                                setSelectedScreens(
-                                                    selectedScreens.filter((selectedScreenId) => selectedScreenId !== screenId)
-                                                );
-                                            } else {
-                                                setSelectedScreens([...selectedScreens, screenId]);
-                                            }
-                                        }}
-                                    />
-                                    {toTitleCase(screen.name)}
-                                </label>
-                            );
-                        })}
-                    </div>
+                    <ScreenAccessPanel
+                        screens={screens}
+                        selectedScreenIds={selectedScreens}
+                        onChange={setSelectedScreens}
+                    />
                 </div>
             </div>
 
