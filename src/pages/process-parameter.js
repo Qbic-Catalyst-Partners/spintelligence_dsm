@@ -26,7 +26,7 @@ import {
   PROCESS_PARAMETER_COUNT_OPTIONS,
   PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
 } from "@/data/processParameterMasterOptions";
-import { getMixingProcessParameterEntries } from "@/apis/mixing";
+import { getMixingProcessParameterEntries, fetchMixingCountOptions } from "@/apis/mixing";
 import { fetchBlowroomProcessParametersApi } from "@/apis/blowroom";
 import { getCardingProcessParameterEntries } from "@/apis/carding";
 import { fetchSimplexProcessParameterEntries } from "@/apis/simplex";
@@ -34,7 +34,10 @@ import {
   fetchAutoconerProcessParameters,
   fetchAutoconerQ2Entries,
   fetchAutoconerQ3Entries,
+  fetchAutoconerConsigneeMaster,
 } from "@/apis/autoconer";
+import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
+import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
 import styles from "@/styles/processParameterPage.module.css";
 
 const updateExistingColumns = [
@@ -87,6 +90,11 @@ const normalizeRegistryId = (value) => String(value || "").trim();
 // from before the PP-prefixed scheme was adopted shouldn't surface here or count toward
 // the next reserved ID.
 const isCanonicalPpId = (value) => /^PP-\d+$/i.test(String(value || "").trim());
+
+const getPpSequence = (value) => {
+  const match = String(value || "").trim().match(/(\d+)/);
+  return match ? Number(match[1]) : 0;
+};
 
 const getEntryRows = (response) =>
   Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
@@ -317,6 +325,14 @@ export default function ProcessParameterPage() {
   const [remoteCountNameMap, setRemoteCountNameMap] = useState({});
   const [remoteConsigneeNameMap, setRemoteConsigneeNameMap] = useState({});
   const [remoteDateMap, setRemoteDateMap] = useState({});
+  const [masterCountNames, setMasterCountNames] = useState([]);
+  const [masterConsigneeNames, setMasterConsigneeNames] = useState([]);
+  // Per-notebook completion thresholds (PP Threshold page) and any
+  // PP_NOTEBOOK_INCOMPLETE tickets already raised, so the matrix can show
+  // each column's threshold, mark a pending cell overdue, and surface an
+  // existing escalation ticket instead of the operator finding out cold.
+  const [ppThresholdMap, setPpThresholdMap] = useState({});
+  const [ppTicketMap, setPpTicketMap] = useState({});
   const [consigneeFilter, setConsigneeFilter] = useState("");
   const [countFilter, setCountFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -353,10 +369,10 @@ export default function ProcessParameterPage() {
 
   const loadRemoteStatuses = async () => {
     const filters = {
-      consigneeFilter: consigneeNameFilter,
-      countFilter: countNameFilter,
-      dateFrom: dateFromFilter,
-      dateTo: dateToFilter,
+      consigneeFilter,
+      countFilter,
+      dateFrom,
+      dateTo,
     };
     const results = await Promise.allSettled(
       REMOTE_STATUS_SOURCES.map((source) => source.fetch(filters))
@@ -408,13 +424,108 @@ export default function ProcessParameterPage() {
     loadRemoteStatuses();
   }, []);
 
+  // Master Count Name / Consignee Name lists for the "Update Existing PP" filter
+  // dropdowns — fetched once from the backend so every known name is selectable,
+  // not just the ones already seen in currently-loaded PP rows.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchMixingCountOptions()
+      .then((options) => {
+        if (cancelled) return;
+        setMasterCountNames(
+          (Array.isArray(options) ? options : [])
+            .map((option) => String(option?.count_name || option?.label || option?.value || "").trim())
+            .filter(Boolean)
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setMasterCountNames([]);
+      });
+
+    fetchAutoconerConsigneeMaster()
+      .then((options) => {
+        if (cancelled) return;
+        setMasterConsigneeNames(
+          (Array.isArray(options) ? options : []).map((option) => String(option || "").trim()).filter(Boolean)
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setMasterConsigneeNames([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Per-notebook completion thresholds (PP Threshold page) and any
+  // PP_NOTEBOOK_INCOMPLETE tickets already raised for this PP id/notebook —
+  // used to mark overdue cells and link to an existing escalation ticket.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchPpThresholdsAPI()
+      .then((rows) => {
+        if (cancelled) return;
+        const map = {};
+        (Array.isArray(rows) ? rows : []).forEach((row) => {
+          const notebookName = String(
+            row?.notebook_name || row?.notebookName || row?.notebook || row?.screen_name || ""
+          ).trim();
+          if (!notebookName) return;
+          const hours = Number(row?.completion_threshold_hours ?? row?.completionThresholdHours);
+          if (!Number.isFinite(hours) || hours <= 0) return;
+          map[notebookName] = hours;
+        });
+        setPpThresholdMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setPpThresholdMap({});
+      });
+
+    fetchSupervisorTicketsApi({ ticket_type: "pp_notebook_incomplete", limit: 500 })
+      .then((response) => {
+        if (cancelled) return;
+        const rows = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+            ? response.data
+            : Array.isArray(response?.tickets)
+              ? response.tickets
+              : [];
+        const map = {};
+        rows.forEach((ticket) => {
+          const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toLowerCase();
+          if (ticketType && ticketType !== "pp_notebook_incomplete") return;
+          const entryIdValue = String(
+            ticket?.entry_id || ticket?.entryId || ticket?.pp_id || ticket?.ppId || ""
+          ).trim();
+          const notebookName = String(
+            ticket?.notebook || ticket?.notebook_name || ticket?.notebookName || ticket?.screen_name || ""
+          ).trim();
+          if (!entryIdValue || !notebookName) return;
+          map[`${entryIdValue}::${notebookName}`] =
+            ticket?.ticket_id || ticket?.ticketId || ticket?.id || ticket?._id || true;
+        });
+        setPpTicketMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setPpTicketMap({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       loadRemoteStatuses();
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consigneeNameFilter, countNameFilter, dateFromFilter, dateToFilter]);
+  }, [consigneeFilter, countFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -491,6 +602,53 @@ export default function ProcessParameterPage() {
   const getRowCountName = (rowId) => getProcessParameterCountName(rowId) || remoteCountNameMap[rowId] || "";
   const getRowConsigneeNames = (rowId) => remoteConsigneeNameMap[rowId] || [];
   const getRowDate = (rowId) => remoteDateMap[rowId] || "";
+
+  const getColumnThresholdHours = (columnName) => ppThresholdMap[columnName] || null;
+
+  // A pending cell is overdue once the PP id's creation date is further back
+  // than that notebook's own configured completion_threshold_hours — mirrors
+  // the backend's generatePpNotebookBatchIncompleteTickets logic (MIN(submitted_at)
+  // across the PP id's notebooks vs. that notebook's threshold), just computed
+  // client-side from whatever date precision we already have.
+  const isCellOverdue = (rowId, columnName, done) => {
+    if (done) return false;
+    const hours = getColumnThresholdHours(columnName);
+    if (!hours) return false;
+    const createdDate = getRowDate(rowId);
+    if (!createdDate) return false;
+    const createdTime = new Date(createdDate).getTime();
+    if (!Number.isFinite(createdTime)) return false;
+    return (Date.now() - createdTime) / (1000 * 60 * 60) > hours;
+  };
+
+  // Returns the ticket id string when known, "" when a ticket exists but no
+  // id was returned by the API, or null when no ticket exists for this cell.
+  const getCellTicketId = (rowId, columnName) => {
+    const value = ppTicketMap[`${rowId}::${columnName}`];
+    if (value === undefined) return null;
+    return typeof value === "string" || typeof value === "number" ? String(value) : "";
+  };
+
+  // Backend master list is the primary source (every known name is selectable,
+  // not just ones already present in currently-loaded PP rows); names seen only
+  // on existing rows are still merged in as a fallback in case the master list
+  // hasn't caught up with a newly-entered name yet.
+  const countNameFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([...masterCountNames, ...mergedRows.map((row) => getRowCountName(row.id))].filter(Boolean))
+      ).sort((a, b) => a.localeCompare(b)),
+    [masterCountNames, mergedRows, remoteCountNameMap]
+  );
+  const consigneeNameFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [...masterConsigneeNames, ...mergedRows.flatMap((row) => getRowConsigneeNames(row.id))].filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [masterConsigneeNames, mergedRows, remoteConsigneeNameMap]
+  );
 
   const filteredRows = mergedRows.filter((row) => {
     if (!String(row.id).toLowerCase().includes(String(searchTerm).toLowerCase())) return false;
@@ -819,24 +977,7 @@ export default function ProcessParameterPage() {
           </header>
 
           <div className={styles.subHeaderRow}>
-            {activeTab === "new" ? (
-              <label className={styles.subDeptField}>
-                <span>Sub Department</span>
-                <select
-                  value={selectedSubDepartment}
-                  onChange={(event) => handleSubDepartmentChange(event.target.value)}
-                >
-                  <option value="">Select sub-department</option>
-                  {visibleSubDepartments.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <div />
-            )}
+            <div />
             <div className={styles.subHeaderRight}>
               {showListCard ? (
                 <button
@@ -917,6 +1058,23 @@ export default function ProcessParameterPage() {
             ))}
           </div>
 
+          {activeTab === "new" ? (
+            <label className={styles.subDeptField}>
+              <span>Sub Department</span>
+              <select
+                value={selectedSubDepartment}
+                onChange={(event) => handleSubDepartmentChange(event.target.value)}
+              >
+                <option value="">Select sub-department</option>
+                {visibleSubDepartments.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
           {showListCard ? (
             <div className={styles.listCard}>
               <div className={styles.filterRow}>
@@ -929,17 +1087,71 @@ export default function ProcessParameterPage() {
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
                   />
-                </label>
+                </div>
 
-                <label className={styles.filterField}>
-                  <span>Date To</span>
-                  <input
-                    type="date"
-                    className={styles.filterInput}
-                    value={dateTo}
-                    onChange={(event) => setDateTo(event.target.value)}
-                  />
-                </label>
+                <div className={styles.dateRangeFilter}>
+                  <div className={styles.dateFieldWrap}>
+                    <span className={styles.dateFieldLabel}>Count Name</span>
+                    <div className={styles.dateInputWrap}>
+                      <select
+                        className={styles.filterSelect}
+                        value={countFilter}
+                        onChange={(event) => setCountFilter(event.target.value)}
+                      >
+                        <option value="">All</option>
+                        {countNameFilterOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className={styles.dateFieldWrap}>
+                    <span className={styles.dateFieldLabel}>Consignee Name</span>
+                    <div className={styles.dateInputWrap}>
+                      <select
+                        className={styles.filterSelect}
+                        value={consigneeFilter}
+                        onChange={(event) => setConsigneeFilter(event.target.value)}
+                      >
+                        <option value="">All</option>
+                        {consigneeNameFilterOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.dateRangeFilter}>
+                  <div className={styles.dateFieldWrap}>
+                    <span className={styles.dateFieldLabel}>Date From</span>
+                    <div className={styles.dateInputWrap}>
+                      <input
+                        type="date"
+                        className={styles.filterSelect}
+                        value={dateFrom}
+                        onChange={(event) => setDateFrom(event.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={styles.dateFieldWrap}>
+                    <span className={styles.dateFieldLabel}>Date To</span>
+                    <div className={styles.dateInputWrap}>
+                      <input
+                        type="date"
+                        className={styles.filterSelect}
+                        value={dateTo}
+                        onChange={(event) => setDateTo(event.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 <button
                   type="button"
@@ -958,9 +1170,15 @@ export default function ProcessParameterPage() {
                     <tr>
                       <th>{updateExistingColumns[0]}</th>
                       <th>Count Name</th>
-                      {updateExistingColumns.slice(1).map((column) => (
-                        <th key={column}>{column}</th>
-                      ))}
+                      {updateExistingColumns.slice(1).map((column) => {
+                        const hours = getColumnThresholdHours(column);
+                        return (
+                          <th key={column}>
+                            {column}
+                            {hours ? <div className={styles.columnThresholdHint}>{hours}h threshold</div> : null}
+                          </th>
+                        );
+                      })}
                       <th></th>
                     </tr>
                   </thead>
@@ -983,20 +1201,40 @@ export default function ProcessParameterPage() {
                         <td className={styles.matrixCountNameCell} title={getRowCountName(row.id) || ""}>
                           {getRowCountName(row.id) || "-"}
                         </td>
-                        {rowStatuses.map((done, index) => (
-                          <td key={`${row.id}-${index}`} className={styles.matrixStatusCell}>
-                            <button
-                              type="button"
-                              className={done ? styles.statusDone : styles.statusPending}
-                              onClick={done ? undefined : () => handleMatrixCellClick(row.id, index)}
-                              disabled={done}
-                              aria-label={`${row.id} ${updateExistingColumns[index + 1]} ${done ? "completed" : "pending"}`}
-                              title={done ? "Completed" : "Opens in a new tab"}
-                            >
-                              {done ? "✓" : ""}
-                            </button>
-                          </td>
-                        ))}
+                        {rowStatuses.map((done, index) => {
+                          const columnName = updateExistingColumns[index + 1];
+                          const overdue = isCellOverdue(row.id, columnName, done);
+                          const ticketId = getCellTicketId(row.id, columnName);
+                          return (
+                            <td key={`${row.id}-${index}`} className={styles.matrixStatusCell}>
+                              <button
+                                type="button"
+                                className={
+                                  done
+                                    ? styles.statusDone
+                                    : overdue
+                                      ? styles.statusOverdue
+                                      : styles.statusPending
+                                }
+                                onClick={done ? undefined : () => handleMatrixCellClick(row.id, index)}
+                                disabled={done}
+                                aria-label={`${row.id} ${columnName} ${done ? "completed" : overdue ? "overdue" : "pending"}`}
+                                title={done ? "Completed" : overdue ? "Overdue — past its completion threshold" : "Opens in a new tab"}
+                              >
+                                {done ? "✓" : overdue ? "!" : ""}
+                              </button>
+                              {!done && ticketId !== null ? (
+                                <a
+                                  className={styles.matrixTicketBadge}
+                                  href={ticketId ? `/operatordetail/${ticketId}` : "/supervisordashboard"}
+                                  title="A PP notebook incomplete ticket has been raised for this cell"
+                                >
+                                  Ticket
+                                </a>
+                              ) : null}
+                            </td>
+                          );
+                        })}
                         <td className={styles.matrixActionCell}>
                           <button
                             type="button"

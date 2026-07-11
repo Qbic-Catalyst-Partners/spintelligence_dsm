@@ -379,7 +379,7 @@ export const thresholdFieldCatalog = {
         "D",
         "C",
         "TPI/TM",
-        "Winding - E/F",
+        "Winding length in meters",
         "Ratchet Wheel",
         "Travellers No.",
         "Spacer",

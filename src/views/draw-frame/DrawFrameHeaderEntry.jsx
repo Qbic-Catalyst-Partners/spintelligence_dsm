@@ -586,7 +586,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       registerProcessParameterId(savedEntry, activeType, form.countName);
       setForm((current) => ({
         ...current,
-        paramId: displayEntryId,
+        paramId,
       }));
       loadEntries(activeType);
 
@@ -595,7 +595,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
           department: "Quality Control",
           subDepartment: "Draw Frame",
           notebookName: activeType,
-          entryId: displayEntryId,
+          entryId: paramId,
           previewItems,
           user,
         });

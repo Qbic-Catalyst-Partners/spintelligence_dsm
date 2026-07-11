@@ -157,6 +157,8 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     onLotNoChange,
     saveEntryApi = null,
     fetchMachineOptionsApi = null,
+    fetchWasteTypesApi = null,
+    saveWasteTypeApi = saveBlowroomMasterWasteType,
     entryTypeLabel = "BR Waste Study Entry",
     useBlowroomRedux = true,
     showEntryId = true,
@@ -176,7 +178,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         wasteTypeOptionsError,
         loadingWasteTypeOptions,
         refreshWasteTypeOptions,
-    } = useBlowroomMasterWasteTypes();
+    } = useBlowroomMasterWasteTypes(fetchWasteTypesApi || undefined);
     const normalizedWasteTypes = new Set(
         (Array.isArray(wasteTypeOptions) ? wasteTypeOptions : [])
             .map((option) => String(option?.value ?? option?.label ?? option ?? "").trim().toLowerCase())
@@ -499,7 +501,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                 }));
 
                 try {
-                    await saveBlowroomMasterWasteType(rawValue);
+                    await saveWasteTypeApi(rawValue);
                     await refreshWasteTypeOptions();
                     setWasteTypeSaveStatus((current) => ({
                         ...current,

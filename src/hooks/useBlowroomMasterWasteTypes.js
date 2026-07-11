@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchBlowroomMasterWasteTypes } from "@/apis/blowroom";
 
-const useBlowroomMasterWasteTypes = () => {
+const useBlowroomMasterWasteTypes = (fetchWasteTypesApi = fetchBlowroomMasterWasteTypes) => {
   const [wasteTypeOptions, setWasteTypeOptions] = useState([]);
   const [wasteTypeOptionsError, setWasteTypeOptionsError] = useState("");
   const [loadingWasteTypeOptions, setLoadingWasteTypeOptions] = useState(false);
@@ -9,7 +9,7 @@ const useBlowroomMasterWasteTypes = () => {
   const refreshWasteTypeOptions = async () => {
     setLoadingWasteTypeOptions(true);
     try {
-      const options = await fetchBlowroomMasterWasteTypes();
+      const options = await fetchWasteTypesApi();
       setWasteTypeOptions(Array.isArray(options) ? options : []);
       setWasteTypeOptionsError("");
       return Array.isArray(options) ? options : [];
@@ -28,7 +28,7 @@ const useBlowroomMasterWasteTypes = () => {
     const loadWasteTypes = async () => {
       setLoadingWasteTypeOptions(true);
       try {
-        const options = await fetchBlowroomMasterWasteTypes();
+        const options = await fetchWasteTypesApi();
         if (!active) return;
         setWasteTypeOptions(Array.isArray(options) ? options : []);
         setWasteTypeOptionsError("");
@@ -45,7 +45,7 @@ const useBlowroomMasterWasteTypes = () => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [fetchWasteTypesApi]);
 
   return {
     wasteTypeOptions,

@@ -346,6 +346,30 @@ export const fetchCardingMasterMachines = async ({ prefix = "CDG" } = {}) => {
     }
 };
 
+export const fetchCardingMasterWasteTypes = async () => {
+    try {
+        const response = await apiConfig.get("/carding/master/waste-types", {}, { skipGlobalErrorModal: true });
+        const payload = response?.data;
+        const rows = Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.rows)
+                ? payload.rows
+                : Array.isArray(payload?.options)
+                    ? payload.options
+                    : Array.isArray(payload)
+                        ? payload
+                        : [];
+
+        return uniqueStrings(rows.map((row) =>
+            row && typeof row === "object"
+                ? row.waste_type_name ?? row.wasteTypeName ?? row.waste_type ?? row.wasteType ?? row.name ?? row.label ?? row.value ?? row.text
+                : row
+        ));
+    } catch (error) {
+        throw new Error(getCardingApiErrorMessage(error, "Unable to fetch waste type options."));
+    }
+};
+
 export const fetchCardingMasterMachineRows = async ({ prefix = "CDG" } = {}) => {
     try {
         const response = await apiConfig.get("/carding/master/machines", { prefix });

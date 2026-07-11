@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
 import { FiCalendar } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
-import { updateOperatorTicketStatus } from "../../apis/operatorApi";
+import { updateOperatorTicketStatus, getProcessParameterTickets } from "../../apis/operatorApi";
 import { acknowledgeTicketApi } from "../../apis/supervisorApi";
 import {
   applyStoredTicketStatuses,
@@ -142,6 +142,27 @@ const getReviewL3 = (ticket) =>
     ticket?.l3_approver
   ) || getReviewL2(ticket);
 
+// PP_NOTEBOOK_INCOMPLETE tickets from /operator-tickets/process-parameter-ticketing —
+// these no longer appear in the generic /tickets feed (segregation fix), so they're
+// fetched separately here, same pattern as Operator dashboard's fetchSubmissionTickets.
+// time_lagged_hours is computed live by the backend, so it stays current as time passes.
+const formatProcessParameterTicket = (ticket) => {
+  const transformedTicket = transformTicket(ticket);
+  return {
+    ...transformedTicket,
+    id: transformedTicket.ticket_id || ticket.ticket_id,
+    ticket_id: transformedTicket.ticket_id || ticket.ticket_id,
+    entryId: ticket.entry_id || ticket.entryId || "-",
+    machine_name: ticket.notebook || transformedTicket.notebook || "Unknown",
+    notebook: ticket.notebook || transformedTicket.notebook || "Unknown",
+    completionThresholdHours: ticket.completion_time_provided_hours ?? ticket.completionTimeProvidedHours ?? "-",
+    entryCreatedAt: ticket.entry_created_at || ticket.entryCreatedAt || "-",
+    timeLaggedHours: ticket.time_lagged_hours ?? ticket.timeLaggedHours ?? "-",
+    severity: ticket.severity || transformedTicket.severity || "High",
+    status: transformedTicket.status,
+  };
+};
+
 export default function SupervisorDashboard({ mode = "L2" }) {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -184,11 +205,39 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const [showFilter, setShowFilter] = useState(false);
   const [activeTicketingView, setActiveTicketingView] = useState(isReviewOnlyL3Mode ? "review" : "threshold");
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
+  const [processParameterTicketData, setProcessParameterTicketData] = useState([]);
+  const [processParameterError, setProcessParameterError] = useState("");
   const startDateInputRef = useRef(null);
   const endDateInputRef = useRef(null);
 
+  const fetchProcessParameterTickets = async () => {
+    try {
+      setProcessParameterError("");
+      const response = await getProcessParameterTickets({ page: 1, limit: 500, _ts: Date.now() });
+      const ticketsArray = Array.isArray(response)
+        ? response
+        : response?.data?.tickets ||
+          response?.data?.rows ||
+          response?.data ||
+          response?.tickets ||
+          response?.rows ||
+          [];
+
+      if (!ticketsArray.length && response && typeof response === "object") {
+        console.warn("getProcessParameterTickets returned an unrecognized response shape:", response);
+      }
+
+      setProcessParameterTicketData(ticketsArray.map(formatProcessParameterTicket));
+    } catch (ppError) {
+      console.error("Error fetching process parameter tickets:", ppError);
+      setProcessParameterTicketData([]);
+      setProcessParameterError(ppError.message || "Failed to fetch process parameter tickets.");
+    }
+  };
+
   useEffect(() => {
     dispatch(fetchSupervisorTickets(supervisorTicketQuery));
+    fetchProcessParameterTickets();
   }, [dispatch, isAdminUser]);
 
   // Operators can change a ticket's status from their own dashboard while an admin/supervisor
@@ -198,6 +247,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
     const refreshFromServer = () => {
       dispatch(fetchSupervisorTickets(supervisorTicketQuery));
+      fetchProcessParameterTickets();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -302,12 +352,41 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     (ticket) => isSubmissionTicketRecord(ticket) && !isAcknowledgementReviewTicket(ticket)
   );
   const thresholdTickets = filteredTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
+  // Process parameter tickets come from their own dedicated endpoint (not the
+  // generic /tickets feed safeTickets is built from), so they get their own
+  // simple filter pass instead of running through the shared filteredTickets logic.
+  const processParameterTickets = processParameterTicketData.filter((t) => {
+    const ticketDate = t.created_at ? new Date(t.created_at) : null;
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    const dateMatch =
+      !start && !end ? true : ticketDate && (!start || ticketDate >= start) && (!end || ticketDate <= end);
+    const normalizedTicketStatus = String(t.status || "").trim().toLowerCase();
+    const normalizedFilterStatus = String(status || "").trim().toLowerCase();
+    const statusMatch =
+      !status ||
+      normalizedTicketStatus === normalizedFilterStatus ||
+      (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
+      (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
+    return (
+      dateMatch &&
+      statusMatch &&
+      (!severity || t.severity === severity) &&
+      (!notebookType || t.notebook === notebookType) &&
+      (!search ||
+        t.ticket_id?.toLowerCase().includes(search.toLowerCase()) ||
+        t.entryId?.toLowerCase?.().includes(search.toLowerCase()) ||
+        t.notebook?.toLowerCase().includes(search.toLowerCase()))
+    );
+  });
   const displayTickets =
     activeTicketingView === "threshold"
       ? thresholdTickets
       : activeTicketingView === "submission"
         ? submissionTickets
-        : reviewTickets;
+        : activeTicketingView === "process_parameter"
+          ? processParameterTickets
+          : reviewTickets;
 
   const totalPages = Math.max(
     1,
@@ -411,6 +490,30 @@ export default function SupervisorDashboard({ mode = "L2" }) {
               >
               Review Ticketing Sys.
             </button>
+            <button
+              type="button"
+              className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "process_parameter" ? styles["ticketing-toggle-btn-active"] : ""}`}
+              onClick={() => selectTicketingView("process_parameter")}
+              >
+              Process Parameter Tickets
+            </button>
+          </div>
+        ) : null}
+
+        {activeTicketingView === "process_parameter" && processParameterError ? (
+          <div
+            role="alert"
+            style={{
+              margin: "0 0 16px",
+              padding: "12px 14px",
+              border: "1px solid #f6c2c2",
+              borderRadius: 6,
+              background: "#fff5f5",
+              color: "#9f1d1d",
+              fontSize: 14,
+            }}
+          >
+            Process parameter tickets could not be loaded. The backend returned: {processParameterError}
           </div>
         ) : null}
 
@@ -591,6 +694,17 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                     <th>STATUS</th>
                     <th>CREATED AT</th>
                   </>
+                ) : activeTicketingView === "process_parameter" ? (
+                  <>
+                    <th>NOTEBOOK</th>
+                    <th>ENTRY ID</th>
+                    <th>COMPLETION THRESHOLD (HRS)</th>
+                    <th>ENTRY CREATED AT</th>
+                    <th>TIME LAGGED (HRS)</th>
+                    <th>SEVERITY</th>
+                    <th>STATUS</th>
+                    <th>CREATED AT</th>
+                  </>
                 ) : (
                   <>
                     <th>OPERATOR</th>
@@ -692,6 +806,40 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                           </td>
                           <td>{formatDateTime(t.created_at)}</td>
                         </>
+                      ) : activeTicketingView === "process_parameter" ? (
+                        <>
+                          <td>{t.notebook}</td>
+                          <td>{t.entryId}</td>
+                          <td>{t.completionThresholdHours}</td>
+                          <td>{t.entryCreatedAt === "-" ? "-" : formatDateTime(t.entryCreatedAt)}</td>
+                          <td>{t.timeLaggedHours}</td>
+                          <td>
+                            <span
+                              className={`${styles["sup-badge"]} ${
+                                styles[t.severity?.toLowerCase()]
+                              }`}
+                            >
+                              {t.severity}
+                            </span>
+                          </td>
+                          <td>
+                            <span onClick={(event) => event.stopPropagation()}>
+                              <select
+                                className={styles["status-select"]}
+                                value={t.status}
+                                disabled={statusUpdatingId === t.ticket_id}
+                                onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
+                              >
+                                {getDisplayStatusOptions(t.status).map((option) => (
+                                  <option key={option} value={option}>
+                                    {getOperatorStatusLabel(option)}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
+                          </td>
+                          <td>{formatDateTime(t.created_at)}</td>
+                        </>
                       ) : (
                         <>
                           <td>{t.user_name}</td>
@@ -729,7 +877,15 @@ export default function SupervisorDashboard({ mode = "L2" }) {
               ) : (
                 <tr>
                   <td
-                    colSpan={activeTicketingView === "review" ? "6" : activeTicketingView === "submission" ? "9" : "10"}
+                    colSpan={
+                      activeTicketingView === "review"
+                        ? "6"
+                        : activeTicketingView === "submission"
+                          ? "9"
+                          : activeTicketingView === "process_parameter"
+                            ? "9"
+                            : "10"
+                    }
                     style={{ textAlign: "center", padding: "24px" }}
                   >
                     No tickets found

@@ -256,6 +256,66 @@ export const saveBlowroomMasterWasteType = async (wasteTypeName) => {
   }
 };
 
+const normalizeBlowroomMachineRows = (payload) => {
+  const rows = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.mc_nos)
+        ? payload.mc_nos
+        : Array.isArray(payload?.machine_numbers)
+          ? payload.machine_numbers
+          : Array.isArray(payload?.rows)
+            ? payload.rows
+            : Array.isArray(payload?.options)
+              ? payload.options
+              : [];
+
+  const seen = new Set();
+  return rows
+    .map((row) => {
+      const value = String(
+        (row && typeof row === "object"
+          ? row.mc_no ?? row.machine_no ?? row.machine_number ?? row.line_no ?? row.br_line ?? row.value ?? row.label ?? row.name ?? row.text
+          : row) || ""
+      ).trim();
+      return value ? { value, label: value } : null;
+    })
+    .filter((option) => {
+      if (!option || seen.has(option.value)) return false;
+      seen.add(option.value);
+      return true;
+    });
+};
+
+export const fetchBlowroomMachineMaster = async ({ prefix = "" } = {}) => {
+  const endpoints = [
+    "/blowroom/master/mc-nos",
+    "/blowroom/master/machine-numbers",
+    "/blowroom/header/master/mc-nos",
+  ];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await apiConfig.get(
+        endpoint,
+        { prefix, mc_no_prefix: prefix },
+        { skipGlobalErrorModal: true }
+      );
+      const options = normalizeBlowroomMachineRows(res.data);
+      if (options.length || endpoint === endpoints[endpoints.length - 1]) return options;
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status && error.response.status !== 404) {
+        throw new Error(getBlowroomApiErrorMessage(error, "Failed to fetch B/R Line options"));
+      }
+    }
+  }
+
+  throw new Error(getBlowroomApiErrorMessage(lastError || {}, "Failed to fetch B/R Line options"));
+};
+
 export const fetchBlowroomDataApi = async () => {
   try {
     const res = await apiConfig.get(BLOWROOM_SYNC_ENDPOINT);

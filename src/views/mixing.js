@@ -19,7 +19,7 @@ import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
-import { fetchMixingAfis6CottonEntries, fetchMixingAfis6MmfEntries } from "@/apis/mixing";
+import { fetchBlowroomMachineMaster } from "@/apis/blowroom";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
 import { fetchMixingLotDetails } from "@/apis/mixing";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
@@ -150,6 +150,8 @@ function Mixing() {
     const [lotNo, setLotNo] = useState("");
     const [selectedLotDetails, setSelectedLotDetails] = useState(null);
     const [target, setTarget] = useState("");
+    const [brLine, setBrLine] = useState("");
+    const [brLineOptions, setBrLineOptions] = useState([]);
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
@@ -158,14 +160,16 @@ function Mixing() {
     const [ocrBusy] = useState(false);
     const [pendingOcrValues, setPendingOcrValues] = useState(null);
     const [afis6Form, setAfis6Form] = useState({
-        material_class: "",
-        comment: "",
-        total_nep_count_g: "",
-        total_nep_mean_size_um: "",
-        fiber_nep_count_g: "",
-        fiber_nep_mean_size_um: "",
-        scnep_count_g: "",
-        scnep_mean_size_um: "",
+        lot_no: "",
+        variety: "",
+        invoice_date: "",
+        mc_name: "",
+        blow_room: "",
+        carding: "",
+        breaker_drawing: "",
+        finisher_drawing: "",
+        comber: "",
+        scp_nep_count: "",
         l_w_mm: "",
         l_w_cv: "",
         sfc_w_percent: "",
@@ -174,33 +178,49 @@ function Mixing() {
         l_n_cv_percent: "",
         sfc_n_percent: "",
         five_pct_l_n_mm: "",
-        fineness_mtex: "",
-        maturity_ratio_mat1: "",
-        ifc_percent: "",
     });
     const [afis6Errors, setAfis6Errors] = useState({});
-    const [afis6Records, setAfis6Records] = useState([]);
-    const [afis6RecordsLoading, setAfis6RecordsLoading] = useState(false);
-    const [afis6RecordsError, setAfis6RecordsError] = useState("");
     const [afis6MmfForm, setAfis6MmfForm] = useState({
-        material_class: "",
-        comment: "",
+        lot_no: "",
+        variety: "",
+        invoice_date: "",
+        mc_name: "",
+        blow_room: "",
+        carding: "",
+        breaker_drawing: "",
+        finisher_drawing: "",
+        comber: "",
         total_nep_count_g: "",
         total_nep_mean_size_um: "",
-        cut_length_n_mm: "",
+        fiber_nep_count_g: "",
+        fiber_nep_mean_size_um: "",
+        sc_nep_count_g: "",
+        sc_nep_mean_size_um: "",
+        l_w_mm: "",
+        l_w_cv: "",
+        sfc_w_percent: "",
+        uql_w_mm: "",
+        l_n_mm: "",
         l_n_cv_percent: "",
         sfc_n_percent: "",
         five_pct_l_n_mm: "",
+        fitness_index: "",
+        maturity_ratio_mat1: "",
+        ifc_percent: "",
+        fifty_pct_l_n_mm: "",
+        cut_length_n_mm: "",
+        cut_length_l_n_cv_percent: "",
+        cut_length_sfc_w_percent: "",
         fineness_den: "",
         fineness_cv_percent: "",
-        long_fiber_gt_46_80_percent: "",
-        long_fiber_count_gt_46_80: "",
+        long_fiber_gt_45_60_percent: "",
+        long_fiber_count_gt_45_60: "",
     });
     const [afis6MmfErrors, setAfis6MmfErrors] = useState({});
-    const [afis6MmfRecords, setAfis6MmfRecords] = useState([]);
-    const [afis6MmfRecordsLoading, setAfis6MmfRecordsLoading] = useState(false);
-    const [afis6MmfRecordsError, setAfis6MmfRecordsError] = useState("");
-    const currentDateLabel = useMemo(() => new Date().toLocaleDateString("en-IN"), []);
+    const [currentDateLabel, setCurrentDateLabel] = useState("");
+    useEffect(() => {
+        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+    }, []);
 
     const selectedType = typeOptions.find((item) => item.name === selectedTypeName) || null;
     const SelectedComponent = selectedType?.component ?? null;
@@ -211,6 +231,11 @@ function Mixing() {
     const { lotOptions, lotOptionsError, loadingLotOptions } = useMixingLotOptions(
         shouldLoadLots ? selectedTypeName : ""
     );
+    const {
+        lotOptions: afis6LotOptions,
+        lotOptionsError: afis6LotOptionsError,
+        loadingLotOptions: loadingAfis6LotOptions,
+    } = useMixingLotOptions(isAfis6Cotton || isAfis6Mmf ? "AFIS Data Entry" : "");
     const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
         department: "Mixing",
         typeName: selectedTypeName,
@@ -258,10 +283,37 @@ function Mixing() {
         setLotNo("");
         setSelectedLotDetails(null);
         setTarget("");
+        setBrLine("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
     };
+
+    const handleBrLineChange = (value) => {
+        setBrLine(value);
+        setHeaderErrors((prev) => {
+            if (!prev.brLine) return prev;
+            const next = { ...prev };
+            delete next.brLine;
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        if (selectedTypeName !== "Openness Data Entry") return;
+        let active = true;
+        fetchBlowroomMachineMaster()
+            .then((options) => {
+                if (active) setBrLineOptions(Array.isArray(options) ? options : []);
+            })
+            .catch((error) => {
+                console.warn("Unable to fetch B/R Line options:", error?.message || error);
+                if (active) setBrLineOptions([]);
+            });
+        return () => {
+            active = false;
+        };
+    }, [selectedTypeName]);
 
     const handleTargetChange = (value) => {
         setTarget(value);
@@ -289,6 +341,7 @@ function Mixing() {
         setLotNo("");
         setSelectedLotDetails(null);
         setTarget("");
+        setBrLine("");
         setHeaderErrors({});
         setValidationMessage("");
         childRef.current?.clear?.();
@@ -407,30 +460,69 @@ function Mixing() {
         showSuccessOnce();
     };
 
+    const BLOW_ROOM_OPTIONS = ["GBR", "CHUTE", "MO", "FLEXI CLEANER", "KB", "VARIO CLEANER"];
+
+    const toDateInputValue = (value) => {
+        const trimmed = String(value || "").trim();
+        if (!trimmed) return "";
+        if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+        const dmy = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+        if (dmy) {
+            const [, day, month, year] = dmy;
+            return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+        }
+        const parsed = new Date(trimmed);
+        return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+    };
+
+    const afis6TextFieldDefs = [
+        { key: "lot_no", label: "Lot No." },
+        { key: "variety", label: "Variety" },
+        { key: "invoice_date", label: "Invoice Date", type: "date" },
+        { key: "mc_name", label: "Mc. Name" },
+        { key: "blow_room", label: "Blow Room" },
+        { key: "carding", label: "Carding" },
+        { key: "breaker_drawing", label: "Breaker Drawing" },
+        { key: "finisher_drawing", label: "Finisher Drawing" },
+        { key: "comber", label: "Comber" },
+    ];
+
     const afis6FieldDefs = [
-        { key: "total_nep_count_g", label: "Total Nep Count / g" },
-        { key: "total_nep_mean_size_um", label: "Total Nep Mean Size µm" },
-        { key: "fiber_nep_count_g", label: "Fiber Nep Count / g" },
-        { key: "fiber_nep_mean_size_um", label: "Fiber Nep Mean Size µm" },
-        { key: "scnep_count_g", label: "SCNep Count / g" },
-        { key: "scnep_mean_size_um", label: "SCNep Mean Size µm" },
-        { key: "l_w_mm", label: "L(w) mm" },
-        { key: "l_w_cv", label: "L(w) CV" },
-        { key: "sfc_w_percent", label: "SFC(w) <12.70 mm %" },
-        { key: "uql_w_mm", label: "UQL(w) mm" },
-        { key: "l_n_mm", label: "L(n) mm" },
-        { key: "l_n_cv_percent", label: "L(n) CV %" },
-        { key: "sfc_n_percent", label: "SFC(n) <12.70 mm %" },
-        { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
-        { key: "fineness_mtex", label: "Fineness mtex" },
-        { key: "maturity_ratio_mat1", label: "Maturity ratio mat 1" },
-        { key: "ifc_percent", label: "IFC %" },
+        { key: "scp_nep_count", label: "SCP NEP Count" },
+        { key: "l_w_mm", label: "L(W)" },
+        { key: "l_w_cv", label: "L(W) CV" },
+        { key: "sfc_w_percent", label: "SCF(W)<12.70mm" },
+        { key: "uql_w_mm", label: "UQL(w)" },
+        { key: "l_n_mm", label: "L(n)" },
+        { key: "l_n_cv_percent", label: "L(n)CV" },
+        { key: "sfc_n_percent", label: "SCF(n)<12.70mm" },
+        { key: "five_pct_l_n_mm", label: "5%L(n)" },
     ];
 
     const handleAfis6Change = (key, value) => {
         const nextValue = afis6FieldDefs.some((field) => field.key === key)
             ? sanitizeNumericInput(value, { precision: 12, scale: 3 })
             : value;
+
+        if (key === "lot_no") {
+            const matchedLot = afis6LotOptions.find(
+                (lot) => lot.lot_no === nextValue || lot.value === nextValue
+            );
+            setAfis6Form((prev) => ({
+                ...prev,
+                lot_no: nextValue,
+                variety: matchedLot?.variety || prev.variety,
+                invoice_date: matchedLot?.invoice_date ? toDateInputValue(matchedLot.invoice_date) : prev.invoice_date,
+            }));
+            setAfis6Errors((prev) => {
+                if (!prev[key]) return prev;
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+            return;
+        }
+
         setAfis6Form((prev) => ({ ...prev, [key]: nextValue }));
         setAfis6Errors((prev) => {
             if (!prev[key]) return prev;
@@ -450,14 +542,16 @@ function Mixing() {
 
         const payload = {
             inspection_date: date || "",
-            material_class: String(afis6Form.material_class || "").trim(),
-            comment: String(afis6Form.comment || "").trim(),
-            total_nep_count_g: normalizeNumeric(afis6Form.total_nep_count_g),
-            total_nep_mean_size_um: normalizeNumeric(afis6Form.total_nep_mean_size_um),
-            fiber_nep_count_g: normalizeNumeric(afis6Form.fiber_nep_count_g),
-            fiber_nep_mean_size_um: normalizeNumeric(afis6Form.fiber_nep_mean_size_um),
-            scnep_count_g: normalizeNumeric(afis6Form.scnep_count_g),
-            scnep_mean_size_um: normalizeNumeric(afis6Form.scnep_mean_size_um),
+            lot_no: String(afis6Form.lot_no || "").trim(),
+            variety: String(afis6Form.variety || "").trim(),
+            invoice_date: String(afis6Form.invoice_date || "").trim(),
+            mc_name: String(afis6Form.mc_name || "").trim(),
+            blow_room: String(afis6Form.blow_room || "").trim(),
+            carding: String(afis6Form.carding || "").trim(),
+            breaker_drawing: String(afis6Form.breaker_drawing || "").trim(),
+            finisher_drawing: String(afis6Form.finisher_drawing || "").trim(),
+            comber: String(afis6Form.comber || "").trim(),
+            scp_nep_count: normalizeNumeric(afis6Form.scp_nep_count),
             l_w_mm: normalizeNumeric(afis6Form.l_w_mm),
             l_w_cv: normalizeNumeric(afis6Form.l_w_cv),
             sfc_w_percent: normalizeNumeric(afis6Form.sfc_w_percent),
@@ -466,9 +560,6 @@ function Mixing() {
             l_n_cv_percent: normalizeNumeric(afis6Form.l_n_cv_percent),
             sfc_n_percent: normalizeNumeric(afis6Form.sfc_n_percent),
             five_pct_l_n_mm: normalizeNumeric(afis6Form.five_pct_l_n_mm),
-            fineness_mtex: normalizeNumeric(afis6Form.fineness_mtex),
-            maturity_ratio_mat1: normalizeNumeric(afis6Form.maturity_ratio_mat1),
-            ifc_percent: normalizeNumeric(afis6Form.ifc_percent),
             machine_name: "AFIS-6",
             department: "Mixing",
             sub_department: "Quality Control",
@@ -480,38 +571,18 @@ function Mixing() {
         );
     };
 
-    const refreshAfis6Records = useCallback(async () => {
-        setAfis6RecordsLoading(true);
-        setAfis6RecordsError("");
-
-        try {
-            const response = await fetchMixingAfis6CottonEntries({ limit: 10 });
-            const rows = Array.isArray(response?.data)
-                ? response.data
-                : Array.isArray(response?.records)
-                    ? response.records
-                    : Array.isArray(response)
-                        ? response
-                        : [];
-            setAfis6Records(rows);
-        } catch (error) {
-            setAfis6RecordsError(error?.message || "Failed to load AFIS-6 Cotton entries.");
-            setAfis6Records([]);
-        } finally {
-            setAfis6RecordsLoading(false);
-        }
-    }, []);
-
     const handleAfis6Clear = () => {
         setAfis6Form({
-            material_class: "",
-            comment: "",
-            total_nep_count_g: "",
-            total_nep_mean_size_um: "",
-            fiber_nep_count_g: "",
-            fiber_nep_mean_size_um: "",
-            scnep_count_g: "",
-            scnep_mean_size_um: "",
+            lot_no: "",
+            variety: "",
+            invoice_date: "",
+            mc_name: "",
+            blow_room: "",
+            carding: "",
+            breaker_drawing: "",
+            finisher_drawing: "",
+            comber: "",
+            scp_nep_count: "",
             l_w_mm: "",
             l_w_cv: "",
             sfc_w_percent: "",
@@ -520,9 +591,6 @@ function Mixing() {
             l_n_cv_percent: "",
             sfc_n_percent: "",
             five_pct_l_n_mm: "",
-            fineness_mtex: "",
-            maturity_ratio_mat1: "",
-            ifc_percent: "",
         });
         setAfis6Errors({});
         setValidationMessage("");
@@ -545,33 +613,74 @@ function Mixing() {
         setValidationMessage("");
         await dispatch(submitAfis6Cotton(buildAfis6Payload())).unwrap();
         await reserveEntryId();
-        await refreshAfis6Records();
         handleAfis6Clear();
         showSuccessOnce();
     };
 
-    useEffect(() => {
-        if (!isAfis6Cotton) return undefined;
-        refreshAfis6Records();
-    }, [isAfis6Cotton, refreshAfis6Records, showSuccess]);
+    const afis6MmfTextFieldDefs = [
+        { key: "lot_no", label: "Lot No." },
+        { key: "variety", label: "Variety" },
+        { key: "invoice_date", label: "Invoice Date", type: "date" },
+        { key: "mc_name", label: "Mc. Name" },
+        { key: "blow_room", label: "Blow Room" },
+        { key: "carding", label: "Carding" },
+        { key: "breaker_drawing", label: "Breaker Drawing" },
+        { key: "finisher_drawing", label: "Finisher Drawing" },
+        { key: "comber", label: "Comber" },
+    ];
 
     const afis6MmfFieldDefs = [
         { key: "total_nep_count_g", label: "Total Nep Count / g" },
-        { key: "total_nep_mean_size_um", label: "Total Nep Mean Size µm" },
-        { key: "cut_length_n_mm", label: "Cut Length (n) mm" },
-        { key: "l_n_cv_percent", label: "L(n) CV %" },
-        { key: "sfc_n_percent", label: "SFC(n) <12.70 mm %" },
-        { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
-        { key: "fineness_den", label: "Fineness den" },
-        { key: "fineness_cv_percent", label: "Fineness CV %" },
-        { key: "long_fiber_gt_46_80_percent", label: "Long Fiber >46.80 mm %" },
-        { key: "long_fiber_count_gt_46_80", label: "Long Fiber Count > 46.80 mm" },
+        { key: "total_nep_mean_size_um", label: "Total Nep mean size" },
+        { key: "fiber_nep_count_g", label: "Fiber Nep Count" },
+        { key: "fiber_nep_mean_size_um", label: "Fiber Nep Mean Size" },
+        { key: "sc_nep_count_g", label: "SC Nep Count" },
+        { key: "sc_nep_mean_size_um", label: "SC Nep Mean Size" },
+        { key: "l_w_mm", label: "L(w)" },
+        { key: "l_w_cv", label: "L(w)CV" },
+        { key: "sfc_w_percent", label: "SCF(w)<12.70mm" },
+        { key: "uql_w_mm", label: "UQL(w)" },
+        { key: "l_n_mm", label: "L(n)" },
+        { key: "l_n_cv_percent", label: "L(n)CV" },
+        { key: "sfc_n_percent", label: "SCF(n)<12.70mm" },
+        { key: "five_pct_l_n_mm", label: "5%L(n)" },
+        { key: "fitness_index", label: "Fitness Index" },
+        { key: "maturity_ratio_mat1", label: "Maturity Ratio Mat 1" },
+        { key: "ifc_percent", label: "IFC%" },
+        { key: "fifty_pct_l_n_mm", label: "50%L(n)" },
+        { key: "cut_length_n_mm", label: "Cut Length(n)" },
+        { key: "cut_length_l_n_cv_percent", label: "L(n)CV" },
+        { key: "cut_length_sfc_w_percent", label: "SCF(w)<12.70mm" },
+        { key: "fineness_den", label: "Fineness Den" },
+        { key: "fineness_cv_percent", label: "Fineness CV" },
+        { key: "long_fiber_gt_45_60_percent", label: "Long Fiber >45.60mm" },
+        { key: "long_fiber_count_gt_45_60", label: "Long Fiber Count >45.60mm" },
     ];
 
     const handleAfis6MmfChange = (key, value) => {
         const nextValue = afis6MmfFieldDefs.some((field) => field.key === key)
             ? sanitizeNumericInput(value, { precision: 12, scale: 3 })
             : value;
+
+        if (key === "lot_no") {
+            const matchedLot = afis6LotOptions.find(
+                (lot) => lot.lot_no === nextValue || lot.value === nextValue
+            );
+            setAfis6MmfForm((prev) => ({
+                ...prev,
+                lot_no: nextValue,
+                variety: matchedLot?.variety || prev.variety,
+                invoice_date: matchedLot?.invoice_date ? toDateInputValue(matchedLot.invoice_date) : prev.invoice_date,
+            }));
+            setAfis6MmfErrors((prev) => {
+                if (!prev[key]) return prev;
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+            return;
+        }
+
         setAfis6MmfForm((prev) => ({ ...prev, [key]: nextValue }));
         setAfis6MmfErrors((prev) => {
             if (!prev[key]) return prev;
@@ -591,18 +700,40 @@ function Mixing() {
 
         const payload = {
             inspection_date: date || "",
-            material_class: String(afis6MmfForm.material_class || "").trim(),
-            comment: String(afis6MmfForm.comment || "").trim(),
+            lot_no: String(afis6MmfForm.lot_no || "").trim(),
+            variety: String(afis6MmfForm.variety || "").trim(),
+            invoice_date: String(afis6MmfForm.invoice_date || "").trim(),
+            mc_name: String(afis6MmfForm.mc_name || "").trim(),
+            blow_room: String(afis6MmfForm.blow_room || "").trim(),
+            carding: String(afis6MmfForm.carding || "").trim(),
+            breaker_drawing: String(afis6MmfForm.breaker_drawing || "").trim(),
+            finisher_drawing: String(afis6MmfForm.finisher_drawing || "").trim(),
+            comber: String(afis6MmfForm.comber || "").trim(),
             total_nep_count_g: normalizeNumeric(afis6MmfForm.total_nep_count_g),
             total_nep_mean_size_um: normalizeNumeric(afis6MmfForm.total_nep_mean_size_um),
-            cut_length_n_mm: normalizeNumeric(afis6MmfForm.cut_length_n_mm),
+            fiber_nep_count_g: normalizeNumeric(afis6MmfForm.fiber_nep_count_g),
+            fiber_nep_mean_size_um: normalizeNumeric(afis6MmfForm.fiber_nep_mean_size_um),
+            sc_nep_count_g: normalizeNumeric(afis6MmfForm.sc_nep_count_g),
+            sc_nep_mean_size_um: normalizeNumeric(afis6MmfForm.sc_nep_mean_size_um),
+            l_w_mm: normalizeNumeric(afis6MmfForm.l_w_mm),
+            l_w_cv: normalizeNumeric(afis6MmfForm.l_w_cv),
+            sfc_w_percent: normalizeNumeric(afis6MmfForm.sfc_w_percent),
+            uql_w_mm: normalizeNumeric(afis6MmfForm.uql_w_mm),
+            l_n_mm: normalizeNumeric(afis6MmfForm.l_n_mm),
             l_n_cv_percent: normalizeNumeric(afis6MmfForm.l_n_cv_percent),
             sfc_n_percent: normalizeNumeric(afis6MmfForm.sfc_n_percent),
             five_pct_l_n_mm: normalizeNumeric(afis6MmfForm.five_pct_l_n_mm),
+            fitness_index: normalizeNumeric(afis6MmfForm.fitness_index),
+            maturity_ratio_mat1: normalizeNumeric(afis6MmfForm.maturity_ratio_mat1),
+            ifc_percent: normalizeNumeric(afis6MmfForm.ifc_percent),
+            fifty_pct_l_n_mm: normalizeNumeric(afis6MmfForm.fifty_pct_l_n_mm),
+            cut_length_n_mm: normalizeNumeric(afis6MmfForm.cut_length_n_mm),
+            cut_length_l_n_cv_percent: normalizeNumeric(afis6MmfForm.cut_length_l_n_cv_percent),
+            cut_length_sfc_w_percent: normalizeNumeric(afis6MmfForm.cut_length_sfc_w_percent),
             fineness_den: normalizeNumeric(afis6MmfForm.fineness_den),
             fineness_cv_percent: normalizeNumeric(afis6MmfForm.fineness_cv_percent),
-            long_fiber_gt_46_80_percent: normalizeNumeric(afis6MmfForm.long_fiber_gt_46_80_percent),
-            long_fiber_count_gt_46_80: normalizeNumeric(afis6MmfForm.long_fiber_count_gt_46_80),
+            long_fiber_gt_45_60_percent: normalizeNumeric(afis6MmfForm.long_fiber_gt_45_60_percent),
+            long_fiber_count_gt_45_60: normalizeNumeric(afis6MmfForm.long_fiber_count_gt_45_60),
             machine_name: "AFIS-6",
             department: "Mixing",
             sub_department: "Quality Control",
@@ -614,42 +745,42 @@ function Mixing() {
         );
     };
 
-    const refreshAfis6MmfRecords = useCallback(async () => {
-        setAfis6MmfRecordsLoading(true);
-        setAfis6MmfRecordsError("");
-
-        try {
-            const response = await fetchMixingAfis6MmfEntries({ limit: 10 });
-            const rows = Array.isArray(response?.data)
-                ? response.data
-                : Array.isArray(response?.records)
-                    ? response.records
-                    : Array.isArray(response)
-                        ? response
-                        : [];
-            setAfis6MmfRecords(rows);
-        } catch (error) {
-            setAfis6MmfRecordsError(error?.message || "Failed to load AFIS-6 MMF entries.");
-            setAfis6MmfRecords([]);
-        } finally {
-            setAfis6MmfRecordsLoading(false);
-        }
-    }, []);
-
     const handleAfis6MmfClear = () => {
         setAfis6MmfForm({
-            material_class: "",
-            comment: "",
+            lot_no: "",
+            variety: "",
+            invoice_date: "",
+            mc_name: "",
+            blow_room: "",
+            carding: "",
+            breaker_drawing: "",
+            finisher_drawing: "",
+            comber: "",
             total_nep_count_g: "",
             total_nep_mean_size_um: "",
-            cut_length_n_mm: "",
+            fiber_nep_count_g: "",
+            fiber_nep_mean_size_um: "",
+            sc_nep_count_g: "",
+            sc_nep_mean_size_um: "",
+            l_w_mm: "",
+            l_w_cv: "",
+            sfc_w_percent: "",
+            uql_w_mm: "",
+            l_n_mm: "",
             l_n_cv_percent: "",
             sfc_n_percent: "",
             five_pct_l_n_mm: "",
+            fitness_index: "",
+            maturity_ratio_mat1: "",
+            ifc_percent: "",
+            fifty_pct_l_n_mm: "",
+            cut_length_n_mm: "",
+            cut_length_l_n_cv_percent: "",
+            cut_length_sfc_w_percent: "",
             fineness_den: "",
             fineness_cv_percent: "",
-            long_fiber_gt_46_80_percent: "",
-            long_fiber_count_gt_46_80: "",
+            long_fiber_gt_45_60_percent: "",
+            long_fiber_count_gt_45_60: "",
         });
         setAfis6MmfErrors({});
         setValidationMessage("");
@@ -672,15 +803,9 @@ function Mixing() {
         setValidationMessage("");
         await dispatch(submitAfis6Mmf(buildAfis6MmfPayload())).unwrap();
         await reserveEntryId();
-        await refreshAfis6MmfRecords();
         handleAfis6MmfClear();
         showSuccessOnce();
     };
-
-    useEffect(() => {
-        if (!isAfis6Mmf) return undefined;
-        refreshAfis6MmfRecords();
-    }, [isAfis6Mmf, refreshAfis6MmfRecords, showSuccess]);
 
     const handleProcessParameterSubmitSuccess = (response) => {
         const createdId = String(
@@ -818,14 +943,23 @@ function Mixing() {
                                             />
                                         </div>
                                     ) : selectedTypeName === "Openness Data Entry" ? (
-                                        <CustomInput
-                                            label="Actual Specific Volume (Target)"
-                                            placeholder="1.0"
-                                            value={target}
-                                            onChange={handleTargetChange}
-                                            error={headerErrors.target}
-                                            numericConfig={{ precision: 20, scale: 10 }}
-                                        />
+                                        <div className="flex flex-col gap-1.5 min-w-0 w-full">
+                                            <label className="text-[14px] font-semibold text-slate-700 truncate">
+                                                B/R Line No
+                                            </label>
+                                            <SearchableSelect
+                                                className={`w-full h-9.5 px-3 py-2 rounded-lg text-[14px] focus:outline-none transition-colors ${
+                                                    headerErrors.brLine
+                                                        ? "border border-red-500 focus:ring-2 focus:ring-red-400 focus:border-red-500"
+                                                        : "border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                                                }`}
+                                                value={brLine}
+                                                onChange={handleBrLineChange}
+                                                options={brLineOptions}
+                                                placeholder="Select B/R Line No"
+                                                ariaLabel="B/R Line No"
+                                            />
+                                        </div>
                                     ) : null}
                                 </div>
 
@@ -837,6 +971,9 @@ function Mixing() {
                                         lotNo={lotNo}
                                         selectedLotDetails={selectedLotDetails}
                                         target={target}
+                                        onTargetChange={handleTargetChange}
+                                        targetError={headerErrors.target}
+                                        brLine={brLine}
                                         selectedTypeName={selectedTypeName}
                                         typeOptions={typeOptions}
                                         onTypeChange={handleTypeChange}
@@ -894,24 +1031,58 @@ function Mixing() {
                                         className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px]"
                                     />
                                 </div>
-                                <div className="flex flex-col gap-1.5 min-w-0">
-                                    <label className="text-[14px] font-semibold text-slate-700">Material Class</label>
-                                    <input
-                                        placeholder="Enter Material Class"
-                                        value={afis6Form.material_class}
-                                        onChange={(e) => handleAfis6Change("material_class", e.target.value)}
-                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.material_class ? "border-red-500" : "border-slate-200"}`}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1.5 min-w-0">
-                                    <label className="text-[14px] font-semibold text-slate-700">Comment</label>
-                                    <input
-                                        placeholder="Enter Comment"
-                                        value={afis6Form.comment}
-                                        onChange={(e) => handleAfis6Change("comment", e.target.value)}
-                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.comment ? "border-red-500" : "border-slate-200"}`}
-                                    />
-                                </div>
+                                {afis6TextFieldDefs.map((field) =>
+                                    field.key === "lot_no" ? (
+                                        <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                            <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                            <SearchableSelect
+                                                className={`w-full h-9.5 px-3 py-2 rounded-lg text-[14px] focus:outline-none transition-colors ${
+                                                    afis6Errors.lot_no
+                                                        ? "border border-red-500 focus:ring-2 focus:ring-red-400 focus:border-red-500"
+                                                        : "border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                                                }`}
+                                                value={afis6Form.lot_no}
+                                                onChange={(value) => handleAfis6Change("lot_no", value)}
+                                                options={afis6LotOptions}
+                                                placeholder={
+                                                    loadingAfis6LotOptions
+                                                        ? "Loading lots..."
+                                                        : afis6LotOptionsError
+                                                            ? "Type lot number"
+                                                            : "Select Lot Number"
+                                                }
+                                                ariaLabel="Lot No"
+                                            />
+                                        </div>
+                                    ) : field.key === "blow_room" ? (
+                                        <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                            <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                            <select
+                                                value={afis6Form.blow_room}
+                                                onChange={(e) => handleAfis6Change("blow_room", e.target.value)}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors.blow_room ? "border-red-500" : "border-slate-200"}`}
+                                            >
+                                                <option value="">Select Blow Room</option>
+                                                {BLOW_ROOM_OPTIONS.map((option) => (
+                                                    <option key={option} value={option}>
+                                                        {option}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    ) : (
+                                        <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                            <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                            <input
+                                                type={field.type === "date" ? "date" : "text"}
+                                                placeholder={field.type === "date" ? undefined : `Enter ${field.label}`}
+                                                value={afis6Form[field.key]}
+                                                onChange={(e) => handleAfis6Change(field.key, e.target.value)}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6Errors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                            />
+                                        </div>
+                                    )
+                                )}
                                 {afis6FieldDefs.map((field) => (
                                     <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
                                         <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
@@ -925,50 +1096,6 @@ function Mixing() {
                                         />
                                     </div>
                                 ))}
-                            </div>
-
-                            <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
-                                <div className="mb-3 flex items-center justify-between gap-3">
-                                    <h4 className="text-[15px] font-semibold text-slate-800">Submitted Records</h4>
-                                    {afis6RecordsLoading ? (
-                                        <span className="text-sm text-slate-500">Loading...</span>
-                                    ) : null}
-                                </div>
-                                {afis6RecordsError ? (
-                                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                        {afis6RecordsError}
-                                    </div>
-                                ) : null}
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full border-collapse text-[12px] text-slate-700">
-                                        <thead>
-                                            <tr className="border-b border-slate-200 text-left uppercase tracking-wide text-slate-500">
-                                                <th className="px-2 py-2 font-semibold">Inspection Date</th>
-                                                <th className="px-2 py-2 font-semibold">Material Class</th>
-                                                <th className="px-2 py-2 font-semibold">Comment</th>
-                                                <th className="px-2 py-2 font-semibold">Entry ID</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {afis6Records.length ? (
-                                                afis6Records.map((record, index) => (
-                                                    <tr key={`${record.entry_id || record.id || index}`} className="border-b border-slate-100 last:border-b-0">
-                                                        <td className="px-2 py-2">{record.inspection_date || record.inspectionDate || "-"}</td>
-                                                        <td className="px-2 py-2">{record.material_class || record.materialClass || "-"}</td>
-                                                        <td className="px-2 py-2">{record.comment || "-"}</td>
-                                                        <td className="px-2 py-2">{record.entry_id || record.entryId || record.id || "-"}</td>
-                                                    </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan={4} className="px-2 py-4 text-center text-slate-400">
-                                                        No AFIS-6 Cotton records available.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
                         </div>
                     ) : isAfis6Mmf ? (
@@ -1012,25 +1139,62 @@ function Mixing() {
                                         className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px]"
                                     />
                                 </div>
-                                <div className="flex flex-col gap-1.5 min-w-0">
-                                    <label className="text-[14px] font-semibold text-slate-700">Material Class</label>
-                                    <input
-                                        placeholder="Enter Material Class"
-                                        value={afis6MmfForm.material_class}
-                                        onChange={(e) => handleAfis6MmfChange("material_class", e.target.value)}
-                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.material_class ? "border-red-500" : "border-slate-200"}`}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-1.5 min-w-0">
-                                    <label className="text-[14px] font-semibold text-slate-700">Comment</label>
-                                    <input
-                                        placeholder="Enter Comment"
-                                        value={afis6MmfForm.comment}
-                                        onChange={(e) => handleAfis6MmfChange("comment", e.target.value)}
-                                        className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.comment ? "border-red-500" : "border-slate-200"}`}
-                                    />
-                                </div>
-                                {afis6MmfFieldDefs.map((field) => (
+                                {afis6MmfTextFieldDefs.map((field) =>
+                                    field.key === "lot_no" ? (
+                                        <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                            <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                            <SearchableSelect
+                                                className={`w-full h-9.5 px-3 py-2 rounded-lg text-[14px] focus:outline-none transition-colors ${
+                                                    afis6MmfErrors.lot_no
+                                                        ? "border border-red-500 focus:ring-2 focus:ring-red-400 focus:border-red-500"
+                                                        : "border border-slate-200 bg-slate-100 focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                                                }`}
+                                                value={afis6MmfForm.lot_no}
+                                                onChange={(value) => handleAfis6MmfChange("lot_no", value)}
+                                                options={afis6LotOptions}
+                                                placeholder={
+                                                    loadingAfis6LotOptions
+                                                        ? "Loading lots..."
+                                                        : afis6LotOptionsError
+                                                            ? "Type lot number"
+                                                            : "Select Lot Number"
+                                                }
+                                                ariaLabel="Lot No"
+                                            />
+                                        </div>
+                                    ) : field.key === "blow_room" ? (
+                                        <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                            <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                            <select
+                                                value={afis6MmfForm.blow_room}
+                                                onChange={(e) => handleAfis6MmfChange("blow_room", e.target.value)}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors.blow_room ? "border-red-500" : "border-slate-200"}`}
+                                            >
+                                                <option value="">Select Blow Room</option>
+                                                {BLOW_ROOM_OPTIONS.map((option) => (
+                                                    <option key={option} value={option}>
+                                                        {option}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    ) : (
+                                        <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                            <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                            <input
+                                                type={field.type === "date" ? "date" : "text"}
+                                                placeholder={field.type === "date" ? undefined : `Enter ${field.label}`}
+                                                value={afis6MmfForm[field.key]}
+                                                onChange={(e) => handleAfis6MmfChange(field.key, e.target.value)}
+                                                className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                            />
+                                        </div>
+                                    )
+                                )}
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+                                {afis6MmfFieldDefs.slice(0, 2).map((field) => (
                                     <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
                                         <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
                                         <input
@@ -1045,48 +1209,20 @@ function Mixing() {
                                 ))}
                             </div>
 
-                            <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
-                                <div className="mb-3 flex items-center justify-between gap-3">
-                                    <h4 className="text-[15px] font-semibold text-slate-800">Submitted Records</h4>
-                                    {afis6MmfRecordsLoading ? (
-                                        <span className="text-sm text-slate-500">Loading...</span>
-                                    ) : null}
-                                </div>
-                                {afis6MmfRecordsError ? (
-                                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                                        {afis6MmfRecordsError}
+                            <div className="mt-5 grid grid-cols-1 gap-[18px] md:grid-cols-2 xl:grid-cols-3">
+                                {afis6MmfFieldDefs.slice(2).map((field) => (
+                                    <div key={field.key} className="flex flex-col gap-1.5 min-w-0">
+                                        <label className="text-[14px] font-semibold text-slate-700">{field.label}</label>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            placeholder="Enter"
+                                            value={afis6MmfForm[field.key]}
+                                            onChange={(e) => handleAfis6MmfChange(field.key, e.target.value)}
+                                            className={`h-[38px] px-3 py-2 border rounded-lg bg-slate-50 text-[14px] ${afis6MmfErrors[field.key] ? "border-red-500" : "border-slate-200"}`}
+                                        />
                                     </div>
-                                ) : null}
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full border-collapse text-[12px] text-slate-700">
-                                        <thead>
-                                            <tr className="border-b border-slate-200 text-left uppercase tracking-wide text-slate-500">
-                                                <th className="px-2 py-2 font-semibold">Inspection Date</th>
-                                                <th className="px-2 py-2 font-semibold">Material Class</th>
-                                                <th className="px-2 py-2 font-semibold">Comment</th>
-                                                <th className="px-2 py-2 font-semibold">Entry ID</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {afis6MmfRecords.length ? (
-                                                afis6MmfRecords.map((record, index) => (
-                                                    <tr key={`${record.entry_id || record.id || index}`} className="border-b border-slate-100 last:border-b-0">
-                                                        <td className="px-2 py-2">{record.inspection_date || record.inspectionDate || "-"}</td>
-                                                        <td className="px-2 py-2">{record.material_class || record.materialClass || "-"}</td>
-                                                        <td className="px-2 py-2">{record.comment || "-"}</td>
-                                                        <td className="px-2 py-2">{record.entry_id || record.entryId || record.id || "-"}</td>
-                                                    </tr>
-                                                ))
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan={4} className="px-2 py-4 text-center text-slate-400">
-                                                        No AFIS-6 MMF records available.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                ))}
                             </div>
                         </div>
                     ) : SelectedComponent ? (
