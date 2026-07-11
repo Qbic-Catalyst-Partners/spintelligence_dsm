@@ -195,6 +195,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     typeOptions = [],
     tablePortalTargetId,
     postFooterPortalTargetId,
+    preFooterPortalTargetId,
     entryId = "",
   },
   ref
@@ -527,6 +528,32 @@ const calculateGmsPerLitre = (row = {}) => {
     [coneDensity]
   );
 
+  const summaryStats = useMemo(() => {
+    const summarize = (values) => {
+      if (!values.length) return { avg: "", min: "", max: "", range: "" };
+      const sum = values.reduce((total, value) => total + value, 0);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      return {
+        avg: (sum / values.length).toFixed(2),
+        min: min.toFixed(2),
+        max: max.toFixed(2),
+        range: (max - min).toFixed(2),
+      };
+    };
+
+    const numericValues = (field) =>
+      readingRows
+        .map((row) => Number(row[field]))
+        .filter((value) => Number.isFinite(value));
+
+    return {
+      volume: summarize(numericValues("volume")),
+      density: summarize(numericValues("gmsPerCm3")),
+      gmsLitre: summarize(numericValues("gmsLitre")),
+    };
+  }, [readingRows]);
+
   const topPortalTarget =
     portalReady && tablePortalTargetId && typeof document !== "undefined"
       ? document.getElementById(tablePortalTargetId)
@@ -535,6 +562,11 @@ const calculateGmsPerLitre = (row = {}) => {
   const bottomPortalTarget =
     portalReady && postFooterPortalTargetId && typeof document !== "undefined"
       ? document.getElementById(postFooterPortalTargetId)
+      : null;
+
+  const preFooterPortalTarget =
+    portalReady && preFooterPortalTargetId && typeof document !== "undefined"
+      ? document.getElementById(preFooterPortalTargetId)
       : null;
 
   const generatedTableSection = (
@@ -590,6 +622,47 @@ const calculateGmsPerLitre = (row = {}) => {
             Enter a drum range from 1 to 5 to generate 5 containers.
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+
+  const statsRows = [
+    { label: "Volume", stats: summaryStats.volume },
+    { label: "Density", stats: summaryStats.density },
+    { label: "Gms / Litre", stats: summaryStats.gmsLitre },
+  ];
+
+  const statsSection = (
+    <div className="w-full rounded-[12px] border border-slate-200 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-max w-full border-collapse text-[14px] text-slate-700">
+          <thead>
+            <tr className="text-left">
+              <th className="px-4 py-3 font-semibold text-slate-900"></th>
+              <th className="px-4 py-3 font-semibold text-slate-900">Average Value</th>
+              <th className="px-4 py-3 font-semibold text-slate-900">Minimum Value</th>
+              <th className="px-4 py-3 font-semibold text-slate-900">Maximum Value</th>
+              <th className="px-4 py-3 font-semibold text-slate-900">Range</th>
+            </tr>
+          </thead>
+          <tbody>
+            {statsRows.map((row) => (
+              <tr key={row.label}>
+                <td className="px-4 py-2 font-medium text-slate-600">{row.label}</td>
+                {["avg", "min", "max", "range"].map((key) => (
+                  <td key={key} className="px-4 py-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={row.stats[key]}
+                      className="autoconer-input h-[42px] w-full max-w-[220px] rounded-[10px] border border-slate-200 bg-white px-3 text-[14px] text-slate-700 outline-none"
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -759,6 +832,7 @@ const calculateGmsPerLitre = (row = {}) => {
         })}
       </div>
       {topPortalTarget ? createPortal(generatedTableSection, topPortalTarget) : null}
+      {preFooterPortalTarget ? createPortal(statsSection, preFooterPortalTarget) : null}
       {bottomPortalTarget ? createPortal(summarySection, bottomPortalTarget) : null}
       {submitError ? <p className="mt-3 text-[14px] text-red-600">{submitError}</p> : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving cone density...</p> : null}
