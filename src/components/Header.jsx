@@ -118,7 +118,7 @@ const analyticsHubLinks = [
 const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
-    { href: "/pp-batch-threshold", label: "PP Batch Completion Threshold" },
+    { href: "/pp-batch-threshold", label: "PP Threshold" },
 ];
 const reportLinks = [
     { href: "/reports/general", label: "General Report" },

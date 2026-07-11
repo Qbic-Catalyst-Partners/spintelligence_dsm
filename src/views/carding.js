@@ -17,7 +17,7 @@ import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
 import CardingWheelChange from "./carding/WheelChange";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
-import { fetchCardWasteStudyEntries, fetchCardingMasterMachines, submitCardWasteStudyEntry } from "@/apis/carding";
+import { fetchCardWasteStudyEntries, fetchCardingMasterMachines, fetchCardingMasterWasteTypes, submitCardWasteStudyEntry } from "@/apis/carding";
 import brWasteStyles from "@/styles/brWasteStudyEntry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import { clearCardingState } from "@/store/slices/carding";
@@ -321,6 +321,8 @@ function Carding() {
                                 saveEntryApi={submitCardWasteStudyEntry}
                                 fetchEntriesApi={fetchCardWasteStudyEntries}
                                 fetchMachineOptionsApi={fetchCardingMasterMachines}
+                                fetchWasteTypesApi={fetchCardingMasterWasteTypes}
+                                saveWasteTypeApi={async () => {}}
                                 entryTypeLabel="Individual Card Waste Study"
                                 useBlowroomRedux={false}
                                 showEntryId={false}

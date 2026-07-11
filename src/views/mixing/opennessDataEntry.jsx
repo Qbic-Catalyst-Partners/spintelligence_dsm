@@ -1,8 +1,21 @@
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import CustomInput from "@/components/CustomInput";
+import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/opennessDataEntry.module.css";
 import { mixingOpennessDataEntry } from "@/apis/mixing";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+
+const MACHINE_NAME_OPTIONS = [
+  "Circular Bale Pulker",
+  "MPM",
+  "MO",
+  "RK",
+  "Flexi cleaner",
+  "KB",
+  "GBR",
+  "Vario clean",
+  "Chute opening roller",
+];
 
 const initialForm = {
   entries: "",
@@ -78,7 +91,7 @@ function ReadOnlyField({ label, value }) {
 }
 
 const OpennessDataEntry = forwardRef(function OpennessDataEntry(
-  { date, target, onSubmitSuccess },
+  { date, target, onTargetChange, targetError, brLine, onSubmitSuccess },
   ref
 ) {
   const [form, setForm] = useState(initialForm);
@@ -246,6 +259,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
   const buildPayload = () => ({
     inspection_date: date,
+    br_line: brLine || "",
     actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
     entries: stages.flatMap((stage) =>
@@ -275,6 +289,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const getPreviewData = () => {
     const header = [
       { label: "Date", value: date },
+      { label: "B/R Line No", value: brLine },
       { label: "Target (ASV)", value: target },
       { label: "Entries (N)", value: form.entries },
     ];
@@ -329,6 +344,16 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   return (
     <div className={styles.wrapper}>
       <div className={styles.topGrid}>
+        <CustomInput
+          label="Actual Specific Volume (Target)"
+          placeholder="1.0"
+          value={target}
+          onChange={onTargetChange}
+          error={targetError}
+          numericConfig={{ precision: 20, scale: 10 }}
+        />
+      </div>
+      <div className={styles.topGrid}>
         <div className={styles.generateField}>
           <CustomInput
             label="No. of Entries (N)"
@@ -350,8 +375,8 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
               <label className={styles.stageLabel} htmlFor={`stage-name-${stageIndex}`}>
                 Stage
               </label>
-              <select
-                id={`stage-name-${stageIndex}`}
+              <SearchableSelect
+                name={`stage-name-${stageIndex}`}
                 className={styles.stageNameInput}
                 style={
                   errors[`stage-${stageIndex}-stageName`]
@@ -359,16 +384,11 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
                     : undefined
                 }
                 value={stage.stageName}
-                onChange={(e) => handleStageNameChange(stageIndex, e.target.value)}
-                aria-label={`Stage ${stageIndex + 1}`}
-              >
-                <option value="">Select Stage</option>
-                {STAGE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                options={MACHINE_NAME_OPTIONS}
+                onChange={(value) => handleStageNameChange(stageIndex, value)}
+                placeholder="Select Machine Name"
+                ariaLabel={`Stage ${stageIndex + 1} name`}
+              />
             </div>
             <CustomInput
               label="Beater Type"

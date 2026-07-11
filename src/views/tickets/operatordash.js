@@ -5,7 +5,7 @@ import Image from "next/image";
 import { FiCalendar, FiPlus } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
 import { useSelector } from "react-redux";
-import { getOperatorTickets, getSubmissionTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
+import { getOperatorTickets, getSubmissionTickets, getProcessParameterTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
 import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
     applyOneTimeThresholdTicketReset,
@@ -30,9 +30,11 @@ export default function operatorboard() {
     const [ticketData, setTicketData] = useState([]);
     const [apiSubmissionTicketData, setApiSubmissionTicketData] = useState([]);
     const [operatorSubmissionTicketData, setOperatorSubmissionTicketData] = useState([]);
+    const [processParameterTicketData, setProcessParameterTicketData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [thresholdError, setThresholdError] = useState("");
     const [submissionError, setSubmissionError] = useState("");
+    const [processParameterError, setProcessParameterError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
     const [showManualTicket, setShowManualTicket] = useState(false);
     const [statusUpdatingId, setStatusUpdatingId] = useState("");
@@ -130,6 +132,26 @@ export default function operatorboard() {
         };
     };
 
+    // PP_NOTEBOOK_INCOMPLETE tickets from /operator-tickets/process-parameter-ticketing —
+    // time_lagged_hours is computed live by the backend (NOW() - (entry_created_at +
+    // completion_time_provided_hours), floored at 0), so it stays current as time passes.
+    const formatProcessParameterTicket = (ticket) => {
+        const transformedTicket = transformTicket(ticket);
+        return {
+            id: transformedTicket.ticket_id || ticket.ticket_id,
+            entryId: ticket.entry_id || ticket.entryId || "-",
+            machine: ticket.notebook || transformedTicket.notebook || "Unknown",
+            notebookType: resolveNotebookType({ notebook: ticket.notebook || transformedTicket.notebook }) || "Process Parameter",
+            completionThresholdHours: ticket.completion_time_provided_hours ?? ticket.completionTimeProvidedHours ?? "-",
+            entryCreatedAt: ticket.entry_created_at || ticket.entryCreatedAt || "-",
+            timeLaggedHours: ticket.time_lagged_hours ?? ticket.timeLaggedHours ?? "-",
+            severity: ticket.severity || transformedTicket.severity || "High",
+            status: transformedTicket.status,
+            rawCreatedAt: transformedTicket.rawCreatedAt,
+            createdAt: transformedTicket.createdAt,
+        };
+    };
+
     useEffect(() => {
         if (!isAuthHydrated) {
             return;
@@ -144,6 +166,7 @@ export default function operatorboard() {
         }
         fetchTickets();
         fetchSubmissionTickets();
+        fetchProcessParameterTickets();
     }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
 
     if (shouldUseSupervisorDashboard) {
@@ -245,6 +268,31 @@ export default function operatorboard() {
         }
     };
 
+    const fetchProcessParameterTickets = async () => {
+        try {
+            setProcessParameterError("");
+            const response = await getProcessParameterTickets({ page: 1, limit: 500, _ts: Date.now() });
+            const ticketsArray = Array.isArray(response)
+                ? response
+                : response?.data?.tickets ||
+                  response?.data?.rows ||
+                  response?.data ||
+                  response?.tickets ||
+                  response?.rows ||
+                  [];
+
+            if (!ticketsArray.length && response && typeof response === "object") {
+                console.warn("getProcessParameterTickets returned an unrecognized response shape:", response);
+            }
+
+            setProcessParameterTicketData(ticketsArray.map(formatProcessParameterTicket));
+        } catch (ppError) {
+            console.error("Error fetching process parameter tickets:", ppError);
+            setProcessParameterTicketData([]);
+            setProcessParameterError(ppError.message || "Failed to fetch process parameter tickets.");
+        }
+    };
+
     const applyTicketStatus = (ticketId, nextStatus) => {
         const updateMatching = (tickets) =>
             tickets.map((ticket) => (ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket));
@@ -252,6 +300,7 @@ export default function operatorboard() {
         setTicketData(updateMatching);
         setApiSubmissionTicketData(updateMatching);
         setOperatorSubmissionTicketData(updateMatching);
+        setProcessParameterTicketData(updateMatching);
     };
 
     const handleStatusChange = async (ticketId, nextStatus) => {
@@ -294,6 +343,7 @@ export default function operatorboard() {
         const refreshFromServer = () => {
             fetchTickets();
             fetchSubmissionTickets();
+            fetchProcessParameterTickets();
         };
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
@@ -320,8 +370,18 @@ export default function operatorboard() {
                 !apiSubmissionTicketData.some((apiTicket) => apiTicket?.id === operatorTicket.id)
         ),
     ];
-    const activeDataSource = activeTicketingView === "submission" ? submissionTicketData : ticketData;
-    const activeError = activeTicketingView === "submission" ? submissionError : thresholdError;
+    const activeDataSource =
+        activeTicketingView === "submission"
+            ? submissionTicketData
+            : activeTicketingView === "process_parameter"
+                ? processParameterTicketData
+                : ticketData;
+    const activeError =
+        activeTicketingView === "submission"
+            ? submissionError
+            : activeTicketingView === "process_parameter"
+                ? processParameterError
+                : thresholdError;
 
     const filteredTickets = activeDataSource.filter((t) => {
         const created = new Date(t.rawCreatedAt);
@@ -412,6 +472,16 @@ export default function operatorboard() {
                 >
                     Submission Ticket
                 </button>
+                <button
+                    type="button"
+                    className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "process_parameter" ? styles["ticketing-toggle-btn-active"] : ""}`}
+                    onClick={() => {
+                        setActiveTicketingView("process_parameter");
+                        setCurrentPage(1);
+                    }}
+                >
+                    Process Parameter Tickets
+                </button>
             </div>
 
             {activeError && (
@@ -429,7 +499,9 @@ export default function operatorboard() {
                 >
                     {activeTicketingView === "threshold"
                         ? "Threshold tickets could not be loaded. The backend returned: "
-                        : "Submission tickets could not be loaded. The backend returned: "}
+                        : activeTicketingView === "process_parameter"
+                            ? "Process parameter tickets could not be loaded. The backend returned: "
+                            : "Submission tickets could not be loaded. The backend returned: "}
                     {activeError}
                 </div>
             )}
@@ -509,19 +581,31 @@ export default function operatorboard() {
                     <thead>
                         <tr>
                             <th>TICKET ID</th>
-                            <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
-                            <th>PARAMETER</th>
-                            {activeTicketingView === "submission" ? (
+                            {activeTicketingView === "process_parameter" ? (
                                 <>
-                                    <th>FREQUENCY</th>
-                                    <th>OCCURRENCES</th>
+                                    <th>NOTEBOOK</th>
+                                    <th>ENTRY ID</th>
+                                    <th>COMPLETION THRESHOLD (HRS)</th>
+                                    <th>ENTRY CREATED AT</th>
+                                    <th>TIME LAGGED (HRS)</th>
                                 </>
                             ) : (
                                 <>
-                                    <th>ACTUAL</th>
-                                    <th>STANDARD</th>
-                                    <th>THRESHOLD</th>
-                                    <th>DEVIATION</th>
+                                    <th>{activeTicketingView === "submission" ? "NOTEBOOK" : "NOTEBOOK TYPE"}</th>
+                                    <th>PARAMETER</th>
+                                    {activeTicketingView === "submission" ? (
+                                        <>
+                                            <th>FREQUENCY</th>
+                                            <th>OCCURRENCES</th>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <th>ACTUAL</th>
+                                            <th>STANDARD</th>
+                                            <th>THRESHOLD</th>
+                                            <th>DEVIATION</th>
+                                        </>
+                                    )}
                                 </>
                             )}
                             <th>SEVERITY</th>
@@ -538,19 +622,31 @@ export default function operatorboard() {
                                 onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`)}
                             >
                                 <td className={styles["ticket-link"]}>{t.id}</td>
-                                <td>{t.machine}</td>
-                                <td>{t.parameter}</td>
-                                {activeTicketingView === "submission" ? (
+                                {activeTicketingView === "process_parameter" ? (
                                     <>
-                                        <td>{t.frequency || "-"}</td>
-                                        <td>{t.occurrences || "-"}</td>
+                                        <td>{t.machine}</td>
+                                        <td>{t.entryId}</td>
+                                        <td>{t.completionThresholdHours}</td>
+                                        <td>{t.entryCreatedAt}</td>
+                                        <td>{t.timeLaggedHours}</td>
                                     </>
                                 ) : (
                                     <>
-                                        <td>{t.actual}</td>
-                                        <td>{t.standard}</td>
-                                        <td>{t.threshold}</td>
-                                        <td>{t.deviation}</td>
+                                        <td>{t.machine}</td>
+                                        <td>{t.parameter}</td>
+                                        {activeTicketingView === "submission" ? (
+                                            <>
+                                                <td>{t.frequency || "-"}</td>
+                                                <td>{t.occurrences || "-"}</td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <td>{t.actual}</td>
+                                                <td>{t.standard}</td>
+                                                <td>{t.threshold}</td>
+                                                <td>{t.deviation}</td>
+                                            </>
+                                        )}
                                     </>
                                 )}
                                 <td>
@@ -578,7 +674,10 @@ export default function operatorboard() {
                         ))}
                         {currentTickets.length === 0 && (
                             <tr>
-                                <td colSpan={9} style={{ textAlign: "center", color: "#667085" }}>
+                                <td
+                                    colSpan={activeTicketingView === "process_parameter" ? 9 : activeTicketingView === "submission" ? 8 : 10}
+                                    style={{ textAlign: "center", color: "#667085" }}
+                                >
                                     No tickets found for the selected filters.
                                 </td>
                             </tr>

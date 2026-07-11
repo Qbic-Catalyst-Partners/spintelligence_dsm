@@ -78,6 +78,35 @@ export const getSubmissionTickets = async (params = {}) => {
   }
 };
 
+// GET Process Parameter Ticketing table (PP_NOTEBOOK_INCOMPLETE tickets)
+export const getProcessParameterTickets = async (params = {}) => {
+  try {
+    const response = await apiConfig.get("/operator-tickets/process-parameter-ticketing", params, {
+      skipGlobalErrorModal: true,
+    });
+    return response.data;
+  } catch (error) {
+    const status = error?.response?.status;
+    const backendMessage =
+      error?.response?.data?.message || error?.response?.data?.error || "";
+    if (
+      status === 404 &&
+      /ticket not found/i.test(String(backendMessage))
+    ) {
+      return [];
+    }
+    if (error.response && error.response.data) {
+      throw new Error(error.response.data.message || "Failed to fetch process parameter tickets.");
+    }
+    if (error.request) {
+      throw new Error(
+        `Network Error: unable to reach ${resolvedBaseUrl}/operator-tickets/process-parameter-ticketing. Check NEXT_PUBLIC_API_URL and backend availability.`
+      );
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
 // GET single ticket details
 export const getOperatorTicketById = async (ticketId) => {
   const candidates = getTicketIdCandidates(ticketId);

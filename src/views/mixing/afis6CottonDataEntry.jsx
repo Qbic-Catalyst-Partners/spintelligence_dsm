@@ -5,29 +5,33 @@ import { submitAfis6Cotton, clearMixingState } from "@/store/slices/mixing";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "../../styles/cottonHVIDataEntry.module.css";
 
-const NUMERIC_FIELDS = [
-  { key: "total_nep_count_g", label: "Total Nep Count / g" },
-  { key: "total_nep_mean_size_um", label: "Total Nep Mean Size µm" },
-  { key: "fiber_nep_count_g", label: "Fiber Nep Count / g" },
-  { key: "fiber_nep_mean_size_um", label: "Fiber Nep Mean Size µm" },
-  { key: "scnep_count_g", label: "SCNep Count / g" },
-  { key: "scnep_mean_size_um", label: "SCNep Mean Size µm" },
-  { key: "l_w_mm", label: "L(w) mm" },
-  { key: "l_w_cv", label: "L(w) CV" },
-  { key: "sfc_w_percent", label: "SFC(w) <12.70 mm %" },
-  { key: "uql_w_mm", label: "UQL(w) mm" },
-  { key: "l_n_mm", label: "L(n) mm" },
-  { key: "l_n_cv_percent", label: "L(n) CV %" },
-  { key: "sfc_n_percent", label: "SFC(n) <12.70 mm %" },
-  { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
-  { key: "fineness_mtex", label: "Fineness mtex" },
-  { key: "maturity_ratio_mat1", label: "Maturity ratio mat 1" },
-  { key: "ifc_percent", label: "IFC %" },
+const TEXT_FIELDS = [
+  { key: "lot_no", label: "Lot No." },
+  { key: "variety", label: "Variety" },
+  { key: "invoice_date", label: "Invoice Date", type: "date" },
+  { key: "mc_name", label: "Mc. Name" },
+  { key: "blow_room", label: "Blow Room" },
+  { key: "carding", label: "Carding" },
+  { key: "breaker_drawing", label: "Breaker Drawing" },
+  { key: "finisher_drawing", label: "Finisher Drawing" },
+  { key: "comber", label: "Comber" },
 ];
 
-const EMPTY_FORM = NUMERIC_FIELDS.reduce(
+const NUMERIC_FIELDS = [
+  { key: "scp_nep_count", label: "SCP NEP Count" },
+  { key: "l_w_mm", label: "L(W)" },
+  { key: "l_w_cv", label: "L(W) CV" },
+  { key: "sfc_w_percent", label: "SCF(W)<12.70mm" },
+  { key: "uql_w_mm", label: "UQL(w)" },
+  { key: "l_n_mm", label: "L(n)" },
+  { key: "l_n_cv_percent", label: "L(n)CV" },
+  { key: "sfc_n_percent", label: "SCF(n)<12.70mm" },
+  { key: "five_pct_l_n_mm", label: "5%L(n)" },
+];
+
+const EMPTY_FORM = [...TEXT_FIELDS, ...NUMERIC_FIELDS].reduce(
   (acc, field) => ({ ...acc, [field.key]: "" }),
-  { material_class: "", comment: "" }
+  {}
 );
 
 const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
@@ -36,6 +40,7 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
 ) {
   const dispatch = useDispatch();
   const { actionSuccess } = useSelector((state) => state.mixing);
+  const user = useSelector((state) => state.auth?.user);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
 
@@ -61,14 +66,16 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
   const buildPayload = () => ({
     entry_id: entryId || undefined,
     inspection_date: date,
-    material_class: formData.material_class,
-    comment: formData.comment,
-    total_nep_count_g: Number(formData.total_nep_count_g) || 0,
-    total_nep_mean_size_um: Number(formData.total_nep_mean_size_um) || 0,
-    fiber_nep_count_g: Number(formData.fiber_nep_count_g) || 0,
-    fiber_nep_mean_size_um: Number(formData.fiber_nep_mean_size_um) || 0,
-    scnep_count_g: Number(formData.scnep_count_g) || 0,
-    scnep_mean_size_um: Number(formData.scnep_mean_size_um) || 0,
+    lot_no: formData.lot_no,
+    variety: formData.variety,
+    invoice_date: formData.invoice_date,
+    mc_name: formData.mc_name,
+    blow_room: formData.blow_room,
+    carding: formData.carding,
+    breaker_drawing: formData.breaker_drawing,
+    finisher_drawing: formData.finisher_drawing,
+    comber: formData.comber,
+    scp_nep_count: Number(formData.scp_nep_count) || 0,
     l_w_mm: Number(formData.l_w_mm) || 0,
     l_w_cv: Number(formData.l_w_cv) || 0,
     sfc_w_percent: Number(formData.sfc_w_percent) || 0,
@@ -77,13 +84,10 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
     l_n_cv_percent: Number(formData.l_n_cv_percent) || 0,
     sfc_n_percent: Number(formData.sfc_n_percent) || 0,
     five_pct_l_n_mm: Number(formData.five_pct_l_n_mm) || 0,
-    fineness_mtex: Number(formData.fineness_mtex) || 0,
-    maturity_ratio_mat1: Number(formData.maturity_ratio_mat1) || 0,
-    ifc_percent: Number(formData.ifc_percent) || 0,
     machine_name: "AFIS-6",
     department: "Mixing",
     sub_department: "Quality Control",
-    user_name: "Sneha",
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const handleSubmit = async () => {
@@ -99,20 +103,15 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
 
   const getPreviewData = () => [
     { label: "Inspection Date", value: date },
-    { label: "Material Class", value: formData.material_class },
-    { label: "Comment", value: formData.comment },
+    ...TEXT_FIELDS.map((field) => ({ label: field.label, value: formData[field.key] })),
     ...NUMERIC_FIELDS.map((field) => ({ label: field.label, value: formData[field.key] })),
   ];
 
   const validate = () => {
-    const nextErrors = {
-      material_class: String(formData.material_class || "").trim() === "",
-      comment: String(formData.comment || "").trim() === "",
-      ...NUMERIC_FIELDS.reduce((acc, field) => {
-        acc[field.key] = String(formData[field.key] || "").trim() === "";
-        return acc;
-      }, {}),
-    };
+    const nextErrors = [...TEXT_FIELDS, ...NUMERIC_FIELDS].reduce((acc, field) => {
+      acc[field.key] = String(formData[field.key] || "").trim() === "";
+      return acc;
+    }, {});
     const filtered = Object.fromEntries(Object.entries(nextErrors).filter(([, value]) => value));
     setErrors(filtered);
     return Object.keys(filtered).length === 0;
@@ -129,9 +128,9 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
   const renderField = (field) => (
     <Field key={field.key} label={field.label}>
       <input
-        type="text"
-        inputMode="decimal"
-        placeholder="Enter"
+        type={field.type === "date" ? "date" : "text"}
+        inputMode={NUMERIC_FIELDS.some((item) => item.key === field.key) ? "decimal" : undefined}
+        placeholder={field.type === "date" ? undefined : "Enter"}
         value={formData[field.key]}
         onChange={(e) => handleChange(field.key, e.target.value)}
         className={`${styles["mixx-input"]} ${errors[field.key] ? styles["mixx-error"] : ""}`}
@@ -166,57 +165,42 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
         <Field label="Entry ID">
           <input readOnly value={entryId} className={styles["mixx-input"]} />
         </Field>
-        <Field label="Material Class">
-          <input
-            placeholder="Enter Material Class"
-            value={formData.material_class}
-            onChange={(e) => handleChange("material_class", e.target.value)}
-            className={`${styles["mixx-input"]} ${errors.material_class ? styles["mixx-error"] : ""}`}
-          />
-        </Field>
+        {renderField(TEXT_FIELDS[0])}
       </div>
 
       <div className={styles["mixx-row"]}>
-        <Field label="Comment">
-          <input
-            placeholder="Enter Comment"
-            value={formData.comment}
-            onChange={(e) => handleChange("comment", e.target.value)}
-            className={`${styles["mixx-input"]} ${errors.comment ? styles["mixx-error"] : ""}`}
-          />
-        </Field>
+        {renderField(TEXT_FIELDS[1])}
+        {renderField(TEXT_FIELDS[2])}
+        {renderField(TEXT_FIELDS[3])}
+      </div>
+
+      <div className={styles["mixx-row"]}>
+        {renderField(TEXT_FIELDS[4])}
+        {renderField(TEXT_FIELDS[5])}
+        {renderField(TEXT_FIELDS[6])}
+      </div>
+
+      <div className={styles["mixx-row"]}>
+        {renderField(TEXT_FIELDS[7])}
+        {renderField(TEXT_FIELDS[8])}
+      </div>
+
+      <div className={styles["mixx-row"]}>
         {renderField(NUMERIC_FIELDS[0])}
         {renderField(NUMERIC_FIELDS[1])}
+        {renderField(NUMERIC_FIELDS[2])}
       </div>
 
       <div className={styles["mixx-row"]}>
-        {renderField(NUMERIC_FIELDS[2])}
         {renderField(NUMERIC_FIELDS[3])}
         {renderField(NUMERIC_FIELDS[4])}
+        {renderField(NUMERIC_FIELDS[5])}
       </div>
 
       <div className={styles["mixx-row"]}>
-        {renderField(NUMERIC_FIELDS[5])}
         {renderField(NUMERIC_FIELDS[6])}
         {renderField(NUMERIC_FIELDS[7])}
-      </div>
-
-      <div className={styles["mixx-row"]}>
         {renderField(NUMERIC_FIELDS[8])}
-        {renderField(NUMERIC_FIELDS[9])}
-        {renderField(NUMERIC_FIELDS[10])}
-      </div>
-
-      <div className={styles["mixx-row"]}>
-        {renderField(NUMERIC_FIELDS[11])}
-        {renderField(NUMERIC_FIELDS[12])}
-        {renderField(NUMERIC_FIELDS[13])}
-      </div>
-
-      <div className={styles["mixx-row"]}>
-        {renderField(NUMERIC_FIELDS[14])}
-        {renderField(NUMERIC_FIELDS[15])}
-        {renderField(NUMERIC_FIELDS[16])}
       </div>
     </div>
   );
