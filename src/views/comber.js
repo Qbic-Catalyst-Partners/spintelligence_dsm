@@ -19,8 +19,8 @@ import { useThemeMode } from "@/utils/useThemeMode";
 const comberDepartmentTypes = [
     {
         id: 1,
-        name: "Comber Lap 1mCV Data Entry",
-        aliases: ["Ribbon Lap CV Data Entry", "Ribbon Lap CV", "Comber Lap 1mCV Data Entry"],
+        name: "Ribbon Lap CV1M Data Entry",
+        aliases: ["Ribbon Lap CV1M Data Entry", "Ribbon Lap CV Data Entry", "Ribbon Lap CV", "Comber Lap 1mCV Data Entry"],
     },
     {
         id: 2,
@@ -41,7 +41,7 @@ const comberDepartmentTypes = [
 
 export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
 const COMBER_ENTRY_ID_CONFIG = {
-    "Comber Lap 1mCV Data Entry": { prefix: "RLC", width: 4, routePath: "/comber/lap-cv" },
+    "Ribbon Lap CV1M Data Entry": { prefix: "RLC", width: 4, routePath: "/comber/lap-cv" },
     "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/comber/nati-data-entry" },
     "U% Data Entry": { prefix: "COU", width: 4, routePath: "/comber/uqc" },
     "Comber Nolis %": { prefix: "CNP",  },

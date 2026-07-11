@@ -13,6 +13,8 @@ const DEPARTMENT_ORDER = [
   "Simplex",
   "Spinning",
   "Autoconer",
+  "Wrapping",
+  "Individual Card Performance",
   "Process Parameter",
 ];
 
@@ -62,14 +64,14 @@ const HARDCODED_DEPARTMENTS = [
   },
   {
     name: "Blow Room",
-    screens: ["Blow Room Sync", "BR Waste Study Entry", "Drop Test Data Entry"],
+    screens: ["Blow Room Sync", "BR Waste Study Entry", "Drop Test Data Entry", "B/R CV1M Data Entry Within Lap", "B/R Between Lap CV%"],
   },
   {
     name: "Carding",
     screens: [
       "Between & Within Card Data Entry",
       "Thick place & CV",
-      "Individual Card performance Data",
+      "Carding NRE%",
       "Nati Data Entry",
       "U% Data Entry",
       "Card DFK Data",
@@ -78,8 +80,12 @@ const HARDCODED_DEPARTMENTS = [
     ],
   },
   {
+    name: "Individual Card Performance",
+    screens: ["Individual Card performance Data"],
+  },
+  {
     name: "Comber",
-    screens: ["Comber Lap 1mCV Data Entry", "Nati Data Entry", "U% Data Entry", "Comber Nolis %"],
+    screens: ["Ribbon Lap CV1M Data Entry", "Nati Data Entry", "U% Data Entry", "Comber Nolis %"],
   },
   {
     name: "Draw Frame",

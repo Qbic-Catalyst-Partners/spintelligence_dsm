@@ -54,7 +54,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const [machineOptions, setMachineOptions] = useState([]);
     const [varietyOptions, setVarietyOptions] = useState(["Cotton", "Polyester", "PC Blend"]);
 
-    const isCVEntry = selectedType === "Comber Lap 1mCV Data Entry";
+    const isCVEntry = selectedType === "Ribbon Lap CV1M Data Entry";
 
     useEffect(() => {
         setDate(new Date().toISOString().split("T")[0]);
@@ -263,7 +263,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
 
     const getPreviewData = () => {
         const base = [
-            { label: "Type", value: selectedType || "Comber Lap 1mCV Data Entry" },
+            { label: "Type", value: selectedType || "Ribbon Lap CV1M Data Entry" },
             { label: "Entry ID", value: entryId || "-" },
             { label: "Machine Name", value: machine },
             { label: "Variety", value: variety },

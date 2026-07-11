@@ -5,6 +5,8 @@ const BLOWROOM_DROP_TEST_ENDPOINT = "/blowroom/drop-test";
 const BLOWROOM_BR_WASTE_ENDPOINT = "/blowroom/br-waste-study";
 const BLOWROOM_PROCESS_PARAMETER_ENDPOINT = "/blowroom/header";
 const BLOWROOM_WASTE_TYPE_MASTER_ENDPOINT = "/blowroom/master/waste-types";
+const BLOWROOM_WITHIN_LAP_CV_ENDPOINT = "/blowroom/within-lap-cv";
+const BLOWROOM_BETWEEN_LAP_CV_ENDPOINT = "/blowroom/between-lap-cv";
 
 const getBlowroomApiErrorMessage = (error, fallbackMessage) => {
   const data = error.response?.data;
@@ -47,6 +49,21 @@ const parseVarietyPayload = (payload) => {
   ];
   return uniqueStrings(rows.map((row) => row?.variety_name || row?.prep_variety_name || row?.variety || row?.name || row));
 };
+
+const normalizeMachineRows = (rows = []) =>
+  rows
+    .map((row) => {
+      if (typeof row === "string") {
+        const value = row.trim();
+        return value ? { value, label: value } : null;
+      }
+
+      const mcNo = String(row?.mc_no ?? row?.mcNo ?? row?.value ?? row?.machine_no ?? row?.machineNo ?? "").trim();
+      const mcName = String(row?.mc_name ?? row?.mcName ?? row?.label ?? row?.text ?? row?.machine_name ?? row?.machineName ?? mcNo ?? "").trim();
+      const name = mcName || mcNo;
+      return name ? { value: name, label: name } : null;
+    })
+    .filter(Boolean);
 
 const normalizeMasterNameRows = (payload) => {
   const rows = [
@@ -231,6 +248,51 @@ export const fetchBlowroomMasterWasteTypes = async () => {
   throw new Error(getBlowroomApiErrorMessage(lastError || {}, "Failed to fetch waste type options"));
 };
 
+export const fetchBlowroomLapCvMasterMcNos = async ({
+  prefix = "BR",
+  screen = "within-lap-cv",
+} = {}) => {
+  const screenEndpoints = {
+    "within-lap-cv": [
+      "/blowroom/within-lap-cv/master/mc-nos",
+      "/blowroom/within-lap-cv/master/machine-nos",
+      "/blowroom/master/mc-nos",
+      "/blowroom/master/machine-nos",
+    ],
+    "between-lap-cv": [
+      "/blowroom/between-lap-cv/master/mc-nos",
+      "/blowroom/between-lap-cv/master/machine-nos",
+      "/blowroom/master/mc-nos",
+      "/blowroom/master/machine-nos",
+    ],
+  };
+  const endpoints = screenEndpoints[screen] || screenEndpoints["within-lap-cv"];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await apiConfig.get(
+        endpoint,
+        { prefix, mc_no_prefix: prefix, machine_prefix: prefix },
+        { skipGlobalErrorModal: true }
+      );
+      const payload = res?.data || {};
+      const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload) ? payload : [];
+      const options = normalizeMachineRows(rows);
+      if (options.length || endpoint === endpoints[endpoints.length - 1]) {
+        return options;
+      }
+    } catch (error) {
+      lastError = error;
+      if (error.response?.status && error.response.status !== 404) {
+        throw new Error(getBlowroomApiErrorMessage(error, "Failed to fetch machine options"));
+      }
+    }
+  }
+
+  throw new Error(getBlowroomApiErrorMessage(lastError || {}, "Failed to fetch machine options"));
+};
+
 export const saveBlowroomMasterWasteType = async (wasteTypeName) => {
   const name = String(wasteTypeName || "").trim();
   if (!name) {
@@ -337,6 +399,30 @@ export const saveBlowroomProcessParameterApi = async (payload) => {
       throw new Error(error.response.data.message || "Failed to save process parameter entry");
     }
     throw new Error(error.message || "Failed to save process parameter entry");
+  }
+};
+
+export const saveBlowroomWithinLapCvApi = async (payload) => {
+  try {
+    const res = await apiConfig.post(BLOWROOM_WITHIN_LAP_CV_ENDPOINT, payload);
+    return res.data;
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(error.response.data.message || "Failed to save within lap CV data");
+    }
+    throw new Error(error.message || "Failed to save within lap CV data");
+  }
+};
+
+export const saveBlowroomBetweenLapCvApi = async (payload) => {
+  try {
+    const res = await apiConfig.post(BLOWROOM_BETWEEN_LAP_CV_ENDPOINT, payload);
+    return res.data;
+  } catch (error) {
+    if (error.response?.data) {
+      throw new Error(error.response.data.message || "Failed to save between lap CV data");
+    }
+    throw new Error(error.message || "Failed to save between lap CV data");
   }
 };
 

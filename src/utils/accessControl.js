@@ -72,6 +72,7 @@ export const routeDepartmentMap = {
   "/spinning": "Spinning",
   "/autoconer": "Autoconer",
   "/departments/quality-control/wrapping": "Wrapping",
+  "/departments/quality-control/individual-card-performance": "Individual Card Performance",
 };
 
 export const buildAccessibleDepartmentSet = (accessByDepartment) => {

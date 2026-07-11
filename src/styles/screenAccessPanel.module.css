@@ -41,6 +41,11 @@
   color: #0f172a;
 }
 
+.departmentRowActive .departmentName {
+  color: #197fe6;
+  font-weight: 700;
+}
+
 .departmentArrow {
   border: none;
   background: transparent;
@@ -97,6 +102,11 @@
 
 :global(:root[data-theme="dark"]) .departmentRowActive {
   background: #242424;
+}
+
+:global(:root[data-theme="dark"]) .departmentRowActive .departmentName {
+  color: #4da3ff;
+  font-weight: 700;
 }
 
 :global(:root[data-theme="dark"]) .departmentName,

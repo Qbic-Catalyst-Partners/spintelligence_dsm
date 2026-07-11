@@ -7,6 +7,7 @@ import {
     submitNatiDataEntry,
     submitCardingUqcEntry,
     fetchCardingUqcEntries,
+    submitCardingNreEntry,
 } from "@/apis/carding";
 
 
@@ -29,6 +30,18 @@ export const submitCardingCardThickPlace = createAsyncThunk(
     async (payload, { rejectWithValue }) => {
         try {
             return await submitCardThickPlaceEntry(payload);
+        } catch (error) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+// Carding NRE%
+export const submitCardingNre = createAsyncThunk(
+    "carding/submitNre",
+    async (payload, { rejectWithValue }) => {
+        try {
+            return await submitCardingNreEntry(payload);
         } catch (error) {
             return rejectWithValue(error.message);
         }
@@ -95,6 +108,7 @@ export const getCardingUqcEntries = createAsyncThunk(
 const initialState = {
     betweenWithin: null,
     cardThickPlace: null,
+    nre: null,
     nati: null,
     dfkPressure: null,
     dfkPressureEntries: [],
@@ -116,6 +130,7 @@ const cardingSlice = createSlice({
         clearCardingState: (state) => {
             state.betweenWithin = null;
             state.cardThickPlace = null;
+            state.nre = null;
             state.nati = null;
             state.dfkPressure = null;
             state.uqc = null;
@@ -155,6 +170,22 @@ const cardingSlice = createSlice({
                 state.cardThickPlace = action.payload;
             })
             .addCase(submitCardingCardThickPlace.rejected, (state, action) => {
+                state.isLoading = false;
+                state.error = action.payload;
+            })
+
+            /* =======================
+               CARDING NRE%
+            ======================= */
+            .addCase(submitCardingNre.pending, (state) => {
+                state.isLoading = true;
+                state.error = null;
+            })
+            .addCase(submitCardingNre.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.nre = action.payload;
+            })
+            .addCase(submitCardingNre.rejected, (state, action) => {
                 state.isLoading = false;
                 state.error = action.payload;
             })

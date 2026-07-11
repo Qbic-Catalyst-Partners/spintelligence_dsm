@@ -162,6 +162,10 @@
   margin: 12px;
 }
 
+.noGapTitle {
+  margin: 12px 0 6px;
+}
+
 :global(:root[data-theme="dark"]) .cutsTitle {
   color: #ffffff !important;
 }

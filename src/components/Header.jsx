@@ -77,6 +77,7 @@ const departmentLinks = [
     { href: "/spinning", label: "Spinning", department: "Spinning" },
     { href: "/autoconer", label: "Autoconer", department: "Autoconer" },
     { href: "/departments/quality-control/wrapping", label: "Wrapping", department: "Wrapping" },
+    { href: "/departments/quality-control/individual-card-performance", label: "Individual Card Performance", department: "Individual Card Performance" },
 ];
 
 const settingsLinks = [

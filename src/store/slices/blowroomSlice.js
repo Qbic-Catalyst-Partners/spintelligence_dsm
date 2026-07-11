@@ -4,6 +4,8 @@ import {
   saveBlowroomDataApi,
   saveBlowroomDropTestApi,
   saveBlowroomBrWasteApi,
+  saveBlowroomWithinLapCvApi,
+  saveBlowroomBetweenLapCvApi,
 } from "../../apis/blowroom";
 
 // ✅ GET
@@ -46,6 +48,28 @@ export const saveBlowroomBrWaste = createAsyncThunk(
   async (payload, { rejectWithValue }) => {
     try {
       return await saveBlowroomBrWasteApi(payload);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+export const saveBlowroomWithinLapCv = createAsyncThunk(
+  "blowroom/saveWithinLapCv",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await saveBlowroomWithinLapCvApi(payload);
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
+export const saveBlowroomBetweenLapCv = createAsyncThunk(
+  "blowroom/saveBetweenLapCv",
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await saveBlowroomBetweenLapCvApi(payload);
     } catch (err) {
       return rejectWithValue(err.message);
     }
@@ -124,6 +148,34 @@ const blowroomSlice = createSlice({
         state.message = action.payload.message;
       })
       .addCase(saveBlowroomBrWaste.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveBlowroomWithinLapCv.pending, (state) => {
+        state.loading = true;
+        state.success = false;
+        state.error = null;
+      })
+      .addCase(saveBlowroomWithinLapCv.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.message = action.payload.message;
+      })
+      .addCase(saveBlowroomWithinLapCv.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(saveBlowroomBetweenLapCv.pending, (state) => {
+        state.loading = true;
+        state.success = false;
+        state.error = null;
+      })
+      .addCase(saveBlowroomBetweenLapCv.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        state.message = action.payload.message;
+      })
+      .addCase(saveBlowroomBetweenLapCv.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       });

@@ -9,6 +9,8 @@ import BlowRoomSync from "./blowroom/BlowRoomSync";
 import BrWasteStudyEntry from "./mixing/brWasteStudyEntry";
 import DropTestDataEntry from "./blowroom/dropTestDataEntry";
 import ProcessParameter from "./blowroom/ProcessParameter";
+import WithinLapCVDataEntry from "./blowroom/withinLapCVDataEntry";
+import BetweenLapCVDataEntry from "./blowroom/betweenLapCVDataEntry";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { resetState as resetBlowroom } from "@/store/slices/blowroomSlice";
@@ -21,6 +23,8 @@ const blowroomTypes = [
   { id: 2, name: "Process Parameter", aliases: ["Process Parameter"], component: ProcessParameter, needsLotNo: false },
   { id: 3, name: "BR Waste Study Entry", aliases: ["BR Waste Study Entry", "Blow Room Waste Study Entry"], component: BrWasteStudyEntry, needsLotNo: false },
   { id: 4, name: "Drop Test Data Entry", aliases: ["Drop Test Data Entry", "Drop Test"], component: DropTestDataEntry, needsLotNo: true },
+  { id: 5, name: "B/R CV1M Data Entry Within Lap", aliases: ["B/R CV1M Data Entry Within Lap", "Within Lap CV1M Data Entry"], component: WithinLapCVDataEntry, needsLotNo: false },
+  { id: 6, name: "B/R Between Lap CV%", aliases: ["B/R Between Lap CV%", "Between Lap CV Data Entry"], component: BetweenLapCVDataEntry, needsLotNo: false },
 ];
 
 export const BLOWROOM_INPUT_SCREEN_COUNT = blowroomTypes.length;
@@ -31,6 +35,8 @@ const BLOWROOM_ENTRY_ID_CONFIG = {
   "Process Parameter": { prefix: "PP", width: 4, routePath: "/blowroom/header" },
   "BR Waste Study Entry": { prefix: "BWS", width: 4, routePath: "/blowroom/br-waste-study" },
   "Drop Test Data Entry": { prefix: "BDT", width: 4, routePath: "/blowroom/drop-test" },
+  "B/R CV1M Data Entry Within Lap": { prefix: "BWL", width: 4, routePath: "/blowroom/within-lap-cv" },
+  "B/R Between Lap CV%": { prefix: "BBL", width: 4, routePath: "/blowroom/between-lap-cv" },
 };
 
 const getBlowRoomEntryConfig = (typeName) =>
@@ -68,6 +74,7 @@ function BlowRoom() {
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [date, setDate] = useState(today);
   const [lotNo, setLotNo] = useState("");
+  const [sampleCount, setSampleCount] = useState(5);
   const [showPreview, setShowPreview] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -184,6 +191,9 @@ function BlowRoom() {
   const isSyncType = selectedTypeName === "Blow Room Sync";
   const isDropTestType = selectedTypeName === "Drop Test Data Entry";
   const isProcessParameterType = selectedTypeName === "Process Parameter";
+  const isLapCVType =
+    selectedTypeName === "B/R CV1M Data Entry Within Lap" ||
+    selectedTypeName === "B/R Between Lap CV%";
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">
       <div className="w-full max-w-7xl pt-8 px-4 pb-8">
@@ -208,7 +218,7 @@ function BlowRoom() {
 
             <div className="flex flex-col gap-4">
               {!isSyncType && !isDropTestType && !isProcessParameterType && (
-                <div className={`grid gap-[18px] ${selectedType?.needsLotNo ? "grid-cols-3" : "grid-cols-2"}`}>
+                <div className={`grid gap-[18px] ${selectedType?.needsLotNo || isLapCVType ? "grid-cols-3" : "grid-cols-2"}`}>
                   <div className="flex flex-col gap-1.5 min-w-0">
                     <label className="text-[14px] font-semibold text-slate-700">Type</label>
                     <select
@@ -231,6 +241,29 @@ function BlowRoom() {
                     onChange={() => {}}
                     disabled
                   />
+
+                  {isLapCVType && (
+                    <div className="flex flex-col gap-1.5 min-w-0">
+                      <label className="text-[14px] font-semibold text-slate-700">Number of Sample Entries</label>
+                      <div className="flex gap-2.5">
+                        <input
+                          type="number"
+                          className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors flex-1 min-w-0"
+                          style={{ backgroundColor: "#f1f5f9" }}
+                          value={sampleCount}
+                          onChange={(e) => setSampleCount(e.target.value)}
+                          onWheel={(e) => e.currentTarget.blur()}
+                        />
+                        <button
+                          type="button"
+                          className="h-[38px] px-4 rounded-lg bg-[#3D539F] text-white text-[14px] font-semibold whitespace-nowrap"
+                          onClick={() => setSampleCount((current) => Math.max(1, Number(current) || 5))}
+                        >
+                          Generate
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {selectedType?.needsLotNo && (
                     <CustomInput
@@ -255,6 +288,8 @@ function BlowRoom() {
                   onTypeChange={setSelectedTypeName}
                   onDateChange={setDate}
                   onLotNoChange={setLotNo}
+                  sampleCount={sampleCount}
+                  onSampleCountChange={setSampleCount}
                   savedVersionsTargetId="blowroom-process-parameter-history"
                   postFooterPortalTargetId="blowroom-post-footer-slot"
                 />
@@ -287,6 +322,15 @@ function BlowRoom() {
                 disabled={actionLoading}
               />
             </div>
+          ) : isLapCVType ? (
+            <Footer
+              onBack={() => router.push("/departments/quality-control")}
+              onSecondary={() => childRef.current?.calculateStats?.()}
+              secondaryLabel="Calculate Statistics"
+              onSave={openPreview}
+              saveLabel={actionLoading ? "Saving..." : "Save Record"}
+              disabled={actionLoading}
+            />
           ) : (
             <Footer
               onBack={() => router.push("/departments/quality-control")}
@@ -299,9 +343,10 @@ function BlowRoom() {
               disabled={actionLoading}
             />
           )}
+
+          <div id="blowroom-post-footer-slot" />
         </div>
 
-        <div id="blowroom-post-footer-slot" className="w-full max-w-7xl pt-5" />
         {isProcessParameterType ? (
           <div id="blowroom-process-parameter-history" className="w-full max-w-7xl pt-5" />
         ) : null}

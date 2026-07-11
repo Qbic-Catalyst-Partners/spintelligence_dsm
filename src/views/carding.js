@@ -12,7 +12,7 @@ import SuccessModal from "@/components/SuccessModal";
 import BetweenWithinCardEntry from "./carding/betweenWithinCardEntry";
 import CardingDfk from "./carding/cardingdfk";
 import CardThickPlaceEntry from "./carding/cardThickPlaceEntry";
-import TrialDepartment from "./carding/trialsDataEntry";
+import CardingNreDataEntry from "./carding/cardingNreDataEntry";
 import NatiDataEntry from "./carding/natiDataEntry";
 import UPercentDataEntry from "./carding/u%dataentry";
 import CardingWheelChange from "./carding/WheelChange";
@@ -32,7 +32,7 @@ const cardingDepartmentTypes = [
     { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
     { id: 1, name: "Between & Within Card Data Entry", aliases: ["Between & Within Card Data Entry", "Between and Within Card Data Entry", "Between Within Card Entry"] },
     { id: 2, name: "Thick place & CV", aliases: ["Thick place & CV", "Card Thick Place Entry", "Card Thick Place Checking"] },
-    { id: 3, name: "Individual Card performance Data", aliases: ["Individual Card performance Data", "Trials Data Entry Form", "Trials Data Entry", "Trials"] },
+    { id: 3, name: "Carding NRE%", aliases: ["Carding NRE%", "Carding NRE", "Carding NRE Percent"] },
     { id: 4, name: "Nati Data Entry", aliases: ["Nati Data Entry"] },
     { id: 5, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U Percentage Data Entry", "U% Checking"] },
     { id: 6, name: "Card DFK Data", aliases: ["Card DFK Data", "Card DFK Pressure Checking", "DFK Pressure Checking", "Carding DFK Pressure"] },
@@ -45,7 +45,7 @@ const CARDING_ENTRY_ID_CONFIG = {
     "Process Parameter": { prefix: "CPP", width: 4, routePath: "/carding/qc-header" },
     "Between & Within Card Data Entry": { prefix: "BWC", width: 4, routePath: "/carding/between-within-card" },
     "Thick place & CV": { prefix: "CTP", width: 4, routePath: "/carding/card-thick-place" },
-    "Individual Card performance Data": { prefix: "TRI", width: 4, routePath: "/carding/trials" },
+    "Carding NRE%": { prefix: "CNRE", width: 4, routePath: "/carding/nre" },
     "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/carding/nati-data-entry" },
     "U% Data Entry": { prefix: "CAU", width: 4, routePath: "/carding/uqc" },
     "Card DFK Data": { prefix: "DFK", width: 4, routePath: "/carding/dfk-pressure" },
@@ -342,8 +342,8 @@ function Carding() {
                         />
                     )}
 
-                    {selectedType === "Individual Card performance Data" && (
-                        <TrialDepartment
+                    {selectedType === "Nati Data Entry" && (
+                        <NatiDataEntry
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
@@ -352,13 +352,14 @@ function Carding() {
                         />
                     )}
 
-                    {selectedType === "Nati Data Entry" && (
-                        <NatiDataEntry
+                    {selectedType === "Carding NRE%" && (
+                        <CardingNreDataEntry
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             showForm
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
                         />
                     )}
 

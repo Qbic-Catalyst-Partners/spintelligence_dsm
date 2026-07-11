@@ -25,14 +25,19 @@ const topCutFields = [
 ];
 
 const cutsGridFields = [
-    ["cp", "cm", "ccp", "ccm", "jp"],
+    ["cp", "cm", "ccp", "ccm", "jp", "jm"],
     ["a1", "a2", "a3", "a4"],
     ["b1", "b2", "b3", "b4"],
     ["c1", "c2", "c3", "c4"],
     ["d1", "d2", "d3", "d4"],
     ["e", "f", "g", "h1", "h2"],
-    ["i1", "i2", "cvp"],
+    ["i1", "i2", "cvb", "flCut", "fdCut"],
 ];
+
+const cutsGridLabelOverrides = {
+    flCut: "FL CUT",
+    fdCut: "FD CUT",
+};
 
 const requiredFields = [
     "cardingMachine",
@@ -73,6 +78,7 @@ const DECIMAL_FIELD_CONFIG = {
     ccp: { precision: 6, scale: 2 },
     ccm: { precision: 6, scale: 2 },
     jp: { precision: 6, scale: 2 },
+    jm: { precision: 6, scale: 2 },
     a1: { precision: 6, scale: 2 },
     a2: { precision: 6, scale: 2 },
     a3: { precision: 6, scale: 2 },
@@ -96,7 +102,9 @@ const DECIMAL_FIELD_CONFIG = {
     h2: { precision: 6, scale: 2 },
     i1: { precision: 6, scale: 2 },
     i2: { precision: 6, scale: 2 },
-    cvp: { precision: 6, scale: 2 },
+    cvb: { precision: 6, scale: 2 },
+    flCut: { precision: 6, scale: 2 },
+    fdCut: { precision: 6, scale: 2 },
     uPercent: { precision: 6, scale: 2 },
     cvm: { precision: 6, scale: 2 },
     cvmCvPercent: { precision: 6, scale: 2 },
@@ -273,6 +281,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             nature: formData.nature || "",
             raw_material_mixing: formData.materialMixing || "",
             yarn_results: formData.yarnresults || "",
+            yarn_remarks: formData.yarnremarks || "",
             user_id: formData.userId || "",
             u_percent: formData.uPercent || "",
             cvm: formData.cvm || "",
@@ -300,6 +309,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             ccp: formData.ccp || "",
             ccm: formData.ccm || "",
             jp: formData.jp || "",
+            jm: formData.jm || "",
             a1: formData.a1 || "",
             a2: formData.a2 || "",
             a3: formData.a3 || "",
@@ -323,7 +333,17 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             h2: formData.h2 || "",
             l1: formData.i1 || "",
             l2: formData.i2 || "",
-            cvp: formData.cvp || "",
+            cvb: formData.cvb || "",
+            fl_cut: formData.flCut || "",
+            fd_cut: formData.fdCut || "",
+            df_drg_mc_no: formData.dfDrgMcNo || "",
+            df_finish_u_percent: formData.dfFinishU || "",
+            df_cvim: formData.dfCvim || "",
+            df_cvb: formData.dfCvb || "",
+            smx_no: formData.smxNo || "",
+            spl_no: formData.splNo || "",
+            roving_percent: formData.rovingPercent || "",
+            smx_cvim: formData.smxCvim || "",
         };
 
         return payload;
@@ -396,11 +416,6 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                             <div className={styles.cardFormGroup}>
                                 <label>Entry ID</label>
                                 <input type="text" name="date" value={entryId || ""} readOnly />
-                            </div>
-
-                            <div className={styles.cardFormGroup}>
-                                <label>Time</label>
-                                <input type="text" value={time} readOnly />
                             </div>
 
                             <div className={styles.cardFormGroup}>
@@ -485,9 +500,36 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                             </div>
 
                             <div className={styles.cardFormGroup}>
-                                <label>Nature of Trial</label>
+                                <label>Nature of Trials/Sample</label>
                                 <input name="nature" value={formData.nature || ""} onChange={handleChange} className={fieldClass("nature")} />
                             </div>
+                        </div>
+
+                        <div className={styles.cardRow}>
+                            <div className={`${styles.cardFormGroup} ${styles.fullWidth}`}>
+                                <label>Yarn Results (optional)</label>
+                                <textarea name="yarnresults" value={formData.yarnresults || ""} onChange={handleChange} className={fieldClass("yarnresults")} />
+                            </div>
+                        </div>
+
+                        <h3 className={`${styles.cutsTitle} ${styles.noGapTitle}`}>Draw Frame</h3>
+                        <div className={styles.cardRow}>
+                            {[["Drg Mc. No.", "dfDrgMcNo"], ["Finish U%", "dfFinishU"], ["CVIM", "dfCvim"], ["CVB", "dfCvb"]].map(([label, name]) => (
+                                <div className={styles.cardFormGroup} key={name}>
+                                    <label>{label}</label>
+                                    <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
+                                </div>
+                            ))}
+                        </div>
+
+                        <h3 className={`${styles.cutsTitle} ${styles.noGapTitle}`}>Simplex</h3>
+                        <div className={styles.cardRow}>
+                            {[["SMX No.", "smxNo"], ["SPL No.", "splNo"], ["Roving%", "rovingPercent"], ["CVIM", "smxCvim"]].map(([label, name]) => (
+                                <div className={styles.cardFormGroup} key={name}>
+                                    <label>{label}</label>
+                                    <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />
+                                </div>
+                            ))}
                         </div>
                     </>
                 )}
@@ -515,7 +557,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                                         key={`${item}-${rowIndex}`}
                                         style={{ gridRow: rowIndex + 1, gridColumn: columnIndex + 1 }}
                                     >
-                                        <label>{item.toUpperCase()}</label>
+                                        <label>{cutsGridLabelOverrides[item] || item.toUpperCase()}</label>
                                         <input type="text" name={item} value={formData[item] || ""} onChange={handleChange} className={fieldClass(item)} />
                                     </div>
                                 ))
@@ -613,7 +655,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                     <div className={styles.cardRow}>
                         <div className={`${styles.cardFormGroup} ${styles.fullWidth}`}>
                             <label>Yarn Remarks (optional)</label>
-                            <textarea name="yarnresults" value={formData.yarnresults || ""} onChange={handleChange} className={fieldClass("yarnresults")} />
+                            <textarea name="yarnremarks" value={formData.yarnremarks || ""} onChange={handleChange} className={fieldClass("yarnremarks")} />
                         </div>
                     </div>
                 </>
@@ -642,7 +684,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             <PreviewModal
                 open={showPreview}
                 title="Carding Preview"
-                subtitle="Carding Notebook / Individual Card performance Data"
+                subtitle="Individual Card Performance Notebook / Individual Card performance Data"
                 items={previewItems}
                 typeValue={selectedType}
                 onCancel={() => setShowPreview(false)}

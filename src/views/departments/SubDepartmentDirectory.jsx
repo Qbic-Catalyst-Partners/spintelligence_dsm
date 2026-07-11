@@ -15,6 +15,7 @@ import { SIMPLEX_INPUT_SCREEN_COUNT } from "@/views/simplex";
 import { SPINNING_INPUT_SCREEN_COUNT } from "@/views/spinning";
 import { AUTOCONER_INPUT_SCREEN_COUNT } from "@/views/autoconer";
 import { WRAPPING_INPUT_SCREEN_COUNT } from "@/views/wrapping";
+import { INDIVIDUAL_CARD_PERFORMANCE_INPUT_SCREEN_COUNT } from "@/views/individualCardPerformance";
 import { getDepartmentScreenCount } from "@/utils/screenAccess";
 
 const subDepartmentScreenCounts = {
@@ -27,6 +28,7 @@ const subDepartmentScreenCounts = {
     spinning: SPINNING_INPUT_SCREEN_COUNT,
     autoconer: AUTOCONER_INPUT_SCREEN_COUNT,
     wrapping: WRAPPING_INPUT_SCREEN_COUNT,
+    "individual-card-performance": INDIVIDUAL_CARD_PERFORMANCE_INPUT_SCREEN_COUNT,
 };
 
 const formatInputScreenLabel = (count) => {
@@ -44,6 +46,7 @@ const qualityControlDepartmentNames = {
     spinning: "Spinning",
     autoconer: "Autoconer",
     wrapping: "Wrapping",
+    "individual-card-performance": "Individual Card Performance",
 };
 
 function SubDepartmentDirectory({ initialDepartment } = {}) {

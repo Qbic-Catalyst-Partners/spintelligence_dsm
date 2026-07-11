@@ -102,6 +102,19 @@ export const submitCardThickPlaceEntry = async (payload) => {
     }
 };
 
+export const submitCardingNreEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/carding/nre", payload);
+        return response.data;
+    } catch (error) {
+        if (error.response && error.response.data) {
+            throw new Error(error.response.data.message || "Invalid payload data.");
+        }
+
+        throw new Error(error.message || "Server error occurred");
+    }
+};
+
 export const submitNatiDataEntry = async (payload) => {
     try {
         const response = await apiConfig.post("/carding/nati-data-entry", payload);

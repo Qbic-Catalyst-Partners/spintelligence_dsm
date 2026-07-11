@@ -13,16 +13,21 @@ export const thresholdScreenCatalog = {
             "Process Parameter",
             "BR Waste Study Entry",
             "Drop Test Data Entry",
+            "B/R CV1M Data Entry Within Lap",
+            "B/R Between Lap CV%",
         ],
         carding: [
             "Process Parameter",
-            "Individual Card performance Data",
+            "Carding NRE%",
             "Nati Data Entry",
             "U% Data Entry",
             "Individual Card Waste Study",
         ],
         comber: [
             "Nati Data Entry",
+        ],
+        "individual-card-performance": [
+            "Individual Card performance Data",
         ],
         "draw-frame": [
             "1 Yard / Half Yard CV Entry",

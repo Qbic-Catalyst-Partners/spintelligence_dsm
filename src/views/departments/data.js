@@ -14,6 +14,7 @@ export const departmentDirectory = [
             { slug: "spinning", name: "Spinning", href: "/spinning", enabled: true },
             { slug: "autoconer", name: "Autoconer", href: "/autoconer", enabled: true },
             { slug: "wrapping", name: "Wrapping", href: "/departments/quality-control/wrapping", enabled: true },
+            { slug: "individual-card-performance", name: "Individual Card Performance", href: "/departments/quality-control/individual-card-performance", enabled: true },
         ],
     },
     {
