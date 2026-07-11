@@ -118,6 +118,7 @@ export default function TicketDetails() {
     return isNaN(date)
       ? "-"
       : date.toLocaleString("en-US", {
+          timeZone: "Asia/Kolkata",
           month: "short",
           day: "numeric",
           hour: "numeric",

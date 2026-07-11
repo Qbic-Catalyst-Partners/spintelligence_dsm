@@ -15,6 +15,18 @@ const parseNumber = (value) => {
 
 const BASE_AOV = 0.649350649;
 
+const STAGE_OPTIONS = [
+  "Circular bale pulker",
+  "MPM",
+  "MO",
+  "RK",
+  "Flexi cleaner",
+  "KB",
+  "GBR",
+  "Vario clean",
+  "Chute opening roller",
+];
+
 const createStages = (totalEntries) => {
   const stages = [];
   let remaining = totalEntries;
@@ -24,7 +36,7 @@ const createStages = (totalEntries) => {
     const rowCount = Math.min(5, remaining);
 
       stages.push({
-        stageName: `Stage ${stageIndex + 1}`,
+        stageName: "",
         beaterType: "",
         beaterSpeed: "",
         rows: Array.from({ length: rowCount }, () => ({
@@ -215,6 +227,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
     return stages.every(
       (stage) =>
+        stage.stageName !== "" &&
         stage.rows.every((row) => row.weight !== "" && row.vol1 !== "" && row.vol2 !== "" && row.avgVol !== "") &&
         stage.avgWeight !== "" &&
         stage.avgVol !== "" &&
@@ -266,20 +279,20 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       { label: "Entries (N)", value: form.entries },
     ];
 
-    const stageMeta = stages.flatMap((stage) => [
-      { label: `${stage.stageName} - Beater Type`, value: stage.beaterType },
-      { label: `${stage.stageName} - Beater Speed (RPM)`, value: stage.beaterSpeed },
+    const stageMeta = stages.flatMap((stage, stageIndex) => [
+      { label: `${stage.stageName || `Stage ${stageIndex + 1}`} - Beater Type`, value: stage.beaterType },
+      { label: `${stage.stageName || `Stage ${stageIndex + 1}`} - Beater Speed (RPM)`, value: stage.beaterSpeed },
     ]);
 
-    const stageRows = stages.flatMap((stage) =>
+    const stageRows = stages.flatMap((stage, stageIndex) =>
         stage.rows.map((row, rowIndex) => ({
-        label: `${stage.stageName} - Row ${rowIndex + 1}`,
+        label: `${stage.stageName || `Stage ${stageIndex + 1}`} - Row ${rowIndex + 1}`,
         value: `W:${row.weight} | V1:${row.vol1} | V2:${row.vol2} | V:${row.avgVol} | ASV:${row.asv} | AOV:${row.aov}`,
       }))
     );
 
-    const stageSummaries = stages.map((stage) => ({
-      label: `${stage.stageName} Openness %`,
+    const stageSummaries = stages.map((stage, stageIndex) => ({
+      label: `${stage.stageName || `Stage ${stageIndex + 1}`} Openness %`,
       value: stage.openness,
     }));
 
@@ -295,6 +308,9 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
       const nextErrors = {};
       if (!form.entries) nextErrors.entries = true;
       stages.forEach((stage, sIdx) => {
+        if (!stage.stageName) {
+          nextErrors[`stage-${sIdx}-stageName`] = true;
+        }
         stage.rows.forEach((row, rIdx) => {
           ["weight", "vol1", "vol2"].forEach((key) => {
             if (String(row[key] || "").trim() === "") {
@@ -332,15 +348,27 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           <div className={styles.rowGrid}>
             <div>
               <label className={styles.stageLabel} htmlFor={`stage-name-${stageIndex}`}>
-                Machine Name
+                Stage
               </label>
-              <input
+              <select
                 id={`stage-name-${stageIndex}`}
                 className={styles.stageNameInput}
+                style={
+                  errors[`stage-${stageIndex}-stageName`]
+                    ? { border: "1px solid #ef4444", background: "#fff1f2" }
+                    : undefined
+                }
                 value={stage.stageName}
                 onChange={(e) => handleStageNameChange(stageIndex, e.target.value)}
-                aria-label={`Stage ${stageIndex + 1} name`}
-              />
+                aria-label={`Stage ${stageIndex + 1}`}
+              >
+                <option value="">Select Stage</option>
+                {STAGE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
             <CustomInput
               label="Beater Type"
@@ -359,7 +387,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           {stage.rows.map((row, rowIndex) => {
             runningIndex += 1;
             return (
-              <div key={`${stage.stageName}-${rowIndex}`} className={styles.rowBox}>
+              <div key={`stage-${stageIndex}-row-${rowIndex}`} className={styles.rowBox}>
                 <div className={styles.rowNumber}>{runningIndex}</div>
                 <div className={styles.rowContent}>
                   <div className={styles.rowGrid}>

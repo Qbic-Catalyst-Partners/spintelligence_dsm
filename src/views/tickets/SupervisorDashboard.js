@@ -32,6 +32,7 @@ const formatDateTime = (dateString) => {
   if (!dateString) return "-";
   const date = new Date(dateString);
   return date.toLocaleString("en-US", {
+    timeZone: "Asia/Kolkata",
     month: "short",
     day: "2-digit",
     hour: "2-digit",

@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import {
     fetchComberUqcEntries,
+    submitComberEfficiencyDataEntry,
+    submitComberNreDataEntry,
     submitComberUqcEntry,
     submitNatiDataEntry,
     submitRibbonLapCVDataEntry
@@ -23,6 +25,30 @@ export const submitComberNatiDataEntry = createAsyncThunk(
     async (payload, { rejectWithValue }) => {
         try {
             const data = await submitNatiDataEntry(payload);
+            return data;
+        } catch (error) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+export const submitComberNre = createAsyncThunk(
+    "comber/submitNre",
+    async (payload, { rejectWithValue }) => {
+        try {
+            const data = await submitComberNreDataEntry(payload);
+            return data;
+        } catch (error) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
+export const submitComberEfficiency = createAsyncThunk(
+    "comber/submitEfficiency",
+    async (payload, { rejectWithValue }) => {
+        try {
+            const data = await submitComberEfficiencyDataEntry(payload);
             return data;
         } catch (error) {
             return rejectWithValue(error.message);
@@ -97,6 +123,30 @@ const comberSlice = createSlice({
                 state.data = action.payload;
             })
             .addCase(submitComberNatiDataEntry.rejected, (state, action) => {
+                state.isLoading = false;
+                state.error = action.payload;
+            })
+            .addCase(submitComberNre.pending, (state) => {
+                state.isLoading = true;
+                state.error = null;
+            })
+            .addCase(submitComberNre.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.data = action.payload;
+            })
+            .addCase(submitComberNre.rejected, (state, action) => {
+                state.isLoading = false;
+                state.error = action.payload;
+            })
+            .addCase(submitComberEfficiency.pending, (state) => {
+                state.isLoading = true;
+                state.error = null;
+            })
+            .addCase(submitComberEfficiency.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.data = action.payload;
+            })
+            .addCase(submitComberEfficiency.rejected, (state, action) => {
                 state.isLoading = false;
                 state.error = action.payload;
             })

@@ -4,6 +4,8 @@ import { MdEditNote } from "react-icons/md";
 import RibbonLapCVDataEntry from "./comber/ribbonLapCVDataEntry";
 import NatiDataEntry from "./comber/natiDataEntry";
 import UPercentDataEntry from "./comber/u%dataentry";
+import ComberNreDataEntry from "./comber/comberNreDataEntry";
+import ComberEfficiencyDataEntry from "./comber/comberEfficiencyDataEntry";
 import styles from "./comber/ribbonLapCVDataEntry.module.css";
 import PreviewModal from "@/components/PreviewModal";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
@@ -37,6 +39,16 @@ const comberDepartmentTypes = [
         name: "Comber Nolis %",
         aliases: ["Comber Nolis %", "Comber Nolis Percent", "Nolis %", "Nolis Percent"],
     },
+    {
+        id: 5,
+        name: "Comber NRE%",
+        aliases: ["Comber NRE%", "Comber NRE Percent", "NRE%", "NRE Percent"],
+    },
+    {
+        id: 6,
+        name: "Comber Efficiency",
+        aliases: ["Comber Efficiency", "Comber Efficiency Data Entry"],
+    },
 ];
 
 export const COMBER_INPUT_SCREEN_COUNT = comberDepartmentTypes.length;
@@ -45,6 +57,8 @@ const COMBER_ENTRY_ID_CONFIG = {
     "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/comber/nati-data-entry" },
     "U% Data Entry": { prefix: "COU", width: 4, routePath: "/comber/uqc" },
     "Comber Nolis %": { prefix: "CNP",  },
+    "Comber NRE%": { prefix: "CNRE", width: 4, routePath: "/comber/nre" },
+    "Comber Efficiency": { prefix: "CEFF", width: 4, routePath: "/comber/efficiency" },
 };
 
 const getComberEntryConfig = (typeName) =>
@@ -233,6 +247,46 @@ function Comber() {
                             />
 
                             <div style={{ margin: "0 -24px -20px -24px" }}>
+                                    <Footer
+                                        onBack={() => router.push("/departments/quality-control")}
+                                        onClear={handleClear}
+                                        onSave={openPreview}
+                                        saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                        disabled={isLoading || entryIdLoading}
+                                    />
+                            </div>
+                        </>
+                    ) : selectedType === "Comber NRE%" ? (
+                        <>
+                            <ComberNreDataEntry
+                                ref={childRef}
+                                entryId={entryId}
+                                types={typeOptions}
+                                selectedType={selectedType}
+                                onTypeChange={handleTypeChange}
+                            />
+
+                            <div style={{ margin: "24px -24px -20px -24px" }}>
+                                    <Footer
+                                        onBack={() => router.push("/departments/quality-control")}
+                                        onClear={handleClear}
+                                        onSave={openPreview}
+                                        saveLabel={isLoading ? "Submitting..." : "Save Record"}
+                                        disabled={isLoading || entryIdLoading}
+                                    />
+                            </div>
+                        </>
+                    ) : selectedType === "Comber Efficiency" ? (
+                        <>
+                            <ComberEfficiencyDataEntry
+                                ref={childRef}
+                                entryId={entryId}
+                                types={typeOptions}
+                                selectedType={selectedType}
+                                onTypeChange={handleTypeChange}
+                            />
+
+                            <div style={{ margin: "24px -24px -20px -24px" }}>
                                     <Footer
                                         onBack={() => router.push("/departments/quality-control")}
                                         onClear={handleClear}

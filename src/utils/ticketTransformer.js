@@ -558,6 +558,7 @@ export const transformTicket = (ticket) => {
 
     rawCreatedAt: createdDate,
     createdAt: createdDate.toLocaleString("en-US", {
+      timeZone: "Asia/Kolkata",
       month: "short",
       day: "numeric",
       hour: "numeric",

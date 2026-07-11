@@ -142,6 +142,32 @@ export const submitNatiDataEntry = async (payload) => {
     }
 };
 
+export const submitComberNreDataEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/comber/nre", payload);
+        return response.data;
+    } catch (error) {
+        if (error.response && error.response.data) {
+            throw new Error(error.response.data.message || "Invalid payload data.");
+        }
+
+        throw new Error(error.message || "Server error occurred");
+    }
+};
+
+export const submitComberEfficiencyDataEntry = async (payload) => {
+    try {
+        const response = await apiConfig.post("/comber/efficiency", payload);
+        return response.data;
+    } catch (error) {
+        if (error.response && error.response.data) {
+            throw new Error(error.response.data.message || "Invalid payload data.");
+        }
+
+        throw new Error(error.message || "Server error occurred");
+    }
+};
+
 export const submitComberUqcEntry = async (payload) => {
     try {
         const response = await apiConfig.post("/comber/uqc", payload);
