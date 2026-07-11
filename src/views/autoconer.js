@@ -322,6 +322,7 @@ function Autoconer() {
                 tablePortalTargetId="autoconer-table-slot"
                 savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}
                 postFooterPortalTargetId="autoconer-post-footer-slot"
+                preFooterPortalTargetId="autoconer-pre-footer-slot"
                 onRegisterActions={setRegisteredActions}
               />
             ) : (
@@ -332,6 +333,8 @@ function Autoconer() {
           </div>
 
           <div id="autoconer-table-slot" className={styles.tableSlot} />
+
+          <div id="autoconer-pre-footer-slot" className={styles.tableSlot} />
 
           {validationMessage ? (
             <div className={styles.validationMessage}>
