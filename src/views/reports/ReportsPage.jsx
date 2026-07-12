@@ -55,17 +55,20 @@ import {
   fetchCardingDfkPressureEntries,
   fetchCardingChangeControlEntries,
   fetchCardingUqcEntries,
+  fetchCardWasteStudyEntries,
+  fetchWrappingCardingNotebookEntries,
   getCardingProcessParameterEntries,
 } from "@/apis/carding";
 import { fetchComberUqcEntries } from "@/apis/comber";
 import {
   fetchDrawFrameCotsEntries,
-  fetchDrawFrameFinisherEntries,
-  fetchDrawFrameHeaderEntries,
   fetchDrawFrameUqcEntries,
 } from "@/apis/draw-frame";
+import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import {
   fetchMixingAfisEntries,
+  fetchMixingAfis6CottonEntries,
+  fetchMixingAfis6MmfEntries,
   fetchMixingCottonHviEntries,
   fetchMixingFibreEntries,
   fetchMixingMoistureEntries,
@@ -77,6 +80,7 @@ import {
   fetchSimplexProcessParameterEntries,
   fetchSimplexStudyReportEntries,
   fetchSimplexUqcEntries,
+  fetchSimplexWheelChangeEntries,
 } from "@/apis/simplex";
 import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import styles from "@/styles/reports.module.css";
@@ -171,6 +175,8 @@ const reportSources = {
       "Cotton HVI Data Entry": { fetcher: fetchMixingCottonHviEntries },
       "Fibre Data Entry": { fetcher: fetchMixingFibreEntries },
       "AFIS Data Entry": { fetcher: fetchMixingAfisEntries },
+      "AFIS-6 Cotton": { fetcher: fetchMixingAfis6CottonEntries },
+      "AFIS-6 MMF": { fetcher: fetchMixingAfis6MmfEntries },
       "Moisture Data Entry": { fetcher: fetchMixingMoistureEntries },
       "Openness Data Entry": { fetcher: fetchMixingOpennessEntries },
     },
@@ -191,6 +197,7 @@ const reportSources = {
       "U% Data Entry": { fetcher: fetchCardingUqcEntries },
       "Card DFK Data": { fetcher: fetchCardingDfkPressureEntries },
       WheelChange: { fetcher: fetchCardingChangeControlEntries },
+      "Individual Card Waste Study": { fetcher: fetchCardWasteStudyEntries },
     },
     "Individual Card Performance": {
       "Individual Card performance Data": { endpoint: "/carding/trials" },
@@ -199,19 +206,24 @@ const reportSources = {
       "Ribbon Lap CV1M Data Entry": { endpoint: "/comber/lap-cv" },
       "Nati Data Entry": { endpoint: "/comber/nati-data-entry" },
       "U% Data Entry": { fetcher: fetchComberUqcEntries },
+      "Comber NRE%": { endpoint: "/comber/nre" },
+      "Comber Efficiency": { endpoint: "/comber/efficiency" },
+      "Comber Nolis %": { endpoint: "/drawframe/wrapping/comber-noil-percent" },
     },
     "Draw Frame": {
       "1 Yard / Half Yard CV Entry": { endpoint: "/drawframe/yarn-cv" },
       "Draw Frame Cots Data Entry": { fetcher: fetchDrawFrameCotsEntries },
       "U% Data Entry": { fetcher: fetchDrawFrameUqcEntries },
-      "PP - Breaker Drawing": { fetcher: fetchDrawFrameHeaderEntries },
-      "PP - Finisher Drawing": { fetcher: fetchDrawFrameFinisherEntries },
+      "A%": { endpoint: "/drawframe/a-percent" },
+      "Wheel Change": { fetcher: fetchDrawFrameWheelChangeEntries },
     },
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },
       "SMXCots Change Data Entry": { fetcher: fetchSimplexCotsChangeEntries },
       "SMX Breaks Study Report": { fetcher: fetchSimplexStudyReportEntries },
       "U% Data Entry": { fetcher: fetchSimplexUqcEntries },
+      "Wheel Change": { fetcher: fetchSimplexWheelChangeEntries },
+      "Stretch %": { endpoint: "/drawframe/stretch-percent" },
     },
     Spinning: {
       "Process Parameter": { fetcher: getSpinningProcessParameterEntries },
@@ -240,8 +252,18 @@ const reportSources = {
       "CSP Parameter Entries": { fetcher: fetchAutoconerPendingCspParameterEntries },
       "U% Parameter Entries": { fetcher: fetchAutoconerPendingQualityParameterEntries },
     },
+    Wrapping: {
+      Carding: { fetcher: fetchWrappingCardingNotebookEntries },
+      Drawing: { endpoint: "/drawframe/wrapping-drawframe-notebook" },
+      Simplex: { endpoint: "/simplex/wrapping-simplex-notebook" },
+    },
   },
 };
+
+// Backend-supplied fields (builderOptions.input_fields) can include generic fields that aren't
+// specific to any screen's actual form (e.g. a catch-all "Inspection Date"). Hide these from
+// every screen's available fields list in Custom Report.
+const globallyExcludedReportFields = ["Inspection Date", "Crimp", "Date"];
 
 const reportTypeUsageCount = (() => {
   const counts = new Map();
@@ -880,6 +902,7 @@ const getRowDate = (row) =>
 
 const OPERATOR_FIELD_KEY = "operator";
 const OPERATOR_FIELD = { key: OPERATOR_FIELD_KEY, label: "Operator" };
+const ENTRY_ID_FIELD = { key: "Entry ID", label: "Entry ID" };
 
 const normalizeEntryKey = (value) => String(value ?? "").trim().toLowerCase();
 
@@ -954,6 +977,256 @@ const reportFieldAliases = {
   "Ratio into size-1.0": ["ratio_size_1", "ratioSize1"],
   "Ratio into size-0.7": ["ratio_size_07", "ratioSize07"],
   "Ratio into size-0.5": ["ratio_size_05", "ratioSize05"],
+  "Lot No.": ["lot_no"],
+  "Blend-1": ["percentage", "blend"],
+  "Merge No.": ["merge_no"],
+  "Process Parameter ID": ["entry_id", "param_id", "paramId"],
+  "Mc. Name": ["mc_name"],
+  "SCF(W)<12.70mm": ["sfc_w_percent"],
+  "SCF(n)<12.70mm": ["sfc_n_percent"],
+  "5%L(n)": ["five_pct_l_n_mm"],
+  "50%L(n)": ["fifty_pct_l_n_mm"],
+  "Long Fiber >45.60mm": ["long_fiber_gt_45_60_percent"],
+  "Long Fiber Count >45.60mm": ["long_fiber_count_gt_45_60"],
+  "Run Time (Seconds)": ["value_a"],
+  "Idle Time (Seconds)": ["value_b"],
+  "Sub Total Time": ["value_c"],
+  "Wing Settling 1": ["wing_setting_1"],
+  "Wing Settling 2": ["wing_setting_2"],
+  "1st Lickerin Speed": ["first_lickerin_speed"],
+  "2nd Lickerin Speed": ["second_lickerin_speed"],
+  "3rd Lickerin Speed": ["third_lickerin_speed"],
+  "Waste KGs %": ["waste_percent", "waste_kgs_percent"],
+  "Total Waste KGs %": ["waste_percent"],
+  "Overall Waste %": ["overall_percent"],
+  "Display Wt.": ["display_weight"],
+  "Actual Wt.": ["actual_weight"],
+  "Diff (Actual Wt. - Display Wt.)": ["difference"],
+  "Ratio (Average Wt. / Total) * 100": ["ratio_percent"],
+  "Grams / Meter": ["grams_per_meter"],
+  "Standard Deviation": ["std_deviation"],
+  "Coefficient of Variation (CV%)": ["cv_percent"],
+  "Cylinder Wire Specification - Specs": ["cylinder_specs"],
+  "Cylinder Wire Specification - Tonnage in Kgs (1)": ["cylinder_tonnage_1"],
+  "Cylinder Wire Specification - Tonnage in Kgs (2)": ["cylinder_tonnage_2"],
+  "Doffer Wire Specification - Specs": ["doffer_specs"],
+  "Doffer Wire Specification - Tonnage in Kgs (1)": ["doffer_tonnage_1"],
+  "Doffer Wire Specification - Tonnage in Kgs (2)": ["doffer_tonnage_2"],
+  "Flat Wire Specification - Specs": ["flat_specs"],
+  "Flat Wire Specification - Tonnage in Kgs (1)": ["flat_tonnage_1"],
+  "Flat Wire Specification - Tonnage in Kgs (2)": ["flat_tonnage_2"],
+  "Lickerin Wire Specification - Specs": ["lickerin_specs"],
+  "Lickerin Wire Specification - Tonnage in Kgs (1)": ["lickerin_tonnage_1"],
+  "Lickerin Wire Specification - Tonnage in Kgs (2)": ["lickerin_tonnage_2"],
+  Draft: ["draft_speed"],
+  "Card Thick Place Value": ["cv_value"],
+  "5m CV": ["cv_5m"],
+  "CV in Metres": ["cvm"],
+  "1m CV in Metres": ["cvm_1m"],
+  "3m CV in Metres": ["cvm_3m"],
+  "Feed in mm / Nep": ["feed_mm_per_nep"],
+  "50% span length in LAP": ["span_length_50_lap"],
+  "50% span length in Sliver": ["span_length_50_sliver"],
+  "Combing Efficiency": ["combining_efficiency_formula"],
+  "Process Type": ["sub_type"],
+  Machine: ["mc_name"],
+  "Sliver Monitor": ["silver_worn"],
+  "Mass Thick Place": ["main_tin"],
+  "AVG (1/2Y)": ["avg_half"],
+  "HANK (1/2Y)": ["hank_half"],
+  "SD (1/2Y)": ["sd_half"],
+  "CV% (1/2Y)": ["cv_half"],
+  "Mixing - Existing": ["rows_milling_existing", "rows_mixing_existing", "rows_lrsbMixing_existing", "rows_d40Mixing_existing", "rows_d50Mixing_existing", "rows_ldf3sMixing_existing"],
+  "Mixing - Proposed": ["rows_milling_proposed", "rows_mixing_proposed", "rows_lrsbMixing_proposed", "rows_d40Mixing_proposed", "rows_d50Mixing_proposed", "rows_ldf3sMixing_proposed"],
+  "Blend % - Existing": ["rows_blendPercent_existing", "rows_lrsbBlendPercent_existing", "rows_d40BlendPercent_existing", "rows_d50BlendPercent_existing", "rows_ldf3sBlendPercent_existing"],
+  "Blend % - Proposed": ["rows_blendPercent_proposed", "rows_lrsbBlendPercent_proposed", "rows_d40BlendPercent_proposed", "rows_d50BlendPercent_proposed", "rows_ldf3sBlendPercent_proposed"],
+  "Del-Hank - Existing": ["rows_exHank_existing", "rows_delHank_existing", "rows_lrsbDelHank_existing", "rows_d40DelHank_existing", "rows_d50DelHank_existing", "rows_ldf3sDelHank_existing"],
+  "Del-Hank - Proposed": ["rows_exHank_proposed", "rows_delHank_proposed", "rows_lrsbDelHank_proposed", "rows_d40DelHank_proposed", "rows_d50DelHank_proposed", "rows_ldf3sDelHank_proposed"],
+  "Feed Hank - Existing": ["rows_feedHank_existing", "rows_lrsbFeedHank_existing", "rows_d40FeedHank_existing", "rows_d50FeedHank_existing", "rows_ldf3sFeedHank_existing"],
+  "Feed Hank - Proposed": ["rows_feedHank_proposed", "rows_lrsbFeedHank_proposed", "rows_d40FeedHank_proposed", "rows_d50FeedHank_proposed", "rows_ldf3sFeedHank_proposed"],
+  "No. of Ends - Existing": ["rows_noOfEnds_existing", "rows_lrsbNoOfEnds_existing", "rows_d40NoOfEnds_existing", "rows_d50NoOfEnds_existing", "rows_ldf3sNoOfEnds_existing"],
+  "No. of Ends - Proposed": ["rows_noOfEnds_proposed", "rows_lrsbNoOfEnds_proposed", "rows_d40NoOfEnds_proposed", "rows_d50NoOfEnds_proposed", "rows_ldf3sNoOfEnds_proposed"],
+  "Speed - Existing": ["rows_speed_existing", "rows_lrsbSpeed_existing", "rows_d40Speed_existing", "rows_d50Speed_existing", "rows_ldf3sSpeed_existing"],
+  "Speed - Proposed": ["rows_speed_proposed", "rows_lrsbSpeed_proposed", "rows_d40Speed_proposed", "rows_d50Speed_proposed", "rows_ldf3sSpeed_proposed"],
+  "Draft Constant - Existing": ["rows_draftConstant_existing"],
+  "Draft Constant - Proposed": ["rows_draftConstant_proposed"],
+  "NW1 - Existing": ["rows_md1_existing", "rows_lrsbNw1_existing", "rows_d40Nw1_existing"],
+  "NW1 - Proposed": ["rows_md1_proposed", "rows_lrsbNw1_proposed", "rows_d40Nw1_proposed"],
+  "NW2 - Existing": ["rows_md2_existing", "rows_lrsbNw2_existing", "rows_d40Nw2_existing"],
+  "NW2 - Proposed": ["rows_md2_proposed", "rows_lrsbNw2_proposed", "rows_d40Nw2_proposed"],
+  "Total Draft - Existing": ["rows_totalDraft_existing", "rows_lrsbTotalDraft_existing", "rows_d40TotalDraft_existing", "rows_d50TotalDraft_existing", "rows_ldf3sTotalDraft_existing"],
+  "Total Draft - Proposed": ["rows_totalDraft_proposed", "rows_lrsbTotalDraft_proposed", "rows_d40TotalDraft_proposed", "rows_d50TotalDraft_proposed", "rows_ldf3sTotalDraft_proposed"],
+  "BDCP (W4 / Break Draft) - Existing": ["rows_bdcp_existing"],
+  "BDCP (W4 / Break Draft) - Proposed": ["rows_bdcp_proposed"],
+  "Creel Tension (W1VWW2) / Creel Tension Draft - Existing": ["rows_creelTension_existing"],
+  "Creel Tension (W1VWW2) / Creel Tension Draft - Proposed": ["rows_creelTension_proposed"],
+  "Feed Tension (W8/VEG) / Feed Tension Draft - Existing": ["rows_feedTension_existing"],
+  "Feed Tension (W8/VEG) / Feed Tension Draft - Proposed": ["rows_feedTension_proposed"],
+  "Web Tension (W3) / Web Tension Draft - Existing": ["rows_webTension_existing"],
+  "Web Tension (W3) / Web Tension Draft - Proposed": ["rows_webTension_proposed"],
+  "Trumpet - Existing": ["rows_trumpet_existing", "rows_lrsbTrumpet_existing", "rows_d40Trumpet_existing", "rows_d50Trumpet_existing", "rows_ldf3sTrumpet_existing"],
+  "Trumpet - Proposed": ["rows_trumpet_proposed", "rows_lrsbTrumpet_proposed", "rows_d40Trumpet_proposed", "rows_d50Trumpet_proposed", "rows_ldf3sTrumpet_proposed"],
+  "Bottom Roller Setting Front Zone - Existing": ["rows_bottomRollerFront_existing", "rows_d40BottomRollerFront_existing", "rows_d50BottomRollerFront_existing"],
+  "Bottom Roller Setting Front Zone - Proposed": ["rows_bottomRollerFront_proposed", "rows_d40BottomRollerFront_proposed", "rows_d50BottomRollerFront_proposed"],
+  "Bottom Roller Setting Back Zone - Existing": ["rows_bottomRollerBack_existing", "rows_d40BottomRollerBack_existing", "rows_d50BottomRollerBack_existing"],
+  "Bottom Roller Setting Back Zone - Proposed": ["rows_bottomRollerBack_proposed", "rows_d40BottomRollerBack_proposed", "rows_d50BottomRollerBack_proposed"],
+  "Total Draft (Formula) - Existing": ["rows_totalDraftFormula_existing"],
+  "Total Draft (Formula) - Proposed": ["rows_totalDraftFormula_proposed"],
+  "Total Draft from G1/G2 Combinations - Existing": ["rows_totalDraftGear_existing"],
+  "Total Draft from G1/G2 Combinations - Proposed": ["rows_totalDraftGear_proposed"],
+  "G1/G2 - Existing": ["rows_g1G2_existing"],
+  "G1/G2 - Proposed": ["rows_g1G2_proposed"],
+  "BDCP (C4) / Break Draft - Existing": ["rows_bdcp_existing"],
+  "BDCP (C4) / Break Draft - Proposed": ["rows_bdcp_proposed"],
+  "Web Tension (C3) / Web Tension Draft - Existing": ["rows_webTension_existing"],
+  "Web Tension (C3) / Web Tension Draft - Proposed": ["rows_webTension_proposed"],
+  "Total Draft Constant - Existing": ["rows_lrsbTotalDraftConstant_existing", "rows_d40TotalDraftConstant_existing"],
+  "Total Draft Constant - Proposed": ["rows_lrsbTotalDraftConstant_proposed", "rows_d40TotalDraftConstant_proposed"],
+  "Break Draft - Existing": ["rows_lrsbBreakDraft_existing", "rows_breakDraftValue_existing"],
+  "Break Draft - Proposed": ["rows_lrsbBreakDraft_proposed", "rows_breakDraftValue_proposed"],
+  "Back Roller Pulley Dia (W4) - Existing": ["rows_lrsbBackRollerPulley_existing"],
+  "Back Roller Pulley Dia (W4) - Proposed": ["rows_lrsbBackRollerPulley_proposed"],
+  "Middle Roller Pulley (VV) - Existing": ["rows_lrsbMiddleRollerPulley_existing"],
+  "Middle Roller Pulley (VV) - Proposed": ["rows_lrsbMiddleRollerPulley_proposed"],
+  "Creel Tension (W1) / Creel Draft - Existing": ["rows_lrsbCreelTensionDraft_existing", "rows_d40CreelTensionDraft_existing", "rows_d50CreelTensionDraft_existing", "rows_ldf3sCreelTensionDraft_existing"],
+  "Creel Tension (W1) / Creel Draft - Proposed": ["rows_lrsbCreelTensionDraft_proposed", "rows_d40CreelTensionDraft_proposed", "rows_d50CreelTensionDraft_proposed", "rows_ldf3sCreelTensionDraft_proposed"],
+  "Web Tension Wheel (W3) / Web Tension Draft - Existing": ["rows_lrsbWebTensionDraft_existing", "rows_d40WebTensionDraft_existing", "rows_d50WebTensionDraft_existing", "rows_ldf3sWebTensionDraft_existing"],
+  "Web Tension Wheel (W3) / Web Tension Draft - Proposed": ["rows_lrsbWebTensionDraft_proposed", "rows_d40WebTensionDraft_proposed", "rows_d50WebTensionDraft_proposed", "rows_ldf3sWebTensionDraft_proposed"],
+  "Bottom Roller Setting Front Zone / Gauge in MM - Existing": ["rows_lrsbBottomRollerFront_existing", "rows_ldf3sBottomRollerFront_existing"],
+  "Bottom Roller Setting Front Zone / Gauge in MM - Proposed": ["rows_lrsbBottomRollerFront_proposed", "rows_ldf3sBottomRollerFront_proposed"],
+  "Bottom Roller Setting Back Zone / Gauge in MM - Existing": ["rows_lrsbBottomRollerBack_existing", "rows_ldf3sBottomRollerBack_existing"],
+  "Bottom Roller Setting Back Zone / Gauge in MM - Proposed": ["rows_lrsbBottomRollerBack_proposed", "rows_ldf3sBottomRollerBack_proposed"],
+  "Scanning Roller in mm - Existing": ["rows_lrsbScanningRoller_existing", "rows_d40ScanningRoller_existing", "rows_d50ScanningRoller_existing", "rows_ldf3sScanningRoller_existing"],
+  "Scanning Roller in mm - Proposed": ["rows_lrsbScanningRoller_proposed", "rows_d40ScanningRoller_proposed", "rows_d50ScanningRoller_proposed", "rows_ldf3sScanningRoller_proposed"],
+  "Scanning Roller Load (kg) - Existing": ["rows_lrsbScanningRollerLower_existing"],
+  "Scanning Roller Load (kg) - Proposed": ["rows_lrsbScanningRollerLower_proposed"],
+  "Sliver Funnel - Existing": ["rows_lrsbSilverFunnel_existing"],
+  "Sliver Funnel - Proposed": ["rows_lrsbSilverFunnel_proposed"],
+  "Web Guide Tube Dia - Existing": ["rows_lrsbWebGuideTube_existing"],
+  "Web Guide Tube Dia - Proposed": ["rows_lrsbWebGuideTube_proposed"],
+  "Insert Bore Dia - Existing": ["rows_lrsbSliverWireSize_existing"],
+  "Insert Bore Dia - Proposed": ["rows_lrsbSliverWireSize_proposed"],
+  "Break Draft Wheel (W4) / Break Draft (VV) - Existing": ["rows_d40BreakDraft_existing"],
+  "Break Draft Wheel (W4) / Break Draft (VV) - Proposed": ["rows_d40BreakDraft_proposed"],
+  "Break Draft Wheel (W4) / Break Draft - Existing": ["rows_d50BreakDraft_existing"],
+  "Break Draft Wheel (W4) / Break Draft - Proposed": ["rows_d50BreakDraft_proposed"],
+  "Feed Tension Wheel (W8) / Feed Tension Draft - Existing": ["rows_d40WebTensionPulley_existing", "rows_d50FeedTensionDraft_existing", "rows_ldf3sFeedTensionDraft_existing"],
+  "Feed Tension Wheel (W8) / Feed Tension Draft - Proposed": ["rows_d40WebTensionPulley_proposed", "rows_d50FeedTensionDraft_proposed", "rows_ldf3sFeedTensionDraft_proposed"],
+  "Break Draft Wheel / Break Draft - Existing": ["rows_ldf3sBreakDraft_existing"],
+  "Break Draft Wheel / Break Draft - Proposed": ["rows_ldf3sBreakDraft_proposed"],
+  "SMX No.": ["sap_no", "machine_no"],
+  "SMX No. (Proposed)": ["proposed_sap_no"],
+  "Mixing / Process - Existing": ["rows_mixing_existing"],
+  "Mixing / Process - Proposed": ["rows_mixing_proposed"],
+  "Blend - Existing": ["rows_blendPercent_existing"],
+  "Blend - Proposed": ["rows_blendPercent_proposed"],
+  "Feed - Hank - Existing": ["rows_feedHank_existing"],
+  "Feed - Hank - Proposed": ["rows_feedHank_proposed"],
+  "Delivery - Hank - Existing": ["rows_delHank_existing"],
+  "Delivery - Hank - Proposed": ["rows_delHank_proposed"],
+  "CP - Existing": ["rows_cp_existing"],
+  "CP - Proposed": ["rows_cp_proposed"],
+  "SMXID - Existing": ["rows_smxid_existing"],
+  "SMXID - Proposed": ["rows_smxid_proposed"],
+  "Break Draft (CP) - Existing": ["rows_breakDraft_existing"],
+  "Break Draft (CP) - Proposed": ["rows_breakDraft_proposed"],
+  "Front Roller Dia - Existing": ["rows_md1_existing"],
+  "Front Roller Dia - Proposed": ["rows_md1_proposed"],
+  "TW - Existing": ["rows_md2_existing"],
+  "TW - Proposed": ["rows_md2_proposed"],
+  "TCW [G] - Existing": ["rows_tw0_existing"],
+  "TCW [G] - Proposed": ["rows_tw0_proposed"],
+  "TCW [H] - Existing": ["rows_tw1_existing"],
+  "TCW [H] - Proposed": ["rows_tw1_proposed"],
+  "TPI - Existing": ["rows_tf_existing"],
+  "TPI - Proposed": ["rows_tf_proposed"],
+  "TM - Existing": ["rows_tm_existing"],
+  "TM - Proposed": ["rows_tm_proposed"],
+  "LW - Existing": ["rows_lm_existing"],
+  "LW - Proposed": ["rows_lm_proposed"],
+  "LCW [E] - Existing": ["rows_lcw0_existing"],
+  "LCW [E] - Proposed": ["rows_lcw0_proposed"],
+  "LCW [F] - Existing": ["rows_lcw1_existing"],
+  "LCW [F] - Proposed": ["rows_lcw1_proposed"],
+  "Bottom Roller Setting - Existing": ["rows_bottomRollerSetting_existing"],
+  "Bottom Roller Setting - Proposed": ["rows_bottomRollerSetting_proposed"],
+  "Top Arm Setting - Existing": ["rows_topArmSetting_existing"],
+  "Top Arm Setting - Proposed": ["rows_topArmSetting_proposed"],
+  "Top Arm Load - Existing": ["rows_topArmLoad_existing"],
+  "Top Arm Load - Proposed": ["rows_topArmLoad_proposed"],
+  "Floating Condenser - Existing": ["rows_floatingCondensor_existing"],
+  "Floating Condenser - Proposed": ["rows_floatingCondensor_proposed"],
+  "Spacer - Existing": ["rows_spacer_existing"],
+  "Spacer - Proposed": ["rows_spacer_proposed"],
+  "Tension - Existing": ["rows_tension_existing"],
+  "Tension - Proposed": ["rows_tension_proposed"],
+  "Creel Draft Change (WE) - Existing": ["rows_creelDraftChange_existing"],
+  "Creel Draft Change (WE) - Proposed": ["rows_creelDraftChange_proposed"],
+  "Creel Draft - Existing": ["rows_creelDraft_existing"],
+  "Creel Draft - Proposed": ["rows_creelDraft_proposed"],
+  "Bobbin Colour - Existing": ["rows_bobbinColour_existing"],
+  "Bobbin Colour - Proposed": ["rows_bobbinColour_proposed"],
+  "Simplex No.": ["s_no"],
+  "Total Spindles": ["total_spdl"],
+  "Running Spindles": ["other_field_values_running_spdl"],
+  "Sider Name": ["operator_name", "s_name", "other_field_values_sider_name"],
+  Hank: ["other_field_values_hank"],
+  "Break Category": ["item_name"],
+  "Break Counts (0-200, 201-400, 401-600, 601-800, 801-1000, 1001-1200, 1201-1400, 1401-1600, 1601-1800, 1801-2000, 2001-2200, 2201-2400, 2401-2600)": ["status_value"],
+  "R/F No.": ["fm_no", "fr_no", "machine_no"],
+  "Ramp - Existing": ["ramp_existing", "range_existing"],
+  "Ramp - Proposed": ["ramp_proposed", "range_proposed"],
+  "Offset On/Off - Existing": ["offset_existing", "offset_on_off_existing"],
+  "Offset On/Off - Proposed": ["offset_proposed", "offset_on_off_proposed"],
+  "Cop or Cone Condition - Existing": ["core_condition_existing", "cop_core_condition_existing"],
+  "Cop or Cone Condition - Proposed": ["core_condition_proposed", "cop_core_condition_proposed"],
+  "Product Qty (Kgs) - Existing": ["production_existing", "product_qty_existing"],
+  "Product Qty (Kgs) - Proposed": ["production_proposed", "product_qty_proposed"],
+  "Raving Hank - Existing": ["roving_hank_existing"],
+  "Raving Hank - Proposed": ["roving_hank_proposed"],
+  "BDW - Existing": ["eow_existing", "edw_existing", "bdw_existing"],
+  "BDW - Proposed": ["eow_proposed", "edw_proposed", "bdw_proposed"],
+  "BD - Existing": ["epi_existing", "ed_existing", "bd_existing"],
+  "BD - Proposed": ["epi_proposed", "ed_proposed", "bd_proposed"],
+  "DFF - Existing": ["dfc_existing"],
+  "DFF - Proposed": ["dfc_proposed"],
+  "TPI/TM - Existing": ["tpm_existing", "tpi_tpm_existing", "tpi_tm_existing"],
+  "TPI/TM - Proposed": ["tpm_proposed", "tpi_tpm_proposed", "tpi_tm_proposed"],
+  "Winding length in meters - Existing": ["winding_length_meters_existing", "winding_length_existing"],
+  "Winding length in meters - Proposed": ["winding_length_meters_proposed", "winding_length_proposed"],
+  "Travellers No. - Existing": ["travelers_no_existing"],
+  "Travellers No. - Proposed": ["travelers_no_proposed"],
+  "Cop Weight (Grms) - Existing": ["cop_weight_existing"],
+  "Cop Weight (Grms) - Proposed": ["cop_weight_proposed"],
+  "Speed Initial (RPM) - Existing": ["speed_front_existing", "speed_spindle_existing", "speed_initial_existing"],
+  "Speed Initial (RPM) - Proposed": ["speed_front_proposed", "speed_spindle_proposed", "speed_initial_proposed"],
+  "Speed Max (RPM) - Existing": ["speed_rpm_existing", "speed_main_existing", "speed_max_existing"],
+  "Speed Max (RPM) - Proposed": ["speed_rpm_proposed", "speed_main_proposed", "speed_max_proposed"],
+  "Empties Colour - Existing": ["empires_colour_existing", "empties_colour_existing"],
+  "Empties Colour - Proposed": ["empires_colour_proposed", "empties_colour_proposed"],
+  "Production (Kgs) - Existing": ["production_existing"],
+  "Production (Kgs) - Proposed": ["production_proposed"],
+  "Speed Front (RPM) - Existing": ["speed_front_existing"],
+  "Speed Front (RPM) - Proposed": ["speed_front_proposed"],
+  "Mergen Number": ["merge_no"],
+  "Grand Total": ["total_cops"],
+  "Release Add Tension": ["t_release_add_tension"],
+  "% Fault": ["percent_fault"],
+  "Break / 1 Million Meter": ["break_per_million_meter"],
+  "Gross Wt. (Std)": ["gross_weight_std"],
+  "Gross Wt. (Act)": ["gross_weight_actual"],
+  "Fibre Weight": ["fabric_weight"],
+  CVT: ["cvd"],
+  I1: ["l1"],
+  I2: ["l2"],
+  "1Mtr CV": ["cv_1m"],
+  "3Mtr CV": ["cv_3m"],
+  "10Mtr CV": ["cv_10m"],
+  "Count CV": ["count_cv", "cv1"],
+  "Strength CV": ["strength_cv", "cv2"],
+  CV1: ["cv1", "count_cv"],
+  CV2: ["cv2", "strength_cv"],
+  "Parent Yarn Strength": ["parent_yarn"],
 };
 
 const getCanonicalReportFieldKey = (field) => {
@@ -1368,7 +1641,7 @@ function ReportsPage() {
     const inferredFields = inferFields(rows);
     const inferredKeys = new Set(inferredFields.map(getCanonicalReportFieldKey));
     const backendFields = uniqueOptions(builderOptions.input_fields).map(toReportField).filter(Boolean);
-    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(reportType)).map(toReportField).filter(Boolean);
+    const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(reportType, subDepartment)).map(toReportField).filter(Boolean);
     // getThresholdFieldsForScreen is keyed by type name only, and a few names (e.g. "Process
     // Parameter") are reused across unrelated departments with different field sets — for those,
     // only keep catalog fields that actually exist on the rows fetched for this dept/type. Names
@@ -1380,21 +1653,31 @@ function ReportsPage() {
     const catalogFields = isAmbiguousReportType(reportType) && matchedCatalogFields.length
       ? matchedCatalogFields
       : rawCatalogFields;
+    const excludedFieldKeys = new Set(
+      globallyExcludedReportFields.map((label) => getCanonicalReportFieldKey({ key: label }))
+    );
     const definedFields = [...backendFields, ...catalogFields].filter(
       (field, index, list) =>
         field?.key &&
+        !excludedFieldKeys.has(getCanonicalReportFieldKey(field)) &&
         index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
     );
     // When this notebook type has a defined field set, show only those fields — no extra
     // columns pulled in from the raw row shape (ids, internal/meta keys, etc). Only fall back
     // to inferring fields from the rows when nothing is defined for this screen at all.
     const sourceFields = definedFields.length ? definedFields : inferredFields;
+    // Every notebook type has an entry id, whether or not the catalog for that
+    // screen happens to list it — surface it everywhere unless already present.
+    const hasEntryIdField = sourceFields.some(
+      (field) => getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(ENTRY_ID_FIELD)
+    );
+    const withEntryId = hasEntryIdField ? sourceFields : [...sourceFields, ENTRY_ID_FIELD];
     // Every notebook type entry is submitted by someone — surface who, resolved against the
     // submitted-notebooks record for that entry id, regardless of dept/type.
-    const withOperator = isTeamPerformanceReport ? sourceFields : [...sourceFields, OPERATOR_FIELD];
+    const withOperator = isTeamPerformanceReport ? withEntryId : [...withEntryId, OPERATOR_FIELD];
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
     return withOperator.filter((field) => !selectedKeys.has(field.key));
-  }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields]);
+  }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields, subDepartment]);
 
   const filteredRows = useMemo(() => {
     if (isInvoiceDataReport) return rows;
