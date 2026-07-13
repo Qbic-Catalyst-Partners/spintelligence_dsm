@@ -667,6 +667,9 @@ function DrawFrame() {
   const router = useRouter();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
+  const operatorName = String(
+    user?.name || user?.full_name || user?.user_name || user?.username || ""
+  ).trim();
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
   const fullTypeOptions = filterOptionsByDepartmentAccess(
@@ -1476,6 +1479,7 @@ function DrawFrame() {
           cvm_1m: uPercentForm.oneMeterCvm,
           cvm_3m: uPercentForm.threeMeterCvm,
           remarks: uPercentForm.remarks,
+          operator: operatorName,
         })
       ).then((result) => {
         if (submitDrawFrameUqcInspection.fulfilled.match(result)) {
@@ -1579,6 +1583,7 @@ function DrawFrame() {
           sub_type: form.processType,
           entry_date: form.date,
           shift: form.shift,
+          operator: operatorName,
           machines: machineEntries.map((item) => ({
             mc_name: item.machineName,
             mc_no: item.mcNo || item.machineName,
@@ -1599,6 +1604,7 @@ function DrawFrame() {
           machine_number: form.machineNumber,
           remarks: form.remarks,
           num_readings: Number(form.readingCount),
+          operator: operatorName,
           results: {
             avg_1yd: Number(oneYardMetrics[0]?.avg) || 0,
             hank_1yd: Number(oneYardMetrics[0]?.hank) || 0,

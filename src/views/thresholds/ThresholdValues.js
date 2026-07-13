@@ -1356,8 +1356,16 @@ export default function ThresholdValues() {
 
                                                     <div className={styles.ruleBottomGrid}>
                                                         <label className={styles.field}>
-                                                            <span className={styles.fieldLabelRow}>
-                                                                Actual Value
+                                                            <span>Actual Value</span>
+                                                            <span className={styles.actualValueRow}>
+                                                                <input
+                                                                    className={styles.actualValueInput}
+                                                                    value={rule.actualValue}
+                                                                    onChange={(event) =>
+                                                                        handleRuleChange(rule.id, "actualValue", event.target.value)
+                                                                    }
+                                                                    placeholder="Enter Actual value"
+                                                                />
                                                                 <span className={styles.valueModeGroup} role="radiogroup" aria-label="Value type">
                                                                     <label className={styles.valueModeOption}>
                                                                         <input
@@ -1383,13 +1391,6 @@ export default function ThresholdValues() {
                                                                     </label>
                                                                 </span>
                                                             </span>
-                                                            <input
-                                                                value={rule.actualValue}
-                                                                onChange={(event) =>
-                                                                    handleRuleChange(rule.id, "actualValue", event.target.value)
-                                                                }
-                                                                placeholder="Enter Actual value"
-                                                            />
                                                         </label>
 
                                                         <label className={styles.field}>

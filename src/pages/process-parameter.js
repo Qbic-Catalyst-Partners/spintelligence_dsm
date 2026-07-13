@@ -21,6 +21,7 @@ import {
   resetProcessParameterLocalState,
 } from "@/utils/processParameterRegistry";
 import { loadLocalEntries } from "@/utils/localProcessParameterStore";
+import { fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_COUNT_OPTIONS,
@@ -116,9 +117,11 @@ const buildFilterParams = (filters) => ({
 
 // Each source's `getId` mirrors the entry_id extraction used by that department's own
 // ProcessParameterDataEntry view, so remote completion state lines up with what those pages show.
-// Draw Frame Breaker/Finisher and Spinning don't hit the backend yet — they save to the
-// browser's local store (see localProcessParameterStore), so their source reads from there too
-// (and filter query params are meaningless for them since there's no server round-trip).
+// Spinning doesn't hit the backend yet — it saves to the browser's local store (see
+// localProcessParameterStore), so its source reads from there too (filter query params are
+// meaningless for it since there's no server round-trip). Draw Frame Breaker/Finisher now save
+// via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries (/drawframe/header), distinguished
+// by the entry_scope field.
 const REMOTE_STATUS_SOURCES = [
   {
     index: 0,
@@ -145,14 +148,22 @@ const REMOTE_STATUS_SOURCES = [
   },
   {
     index: 3,
-    fetch: () => Promise.resolve({ data: loadLocalEntries("draw-frame-breaker") }),
+    fetch: async () => {
+      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
+      const allRows = getEntryRows(response);
+      return { data: allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === "breaker") };
+    },
     getId: (entry) => entry?.param_id ?? entry?.entry_id,
     isDone: () => true,
     getDetails: getEntryDetails,
   },
   {
     index: 4,
-    fetch: () => Promise.resolve({ data: loadLocalEntries("draw-frame-finisher") }),
+    fetch: async () => {
+      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
+      const allRows = getEntryRows(response);
+      return { data: allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === "finisher") };
+    },
     getId: (entry) => entry?.param_id ?? entry?.entry_id,
     isDone: () => true,
     getDetails: getEntryDetails,

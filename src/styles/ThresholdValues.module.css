@@ -186,10 +186,23 @@
     gap: 10px;
 }
 
+.actualValueRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.field .actualValueInput {
+    flex: 0 1 auto;
+    width: 105px;
+    min-width: 0;
+}
+
 .valueModeGroup {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .valueModeOption {

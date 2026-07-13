@@ -1454,6 +1454,7 @@ export const thresholdFieldCatalog = {
         "Process Parameter ID",
         "Count Name",
         "Consignee Name",
+        "Creation Date",
         "Make",
         "No. of Ends",
         "Bottom Roll Setting",
@@ -1469,6 +1470,7 @@ export const thresholdFieldCatalog = {
         "Process Parameter ID",
         "Count Name",
         "Consignee Name",
+        "Creation Date",
         "Make",
         "No. of Ends",
         "Bottom Roll Setting",
@@ -1499,10 +1501,16 @@ export const thresholdFieldCatalog = {
         "Shift",
         "Process",
         "Remark",
-        "Sample No",
-        "N-1",
-        "N",
-        "N+1",
+        ...Array.from({ length: 10 }, (_, i) => i + 1).flatMap((sampleNo) => [
+            `Sample ${sampleNo} - N-1`,
+            `Sample ${sampleNo} - N`,
+            `Sample ${sampleNo} - N+1`,
+        ]),
+        ...["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"].flatMap((label) => [
+            `${label} - N-1`,
+            `${label} - N`,
+            `${label} - N+1`,
+        ]),
     ],
 };
 

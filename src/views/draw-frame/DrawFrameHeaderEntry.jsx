@@ -23,7 +23,7 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { loadLocalEntries, saveLocalEntry } from "@/utils/localProcessParameterStore";
+import { submitDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
@@ -31,6 +31,7 @@ const today = new Date().toISOString().split("T")[0];
 const TYPE_CONFIG = {
   "PP - Breaker Drawing": {
     namespace: "draw-frame-breaker",
+    entryScope: "breaker",
     successMessage: "Draw frame breaker entry created successfully",
     entryLabel: "breaker",
     topRow: [
@@ -105,6 +106,7 @@ const TYPE_CONFIG = {
   },
   "PP - Finisher Drawing": {
     namespace: "draw-frame-finisher",
+    entryScope: "finisher",
     successMessage: "Draw frame finisher entry created successfully",
     entryLabel: "finisher",
     topRow: [
@@ -374,14 +376,21 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     [activeConfig]
   );
 
-  const loadEntries = (type = activeType) => {
+  const loadEntries = async (type = activeType) => {
     const config = TYPE_CONFIG[type];
-    const rows = loadLocalEntries(config.namespace);
+    let rows = [];
+    setFormMessage("");
+    try {
+      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
+      const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+      rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === config.entryScope);
+    } catch (error) {
+      setFormMessage(error.message || "Unable to load saved draw frame entries.");
+    }
     const normalizedEntries = config
       .normalizeEntries(rows)
       .sort((left, right) => getEntrySortValue(right) - getEntrySortValue(left));
     setRecentEntries(normalizedEntries);
-    setFormMessage("");
 
     const matchByEntryId = entryId
       ? normalizedEntries.find(
@@ -571,24 +580,24 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       const selectedExistingEntry = recentEntries.find(
         (entry) => String(entry.id) === String(form.versionId)
       );
-      const versionId = selectedExistingEntry ? selectedExistingEntry.id : String(Date.now());
       const paramId = selectedExistingEntry
         ? form.paramId || entryId
         : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
-      const payload = activeConfig.buildPayload(form, entryId);
-      const savedEntry = saveLocalEntry(activeConfig.namespace, {
-        ...payload,
-        id: versionId,
-        ins_id: versionId,
+      const payload = {
+        ...activeConfig.buildPayload(form, entryId),
+        id: selectedExistingEntry ? selectedExistingEntry.id : undefined,
+        entry_id: paramId,
         param_id: paramId,
-      });
+      };
+      const response = await submitDrawFrameHeaderEntry(payload);
+      const savedEntry = response?.data || response;
 
       registerProcessParameterId(savedEntry, activeType, form.countName);
       setForm((current) => ({
         ...current,
         paramId,
       }));
-      loadEntries(activeType);
+      await loadEntries(activeType);
 
       try {
         await recordSubmittedNotebook({

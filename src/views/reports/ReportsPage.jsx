@@ -63,6 +63,8 @@ import { fetchComberUqcEntries } from "@/apis/comber";
 import {
   fetchDrawFrameCotsEntries,
   fetchDrawFrameUqcEntries,
+  fetchDrawFrameBreakerProcessParameterEntries,
+  fetchDrawFrameFinisherProcessParameterEntries,
 } from "@/apis/draw-frame";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import {
@@ -215,6 +217,8 @@ const reportSources = {
       "Draw Frame Cots Data Entry": { fetcher: fetchDrawFrameCotsEntries },
       "U% Data Entry": { fetcher: fetchDrawFrameUqcEntries },
       "A%": { endpoint: "/drawframe/a-percent" },
+      "PP - Breaker Drawing": { fetcher: fetchDrawFrameBreakerProcessParameterEntries },
+      "PP - Finisher Drawing": { fetcher: fetchDrawFrameFinisherProcessParameterEntries },
       "Wheel Change": { fetcher: fetchDrawFrameWheelChangeEntries },
     },
     Simplex: {
@@ -728,14 +732,13 @@ const findValueByNormalizedKey = (row, targetKey) => {
 
   for (const source of getReportValueSources(row)) {
     const flatSource = flattenRecord(source, { includeArrays: true });
-    const matchedKey = Object.keys(flatSource).find((rowKey) => {
+    const flatKeys = Object.keys(flatSource);
+    const exactKey = flatKeys.find((rowKey) => normalizeLookupKey(rowKey) === normalizedTarget);
+    const fuzzyKey = flatKeys.find((rowKey) => {
       const normalizedRowKey = normalizeLookupKey(rowKey);
-      return (
-        normalizedRowKey === normalizedTarget ||
-        normalizedRowKey.includes(normalizedTarget) ||
-        normalizedTarget.includes(normalizedRowKey)
-      );
+      return normalizedRowKey.includes(normalizedTarget) || normalizedTarget.includes(normalizedRowKey);
     });
+    const matchedKey = exactKey || fuzzyKey;
     if (matchedKey) {
       const matchedValue = flatSource[matchedKey];
       if (matchedValue !== null && typeof matchedValue !== "undefined" && matchedValue !== "") {
@@ -784,8 +787,8 @@ const expandNestedRows = (rows) =>
     });
   });
 
-const normalizeRows = (response) => {
-  const rows = Array.isArray(response)
+const extractResponseRows = (response) =>
+  Array.isArray(response)
     ? response
     : Array.isArray(response?.data)
       ? response.data
@@ -805,8 +808,7 @@ const normalizeRows = (response) => {
                     ? response.data.records
                     : findRowsArray(response) || [];
 
-  return expandNestedRows(rows);
-};
+const normalizeRows = (response) => expandNestedRows(extractResponseRows(response));
 
 const getTotalPages = (response) => {
   const candidates = [
@@ -900,14 +902,54 @@ const getRowDate = (row) =>
   row?.created_at ||
   row?.generated_at;
 
+// Draw Frame's "A%" notebook stores 10 sample rows + 7 named summary rows in a single flat
+// array (each shaped { sampleNo, nMinus1, n, nPlus1 }), rather than as top-level fields. Custom
+// Report needs one column per (row label) x (N-1/N/N+1) combination — synthesize those from the
+// catalog's "<Label> - <Column>" field names by looking up the matching row in that array.
+const A_PERCENT_SUMMARY_LABELS = ["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"];
+const A_PERCENT_ROW_COLUMN_KEYS = { "N-1": "nMinus1", N: "n", "N+1": "nPlus1" };
+
+const parseAPercentFieldLabel = (label) => {
+  const match = String(label || "").match(/^(.*)\s-\s(N-1|N\+1|N)$/);
+  if (!match) return null;
+  const rowLabel = match[1].trim();
+  const columnKey = A_PERCENT_ROW_COLUMN_KEYS[match[2]];
+  const sampleMatch = rowLabel.match(/^Sample\s+(\d+)$/i);
+  const sampleNo = sampleMatch ? sampleMatch[1] : A_PERCENT_SUMMARY_LABELS.includes(rowLabel) ? rowLabel : null;
+  return sampleNo ? { sampleNo, columnKey } : null;
+};
+
+const getAPercentRowsArray = (row) => {
+  const candidates = [row?.rows, row?.manual_json, row?.ocr_json];
+  return candidates.find((list) => Array.isArray(list) && list.length) || [];
+};
+
+const getAPercentTableValue = (row, fieldLabel) => {
+  const parsed = parseAPercentFieldLabel(fieldLabel);
+  if (!parsed) return undefined;
+  const match = getAPercentRowsArray(row).find(
+    (item) => normalizeLookupKey(item?.sampleNo) === normalizeLookupKey(parsed.sampleNo)
+  );
+  return match ? match[parsed.columnKey] : undefined;
+};
+
 const OPERATOR_FIELD_KEY = "operator";
 const OPERATOR_FIELD = { key: OPERATOR_FIELD_KEY, label: "Operator" };
 const ENTRY_ID_FIELD = { key: "Entry ID", label: "Entry ID" };
 
 const normalizeEntryKey = (value) => String(value ?? "").trim().toLowerCase();
 
-const getRowEntryKey = (row) =>
-  normalizeEntryKey(row?.entry_id ?? row?.entryId ?? row?.lot_no ?? row?.lotNo ?? row?.id ?? "");
+const getRowEntryKey = (row) => {
+  const direct = row?.entry_id ?? row?.entryId ?? row?.lot_no ?? row?.lotNo ?? row?.id;
+  if (direct !== null && typeof direct !== "undefined" && direct !== "") return normalizeEntryKey(direct);
+  // Some notebook types (e.g. Drawing's raw OCR-table endpoint) return the entry id under a
+  // differently-cased key (e.g. "ID" instead of "id") — fall back to a case-insensitive scan.
+  const rowKeys = Object.keys(row || {});
+  const fallbackKey = rowKeys.find((key) =>
+    ["entry_id", "entryid", "lot_no", "lotno", "id"].includes(key.toLowerCase().replace(/[^a-z0-9]/g, ""))
+  );
+  return normalizeEntryKey(fallbackKey ? row[fallbackKey] : "");
+};
 
 const extractSubmittedNotebookRows = (data) => {
   if (Array.isArray(data)) return data;
@@ -964,6 +1006,10 @@ const toReportField = (fieldName) => {
 };
 
 const reportFieldAliases = {
+  "1mCV": ["cvm_1m", "im_cvm", "1m_cvm", "one_m_cvm"],
+  "3mCV": ["cvm_3m", "m3_cvm", "3m_cvm", "three_m_cvm"],
+  "A% (N-1)": ["a_percent_n_minus_1"],
+  "A% (N+1)": ["a_percent_n_plus_1"],
   "Span Length (2.5%)": ["span_length", "spanLength"],
   "Invisible Loss %": ["invisible_loss_percentage", "invisible_loss_percent", "invisibleLossPercent"],
   "Trash Content %": ["trash_content_percentage", "trash_content_percent", "trashContentPercent"],
@@ -981,6 +1027,8 @@ const reportFieldAliases = {
   "Blend-1": ["percentage", "blend"],
   "Merge No.": ["merge_no"],
   "Process Parameter ID": ["entry_id", "param_id", "paramId"],
+  "Break Draft": ["breaker_draft", "break_draft"],
+  "Scanning Roll Size": ["scanning_rolls_size", "scanning_roll_size"],
   "Mc. Name": ["mc_name"],
   "SCF(W)<12.70mm": ["sfc_w_percent"],
   "SCF(n)<12.70mm": ["sfc_n_percent"],
@@ -1248,14 +1296,25 @@ const getReportFieldValue = (row, field) => {
   for (const key of keys) {
     if (row?.[key] !== null && typeof row?.[key] !== "undefined" && row?.[key] !== "") return row[key];
     const target = normalizeLookupKey(key);
-    const matchedKey = Object.keys(row || {}).find((rowKey) => {
+    const rowKeys = Object.keys(row || {});
+    // Prefer an exact (case/format-insensitive) key match before falling back to substring
+    // matches — otherwise a field like "Date" can incorrectly pick up "Report Date"'s value
+    // just because "reportdate" contains "date". Among fuzzy matches, prefer keys coming from
+    // the user-edited "rows"/"manual_json" source over the raw "ocr_json" source, since the
+    // former reflects what was actually entered/saved in the form.
+    const exactKey = rowKeys.find((rowKey) => normalizeLookupKey(rowKey) === target);
+    const preferredFuzzyKey = rowKeys.find((rowKey) => {
       const normalizedRowKey = normalizeLookupKey(rowKey);
       return (
-        normalizedRowKey === target ||
-        normalizedRowKey.includes(target) ||
-        target.includes(normalizedRowKey)
+        (normalizedRowKey.includes(target) || target.includes(normalizedRowKey)) &&
+        /^(rows|manual_json)/i.test(rowKey)
       );
     });
+    const fallbackFuzzyKey = rowKeys.find((rowKey) => {
+      const normalizedRowKey = normalizeLookupKey(rowKey);
+      return normalizedRowKey.includes(target) || target.includes(normalizedRowKey);
+    });
+    const matchedKey = exactKey || preferredFuzzyKey || fallbackFuzzyKey;
     if (matchedKey && row[matchedKey] !== null && typeof row[matchedKey] !== "undefined" && row[matchedKey] !== "") {
       return row[matchedKey];
     }
@@ -1293,6 +1352,18 @@ const getCellValue = (row, field, operatorByEntryKey = {}) => {
     field.key === "entry_date"
   ) {
     return formatDate(getReportFieldValue(row, field) || getRowDate(row));
+  }
+
+  // A field like "Sample 3 - N" or "Weight (Max) - N-1" only exists inside the A% notebook's
+  // nested rows array, not as a real key on the row — if it doesn't resolve there, show "-"
+  // instead of falling through to the generic fallback below, which would otherwise return
+  // some unrelated value scraped from elsewhere in the row (the exact "all fields show the
+  // same value" bug this guarded against).
+  if (parseAPercentFieldLabel(field.label || field.key)) {
+    const aPercentValue = getAPercentTableValue(row, field.label || field.key);
+    return aPercentValue !== null && typeof aPercentValue !== "undefined" && aPercentValue !== ""
+      ? String(aPercentValue)
+      : "-";
   }
 
   const value = getReportFieldValue(row, field);
@@ -1653,8 +1724,15 @@ function ReportsPage() {
     const catalogFields = isAmbiguousReportType(reportType) && matchedCatalogFields.length
       ? matchedCatalogFields
       : rawCatalogFields;
+    // "Date" is only excluded for the Wrapping OCR notebook types (Carding/Drawing/Simplex),
+    // where it duplicates the separate "Report Date" column — other screens (e.g. Draw Frame's
+    // U% Data Entry) genuinely use "Date" as one of their own form fields and should show it.
+    const screenExcludedReportFields =
+      subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)
+        ? globallyExcludedReportFields
+        : globallyExcludedReportFields.filter((label) => label !== "Date");
     const excludedFieldKeys = new Set(
-      globallyExcludedReportFields.map((label) => getCanonicalReportFieldKey({ key: label }))
+      screenExcludedReportFields.map((label) => getCanonicalReportFieldKey({ key: label }))
     );
     const definedFields = [...backendFields, ...catalogFields].filter(
       (field, index, list) =>
@@ -1923,16 +2001,22 @@ function ReportsPage() {
           input_screen: canonicalReport.reportType,
         };
         const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
+        // Draw Frame's "A%" notebook stores one entry's sample/summary breakdown as nested
+        // rows/manual_json/ocr_json arrays — those describe a single record, not multiple
+        // physical entries, so skip the generic nested-array row expansion for this screen
+        // (unlike Wrapping's OCR notebooks, where each nested row is its own real entry).
+        const isAPercentReport = subDepartment === "Draw Frame" && reportType === "A%";
+        const extractRows = isAPercentReport ? extractResponseRows : normalizeRows;
 
         let nextRows = [];
         if (reportFetcher) {
           try {
-            nextRows = await fetchAllReportRows(reportFetcher, baseReportParams);
+            nextRows = await fetchAllReportRows(reportFetcher, baseReportParams, extractRows);
           } catch (directError) {
-            nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams);
+            nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
           }
         } else {
-          nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams);
+          nextRows = await fetchAllReportRows(generalReportFetcher, baseReportParams, extractRows);
         }
 
         if (isActive && requestIdRef.current === requestId) {
