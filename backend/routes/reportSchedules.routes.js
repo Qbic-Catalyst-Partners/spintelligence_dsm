@@ -963,11 +963,53 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'created_at'
       ],
       dateColumn: 'entry_date'
+    },
+    // Individual Card Waste Study form (POST /carding/card-waste-study) — header + two
+    // per-row child tables (type_rows, waste_rows) matched up by row_no within the same study.
+    // Both child tables have their own "waste_type" column, so the header's is aliased
+    // to avoid a name collision in the report output.
+    individualcardwastestudy: {
+      fromClause: `carding.card_waste_study w
+        LEFT JOIN carding.card_waste_study_type_rows t ON t.study_id = w.id
+        LEFT JOIN carding.card_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
+      selectColumns: [
+        'w.entry_id',
+        'w.waste_study_id',
+        'w.date',
+        'w.variety',
+        'w.study_type',
+        'w.carding_production_kg',
+        'w.type_entries',
+        'w.waste_type AS study_waste_type',
+        'w.waste_kg',
+        'w.waste_percent',
+        'w.overall_percent',
+        'w.remarks',
+        't.row_no',
+        't.cylinder_speed',
+        't.lickerin_speed',
+        't.lickerin_speed_1',
+        't.lickerin_speed_2',
+        't.lickerin_speed_3',
+        't.flat_speed',
+        't.doffer_speed',
+        't.delivery_speed',
+        't.wing_setting_1',
+        't.wing_setting_2',
+        't.mc_no',
+        't.mc_production',
+        'wr.waste_type AS row_waste_type',
+        'wr.waste_kgs_value',
+        'wr.waste_kgs_percent'
+      ],
+      dateColumn: 'w.date'
     }
   }
 };
 
 GENERAL_REPORT_CUSTOM_SOURCES.carding.upercentdataentry = GENERAL_REPORT_CUSTOM_SOURCES.carding.udataentry;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardwastestudy = GENERAL_REPORT_CUSTOM_SOURCES.carding.individualcardwastestudy;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardwastestudyentry = GENERAL_REPORT_CUSTOM_SOURCES.carding.individualcardwastestudy;
 GENERAL_REPORT_CUSTOM_SOURCES.carding.cardingnre = GENERAL_REPORT_CUSTOM_SOURCES.carding.nre;
 GENERAL_REPORT_CUSTOM_SOURCES.carding.cardingnrepercent = GENERAL_REPORT_CUSTOM_SOURCES.carding.nre;
 

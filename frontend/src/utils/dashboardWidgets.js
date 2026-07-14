@@ -4,7 +4,6 @@ import {
   fetchCardingUqcEntries,
   fetchCardingDfkPressureEntries,
   fetchCardingChangeControlEntries,
-  fetchCardWasteStudyEntries,
 } from "@/apis/carding";
 
 export const FIELD_WIDGET_TYPE = "field_metric";
@@ -75,7 +74,9 @@ const screenEndpoints = {
       "Nati Data Entry": "/carding/nati-data-entry",
       "U% Data Entry": "/carding/uqc",
       "Card DFK Data": "/carding/dfk-pressure",
-      "Individual Card Waste Study": "/carding/card-waste-study",
+      "Card Waste Study T-1": "/carding/card-waste-study",
+      "Card Waste Study T-2": "/carding/card-waste-study",
+      "Card Waste Study T-3": "/carding/card-waste-study",
       "Wheel Change": "/carding/change-control",
     },
     "Individual Card Performance": {
@@ -85,13 +86,23 @@ const screenEndpoints = {
       "Ribbon Lap CV1M Data Entry": "/comber/lap-cv",
       "Nati Data Entry": "/comber/nati-data-entry",
       "U% Data Entry": "/comber/uqc",
+      "Comber Nolis %": "/drawframe/comber-noil-percent",
+      "Comber NRE%": "/comber/nre",
+      "Comber Efficiency": "/comber/efficiency",
     },
     "Draw Frame": {
       "1 Yard / Half Yard CV Entry": "/drawframe/yarn-cv",
       "Draw Frame Cots Data Entry": "/drawframe/cots",
       "U% Data Entry": "/drawframe/uqc",
-      "PP - Breaker Drawing": "/draw-frame?type=PP%20-%20Breaker%20Drawing",
-      "PP - Finisher Drawing": "/draw-frame?type=PP%20-%20Finisher%20Drawing",
+      "PP - Breaker Drawing": "/drawframe/header",
+      "PP - Finisher Drawing": "/drawframe/finisher",
+      "Wheel Change Type-1 (SB20)": "/drawframe/wheel-change/type1",
+      "Wheel Change Type-2 (TD7)": "/drawframe/wheel-change/type2",
+      "Wheel Change Type-3 (TD9)": "/drawframe/wheel-change/type3",
+      "Wheel Change Type-1 (LRSB)": "/drawframe/wheel-change/finisher-type1-lrsb",
+      "Wheel Change Type-2 (D40)": "/drawframe/wheel-change/type2-d40",
+      "Wheel Change Type-3 (D50/D55)": "/drawframe/wheel-change/type3-d50-d55",
+      "Wheel Change Type-4 (LDF3S)": "/drawframe/wheel-change/type4-ldf3s",
     },
     Simplex: {
       "Process Parameter": "/simplex/process-parameters",
@@ -136,7 +147,6 @@ const screenFetchers = {
       "U% Data Entry": fetchCardingUqcEntries,
       "Card DFK Data": fetchCardingDfkPressureEntries,
       "Wheel Change": fetchCardingChangeControlEntries,
-      "Individual Card Waste Study": fetchCardWasteStudyEntries,
     },
   },
 };
@@ -161,7 +171,11 @@ const flattenRecord = (record, prefix = "") => {
 
   return Object.entries(record).reduce((flat, [key, value]) => {
     const flatKey = prefix ? `${prefix}_${key}` : key;
-    if (Array.isArray(value)) return flat;
+    if (Array.isArray(value)) {
+      if (value.some(isRecordObject)) return flat;
+      flat[flatKey] = value;
+      return flat;
+    }
     if (isRecordObject(value)) return { ...flat, ...flattenRecord(value, flatKey) };
     flat[flatKey] = value;
     return flat;
@@ -311,6 +325,9 @@ const BR_WASTE_STUDY_TYPE_BY_SCREEN = {
   "BR Waste Study T-1": "Type 1",
   "BR Waste Study T-2": "Type 2",
   "BR Waste Study T-3": "Type 3",
+  "Card Waste Study T-1": "Type 1",
+  "Card Waste Study T-2": "Type 2",
+  "Card Waste Study T-3": "Type 3",
 };
 
 export const fetchRowsForDashboardWidget = async (widget) => {

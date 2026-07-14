@@ -64,6 +64,30 @@ const withDropTestTuftCounts = (rows) => {
   );
 };
 
+const buildRowGroups = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const groups = [];
+  const indexByKey = new Map();
+
+  list.forEach((row) => {
+    const key = row?.header_id ?? row?.entry_id ?? row?.id;
+    if (key === undefined || key === null) {
+      groups.push([row]);
+      return;
+    }
+    if (indexByKey.has(key)) {
+      groups[indexByKey.get(key)].push(row);
+      return;
+    }
+    indexByKey.set(key, groups.length);
+    groups.push([row]);
+  });
+
+  return groups;
+};
+
+const isMergedReportField = () => false;
+
 const THICK_PLACE_CV_SCREEN_NAME = "Thick place & CV";
 
 const pivotThickPlaceCvRows = (rows) => {
@@ -111,6 +135,177 @@ const fieldsFromPivotedRows = (rows) => {
     { key: `${machine}::cv_value`, label: `${machine} - Card Thick Place Value` },
     { key: `${machine}::cv_5m_value`, label: `${machine} - 5m CV` },
   ]);
+};
+
+const SAMPLE_PIVOT_SCREEN_NAMES = new Set([
+  "Ribbon Lap CV1M Data Entry",
+  "B/R CV1M Data Entry Within Lap",
+  "B/R Between Lap CV%",
+]);
+
+const getSamplesArray = (row) => {
+  const raw = row?.samples;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const getSampleScalarValue = (sample) => {
+  if (sample && typeof sample === "object") return sample.value ?? sample.sample_value ?? null;
+  return sample;
+};
+
+const pivotSampleRows = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const groups = buildRowGroups(list);
+  let maxSampleCount = 0;
+
+  const pivotedRows = groups.map((group) => {
+    const [firstRow] = group;
+    if (!firstRow || typeof firstRow !== "object") return firstRow;
+
+    const ownSamples = getSamplesArray(firstRow);
+    const samples = ownSamples.length
+      ? ownSamples
+      : group
+          .filter((row) => row?.sample_no !== undefined && row?.sample_no !== null)
+          .sort((a, b) => Number(a.sample_no) - Number(b.sample_no));
+    if (samples.length > maxSampleCount) maxSampleCount = samples.length;
+
+    const pivoted = { ...firstRow };
+    samples.forEach((sample, index) => {
+      pivoted[`sample::${index + 1}`] = getSampleScalarValue(sample);
+    });
+    return pivoted;
+  });
+
+  const pivotedFields = Array.from({ length: maxSampleCount }, (_, index) => ({
+    key: `sample::${index + 1}`,
+    label: `Sample ${index + 1}`,
+  }));
+
+  return { pivotedRows, pivotedFields };
+};
+
+const fieldsFromSamplePivotedRows = (rows) => {
+  let maxPosition = 0;
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      const match = /^sample::(\d+)$/.exec(key);
+      if (match) maxPosition = Math.max(maxPosition, Number(match[1]));
+    });
+  });
+  return Array.from({ length: maxPosition }, (_, index) => ({
+    key: `sample::${index + 1}`,
+    label: `Sample ${index + 1}`,
+  }));
+};
+
+const COMBER_NOLIS_SCREEN_NAME = "Comber Nolis %";
+const NOILS_PERCENT_KEYS = ["Noils %", "noils_percent", "Nolis %"];
+
+const getNoilsPercentValue = (row) => {
+  if (!row || typeof row !== "object") return undefined;
+  const matchedKey = Object.keys(row).find((key) => NOILS_PERCENT_KEYS.includes(key));
+  return matchedKey ? row[matchedKey] : undefined;
+};
+
+const pivotComberNolisRows = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const groups = buildRowGroups(list);
+  let maxSampleCount = 0;
+
+  const pivotedRows = groups.map((group) => {
+    const [firstRow] = group;
+    if (!firstRow || typeof firstRow !== "object") return firstRow;
+
+    const sampleGroup = group.filter((row) => getNoilsPercentValue(row) !== undefined);
+    if (sampleGroup.length > maxSampleCount) maxSampleCount = sampleGroup.length;
+
+    const pivoted = { ...firstRow };
+    sampleGroup.forEach((row, index) => {
+      pivoted[`noils_percent::${index + 1}`] = getNoilsPercentValue(row);
+    });
+    return pivoted;
+  });
+
+  const pivotedFields = Array.from({ length: maxSampleCount }, (_, index) => ({
+    key: `noils_percent::${index + 1}`,
+    label: `Noils % ${index + 1}`,
+  }));
+
+  return { pivotedRows, pivotedFields };
+};
+
+const fieldsFromComberNolisPivotedRows = (rows) => {
+  let maxPosition = 0;
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      const match = /^noils_percent::(\d+)$/.exec(key);
+      if (match) maxPosition = Math.max(maxPosition, Number(match[1]));
+    });
+  });
+  return Array.from({ length: maxPosition }, (_, index) => ({
+    key: `noils_percent::${index + 1}`,
+    label: `Noils % ${index + 1}`,
+  }));
+};
+
+const NATI_DATA_ENTRY_SCREEN_NAME = "Nati Data Entry";
+const NATI_ENTRY_FIELD_LABELS = [
+  { key: "mc_no", label: "MC No" },
+  { key: "ratio_size_1", label: "Ratio into size-1.0" },
+  { key: "ratio_size_07", label: "Ratio into size-0.7" },
+  { key: "ratio_size_05", label: "Ratio into size-0.5" },
+];
+
+const pivotNatiDataEntryRows = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const groups = buildRowGroups(list);
+  let maxEntryCount = 0;
+
+  const pivotedRows = groups.map((group) => {
+    const [firstRow] = group;
+    if (!firstRow || typeof firstRow !== "object") return firstRow;
+
+    const entries = Array.isArray(firstRow.entries) ? firstRow.entries : group;
+    if (entries.length > maxEntryCount) maxEntryCount = entries.length;
+
+    const pivoted = { ...firstRow, number_of_entries: firstRow.number_of_entries ?? entries.length };
+    entries.forEach((entry, index) => {
+      const position = index + 1;
+      NATI_ENTRY_FIELD_LABELS.forEach(({ key }) => {
+        pivoted[`${key}::${position}`] = entry?.[key];
+      });
+    });
+    return pivoted;
+  });
+
+  const pivotedFields = Array.from({ length: maxEntryCount }, (_, index) => index + 1).flatMap((position) =>
+    NATI_ENTRY_FIELD_LABELS.map(({ key, label }) => ({ key: `${key}::${position}`, label: `${label} -${position}` }))
+  );
+
+  return { pivotedRows, pivotedFields };
+};
+
+const fieldsFromNatiPivotedRows = (rows) => {
+  let maxPosition = 0;
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      const match = /^mc_no::(\d+)$/.exec(key);
+      if (match) maxPosition = Math.max(maxPosition, Number(match[1]));
+    });
+  });
+  return Array.from({ length: maxPosition }, (_, index) => index + 1).flatMap((position) =>
+    NATI_ENTRY_FIELD_LABELS.map(({ key, label }) => ({ key: `${key}::${position}`, label: `${label} -${position}` }))
+  );
 };
 
 const BETWEEN_WITHIN_CARD_SCREEN_NAME = "Between & Within Card Data Entry";
@@ -210,6 +405,47 @@ const REPORT_FIELD_ALIASES = {
   "Carding NRE%": ["carding_nre_percent", "cardingNrePercent"],
   "1mCV": ["cvm_1m", "im_cvm"],
   "3mCV": ["cvm_3m", "m3_cvm"],
+  "CV in Metres": ["cvm"],
+  "1m CV in Metres": ["cvm_1m"],
+  "3m CV in Metres": ["cvm_3m"],
+  "Feed in mm / Nep": ["feed_mm_per_nep"],
+  "Comber NRE%": ["comber_nre_percent"],
+  "50% span length in LAP": ["span_length_50_lap"],
+  "50% span length in Sliver": ["span_length_50_sliver"],
+  "Combing Efficiency": ["combining_efficiency_formula"],
+  "Actual Specific Volume (Target)": ["actual_specific_volume_target"],
+  "No. of Entries (N)": ["no_of_entries"],
+  "B/R Line No": ["br_line_no"],
+  "Machine Name": ["machine_name"],
+  "Beater Type": ["beater_type"],
+  "Beater Speed (RPM)": ["beater_speed_rpm"],
+  "Weight (M)": ["weight"],
+  "Volume 1": ["volume_1"],
+  "Volume 2": ["volume_2"],
+  "Average Volume (V)": ["average_volume"],
+  "Apparent Specific Vol (A=V/M)": ["apparent_specific_volume"],
+  "Actual Op. Value (AOV)": ["actual_op_value"],
+  "Avg. Weight (M)": ["overall_avg_weight"],
+  "Avg. Volume (V)": ["overall_avg_volume"],
+  "Average of Apparent Specific Vol (A=V/M)": ["overall_avg_apparent_specific_volume"],
+  "Average of Actual Op. Value (AOV)": ["overall_avg_actual_op_value"],
+  "Openness %": ["apparent_specific_volume"],
+  "Overall Openness Efficiency (%)": ["overall_avg_actual_op_value"],
+  "Number of Readings (N)": ["num_readings"],
+  "AVG (1Y)": ["avg_1yd"],
+  "HANK (1Y)": ["hank_1yd"],
+  "SD (1Y)": ["sd_1yd"],
+  "CV% (1Y)": ["cv_1yd"],
+  "AVG (1/2Y)": ["avg_half"],
+  "HANK (1/2Y)": ["hank_half"],
+  "SD (1/2Y)": ["sd_half"],
+  "CV% (1/2Y)": ["cv_half"],
+  "Process Type": ["sub_type"],
+  "Stripper Waste": ["stripper_w"],
+  "Auto Leveller": ["auto_level"],
+  "Sliver Monitor": ["silver_worn"],
+  "Mass Thick Place": ["main_tin"],
+  "Scanning Roller Area": ["scanning"],
   "Department": ["department"],
   "Approval Status": ["approval_status"],
   "Operator": ["operator"],
@@ -321,7 +557,7 @@ const REPORT_FIELD_ALIASES = {
   "Fineness CV": ["fineness_cv_percent", "finenessCvPercent"],
   "Long Fiber >45.60mm": ["long_fiber_gt_46_80_percent", "longFiberGt4680Percent", "long_fiber_gt_45_60_percent", "longFiberGt4560Percent"],
   "Long Fiber Count >45.60mm": ["long_fiber_count_gt_46_80", "longFiberCountGt4680", "long_fiber_count_gt_45_60", "longFiberCountGt4560"],
-  "Machine": ["machine_name", "machineName", "machine"],
+  "Machine": ["machine_name", "machineName", "machine", "mc_name"],
   "Lap Weight (KGs)": ["lap_weight", "lapWeight"],
   "Lap Length (Mts)": ["lap_length", "lapLength"],
   "Grams / Meter": ["grams_per_meter", "gramsPerMeter"],
@@ -394,8 +630,16 @@ const getSampleFieldValue = (row, field) => {
         })()
       : null;
   if (samples) {
-    const value = samples[sampleIndex];
-    if (value !== null && typeof value !== "undefined" && value !== "") return value;
+    const objectSample = samples.find(
+      (item) => item && typeof item === "object" && Number(item.sample_no) === sampleNo
+    );
+    if (objectSample) {
+      const objectValue = objectSample.value ?? objectSample.sample_value;
+      if (objectValue !== null && typeof objectValue !== "undefined" && objectValue !== "") return objectValue;
+    } else {
+      const value = samples[sampleIndex];
+      if (value !== null && typeof value !== "undefined" && value !== "") return value;
+    }
   }
 
   const directKeys = [
@@ -475,7 +719,7 @@ const SYNC_ENTRY_FIELD_KEYS = {
 const getSyncEntryFieldValue = (row, field) => {
   const canonical = normalizeLookup(field?.label || field?.key || "");
 
-  if (canonical === "numberofrowsn") {
+  if (canonical === "numberofrowsn" || canonical === "numberofnepsentries") {
     if (row?.number_of_entries !== null && typeof row?.number_of_entries !== "undefined" && row?.number_of_entries !== "") {
       return row.number_of_entries;
     }
@@ -498,6 +742,10 @@ const getSyncEntryFieldValue = (row, field) => {
 };
 
 const getReportFieldValue = (row, field) => {
+  if (field?.key && /::\d+$/.test(field.key) && row?.[field.key] !== undefined) {
+    return row[field.key];
+  }
+
   const blendValue = getBlendFieldValue(row, field);
   if (typeof blendValue !== "undefined") return blendValue;
 
@@ -568,6 +816,7 @@ const getCellValue = (row, field) => {
   if (value === null || typeof value === "undefined" || value === "") return "-";
   if (isCreatedAtField) return formatIstDateTime(value);
   if (isInvoiceDateField) return formatIstDateOnly(value);
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "-";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 };
@@ -576,10 +825,39 @@ const getFieldsForType = (typeName, typeRows, context, pivotedFields) => {
   if (typeName === THICK_PLACE_CV_SCREEN_NAME) {
     return uniqueReportFields([ENTRY_ID_FIELD, ...(pivotedFields || []), CREATED_AT_FIELD]);
   }
+  if (typeName === NATI_DATA_ENTRY_SCREEN_NAME) {
+    const numberOfEntriesField = toField("Number of Neps Entries");
+    return uniqueReportFields([ENTRY_ID_FIELD, numberOfEntriesField, ...(pivotedFields || []), CREATED_AT_FIELD]);
+  }
   if (typeName === BETWEEN_WITHIN_CARD_SCREEN_NAME) {
     return uniqueReportFields([ENTRY_ID_FIELD, ...getFieldsForBetweenWithinCard(), CREATED_AT_FIELD]);
   }
   const catalogFields = getThresholdFieldsForScreen(typeName, context).map(toField).filter(Boolean);
+  if (typeName === COMBER_NOLIS_SCREEN_NAME) {
+    const droppedLabels = new Set(["Noils %", "Sample No", "Sliver Wt", "Noils Wt"]);
+    const nonSampleFields = catalogFields.filter((field) => !droppedLabels.has(field.label));
+    const firstSampleIndex = catalogFields.findIndex((field) => droppedLabels.has(field.label));
+    const insertAt = firstSampleIndex === -1
+      ? nonSampleFields.length
+      : catalogFields.slice(0, firstSampleIndex).filter((field) => !droppedLabels.has(field.label)).length;
+    const merged = [
+      ...nonSampleFields.slice(0, insertAt),
+      ...(pivotedFields || []),
+      ...nonSampleFields.slice(insertAt),
+    ];
+    return uniqueReportFields([ENTRY_ID_FIELD, ...merged, CREATED_AT_FIELD]);
+  }
+  if (SAMPLE_PIVOT_SCREEN_NAMES.has(typeName)) {
+    const nonSampleFields = catalogFields.filter((field) => !/^Sample \d+$/.test(field.label));
+    const firstSampleIndex = catalogFields.findIndex((field) => /^Sample \d+$/.test(field.label));
+    const insertAt = firstSampleIndex === -1 ? nonSampleFields.length : firstSampleIndex;
+    const merged = [
+      ...nonSampleFields.slice(0, insertAt),
+      ...(pivotedFields || []),
+      ...nonSampleFields.slice(insertAt),
+    ];
+    return uniqueReportFields([ENTRY_ID_FIELD, ...merged, CREATED_AT_FIELD]);
+  }
   const fields = uniqueReportFields(catalogFields.length ? catalogFields : inferFields(typeRows));
   return uniqueReportFields([ENTRY_ID_FIELD, ...fields, CREATED_AT_FIELD]);
 };
@@ -682,6 +960,9 @@ export default function GeneralReport() {
   const isInvoiceDataType = String(selectedNotebook || "").trim().toLowerCase().includes("invoice");
   const applyScreenTransform = (typeName, typeRows) => {
     if (typeName === THICK_PLACE_CV_SCREEN_NAME) return pivotThickPlaceCvRows(typeRows);
+    if (typeName === NATI_DATA_ENTRY_SCREEN_NAME) return pivotNatiDataEntryRows(typeRows);
+    if (typeName === COMBER_NOLIS_SCREEN_NAME) return pivotComberNolisRows(typeRows);
+    if (SAMPLE_PIVOT_SCREEN_NAMES.has(typeName)) return pivotSampleRows(typeRows);
     return { pivotedRows: typeRows, pivotedFields: null };
   };
 
@@ -693,6 +974,21 @@ export default function GeneralReport() {
     if (selectedNotebook !== THICK_PLACE_CV_SCREEN_NAME) return null;
     const baseRows = withDropTestTuftCounts(isInvoiceDataType ? rows : filterRowsByDateRange(rows, fromDate, toDate));
     return pivotThickPlaceCvRows(baseRows).pivotedFields;
+  }, [fromDate, isInvoiceDataType, rows, selectedNotebook, toDate]);
+  const natiDataEntryFields = useMemo(() => {
+    if (selectedNotebook !== NATI_DATA_ENTRY_SCREEN_NAME) return null;
+    const baseRows = withDropTestTuftCounts(isInvoiceDataType ? rows : filterRowsByDateRange(rows, fromDate, toDate));
+    return pivotNatiDataEntryRows(baseRows).pivotedFields;
+  }, [fromDate, isInvoiceDataType, rows, selectedNotebook, toDate]);
+  const sampleFields = useMemo(() => {
+    if (!SAMPLE_PIVOT_SCREEN_NAMES.has(selectedNotebook)) return null;
+    const baseRows = withDropTestTuftCounts(isInvoiceDataType ? rows : filterRowsByDateRange(rows, fromDate, toDate));
+    return pivotSampleRows(baseRows).pivotedFields;
+  }, [fromDate, isInvoiceDataType, rows, selectedNotebook, toDate]);
+  const comberNolisFields = useMemo(() => {
+    if (selectedNotebook !== COMBER_NOLIS_SCREEN_NAME) return null;
+    const baseRows = withDropTestTuftCounts(isInvoiceDataType ? rows : filterRowsByDateRange(rows, fromDate, toDate));
+    return pivotComberNolisRows(baseRows).pivotedFields;
   }, [fromDate, isInvoiceDataType, rows, selectedNotebook, toDate]);
   const filteredRowsByType = useMemo(
     () =>
@@ -706,8 +1002,15 @@ export default function GeneralReport() {
   );
   const reportFields = useMemo(() => {
     if (isAllTypeSelected) return [];
-    return getFieldsForType(selectedNotebook, filteredRows, selectedSubDept, thickPlaceCvFields);
-  }, [filteredRows, isAllTypeSelected, selectedNotebook, selectedSubDept, thickPlaceCvFields]);
+    const pivotedFields = selectedNotebook === NATI_DATA_ENTRY_SCREEN_NAME
+      ? natiDataEntryFields
+      : selectedNotebook === COMBER_NOLIS_SCREEN_NAME
+        ? comberNolisFields
+        : SAMPLE_PIVOT_SCREEN_NAMES.has(selectedNotebook)
+          ? sampleFields
+          : thickPlaceCvFields;
+    return getFieldsForType(selectedNotebook, filteredRows, selectedSubDept, pivotedFields);
+  }, [comberNolisFields, filteredRows, isAllTypeSelected, natiDataEntryFields, sampleFields, selectedNotebook, selectedSubDept, thickPlaceCvFields]);
   const reportSections = useMemo(() => {
     if (!isAllTypeSelected) {
       return [{ typeName: selectedNotebook, rows: filteredRows, fields: reportFields }];
@@ -716,7 +1019,15 @@ export default function GeneralReport() {
     return notebooks.map((typeName) => {
       const typeRows = filteredRowsByType[typeName] || [];
       const pivotedFields =
-        typeName === THICK_PLACE_CV_SCREEN_NAME ? fieldsFromPivotedRows(typeRows) : null;
+        typeName === THICK_PLACE_CV_SCREEN_NAME
+          ? fieldsFromPivotedRows(typeRows)
+          : typeName === NATI_DATA_ENTRY_SCREEN_NAME
+            ? fieldsFromNatiPivotedRows(typeRows)
+            : typeName === COMBER_NOLIS_SCREEN_NAME
+              ? fieldsFromComberNolisPivotedRows(typeRows)
+              : SAMPLE_PIVOT_SCREEN_NAMES.has(typeName)
+                ? fieldsFromSamplePivotedRows(typeRows)
+                : null;
       return {
         typeName,
         rows: typeRows,

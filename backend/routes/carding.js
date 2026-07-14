@@ -464,6 +464,9 @@ const ensureCardWasteStudyTable = async () => {
       row_no INTEGER NOT NULL,
       cylinder_speed NUMERIC(12,4),
       lickerin_speed NUMERIC(12,4),
+      lickerin_speed_1 NUMERIC(12,4),
+      lickerin_speed_2 NUMERIC(12,4),
+      lickerin_speed_3 NUMERIC(12,4),
       flat_speed NUMERIC(12,4),
       doffer_speed NUMERIC(12,4),
       delivery_speed NUMERIC(12,4),
@@ -473,6 +476,13 @@ const ensureCardWasteStudyTable = async () => {
       mc_production NUMERIC(12,4),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await client.query(`
+    ALTER TABLE carding.card_waste_study_type_rows
+      ADD COLUMN IF NOT EXISTS lickerin_speed_1 NUMERIC(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_2 NUMERIC(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_3 NUMERIC(12,4);
   `);
 
   await client.query(`
@@ -3812,13 +3822,16 @@ router.post('/card-waste-study', async (req, res, next) => {
       const row = normalizedTypeRows[i] || {};
       await client.query(
         `INSERT INTO carding.card_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         (study_id, row_no, cylinder_speed, lickerin_speed, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           study.id,
           row.row_no ?? (i + 1),
           toDecimal4OrNull(row.cylinder_speed),
           toDecimal4OrNull(row.lickerin_speed),
+          toDecimal4OrNull(row.lickerin_speed_1),
+          toDecimal4OrNull(row.lickerin_speed_2),
+          toDecimal4OrNull(row.lickerin_speed_3),
           toDecimal4OrNull(row.flat_speed),
           toDecimal4OrNull(row.doffer_speed),
           toDecimal4OrNull(row.delivery_speed),

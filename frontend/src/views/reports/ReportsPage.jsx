@@ -55,7 +55,6 @@ import {
   fetchCardingDfkPressureEntries,
   fetchCardingChangeControlEntries,
   fetchCardingUqcEntries,
-  fetchCardWasteStudyEntries,
   fetchWrappingCardingNotebookEntries,
   getCardingProcessParameterEntries,
 } from "@/apis/carding";
@@ -97,6 +96,13 @@ const fetchEndpointRows = async (endpoint, params = {}) => {
 
 const fetchBrWasteStudyRowsByType = async (studyType) => {
   const rows = await fetchEndpointRows("/blowroom/br-waste-study");
+  return (Array.isArray(rows) ? rows : []).filter(
+    (row) => row?.study_type === studyType
+  );
+};
+
+const fetchCardWasteStudyRowsByType = async (studyType) => {
+  const rows = await fetchEndpointRows("/carding/card-waste-study");
   return (Array.isArray(rows) ? rows : []).filter(
     (row) => row?.study_type === studyType
   );
@@ -207,7 +213,9 @@ const reportSources = {
       "U% Data Entry": { fetcher: fetchCardingUqcEntries },
       "Card DFK Data": { fetcher: fetchCardingDfkPressureEntries },
       WheelChange: { fetcher: fetchCardingChangeControlEntries },
-      "Individual Card Waste Study": { fetcher: fetchCardWasteStudyEntries },
+      "Card Waste Study T-1": { fetcher: fetchCardWasteStudyRowsByType.bind(null, "Type 1") },
+      "Card Waste Study T-2": { fetcher: fetchCardWasteStudyRowsByType.bind(null, "Type 2") },
+      "Card Waste Study T-3": { fetcher: fetchCardWasteStudyRowsByType.bind(null, "Type 3") },
     },
     "Individual Card Performance": {
       "Individual Card performance Data": { endpoint: "/carding/trials" },

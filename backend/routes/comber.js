@@ -1071,7 +1071,7 @@ router.get('/nati-data-entry', async (req, res) => {
             FROM comber.nati_data_entry qc
             LEFT JOIN comber.neps_details n
             ON qc.id = n.qc_id
-            GROUP BY qc.id
+            GROUP BY qc.id, qc.entry_id, qc.type, qc.entry_date, qc.variety, qc.created_at
             ORDER BY qc.entry_date DESC
         `);
 

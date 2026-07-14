@@ -540,14 +540,19 @@ const ensureMixingEntryIdColumns = async () => {
     WHERE entry_id IS NOT NULL;
   `);
   await client.query(`
-    WITH numbered AS (
+    WITH existing_max AS (
+      SELECT COALESCE(MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::int), 0) AS max_no
+      FROM mixing.fibre_data_entry
+      WHERE entry_id ~ '^#FB-\\d+$'
+    ),
+    numbered AS (
       SELECT ctid, ROW_NUMBER() OVER (ORDER BY ctid) AS rn
       FROM mixing.fibre_data_entry
       WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
     )
     UPDATE mixing.fibre_data_entry t
-    SET entry_id = '#FB-' || LPAD(numbered.rn::text, 4, '0')
-    FROM numbered
+    SET entry_id = '#FB-' || LPAD((numbered.rn + existing_max.max_no)::text, 4, '0')
+    FROM numbered, existing_max
     WHERE t.ctid = numbered.ctid;
   `);
 
@@ -609,14 +614,19 @@ const ensureMixingEntryIdColumns = async () => {
     WHERE entry_id IS NOT NULL;
   `);
   await client.query(`
-    WITH numbered AS (
+    WITH existing_max AS (
+      SELECT COALESCE(MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::int), 0) AS max_no
+      FROM mixing.moisture_data_entry
+      WHERE entry_id ~ '^#MO-\\d+$'
+    ),
+    numbered AS (
       SELECT ctid, ROW_NUMBER() OVER (ORDER BY ctid) AS rn
       FROM mixing.moisture_data_entry
       WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
     )
     UPDATE mixing.moisture_data_entry t
-    SET entry_id = '#MO-' || LPAD(numbered.rn::text, 4, '0')
-    FROM numbered
+    SET entry_id = '#MO-' || LPAD((numbered.rn + existing_max.max_no)::text, 4, '0')
+    FROM numbered, existing_max
     WHERE t.ctid = numbered.ctid;
   `);
 
@@ -2616,11 +2626,29 @@ router.get('/openness', async (req, res, next) => {
         [ins.id]
       );
 
+      const inspectionRow = withScreenEntryId('openness', ins);
+      const overallRow = overall.rows[0] || null;
+
+      const numericValues = (key) => entries.rows
+        .map((row) => Number(row[key]))
+        .filter((value) => Number.isFinite(value));
+      const average = (values) => values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+
       result.push({
-        inspection: withScreenEntryId('openness', ins),
+        ...inspectionRow,
         entries: entries.rows,
         stage_stats: stageStats.rows,
-        overall: overall.rows[0] || null
+        overall_avg_weight: average(numericValues('weight')),
+        overall_avg_volume: average(numericValues('average_volume')),
+        overall_avg_apparent_specific_volume: overallRow?.avg_apparent_specific_volume ?? null,
+        overall_avg_actual_op_value: overallRow?.avg_actual_op_value ?? null,
+        overall_max_actual_op_value: overallRow?.max_actual_op_value ?? null,
+        overall_min_actual_op_value: overallRow?.min_actual_op_value ?? null,
+        overall_range_actual_op_value: overallRow?.range_actual_op_value ?? null,
+        overall_sd_actual_op_value: overallRow?.sd_actual_op_value ?? null,
+        overall_cv_actual_op_value: overallRow?.cv_actual_op_value ?? null,
+        inspection: inspectionRow,
+        overall: overallRow
       });
     }
 

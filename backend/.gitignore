@@ -57,6 +57,18 @@ node_modules/
 # local large/back-end artifacts
 backend_bundle.zip
 _backend_tmp/
+.tmp/
+.tmp_*/
+pp_backup/
+uploads/
+*.dump
+~$*.docx
+~$*.xlsx
+
+# python virtualenv
+.venv/
+__pycache__/
+*.pyc
 
 # excel files
 *.xlsx

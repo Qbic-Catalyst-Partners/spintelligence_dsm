@@ -73,11 +73,6 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
-const withoutDropId = (record) => {
-  if (!record || typeof record !== 'object') return record;
-  const { drop_id, ...rest } = record;
-  return rest;
-};
 const isUniqueViolation = (err) => err && err.code === '23505';
 
 const getDropTestParentId = (body) => {
@@ -950,7 +945,7 @@ router.get('/drop-test', async (req, res, next) => {
     );
 
     res.status(200).json({
-      data: result.rows.map((row) => withoutDropId(withScreenEntryId('drop_test', row))),
+      data: result.rows.map((row) => withScreenEntryId('drop_test', row)),
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
       limit: limitNum
