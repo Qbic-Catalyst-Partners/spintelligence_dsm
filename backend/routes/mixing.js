@@ -684,11 +684,11 @@ const ensureMixingEntryIdColumns = async () => {
     FROM mixing.openness_inspection i
     JOIN mixing.openness_entries e ON e.inspection_id = i.id;
   `);
+  await client.query(`DROP VIEW IF EXISTS mixing.mixing_qc_dashboard_entries`);
   await client.query(`
-    CREATE OR REPLACE VIEW mixing.mixing_qc_dashboard_entries AS
+    CREATE VIEW mixing.mixing_qc_dashboard_entries AS
     SELECT
       h.qc_id,
-      h.param_id,
       h.entry_id,
       h.consignee_name,
       h.count_name,
@@ -2666,7 +2666,6 @@ router.post('/qc', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
-      entry_id,
       consignee_name,
       count_name,
       creation_date,
@@ -2685,7 +2684,7 @@ router.post('/qc', async (req, res, next) => {
       `INSERT INTO mixing.mixing_qc_header
       (entry_id, consignee_name, count_name, creation_date, status)
       VALUES ($1, $2, $3, $4, $5)
-      RETURNING qc_id, entry_id, param_id`,
+      RETURNING qc_id, entry_id`,
       [entry_id || null, consignee_name, count_name, creation_date, status]
     );
 
@@ -2724,8 +2723,7 @@ router.post('/qc', async (req, res, next) => {
     res.status(201).json({
       message: 'Mixing QC created successfully',
       qc_id,
-      entry_id: headerResult.rows[0].entry_id,
-      param_id: headerResult.rows[0].param_id
+      entry_id: headerResult.rows[0].entry_id
     });
 
   } catch (error) {
@@ -2746,10 +2744,7 @@ router.get('/qc', async (req, res, next) => {
 
     const result = await client.query(
       `SELECT
-      `SELECT
         h.qc_id,
-        h.entry_id,
-        h.param_id,
         h.entry_id,
         h.consignee_name,
         h.count_name,
@@ -2788,7 +2783,6 @@ router.get('/qc', async (req, res, next) => {
     );
 
     res.status(200).json({
-      data: result.rows,
       data: result.rows,
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
@@ -2833,7 +2827,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         `INSERT INTO mixing.mixing_qc_header
          (entry_id, consignee_name, count_name, creation_date, status)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING qc_id, entry_id, param_id`,
+         RETURNING qc_id, entry_id`,
         [requestedEntryId, consignee_name, count_name, creation_date, status]
       );
       targetQcId = insertResult.rows[0].qc_id;

@@ -112,9 +112,6 @@ const getApproverIdsByLevel = async (providedValues = [], { level = 'L2', useDef
 const getL1ApproverIds = (providedValues = [], options = {}) =>
   getApproverIdsByLevel(providedValues, { ...options, level: 'L1' });
 
-const getL1ApproverIds = (providedValues = [], options = {}) =>
-  getApproverIdsByLevel(providedValues, { ...options, level: 'L1' });
-
 const getL2ApproverIds = (providedValues = [], options = {}) =>
   getApproverIdsByLevel(providedValues, { ...options, level: 'L2' });
 
@@ -1029,7 +1026,7 @@ const generatePpNotebookBatchIncompleteTickets = async () => {
             MIN(submitted_at) AS first_created_at,
             array_agg(DISTINCT notebook) AS completed_notebooks
      FROM ticketing_system.submitted_notebooks
-     WHERE entry_id IS NOT NULL
+     WHERE entry_id ~ '^PP-\\d+$'
      GROUP BY entry_id`
   );
 
@@ -1060,8 +1057,8 @@ const generatePpNotebookBatchIncompleteTickets = async () => {
       );
       if (existing.rows.length) continue;
 
-      const l1ApproverIds = await getL1ApproverIds(threshold.approval_l1 ? [threshold.approval_l1] : [], { useDefault: true });
-      const l2ApproverIds = await getL2ApproverIds(threshold.approval_l2 ? [threshold.approval_l2] : [], { useDefault: true });
+      const l1ApproverIds = await getL1ApproverIds(threshold.approval_l1_user_ids || [], { useDefault: true });
+      const l2ApproverIds = await getL2ApproverIds(threshold.approval_l2_user_ids || [], { useDefault: true });
 
       const violationDetails = {
         category: 'MISSED_FREQUENCY',
@@ -1589,5 +1586,6 @@ module.exports = {
   ensureSubmittedNotebookTables,
   ensureAcknowledgementThresholdTable,
   generateOverdueNotebookTickets,
-  runPpBatchCompletionCheck
+  runPpBatchCompletionCheck,
+  generatePpNotebookBatchIncompleteTickets
 };

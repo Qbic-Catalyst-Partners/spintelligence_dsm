@@ -2350,6 +2350,7 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
         line_type,
         wheel_change_type,
         wheel_change_type_label,
+        entry_date,
         JSON.stringify(parameters),
         JSON.stringify(rows),
         machine_no,

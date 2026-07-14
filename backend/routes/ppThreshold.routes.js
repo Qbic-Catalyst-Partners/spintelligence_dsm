@@ -90,4 +90,16 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+const getActivePpThresholdsMap = async () => {
+  await ensurePpThresholdTable();
+  const result = await client.query(
+    `SELECT * FROM ticketing_system.pp_threshold_master WHERE is_active = true`
+  );
+  return new Map(result.rows.map((row) => [row.notebook_name, row]));
+};
+
+module.exports = {
+  router,
+  ensurePpThresholdTable,
+  getActivePpThresholdsMap
+};

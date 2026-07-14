@@ -105,10 +105,11 @@ const screenEndpoints = {
       "Wheel Change Type-4 (LDF3S)": "/drawframe/wheel-change/type4-ldf3s",
     },
     Simplex: {
-      "Process Parameter": "/simplex/process-parameters",
+      "Process Parameter": "/simplex/process_parameter",
       "SMXCots Change Data Entry": "/simplex/cots-change",
       "SMX Breaks Study Report": "/simplex/list",
       "U% Data Entry": "/simplex/uqc",
+      "Wheel Change": "/simplex/wheel-change",
     },
     Spinning: {
       "Process Parameter": "/spinning/qc",

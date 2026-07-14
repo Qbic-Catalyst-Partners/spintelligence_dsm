@@ -63,6 +63,115 @@ const normalizeBreakItemName = (value) => {
   if (raw.toUpperCase() === 'SILVER BREAKS') return 'SLIVER BREAKS';
   return raw;
 };
+// Column order/labels mirror SMXBreaksStudyReport.jsx's breakColumns/breakRows exactly, so the
+// pivoted keys line up with the "SMX Breaks Study Report" catalog entry in fieldCatalog.js.
+const SMX_BREAK_CATEGORIES = [
+  'Roving Breaks at Finger',
+  'Roving Breaks at Front Roller Nip',
+  'Roving Breaks at Between Flyer',
+  'Undraft',
+  'Top Roller Lapping',
+  'Bottom Roller Lapping',
+  'SLIVER BREAKS',
+  'Can Exhaust',
+  'Unknown Stop'
+];
+const SMX_LENGTH_BUCKETS = [
+  '0-200', '201-400', '401-600', '601-800', '801-1000', '1001-1200', '1201-1400',
+  '1401-1600', '1601-1800', '1801-2000', '2001-2200', '2201-2400', '2401-2600'
+];
+const SMX_PERCENT_CATEGORIES = SMX_BREAK_CATEGORIES.slice(0, SMX_BREAK_CATEGORIES.indexOf('SLIVER BREAKS') + 1);
+const normalizeSmxLengthRange = (value) => String(value || '').replace(/\s*-\s*/g, '-').trim();
+const countCommaEntries = (value) => parseBreakArray(value).length;
+
+const buildSmxBreaksStudyRow = (header, items, otherRow) => {
+  const cellByKey = new Map();
+  (items || []).forEach((item) => {
+    if (!item?.length_range) return;
+    const category = normalizeBreakItemName(item.item_name);
+    const bucket = normalizeSmxLengthRange(item.length_range);
+    cellByKey.set(`${category}::${bucket}`, item.status_value);
+  });
+
+  // remarks is a ' | '-joined string: a leading JSON blob (tpi, tpm, mixing, etc — everything
+  // the form's own remarks payload carries) followed by plain KEY:VALUE tags the backend itself
+  // appends on write (S.NAME, START, END, TOTAL_MINUTES — see the /study POST handler). Start
+  // Time in particular only ever lands in the KEY:VALUE tags, never in the JSON blob, so both
+  // sources have to be parsed.
+  let extra = {};
+  const remarksSegments = String(otherRow?.remarks || '').split(' | ');
+  try {
+    extra = JSON.parse(remarksSegments[0]);
+  } catch (_) {
+    extra = {};
+  }
+  const remarksTags = {};
+  remarksSegments.slice(1).forEach((segment) => {
+    const separatorIndex = segment.indexOf(':');
+    if (separatorIndex === -1) return;
+    remarksTags[segment.slice(0, separatorIndex).trim().toUpperCase()] = segment.slice(separatorIndex + 1).trim();
+  });
+
+  const runningSpindles = Number(extra.running_spdl);
+  const totalMinutes = Number(extra.total_time_in_mins ?? extra.total_time ?? remarksTags.TOTAL_MINUTES);
+
+  const row = {
+    id: header.id,
+    entry_date: header.entry_date,
+    created_at: header.created_at,
+    'Simplex No.': header.s_no,
+    Date: header.entry_date,
+    'Sider Name': header.operator_name || remarksTags['S.NAME'] || null,
+    'Start Time': extra.start_time ?? remarksTags.START ?? null,
+    'End Time': extra.end_time ?? remarksTags.END ?? null,
+    'Total Minutes': extra.total_time_in_mins ?? extra.total_time ?? remarksTags.TOTAL_MINUTES ?? null,
+    TPI: extra.tpi ?? null,
+    TPM: extra.tpm ?? null,
+    'Average Speed': extra.average_speed ?? null,
+    'Start HK': extra.start_hk ?? remarksTags.START_HK ?? null,
+    'Finish HK': extra.finish_hk ?? remarksTags.FINISH_HK ?? null,
+    Hank: extra.hank ?? null,
+    Mixing: extra.mixing ?? null,
+    'Roving HK': extra.roving_hk ?? null,
+    'Doff Length': extra.doff_length ?? null,
+    'RH%': extra.rh_percent ?? null,
+    'TEMP%': extra.temp_percent ?? null,
+    'Total Spindles': extra.total_spdl ?? null,
+    'Running Spindles': extra.running_spdl ?? null,
+    'Idle Spindles': extra.idle_spindles ?? null
+  };
+
+  const columnTotals = {};
+  SMX_BREAK_CATEGORIES.forEach((category) => {
+    let total = 0;
+    SMX_LENGTH_BUCKETS.forEach((bucket) => {
+      const raw = cellByKey.get(`${category}::${bucket}`);
+      row[`Length ${bucket} - ${category}`] = raw ?? null;
+      total += countCommaEntries(raw);
+    });
+    columnTotals[category] = total;
+    row[`Total Breaks - ${category}`] = total;
+  });
+
+  const grandTotal = Object.values(columnTotals).reduce((sum, value) => sum + value, 0);
+  row['Grand Total'] = grandTotal;
+
+  SMX_PERCENT_CATEGORIES.forEach((category) => {
+    const rate = Number.isFinite(runningSpindles) && runningSpindles > 0
+      ? Number(((columnTotals[category] * 100) / runningSpindles).toFixed(2))
+      : 0;
+    row[`No. of Breaks per 100 Spindles / Hr - ${category}`] = rate;
+  });
+
+  const totalRate = Number.isFinite(runningSpindles) && runningSpindles > 0
+    && Number.isFinite(totalMinutes) && totalMinutes > 0 && grandTotal > 0
+    ? Number(((grandTotal * 100) / (runningSpindles * (totalMinutes / 60))).toFixed(2))
+    : 0;
+  row['Total No. of Breaks/100SH'] = totalRate;
+
+  return row;
+};
+
 const parseHHMM = (value) => {
   const raw = String(value ?? '').trim();
   const m = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
@@ -1278,10 +1387,15 @@ router.post('/study', async (req, res, next) => {
       operator_name,
       shift,
       inspection_items,
+      items,
       user_fiber_parameters,
       epi_parameters,
       other_field_values
     } = req.body;
+    // The current SMX Breaks Study Report form (SMXBreaksStudyReport.jsx) posts the break-matrix
+    // cells under `items`, one row per (break category x length range) cell — `inspection_items`
+    // is kept as an accepted alias for older/other callers that send one row per category.
+    const breakMatrixItems = Array.isArray(inspection_items) ? inspection_items : items;
     const normalizedShift = String(shift || '').trim();
 
     if (!entry_id) {
@@ -1307,40 +1421,32 @@ router.post('/study', async (req, res, next) => {
 
     const study_id = headerResult.rows[0].id;
 
-    const normalizedItems = [];
-    const breakTotalsByColumn = [];
+    // Each item is one (break category x length range) cell — item_name is the category,
+    // length_range is the bucket (e.g. "0 - 200"), status_value is the cell's raw text (which
+    // may itself be a comma-separated list of break events). Stored as-is; the report screen
+    // (GET /list) derives all totals/rates fresh from these raw cells rather than from
+    // pre-computed summary rows, so there's a single source of truth for the math.
     let grandTotalBreaks = 0;
-    let includeInGrandTotal = true;
-    const STOP_AT = 'SLIVER BREAKS';
-
-    // Insert inspection items
-    let derivedBreakCount = 0;
-    if (inspection_items && Array.isArray(inspection_items)) {
-      for (const item of inspection_items) {
+    if (Array.isArray(breakMatrixItems)) {
+      for (const item of breakMatrixItems) {
         const normalizedName = normalizeBreakItemName(item?.item_name);
-        const breakArray = parseBreakArray(item?.status_value).map((v) => String(toWholeNumberOrNull(v) ?? 0));
-        const columnTotal = breakArray.length;
-        const statusValue = breakArray.length ? toPgArrayLiteral(breakArray) : toWholeNumberOrNull(item?.status_value);
-        if (breakArray.length) derivedBreakCount += breakArray.length;
-        if (includeInGrandTotal) {
-          grandTotalBreaks += columnTotal;
-          breakTotalsByColumn.push({ name: normalizedName, total: columnTotal });
-          if (normalizedName.toUpperCase() === STOP_AT) includeInGrandTotal = false;
-        }
+        const lengthRange = item?.length_range ? String(item.length_range).trim() : null;
+        const statusValue = item?.status_value === undefined || item?.status_value === null
+          ? null
+          : String(item.status_value);
+        grandTotalBreaks += parseBreakArray(statusValue).length;
         await client.query(
           `INSERT INTO simplex.smx_breaks_inspection_items
-           (study_id, item_name, status_value, remarks)
-           VALUES ($1, $2, $3, $4)`,
-          [study_id, normalizedName, statusValue, item.remarks || null]
+           (study_id, item_name, status_value, remarks, length_range)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [study_id, normalizedName, statusValue, item?.remarks || null, lengthRange]
         );
-        normalizedItems.push({ item_name: normalizedName, status_value: statusValue });
       }
     }
 
     const startTime = parseHHMM(req.body?.start_time || other_field_values?.start_time);
     const endTime = parseHHMM(req.body?.end_time || other_field_values?.end_time);
     const totalMinutes = diffMinutes(startTime?.hhmm, endTime?.hhmm);
-    const totalHours = totalMinutes !== null ? (totalMinutes / 60) : null;
 
     const providedTotalSpdl = toWholeNumberOrNull(req.body?.total_spdl ?? other_field_values?.total_spdl);
     const dbTotalSpdl = providedTotalSpdl ? null : await fetchCdgTotalSpdlFromDb(machine_name);
@@ -1349,51 +1455,6 @@ router.post('/study', async (req, res, next) => {
     const runningSpdl = (Number.isInteger(totalSpdl) && Number.isInteger(idleSpindles))
       ? Math.max(totalSpdl - idleSpindles, 0)
       : null;
-
-    const startHk = toWholeNumberOrNull(req.body?.start_hk ?? other_field_values?.start_hk);
-    const finishHk = toWholeNumberOrNull(req.body?.finish_hk ?? other_field_values?.finish_hk);
-    const hank = (Number.isInteger(startHk) && Number.isInteger(finishHk))
-      ? (finishHk - startHk)
-      : null;
-
-    const overallBreakagePct = (runningSpdl && totalHours && totalHours > 0)
-      ? toWholePercent((grandTotalBreaks / runningSpdl / totalHours) * 100)
-      : 0;
-
-    const derivedRows = [];
-    if (hank !== null) derivedRows.push({ item_name: 'HANK', status_value: hank });
-    if (startTime?.hhmm) derivedRows.push({ item_name: 'START TIME', status_value: startTime.hhmm });
-    if (endTime?.hhmm) derivedRows.push({ item_name: 'END TIME', status_value: endTime.hhmm });
-    if (totalMinutes !== null) derivedRows.push({ item_name: 'TOTAL TIME (MINUTES)', status_value: totalMinutes });
-    if (Number.isInteger(idleSpindles)) derivedRows.push({ item_name: 'IDLE SPINDLES', status_value: idleSpindles });
-    if (Number.isInteger(totalSpdl)) derivedRows.push({ item_name: 'TOTAL SPDL', status_value: totalSpdl });
-    if (runningSpdl !== null) derivedRows.push({ item_name: 'RUNNING SPDL', status_value: runningSpdl });
-    derivedRows.push({ item_name: 'TOTAL BREAKS (GRAND)', status_value: grandTotalBreaks });
-    derivedRows.push({ item_name: 'OVERALL BREAKAGE (%)', status_value: overallBreakagePct });
-    const hasTotalBreakPercentRow = [...normalizedItems, ...derivedRows].some((row) => {
-      const name = String(row?.item_name || '').trim().toUpperCase();
-      return name === 'TOTAL BREAK (%)' || name === 'TOTAL BREAK %' || name === 'TOTAL BREAKAGE (%)';
-    });
-    if (!hasTotalBreakPercentRow) {
-      derivedRows.push({ item_name: 'TOTAL BREAK (%)', status_value: overallBreakagePct });
-    }
-
-    for (const col of breakTotalsByColumn) {
-      const ratio = grandTotalBreaks > 0 ? toWholePercent((col.total / grandTotalBreaks) * 100) : 0;
-      derivedRows.push({
-        item_name: `${col.name} BREAKS (%)`,
-        status_value: ratio
-      });
-    }
-
-    for (const row of derivedRows) {
-      await client.query(
-        `INSERT INTO simplex.smx_breaks_inspection_items
-         (study_id, item_name, status_value, remarks)
-         VALUES ($1, $2, $3, $4)`,
-        [study_id, row.item_name, String(row.status_value), 'derived']
-      );
-    }
 
     // Insert user fiber parameters
     if (user_fiber_parameters) {
@@ -1446,14 +1507,21 @@ router.post('/study', async (req, res, next) => {
     // Insert other field values
     if (other_field_values) {
       const providedBreakArray = parseBreakArray(other_field_values.break_count);
-      const computedBreakCount = providedBreakArray.length || grandTotalBreaks || derivedBreakCount;
+      const computedBreakCount = providedBreakArray.length || grandTotalBreaks;
       const siderName = String(req.body?.s_name ?? other_field_values.s_name ?? other_field_values.sider_name ?? '').trim();
+      // start_hk/finish_hk arrive only as top-level other_field_values fields (the form's own
+      // JSON-stringified remarks blob doesn't include them), so — like START/END/TOTAL_MINUTES —
+      // they have to be carried through as their own tag or they're lost on every submission.
+      const startHkValue = toWholeNumberOrNull(other_field_values.start_hk);
+      const finishHkValue = toWholeNumberOrNull(other_field_values.finish_hk);
       const remarksBlock = [
         other_field_values.remarks || null,
         siderName ? `S.NAME:${siderName}` : null,
         startTime?.hhmm ? `START:${startTime.hhmm}` : null,
         endTime?.hhmm ? `END:${endTime.hhmm}` : null,
-        totalMinutes !== null ? `TOTAL_MINUTES:${totalMinutes}` : null
+        totalMinutes !== null ? `TOTAL_MINUTES:${totalMinutes}` : null,
+        startHkValue !== null ? `START_HK:${startHkValue}` : null,
+        finishHkValue !== null ? `FINISH_HK:${finishHkValue}` : null
       ].filter(Boolean).join(' | ') || null;
       await client.query(
         `INSERT INTO simplex.smx_other_field_values
@@ -1477,8 +1545,7 @@ router.post('/study', async (req, res, next) => {
       computed: {
         grand_total_breaks: grandTotalBreaks,
         total_time_minutes: totalMinutes,
-        running_spdl: runningSpdl,
-        overall_breakage_percent: overallBreakagePct
+        running_spdl: runningSpdl
       }
     });
 
@@ -1505,11 +1572,42 @@ router.post('/study', async (req, res, next) => {
  */
 router.get('/list', async (req, res, next) => {
   try {
-    const result = await client.query(
+    const headerResult = await client.query(
       `SELECT * FROM simplex.smx_breaks_study_header ORDER BY entry_date DESC`
     );
 
-    res.status(200).json(result.rows.map((row) => withScreenEntryId('study', row)));
+    const studyIds = headerResult.rows.map((row) => row.id);
+    const itemsByStudy = new Map();
+    const otherByStudy = new Map();
+
+    if (studyIds.length) {
+      const itemsResult = await client.query(
+        `SELECT * FROM simplex.smx_breaks_inspection_items WHERE study_id = ANY($1::int[])`,
+        [studyIds]
+      );
+      itemsResult.rows.forEach((item) => {
+        if (!itemsByStudy.has(item.study_id)) itemsByStudy.set(item.study_id, []);
+        itemsByStudy.get(item.study_id).push(item);
+      });
+
+      const otherResult = await client.query(
+        `SELECT DISTINCT ON (study_id) *
+         FROM simplex.smx_other_field_values
+         WHERE study_id = ANY($1::int[])
+         ORDER BY study_id, id DESC`,
+        [studyIds]
+      );
+      otherResult.rows.forEach((row) => otherByStudy.set(row.study_id, row));
+    }
+
+    const rows = headerResult.rows.map((header) =>
+      withScreenEntryId(
+        'study',
+        buildSmxBreaksStudyRow(header, itemsByStudy.get(header.id), otherByStudy.get(header.id))
+      )
+    );
+
+    res.status(200).json(rows);
 
   } catch (err) {
     next(err);

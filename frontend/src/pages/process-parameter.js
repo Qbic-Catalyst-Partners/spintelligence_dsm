@@ -253,7 +253,7 @@ const getDepartmentFormProps = (department, selectedTypeName, typeOptions) => {
     selectedType: selectedTypeName,
     onTypeChange: () => { },
     standaloneSection: true,
-    savedVersionsTargetId: "process-parameter-saved-versions",
+    savedVersionsTargetId: "",
   };
 
   if (department === "Simplex") {

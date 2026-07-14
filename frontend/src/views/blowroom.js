@@ -290,7 +290,7 @@ function BlowRoom() {
                   onLotNoChange={setLotNo}
                   sampleCount={sampleCount}
                   onSampleCountChange={setSampleCount}
-                  savedVersionsTargetId="blowroom-process-parameter-history"
+                  savedVersionsTargetId=""
                   postFooterPortalTargetId="blowroom-post-footer-slot"
                 />
               ) : (
@@ -346,10 +346,6 @@ function BlowRoom() {
 
           <div id="blowroom-post-footer-slot" />
         </div>
-
-        {isProcessParameterType ? (
-          <div id="blowroom-process-parameter-history" className="w-full max-w-7xl pt-5" />
-        ) : null}
       </div>
 
       <PreviewModal

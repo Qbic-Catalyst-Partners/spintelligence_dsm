@@ -135,6 +135,11 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/carding/nre': 'carding.nre'
 };
 
+// Routes whose entry_id is generated straight off their own table's MAX(entry_id) (see
+// getRouteTableName below) rather than the shared ticketing_system registry — these always get
+// a freshly generated id, even if the frontend already sent one.
+const DIRECT_TABLE_ENTRY_ID_ROUTES = new Set(Object.keys(ENTRY_ID_ROUTE_TABLES));
+
 const getRouteTableName = (routePath, source = {}) => {
   if (routePath === '/autoconer') {
     const scope = normalizePoolKey(
@@ -261,7 +266,8 @@ const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
   }
 
   const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
-  const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath]);
+  const tableMax = mappedTable ? await getTableEntryIdMax(mappedTable) : 0;
+  const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath, moduleName]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
   const nextNumber = (mappedTable ? tableMax : Math.max(registryMax, tableMax)) + 1;
   const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
@@ -393,8 +399,8 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
-const ppThresholdRouter = require('./routes/ppThreshold.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, generatePpNotebookBatchIncompleteTickets } = require('./routes/submittedNotebooks.routes');
+const { router: ppThresholdRouter } = require('./routes/ppThreshold.routes');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
 const ocrMachineRouter = require('./routes/ocrMachine.routes');
 
@@ -578,16 +584,19 @@ const startSubmittedNotebookAckWorker = () => {
 
 startSubmittedNotebookAckWorker();
 
-const startPpBatchCompletionWorker = () => {
+// PP tickets are driven solely by the PP-Threshold screen (ticketing_system.pp_threshold_master)
+// via generatePpNotebookBatchIncompleteTickets — the older pp_batch_config-driven
+// runPpBatchCompletionCheck is intentionally no longer run automatically here.
+const startPpThresholdWorker = () => {
   const intervalMs = Number(process.env.PP_BATCH_COMPLETION_WORKER_INTERVAL_MS || 15 * 60 * 1000);
   const run = async () => {
     try {
-      const result = await runPpBatchCompletionCheck();
-      if (result.created_count || result.expired_count) {
-        console.log(`[pp-batch-completion] created ${result.created_count} ticket(s), expired ${result.expired_count}`);
+      const result = await generatePpNotebookBatchIncompleteTickets();
+      if (result.created.length) {
+        console.log(`[pp-threshold] created ${result.created.length} ticket(s)`);
       }
     } catch (error) {
-      console.warn('[pp-batch-completion] worker skipped:', error.message);
+      console.warn('[pp-threshold] worker skipped:', error.message);
     }
   };
 
@@ -595,6 +604,6 @@ const startPpBatchCompletionWorker = () => {
   setInterval(run, intervalMs);
 };
 
-startPpBatchCompletionWorker();
+startPpThresholdWorker();
 
 
