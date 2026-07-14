@@ -114,6 +114,48 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   '/blowroom/process_parameter': { prefix: 'PP', width: 4, separator: '-' }
 };
 
+// The 9 backend tables that share ONE canonical PP-000n id across departments (the
+// "Process Parameter" screens). If the frontend ever submits one of these routes without
+// an entry_id, the fallback below must generate the next PP-000n id from the combined max
+// across ALL of these tables — never a bare unprefixed number scoped to just one table,
+// which is what caused ids like "0012"/"0007" to leak into the shared PP-000n scheme.
+const PP_SHARED_TABLES = [
+  'mixing.mixing_qc_header',
+  'blowroom.blowroom_header',
+  'carding.carding_qc_header',
+  'drawframe.drawframe_qc_header',
+  'simplex.simplex_process_parameter',
+  'spinning.spinning_qc_header',
+  'autoconer.autoconer_process_parameter',
+  'autoconer.autoconer_q2_inspection',
+  'autoconer.autoconer_q3_inspection'
+];
+
+const PP_SHARED_ROUTES = new Set([
+  '/mixing/qc',
+  '/blowroom/header',
+  '/blowroom/process-parameter',
+  '/blowroom/process_parameter',
+  '/carding/qc-header',
+  '/drawframe/header',
+  '/simplex/process_parameter',
+  '/spinning/qc',
+  '/autoconer/process',
+  '/autoconer/q2',
+  '/autoconer/q3'
+]);
+
+const PP_SHARED_PREFIX = { prefix: 'PP', width: 4, separator: '-' };
+
+const getCombinedPpEntryIdMax = async () => {
+  let max = 0;
+  for (const tableName of PP_SHARED_TABLES) {
+    const tableMax = await getTableEntryIdMax(tableName);
+    if (tableMax > max) max = tableMax;
+  }
+  return max;
+};
+
 const getRegisteredEntryIdMaxSql = `
   SELECT COALESCE(
     MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
@@ -157,6 +199,20 @@ const extractFrontendEntryId = (body) => {
 };
 
 const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
+  if (PP_SHARED_ROUTES.has(routePath)) {
+    const combinedMax = await getCombinedPpEntryIdMax();
+    const nextNumber = combinedMax + 1;
+    const entryId = `${PP_SHARED_PREFIX.prefix}${PP_SHARED_PREFIX.separator}${String(nextNumber).padStart(PP_SHARED_PREFIX.width, '0')}`;
+    return {
+      source: 'postgres',
+      module_name: moduleName,
+      route_path: routePath,
+      next_number: nextNumber,
+      entry_id: entryId,
+      value: entryId
+    };
+  }
+
   const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
   const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
@@ -270,7 +326,8 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets } = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
+const ppThresholdRouter = require('./routes/ppThreshold.routes');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
 const ocrMachineRouter = require('./routes/ocrMachine.routes');
 
@@ -369,6 +426,7 @@ app.use('/notifications', inAppNotificationsRouter);
 app.use('/help', helpContentRouter);
 app.use('/submitted-notebooks', submittedNotebooksRouter);
 app.use('/l2/submitted-notebooks', submittedNotebooksRouter);
+app.use('/pp-threshold', ppThresholdRouter);
 app.use('/glossary', (req, res, next) => {
   req.url = `/glossary${req.url === '/' ? '' : req.url}`;
   return helpContentRouter(req, res, next);
@@ -414,7 +472,9 @@ app.use((err, req, res, next) => {
 
   console.error(err);
   return res.status(err.statusCode || 500).json({
-    message: err.statusCode ? err.message : 'Server error'
+    message: err.statusCode ? err.message : (err.message || 'Server error'),
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.detail ? { detail: err.detail } : {})
   });
 });
 
@@ -444,5 +504,24 @@ const startSubmittedNotebookAckWorker = () => {
 };
 
 startSubmittedNotebookAckWorker();
+
+const startPpBatchCompletionWorker = () => {
+  const intervalMs = Number(process.env.PP_BATCH_COMPLETION_WORKER_INTERVAL_MS || 15 * 60 * 1000);
+  const run = async () => {
+    try {
+      const result = await runPpBatchCompletionCheck();
+      if (result.created_count || result.expired_count) {
+        console.log(`[pp-batch-completion] created ${result.created_count} ticket(s), expired ${result.expired_count}`);
+      }
+    } catch (error) {
+      console.warn('[pp-batch-completion] worker skipped:', error.message);
+    }
+  };
+
+  setTimeout(run, 10000);
+  setInterval(run, intervalMs);
+};
+
+startPpBatchCompletionWorker();
 
 

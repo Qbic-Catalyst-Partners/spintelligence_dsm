@@ -2289,6 +2289,17 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
+    const PROCESS_PARAMETER_SCREENS = new Set([
+      'Process Parameter',
+      'PP - Breaker Drawing',
+      'PP - Finisher Drawing',
+      'PP - Autoconer Q2',
+      'PP - Autoconer Q3'
+    ]);
+    if (PROCESS_PARAMETER_SCREENS.has(String(input_screen || '').trim()) && !/^PP-\d{4,}$/i.test(String(machine_name).trim())) {
+      return res.status(400).json({ message: 'machine_name must be a valid PP-000n process parameter id for this input_screen' });
+    }
+
     let assignedUserId = user_id || parsePositiveInt(req.user?.id) || null;
     let assignedUserName = user_name || String(req.user?.full_name || '').trim() || null;
 

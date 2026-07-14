@@ -37,8 +37,10 @@ const SCREEN_ID_PREFIXES = {
   fibre: 'FB',
   afis: 'AF',
   moisture: 'MO',
-  openness: 'OP',
-  qc: 'MQ'
+  openness: 'OP'
+  // qc (Process Parameter) intentionally has no prefix here — it must only ever surface
+  // the real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
 };
 
 const MIXING_NOTEBOOK_SLUGS = [
@@ -2001,6 +2003,7 @@ router.get('/openness', async (req, res, next) => {
 router.post('/qc', async (req, res, next) => {
   try {
     const {
+      entry_id,
       consignee_name,
       count_name,
       creation_date,
@@ -2011,10 +2014,10 @@ router.post('/qc', async (req, res, next) => {
     // 1?????? Insert Header
     const headerResult = await client.query(
       `INSERT INTO mixing.mixing_qc_header
-      (consignee_name, count_name, creation_date, status)
-      VALUES ($1, $2, $3, $4)
-      RETURNING qc_id, param_id`,
-      [consignee_name, count_name, creation_date, status]
+      (entry_id, consignee_name, count_name, creation_date, status)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING qc_id, entry_id, param_id`,
+      [entry_id || null, consignee_name, count_name, creation_date, status]
     );
 
     const qc_id = headerResult.rows[0].qc_id;
@@ -2041,11 +2044,14 @@ router.post('/qc', async (req, res, next) => {
     res.status(201).json({
       message: 'Mixing QC created successfully',
       qc_id,
-      entry_id: formatScreenEntryId('qc', qc_id),
+      entry_id: headerResult.rows[0].entry_id,
       param_id: headerResult.rows[0].param_id
     });
 
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });
@@ -2082,8 +2088,9 @@ router.get('/qc', async (req, res, next) => {
     const offset = (pageNum - 1) * limitNum;
 
     const result = await client.query(
-      `SELECT 
+      `SELECT
         h.qc_id,
+        h.entry_id,
         h.param_id,
         h.consignee_name,
         h.count_name,
@@ -2122,10 +2129,7 @@ router.get('/qc', async (req, res, next) => {
     );
 
     res.status(200).json({
-      data: result.rows.map((row) => ({
-        ...row,
-        entry_id: formatScreenEntryId('qc', row.qc_id)
-      })),
+      data: result.rows,
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
       limit: limitNum
@@ -2195,6 +2199,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
     const { qc_id } = req.params;
 
     const {
+      entry_id,
       consignee_name,
       count_name,
       creation_date,
@@ -2202,23 +2207,50 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       blends
     } = req.body;
 
-    // 1?????? Update Header
-    await client.query(
-      `UPDATE mixing.mixing_qc_header
-       SET consignee_name = $1,
-           count_name = $2,
-           creation_date = $3,
-           status = $4
-       WHERE qc_id = $5`,
-      [consignee_name, count_name, creation_date, status, qc_id]
-    );
-
-    // 2?????? Delete old blends (simple approach)
-    await client.query(
-      `DELETE FROM mixing.mixing_qc_blends
-       WHERE qc_id = $1`,
+    const currentResult = await client.query(
+      `SELECT entry_id FROM mixing.mixing_qc_header WHERE qc_id = $1`,
       [qc_id]
     );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Mixing QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    let targetQcId = qc_id;
+    let createdNewRow = false;
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO mixing.mixing_qc_header
+         (entry_id, consignee_name, count_name, creation_date, status)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING qc_id, entry_id, param_id`,
+        [requestedEntryId, consignee_name, count_name, creation_date, status]
+      );
+      targetQcId = insertResult.rows[0].qc_id;
+      createdNewRow = true;
+    } else {
+      // 1?????? Update Header
+      await client.query(
+        `UPDATE mixing.mixing_qc_header
+         SET consignee_name = $1,
+             count_name = $2,
+             creation_date = $3,
+             status = $4
+         WHERE qc_id = $5`,
+        [consignee_name, count_name, creation_date, status, qc_id]
+      );
+
+      // 2?????? Delete old blends (simple approach)
+      await client.query(
+        `DELETE FROM mixing.mixing_qc_blends
+         WHERE qc_id = $1`,
+        [qc_id]
+      );
+    }
 
     // 3?????? Insert new blends
     for (const b of blends) {
@@ -2227,7 +2259,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         (qc_id, blend_no, percentage, lot_no, cut_length, tenacity, elongation, merge_no)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
-          qc_id,
+          targetQcId,
           b.blend_no ?? 0,
           b.percentage ?? 0,
           b.lot_no ?? '',
@@ -2239,9 +2271,10 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       );
     }
 
-    res.status(200).json({
-      message: 'Mixing QC updated successfully',
-      qc_id
+    res.status(createdNewRow ? 201 : 200).json({
+      message: createdNewRow ? 'Mixing QC created successfully' : 'Mixing QC updated successfully',
+      qc_id: targetQcId,
+      entry_id: requestedEntryId || currentEntryId
     });
 
   } catch (error) {

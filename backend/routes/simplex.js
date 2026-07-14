@@ -9,7 +9,9 @@ const SCREEN_ID_PREFIXES = {
   smx_cots_change: 'SX',
   study: 'SS',
   uqc: 'SU',
-  process_parameter: 'SP',
+  // process_parameter intentionally has no prefix here — it must only ever surface the
+  // real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
   wrapping_simplex_notebook: 'WS'
 };
 
@@ -1892,6 +1894,76 @@ router.put('/process_parameter/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
     const data = req.body;
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM simplex.simplex_process_parameter WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO simplex.simplex_process_parameter (
+          entry_id, type, count_name, consignee_name, creation_date,
+          machine_no, make,
+          delivery_hank, tpi_tm, speed,
+          bottom_roller_setting, top_roller_setting,
+          break_draft, total_draft, creel_draft,
+          false_twist_grooves, spacer,
+          top_arm_pressure, back_pressure, middle_pressure, front_pressure,
+          coil_inch, lifter_combination_wheel, lifter_wheel, tension_wheel
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,
+          $6,$7,
+          $8,$9,$10,
+          $11,$12,
+          $13,$14,$15,
+          $16,$17,
+          $18,$19,$20,$21,
+          $22,$23,$24,$25
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.type || 'Process Parameter',
+          data.count_name,
+          data.consignee_name,
+          data.creation_date,
+          data.machine_no,
+          data.make,
+          data.delivery_hank,
+          data.tpi_tm,
+          data.speed,
+          data.bottom_roller_setting,
+          data.top_roller_setting,
+          data.break_draft,
+          data.total_draft,
+          data.creel_draft,
+          data.false_twist_grooves,
+          data.spacer,
+          data.top_arm_pressure,
+          data.back_pressure,
+          data.middle_pressure,
+          data.front_pressure,
+          data.coil_inch,
+          data.lifter_combination_wheel,
+          data.lifter_wheel,
+          data.tension_wheel
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Simplex entry created successfully',
+        data: withScreenEntryId('process_parameter', insertResult.rows[0])
+      });
+    }
 
     const result = await client.query(
       `UPDATE simplex.simplex_process_parameter

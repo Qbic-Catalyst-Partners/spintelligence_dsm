@@ -219,7 +219,9 @@ const reportSources = {
       "A%": { endpoint: "/drawframe/a-percent" },
       "PP - Breaker Drawing": { fetcher: fetchDrawFrameBreakerProcessParameterEntries },
       "PP - Finisher Drawing": { fetcher: fetchDrawFrameFinisherProcessParameterEntries },
-      "Wheel Change": { fetcher: fetchDrawFrameWheelChangeEntries },
+      "Wheel Change": {
+        fetcher: (params) => fetchDrawFrameWheelChangeEntries({ ...params, approval_status: "approved" }),
+      },
     },
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },

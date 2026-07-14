@@ -14,7 +14,9 @@ const SCREEN_ID_PREFIXES = {
   rsm_lycra_offline: 'SRF',
   ring_frame: 'SRI',
   count_change: 'SCC',
-  qc: 'SQC',
+  // qc (Process Parameter) intentionally has no prefix here — it must only ever surface
+  // the real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
   wheel_change_type1: 'SW1',
   wheel_change_type2: 'SW2',
   wheel_change_type3: 'SW3'
@@ -3037,7 +3039,9 @@ router.post('/qc', async (req, res, next) => {
       slub_min,
       slub_max,
       thickness_min,
-      thickness_max
+      thickness_max,
+      ramp,
+      offset
     } = req.body;
 
     if (!entry_id) {
@@ -3071,12 +3075,15 @@ router.post('/qc', async (req, res, next) => {
         slub_min,
         slub_max,
         thickness_min,
-        thickness_max
+        thickness_max,
+        ramp,
+        "offset"
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
         $11,$12,$13,$14,$15,$16,$17,$18,
-        $19,$20,$21,$22,$23,$24,$25,$26
+        $19,$20,$21,$22,$23,$24,$25,$26,
+        $27,$28
       )
       RETURNING *`,
       [
@@ -3105,7 +3112,9 @@ router.post('/qc', async (req, res, next) => {
         slub_min,
         slub_max,
         thickness_min,
-        thickness_max
+        thickness_max,
+        ramp,
+        offset
       ]
     );
 
@@ -3148,22 +3157,44 @@ router.post('/qc', async (req, res, next) => {
 
 router.get('/qc', async (req, res, next) => {
   try {
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, consignee_name, count_name, date_from, date_to } = req.query;
 
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const offset = (pageNum - 1) * limitNum;
 
+    const conditions = [];
+    const params = [];
+    if (consignee_name) {
+      params.push(consignee_name);
+      conditions.push(`consignee_name = $${params.length}`);
+    }
+    if (count_name) {
+      params.push(count_name);
+      conditions.push(`count_name = $${params.length}`);
+    }
+    if (date_from) {
+      params.push(date_from);
+      conditions.push(`creation_date >= $${params.length}`);
+    }
+    if (date_to) {
+      params.push(date_to);
+      conditions.push(`creation_date <= $${params.length}`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
     const result = await client.query(
       `SELECT *
        FROM spinning.spinning_qc_header
+       ${whereClause}
        ORDER BY qc_id DESC
-       OFFSET $1 LIMIT $2`,
-      [offset, limitNum]
+       OFFSET $${params.length + 1} LIMIT $${params.length + 2}`,
+      [...params, offset, limitNum]
     );
 
     const total = await client.query(
-      `SELECT COUNT(*) FROM spinning.spinning_qc_header`
+      `SELECT COUNT(*) FROM spinning.spinning_qc_header ${whereClause}`,
+      params
     );
 
     res.status(200).json({
@@ -3271,6 +3302,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
     }
 
     const {
+      entry_id,
       count_name,
       consignee_name,
       creation_date,
@@ -3295,8 +3327,57 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       slub_min,
       slub_max,
       thickness_min,
-      thickness_max
+      thickness_max,
+      ramp,
+      offset
     } = req.body;
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM spinning.spinning_qc_header WHERE qc_id = $1`,
+      [qc_id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO spinning.spinning_qc_header (
+          entry_id, count_name, consignee_name, creation_date,
+          machine_no, bottom_roll_setting, top_roll_setting,
+          break_draft, total_draft, tpi_tm, spacer, traveller,
+          speed, make, denier, merge_no, lycra_draft, lycra_percent,
+          slub_partcy_code, slub_mtr, pause_min, pause_max,
+          slub_min, slub_max, thickness_min, thickness_max,
+          ramp, "offset"
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18,
+          $19,$20,$21,$22,$23,$24,$25,$26,
+          $27,$28
+        )
+        RETURNING *`,
+        [
+          requestedEntryId, count_name, consignee_name, creation_date,
+          machine_no, bottom_roll_setting, top_roll_setting,
+          break_draft, total_draft, tpi_tm, spacer, traveller,
+          speed, make, denier, merge_no, lycra_draft, lycra_percent,
+          slub_partcy_code, slub_mtr, pause_min, pause_max,
+          slub_min, slub_max, thickness_min, thickness_max,
+          ramp, offset
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Spinning QC created successfully',
+        data: insertResult.rows[0]
+      });
+    }
 
     const result = await client.query(
       `UPDATE spinning.spinning_qc_header
@@ -3324,9 +3405,11 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            slub_min = $22,
            slub_max = $23,
            thickness_min = $24,
-           thickness_max = $25
-       WHERE qc_id = $26
-       RETURNING qc_id, param_id`,
+           thickness_max = $25,
+           ramp = $26,
+           "offset" = $27
+       WHERE qc_id = $28
+       RETURNING *`,
       [
         count_name,
         consignee_name,
@@ -3353,6 +3436,8 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         slub_max,
         thickness_min,
         thickness_max,
+        ramp,
+        offset,
         qc_id
       ]
     );
@@ -3366,6 +3451,9 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       data: result.rows[0]
     });
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });

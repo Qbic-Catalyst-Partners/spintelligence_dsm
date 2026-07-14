@@ -357,7 +357,8 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
 
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) return;
@@ -517,10 +518,11 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       const response = targetVersionId
         ? await updateAutoconerQ2Entry(targetVersionId, payload)
         : await submitAutoconerQ2Entry(payload);
+      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
+      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId);
       setForm((current) => ({ ...current, paramId: nextParamId }));
-      registerProcessParameterId(response, "Autoconer", form.countName);
+      registerProcessParameterId(savedEntry, "Autoconer", form.countName);
 
       await ensureSiblingQ3Entry(nextParamId);
       await loadVersions();
@@ -553,8 +555,10 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
           creationDate: form.creationDate,
         })
       );
-    } catch {
-      // Sibling auto-submit is best-effort; ignore failures here.
+    } catch (error) {
+      // Sibling auto-submit is best-effort — don't block the main save — but log so
+      // failures aren't invisible.
+      console.warn("Autoconer Q3 sibling auto-submit failed:", error?.response?.data || error?.message || error);
     }
   };
 

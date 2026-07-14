@@ -8,6 +8,8 @@ import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCa
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { TICKET_KIND } from "@/utils/ticketTransformer";
+import { normalizeProcessParameterId } from "@/utils/processParameterId";
+import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
 
 import styles from "../../styles/operator.module.css";
 
@@ -48,6 +50,16 @@ const COTTON_HVI_NUMERIC_FIELDS = new Set([
 ]);
 
 const DATE_FIELDS = new Set(["Date", "Entry Date", "Invoice Date", "Inspection Date", "Record Date"]);
+
+const PROCESS_PARAMETER_SCREENS = new Set([
+  "Process Parameter",
+  "PP - Breaker Drawing",
+  "PP - Finisher Drawing",
+  "PP - Autoconer Q2",
+  "PP - Autoconer Q3",
+]);
+
+const PP_ID_PATTERN = /^PP-\d{4,}$/i;
 
 const SELECT_OPTIONS_BY_FIELD = {
   Variety: ["Bunny", "MCU5", "DCH32"],
@@ -170,6 +182,13 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
 
   const hasScreenFields = screenFields.length > 0;
 
+  const isProcessParameterScreen = PROCESS_PARAMETER_SCREENS.has(form.inputScreen);
+
+  const knownProcessParameterIds = useMemo(
+    () => (isProcessParameterScreen ? readProcessParameterRegistry().map((row) => row.displayId) : []),
+    [isProcessParameterScreen]
+  );
+
   const updateField = (field, value) => {
     setForm((current) => {
       if (field === "departmentSlug") {
@@ -249,6 +268,13 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
       }
     });
 
+    if (isProcessParameterScreen && !nextErrors.machineName) {
+      const normalized = normalizeProcessParameterId(form.machineName);
+      if (!PP_ID_PATTERN.test(normalized)) {
+        nextErrors.machineName = true;
+      }
+    }
+
     if (hasScreenFields) {
       screenFields.forEach((fieldName) => {
         if (!String(screenValues[fieldName] || "").trim()) {
@@ -268,6 +294,10 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
       setSubmitError("Please fill all required fields.");
       return;
     }
+
+    const machineName = isProcessParameterScreen
+      ? normalizeProcessParameterId(form.machineName)
+      : form.machineName.trim();
 
     setIsSubmitting(true);
     setSubmitError("");
@@ -309,7 +339,7 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
       sub_department: selectedSubDepartment?.name || form.subDepartmentSlug,
       erp_product_code: selectedSubDepartment?.name || form.subDepartmentSlug,
       input_screen: form.inputScreen,
-      machine_name: form.machineName.trim(),
+      machine_name: machineName,
       parameter_name: parameterNames,
       actual_value: actualValues,
       threshold_value: thresholdValues,
@@ -334,7 +364,7 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
             sub_department: selectedSubDepartment?.name || form.subDepartmentSlug,
             input_screen: form.inputScreen,
             screen_name: form.inputScreen,
-            machine_name: form.machineName.trim(),
+            machine_name: machineName,
             description: form.description.trim(),
             source: "Manual Ticket",
           }
@@ -346,7 +376,7 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
           sub_department: selectedSubDepartment?.name || form.subDepartmentSlug,
           input_screen: form.inputScreen,
           screen_name: form.inputScreen,
-          machine_name: form.machineName.trim(),
+          machine_name: machineName,
           parameter_name: form.parameterName.trim(),
           actual_value: normalizePayloadValue(form.actualValue),
           standard_value: normalizePayloadValue(form.standardValue),
@@ -491,12 +521,24 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
               </select>
             </Field>
 
-            <Field label="Machine" required error={errors.machineName}>
+            <Field
+              label={isProcessParameterScreen ? "Process Parameter ID" : "Machine"}
+              required
+              error={errors.machineName}
+            >
               <input
                 value={form.machineName}
                 onChange={(event) => updateField("machineName", event.target.value)}
-                placeholder="Machine name or number"
+                placeholder={isProcessParameterScreen ? "PP-0001" : "Machine name or number"}
+                list={isProcessParameterScreen ? "process-parameter-id-options" : undefined}
               />
+              {isProcessParameterScreen ? (
+                <datalist id="process-parameter-id-options">
+                  {knownProcessParameterIds.map((id) => (
+                    <option key={id} value={id} />
+                  ))}
+                </datalist>
+              ) : null}
             </Field>
 
             {!hasScreenFields && (
