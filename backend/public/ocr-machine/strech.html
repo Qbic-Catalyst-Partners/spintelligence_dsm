@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strech % Data Entry — OCR</title>
+  <meta name="description" content="Strech % report OCR extraction with both bobbin tables visible." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .inspection-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); background: #fafbfc; flex-wrap: wrap; }
+    .inspection-toolbar h2 { font-size: 1rem; font-weight: 700; }
+    .upload-inline { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .status-text { font-size: 0.82rem; color: var(--text-soft); }
+    .stretch-table-block { border-top: 1px solid var(--border); }
+    .stretch-table-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.9rem 1.5rem; background: #f8fafc; border-bottom: 1px solid var(--border); color: var(--blue-mid); font-weight: 700; flex-wrap: wrap; }
+    .stretch-table-title span { color: var(--text-soft); font-size: 0.82rem; font-weight: 600; }
+    .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1.25rem 1.5rem; }
+    .remark-field { grid-column: 1 / -1; }
+    .sample-table { width: 100%; border-collapse: collapse; }
+    .sample-table th, .sample-table td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); text-align: center; }
+    .sample-table th { background: var(--blue-dark); color: white; font-size: 0.8rem; }
+    .sample-table td input { width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; text-align: center; }
+    .metrics-title { padding: 0.8rem 1.5rem; color: var(--blue-mid); font-weight: 700; border-top: 1px solid var(--border); background: #f8fafc; }
+    .metrics-table th { background: #315f9f; }
+    .empty-state { color: #94a3b8; padding: 1rem 1.5rem; font-size: 0.9rem; }
+    @media (max-width: 900px) { .meta-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <span class="header-icon">🧵</span>
+      <div>
+        <h1>Strech % Data Entry</h1>
+        <p>OCR for Stretch report</p>
+      </div>
+    </div>
+    <a class="btn btn-ghost" href="./">Back to Quality Control</a>
+  </div>
+</header>
+
+<main class="container">
+  <section class="card">
+    <div class="inspection-toolbar">
+      <h2>Strech % Report Upload</h2>
+      <div class="upload-inline">
+        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" hidden />
+        <button class="btn btn-primary" id="browseBtn" type="button">Browse File</button>
+        <button class="btn btn-ghost" id="runOcrBtn" type="button" disabled>Run OCR</button>
+        <span class="status-text" id="statusText">No file selected</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="resultsCard" style="display:none">
+    <div class="card-header">
+      <span class="section-icon">🧪</span>
+      <h2>Extracted Strech % Data</h2>
+    </div>
+    <div id="tablesContainer"></div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  Quality Control OCR System · Strech % Data Entry
+</footer>
+
+<script src="strech.js"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noils Data Entry — OCR</title>
+  <meta name="description" content="Noils report OCR extraction with dynamic sample rows and summary metrics." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+    .inspection-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); background: #fafbfc; flex-wrap: wrap; }
+    .inspection-toolbar h2 { font-size: 1rem; font-weight: 700; }
+    .upload-inline { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .status-text { font-size: 0.82rem; color: var(--text-soft); }
+    .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; padding: 1.25rem 1.5rem; }
+    @media (max-width: 768px) { .meta-grid { grid-template-columns: 1fr; } }
+    .section-title { padding: 0.75rem 1.5rem; font-weight: 700; color: var(--blue-mid); border-top: 1px solid var(--border); background: #f8fafc; }
+    .sample-table { width: 100%; border-collapse: collapse; }
+    .sample-table th, .sample-table td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); text-align: center; }
+    .sample-table th { background: var(--blue-dark); color: white; font-size: 0.8rem; }
+    .sample-table td input { width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+    .summary-grid { display: grid; grid-template-columns: 220px repeat(3, 1fr); gap: 0.75rem; padding: 1.25rem 1.5rem; align-items: center; }
+    .summary-grid .summary-label { font-weight: 600; color: var(--text); }
+    .summary-grid input { width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
+    @media (max-width: 768px) { .summary-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <span class="header-icon">🧵</span>
+      <div>
+        <h1>Noils Data Entry</h1>
+        <p>OCR for Noils report</p>
+      </div>
+    </div>
+    <a class="btn btn-ghost" href="/">Back to Quality Control</a>
+  </div>
+</header>
+
+<main class="container">
+  <section class="card">
+    <div class="inspection-toolbar">
+      <h2>Noils Report Upload</h2>
+      <div class="upload-inline">
+        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" hidden />
+        <button class="btn btn-primary" id="browseBtn" type="button">Browse File</button>
+        <button class="btn btn-ghost" id="runOcrBtn" type="button" disabled>Run OCR</button>
+        <span class="status-text" id="statusText">No file selected</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="resultsCard" style="display:none">
+    <div class="card-header">
+      <span class="section-icon">🧪</span>
+      <h2>Extracted Noils Data</h2>
+    </div>
+
+    <div class="meta-grid">
+      <div class="form-field">
+        <label for="totalTest">Total Test</label>
+        <input type="text" id="totalTest" placeholder="Total Test" />
+      </div>
+      <div class="form-field">
+        <label for="numberEntries">Number of Entries (N)</label>
+        <input type="text" id="numberEntries" placeholder="Number of Entries" />
+      </div>
+      <div class="form-field">
+        <label for="stdNoils">Std. Noils %</label>
+        <input type="text" id="stdNoils" placeholder="Std. Noils %" />
+      </div>
+      <div class="form-field">
+        <label for="noilsPct">Noils %</label>
+        <input type="text" id="noilsPct" placeholder="Noils %" />
+      </div>
+    </div>
+
+    <div class="section-title">Sample Entries</div>
+    <div class="table-wrapper">
+      <table class="sample-table">
+        <thead>
+          <tr>
+            <th style="width: 110px;">Sample No</th>
+            <th>Sliver Wt</th>
+            <th>Noils Wt</th>
+            <th>Noils %</th>
+          </tr>
+        </thead>
+        <tbody id="sampleTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">Summary (from Average Weight)</div>
+    <div id="summaryContainer"></div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  Quality Control OCR System · Noils Data Entry
+</footer>
+
+<script src="/static/noils.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "supervisor": {
+    "canApprove": true,
+    "canReject": true
+  },
+  "operator": {
+    "canApprove": false,
+    "canReject": false
+  },
+  "admin": {
+    "canApprove": true,
+    "canReject": true
+  }
+}

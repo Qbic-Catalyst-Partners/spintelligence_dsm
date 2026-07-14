@@ -1,0 +1,44 @@
+{
+  "name": "dsm_backend",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [],
+  "homepage": "https://github.com/Qbic-Catalyst-Partners/SpintelligenceBeta-backend#readme",
+  "bugs": {
+    "url": "https://github.com/Qbic-Catalyst-Partners/SpintelligenceBeta-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Qbic-Catalyst-Partners/SpintelligenceBeta-backend.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "sync:supabase:postgres": "powershell -ExecutionPolicy Bypass -File scripts/sync-supabase-to-postgres.ps1",
+    "sync:postgres:supabase": "powershell -ExecutionPolicy Bypass -File scripts/sync-postgres-to-supabase.ps1"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "csv-parser": "^3.2.0",
+    "dayjs": "^1.11.19",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "json2csv": "^6.0.0-alpha.2",
+    "jsonwebtoken": "^9.0.3",
+    "mssql": "^12.5.4",
+    "multer": "^2.0.2",
+    "nodemailer": "^8.0.7",
+    "pdfkit": "^0.18.0",
+    "pg": "^8.20.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.8.0"
+  }
+}
