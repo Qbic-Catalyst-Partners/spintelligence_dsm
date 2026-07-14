@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
@@ -5187,7 +5187,15 @@ router.post('/qc', async (req, res, next) => {
       offset
     } = req.body;
 
-    const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     const conflictingCountName = await getCountNameConflict(entry_id, count_name);
     if (conflictingCountName) {

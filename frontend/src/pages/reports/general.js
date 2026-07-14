@@ -14,7 +14,6 @@ import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 
 const ALL_TYPES_VALUE = "__all_types__";
-const today = new Date();
 const padDatePart = (value) => String(value).padStart(2, "0");
 const toInputDate = (date) =>
   `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
@@ -679,16 +678,23 @@ const findEntryIdLikeValue = (row) => {
   return value !== null && typeof value !== "undefined" && value !== "" ? value : null;
 };
 
-const BLEND_FIELD_PATTERN = /^blend-(\d+)$/i;
+const BLEND_FIELD_PATTERN = /^blend-\d+$/i;
+// By the time a row reaches here it has already been through normalizeDashboardRows, which
+// flattens each mixing_qc_blends row into its own report row with plain "blend_no"/
+// "percentage" keys — there is never a surviving nested "blends" array to look into, and never
+// more than one blend per row. "Blend-1" (the % typed into the form) and "Blend No." (the
+// blend's sequence number) are simply two different flat columns already on that row.
+const BLEND_NO_FIELD_LABEL = "blend no.";
 
 const getBlendFieldValue = (row, field) => {
-  const match = BLEND_FIELD_PATTERN.exec(String(field?.label || field?.key || "").trim());
-  if (!match) return undefined;
-  const blendNo = Number(match[1]);
-  const blends = Array.isArray(row?.blends) ? row.blends : [];
-  const blend = blends.find((item) => Number(item?.blend_no) === blendNo);
-  if (!blend) return null;
-  return blend.percentage ?? null;
+  const label = String(field?.label || field?.key || "").trim();
+
+  if (normalizeLookup(label) === normalizeLookup(BLEND_NO_FIELD_LABEL)) {
+    return row?.blend_no ?? null;
+  }
+
+  if (!BLEND_FIELD_PATTERN.test(label)) return undefined;
+  return row?.percentage ?? null;
 };
 
 const SMX_BREAKS_STUDY_COLUMNS = [
@@ -1101,8 +1107,8 @@ const getWorksheetName = (name, index, usedNames) => {
 
 export default function GeneralReport() {
   const router = useRouter();
-  const [fromDate, setFromDate] = useState(toInputDate(today));
-  const [toDate, setToDate] = useState(toInputDate(today));
+  const [fromDate, setFromDate] = useState(() => toInputDate(new Date()));
+  const [toDate, setToDate] = useState(() => toInputDate(new Date()));
   const fromDateInputRef = useRef(null);
   const toDateInputRef = useRef(null);
 

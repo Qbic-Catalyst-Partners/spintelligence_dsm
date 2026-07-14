@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
@@ -1390,7 +1390,6 @@ router.post('/study', async (req, res, next) => {
       machine_name,
       operator_name,
       shift,
-      items,
       inspection_items,
       items,
       user_fiber_parameters,
@@ -1948,6 +1947,9 @@ router.post('/process_parameter', async (req, res, next) => {
     });
 
   } catch (error) {
+    if (error instanceof InvalidProcessParameterEntryIdError) {
+      return res.status(400).json({ message: 'Invalid or unrecognized Process Parameter ID' });
+    }
     if (isUniqueViolation(error)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }

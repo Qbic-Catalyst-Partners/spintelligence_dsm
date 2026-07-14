@@ -4,6 +4,7 @@ export const thresholdFieldCatalog = {
         "Count Name",
         "Consignee Name",
         "Lot No.",
+        "Blend No.",
         "Blend-1",
         "Cut Length",
         "Tenacity",

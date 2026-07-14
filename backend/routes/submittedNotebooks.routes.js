@@ -19,6 +19,21 @@ const cleanText = (value) => {
   return text || null;
 };
 
+// The PP registry (frontend normalizeProcessParameterId) only ever produces the
+// zero-padded canonical form "PP-0001". Anything else that starts with "PP" but
+// isn't in that exact shape (e.g. "PP-1", "PP-000001", "pp-0001") is a stray/
+// malformed id, not a second real batch — canonicalize it here so a typo or a
+// caller that skipped the frontend normalizer can't spin up a duplicate "batch"
+// with its own set of PP_NOTEBOOK_INCOMPLETE tickets that no PP matrix row ever
+// matches. Non-PP entry ids (lot numbers, etc.) are left untouched.
+const canonicalizePpEntryId = (value) => {
+  const raw = String(value ?? '').trim().toUpperCase();
+  if (!raw) return value;
+  const match = raw.match(/^PP-?(\d+)$/);
+  if (!match) return value;
+  return `PP-${match[1].padStart(4, '0')}`;
+};
+
 const toJson = (value, fallback = null) => JSON.stringify(value === undefined ? fallback : value);
 
 const parseTatHours = (value, fallback = null) => {
@@ -180,7 +195,7 @@ const runPpBatchCompletionCheck = async () => {
             ARRAY_AGG(DISTINCT notebook) AS completed_screens,
             MIN(submitted_at) AS first_created_at
      FROM ticketing_system.submitted_notebooks
-     WHERE entry_id ~ '^PP-\\d+$'
+     WHERE entry_id ~ '^PP-\\d{4,}$'
        AND notebook = ANY($1::text[])
      GROUP BY entry_id`,
     [notebookNames]
@@ -1026,7 +1041,7 @@ const generatePpNotebookBatchIncompleteTickets = async () => {
             MIN(submitted_at) AS first_created_at,
             array_agg(DISTINCT notebook) AS completed_notebooks
      FROM ticketing_system.submitted_notebooks
-     WHERE entry_id ~ '^PP-\\d+$'
+     WHERE entry_id ~ '^PP-\\d{4,}$'
      GROUP BY entry_id`
   );
 
@@ -1251,7 +1266,7 @@ router.post('/', async (req, res, next) => {
       [],
       { useDefault: false }
     );
-    const entryId = cleanText(req.body?.entry_id);
+    const entryId = canonicalizePpEntryId(cleanText(req.body?.entry_id));
     const sourceTable = cleanText(req.body?.source_table);
     const sourceRecordId = cleanText(req.body?.source_record_id || req.body?.record_id);
     const notebookSubmissionId = cleanText(req.body?.notebook_submission_id) || buildSubmissionId({
@@ -1587,5 +1602,6 @@ module.exports = {
   ensureAcknowledgementThresholdTable,
   generateOverdueNotebookTickets,
   runPpBatchCompletionCheck,
-  generatePpNotebookBatchIncompleteTickets
+  generatePpNotebookBatchIncompleteTickets,
+  recordPpNotebookSubmission
 };

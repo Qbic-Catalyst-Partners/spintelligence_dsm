@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
@@ -688,7 +688,7 @@ const ensureMixingEntryIdColumns = async () => {
   // it can't rename/reorder a column already deployed. The live view already has entry_id as
   // column 2, so param_id is appended at the end instead of being inserted before it.
   await client.query(`
-    CREATE VIEW mixing.mixing_qc_dashboard_entries AS
+    CREATE OR REPLACE VIEW mixing.mixing_qc_dashboard_entries AS
     SELECT
       h.qc_id,
       h.entry_id,
@@ -2676,7 +2676,15 @@ router.post('/qc', async (req, res, next) => {
       blends
     } = req.body;
 
-    const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     const conflictingCountName = await getCountNameConflict(entry_id, count_name);
     if (conflictingCountName) {

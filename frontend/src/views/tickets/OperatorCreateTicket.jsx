@@ -526,19 +526,27 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
               required
               error={errors.machineName}
             >
-              <input
-                value={form.machineName}
-                onChange={(event) => updateField("machineName", event.target.value)}
-                placeholder={isProcessParameterScreen ? "PP-0001" : "Machine name or number"}
-                list={isProcessParameterScreen ? "process-parameter-id-options" : undefined}
-              />
               {isProcessParameterScreen ? (
-                <datalist id="process-parameter-id-options">
+                <select
+                  value={form.machineName}
+                  onChange={(event) => updateField("machineName", event.target.value)}
+                >
+                  <option value="" disabled>
+                    Select a Process Parameter ID
+                  </option>
                   {knownProcessParameterIds.map((id) => (
-                    <option key={id} value={id} />
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
                   ))}
-                </datalist>
-              ) : null}
+                </select>
+              ) : (
+                <input
+                  value={form.machineName}
+                  onChange={(event) => updateField("machineName", event.target.value)}
+                  placeholder="Machine name or number"
+                />
+              )}
             </Field>
 
             {!hasScreenFields && (

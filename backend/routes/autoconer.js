@@ -3,7 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const SCREEN_ID_PREFIXES = {
   // process/q2/q3 (Process Parameter screens) intentionally have no prefix here — they
@@ -733,7 +733,15 @@ const createProcessParameterEntry = async (req, res, next) => {
   try {
     await ensureAutoconerEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
@@ -4358,7 +4366,15 @@ router.post('/q2', async (req, res, next) => {
   try {
     await ensureAutoconerEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
@@ -4945,7 +4961,15 @@ router.post('/q3', async (req, res, next) => {
   try {
     await ensureAutoconerEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
