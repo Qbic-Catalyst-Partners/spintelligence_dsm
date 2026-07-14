@@ -23,7 +23,6 @@ const WHEEL_CHANGE_API_TYPES = {
 // never read and get swept away below.
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values_v2";
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY_LEGACY = "spinning_wheel_change_last_values";
-const STATIC_RF_NO_OPTIONS = ["1", "2", "3", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "20", "24"];
 const STATIC_TYPE_1_DROPDOWN_OPTIONS = {
   rh: ["40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68"],
   bd: ["1.92", "1.87", "1.83", "1.79", "1.75", "1.71", "1.67", "1.63", "1.60", "1.57", "1.54", "1.51", "1.48", "1.45", "1.42", "1.40", "1.37", "1.35", "1.32", "1.30", "1.28", "1.26", "1.24", "1.22", "1.20", "1.18", "1.16", "1.15", "1.13"],
@@ -573,6 +572,30 @@ const cleanRfLabel = (value) =>
     .replace(/^\d+\s*[,/-]\s*/g, "")
     .replace(/^\d+\s*\/\s*/g, "")
     .trim();
+// Options can mix bare numbers ("1") with formatted labels ("R/F NO 14") depending on which
+// source they came from, so sort by the embedded number rather than lexically — otherwise
+// "R/F NO 14" sorts before "R/F NO 2" and plain "1"/"2" scatter out of order.
+const getMachineOptionSortKey = (option) => {
+  const text = String(option?.value ?? option?.label ?? "");
+  const match = text.match(/(\d+(?:\.\d+)?)/);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+};
+
+const sortMachineOptions = (options) =>
+  [...options].sort((a, b) => {
+    const numA = getMachineOptionSortKey(a);
+    const numB = getMachineOptionSortKey(b);
+    if (numA !== numB) return numA - numB;
+    return String(a?.label ?? a?.value ?? "").localeCompare(String(b?.label ?? b?.value ?? ""), undefined, {
+      numeric: true,
+    });
+  });
+
+// Only keep options in the "R/F NO <number>" format — drops bare numbers, differently-labeled
+// machine names from other screens' lookups, and anything else that isn't a real R/F No.
+const RF_NO_LABEL_PATTERN = /^R\s*\/?\s*F\s*NO\.?\s*\d+$/i;
+const isRfNoOption = (option) => RF_NO_LABEL_PATTERN.test(String(option?.label ?? option?.value ?? "").trim());
+
 const normalizeMachineOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -594,7 +617,7 @@ const normalizeMachineOptions = (payload) => {
 
   const seen = new Set();
 
-  return rows
+  const dedupedOptions = rows
     .map((row) => {
       const machineName = getOptionText(
         row?.rf_name ??
@@ -637,6 +660,7 @@ const normalizeMachineOptions = (payload) => {
       seen.add(option.value);
       return true;
     });
+  return sortMachineOptions(dedupedOptions);
 };
 const getWheelChangeMachineOptions = (payload) => normalizeMachineOptions(payload);
 const normalizeLookupOptions = (payload) => {
@@ -1095,10 +1119,6 @@ const WheelChange = forwardRef(function WheelChange(
 
       const machineOptionSources = [];
 
-      machineOptionSources.push(
-        STATIC_RF_NO_OPTIONS.map((value) => ({ value, label: value }))
-      );
-
       if (cotsRfResult.status === "fulfilled") {
         machineOptionSources.push(getWheelChangeMachineOptions(cotsRfResult.value));
       }
@@ -1116,13 +1136,16 @@ const WheelChange = forwardRef(function WheelChange(
       }
 
       setMachineOptions(
-        Array.from(
-          new Map(
-            machineOptionSources
-              .flat()
-              .filter((option) => option?.value)
-              .map((option) => [option.value, option])
-          ).values()
+        sortMachineOptions(
+          Array.from(
+            new Map(
+              machineOptionSources
+                .flat()
+                .filter((option) => option?.value)
+                .filter(isRfNoOption)
+                .map((option) => [option.value, option])
+            ).values()
+          )
         )
       );
     });

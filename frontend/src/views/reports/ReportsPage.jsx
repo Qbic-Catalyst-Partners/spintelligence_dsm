@@ -65,6 +65,7 @@ import {
   fetchDrawFrameBreakerProcessParameterEntries,
   fetchDrawFrameFinisherProcessParameterEntries,
 } from "@/apis/draw-frame";
+import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import {
   fetchMixingAfisEntries,
   fetchMixingAfis6CottonEntries,
@@ -233,13 +234,11 @@ const reportSources = {
       "Draw Frame Cots Data Entry": { fetcher: fetchDrawFrameCotsEntries },
       "U% Data Entry": { fetcher: fetchDrawFrameUqcEntries },
       "A%": { endpoint: "/drawframe/a-percent" },
-      "Wheel Change Type-1 (SB20)": { endpoint: "/drawframe/wheel-change/type1" },
-      "Wheel Change Type-2 (TD7)": { endpoint: "/drawframe/wheel-change/type2" },
-      "Wheel Change Type-3 (TD9)": { endpoint: "/drawframe/wheel-change/type3" },
-      "Wheel Change Type-1 (LRSB)": { endpoint: "/drawframe/wheel-change/finisher-type1-lrsb" },
-      "Wheel Change Type-2 (D40)": { endpoint: "/drawframe/wheel-change/type2-d40" },
-      "Wheel Change Type-3 (D50/D55)": { endpoint: "/drawframe/wheel-change/type3-d50-d55" },
-      "Wheel Change Type-4 (LDF3S)": { endpoint: "/drawframe/wheel-change/type4-ldf3s" },
+      "PP - Breaker Drawing": { fetcher: fetchDrawFrameBreakerProcessParameterEntries },
+      "PP - Finisher Drawing": { fetcher: fetchDrawFrameFinisherProcessParameterEntries },
+      "Wheel Change": {
+        fetcher: (params) => fetchDrawFrameWheelChangeEntries({ ...params, approval_status: "approved" }),
+      },
     },
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },
@@ -1199,7 +1198,7 @@ const reportFieldAliases = {
   "Ratio into size-0.7": ["ratio_size_07", "ratioSize07"],
   "Ratio into size-0.5": ["ratio_size_05", "ratioSize05"],
   "Lot No.": ["lot_no"],
-  "Blend-1": ["percentage", "blend"],
+  "Blend-1": ["blend_no", "blend"],
   "Merge No.": ["merge_no"],
   "Process Parameter ID": ["entry_id", "param_id", "paramId"],
   "Break Draft": ["breaker_draft", "break_draft"],

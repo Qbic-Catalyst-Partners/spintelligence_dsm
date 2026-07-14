@@ -11,7 +11,10 @@ const SCREEN_ID_PREFIXES = {
   yarn_cv: 'DY',
   cots: 'DC',
   uqc: 'DU',
-  wheel_change: 'DWC',
+  // header/finisher (Process Parameter screens) intentionally have no prefix here —
+  // they must only ever surface the real, stored PP-000n entry_id, never a synthesized
+  // fallback id, since a fabricated id collides with the shared Process Parameter scheme.
+  wheel_change: 'AWH',
   wrapping_drawframe_notebook: 'WD',
   wrapping_a_percent: 'WA',
   wrapping_stretch_percent: 'WSP',
@@ -389,7 +392,8 @@ const ensureDrawframeEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE drawframe.drawframe_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS entry_scope TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS drawframe_qc_header_entry_id_uq
@@ -455,14 +459,12 @@ const ensureDrawframeWheelChangeTable = async () => {
       ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS operator TEXT,
-      ADD COLUMN IF NOT EXISTS remarks TEXT,
-      ADD COLUMN IF NOT EXISTS approval_status TEXT DEFAULT 'approved',
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
+      ADD COLUMN IF NOT EXISTS machine_no TEXT,
+      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS submitted_by TEXT,
       ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
       ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS machine_no TEXT,
-      DROP COLUMN IF EXISTS entry_date;
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
   `);
 
   await client.query(`
@@ -472,8 +474,13 @@ const ensureDrawframeWheelChangeTable = async () => {
   `);
 
   await client.query(`
-    CREATE INDEX IF NOT EXISTS drawframe_wheel_change_machine_no_idx
-    ON drawframe.wheel_change (machine_no, created_at DESC);
+    CREATE INDEX IF NOT EXISTS drawframe_wheel_change_entry_date_idx
+    ON drawframe.wheel_change (entry_date DESC, id DESC);
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS drawframe_wheel_change_machine_status_idx
+    ON drawframe.wheel_change (machine_no, approval_status, entry_date DESC, id DESC);
   `);
 };
 
@@ -2108,6 +2115,195 @@ router.get('/uqc', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /drawframe/header:
+ *   post:
+ *     summary: Create Drawframe QC Header entry
+ *     tags: [Drawframe]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               type:
+ *                 type: string
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               make:
+ *                 type: string
+ *               no_of_ends:
+ *                 type: integer
+ *               bottom_roll_setting:
+ *                 type: string
+ *               breaker_draft:
+ *                 type: number
+ *               total_draft:
+ *                 type: number
+ *               hank:
+ *                 type: number
+ *               web_tension_draft:
+ *                 type: number
+ *               trumpet_size:
+ *                 type: number
+ *               delivery_speed:
+ *                 type: number
+ *               pressure_bar:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Drawframe entry created successfully
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/header', async (req, res, next) => {
+  try {
+    await ensureDrawframeEntryIdColumns();
+    const {
+      entry_id,
+      entry_scope,
+      type,
+      count_name,
+      consignee_name,
+      creation_date,
+      make,
+      no_of_ends,
+      bottom_roll_setting,
+      breaker_draft,
+      total_draft,
+      hank,
+      web_tension_draft,
+      trumpet_size,
+      delivery_speed,
+      pressure_bar
+    } = req.body;
+
+    // ✅ Required validation
+    if (!count_name || !consignee_name || !creation_date) {
+      return res.status(400).json({
+        message: 'count_name, consignee_name and creation_date are required'
+      });
+    }
+
+    const result = await client.query(
+      `INSERT INTO drawframe.drawframe_qc_header (
+        entry_id, entry_scope, type, count_name, consignee_name, creation_date,
+        make, no_of_ends, bottom_roll_setting,
+        breaker_draft, total_draft, hank,
+        web_tension_draft, trumpet_size, delivery_speed, pressure_bar
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,
+        $10,$11,$12,
+        $13,$14,$15,$16
+      )
+      RETURNING *`,
+      [
+        entry_id || null,
+        entry_scope || null,
+        type,
+        count_name,
+        consignee_name,
+        creation_date,
+        make,
+        no_of_ends,
+        bottom_roll_setting,
+        breaker_draft,
+        total_draft,
+        hank,
+        web_tension_draft,
+        trumpet_size,
+        delivery_speed,
+        pressure_bar
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Drawframe entry created successfully',
+      data: withScreenEntryId('header', result.rows[0], 'ins_id')
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error(error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /drawframe/header:
+ *   get:
+ *     summary: Get all Drawframe QC Header entries
+ *     tags: [Drawframe]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Drawframe data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+
+router.get('/header', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM drawframe.drawframe_qc_header
+       ORDER BY creation_date DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM drawframe.drawframe_qc_header`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('header', row, 'ins_id')),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+});
+
 const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChangeType = null, defaultWheelChangeTypeLabel = null) => {
   try {
     await ensureDrawframeWheelChangeTable();
@@ -2122,42 +2318,31 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
     const wheel_change_type_label = String(
       payload.wheel_change_type_label ?? payload.wheelChangeTypeLabel ?? defaultWheelChangeTypeLabel ?? ''
     ).trim() || null;
-    const machine_no = String(payload.machine_no ?? payload.machineNo ?? payload.machine ?? '').trim() || null;
-    let parameters = normalizeWheelChangeParameters(payload);
-    const operator = String(payload.operator ?? payload.operator_name ?? payload.operatorName ?? '').trim() || null;
-    const remarks = String(payload.remarks ?? payload.remark ?? payload.comments ?? '').trim() || null;
-    // Every submission lands as 'pending' unless the payload explicitly says
-    // 'approved' - anything else (missing, typo'd) awaits L2 review.
-    const approval_status = String(payload.approval_status ?? payload.approvalStatus ?? '').trim().toLowerCase() === 'approved'
-      ? 'approved'
-      : 'pending';
+    const machine_no = String(payload.machine_no ?? payload.machineNo ?? '').trim() || null;
+    const submitted_by = req.user?.employee_id || null;
+    const entry_date = parseNotebookDate(payload.entry_date ?? payload.entryDate ?? payload.date);
+    const parameters = normalizeWheelChangeParameters(payload);
+    const rows = normalizeWheelChangeRows(payload, parameters);
 
-    // machine_no is optional (older frontend builds may not send it yet), but
-    // without it there's no key to carry the "Existing" baseline forward from
-    // or to override a still-pending proposal on resubmission.
-    const previousRow = machine_no ? await fetchLatestApprovedDrawframeWheelChange(machine_no) : null;
-    parameters = withDrawframeCarriedForwardExisting(parameters, previousRow);
-    // Rebuild the "rows" keyed map from the (carry-forward-applied) parameters
-    // rather than payload.rows verbatim - otherwise the stored rows map would
-    // keep whatever stale "existing" the frontend originally submitted, even
-    // though the parameters array now has the correct carried-forward value.
-    const rows = parameters.reduce((acc, param) => {
-      if (param && typeof param === 'object' && param.key) {
-        acc[param.key] = param;
-      }
-      return acc;
-    }, {});
+    if (!entry_date) {
+      return res.status(400).json({ message: 'entry_date is required' });
+    }
 
     if (machine_no) {
-      await supersedePendingDrawframeWheelChangeEntry(machine_no);
+      await client.query(
+        `UPDATE drawframe.wheel_change
+         SET approval_status = 'superseded'
+         WHERE machine_no = $1 AND approval_status = 'pending'`,
+        [machine_no]
+      );
     }
 
     const result = await client.query(
       `INSERT INTO drawframe.wheel_change (
-         entry_id, type, line_type, wheel_change_type, wheel_change_type_label, parameters, rows,
-         operator, remarks, approval_status, machine_no
+         entry_id, type, line_type, wheel_change_type, wheel_change_type_label, entry_date, parameters, rows,
+         machine_no, approval_status, submitted_by
        )
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, 'pending', $10)
        RETURNING *`,
       [
         entry_id,
@@ -2165,12 +2350,11 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
         line_type,
         wheel_change_type,
         wheel_change_type_label,
+        entry_date,
         JSON.stringify(parameters),
         JSON.stringify(rows),
-        operator,
-        remarks,
-        approval_status,
-        machine_no
+        machine_no,
+        submitted_by
       ]
     );
 
@@ -2197,11 +2381,7 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
     const offset = (page - 1) * limit;
     const requestedType = String(req.query.wheel_change_type ?? req.query.wheelChangeType ?? defaultWheelChangeType ?? '').trim();
     const requestedMachineNo = String(req.query.machine_no ?? req.query.machineNo ?? '').trim();
-    const requestedApprovalStatus = String(req.query.approval_status ?? req.query.approvalStatus ?? req.query.status ?? '').trim().toLowerCase();
-    // The frontend looks up "what was last saved" by Mixing before a machine
-    // is even picked, so the mixing value has to be matched inside the
-    // rows.mixing JSONB blob (there's no dedicated mixing column).
-    const requestedMixing = String(req.query.variety ?? req.query.variety_name ?? req.query.mixing ?? '').trim();
+    const requestedApprovalStatus = String(req.query.approval_status ?? req.query.status ?? '').trim().toLowerCase();
 
     const conditions = [];
     const filterParams = [];
@@ -2211,29 +2391,30 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
     }
     if (requestedMachineNo) {
       filterParams.push(requestedMachineNo);
-      conditions.push(`LOWER(TRIM(COALESCE(machine_no, ''))) = LOWER(TRIM($${filterParams.length}))`);
+      conditions.push(`machine_no = $${filterParams.length}`);
     }
     if (requestedApprovalStatus) {
       filterParams.push(requestedApprovalStatus);
-      conditions.push(`LOWER(TRIM(COALESCE(approval_status, 'approved'))) = $${filterParams.length}`);
-    }
-    if (requestedMixing) {
-      filterParams.push(requestedMixing);
-      conditions.push(`(LOWER(TRIM(COALESCE(rows->'mixing'->>'existing', ''))) = LOWER(TRIM($${filterParams.length}))
-        OR LOWER(TRIM(COALESCE(rows->'mixing'->>'proposed', ''))) = LOWER(TRIM($${filterParams.length})))`);
+      conditions.push(`approval_status = $${filterParams.length}`);
     }
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const dataParams = [...filterParams, limit, offset];
+    const limitPlaceholder = `$${filterParams.length + 1}`;
+    const offsetPlaceholder = `$${filterParams.length + 2}`;
 
     const [dataResult, totalResult] = await Promise.all([
       client.query(
         `SELECT *
          FROM drawframe.wheel_change
          ${whereClause}
-         ORDER BY created_at DESC, id DESC
-         LIMIT $${filterParams.length + 1} OFFSET $${filterParams.length + 2}`,
-        [...filterParams, limit, offset]
+         ORDER BY entry_date DESC NULLS LAST, id DESC
+         LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
+        dataParams
       ),
       client.query(
+        `SELECT COUNT(*) FROM drawframe.wheel_change ${whereClause}`,
+        filterParams
         `SELECT COUNT(*) FROM drawframe.wheel_change ${whereClause}`,
         filterParams
       )
@@ -2271,50 +2452,88 @@ router.get('/wheel-change/type3-d50-d55', (req, res, next) => getDrawframeWheelC
 router.post('/wheel-change/type4-ldf3s', (req, res, next) => createDrawframeWheelChangeEntry(req, res, next, 'type4_ldf3s', 'Type 4 (LDF3S)'));
 router.get('/wheel-change/type4-ldf3s', (req, res, next) => getDrawframeWheelChangeEntries(req, res, next, 'type4_ldf3s'));
 
-// Wheel-change approvals flip data other screens may treat as the trusted
-// record, so approval/rejection is restricted to L2 reviewers server-side.
-// Admin accounts (role "admin" or employee_id like ADMIN001) get the same
-// access as L2.
-const isDrawframeAdminReviewer = (req) => {
-  const role = String(req.user?.role || '').trim().toLowerCase();
-  if (role === 'admin') return true;
+/*
+ * Draw Frame wheel-change approval workflow. Aggregates across all 7 type
+ * variants since they share drawframe.wheel_change. Rows are never deleted —
+ * approve/reject flip approval_status and stamp reviewed_by/reviewed_at.
+ */
+router.get('/wheel-change/approvals', async (req, res, next) => {
+  try {
+    await ensureDrawframeWheelChangeTable();
 
-  const employeeId = String(req.user?.employee_id || '').trim().toLowerCase();
-  return /^admin\s*0*\d+$/.test(employeeId);
-};
+    const status = String(req.query.status ?? req.query.approval_status ?? 'pending').trim().toLowerCase() || 'pending';
 
-const parseDrawframePositiveInt = (value) => {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : null;
-};
+    const result = await client.query(
+      `SELECT *
+       FROM drawframe.wheel_change
+       WHERE approval_status = $1
+       ORDER BY entry_date DESC NULLS LAST, id DESC`,
+      [status]
+    );
 
-const getDrawframeReviewerLevel = async (req) => {
-  const tokenLevel = String(req.user?.level || '').trim().toUpperCase();
-  if (tokenLevel === 'L1' || tokenLevel === 'L2' || tokenLevel === 'L3') return tokenLevel;
-
-  const requesterId = parseDrawframePositiveInt(req.user?.id);
-  if (!requesterId) return null;
-
-  const result = await client.query(
-    `SELECT COALESCE(level, '') AS level
-     FROM users.user_details
-     WHERE id = $1`,
-    [requesterId]
-  );
-  const level = String(result.rows[0]?.level || '').trim().toUpperCase();
-  return level === 'L1' || level === 'L2' || level === 'L3' ? level : null;
-};
-
-const requireDrawframeL2Reviewer = async (req, res) => {
-  if (isDrawframeAdminReviewer(req)) return true;
-
-  const level = await getDrawframeReviewerLevel(req);
-  if (level !== 'L2') {
-    res.status(403).json({ message: 'Only L2 reviewers can access wheel change approvals' });
-    return false;
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('wheel_change', hydrateWheelChangeRow(row)))
+    });
+  } catch (error) {
+    console.error('Drawframe wheel change approvals fetch error:', error);
+    next(error);
   }
-  return true;
-};
+});
+
+router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
+  try {
+    await ensureDrawframeWheelChangeTable();
+
+    const reviewed_by = req.user?.employee_id || null;
+    const result = await client.query(
+      `UPDATE drawframe.wheel_change
+       SET approval_status = 'approved', reviewed_by = $1, reviewed_at = NOW()
+       WHERE id = $2 AND approval_status = 'pending'
+       RETURNING *`,
+      [reviewed_by, req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'Pending wheel change entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Drawframe wheel change entry approved successfully',
+      data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
+    });
+  } catch (error) {
+    console.error('Drawframe wheel change approve error:', error);
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
+  try {
+    await ensureDrawframeWheelChangeTable();
+
+    const reviewed_by = req.user?.employee_id || null;
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE drawframe.wheel_change
+       SET approval_status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2
+       WHERE id = $3 AND approval_status = 'pending'
+       RETURNING *`,
+      [reviewed_by, reason, req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ message: 'Pending wheel change entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Drawframe wheel change entry rejected successfully',
+      data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
+    });
+  } catch (error) {
+    console.error('Drawframe wheel change reject error:', error);
+    next(error);
+  }
+});
 
 /**
  * @swagger
@@ -2599,7 +2818,10 @@ router.put('/header/:ins_id', async (req, res, next) => {
       });
     }
 
+    await ensureDrawframeEntryIdColumns();
     const {
+      entry_id,
+      entry_scope,
       type,
       count_name,
       consignee_name,
@@ -2622,26 +2844,81 @@ router.put('/header/:ins_id', async (req, res, next) => {
       });
     }
 
+    const currentResult = await client.query(
+      `SELECT entry_id FROM drawframe.drawframe_qc_header WHERE ins_id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Drawframe entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO drawframe.drawframe_qc_header (
+          entry_id, entry_scope, type, count_name, consignee_name, creation_date,
+          make, no_of_ends, bottom_roll_setting,
+          breaker_draft, total_draft, hank,
+          web_tension_draft, trumpet_size, delivery_speed, pressure_bar
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,
+          $7,$8,$9,
+          $10,$11,$12,
+          $13,$14,$15,$16
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          entry_scope || null,
+          type,
+          count_name,
+          consignee_name,
+          creation_date,
+          make,
+          no_of_ends,
+          bottom_roll_setting,
+          breaker_draft,
+          total_draft,
+          hank,
+          web_tension_draft,
+          trumpet_size,
+          delivery_speed,
+          pressure_bar
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Drawframe entry created successfully',
+        data: withScreenEntryId('header', insertResult.rows[0], 'ins_id')
+      });
+    }
+
     const result = await client.query(
       `UPDATE drawframe.drawframe_qc_header
-       SET type=$1,
-           count_name=$2,
-           consignee_name=$3,
-           creation_date=$4,
-           make=$5,
-           no_of_ends=$6,
-           bottom_roll_setting=$7,
-           breaker_draft=$8,
-           total_draft=$9,
-           hank=$10,
-           web_tension_draft=$11,
-           trumpet_size=$12,
-           delivery_speed=$13,
-           pressure_bar=$14
-       WHERE ins_id=$15
+       SET type = $1,
+           entry_scope = $2,
+           count_name = $3,
+           consignee_name = $4,
+           creation_date = $5,
+           make = $6,
+           no_of_ends = $7,
+           bottom_roll_setting = $8,
+           breaker_draft = $9,
+           total_draft = $10,
+           hank = $11,
+           web_tension_draft = $12,
+           trumpet_size = $13,
+           delivery_speed = $14,
+           pressure_bar = $15
+       WHERE ins_id = $16
        RETURNING *`,
       [
         type,
+        entry_scope || null,
         count_name,
         consignee_name,
         creation_date,

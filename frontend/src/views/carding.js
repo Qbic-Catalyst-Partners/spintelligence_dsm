@@ -266,7 +266,7 @@ function Carding() {
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
-                            savedVersionsTargetId="carding-process-parameter-saved-versions"
+                            savedVersionsTargetId=""
                         />
                     ) : null}
 
@@ -423,11 +423,6 @@ function Carding() {
                     ) : null}
                 </div>
 
-                {isProcessParameter && SelectedComponent ? (
-                    <div id="carding-process-parameter-saved-versions" className="mt-5 mx-auto max-w-[1120px]" />
-                ) : null}
-
-                
                 {/* ✅ TABLE BELOW CARD (ONLY FOR U%) */}
                 {selectedType === "U% Data Entry" && (
                     <div

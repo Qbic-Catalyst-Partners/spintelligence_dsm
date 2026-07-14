@@ -15,6 +15,9 @@ const SCREEN_ID_PREFIXES = {
   nati_data_entry: 'NAT',
   uqc: 'CU',
   dfk_pressure: 'CD',
+  // qc_header (Process Parameter) intentionally has no prefix here — it must only ever
+  // surface the real, stored PP-000n entry_id, never a synthesized fallback id, since a
+  // fabricated id collides with the shared Process Parameter scheme.
   card_change_control: 'CC',
   card_waste_study: 'CW',
   wrapping_carding_notebook: 'WR'
@@ -3109,6 +3112,439 @@ router.get('/dfk-pressure', async (req, res) => {
     } catch (err) {
         res.status(500).json({ message: "Server error" });
     }
+});
+
+/**
+ * @swagger
+ * /carding/qc-header:
+ *   post:
+ *     summary: Create Carding QC entry
+ *     tags: [Carding]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 example: Process Parameter
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: number
+ *               lickerin_speed:
+ *                 type: number
+ *               cylinder_speed:
+ *                 type: number
+ *               flats_speed:
+ *                 type: number
+ *               delivery_speed:
+ *                 type: number
+ *               draft_speed:
+ *                 type: number
+ *               tension_draft:
+ *                 type: number
+ *               delivery_hank:
+ *                 type: number
+ *               setting:
+ *                 type: string
+ *               feed_roll_to_lickerin:
+ *                 type: number
+ *               lickerin_to_cylinder:
+ *                 type: number
+ *               cylinder_to_flats:
+ *                 type: number
+ *               cylinder_to_doffer:
+ *                 type: number
+ *               sfl:
+ *                 type: number
+ *               sfd:
+ *                 type: number
+ *               lickerin:
+ *                 type: number
+ *               cylinder:
+ *                 type: number
+ *               doffer:
+ *                 type: number
+ *               flats:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Carding QC entry created successfully
+ *       500:
+ *         description: Server error
+ */
+router.post('/qc-header', async (req, res, next) => {
+  try {
+    await ensureCardingEntryIdColumns();
+    const {
+      entry_id,
+      type,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      lickerin_speed,
+      cylinder_speed,
+      flats_speed,
+      delivery_speed,
+      draft_speed,
+      tension_draft,
+      delivery_hank,
+      setting,
+      feed_roll_to_lickerin,
+      lickerin_to_cylinder,
+      cylinder_to_flats,
+      cylinder_to_doffer,
+      sfl,
+      sfd,
+      lickerin,
+      cylinder,
+      doffer,
+      flats
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO carding.carding_qc_header (
+        entry_id, type, count_name, consignee_name, creation_date,
+        machine_no, lickerin_speed, cylinder_speed, flats_speed,
+        delivery_speed, draft_speed, tension_draft, delivery_hank,
+        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+        cylinder_to_flats, cylinder_to_doffer,
+        sfl, sfd, lickerin, cylinder, doffer, flats
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,
+        $10,$11,$12,$13,
+        $14,$15,$16,
+        $17,$18,
+        $19,$20,$21,$22,$23,$24
+      )
+      RETURNING *`,
+      [
+        entry_id, type, count_name, consignee_name, creation_date,
+        machine_no, lickerin_speed, cylinder_speed, flats_speed,
+        delivery_speed, draft_speed, tension_draft, delivery_hank,
+        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+        cylinder_to_flats, cylinder_to_doffer,
+        sfl, sfd, lickerin, cylinder, doffer, flats
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Carding QC entry created successfully',
+      data: withScreenEntryId('qc_header', result.rows[0])
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /carding/qc-header:
+ *   get:
+ *     summary: Get Carding QC entries
+ *     tags: [Carding]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Carding QC data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get('/qc-header', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM carding.carding_qc_header
+       ORDER BY creation_date DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM carding.carding_qc_header`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('qc_header', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /carding/qc-header/{id}:
+ *   put:
+ *     summary: Update Carding QC entry
+ *     tags: [Carding]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               type:
+ *                 type: string
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: number
+ *               lickerin_speed:
+ *                 type: number
+ *               cylinder_speed:
+ *                 type: number
+ *               flats_speed:
+ *                 type: number
+ *               delivery_speed:
+ *                 type: number
+ *               draft_speed:
+ *                 type: number
+ *               tension_draft:
+ *                 type: number
+ *               delivery_hank:
+ *                 type: number
+ *               setting:
+ *                 type: string
+ *               feed_roll_to_lickerin:
+ *                 type: number
+ *               lickerin_to_cylinder:
+ *                 type: number
+ *               cylinder_to_flats:
+ *                 type: number
+ *               cylinder_to_doffer:
+ *                 type: number
+ *               sfl:
+ *                 type: number
+ *               sfd:
+ *                 type: number
+ *               lickerin:
+ *                 type: number
+ *               cylinder:
+ *                 type: number
+ *               doffer:
+ *                 type: number
+ *               flats:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Carding QC entry updated successfully
+ *       400:
+ *         description: Invalid ID supplied
+ *       404:
+ *         description: Carding QC entry not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/qc-header/:qc_id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.qc_id, 10);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+
+    const {
+      entry_id,
+      type,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      lickerin_speed,
+      cylinder_speed,
+      flats_speed,
+      delivery_speed,
+      draft_speed,
+      tension_draft,
+      delivery_hank,
+      setting,
+      feed_roll_to_lickerin,
+      lickerin_to_cylinder,
+      cylinder_to_flats,
+      cylinder_to_doffer,
+      sfl,
+      sfd,
+      lickerin,
+      cylinder,
+      doffer,
+      flats
+    } = req.body;
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM carding.carding_qc_header WHERE qc_id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Carding QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO carding.carding_qc_header (
+          entry_id, type, count_name, consignee_name, creation_date,
+          machine_no, lickerin_speed, cylinder_speed, flats_speed,
+          delivery_speed, draft_speed, tension_draft, delivery_hank,
+          setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+          cylinder_to_flats, cylinder_to_doffer,
+          sfl, sfd, lickerin, cylinder, doffer, flats
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,
+          $6,$7,$8,$9,
+          $10,$11,$12,$13,
+          $14,$15,$16,
+          $17,$18,
+          $19,$20,$21,$22,$23,$24
+        )
+        RETURNING *`,
+        [
+          requestedEntryId, type, count_name, consignee_name, creation_date,
+          machine_no, lickerin_speed, cylinder_speed, flats_speed,
+          delivery_speed, draft_speed, tension_draft, delivery_hank,
+          setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+          cylinder_to_flats, cylinder_to_doffer,
+          sfl, sfd, lickerin, cylinder, doffer, flats
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Carding QC entry created successfully',
+        data: withScreenEntryId('qc_header', insertResult.rows[0])
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE carding.carding_qc_header
+       SET type = $1,
+           count_name = $2,
+           consignee_name = $3,
+           creation_date = $4,
+           machine_no = $5,
+           lickerin_speed = $6,
+           cylinder_speed = $7,
+           flats_speed = $8,
+           delivery_speed = $9,
+           draft_speed = $10,
+           tension_draft = $11,
+           delivery_hank = $12,
+           setting = $13,
+           feed_roll_to_lickerin = $14,
+           lickerin_to_cylinder = $15,
+           cylinder_to_flats = $16,
+           cylinder_to_doffer = $17,
+           sfl = $18,
+           sfd = $19,
+           lickerin = $20,
+           cylinder = $21,
+           doffer = $22,
+           flats = $23
+       WHERE qc_id = $24
+       RETURNING *`,
+      [
+        type,
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        lickerin_speed,
+        cylinder_speed,
+        flats_speed,
+        delivery_speed,
+        draft_speed,
+        tension_draft,
+        delivery_hank,
+        setting,
+        feed_roll_to_lickerin,
+        lickerin_to_cylinder,
+        cylinder_to_flats,
+        cylinder_to_doffer,
+        sfl,
+        sfd,
+        lickerin,
+        cylinder,
+        doffer,
+        flats,
+        id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Carding QC entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Carding QC entry updated successfully',
+      data: withScreenEntryId('qc_header', result.rows[0])
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**

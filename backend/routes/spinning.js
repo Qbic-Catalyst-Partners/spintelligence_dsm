@@ -16,6 +16,9 @@ const SCREEN_ID_PREFIXES = {
   rsm_lycra_offline: 'SRF',
   ring_frame: 'SRI',
   count_change: 'SCC',
+  // qc (Process Parameter) intentionally has no prefix here — it must only ever surface
+  // the real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
   wheel_change_type1: 'SW1',
   wheel_change_type2: 'SW2',
   wheel_change_type3: 'SW3',
@@ -3016,6 +3019,529 @@ router.get('/count-change', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /spinning/qc:
+ *   post:
+ *     summary: Create Spinning QC entry
+ *     tags: [Spinning]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: integer
+ *               bottom_roll_setting:
+ *                 type: string
+ *               top_roll_setting:
+ *                 type: string
+ *               break_draft:
+ *                 type: number
+ *               total_draft:
+ *                 type: number
+ *               tpi_tm:
+ *                 type: string
+ *               spacer:
+ *                 type: string
+ *               traveller:
+ *                 type: string
+ *               speed:
+ *                 type: integer
+ *               make:
+ *                 type: string
+ *               denier:
+ *                 type: number
+ *               merge_no:
+ *                 type: string
+ *               lycra_draft:
+ *                 type: number
+ *               lycra_percent:
+ *                 type: number
+ *               slub_partcy_code:
+ *                 type: string
+ *               slub_mtr:
+ *                 type: number
+ *               pause_min:
+ *                 type: number
+ *               pause_max:
+ *                 type: number
+ *               slub_min:
+ *                 type: number
+ *               slub_max:
+ *                 type: number
+ *               thickness_min:
+ *                 type: number
+ *               thickness_max:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Spinning QC created successfully
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/qc', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const {
+      entry_id,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      bottom_roll_setting,
+      top_roll_setting,
+      break_draft,
+      total_draft,
+      tpi_tm,
+      spacer,
+      traveller,
+      speed,
+      make,
+      denier,
+      merge_no,
+      lycra_draft,
+      lycra_percent,
+      slub_partcy_code,
+      slub_mtr,
+      pause_min,
+      pause_max,
+      slub_min,
+      slub_max,
+      thickness_min,
+      thickness_max,
+      ramp,
+      offset
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO spinning.spinning_qc_header (
+        entry_id,
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        bottom_roll_setting,
+        top_roll_setting,
+        break_draft,
+        total_draft,
+        tpi_tm,
+        spacer,
+        traveller,
+        speed,
+        make,
+        denier,
+        merge_no,
+        lycra_draft,
+        lycra_percent,
+        slub_partcy_code,
+        slub_mtr,
+        pause_min,
+        pause_max,
+        slub_min,
+        slub_max,
+        thickness_min,
+        thickness_max,
+        ramp,
+        "offset"
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+        $11,$12,$13,$14,$15,$16,$17,$18,
+        $19,$20,$21,$22,$23,$24,$25,$26,
+        $27,$28
+      )
+      RETURNING *`,
+      [
+        entry_id,
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        bottom_roll_setting,
+        top_roll_setting,
+        break_draft,
+        total_draft,
+        tpi_tm,
+        spacer,
+        traveller,
+        speed,
+        make,
+        denier,
+        merge_no,
+        lycra_draft,
+        lycra_percent,
+        slub_partcy_code,
+        slub_mtr,
+        pause_min,
+        pause_max,
+        slub_min,
+        slub_max,
+        thickness_min,
+        thickness_max,
+        ramp,
+        offset
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Spinning QC created successfully',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /spinning/qc:
+ *   get:
+ *     summary: Get Spinning QC entries
+ *     tags: [Spinning]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Data fetched successfully
+ *       500:
+ *         description: Server error
+ */
+
+router.get('/qc', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10, consignee_name, count_name, date_from, date_to } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    const conditions = [];
+    const params = [];
+    if (consignee_name) {
+      params.push(consignee_name);
+      conditions.push(`consignee_name = $${params.length}`);
+    }
+    if (count_name) {
+      params.push(count_name);
+      conditions.push(`count_name = $${params.length}`);
+    }
+    if (date_from) {
+      params.push(date_from);
+      conditions.push(`creation_date >= $${params.length}`);
+    }
+    if (date_to) {
+      params.push(date_to);
+      conditions.push(`creation_date <= $${params.length}`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await client.query(
+      `SELECT *
+       FROM spinning.spinning_qc_header
+       ${whereClause}
+       ORDER BY qc_id DESC
+       OFFSET $${params.length + 1} LIMIT $${params.length + 2}`,
+      [...params, offset, limitNum]
+    );
+
+    const total = await client.query(
+      `SELECT COUNT(*) FROM spinning.spinning_qc_header ${whereClause}`,
+      params
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('qc', row, 'qc_id')),
+      total: parseInt(total.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /spinning/qc/{qc_id}:
+ *   put:
+ *     summary: Update Spinning QC entry
+ *     tags: [Spinning]
+ *     parameters:
+ *       - in: path
+ *         name: qc_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: integer
+ *               bottom_roll_setting:
+ *                 type: string
+ *               top_roll_setting:
+ *                 type: string
+ *               break_draft:
+ *                 type: number
+ *               total_draft:
+ *                 type: number
+ *               tpi_tm:
+ *                 type: string
+ *               spacer:
+ *                 type: string
+ *               traveller:
+ *                 type: string
+ *               speed:
+ *                 type: integer
+ *               make:
+ *                 type: string
+ *               denier:
+ *                 type: number
+ *               merge_no:
+ *                 type: string
+ *               lycra_draft:
+ *                 type: number
+ *               lycra_percent:
+ *                 type: number
+ *               slub_partcy_code:
+ *                 type: string
+ *               slub_mtr:
+ *                 type: number
+ *               pause_min:
+ *                 type: number
+ *               pause_max:
+ *                 type: number
+ *               slub_min:
+ *                 type: number
+ *               slub_max:
+ *                 type: number
+ *               thickness_min:
+ *                 type: number
+ *               thickness_max:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Spinning QC updated successfully
+ *       400:
+ *         description: Invalid QC ID supplied
+ *       404:
+ *         description: Spinning QC entry not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/qc/:qc_id', async (req, res, next) => {
+  try {
+    const qc_id = parseInt(req.params.qc_id, 10);
+
+    if (!Number.isInteger(qc_id) || qc_id <= 0) {
+      return res.status(400).json({ message: 'Invalid QC ID supplied' });
+    }
+
+    const {
+      entry_id,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      bottom_roll_setting,
+      top_roll_setting,
+      break_draft,
+      total_draft,
+      tpi_tm,
+      spacer,
+      traveller,
+      speed,
+      make,
+      denier,
+      merge_no,
+      lycra_draft,
+      lycra_percent,
+      slub_partcy_code,
+      slub_mtr,
+      pause_min,
+      pause_max,
+      slub_min,
+      slub_max,
+      thickness_min,
+      thickness_max,
+      ramp,
+      offset
+    } = req.body;
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM spinning.spinning_qc_header WHERE qc_id = $1`,
+      [qc_id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO spinning.spinning_qc_header (
+          entry_id, count_name, consignee_name, creation_date,
+          machine_no, bottom_roll_setting, top_roll_setting,
+          break_draft, total_draft, tpi_tm, spacer, traveller,
+          speed, make, denier, merge_no, lycra_draft, lycra_percent,
+          slub_partcy_code, slub_mtr, pause_min, pause_max,
+          slub_min, slub_max, thickness_min, thickness_max,
+          ramp, "offset"
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18,
+          $19,$20,$21,$22,$23,$24,$25,$26,
+          $27,$28
+        )
+        RETURNING *`,
+        [
+          requestedEntryId, count_name, consignee_name, creation_date,
+          machine_no, bottom_roll_setting, top_roll_setting,
+          break_draft, total_draft, tpi_tm, spacer, traveller,
+          speed, make, denier, merge_no, lycra_draft, lycra_percent,
+          slub_partcy_code, slub_mtr, pause_min, pause_max,
+          slub_min, slub_max, thickness_min, thickness_max,
+          ramp, offset
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Spinning QC created successfully',
+        data: insertResult.rows[0]
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE spinning.spinning_qc_header
+       SET count_name = $1,
+           consignee_name = $2,
+           creation_date = $3,
+           machine_no = $4,
+           bottom_roll_setting = $5,
+           top_roll_setting = $6,
+           break_draft = $7,
+           total_draft = $8,
+           tpi_tm = $9,
+           spacer = $10,
+           traveller = $11,
+           speed = $12,
+           make = $13,
+           denier = $14,
+           merge_no = $15,
+           lycra_draft = $16,
+           lycra_percent = $17,
+           slub_partcy_code = $18,
+           slub_mtr = $19,
+           pause_min = $20,
+           pause_max = $21,
+           slub_min = $22,
+           slub_max = $23,
+           thickness_min = $24,
+           thickness_max = $25,
+           ramp = $26,
+           "offset" = $27
+       WHERE qc_id = $28
+       RETURNING *`,
+      [
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        bottom_roll_setting,
+        top_roll_setting,
+        break_draft,
+        total_draft,
+        tpi_tm,
+        spacer,
+        traveller,
+        speed,
+        make,
+        denier,
+        merge_no,
+        lycra_draft,
+        lycra_percent,
+        slub_partcy_code,
+        slub_mtr,
+        pause_min,
+        pause_max,
+        slub_min,
+        slub_max,
+        thickness_min,
+        thickness_max,
+        ramp,
+        offset,
+        qc_id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Spinning QC updated successfully',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
   }
 });
 

@@ -630,9 +630,10 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       const response = targetVersionId
         ? await updateCardingProcessParameterEntry(targetVersionId, payload)
         : await submitCardingProcessParameterEntry(payload);
+      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(response, "Carding", form.countName);
+      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId || savedProcessParameterId);
+      registerProcessParameterId(savedEntry, "Carding", form.countName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();

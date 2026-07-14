@@ -1,6 +1,5 @@
 export const thresholdFieldCatalog = {
     "Mixing::Process Parameter": [
-        "Process Parameter ID",
         "Created Date",
         "Count Name",
         "Consignee Name",
@@ -1604,7 +1603,6 @@ export const thresholdFieldCatalog = {
         "Running Spindles",
         "Idle Spindles",
         "Sider Name",
-        "Break Category",
         ...[
             "0-200", "201-400", "401-600", "601-800", "801-1000", "1001-1200", "1201-1400",
             "1401-1600", "1601-1800", "1801-2000", "2001-2200", "2201-2400", "2401-2600",

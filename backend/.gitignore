@@ -6,6 +6,14 @@ logs/backend.log
 .env
 
 /node_modules
+logs/
+*.log
+
+logs/backend.log
+
+.env
+
+/node_modules
 # dependencies
 /node_modules
 /.pnp

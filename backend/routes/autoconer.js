@@ -6,8 +6,9 @@ const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const SCREEN_ID_PREFIXES = {
-  q2: 'A2',
-  q3: 'A3'
+  // process/q2/q3 (Process Parameter screens) intentionally have no prefix here — they
+  // must only ever surface the real, stored PP-000n entry_id, never a synthesized fallback
+  // id, since a fabricated id collides with the shared Process Parameter scheme.
 };
 
 const AUTOCONER_SCREEN_SLUGS = [
@@ -3601,6 +3602,724 @@ router.get('/parameter-entries/pending-quality', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /autoconer/process:
+ *   post:
+ *     summary: Create Autoconer Process Parameter entry
+ *     tags: [Autoconer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *                 example: "40s Cotton"
+ *               consignee_name:
+ *                 type: string
+ *                 example: "ABC Mills"
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-04-15"
+ *               machine_no:
+ *                 type: string
+ *                 example: "AUTO-01"
+ *               drum_no:
+ *                 type: string
+ *                 example: "DR-10"
+ *               speed:
+ *                 type: number
+ *                 example: 1200
+ *               p_cone_identification:
+ *                 type: string
+ *                 example: "Cone-A"
+ *               cone_weight:
+ *                 type: number
+ *                 example: 1.25
+ *               initial_winding_tension:
+ *                 type: number
+ *                 example: 15
+ *               standard_winding_tension:
+ *                 type: number
+ *                 example: 14
+ *               touch_winding_tension:
+ *                 type: number
+ *                 example: 13
+ *               t_release_add_tension:
+ *                 type: number
+ *                 example: 2
+ *               tension_release_end_yarn_layer:
+ *                 type: number
+ *                 example: 5
+ *               tension_release_decrease_ratio:
+ *                 type: number
+ *                 example: 0.8
+ *               tension_release_valid_yarn_layer:
+ *                 type: number
+ *                 example: 6
+ *               splicing_setting:
+ *                 type: string
+ *                 example: "Standard"
+ *               water_on_off:
+ *                 type: string
+ *                 example: "ON"
+ *               splicing_length_adjust_parameter:
+ *                 type: number
+ *                 example: 3.5
+ *               splicing_nozzle:
+ *                 type: string
+ *                 example: "Nozzle-A"
+ *               cradle_pressure:
+ *                 type: number
+ *                 example: 10
+ *               cone_density:
+ *                 type: number
+ *                 example: 0.45
+ *               cone_cops:
+ *                 type: string
+ *                 example: "Cone"
+ *     responses:
+ *       201:
+ *         description: Autoconer entry created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Autoconer entry created successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     ins_code:
+ *                       type: string
+ *                       example: "PP001"
+ *                     type:
+ *                       type: string
+ *                       example: "Process Parameter"
+ *                     count_name:
+ *                       type: string
+ *                       example: "40s Cotton"
+ *                     consignee_name:
+ *                       type: string
+ *                       example: "ABC Mills"
+ *                     creation_date:
+ *                       type: string
+ *                       format: date
+ *                       example: "2026-04-15"
+ *                     machine_no:
+ *                       type: string
+ *                     drum_no:
+ *                       type: string
+ *                     speed:
+ *                       type: number
+ *                     p_cone_identification:
+ *                       type: string
+ *                     cone_weight:
+ *                       type: number
+ *                     initial_winding_tension:
+ *                       type: number
+ *                     standard_winding_tension:
+ *                       type: number
+ *                     touch_winding_tension:
+ *                       type: number
+ *                     t_release_add_tension:
+ *                       type: number
+ *                     tension_release_end_yarn_layer:
+ *                       type: number
+ *                     tension_release_decrease_ratio:
+ *                       type: number
+ *                     tension_release_valid_yarn_layer:
+ *                       type: number
+ *                     splicing_setting:
+ *                       type: string
+ *                     water_on_off:
+ *                       type: string
+ *                     splicing_length_adjust_parameter:
+ *                       type: number
+ *                     splicing_nozzle:
+ *                       type: string
+ *                     cradle_pressure:
+ *                       type: number
+ *                     cone_density:
+ *                       type: number
+ *                     cone_cops:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid input (missing required fields)
+ *       500:
+ *         description: Server error
+ */
+router.post('/process', async (req, res, next) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const data = req.body;
+
+    if (!data.count_name || !data.consignee_name || !data.creation_date) {
+      return res.status(400).json({
+        message: 'count_name, consignee_name and creation_date are required'
+      });
+    }
+
+    const result = await client.query(
+      `INSERT INTO autoconer.autoconer_process_parameter (
+        entry_id,
+        count_name, consignee_name, creation_date,
+        machine_no, drum_no,
+        speed, p_cone_identification, cone_weight, initial_winding_tension,
+        standard_winding_tension, touch_winding_tension, t_release_add_tension,
+        tension_release_end_yarn_layer, tension_release_decrease_ratio, tension_release_valid_yarn_layer,
+        splicing_setting, water_on_off, splicing_length_adjust_parameter, splicing_nozzle,
+        cradle_pressure, cone_density, cone_cops
+      )
+      VALUES (
+        $1,$2,$3,$4,
+        $5,$6,
+        $7,$8,$9,$10,
+        $11,$12,$13,
+        $14,$15,$16,
+        $17,$18,$19,$20,
+        $21,$22,$23
+      )
+      RETURNING *`,
+      [
+        data.entry_id || null,
+        data.count_name,
+        data.consignee_name,
+        data.creation_date,
+        data.machine_no,
+        data.drum_no,
+        data.speed,
+        data.p_cone_identification,
+        data.cone_weight,
+        data.initial_winding_tension,
+        data.standard_winding_tension,
+        data.touch_winding_tension,
+        data.t_release_add_tension,
+        data.tension_release_end_yarn_layer,
+        data.tension_release_decrease_ratio,
+        data.tension_release_valid_yarn_layer,
+        data.splicing_setting,
+        data.water_on_off,
+        data.splicing_length_adjust_parameter,
+        data.splicing_nozzle,
+        data.cradle_pressure,
+        data.cone_density,
+        data.cone_cops
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Autoconer entry created successfully',
+      data: withScreenEntryId('process', result.rows[0])
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error(error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /autoconer/process:
+ *   get:
+ *     summary: Get all Autoconer entries
+ *     tags: [Autoconer]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of records per page
+ *     responses:
+ *       200:
+ *         description: Autoconer data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       ins_code:
+ *                         type: string
+ *                         example: "PP001"
+ *                       type:
+ *                         type: string
+ *                         example: "Process Parameter"
+ *                       count_name:
+ *                         type: string
+ *                         example: "40s Cotton"
+ *                       consignee_name:
+ *                         type: string
+ *                         example: "ABC Mills"
+ *                       creation_date:
+ *                         type: string
+ *                         format: date
+ *                         example: "2026-04-15"
+ *                       machine_no:
+ *                         type: string
+ *                         example: "AUTO-01"
+ *                       drum_no:
+ *                         type: string
+ *                         example: "DR-10"
+ *                       speed:
+ *                         type: number
+ *                         example: 1200
+ *                       p_cone_identification:
+ *                         type: string
+ *                         example: "Cone-A"
+ *                       cone_weight:
+ *                         type: number
+ *                         example: 1.25
+ *                       initial_winding_tension:
+ *                         type: number
+ *                         example: 15
+ *                       standard_winding_tension:
+ *                         type: number
+ *                         example: 14
+ *                       touch_winding_tension:
+ *                         type: number
+ *                         example: 13
+ *                       t_release_add_tension:
+ *                         type: number
+ *                         example: 2
+ *                       tension_release_end_yarn_layer:
+ *                         type: number
+ *                         example: 5
+ *                       tension_release_decrease_ratio:
+ *                         type: number
+ *                         example: 0.8
+ *                       tension_release_valid_yarn_layer:
+ *                         type: number
+ *                         example: 6
+ *                       splicing_setting:
+ *                         type: string
+ *                         example: "Standard"
+ *                       water_on_off:
+ *                         type: string
+ *                         example: "ON"
+ *                       splicing_length_adjust_parameter:
+ *                         type: number
+ *                         example: 3.5
+ *                       splicing_nozzle:
+ *                         type: string
+ *                         example: "Nozzle-A"
+ *                       cradle_pressure:
+ *                         type: number
+ *                         example: 10
+ *                       cone_density:
+ *                         type: number
+ *                         example: 0.45
+ *                       cone_cops:
+ *                         type: string
+ *                         example: "Cone"
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       updated_at:
+ *                         type: string
+ *                         format: date-time
+ *                 total:
+ *                   type: integer
+ *                   example: 25
+ *                 page:
+ *                   type: integer
+ *                   example: 1
+ *                 limit:
+ *                   type: integer
+ *                   example: 10
+ *       500:
+ *         description: Server error
+ */
+router.get('/process', async (req, res, next) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM autoconer.autoconer_process_parameter
+       ORDER BY creation_date DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM autoconer.autoconer_process_parameter`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('process', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /autoconer/process/{id}:
+ *   put:
+ *     summary: Update Autoconer Process Parameter entry
+ *     tags: [Autoconer]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Autoconer Entry ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *                 example: "40s Cotton"
+ *               consignee_name:
+ *                 type: string
+ *                 example: "ABC Mills"
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-04-15"
+ *               machine_no:
+ *                 type: string
+ *                 example: "AUTO-01"
+ *               drum_no:
+ *                 type: string
+ *                 example: "DR-10"
+ *               speed:
+ *                 type: number
+ *                 example: 1200
+ *               p_cone_identification:
+ *                 type: string
+ *                 example: "Cone-A"
+ *               cone_weight:
+ *                 type: number
+ *                 example: 1.25
+ *               initial_winding_tension:
+ *                 type: number
+ *                 example: 15
+ *               standard_winding_tension:
+ *                 type: number
+ *                 example: 14
+ *               touch_winding_tension:
+ *                 type: number
+ *                 example: 13
+ *               t_release_add_tension:
+ *                 type: number
+ *                 example: 2
+ *               tension_release_end_yarn_layer:
+ *                 type: number
+ *                 example: 5
+ *               tension_release_decrease_ratio:
+ *                 type: number
+ *                 example: 0.8
+ *               tension_release_valid_yarn_layer:
+ *                 type: number
+ *                 example: 6
+ *               splicing_setting:
+ *                 type: string
+ *                 example: "Standard"
+ *               water_on_off:
+ *                 type: string
+ *                 example: "ON"
+ *               splicing_length_adjust_parameter:
+ *                 type: number
+ *                 example: 3.5
+ *               splicing_nozzle:
+ *                 type: string
+ *                 example: "Nozzle-A"
+ *               cradle_pressure:
+ *                 type: number
+ *                 example: 10
+ *               cone_density:
+ *                 type: number
+ *                 example: 0.45
+ *               cone_cops:
+ *                 type: string
+ *                 example: "Cone"
+ *     responses:
+ *       200:
+ *         description: Autoconer entry updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     ins_code:
+ *                       type: string
+ *                       example: "PP001"
+ *                     type:
+ *                       type: string
+ *                       example: "Process Parameter"
+ *                     count_name:
+ *                       type: string
+ *                       example: "40s Cotton"
+ *                     consignee_name:
+ *                       type: string
+ *                       example: "ABC Mills"
+ *                     creation_date:
+ *                       type: string
+ *                       format: date
+ *                     machine_no:
+ *                       type: string
+ *                     drum_no:
+ *                       type: string
+ *                     speed:
+ *                       type: number
+ *                     p_cone_identification:
+ *                       type: string
+ *                     cone_weight:
+ *                       type: number
+ *                     initial_winding_tension:
+ *                       type: number
+ *                     standard_winding_tension:
+ *                       type: number
+ *                     touch_winding_tension:
+ *                       type: number
+ *                     t_release_add_tension:
+ *                       type: number
+ *                     tension_release_end_yarn_layer:
+ *                       type: number
+ *                     tension_release_decrease_ratio:
+ *                       type: number
+ *                     tension_release_valid_yarn_layer:
+ *                       type: number
+ *                     splicing_setting:
+ *                       type: string
+ *                     water_on_off:
+ *                       type: string
+ *                     splicing_length_adjust_parameter:
+ *                       type: number
+ *                     splicing_nozzle:
+ *                       type: string
+ *                     cradle_pressure:
+ *                       type: number
+ *                     cone_density:
+ *                       type: number
+ *                     cone_cops:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid input or ID
+ *       404:
+ *         description: Entry not found
+ *       500:
+ *         description: Server error
+ */
+
+router.put('/process/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const data = req.body;
+
+    if (!id || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID' });
+    }
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM autoconer.autoconer_process_parameter WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO autoconer.autoconer_process_parameter (
+          entry_id,
+          count_name, consignee_name, creation_date,
+          machine_no, drum_no,
+          speed, p_cone_identification, cone_weight, initial_winding_tension,
+          standard_winding_tension, touch_winding_tension, t_release_add_tension,
+          tension_release_end_yarn_layer, tension_release_decrease_ratio, tension_release_valid_yarn_layer,
+          splicing_setting, water_on_off, splicing_length_adjust_parameter, splicing_nozzle,
+          cradle_pressure, cone_density, cone_cops
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,
+          $7,$8,$9,$10,
+          $11,$12,$13,
+          $14,$15,$16,
+          $17,$18,$19,$20,
+          $21,$22,$23
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.count_name,
+          data.consignee_name,
+          data.creation_date,
+          data.machine_no,
+          data.drum_no,
+          data.speed,
+          data.p_cone_identification,
+          data.cone_weight,
+          data.initial_winding_tension,
+          data.standard_winding_tension,
+          data.touch_winding_tension,
+          data.t_release_add_tension,
+          data.tension_release_end_yarn_layer,
+          data.tension_release_decrease_ratio,
+          data.tension_release_valid_yarn_layer,
+          data.splicing_setting,
+          data.water_on_off,
+          data.splicing_length_adjust_parameter,
+          data.splicing_nozzle,
+          data.cradle_pressure,
+          data.cone_density,
+          data.cone_cops
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Autoconer entry created successfully',
+        data: withScreenEntryId('process', insertResult.rows[0])
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE autoconer.autoconer_process_parameter
+       SET count_name=$1,
+           consignee_name=$2,
+           creation_date=$3,
+           machine_no=$4,
+           drum_no=$5,
+           speed=$6,
+           p_cone_identification=$7,
+           cone_weight=$8,
+           initial_winding_tension=$9,
+           standard_winding_tension=$10,
+           touch_winding_tension=$11,
+           t_release_add_tension=$12,
+           tension_release_end_yarn_layer=$13,
+           tension_release_decrease_ratio=$14,
+           tension_release_valid_yarn_layer=$15,
+           splicing_setting=$16,
+           water_on_off=$17,
+           splicing_length_adjust_parameter=$18,
+           splicing_nozzle=$19,
+           cradle_pressure=$20,
+           cone_density=$21,
+           cone_cops=$22,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id=$23
+       RETURNING *`,
+      [
+        data.count_name,
+        data.consignee_name,
+        data.creation_date,
+        data.machine_no,
+        data.drum_no,
+        data.speed,
+        data.p_cone_identification,
+        data.cone_weight,
+        data.initial_winding_tension,
+        data.standard_winding_tension,
+        data.touch_winding_tension,
+        data.t_release_add_tension,
+        data.tension_release_end_yarn_layer,
+        data.tension_release_decrease_ratio,
+        data.tension_release_valid_yarn_layer,
+        data.splicing_setting,
+        data.water_on_off,
+        data.splicing_length_adjust_parameter,
+        data.splicing_nozzle,
+        data.cradle_pressure,
+        data.cone_density,
+        data.cone_cops,
+        id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Updated successfully',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+});
 
 /**
  * @swagger
@@ -3959,6 +4678,64 @@ router.put('/q2/:id', async (req, res, next) => {
 
     if (!id || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID' });
+    }
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM autoconer.autoconer_q2_inspection WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO autoconer.autoconer_q2_inspection (
+          entry_id,
+          count_name, consignee_name, creation_date,
+          n_value, s_value, l_value,
+          lh1, lh2, lh3, lh4, lh5, lh6,
+          tht, th1, th2, th3, th4, th5, th6,
+          cp, cm, ccp, ccm, pc,
+          fault_distance, no_of_faults, jp, jm, up, fl,
+          flh1, flh2, flh3, flh4,
+          fd, fdh1, fdh2, fdh3, fdh4, fdh5,
+          reference_length, measurement, upper_alarm_limit, lower_alarm_limit, action
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,$7,
+          $8,$9,$10,$11,$12,$13,
+          $14,$15,$16,$17,$18,$19,$20,
+          $21,$22,$23,$24,$25,
+          $26,$27,$28,$29,$30,$31,
+          $32,$33,$34,$35,
+          $36,$37,$38,$39,$40,$41,
+          $42,$43,$44,$45,$46
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.count_name, data.consignee_name, data.creation_date,
+          data.n_value, data.s_value, data.l_value,
+          data.lh1, data.lh2, data.lh3, data.lh4, data.lh5, data.lh6,
+          data.tht, data.th1, data.th2, data.th3, data.th4, data.th5, data.th6,
+          data.cp, data.cm, data.ccp, data.ccm, data.pc,
+          data.fault_distance, data.no_of_faults, data.jp, data.jm, data.up, data.fl,
+          data.flh1, data.flh2, data.flh3, data.flh4,
+          data.fd, data.fdh1, data.fdh2, data.fdh3, data.fdh4, data.fdh5,
+          data.reference_length, data.measurement, data.upper_alarm_limit, data.lower_alarm_limit, data.action
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Q2 entry created successfully',
+        data: withScreenEntryId('q2', insertResult.rows[0])
+      });
     }
 
     const result = await client.query(
@@ -4429,6 +5206,67 @@ router.put('/q3/:id', async (req, res, next) => {
 
     if (!id || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID' });
+    }
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM autoconer.autoconer_q3_inspection WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO autoconer.autoconer_q3_inspection (
+          entry_id,
+          count_name, consignee_name, creation_date,
+          nsl1, nsl2, nsl3, nsl4, nsl5, nsl6, nsl7,
+          t1, t2, t3, t4, t5,
+          pf_sensing, pf_no_of_periods,
+          oc, cp, cm, ccp1, ccp2, ccm1, ccm2,
+          jp1, jp2, jp3, jp4, jp5, jp6, jp7,
+          jp_clearing, jp_u_percent, jp_jm,
+          fd1, fd2, fd3, fd4, fd5, fd6,
+          reference_length, suction, measurement, upper_limit, lower_limit,
+          action, suction_status, blocking
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,$7,$8,$9,$10,$11,
+          $12,$13,$14,$15,$16,
+          $17,$18,
+          $19,$20,$21,$22,$23,$24,$25,
+          $26,$27,$28,$29,$30,$31,$32,
+          $33,$34,$35,
+          $36,$37,$38,$39,$40,$41,
+          $42,$43,$44,$45,$46,
+          $47,$48,$49
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.count_name, data.consignee_name, data.creation_date,
+          data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
+          data.t1, data.t2, data.t3, data.t4, data.t5,
+          data.pf_sensing, data.pf_no_of_periods,
+          data.oc, data.cp, data.cm, data.ccp1, data.ccp2, data.ccm1, data.ccm2,
+          data.jp1, data.jp2, data.jp3, data.jp4, data.jp5, data.jp6, data.jp7,
+          data.jp_clearing, data.jp_u_percent, data.jp_jm,
+          data.fd1, data.fd2, data.fd3, data.fd4, data.fd5, data.fd6,
+          data.reference_length, data.suction, data.measurement, data.upper_limit, data.lower_limit,
+          data.action, data.suction_status, data.blocking
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Q3 entry created successfully',
+        data: withScreenEntryId('q3', insertResult.rows[0])
+      });
     }
 
     const result = await client.query(

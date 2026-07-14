@@ -1331,7 +1331,7 @@ function Mixing() {
                                     : handleOpennessSubmitSuccess
                             }
                             standaloneSection
-                            savedVersionsTargetId="mixing-process-parameter-saved-versions"
+                            savedVersionsTargetId=""
                         />
                     ) : (
                         <div className="p-5">
@@ -1357,10 +1357,6 @@ function Mixing() {
                         disabled={actionLoading || entryIdLoading}
                     />
                 </div>
-
-                {isProcessParameter && SelectedComponent ? (
-                    <div id="mixing-process-parameter-saved-versions" className="mt-5" />
-                ) : null}
             </div>
 
             <PreviewModal

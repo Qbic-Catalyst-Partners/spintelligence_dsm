@@ -11,6 +11,9 @@ const SCREEN_ID_PREFIXES = {
   sync: 'BS',
   drop_test: 'BD',
   br_waste_study: 'BW'
+  // header (Process Parameter) intentionally has no prefix here — it must only ever
+  // surface the real, stored PP-000n entry_id, never a synthesized fallback id, since a
+  // fabricated id collides with the shared Process Parameter scheme.
 };
 
 const BLOWROOM_NOTEBOOK_SLUGS = [
