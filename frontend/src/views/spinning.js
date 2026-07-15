@@ -156,25 +156,6 @@ const getMachineText = (value) => {
     ).trim();
 };
 
-// Options can mix bare numbers ("1") with formatted labels ("R/F NO 14") depending on
-// which source they came from, so sort by the embedded number rather than lexically —
-// otherwise "R/F NO 14" sorts before "R/F NO 2" and plain "1"/"2" scatter out of order.
-const getMachineOptionSortKey = (option) => {
-    const text = String(option?.value ?? option?.label ?? "");
-    const match = text.match(/(\d+(?:\.\d+)?)/);
-    return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
-};
-
-const sortMachineOptions = (options) =>
-    [...options].sort((a, b) => {
-        const numA = getMachineOptionSortKey(a);
-        const numB = getMachineOptionSortKey(b);
-        if (numA !== numB) return numA - numB;
-        return String(a?.label ?? a?.value ?? "").localeCompare(String(b?.label ?? b?.value ?? ""), undefined, {
-            numeric: true,
-        });
-    });
-
 const normalizeMachineOptions = (payload) => {
     const rows = Array.isArray(payload)
         ? payload
@@ -212,7 +193,7 @@ const normalizeMachineOptions = (payload) => {
 
     const seen = new Set();
 
-    const dedupedOptions = rows
+    return rows
         .map((row) => {
             const rawValue =
                 row?.value ??
@@ -264,7 +245,6 @@ const normalizeMachineOptions = (payload) => {
             seen.add(option.value);
             return true;
         });
-    return sortMachineOptions(dedupedOptions);
 };
 
 const normalizeCotsSideValue = (value) => {
@@ -380,6 +360,7 @@ function SpinningDepartment() {
     const [previewItems, setPreviewItems] = useState([]);
     const [validationMessage, setValidationMessage] = useState("");
     const [cotsMachineOptions, setCotsMachineOptions] = useState([]);
+    const [spinningMachineOptions, setSpinningMachineOptions] = useState([]);
     const [countChangeRfOptions, setCountChangeRfOptions] = useState([]);
     const [countChangeCountNameFromOptions, setCountChangeCountNameFromOptions] = useState(
         []
@@ -414,9 +395,11 @@ function SpinningDepartment() {
         typeName: checkingType,
         config: getSpinningEntryConfig(checkingType, wheelChangeSubType),
     });
-    const machineOptions = cotsMachineOptions.length
+    const machineOptions = isCotsChecking && cotsMachineOptions.length
         ? cotsMachineOptions
-        : fallbackMachineOptions;
+        : spinningMachineOptions.length
+            ? spinningMachineOptions
+            : fallbackMachineOptions;
     const machineSelectOptions = machineOptions;
     const countChangeRfSelectOptions = countChangeRfOptions;
     const countChangeCountNameFromSelectOptions = countChangeCountNameFromOptions;
@@ -499,11 +482,9 @@ function SpinningDepartment() {
         };
     }, [router.events, clearFormValues]);
 
-    // Every Spinning notebook that shows a "Machine No." / "Machine" field
-    // shares this single live source (the same one COTS Checking always
-    // used), so all screens list identical, up-to-date machine numbers
-    // instead of each notebook having its own stale/screen-specific list.
     useEffect(() => {
+        if (!isCotsChecking) return;
+
         let isMounted = true;
         fetchSpinningCountChangeRfNos()
             .then((payload) => {
@@ -517,7 +498,36 @@ function SpinningDepartment() {
         return () => {
             isMounted = false;
         };
-    }, []);
+    }, [isCotsChecking]);
+
+    useEffect(() => {
+        if (isCotsChecking || isCountChange || isRingFrame || isProcessParameter || isWheelChange) {
+            setSpinningMachineOptions([]);
+            return;
+        }
+
+        const screenMap = {
+            "Lycra Missing": "lycra-missing",
+            "Lycra Out of Centering": "lycra-centering",
+            "RSM & Lycrasensor Checking Online": "rsm-lycra-online",
+            "RSM & Lycrasensor Checking Offline": "rsm-lycra-offline",
+        };
+        let isMounted = true;
+
+        fetchSpinningMachineNumberOptions({ screen: screenMap[checkingType] || "master" })
+            .then((payload) => {
+                if (!isMounted) return;
+                const options = normalizeMachineOptions(payload).filter((option) => option.value);
+                setSpinningMachineOptions(options);
+            })
+            .catch(() => {
+                if (isMounted) setSpinningMachineOptions([]);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [checkingType, isCotsChecking, isCountChange, isProcessParameter, isRingFrame, isWheelChange]);
 
     useEffect(() => {
         if (!isCountChange) return;
@@ -1248,7 +1258,7 @@ function SpinningDepartment() {
                             onWheelChangeTypeChange={isWheelChange ? setWheelChangeSubType : undefined}
                             onSubmitSuccess={showSuccessOnce}
                             standaloneSection={isProcessParameter}
-                            savedVersionsTargetId=""
+                            savedVersionsTargetId={isProcessParameter ? "spinning-process-parameter-saved-versions" : ""}
                         />
                     ) : (
                         <>
@@ -1717,6 +1727,10 @@ function SpinningDepartment() {
                         <Footer isMobile={isMobile} onBack={() => router.push("/departments/quality-control")} onClear={handleClearForm} onSave={handleSaveRecord} />
                     </div>
                 </div>
+
+                {isProcessParameter && SelectedComponent ? (
+                    <div id="spinning-process-parameter-saved-versions" className="mt-5" />
+                ) : null}
             </div>
 
             <PreviewModal

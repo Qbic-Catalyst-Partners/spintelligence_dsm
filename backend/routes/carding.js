@@ -1,8 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, sendPrepVarietyDropdown } = require('../utils/prepVariety');
@@ -12,12 +10,10 @@ const MSSQL_THRESHOLD_TABLE = String(process.env.MSSQL_THRESHOLD_TABLE || 'dbo.t
 const SCREEN_ID_PREFIXES = {
   card_thick_place: 'CT',
   between_within_card: 'CB',
-  nati_data_entry: 'NAT',
+  nati_data_entry: 'CN',
   uqc: 'CU',
   dfk_pressure: 'CD',
-  // qc_header (Process Parameter) intentionally has no prefix here — it must only ever
-  // surface the real, stored PP-000n entry_id, never a synthesized fallback id, since a
-  // fabricated id collides with the shared Process Parameter scheme.
+  qc_header: 'CQ',
   card_change_control: 'CC',
   card_waste_study: 'CW',
   wrapping_carding_notebook: 'WR'
@@ -27,34 +23,7 @@ const formatScreenEntryId = (screenKey, rawId) => {
   const prefix = SCREEN_ID_PREFIXES[screenKey];
   const numericId = Number(rawId);
   if (!prefix || !Number.isFinite(numericId)) return null;
-  const value = `${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
-  return screenKey === 'nati_data_entry' ? value : `#${value}`;
-};
-
-const createNatiDataEntryId = async () => {
-  const result = await client.query(`
-    SELECT COALESCE(
-      MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
-      0
-    ) AS max_number
-    FROM carding.nati_data_entry
-  `);
-
-  const nextNumber = Number(result.rows[0]?.max_number || 0) + 1;
-  return `NAT-${String(nextNumber).padStart(4, '0')}`;
-};
-
-const createUqcEntryId = async () => {
-  const result = await client.query(`
-    SELECT COALESCE(
-      MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
-      0
-    ) AS max_number
-    FROM carding.u_data_entry
-  `);
-
-  const nextNumber = Number(result.rows[0]?.max_number || 0) + 1;
-  return `UQ-${String(nextNumber).padStart(4, '0')}`;
+  return `#${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
 };
 
 const withScreenEntryId = (screenKey, record, idField = 'id') => {
@@ -67,33 +36,6 @@ const isUniqueViolation = (err) => err && err.code === '23505';
 const ALLOWED_SHIFT_TYPES = new Set(['Shift 1', 'Shift 2', 'Shift 3']);
 const CDG_MACHINE_REGEX = /^CDG[-\s]?\d+/i;
 let cardWasteTypeMasterReady = false;
-let cardingEntryIdMigrationReady = false;
-
-const migrateCardingScreenEntryIds = async () => {
-  if (cardingEntryIdMigrationReady) return;
-
-  await client.query(`
-    UPDATE carding.nati_data_entry
-       SET entry_id = 'NAT-' || LPAD(id::text, 4, '0')
-     WHERE entry_id IS NULL
-        OR BTRIM(entry_id) = ''
-        OR entry_id !~ '^NAT-[0-9]+$'
-  `);
-
-  await client.query(`
-    UPDATE carding.card_thick_place_header
-       SET entry_id = '#CT-' || LPAD(id::text, 4, '0'),
-           entry_code = '#CT-' || LPAD(id::text, 4, '0')
-     WHERE entry_id IS NULL
-        OR BTRIM(entry_id) = ''
-        OR entry_id !~ '^#CT-[0-9]+$'
-        OR entry_code IS NULL
-        OR BTRIM(entry_code) = ''
-        OR entry_code !~ '^#CT-[0-9]+$'
-  `);
-
-  cardingEntryIdMigrationReady = true;
-};
 
 const withoutCardWasteStudyIds = (record) => {
   if (!record || typeof record !== 'object') return record;
@@ -199,47 +141,6 @@ const getPrepMixingDropdown = async (req, res, next) => {
 
 const ensureCardingEntryIdColumns = async () => {
   await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.carding_change_request (
-      id BIGSERIAL PRIMARY KEY,
-      type TEXT NOT NULL,
-      test_no INTEGER,
-      entry_date DATE NOT NULL,
-      cdo_no TEXT,
-      cdg_no_proposed TEXT[],
-      mixing_existing TEXT,
-      mixing_proposed TEXT,
-      blend_percent_existing TEXT,
-      blend_percent_proposed TEXT,
-      del_hank_existing NUMERIC(10,3),
-      del_hank_proposed NUMERIC(10,3),
-      feed_weight_existing NUMERIC(10,3),
-      feed_weight_proposed NUMERIC(10,3),
-      speed_existing NUMERIC(10,2),
-      speed_proposed NUMERIC(10,2),
-      licker_in_speed_1_existing NUMERIC(10,2),
-      licker_in_speed_1_proposed NUMERIC(10,2),
-      licker_in_speed_2_existing NUMERIC(10,2),
-      licker_in_speed_2_proposed NUMERIC(10,2),
-      cylinder_speed_existing NUMERIC(10,2),
-      cylinder_speed_proposed NUMERIC(10,2),
-      flats_speed_mm_min_existing NUMERIC(10,3),
-      flats_speed_mm_min_proposed NUMERIC(10,3),
-      feed_plate_to_licker_in_existing NUMERIC(10,3),
-      feed_plate_to_licker_in_proposed NUMERIC(10,3),
-      sfl_existing NUMERIC(10,3),
-      sfl_proposed NUMERIC(10,3),
-      sfd_existing NUMERIC(10,3),
-      sfd_proposed NUMERIC(10,3),
-      top_roller_dia_existing NUMERIC(10,3),
-      top_roller_dia_proposed NUMERIC(10,3),
-      top_roll_press_existing NUMERIC(10,3),
-      top_roll_press_proposed NUMERIC(10,3),
-      type2 TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-  await client.query(`
     ALTER TABLE carding.nati_data_entry
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
   `);
@@ -258,55 +159,9 @@ const ensureCardingEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
   `);
   await client.query(`
-    ALTER TABLE carding.u_data_entry
-      ADD COLUMN IF NOT EXISTS shift TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE carding.u_data_entry
-      ALTER COLUMN shift TYPE TEXT USING NULLIF(BTRIM(shift::text), '');
-  `);
-  await client.query(`
-    UPDATE carding.u_data_entry
-       SET shift = CASE
-         WHEN shift IS NULL THEN NULL
-         WHEN LOWER(BTRIM(shift)) IN ('halfnight', 'half-night') THEN 'Half Night'
-         WHEN LOWER(BTRIM(shift)) IN ('fullnight', 'full-night') THEN 'Full Night'
-         ELSE BTRIM(shift)
-       END
-     WHERE shift IS NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE carding.u_data_entry
-      DROP COLUMN IF EXISTS department;
-  `);
-  await client.query(`
-    WITH ranked AS (
-      SELECT
-        ctid,
-        entry_id,
-        row_number() OVER (
-          PARTITION BY COALESCE(BTRIM(entry_id), '')
-          ORDER BY COALESCE(created_at, NOW()), ctid
-        ) AS dup_rank,
-        row_number() OVER (ORDER BY COALESCE(created_at, NOW()), ctid) AS seq_no
-      FROM carding.u_data_entry
-    )
-    UPDATE carding.u_data_entry u
-       SET entry_id = 'UQ-' || LPAD(ranked.seq_no::text, 4, '0')
-      FROM ranked
-     WHERE u.ctid = ranked.ctid
-       AND (
-         ranked.entry_id IS NULL
-         OR BTRIM(ranked.entry_id) = ''
-         OR ranked.dup_rank > 1
-       );
-  `);
-  await client.query(`
-    DROP INDEX IF EXISTS carding.u_data_entry_entry_id_uq;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX u_data_entry_entry_id_uq
-    ON carding.u_data_entry (entry_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS u_data_entry_entry_id_uq
+    ON carding.u_data_entry (entry_id)
+    WHERE entry_id IS NOT NULL;
   `);
 
   await client.query(`
@@ -332,44 +187,22 @@ const ensureCardingEntryIdColumns = async () => {
   `);
 
   await client.query(`
-    ALTER TABLE carding.carding_change_request
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS carding_change_request_entry_id_uq
-    ON carding.carding_change_request (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  // cdg_no_proposed used to be a single machine name; the frontend now lets
-  // the operator pick several, so the column needs to hold an array. Existing
-  // scalar values are wrapped into a single-element array rather than lost.
-  // The type check keeps this migration idempotent - re-running ALTER ...
-  // TYPE TEXT[] on an already-array column would wrap it a second time.
-  const cdgNoProposedType = await client.query(`
-    SELECT data_type FROM information_schema.columns
-    WHERE table_schema = 'carding' AND table_name = 'carding_change_request' AND column_name = 'cdg_no_proposed'
-  `);
-  if (cdgNoProposedType.rows[0]?.data_type !== 'ARRAY') {
-    await client.query(`
-      ALTER TABLE carding.carding_change_request
-        ALTER COLUMN cdg_no_proposed TYPE TEXT[]
-        USING (CASE WHEN cdg_no_proposed IS NULL THEN NULL ELSE ARRAY[cdg_no_proposed] END);
-    `);
-  }
-  await client.query(`
-    ALTER TABLE carding.carding_change_request
-      ADD COLUMN IF NOT EXISTS licker_in_speed_2_existing NUMERIC(10,2),
-      ADD COLUMN IF NOT EXISTS licker_in_speed_2_proposed NUMERIC(10,2);
-  `);
-
-  await client.query(`
     ALTER TABLE carding.carding_qc_header
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS carding_qc_header_entry_id_uq
     ON carding.carding_qc_header (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE carding.carding_change_request
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS carding_change_request_entry_id_uq
+    ON carding.carding_change_request (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
 };
@@ -382,7 +215,7 @@ const ensureCardingChangeTables = async () => {
       test_no INTEGER,
       entry_date DATE NOT NULL,
       cdo_no TEXT,
-      cdg_no_proposed TEXT[],
+      cdg_no_proposed TEXT,
       mixing_existing TEXT,
       mixing_proposed TEXT,
       blend_percent_existing TEXT,
@@ -395,8 +228,6 @@ const ensureCardingChangeTables = async () => {
       speed_proposed NUMERIC(10,2),
       licker_in_speed_1_existing NUMERIC(10,2),
       licker_in_speed_1_proposed NUMERIC(10,2),
-      licker_in_speed_2_existing NUMERIC(10,2),
-      licker_in_speed_2_proposed NUMERIC(10,2),
       cylinder_speed_existing NUMERIC(10,2),
       cylinder_speed_proposed NUMERIC(10,2),
       flats_speed_mm_min_existing NUMERIC(10,3),
@@ -421,19 +252,9 @@ const ensureCardingChangeTables = async () => {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
-  await client.query(`
-    ALTER TABLE carding.carding_change_request
-      ADD COLUMN IF NOT EXISTS operator TEXT,
-      ADD COLUMN IF NOT EXISTS approval_status TEXT DEFAULT 'approved',
-      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
-      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
-  `);
 };
 
-let cardWasteStudyReady = false;
 const ensureCardWasteStudyTable = async () => {
-  if (cardWasteStudyReady) return;
   await client.query(`
     CREATE TABLE IF NOT EXISTS carding.card_waste_study (
       id BIGSERIAL PRIMARY KEY,
@@ -481,9 +302,6 @@ const ensureCardWasteStudyTable = async () => {
       row_no INTEGER NOT NULL,
       cylinder_speed NUMERIC(12,4),
       lickerin_speed NUMERIC(12,4),
-      lickerin_speed_1 NUMERIC(12,4),
-      lickerin_speed_2 NUMERIC(12,4),
-      lickerin_speed_3 NUMERIC(12,4),
       flat_speed NUMERIC(12,4),
       doffer_speed NUMERIC(12,4),
       delivery_speed NUMERIC(12,4),
@@ -493,13 +311,6 @@ const ensureCardWasteStudyTable = async () => {
       mc_production NUMERIC(12,4),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `);
-
-  await client.query(`
-    ALTER TABLE carding.card_waste_study_type_rows
-      ADD COLUMN IF NOT EXISTS lickerin_speed_1 NUMERIC(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_2 NUMERIC(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_3 NUMERIC(12,4);
   `);
 
   await client.query(`
@@ -535,49 +346,7 @@ const ensureCardWasteStudyTable = async () => {
     ON carding.card_waste_study (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
-
-  // Resync id sequences in case rows were ever inserted with explicit ids
-  // (e.g. data import/restore), which leaves nextval() behind MAX(id) and
-  // causes spurious duplicate-key errors on the next insert.
-  for (const table of ['card_waste_study', 'card_waste_study_type_rows', 'card_waste_study_waste_rows']) {
-    await client.query(`
-      SELECT setval(
-        pg_get_serial_sequence('carding.${table}', 'id'),
-        GREATEST(
-          (SELECT COALESCE(MAX(id), 0) FROM carding.${table}),
-          (SELECT last_value FROM carding.${table}_id_seq)
-        ),
-        true
-      );
-    `);
-  }
-
-  cardWasteStudyReady = true;
 };
-
-// Fixed, locked list of Individual Card Waste Study waste types
-// (see scripts/20260711_reset_carding_waste_study.sql). No free-text/custom
-// waste types are accepted; only these are valid.
-const CARD_WASTE_TYPES = [
-  'Luckerin waste',
-  'Flat waste',
-  'Fan waste',
-  'Micro dust SFL top',
-  'Micro dust SFL bottom',
-  'Micro dust SFD top',
-  'Micro dust SFD bottom',
-  'Sliver waste',
-  'Lap waste',
-];
-const CARD_WASTE_TYPE_KEYS = new Set(CARD_WASTE_TYPES.map((w) => w.toLowerCase()));
-const isValidCardWasteType = (wasteType) => {
-  const normalized = normalizeWasteType(wasteType);
-  return !!normalized && CARD_WASTE_TYPE_KEYS.has(normalized.toLowerCase());
-};
-// "Overall" is a summary/totals row, not a real waste type — exclude it from validation
-// and from the waste-type master table.
-const isOverallWasteRow = (wasteType) =>
-  normalizeWasteType(wasteType)?.toLowerCase() === 'overall';
 
 const ensureCardWasteTypeMasterTable = async () => {
   if (cardWasteTypeMasterReady) return;
@@ -603,33 +372,16 @@ const ensureCardWasteTypeMasterTable = async () => {
     WHERE waste_type_key IS NOT NULL;
   `);
 
-  for (let i = 0; i < CARD_WASTE_TYPES.length; i++) {
-    const wasteType = CARD_WASTE_TYPES[i];
-    await client.query(
-      `INSERT INTO carding.card_waste_type_master (waste_type, waste_type_key, sort_order)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (waste_type_key) WHERE waste_type_key IS NOT NULL
-       DO UPDATE SET waste_type = EXCLUDED.waste_type, sort_order = EXCLUDED.sort_order`,
-      [wasteType, wasteType.toLowerCase(), i + 1]
-    );
-  }
-
-  // Drop any legacy/custom waste types outside the fixed list.
-  await client.query(
-    `DELETE FROM carding.card_waste_type_master WHERE waste_type_key <> ALL($1::text[])`,
-    [CARD_WASTE_TYPES.map((w) => w.toLowerCase())]
-  );
-
   cardWasteTypeMasterReady = true;
 };
 
 const upsertCardWasteType = async (wasteType) => {
   await ensureCardWasteTypeMasterTable();
 
-  if (!isValidCardWasteType(wasteType)) return null;
   const normalizedWasteType = normalizeWasteType(wasteType);
-  const wasteTypeKey = normalizedWasteType.toLowerCase();
+  if (!normalizedWasteType) return null;
 
+  const wasteTypeKey = normalizedWasteType.toLowerCase();
   const result = await client.query(
     `INSERT INTO carding.card_waste_type_master (waste_type, waste_type_key, sort_order)
      VALUES (
@@ -653,16 +405,14 @@ const fetchCardWasteTypes = async (prefix = '') => {
     `SELECT id, waste_type, created_at
      FROM carding.card_waste_type_master
      WHERE ($1 = '' OR waste_type ILIKE $2)
-     ORDER BY sort_order`,
+     ORDER BY waste_type`,
     [prefix, `%${prefix}%`]
   );
 
   return result.rows || [];
 };
 
-let cardThickPlaceReady = false;
 const ensureCardThickPlaceTables = async () => {
-  if (cardThickPlaceReady) return;
   await client.query(`
     CREATE TABLE IF NOT EXISTS carding.card_thick_place_header (
       id BIGSERIAL PRIMARY KEY,
@@ -713,33 +463,6 @@ const ensureCardThickPlaceTables = async () => {
     ON carding.card_thick_place_header (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
-
-  // Resync the id sequences in case rows were ever inserted with explicit ids
-  // (e.g. data import/restore), which leaves nextval() behind MAX(id) and
-  // causes spurious duplicate-key errors on the next insert.
-  await client.query(`
-    SELECT setval(
-      pg_get_serial_sequence('carding.card_thick_place_header', 'id'),
-      GREATEST(
-        (SELECT COALESCE(MAX(id), 0) FROM carding.card_thick_place_header),
-        (SELECT last_value FROM carding.card_thick_place_header_id_seq)
-      ),
-      true
-    );
-  `);
-
-  await client.query(`
-    SELECT setval(
-      pg_get_serial_sequence('carding.card_thick_place_values', 'id'),
-      GREATEST(
-        (SELECT COALESCE(MAX(id), 0) FROM carding.card_thick_place_values),
-        (SELECT last_value FROM carding.card_thick_place_values_id_seq)
-      ),
-      true
-    );
-  `);
-
-  cardThickPlaceReady = true;
 };
 
 router.get('/thresholds', async (req, res, next) => {
@@ -891,6 +614,45 @@ const getCountMasterDropdown = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error fetching carding count names from SQL Server:', error);
+    next(error);
+  }
+};
+
+const getCardingQcHeaderMasterDropdown = async (req, res, next) => {
+  try {
+    if (!sqlServer.hasSqlServerEnv()) {
+      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
+    }
+
+    const prefix = String(req.query.prefix || '').trim();
+    const countPrefix = String(req.query.count_prefix || '').trim();
+    const counts = await fetchCountMaster(countPrefix || prefix);
+    const countOptions = [
+      { text: '-- Select Count Name --', value: '' },
+      ...counts.map((count) => ({
+        text: count.count_name,
+        label: count.count_name,
+        value: count.count_name,
+        count_code: count.count_code,
+        count_name: count.count_name
+      }))
+    ];
+
+    return res.status(200).json({
+      source: 'sqlserver',
+      table: 'Depot_CountMaster',
+      data: counts,
+      counts,
+      count_names: counts.map((r) => r.count_name),
+      names: counts.map((r) => r.count_name),
+      values: counts.map((r) => r.count_name),
+      options: {
+        count_name: countOptions,
+        count: countOptions
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching carding QC header count dropdown from SQL Server:', error);
     next(error);
   }
 };
@@ -1064,229 +826,24 @@ router.get('/master/employees', getEmployeeMasterDropdown);
 router.get('/master/employee-dropdown', getEmployeeMasterDropdown);
 router.get('/master/employee-names', getEmployeeMasterDropdown);
 router.get('/master/user-names', getEmployeeMasterDropdown);
-
-router.post('/qc-header', async (req, res, next) => {
-  try {
-    await ensureCardingEntryIdColumns();
-    const {
-      count_name,
-      consignee_name,
-      creation_date,
-      machine_no,
-      lickerin_speed,
-      cylinder_speed,
-      flats_speed,
-      delivery_speed,
-      draft_speed,
-      tension_draft,
-      delivery_hank,
-      setting,
-      feed_roll_to_lickerin,
-      lickerin_to_cylinder,
-      cylinder_to_flats,
-      cylinder_to_doffer,
-      sfl,
-      sfd,
-      lickerin,
-      cylinder,
-      doffer,
-      flats
-    } = req.body;
-    let entry_id;
-    try {
-      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
-    } catch (idErr) {
-      if (idErr instanceof InvalidProcessParameterEntryIdError) {
-        return res.status(400).json({ message: idErr.message });
-      }
-      throw idErr;
-    }
-    const type = String(req.body.type || req.body.process || req.body.process_parameter || 'Process Parameter').trim() || 'Process Parameter';
-
-    if (!count_name || !consignee_name || !creation_date) {
-      return res.status(400).json({ message: 'count_name, consignee_name and creation_date are required' });
-    }
-
-    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
-    if (conflictingCountName) {
-      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
-    }
-
-    const result = await client.query(
-      `INSERT INTO carding.carding_qc_header (
-        entry_id, type, count_name, consignee_name, creation_date,
-        machine_no, lickerin_speed, cylinder_speed, flats_speed,
-        delivery_speed, draft_speed, tension_draft, delivery_hank,
-        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
-        cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,$9,
-        $10,$11,$12,$13,
-        $14,$15,$16,
-        $17,$18,
-        $19,$20,$21,$22,$23,$24
-      )
-      RETURNING *`,
-      [
-        entry_id, type, count_name, consignee_name, creation_date,
-        machine_no, lickerin_speed, cylinder_speed, flats_speed,
-        delivery_speed, draft_speed, tension_draft, delivery_hank,
-        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
-        cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats
-      ]
-    );
-
-    recordPpNotebookSubmission({
-      notebook: 'Carding QC Header',
-      department: 'Carding',
-      entryId: entry_id,
-      sourceSchema: 'carding',
-      sourceTable: 'carding_qc_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date, machine_no }
-    }).catch((err) => console.warn('[pp-notebook-log] Carding QC Header failed:', err.message));
-
-    res.status(201).json({
-      message: 'Carding QC entry created successfully',
-      data: result.rows[0],
-      entry_id,
-      process_parameter_id: entry_id
-    });
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-    }
-    next(error);
-  }
-});
-
-router.get('/qc-header', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 10 } = req.query;
-
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.max(1, parseInt(limit) || 10);
-    const offset = (pageNum - 1) * limitNum;
-
-    const result = await client.query(
-      `SELECT *
-       FROM carding.carding_qc_header
-       ORDER BY creation_date DESC
-       OFFSET $1 LIMIT $2`,
-      [offset, limitNum]
-    );
-
-    const totalResult = await client.query(
-      `SELECT COUNT(*) FROM carding.carding_qc_header`
-    );
-
-    res.status(200).json({
-      data: result.rows,
-      total: parseInt(totalResult.rows[0].count),
-      page: pageNum,
-      limit: limitNum
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.put('/qc-header/:qc_id', async (req, res, next) => {
-  try {
-    const qc_id = parseInt(req.params.qc_id, 10);
-
-    if (!Number.isInteger(qc_id) || qc_id <= 0) {
-      return res.status(400).json({ message: 'Invalid ID supplied' });
-    }
-
-    const {
-      type,
-      count_name,
-      consignee_name,
-      creation_date,
-      machine_no,
-      lickerin_speed,
-      cylinder_speed,
-      flats_speed,
-      delivery_speed,
-      draft_speed,
-      tension_draft,
-      delivery_hank,
-      setting,
-      feed_roll_to_lickerin,
-      lickerin_to_cylinder,
-      cylinder_to_flats,
-      cylinder_to_doffer,
-      sfl,
-      sfd,
-      lickerin,
-      cylinder,
-      doffer,
-      flats
-    } = req.body;
-
-    if (!count_name || !consignee_name || !creation_date) {
-      return res.status(400).json({ message: 'count_name, consignee_name and creation_date are required' });
-    }
-
-    const result = await client.query(
-      `UPDATE carding.carding_qc_header
-       SET type=$1,
-           count_name=$2,
-           consignee_name=$3,
-           creation_date=$4,
-           machine_no=$5,
-           lickerin_speed=$6,
-           cylinder_speed=$7,
-           flats_speed=$8,
-           delivery_speed=$9,
-           draft_speed=$10,
-           tension_draft=$11,
-           delivery_hank=$12,
-           setting=$13,
-           feed_roll_to_lickerin=$14,
-           lickerin_to_cylinder=$15,
-           cylinder_to_flats=$16,
-           cylinder_to_doffer=$17,
-           sfl=$18,
-           sfd=$19,
-           lickerin=$20,
-           cylinder=$21,
-           doffer=$22,
-           flats=$23
-       WHERE qc_id=$24
-       RETURNING *`,
-      [
-        type, count_name, consignee_name, creation_date,
-        machine_no, lickerin_speed, cylinder_speed, flats_speed,
-        delivery_speed, draft_speed, tension_draft, delivery_hank,
-        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
-        cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats,
-        qc_id
-      ]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Carding QC entry not found' });
-    }
-
-    res.status(200).json({
-      message: 'Carding QC entry updated successfully',
-      data: result.rows[0],
-      entry_id: result.rows[0].entry_id,
-      process_parameter_id: result.rows[0].entry_id
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
+router.get('/qc-header/master/dropdown', getCardingQcHeaderMasterDropdown);
+router.get('/qc-header/master/counts', getCountMasterDropdown);
+router.get('/qc-header/master/count-dropdown', getCountMasterDropdown);
+router.get('/qc-header/master/count-names', getCountMasterDropdown);
+router.get('/qc-header/master/employees', getEmployeeMasterDropdown);
+router.get('/qc-header/master/employee-dropdown', getEmployeeMasterDropdown);
+router.get('/qc-header/master/employee-names', getEmployeeMasterDropdown);
+router.get('/header/master/dropdown', getCardingQcHeaderMasterDropdown);
+router.get('/header/master/counts', getCountMasterDropdown);
+router.get('/header/master/count-dropdown', getCountMasterDropdown);
+router.get('/header/master/count-names', getCountMasterDropdown);
+router.get('/header/master/waste-types', getCardWasteTypeDropdown);
+router.get('/header/master/waste-type-dropdown', getCardWasteTypeDropdown);
+router.get('/header/master/mixings', getPrepMixingDropdown);
+router.get('/header/master/mixing-dropdown', getPrepMixingDropdown);
+router.get('/header/master/employees', getEmployeeMasterDropdown);
+router.get('/header/master/employee-dropdown', getEmployeeMasterDropdown);
+router.get('/header/master/employee-names', getEmployeeMasterDropdown);
 router.get('/nati/master/counts', getCountMasterDropdown);
 router.get('/nati/master/count-dropdown', getCountMasterDropdown);
 router.get('/nati/master/count-names', getCountMasterDropdown);
@@ -1563,15 +1120,11 @@ router.get('/ring-frame-logbook/checker-name', getRingFrameCheckerNames);
 const getCommonUqcMasterData = (req, res, next) => sendUqcMasterData(req, res, next, sqlServer, {
   varietySqlServer: sqlServerPrep
 });
-const getCardingUqcMasterData = (req, res, next) => sendUqcMasterData(req, res, next, sqlServer, {
-  varietySqlServer: sqlServerPrep,
-  mcNoFilter: 'cdg'
-});
-router.get('/master/dropdown', getCardingUqcMasterData);
+router.get('/master/dropdown', getCommonUqcMasterData);
 router.get('/uqc/master/varieties', getCommonUqcMasterData);
 router.get('/uqc/master/departments', getCommonUqcMasterData);
-router.get('/uqc/master/mc-nos', getCardingUqcMasterData);
-router.get('/uqc/master/cdg-nos', getCardingUqcMasterData);
+router.get('/uqc/master/mc-nos', getCardingDepartmentCdgDropdown);
+router.get('/uqc/master/cdg-nos', getCardingDepartmentCdgDropdown);
 router.get('/uqc/master/waste-types', getCardWasteTypeDropdown);
 router.get('/uqc/master/waste-type-dropdown', getCardWasteTypeDropdown);
 router.get('/uqc/master/mixings', getPrepMixingDropdown);
@@ -1581,7 +1134,7 @@ router.get('/nati/master/varieties', getMasterVarieties);
 router.get('/nati/master/departments', getMasterDepartments);
 router.get('/nati/master/cdg-nos', getCardingDepartmentCdgDropdown);
 router.get('/nati/master/dropdown', getCommonUqcMasterData);
-router.get('/uqc/master/dropdown', getCardingUqcMasterData);
+router.get('/uqc/master/dropdown', getCommonUqcMasterData);
 router.get('/uqc/master/dropdown-legacy', async (req, res, next) => {
   try {
     if (!sqlServer.hasSqlServerEnv()) {
@@ -1639,7 +1192,7 @@ router.get('/uqc/master/dropdown-legacy', async (req, res, next) => {
       mc_name: String(r.mc_name || '').trim(),
       dept_code: String(r.dept_code || '').trim(),
       dept_name: String(r.dept_name || '').trim()
-    })).filter((r) => r.mc_no && /^CDG[-\s]?\d+/i.test(r.mc_name || r.mc_no));
+    })).filter((r) => r.mc_no);
 
     const shifts = [
       { value: 'General', label: 'General' },
@@ -1931,8 +1484,12 @@ router.get('/carding-notebook/wrapping', getWrappingCardingNotebook);
 router.post('/card-thick-place', async (req, res) => {
     try {
         await ensureCardThickPlaceTables();
-        const { entry_date, date, entry_time, remarks, entries, machine, cv_value, cv_5m, five_m_cv, unit } = req.body;
+        const { entry_id, entry_date, date, entry_time, remarks, entries, machine, cv_value, cv_5m, five_m_cv, unit } = req.body;
         const resolvedEntryDate = entry_date || date || new Date().toISOString().slice(0, 10);
+
+        if (!entry_id) {
+          return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
 
         const normalizedEntries = Array.isArray(entries)
           ? entries
@@ -1946,25 +1503,13 @@ router.post('/card-thick-place', async (req, res) => {
 
         const headerResult = await client.query(
           `INSERT INTO carding.card_thick_place_header
-           (entry_date, entry_time, remarks)
-           VALUES ($1, $2, $3)
+           (entry_id, entry_code, entry_date, entry_time, remarks)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
-          [resolvedEntryDate, entry_time || null, remarks || null]
+          [entry_id || null, entry_id || null, resolvedEntryDate, entry_time || null, remarks || null]
         );
 
         const header = headerResult.rows[0];
-        const generatedEntryId = formatScreenEntryId('card_thick_place', header.id);
-
-        const updatedHeaderResult = await client.query(
-          `UPDATE carding.card_thick_place_header
-              SET entry_id = $1,
-                  entry_code = $1
-            WHERE id = $2
-            RETURNING *`,
-          [generatedEntryId, header.id]
-        );
-
-        const savedHeader = updatedHeaderResult.rows[0];
 
         for (let i = 0; i < normalizedEntries.length; i++) {
           const row = normalizedEntries[i] || {};
@@ -1987,18 +1532,16 @@ router.post('/card-thick-place', async (req, res) => {
 
         res.status(201).json({
           message: 'Card CV data created successfully',
-          data: withScreenEntryId('card_thick_place', savedHeader),
-          entry_id: generatedEntryId,
+          data: withScreenEntryId('card_thick_place', header),
           values_count: normalizedEntries.length
         });
     } catch (err) {
         await client.query('ROLLBACK');
         if (isUniqueViolation(err)) {
-          console.error('Duplicate key on card thick place insert:', err.constraint || err.message);
           return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
         }
         console.error('Error inserting card thick place CV data:', err);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error' });  
     }
 });
 
@@ -2209,33 +1752,15 @@ function createBetweenWithinEntryId() {
     return `#CB-${timestamp}${suffix}`;
 }
 
-const ensureBetweenWithinCardColumns = async () => {
-    await client.query(`
-        ALTER TABLE carding.inspections
-            ADD COLUMN IF NOT EXISTS test_id TEXT;
-    `);
-};
-
-function createCardingQcHeaderEntryId() {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
-    return `#CQ-${timestamp}${suffix}`;
-}
-
 router.post('/between-within-card', async (req, res) => {
     try {
-        await ensureBetweenWithinCardColumns();
-
         const {
             type_category,
             inspection_type,
             mc_name,
             inspection_date,
-            test_id,
         } = req.body;
         const entry_id = String(req.body.entry_id || '').trim() || createBetweenWithinEntryId();
-        const resolvedInspectionDate = String(inspection_date || '').trim() || null;
-        const resolvedTestId = String(test_id || '').trim() || null;
         const { sample_weights, hanks } = getBwcArrays(req.body);
 
         if (!Array.isArray(sample_weights) || sample_weights.length === 0 || sample_weights.length > 100) {
@@ -2257,9 +1782,9 @@ router.post('/between-within-card', async (req, res) => {
 
         await client.query(
             `INSERT INTO carding.inspections
-            (id, type_category, inspection_type, mc_name, inspection_date, num_entries, test_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [id, type_category, inspection_type, mc_name, resolvedInspectionDate, num_entries, resolvedTestId]
+            (id, type_category, inspection_type, mc_name, inspection_date, num_entries)
+            VALUES ($1,$2,$3,$4,$5,$6)`,
+            [id, type_category, inspection_type, mc_name, inspection_date, num_entries]
         );
 
         for (let i = 0; i < sample_weights.length; i++) {
@@ -2542,60 +2067,49 @@ router.get('/between-within-card', async (req, res) => {
 router.post('/nati-data-entry', async (req, res) => {
     try {
         await ensureCardingEntryIdColumns();
-        await migrateCardingScreenEntryIds();
-        const { type, entry_date, variety, entries } = req.body;
+        const { entry_id, type, entry_date, variety, entries } = req.body;
+
+        if (!entry_id) {
+            return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
 
         if (!entries || !entries.length) {
             return res.status(400).json({ message: 'Entries required' });
         }
 
-        let entry_id = '';
-        let qc_id = null;
+        await client.query('BEGIN');
 
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-            try {
-                await client.query('BEGIN');
+        const main = await client.query(
+            `INSERT INTO carding.nati_data_entry
+            (entry_id, type, entry_date, variety)
+            VALUES ($1,$2,$3,$4)
+            RETURNING id`,
+            [entry_id, type, entry_date, variety]
+        );
 
-                await client.query('LOCK TABLE carding.nati_data_entry IN SHARE ROW EXCLUSIVE MODE');
-                entry_id = await createNatiDataEntryId();
+        const qc_id = main.rows[0].id;
 
-                const main = await client.query(
-                    `INSERT INTO carding.nati_data_entry
-                    (entry_id, type, entry_date, variety)
-                    VALUES ($1,$2,$3,$4)
-                    RETURNING id`,
-                    [entry_id, type, entry_date, variety]
-                );
+        await client.query(
+            `INSERT INTO carding.neps_details
+            (qc_id, mc_no, ratio_size_1, ratio_size_07, ratio_size_05)
+            SELECT
+                $1, mc_no, r1, r07, r05
+            FROM unnest(
+                $2::varchar[],
+                $3::numeric[],
+                $4::numeric[],
+                $5::numeric[]
+            ) AS t(mc_no, r1, r07, r05)`,
+            [
+                qc_id,
+                entries.map(e => (e.mc_no === null || e.mc_no === undefined ? null : String(e.mc_no))),
+                entries.map(e => e.ratio_size_1),
+                entries.map(e => e.ratio_size_07),
+                entries.map(e => e.ratio_size_05)
+            ]
+        );
 
-                qc_id = main.rows[0].id;
-
-                await client.query(
-                    `INSERT INTO carding.neps_details
-                    (qc_id, mc_no, ratio_size_1, ratio_size_07, ratio_size_05)
-                    SELECT 
-                        $1, mc_no, r1, r07, r05
-                    FROM unnest(
-                        $2::int[],
-                        $3::numeric[],
-                        $4::numeric[],
-                        $5::numeric[]
-                    ) AS t(mc_no, r1, r07, r05)`,
-                    [
-                        qc_id,
-                        entries.map(e => e.mc_no),
-                        entries.map(e => e.ratio_size_1),
-                        entries.map(e => e.ratio_size_07),
-                        entries.map(e => e.ratio_size_05)
-                    ]
-                );
-
-                await client.query('COMMIT');
-                break;
-            } catch (err) {
-                await client.query('ROLLBACK');
-                if (!isUniqueViolation(err) || attempt === 3) throw err;
-            }
-        }
+        await client.query('COMMIT');
 
         res.status(201).json({
             message: 'Nati entry created',
@@ -2668,8 +2182,6 @@ router.post('/nati-data-entry', async (req, res) => {
  */
 router.get('/nati-data-entry', async (req, res) => {
     try {
-        await ensureCardingEntryIdColumns();
-        await migrateCardingScreenEntryIds();
         const result = await client.query(`
             SELECT 
                 qc.id,
@@ -2740,6 +2252,9 @@ router.get('/nati-data-entry', async (req, res) => {
  *               variety:
  *                 type: string
  *                 example: "Cotton"
+ *               department:
+ *                 type: string
+ *                 example: "Carding"
  *               mc_no:
  *                 type: string
  *                 example: "MC-01"
@@ -2769,8 +2284,10 @@ router.get('/nati-data-entry', async (req, res) => {
 router.post('/uqc', async (req, res) => {
     try {
         await ensureCardingEntryIdColumns();
+        console.log("UQC BODY:", req.body);
 
         const {
+            entry_id,
             entry_type,
             entry_date,
             shift,
@@ -2782,7 +2299,10 @@ router.post('/uqc', async (req, res) => {
             cvm_3m,
             remarks
         } = req.body;
-        const requestedEntryId = String(req.body.entry_id || '').trim();
+
+        if (!entry_id) {
+            return res.status(400).json({ message: "entry_id is required and must be unique" });
+        }
 
         // ✅ Validation
         if (!entry_type || !entry_date) {
@@ -2801,55 +2321,26 @@ router.post('/uqc', async (req, res) => {
         const toNumber = (val) =>
             val === "" || val === undefined ? null : val;
 
-        let entry_id = requestedEntryId;
-        let result;
-
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-            try {
-                await client.query('BEGIN');
-                await client.query('LOCK TABLE carding.u_data_entry IN SHARE ROW EXCLUSIVE MODE');
-
-                entry_id = requestedEntryId || await createUqcEntryId();
-
-                result = await client.query(
-                    `INSERT INTO carding.u_data_entry
-                    (entry_id, entry_type, entry_date, shift, variety, mc_no,
-                     u_percent, cvm, cvm_1m, cvm_3m, remarks)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-                    ON CONFLICT (entry_id) DO UPDATE SET
-                      entry_type = EXCLUDED.entry_type,
-                      entry_date = EXCLUDED.entry_date,
-                      shift = EXCLUDED.shift,
-                      variety = EXCLUDED.variety,
-                      mc_no = EXCLUDED.mc_no,
-                      u_percent = EXCLUDED.u_percent,
-                      cvm = EXCLUDED.cvm,
-                      cvm_1m = EXCLUDED.cvm_1m,
-                      cvm_3m = EXCLUDED.cvm_3m,
-                      remarks = EXCLUDED.remarks
-                    RETURNING *`,
-                    [
-                        entry_id,
-                        entry_type,
-                        entry_date,
-                        shift,
-                        variety,
-                        mc_no,
-                        toNumber(u_percent),
-                        toNumber(cvm),
-                        toNumber(cvm_1m),
-                        toNumber(cvm_3m),
-                        remarks
-                    ]
-                );
-
-                await client.query('COMMIT');
-                break;
-            } catch (err) {
-                await client.query('ROLLBACK');
-                if (!isUniqueViolation(err) || requestedEntryId || attempt === 3) throw err;
-            }
-        }
+        const result = await client.query(
+            `INSERT INTO carding.u_data_entry
+            (entry_id, entry_type, entry_date, shift, variety, mc_no,
+             u_percent, cvm, cvm_1m, cvm_3m, remarks)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            RETURNING *`,
+            [
+                entry_id,
+                entry_type,
+                entry_date,
+                shift,
+                variety,
+                mc_no,
+                toNumber(u_percent),
+                toNumber(cvm),
+                toNumber(cvm_1m),
+                toNumber(cvm_3m),
+                remarks
+            ]
+        );
 
         res.status(201).json({
             message: "UQC entry created successfully",
@@ -2897,20 +2388,29 @@ router.get('/uqc', async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
+        const department = String(req.query.department || '').trim();
+        const globalMode = String(req.query.global || '').toLowerCase() === 'true';
+        const whereClause = (!globalMode && department) ? 'WHERE department ILIKE $3' : '';
 
         const dataQuery = `
             SELECT *
             FROM carding.u_data_entry
+            ${whereClause}
             ORDER BY entry_date DESC
             LIMIT $1 OFFSET $2
         `;
 
         const countQuery = `
             SELECT COUNT(*) FROM carding.u_data_entry
+            ${whereClause}
         `;
 
-        const params = [limit, offset];
-        const countParams = [];
+        const params = (!globalMode && department)
+          ? [limit, offset, `%${department}%`]
+          : [limit, offset];
+        const countParams = (!globalMode && department)
+          ? [`%${department}%`]
+          : [];
 
         const dataResult = await client.query(dataQuery, params);
         const countResult = await client.query(countQuery, countParams);
@@ -2920,7 +2420,8 @@ router.get('/uqc', async (req, res) => {
         res.json({
             page,
             limit,
-            global: true,
+            global: globalMode || !department,
+            department: department || null,
             total,
             totalPages: Math.ceil(total / limit),
             data: dataResult.rows.map((row) => withScreenEntryId('uqc', row))
@@ -3464,7 +2965,6 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
     }
 
     const {
-      entry_id,
       type,
       count_name,
       consignee_name,
@@ -3489,53 +2989,6 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
       doffer,
       flats
     } = req.body;
-
-    const currentResult = await client.query(
-      `SELECT entry_id FROM carding.carding_qc_header WHERE qc_id = $1`,
-      [id]
-    );
-
-    if (currentResult.rowCount === 0) {
-      return res.status(404).json({ message: 'Carding QC entry not found' });
-    }
-
-    const requestedEntryId = String(entry_id || '').trim();
-    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
-
-    if (requestedEntryId && requestedEntryId !== currentEntryId) {
-      const insertResult = await client.query(
-        `INSERT INTO carding.carding_qc_header (
-          entry_id, type, count_name, consignee_name, creation_date,
-          machine_no, lickerin_speed, cylinder_speed, flats_speed,
-          delivery_speed, draft_speed, tension_draft, delivery_hank,
-          setting, feed_roll_to_lickerin, lickerin_to_cylinder,
-          cylinder_to_flats, cylinder_to_doffer,
-          sfl, sfd, lickerin, cylinder, doffer, flats
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,
-          $6,$7,$8,$9,
-          $10,$11,$12,$13,
-          $14,$15,$16,
-          $17,$18,
-          $19,$20,$21,$22,$23,$24
-        )
-        RETURNING *`,
-        [
-          requestedEntryId, type, count_name, consignee_name, creation_date,
-          machine_no, lickerin_speed, cylinder_speed, flats_speed,
-          delivery_speed, draft_speed, tension_draft, delivery_hank,
-          setting, feed_roll_to_lickerin, lickerin_to_cylinder,
-          cylinder_to_flats, cylinder_to_doffer,
-          sfl, sfd, lickerin, cylinder, doffer, flats
-        ]
-      );
-
-      return res.status(201).json({
-        message: 'Carding QC entry created successfully',
-        data: withScreenEntryId('qc_header', insertResult.rows[0])
-      });
-    }
 
     const result = await client.query(
       `UPDATE carding.carding_qc_header
@@ -3562,7 +3015,7 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
            cylinder = $21,
            doffer = $22,
            flats = $23
-       WHERE qc_id = $24
+       WHERE id = $24
        RETURNING *`,
       [
         type,
@@ -3635,10 +3088,8 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
  *                 type: string
  *                 example: CDO-17
  *               cdg_no_proposed:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: ["CDG-01", "CDG-03"]
+ *                 type: string
+ *                 example: CDG-08
  *               remarks:
  *                 type: string
  *                 example: Trial planned for evening shift
@@ -3676,12 +3127,6 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
  *                 type: number
  *                 format: float
  *               licker_in_speed_1_proposed:
- *                 type: number
- *                 format: float
- *               licker_in_speed_2_existing:
- *                 type: number
- *                 format: float
- *               licker_in_speed_2_proposed:
  *                 type: number
  *                 format: float
  *               cylinder_speed_existing:
@@ -3800,7 +3245,6 @@ router.post('/change-control', async (req, res, next) => {
       rr_rk_beater_speed_proposed,
       remarks,
       operator,
-      approval_status: requestedApprovalStatus,
     } = req.body;
 
     if (!entry_id) {
@@ -3812,16 +3256,6 @@ router.post('/change-control', async (req, res, next) => {
         message: 'type and entry_date are required'
       });
     }
-
-    // Every submission lands as 'pending' unless the payload explicitly says
-    // 'approved' - anything else (missing, typo'd) awaits L2 review.
-    const approval_status = String(requestedApprovalStatus || '').trim().toLowerCase() === 'approved'
-      ? 'approved'
-      : 'pending';
-
-    const cdgNoProposedArray = Array.isArray(cdg_no_proposed)
-      ? cdg_no_proposed.map((v) => String(v).trim()).filter(Boolean)
-      : (cdg_no_proposed ? [String(cdg_no_proposed).trim()].filter(Boolean) : []);
 
     const result = await client.query(
       `INSERT INTO carding.carding_change_request
@@ -3845,7 +3279,7 @@ router.post('/change-control', async (req, res, next) => {
          web_speed_draft_mw_v4_existing, web_speed_draft_mw_v4_proposed,
          lc_wing_setting_existing, lc_wing_setting_proposed,
          rr_rk_beater_speed_existing, rr_rk_beater_speed_proposed,
-         remarks, operator, approval_status
+         remarks, operator
        )
        VALUES (
          $1, $2, $3, $4, $5, $6,
@@ -3866,53 +3300,52 @@ router.post('/change-control', async (req, res, next) => {
          $35, $36,
          $37, $38,
          $39, $40,
-         $41, $42, $43
+         $41, $42
        )
        RETURNING *`,
       [
         entry_id,
         type,
-        toNullableNumber(test_no),
+        test_no ?? null,
         entry_date,
         cdo_no ?? null,
-        cdgNoProposedArray.length ? cdgNoProposedArray : null,
+        cdg_no_proposed ?? null,
         mixing_existing ?? null,
         mixing_proposed ?? null,
         blend_percent_existing ?? null,
         blend_percent_proposed ?? null,
-        toNullableNumber(del_hank_existing),
-        toNullableNumber(del_hank_proposed),
-        toNullableNumber(feed_weight_existing),
-        toNullableNumber(feed_weight_proposed),
-        toNullableNumber(speed_existing),
-        toNullableNumber(speed_proposed),
-        toNullableNumber(licker_in_speed_1_existing),
-        toNullableNumber(licker_in_speed_1_proposed),
-        toNullableNumber(licker_in_speed_2_existing),
-        toNullableNumber(licker_in_speed_2_proposed),
-        toNullableNumber(cylinder_speed_existing),
-        toNullableNumber(cylinder_speed_proposed),
-        toNullableNumber(flats_speed_mm_min_existing),
-        toNullableNumber(flats_speed_mm_min_proposed),
-        toNullableNumber(feed_plate_to_licker_in_existing),
-        toNullableNumber(feed_plate_to_licker_in_proposed),
-        toNullableNumber(sfl_existing),
-        toNullableNumber(sfl_proposed),
-        toNullableNumber(sfd_existing),
-        toNullableNumber(sfd_proposed),
-        toNullableNumber(cylinder_to_flats_existing),
-        toNullableNumber(cylinder_to_flats_proposed),
-        toNullableNumber(cylinder_in_doffer_existing),
-        toNullableNumber(cylinder_in_doffer_proposed),
-        toNullableNumber(web_speed_draft_mw_v4_existing),
-        toNullableNumber(web_speed_draft_mw_v4_proposed),
-        toNullableNumber(lc_wing_setting_existing),
-        toNullableNumber(lc_wing_setting_proposed),
-        toNullableNumber(rr_rk_beater_speed_existing),
-        toNullableNumber(rr_rk_beater_speed_proposed),
+        del_hank_existing ?? null,
+        del_hank_proposed ?? null,
+        feed_weight_existing ?? null,
+        feed_weight_proposed ?? null,
+        speed_existing ?? null,
+        speed_proposed ?? null,
+        licker_in_speed_1_existing ?? null,
+        licker_in_speed_1_proposed ?? null,
+        licker_in_speed_2_existing ?? null,
+        licker_in_speed_2_proposed ?? null,
+        cylinder_speed_existing ?? null,
+        cylinder_speed_proposed ?? null,
+        flats_speed_mm_min_existing ?? null,
+        flats_speed_mm_min_proposed ?? null,
+        feed_plate_to_licker_in_existing ?? null,
+        feed_plate_to_licker_in_proposed ?? null,
+        sfl_existing ?? null,
+        sfl_proposed ?? null,
+        sfd_existing ?? null,
+        sfd_proposed ?? null,
+        cylinder_to_flats_existing ?? null,
+        cylinder_to_flats_proposed ?? null,
+        cylinder_in_doffer_existing ?? null,
+        cylinder_in_doffer_proposed ?? null,
+        web_speed_draft_mw_v4_existing ?? null,
+        web_speed_draft_mw_v4_proposed ?? null,
+        lc_wing_setting_existing ?? null,
+        lc_wing_setting_proposed ?? null,
+        rr_rk_beater_speed_existing ?? null,
+        rr_rk_beater_speed_proposed ?? null,
         remarks ?? null,
-        operator ?? null,
-        approval_status
+        operator ?? null
       ]
     );
 
@@ -3958,22 +3391,17 @@ router.get('/change-control', async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
     const offset = (page - 1) * limit;
-    const approvalStatus = String(req.query.approval_status || req.query.approvalStatus || req.query.status || '').trim().toLowerCase();
 
     const headerResult = await client.query(
       `SELECT *
        FROM carding.carding_change_request
-       WHERE ($3::text = '' OR LOWER(TRIM(COALESCE(approval_status, 'approved'))) = $3)
        ORDER BY entry_date DESC, id DESC
        OFFSET $1 LIMIT $2`,
-      [offset, limit, approvalStatus]
+      [offset, limit]
     );
 
     const countResult = await client.query(
-      `SELECT COUNT(*)
-       FROM carding.carding_change_request
-       WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(approval_status, 'approved'))) = $1)`,
-      [approvalStatus]
+      `SELECT COUNT(*) FROM carding.carding_change_request`
     );
 
     const data = headerResult.rows.map((row) => ({
@@ -3988,201 +3416,6 @@ router.get('/change-control', async (req, res, next) => {
     });
   } catch (error) {
     next(error);
-  }
-});
-
-// Change-control approvals flip data other screens may treat as the trusted
-// record, so approval/rejection is restricted to L2 reviewers server-side.
-// Admin accounts (role "admin" or employee_id like ADMIN001) get the same
-// access as L2.
-const isCardingAdminReviewer = (req) => {
-  const role = String(req.user?.role || '').trim().toLowerCase();
-  if (role === 'admin') return true;
-
-  const employeeId = String(req.user?.employee_id || '').trim().toLowerCase();
-  return /^admin\s*0*\d+$/.test(employeeId);
-};
-
-const parseCardingPositiveInt = (value) => {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : null;
-};
-
-const getCardingReviewerLevel = async (req) => {
-  const tokenLevel = String(req.user?.level || '').trim().toUpperCase();
-  if (tokenLevel === 'L1' || tokenLevel === 'L2' || tokenLevel === 'L3') return tokenLevel;
-
-  const requesterId = parseCardingPositiveInt(req.user?.id);
-  if (!requesterId) return null;
-
-  const result = await client.query(
-    `SELECT COALESCE(level, '') AS level
-     FROM users.user_details
-     WHERE id = $1`,
-    [requesterId]
-  );
-  const level = String(result.rows[0]?.level || '').trim().toUpperCase();
-  return level === 'L1' || level === 'L2' || level === 'L3' ? level : null;
-};
-
-const requireCardingL2Reviewer = async (req, res) => {
-  if (isCardingAdminReviewer(req)) return true;
-
-  const level = await getCardingReviewerLevel(req);
-  if (level !== 'L2') {
-    res.status(403).json({ message: 'Only L2 reviewers can access change control approvals' });
-    return false;
-  }
-  return true;
-};
-
-/**
- * @swagger
- * /carding/change-control/approvals:
- *   get:
- *     summary: Pending (or approved/rejected) change control entries
- *     tags: [Carding Change Control Approvals]
- *     parameters:
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           default: pending
- *     responses:
- *       200:
- *         description: Success
- */
-router.get('/change-control/approvals', async (req, res, next) => {
-  try {
-    if (!(await requireCardingL2Reviewer(req, res))) return;
-
-    await ensureCardingChangeTables();
-    const status = String(req.query.approval_status || req.query.approvalStatus || req.query.status || 'pending').trim().toLowerCase();
-
-    const result = await client.query(
-      `SELECT *
-       FROM carding.carding_change_request
-       WHERE LOWER(TRIM(COALESCE(approval_status, 'approved'))) = $1
-       ORDER BY created_at DESC NULLS LAST, id DESC`,
-      [status]
-    );
-
-    const data = result.rows.map((row) => withScreenEntryId('card_change_control', row));
-
-    res.json({ data, total: data.length, status });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * @swagger
- * /carding/change-control/approvals/{id}/approve:
- *   post:
- *     summary: Approve a pending change control entry
- *     tags: [Carding Change Control Approvals]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *     responses:
- *       200:
- *         description: Entry approved
- *       404:
- *         description: Entry not found
- */
-router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
-  try {
-    if (!(await requireCardingL2Reviewer(req, res))) return;
-
-    const id = parseCardingPositiveInt(req.params.id);
-    if (!id) {
-      return res.status(400).json({ message: 'id must be a numeric change control entry id' });
-    }
-
-    const reviewerLabel = String(req.user?.employee_id || req.user?.name || req.user?.username || req.user?.id || '').trim();
-
-    const result = await client.query(
-      `UPDATE carding.carding_change_request
-       SET approval_status = 'approved',
-           reviewed_by = $2,
-           reviewed_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [id, reviewerLabel || null]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ message: 'Change control entry not found' });
-    }
-
-    res.json({
-      message: 'Change control entry approved',
-      data: withScreenEntryId('card_change_control', result.rows[0])
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * @swagger
- * /carding/change-control/approvals/{id}/reject:
- *   post:
- *     summary: Reject a pending change control entry
- *     tags: [Carding Change Control Approvals]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *     responses:
- *       200:
- *         description: Entry rejected
- *       404:
- *         description: Entry not found
- */
-router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
-  try {
-    if (!(await requireCardingL2Reviewer(req, res))) return;
-
-    const id = parseCardingPositiveInt(req.params.id);
-    if (!id) {
-      return res.status(400).json({ message: 'id must be a numeric change control entry id' });
-    }
-
-    const reason = String(req.body?.reason || req.body?.remarks || req.body?.review_remarks || '').trim() || null;
-    const reviewerLabel = String(req.user?.employee_id || req.user?.name || req.user?.username || req.user?.id || '').trim();
-
-    const result = await client.query(
-      `UPDATE carding.carding_change_request
-       SET approval_status = 'rejected',
-           review_remarks = $2,
-           reviewed_by = $3,
-           reviewed_at = NOW()
-       WHERE id = $1
-       RETURNING *`,
-      [id, reason, reviewerLabel || null]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ message: 'Change control entry not found' });
-    }
-
-    res.json({
-      message: 'Change control entry rejected',
-      data: withScreenEntryId('card_change_control', result.rows[0])
-    });
-  } catch (err) {
-    next(err);
   }
 });
 
@@ -4224,13 +3457,6 @@ router.post('/card-waste-study', async (req, res, next) => {
     if (normalizedWasteRows.length > 25) {
       return res.status(400).json({ message: 'No. of waste types must be 25 or less' });
     }
-    const invalidWasteType = [waste_type, ...normalizedWasteRows.map((row) => row?.waste_type)]
-      .find((wt) => wt && !isOverallWasteRow(wt) && !isValidCardWasteType(wt));
-    if (invalidWasteType) {
-      return res.status(400).json({
-        message: `Invalid waste_type "${invalidWasteType}". Must be one of: ${CARD_WASTE_TYPES.join(', ')}`
-      });
-    }
 
     const productionValue = toDecimal4OrNull(carding_production_kg);
     const mcProductionTotal = normalizedTypeRows.reduce(
@@ -4249,83 +3475,52 @@ router.post('/card-waste-study', async (req, res, next) => {
     const overallPercentValue = toDecimal4OrNull(overall_percent) ?? wastePercentValue;
 
     await client.query('BEGIN');
-    if (waste_type && !isOverallWasteRow(waste_type)) {
-      await upsertCardWasteType(waste_type);
-    }
+    await upsertCardWasteType(waste_type);
     for (const row of normalizedWasteRows) {
-      if (row?.waste_type && !isOverallWasteRow(row.waste_type)) {
-        await upsertCardWasteType(row.waste_type);
-      }
+      await upsertCardWasteType(row?.waste_type);
     }
 
-    const existingLookup = await client.query(
-      `SELECT id FROM carding.card_waste_study WHERE entry_id = $1 LIMIT 1`,
-      [entry_id]
+    const result = await client.query(
+      `INSERT INTO carding.card_waste_study (
+        entry_id, waste_study_id, date, variety, entry_type, study_type,
+        carding_production_kg, type_entries,
+        waste_type, waste_kg, waste_percent, overall_percent,
+        remarks
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+      )
+      RETURNING *`,
+      [
+        entry_id || null,
+        null,
+        resolvedDate,
+        variety,
+        type || 'Card Waste Study',
+        study_type,
+        productionValue,
+        normalizedTypeRows.length || toDecimal4OrNull(type_entries),
+        normalizeWasteType(waste_type),
+        wasteKgValue,
+        wastePercentValue,
+        overallPercentValue,
+        remarks
+      ]
     );
-    const existingId = existingLookup.rowCount > 0 ? existingLookup.rows[0].id : null;
 
-    const studyValues = [
-      entry_id || null,
-      null,
-      resolvedDate,
-      variety,
-      type || 'Card Waste Study',
-      study_type,
-      productionValue,
-      normalizedTypeRows.length || toDecimal4OrNull(type_entries),
-      normalizeWasteType(waste_type),
-      wasteKgValue,
-      wastePercentValue,
-      overallPercentValue,
-      remarks
-    ];
-
-    let study;
-    if (existingId) {
-      const result = await client.query(
-        `UPDATE carding.card_waste_study SET
-          entry_id = $1, waste_study_id = $2, date = $3, variety = $4, entry_type = $5, study_type = $6,
-          carding_production_kg = $7, type_entries = $8,
-          waste_type = $9, waste_kg = $10, waste_percent = $11, overall_percent = $12,
-          remarks = $13
-        WHERE id = $14
-        RETURNING *`,
-        [...studyValues, existingId]
-      );
-      study = result.rows[0];
-      await client.query(`DELETE FROM carding.card_waste_study_type_rows WHERE study_id = $1`, [existingId]);
-      await client.query(`DELETE FROM carding.card_waste_study_waste_rows WHERE study_id = $1`, [existingId]);
-    } else {
-      const result = await client.query(
-        `INSERT INTO carding.card_waste_study (
-          entry_id, waste_study_id, date, variety, entry_type, study_type,
-          carding_production_kg, type_entries,
-          waste_type, waste_kg, waste_percent, overall_percent,
-          remarks
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
-        )
-        RETURNING *`,
-        studyValues
-      );
-      study = result.rows[0];
-    }
+    const study = result.rows[0];
 
     for (let i = 0; i < normalizedTypeRows.length; i++) {
       const row = normalizedTypeRows[i] || {};
       await client.query(
         `INSERT INTO carding.card_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           study.id,
           row.row_no ?? (i + 1),
           toDecimal4OrNull(row.cylinder_speed),
           toDecimal4OrNull(row.lickerin_speed),
-          toDecimal4OrNull(row.lickerin_speed_1),
-          toDecimal4OrNull(row.lickerin_speed_2),
-          toDecimal4OrNull(row.lickerin_speed_3),
           toDecimal4OrNull(row.flat_speed),
           toDecimal4OrNull(row.doffer_speed),
           toDecimal4OrNull(row.delivery_speed),
@@ -4356,14 +3551,13 @@ router.post('/card-waste-study', async (req, res, next) => {
 
     await client.query('COMMIT');
 
-    res.status(existingId ? 200 : 201).json({
-      message: existingId ? 'Card waste study updated successfully' : 'Card waste study created successfully',
+    res.status(201).json({
+      message: 'Card waste study created successfully',
       data: withoutCardWasteStudyIds(withScreenEntryId('card_waste_study', study))
     });
   } catch (error) {
     await client.query('ROLLBACK');
     if (isUniqueViolation(error)) {
-      console.error('Duplicate key on card waste study insert:', error.constraint || error.message);
       return res.status(409).json({ message: 'Duplicate waste study ID. Please use a unique ID.' });
     }
     next(error);
@@ -4430,86 +3624,12 @@ router.get('/card-waste-study', async (req, res, next) => {
   }
 });
 
-///////////////////////////////////////////////////////////
-///////////////////// NRE% DATA ENTRY API ///////////////////
-///////////////////////////////////////////////////////////
-
-let cardingNreTableReady = false;
-const ensureCardingNreTable = async () => {
-  if (cardingNreTableReady) return;
-
-  await client.query(`CREATE SCHEMA IF NOT EXISTS carding;`);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS carding.nre (
-      id bigserial PRIMARY KEY,
-      entry_id varchar(20) UNIQUE,
-      machine_model varchar(50),
-      mc_name varchar(100),
-      cylinder_specs varchar(255),
-      cylinder_tonnage_1 numeric(10,2),
-      cylinder_tonnage_2 numeric(10,2),
-      doffer_specs varchar(255),
-      doffer_tonnage_1 numeric(10,2),
-      doffer_tonnage_2 numeric(10,2),
-      flat_specs varchar(255),
-      flat_tonnage_1 numeric(10,2),
-      flat_tonnage_2 numeric(10,2),
-      lickerin_specs varchar(255),
-      lickerin_tonnage_1 numeric(10,2),
-      lickerin_tonnage_2 numeric(10,2),
-      silver_hank numeric(10,2),
-      delivery_mtr_min numeric(10,2),
-      fibre_nep_gms_card_mat numeric(10,2),
-      fibre_nep_gms_silver numeric(10,2),
-      carding_nre_percent numeric(10,2),
-      created_at timestamptz NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  cardingNreTableReady = true;
-};
-
-/**
- * @swagger
- * /carding/nre:
- *   post:
- *     summary: Create Carding NRE% entry
- *     tags: [Carding]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           example:
- *             entry_id: "CNRE-0001"
- *             machine_model: "DK-803"
- *             mc_name: "CDG-03"
- *             cylinder_specs: ""
- *             cylinder_tonnage_1: ""
- *             cylinder_tonnage_2: ""
- *             doffer_specs: ""
- *             doffer_tonnage_1: ""
- *             doffer_tonnage_2: ""
- *             flat_specs: ""
- *             flat_tonnage_1: ""
- *             flat_tonnage_2: ""
- *             lickerin_specs: ""
- *             lickerin_tonnage_1: ""
- *             lickerin_tonnage_2: ""
- *             silver_hank: ""
- *             delivery_mtr_min: ""
- *             fibre_nep_gms_card_mat: ""
- *             fibre_nep_gms_silver: ""
- *             carding_nre_percent: ""
- *     responses:
- *       201:
- *         description: Carding NRE% entry created successfully
- *       500:
- *         description: Server error
- */
+// "Carding NRE%" — the frontend (cardingNreDataEntry.jsx) has always posted to /carding/nre and
+// carding.nre already exists live with real submitted rows (entry_id CNRE-0001..0003), but no
+// route handling this path exists anywhere in this file — every submission attempt has been
+// silently failing (404) and Custom Report's "Carding NRE%" type has never had anything to fetch.
 router.post('/nre', async (req, res, next) => {
   try {
-    await ensureCardingNreTable();
-
     const {
       entry_id,
       machine_model,
@@ -4550,26 +3670,26 @@ router.post('/nre', async (req, res, next) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING *`,
       [
-        entry_id || null,
-        machine_model,
-        mc_name,
-        cylinder_specs,
-        toNumberOrNull(cylinder_tonnage_1),
-        toNumberOrNull(cylinder_tonnage_2),
-        doffer_specs,
-        toNumberOrNull(doffer_tonnage_1),
-        toNumberOrNull(doffer_tonnage_2),
-        flat_specs,
-        toNumberOrNull(flat_tonnage_1),
-        toNumberOrNull(flat_tonnage_2),
-        lickerin_specs,
-        toNumberOrNull(lickerin_tonnage_1),
-        toNumberOrNull(lickerin_tonnage_2),
-        toNumberOrNull(silver_hank),
-        toNumberOrNull(delivery_mtr_min),
-        toNumberOrNull(fibre_nep_gms_card_mat),
-        toNumberOrNull(fibre_nep_gms_silver),
-        toNumberOrNull(carding_nre_percent)
+        entry_id,
+        machine_model || null,
+        mc_name || null,
+        cylinder_specs || null,
+        cylinder_tonnage_1 || null,
+        cylinder_tonnage_2 || null,
+        doffer_specs || null,
+        doffer_tonnage_1 || null,
+        doffer_tonnage_2 || null,
+        flat_specs || null,
+        flat_tonnage_1 || null,
+        flat_tonnage_2 || null,
+        lickerin_specs || null,
+        lickerin_tonnage_1 || null,
+        lickerin_tonnage_2 || null,
+        silver_hank || null,
+        delivery_mtr_min || null,
+        fibre_nep_gms_card_mat || null,
+        fibre_nep_gms_silver || null,
+        carding_nre_percent || null
       ]
     );
 
@@ -4588,17 +3708,16 @@ router.post('/nre', async (req, res, next) => {
 
 router.get('/nre', async (req, res, next) => {
   try {
-    await ensureCardingNreTable();
-
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.max(1, parseInt(req.query.limit) || 10);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
     const result = await client.query(
-      `SELECT * FROM carding.nre
-       ORDER BY id DESC
-       OFFSET $1 LIMIT $2`,
-      [offset, limit]
+      `SELECT *
+       FROM carding.nre
+       ORDER BY created_at DESC, id DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
     );
 
     const totalResult = await client.query(`SELECT COUNT(*) FROM carding.nre`);

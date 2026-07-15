@@ -8,14 +8,14 @@ const VISUAL_TYPES = new Set(['average_value_card', 'bar_chart', 'area_chart', '
 const TICKET_CARD_METRICS = new Set(['total', 'open', 'closed', 'reopened', 'pending', 'overdue']);
 const ALL_SUB_DEPARTMENTS = ['Mixing', 'Spinning', 'Carding', 'Comber', 'Blowroom', 'Autoconer', 'Drawframe', 'Simplex'];
 const SUB_DEPARTMENT_SCREEN_KEYS = {
-  mixing: ['cottonhvidataentry', 'fibredataentry', 'afisdataentry', 'afis6cottondataentry', 'afis6mmfdataentry', 'moisturedataentry', 'opennessdataentry', 'mixingqcdataentry'],
-  blowroom: ['blowroomsyncdataentry', 'droptestdataentry', 'brwastestudydataentry'],
-  carding: ['cardthickplacedataentry', 'betweenwithincarddataentry', 'cardingnatidataentry', 'cardinguqcdataentry', 'carddfkpressurechecking'],
+  mixing: ['cottonhvidataentry', 'fibredataentry', 'afisdataentry', 'moisturedataentry', 'opennessdataentry', 'mixingqcdataentry'],
+  blowroom: ['blowroomsyncdataentry', 'droptestdataentry', 'brwastestudydataentry', 'blowroomheaderdataentry'],
+  carding: ['cardthickplacedataentry', 'betweenwithincarddataentry', 'cardingnatidataentry', 'cardinguqcdataentry', 'carddfkpressurechecking', 'cardingqcdataentry'],
   comber: ['ribbonlapcvdataentry', 'combernatidataentry', 'comberuqcdataentry'],
-  drawframe: ['yarncvcalculation', 'cotsdataentry', 'drawframeuqcdataentry'],
-  simplex: ['smxcotschangedataentry', 'smxbreaksstudyreport', 'simplexuqcdataentry'],
-  spinning: ['speedcheckingdataentry', 'cotscheckingdataentry', 'lycramissingdataentry', 'bottomaproncheckingdataentry', 'lycracenteringdataentry', 'rsmlycraonlinedataentry', 'rsmlycraofflinedataentry', 'ringframedataentry', 'countchangedataentry', 'wheelchangetype1', 'wheelchangetype2', 'wheelchangetype3'],
-  autoconer: ['lycracheckingdataentry', 'countwisecutsdataentry', 'drumwisedataentry', 'splicestrengthdataentry', 'inspectiondataentry', 'conepackingauditdataentry', 'autoconerparameterentries', 'autoconerq2inspection', 'autoconerq3inspection']
+  drawframe: ['yarncvcalculation', 'cotsdataentry', 'drawframeuqcdataentry', 'drawframeqcdataentry', 'finisherdrawinginspection'],
+  simplex: ['smxcotschangedataentry', 'smxbreaksstudyreport', 'simplexuqcdataentry', 'simplexprocessparameter'],
+  spinning: ['speedcheckingdataentry', 'cotscheckingdataentry', 'lycramissingdataentry', 'bottomaproncheckingdataentry', 'lycracenteringdataentry', 'rsmlycraonlinedataentry', 'rsmlycraofflinedataentry', 'ringframedataentry', 'countchangedataentry', 'spinningqcdataentry', 'wheelchangetype1', 'wheelchangetype2', 'wheelchangetype3'],
+  autoconer: ['lycracheckingdataentry', 'countwisecutsdataentry', 'drumwisedataentry', 'splicestrengthdataentry', 'inspectiondataentry', 'conedensitydataentry', 'conepackingauditdataentry', 'autoconerparameterentries', 'autoconerprocessparameter', 'autoconerq2inspection', 'autoconerq3inspection']
 };
 
 const SCREEN_SOURCE_MAP = {
@@ -31,25 +31,9 @@ const SCREEN_SOURCE_MAP = {
     table: 'mixing.afis_data_entry',
     dateColumn: 'inspection_date'
   },
-  afis6cottondataentry: {
-    table: 'mixing.afis6_cotton_data_entry',
-    dateColumn: 'inspection_date'
-  },
-  afis6mmfdataentry: {
-    table: 'mixing.afis6_mmf_data_entry',
-    dateColumn: 'inspection_date'
-  },
   moisturedataentry: {
     table: 'mixing.moisture_data_entry',
     dateColumn: 'inspection_date'
-  },
-  opennessdataentry: {
-    table: 'mixing.openness_dashboard_entries',
-    dateColumn: 'inspection_date'
-  },
-  mixingqcdataentry: {
-    table: 'mixing.mixing_qc_dashboard_entries',
-    dateColumn: 'creation_date'
   }
 };
 
@@ -80,10 +64,11 @@ const isAdminUser = (req) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
   return role === 'admin' || role === 'super admin' || role === 'superadmin';
 };
-const isDashboardAdmin = (req) => {
-  return isAdminUser(req);
+const isAdmin001DashboardManager = (req) => {
+  const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
+  return employeeId === 'ADMIN001';
 };
-const canManageDashboards = (req) => isDashboardAdmin(req);
+const canManageDashboards = (req) => isAdmin001DashboardManager(req);
 
 const summarizeWidgetForLog = (widget = {}) => ({
   id: widget.id || null,
@@ -140,37 +125,6 @@ const ensureDashboardBuilderTable = async () => {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1
-        FROM (
-          SELECT user_id
-          FROM users.dashboard_builder_configs
-          GROUP BY user_id
-          HAVING COUNT(*) > 1
-        ) dupes
-      ) THEN
-        DELETE FROM users.dashboard_builder_configs a
-        USING users.dashboard_builder_configs b
-        WHERE a.user_id = b.user_id
-          AND (
-            a.updated_at < b.updated_at
-            OR (a.updated_at = b.updated_at AND a.ctid < b.ctid)
-          );
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = 'users.dashboard_builder_configs'::regclass
-          AND contype = 'p'
-      ) THEN
-        ALTER TABLE users.dashboard_builder_configs
-          ADD CONSTRAINT dashboard_builder_configs_pkey PRIMARY KEY (user_id);
-      END IF;
-    END $$;
-  `);
 };
 
 const ensureUserDashboardPagesTable = async () => {
@@ -187,39 +141,6 @@ const ensureUserDashboardPagesTable = async () => {
       UNIQUE (user_id, page_key)
     )
   `);
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1
-        FROM (
-          SELECT user_id, page_key
-          FROM users.user_dashboard_pages
-          GROUP BY user_id, page_key
-          HAVING COUNT(*) > 1
-        ) dupes
-      ) THEN
-        DELETE FROM users.user_dashboard_pages a
-        USING users.user_dashboard_pages b
-        WHERE a.user_id = b.user_id
-          AND a.page_key = b.page_key
-          AND (
-            a.updated_at < b.updated_at
-            OR (a.updated_at = b.updated_at AND a.ctid < b.ctid)
-          );
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = 'users.user_dashboard_pages'::regclass
-          AND contype = 'u'
-          AND conname = 'user_dashboard_pages_user_id_page_key_key'
-      ) THEN
-        ALTER TABLE users.user_dashboard_pages
-          ADD CONSTRAINT user_dashboard_pages_user_id_page_key_key UNIQUE (user_id, page_key);
-      END IF;
-    END $$;
-  `);
 };
 
 router.use(auth);
@@ -230,11 +151,19 @@ const resolveSource = (inputScreen, context = {}) => {
 
   // Common aliases coming from threshold/input master values.
   const aliasMap = {
+    processparameter: 'autoconerprocessparameter',
     q2inspection: 'autoconerq2inspection',
     q3inspection: 'autoconerq3inspection'
   };
   const aliasKey = aliasMap[key];
   if (aliasKey && SCREEN_SOURCE_MAP[aliasKey]) {
+    // If generic/ambiguous labels are used, prefer department-driven mapping.
+    if (key === 'processparameter') {
+      const deptHint = normalizeKey(context.department || context.sub_department || '');
+      if (deptHint.includes('simplex')) return SCREEN_SOURCE_MAP.simplexprocessparameter;
+      if (deptHint.includes('spinning')) return SCREEN_SOURCE_MAP.spinningqcdataentry;
+      if (deptHint.includes('autoconer') || deptHint.includes('autocone')) return SCREEN_SOURCE_MAP.autoconerprocessparameter;
+    }
     return SCREEN_SOURCE_MAP[aliasKey];
   }
 
@@ -320,6 +249,10 @@ const findCatalogForInputScreen = (inputScreen) => {
   const direct = SCREEN_SOURCE_MAP[key];
   if (direct) {
     return { input_screen: key, table: direct.table, date_column: direct.dateColumn };
+  }
+  if (key === 'processparameter') {
+    const src = SCREEN_SOURCE_MAP.autoconerprocessparameter;
+    return { input_screen: 'autoconerprocessparameter', table: src.table, date_column: src.dateColumn };
   }
   if (key === 'q2inspection') {
     const src = SCREEN_SOURCE_MAP.autoconerq2inspection;
@@ -868,8 +801,8 @@ const handleStatisticsAnalyticsFilters = async (req, res, next) => {
 };
 
 const getTicketScope = ({ userId, userEmployeeId = '' }) => {
-  const isAdmin = String(userEmployeeId || '').trim().toLowerCase();
-  if (isAdmin === 'admin' || isAdmin === 'super admin' || isAdmin === 'superadmin') {
+  const isAdmin001 = String(userEmployeeId || '').trim().toUpperCase() === 'ADMIN001';
+  if (isAdmin001) {
     return {
       canViewAllTickets: true,
       whereSql: '1=1',

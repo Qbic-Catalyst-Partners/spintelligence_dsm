@@ -24,8 +24,6 @@
     .summary-grid .summary-label { font-weight: 600; color: var(--text); }
     .summary-grid input { width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.85rem; }
     @media (max-width: 768px) { .summary-grid { grid-template-columns: 1fr; } }
-    .meta-grid .meta-span-2 { grid-column: span 2; }
-    @media (max-width: 768px) { .meta-grid .meta-span-2 { grid-column: span 1; } }
   </style>
 </head>
 <body>
@@ -64,14 +62,6 @@
 
     <div class="meta-grid">
       <div class="form-field">
-        <label for="testId">Test ID</label>
-        <input type="text" id="testId" placeholder="Test ID" />
-      </div>
-      <div class="form-field">
-        <label for="machineId">Machine ID</label>
-        <input type="text" id="machineId" placeholder="Machine ID" />
-      </div>
-      <div class="form-field">
         <label for="totalTest">Total Test</label>
         <input type="text" id="totalTest" placeholder="Total Test" />
       </div>
@@ -82,10 +72,6 @@
       <div class="form-field">
         <label for="stdNoils">Std. Noils %</label>
         <input type="text" id="stdNoils" placeholder="Std. Noils %" />
-      </div>
-      <div class="form-field">
-        <label for="tester">Tester</label>
-        <input type="text" id="tester" placeholder="Tester" />
       </div>
       <div class="form-field">
         <label for="noilsPct">Noils %</label>

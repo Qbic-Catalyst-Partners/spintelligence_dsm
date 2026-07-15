@@ -7,11 +7,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$pgBin = "C:\Program Files\PostgreSQL\18\bin"
-if (Test-Path $pgBin) {
-  $env:Path = "$pgBin;$env:Path"
-}
-
 function Load-EnvFile {
   param([string]$Path)
 

@@ -1,18 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  FiCheckCircle,
-  FiChevronLeft,
-  FiChevronRight,
-  FiClock,
-  FiMoreVertical,
-  FiPlus,
-  FiSlash,
-  FiTrash2,
-  FiX,
-} from "react-icons/fi";
+import { FiCheckCircle, FiClock, FiMoreVertical, FiPlus, FiSlash, FiTrash2, FiX } from "react-icons/fi";
 import { FaIdCard } from "react-icons/fa6";
 
 import {
@@ -30,6 +19,8 @@ import styles from "@/styles/SubmissionThreshold.module.css";
 
 const createRule = () => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  subDepartmentSlug: "",
+  screenName: "",
   approvalL1: [],
   approvalL2: [],
   approvalL1Tat: "08:00",
@@ -51,8 +42,6 @@ const frequencyOptions = [
 const occurrenceOptions = Array.from({ length: 10 }, (_, index) => String(index + 1));
 const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, "0"));
-
-const EXISTING_ROWS_PER_PAGE = 6;
 
 const buildExistingFilters = () => ({
   department: "",
@@ -203,10 +192,6 @@ const formatTatHoursLabel = (value) => {
 };
 
 function ExpandableCell({ values = [], fallback = "-" }) {
-  const triggerRef = useRef(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState(null);
-
   const normalizedValues = Array.from(
     new Set(
       normalizeNameList(values)
@@ -214,30 +199,6 @@ function ExpandableCell({ values = [], fallback = "-" }) {
         .filter(Boolean)
     )
   );
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const updatePosition = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setMenuPosition({ top: rect.bottom + 6, left: rect.left });
-    };
-    updatePosition();
-
-    const handleOutsideClick = (event) => {
-      if (!triggerRef.current?.contains(event.target)) setIsOpen(false);
-    };
-
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, [isOpen]);
 
   if (!normalizedValues.length) {
     return fallback;
@@ -248,31 +209,19 @@ function ExpandableCell({ values = [], fallback = "-" }) {
   }
 
   return (
-    <div className={styles.expandableCell} ref={triggerRef}>
-      <button
-        type="button"
-        className={styles.expandableCellSummary}
-        onClick={() => setIsOpen((current) => !current)}
-      >
+    <details className={styles.expandableCell}>
+      <summary className={styles.expandableCellSummary}>
         <span className={styles.expandableCellPrimary}>{normalizedValues[0]}</span>
         <span className={styles.expandableCellIcon}>v</span>
-      </button>
-      {isOpen && menuPosition
-        ? createPortal(
-            <div
-              className={styles.expandableCellDropdown}
-              style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left }}
-            >
-              {normalizedValues.map((value) => (
-                <div key={value} className={styles.expandableCellItem}>
-                  {value}
-                </div>
-              ))}
-            </div>,
-            document.body
-          )
-        : null}
-    </div>
+      </summary>
+      <div className={styles.expandableCellDropdown}>
+        {normalizedValues.map((value) => (
+          <div key={value} className={styles.expandableCellItem}>
+            {value}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -460,11 +409,8 @@ export default function SubmissionThreshold() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
-  const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
-  const [selectedScreenName, setSelectedScreenName] = useState("");
   const [rules, setRules] = useState([createRule()]);
   const [existingFilters, setExistingFilters] = useState(buildExistingFilters);
-  const [existingPage, setExistingPage] = useState(1);
   const [openActionMenuId, setOpenActionMenuId] = useState("");
   const [editingConfigId, setEditingConfigId] = useState("");
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
@@ -532,18 +478,6 @@ export default function SubmissionThreshold() {
     return true;
   });
 
-  const totalExistingPages = Math.max(1, Math.ceil(filteredConfigs.length / EXISTING_ROWS_PER_PAGE));
-  const safeExistingPage = Math.min(existingPage, totalExistingPages);
-  const existingPageStart = (safeExistingPage - 1) * EXISTING_ROWS_PER_PAGE;
-  const visibleConfigRows = filteredConfigs.slice(
-    existingPageStart,
-    existingPageStart + EXISTING_ROWS_PER_PAGE
-  );
-
-  useEffect(() => {
-    setExistingPage(1);
-  }, [existingFilters]);
-
   const loadConfigs = async () => {
     if (!canAccessPage) return;
     setLoading(true);
@@ -584,8 +518,13 @@ export default function SubmissionThreshold() {
 
     setActiveTab("new");
     setSelectedDepartmentSlug(matchedDepartment?.slug || "");
-    setSelectedSubDepartmentSlug(matchedSubDepartment?.slug || "");
-    setSelectedScreenName(screenName);
+    setRules((current) => [
+      {
+        ...(current[0] || createRule()),
+        subDepartmentSlug: matchedSubDepartment?.slug || "",
+        screenName,
+      },
+    ]);
     setError("");
     setMessage("");
   }, [availableDepartments, router.isReady, router.query.department, router.query.screenName, router.query.subDepartment]);
@@ -604,29 +543,13 @@ export default function SubmissionThreshold() {
     };
   }, []);
 
-  const availableScreens = selectedDepartmentSlug && selectedSubDepartmentSlug
-    ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug)
-    : [];
+  const getAvailableScreens = (subDepartmentSlug) =>
+    selectedDepartmentSlug && subDepartmentSlug
+      ? getThresholdScreensForSubDepartment(selectedDepartmentSlug, subDepartmentSlug)
+      : [];
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
-    setSelectedSubDepartmentSlug("");
-    setSelectedScreenName("");
-    setRules([createRule()]);
-    setMessage("");
-    setError("");
-  };
-
-  const handleSubDepartmentChange = (event) => {
-    setSelectedSubDepartmentSlug(event.target.value);
-    setSelectedScreenName("");
-    setRules([createRule()]);
-    setMessage("");
-    setError("");
-  };
-
-  const handleScreenChange = (event) => {
-    setSelectedScreenName(event.target.value);
     setRules([createRule()]);
     setMessage("");
     setError("");
@@ -634,7 +557,13 @@ export default function SubmissionThreshold() {
 
   const handleRuleChange = (ruleId, field, value) => {
     setRules((current) =>
-      current.map((rule) => (rule.id === ruleId ? { ...rule, [field]: value } : rule))
+      current.map((rule) => {
+        if (rule.id !== ruleId) return rule;
+        if (field === "subDepartmentSlug") {
+          return { ...rule, subDepartmentSlug: value, screenName: "" };
+        }
+        return { ...rule, [field]: value };
+      })
     );
     setMessage("");
     setError("");
@@ -657,8 +586,6 @@ export default function SubmissionThreshold() {
 
   const resetForm = ({ preserveFeedback = false } = {}) => {
     setSelectedDepartmentSlug("");
-    setSelectedSubDepartmentSlug("");
-    setSelectedScreenName("");
     setRules([createRule()]);
     setEditingConfigId("");
     if (!preserveFeedback) {
@@ -706,11 +633,11 @@ export default function SubmissionThreshold() {
       "Daily";
 
     setSelectedDepartmentSlug(departmentSlug);
-    setSelectedSubDepartmentSlug(subDepartmentSlug);
-    setSelectedScreenName(item?.screen_name || "");
     setRules([
       {
         id: `${Date.now()}-edit`,
+        subDepartmentSlug,
+        screenName: item?.screen_name || "",
         approvalL1: normalizeNameList(item?.approval_l1_name || item?.approval_l1),
         approvalL2: normalizeNameList(item?.approval_l2_name || item?.approval_l2),
         approvalL1Tat: formatTatHours(item?.l1_tat_hours),
@@ -792,23 +719,22 @@ export default function SubmissionThreshold() {
         throw new Error("Please select a department.");
       }
 
-      const subDepartmentName = subDepartmentNameBySlug[selectedSubDepartmentSlug] || "";
-
-      if (!selectedSubDepartmentSlug || !subDepartmentName) {
-        throw new Error("Please select a sub-department.");
-      }
-
-      if (!selectedScreenName) {
-        throw new Error("Please select a notebook type.");
-      }
-
       const payloads = rules.map((rule) => {
+        const subDepartmentName = subDepartmentNameBySlug[rule.subDepartmentSlug] || "";
         const matchedFrequency =
           frequencyOptions.find((item) => item.label === rule.frequencyLabel)?.days || 1;
         const selectedL1 = normalizeNameList(rule.approvalL1);
         const selectedL2 = normalizeNameList(rule.approvalL2);
         const l1Users = resolveUsers(users, selectedL1);
         const l2Users = resolveUsers(users, selectedL2);
+
+        if (!rule.subDepartmentSlug || !subDepartmentName) {
+          throw new Error("Please select a sub-department for each row.");
+        }
+
+        if (!rule.screenName) {
+          throw new Error("Please select a notebook type for each row.");
+        }
 
         if (!selectedL1.length) {
           throw new Error("Please select an L1 user for each row.");
@@ -824,7 +750,7 @@ export default function SubmissionThreshold() {
         const l2Names = l2Users.map((item) => getUserDisplayName(item)).filter(Boolean);
 
         return {
-          screen_name: selectedScreenName,
+          screen_name: rule.screenName,
           department: selectedDepartment.name,
           sub_department: subDepartmentName,
           frequency: Number(matchedFrequency),
@@ -919,12 +845,12 @@ export default function SubmissionThreshold() {
 
         {activeTab === "new" ? (
           <form className={styles.stack} onSubmit={handleSave}>
-            <section className={styles.card}>
-              <div className={styles.cardHeader}>
+            <section className={styles.sectionPlain}>
+              <div className={styles.sectionHeader}>
                 <h2>Set the Submission Frequency</h2>
               </div>
 
-              <div className={styles.formGrid}>
+              <div className={styles.departmentRow}>
                 <label className={styles.field}>
                   <span>Department</span>
                   <select value={selectedDepartmentSlug} onChange={handleDepartmentChange}>
@@ -936,51 +862,48 @@ export default function SubmissionThreshold() {
                     ))}
                   </select>
                 </label>
-
-                <label className={styles.field}>
-                  <span>Sub-Department</span>
-                  <select
-                    value={selectedSubDepartmentSlug}
-                    onChange={handleSubDepartmentChange}
-                    disabled={!selectedDepartment}
-                  >
-                    <option value="">Select Sub-Department</option>
-                    {availableSubDepartments.map((item) => (
-                      <option key={item.slug} value={item.slug}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className={styles.field}>
-                  <span>Notebook Type</span>
-                  <select
-                    value={selectedScreenName}
-                    onChange={handleScreenChange}
-                    disabled={!selectedSubDepartmentSlug}
-                  >
-                    <option value="">Select Notebook Type</option>
-                    {availableScreens.map((screenName) => (
-                      <option key={screenName} value={screenName}>
-                        {screenName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </section>
-
-            <section className={styles.sectionPlain}>
-              <div className={styles.sectionHeader}>
-                <h2>{selectedScreenName || "Notebook Threshold Entry"}</h2>
-                <p>Add submission frequency for this Notebook</p>
               </div>
 
               <div className={styles.rulesTable}>
                 {rules.map((rule, index) => (
                   <div key={rule.id} className={styles.ruleCard}>
                     <div className={styles.ruleGrid}>
+                      <label className={styles.field}>
+                        <span>Sub-Department</span>
+                        <select
+                          value={rule.subDepartmentSlug}
+                          onChange={(event) =>
+                            handleRuleChange(rule.id, "subDepartmentSlug", event.target.value)
+                          }
+                          disabled={!selectedDepartment}
+                        >
+                          <option value="">Select Sub-Department</option>
+                          {availableSubDepartments.map((item) => (
+                            <option key={item.slug} value={item.slug}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>Notebook Type</span>
+                        <select
+                          value={rule.screenName}
+                          onChange={(event) =>
+                            handleRuleChange(rule.id, "screenName", event.target.value)
+                          }
+                          disabled={!rule.subDepartmentSlug}
+                        >
+                          <option value="">Select Notebook Type</option>
+                          {getAvailableScreens(rule.subDepartmentSlug).map((screenName) => (
+                            <option key={screenName} value={screenName}>
+                              {screenName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
                       <label className={styles.field}>
                         <span>Frequency</span>
                         <select
@@ -1216,11 +1139,11 @@ export default function SubmissionThreshold() {
                         <td colSpan={12}>No submission thresholds found.</td>
                       </tr>
                     ) : (
-                      visibleConfigRows.map((item, index) => {
+                      filteredConfigs.map((item, index) => {
                         const rowKey =
                           item.id ||
                           item._id ||
-                          `${item.screen_name}-${item.sub_department}-${existingPageStart + index}`;
+                          `${item.screen_name}-${item.sub_department}-${index}`;
                         const isMenuOpen = openActionMenuId === String(rowKey);
                         const isStatusUpdating = statusUpdatingId === String(item?.id || "");
                         const isDeleting = deletingId === String(item?.id || "");
@@ -1309,61 +1232,6 @@ export default function SubmissionThreshold() {
 
               {message ? <p className={styles.successMessage}>{message}</p> : null}
               {error ? <p className={styles.errorMessage}>{error}</p> : null}
-
-              {!loading && filteredConfigs.length > 0 ? (
-                <div className={styles.paginationBar}>
-                  <div className={styles.paginationControls}>
-                    <button
-                      type="button"
-                      className={styles.paginationButton}
-                      onClick={() => setExistingPage(1)}
-                      disabled={safeExistingPage === 1}
-                      aria-label="First page"
-                    >
-                      <FiChevronLeft />
-                      <FiChevronLeft className={styles.doubleChevron} />
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.paginationButton}
-                      onClick={() => setExistingPage((value) => Math.max(1, value - 1))}
-                      disabled={safeExistingPage === 1}
-                      aria-label="Previous page"
-                    >
-                      <FiChevronLeft />
-                    </button>
-                    {Array.from({ length: totalExistingPages }, (_, index) => index + 1).map((pageNumber) => (
-                      <button
-                        key={pageNumber}
-                        type="button"
-                        className={`${styles.paginationNumber} ${pageNumber === safeExistingPage ? styles.paginationNumberActive : ""}`}
-                        onClick={() => setExistingPage(pageNumber)}
-                      >
-                        {pageNumber}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className={styles.paginationButton}
-                      onClick={() => setExistingPage((value) => Math.min(totalExistingPages, value + 1))}
-                      disabled={safeExistingPage === totalExistingPages}
-                      aria-label="Next page"
-                    >
-                      <FiChevronRight />
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.paginationButton}
-                      onClick={() => setExistingPage(totalExistingPages)}
-                      disabled={safeExistingPage === totalExistingPages}
-                      aria-label="Last page"
-                    >
-                      <FiChevronRight />
-                      <FiChevronRight className={styles.doubleChevron} />
-                    </button>
-                  </div>
-                </div>
-              ) : null}
             </section>
           </div>
         )}

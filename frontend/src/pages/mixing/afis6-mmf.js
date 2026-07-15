@@ -16,8 +16,8 @@ const NUMERIC_FIELDS = [
   { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
   { key: "fineness_den", label: "Fineness den" },
   { key: "fineness_cv_percent", label: "Fineness CV %" },
-  { key: "long_fiber_gt_45_60_percent", label: "Long Fiber >45.60mm" },
-  { key: "long_fiber_count_gt_45_60", label: "Long Fiber Count >45.60mm" },
+  { key: "long_fiber_gt_46_80_percent", label: "Long Fiber >46.80 mm %" },
+  { key: "long_fiber_count_gt_46_80", label: "Long Fiber Count > 46.80 mm" },
 ];
 
 const MATERIAL_CLASS_OPTIONS = ["Polyester", "Viscose", "Nylon", "Acrylic", "Blend"];
@@ -88,8 +88,8 @@ export default function Afis6MmfPage() {
     five_pct_l_n_mm: form.five_pct_l_n_mm === "" ? "" : Number(form.five_pct_l_n_mm),
     fineness_den: form.fineness_den === "" ? "" : Number(form.fineness_den),
     fineness_cv_percent: form.fineness_cv_percent === "" ? "" : Number(form.fineness_cv_percent),
-    long_fiber_gt_45_60_percent: form.long_fiber_gt_45_60_percent === "" ? "" : Number(form.long_fiber_gt_45_60_percent),
-    long_fiber_count_gt_45_60: form.long_fiber_count_gt_45_60 === "" ? "" : Number(form.long_fiber_count_gt_45_60),
+    long_fiber_gt_46_80_percent: form.long_fiber_gt_46_80_percent === "" ? "" : Number(form.long_fiber_gt_46_80_percent),
+    long_fiber_count_gt_46_80: form.long_fiber_count_gt_46_80 === "" ? "" : Number(form.long_fiber_count_gt_46_80),
     machine_name: String(form.machine_name || "").trim(),
     department: "Mixing",
     sub_department: "Quality Control",

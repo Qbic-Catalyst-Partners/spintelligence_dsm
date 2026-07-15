@@ -7,17 +7,25 @@ import { FaIdCard } from "react-icons/fa6";
 import { fetchPpThresholdsAPI, savePpThresholdAPI } from "@/apis/ppThresholdApi";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
-import { PP_NOTEBOOK_COLUMNS, getColumnForNotebookKey } from "@/utils/ppNotebookKeys";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
 // Every PP notebook that appears as its own column in the "Update Existing PP"
 // matrix (process-parameter.js DEPARTMENT_TYPE_NAMES / DEPARTMENT_TYPE_OPTION_OBJECTS)
-// gets its own threshold row here instead of one shared batch config. The
-// dropdown shows the matrix's short column label, but the value saved as
-// notebook_name is the actual notebook key the backend matches tickets
-// against (see utils/ppNotebookKeys.js) — saving the label itself is what
-// caused thresholds to silently stop matching in the past.
-const PP_THRESHOLD_NOTEBOOKS = PP_NOTEBOOK_COLUMNS;
+// gets its own threshold row here instead of one shared batch config.
+// Names must match process-parameter.js's updateExistingColumns labels
+// exactly, since the matrix looks up a column's threshold by this name.
+const PP_THRESHOLD_NOTEBOOKS = [
+  "Mixing",
+  "Blow Room",
+  "Carding",
+  "DF Breaker",
+  "DF Finisher",
+  "Simplex",
+  "Spinning",
+  "Autoconer PP",
+  "AC-Q2",
+  "AC-Q3",
+];
 
 const createRule = () => ({
   notebookName: "",
@@ -474,9 +482,9 @@ export default function PPThresholdPage() {
                         onChange={(event) => updateRule("notebookName", event.target.value)}
                       >
                         <option value="">Select Notebook</option>
-                        {PP_THRESHOLD_NOTEBOOKS.map(({ label, notebookKey }) => (
-                          <option key={notebookKey} value={notebookKey}>
-                            {label}
+                        {PP_THRESHOLD_NOTEBOOKS.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
                           </option>
                         ))}
                       </select>
@@ -547,9 +555,9 @@ export default function PPThresholdPage() {
                   onChange={(event) => handleExistingFilterChange("notebookName", event.target.value)}
                 >
                   <option value="">All Notebooks</option>
-                  {PP_THRESHOLD_NOTEBOOKS.map(({ label, notebookKey }) => (
-                    <option key={notebookKey} value={notebookKey}>
-                      {label}
+                  {PP_THRESHOLD_NOTEBOOKS.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
                     </option>
                   ))}
                 </select>
@@ -604,7 +612,7 @@ export default function PPThresholdPage() {
                         const rowKey = getThresholdId(item) || `${getThresholdNotebookName(item)}-${index}`;
                         return (
                           <tr key={rowKey}>
-                            <td>{getColumnForNotebookKey(getThresholdNotebookName(item)) || "-"}</td>
+                            <td>{getThresholdNotebookName(item) || "-"}</td>
                             <td>{getThresholdHours(item) || "-"} Hrs</td>
                             <td>{getThresholdL1(item)}</td>
                             <td>{getThresholdL2(item)}</td>

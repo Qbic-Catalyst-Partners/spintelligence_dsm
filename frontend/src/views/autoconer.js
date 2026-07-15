@@ -320,7 +320,7 @@ function Autoconer() {
                 typeOptions={childTypeOptions}
                 entryId={useParentEntryId ? entryId : ""}
                 tablePortalTargetId="autoconer-table-slot"
-                savedVersionsTargetId=""
+                savedVersionsTargetId={isFooterHistoryType ? "autoconer-post-footer-slot" : ""}
                 postFooterPortalTargetId="autoconer-post-footer-slot"
                 preFooterPortalTargetId="autoconer-pre-footer-slot"
                 onRegisterActions={setRegisteredActions}

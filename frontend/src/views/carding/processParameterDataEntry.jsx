@@ -630,10 +630,9 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       const response = targetVersionId
         ? await updateCardingProcessParameterEntry(targetVersionId, payload)
         : await submitCardingProcessParameterEntry(payload);
-      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(savedEntry, "Carding", form.countName);
+      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
+      registerProcessParameterId(response, "Carding", form.countName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();
@@ -791,6 +790,22 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
           </div>
         ) : null}
       </div>
+
+      {savedVersionsPortal
+        ? createPortal(
+            <SavedVersionsSection
+              versions={versions}
+              form={form}
+              expandedVersionId={expandedVersionId}
+              onVersionSelect={handleVersionSelect}
+              onVersionToggle={handleVersionToggle}
+              loading={false}
+              errorMessage=""
+            />,
+            savedVersionsPortal
+          )
+        : null}
+
     </>
   );
 });

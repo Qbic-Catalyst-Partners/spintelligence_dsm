@@ -41,23 +41,14 @@ export const isFullAccessUser = (user) =>
   getNameKeys(user).some((name) => FULL_ACCESS_USER_NAMES.includes(name)) ||
   isAdminEmployeeKey(getEmployeeKey(user));
 
-const getUserLevelKey = (user) =>
-  String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
-
-// The user's configured level (set via User Management) is the source of
-// truth for which dashboard they land on: L2/L3 -> supervisor dashboard,
-// L1 -> operator dashboard. The "SUP0001"-style employee-id pattern is kept
-// only as a fallback for older accounts that predate the level field being
-// populated, so they don't suddenly lose supervisor access.
-export const isSupervisorNavUser = (user) => {
-  const level = getUserLevelKey(user);
-  if (level === "L2" || level === "L3") return true;
-  if (level === "L1") return false;
-  return isSupervisorEmployeeKey(getEmployeeKey(user));
-};
+export const isSupervisorNavUser = (user) =>
+  isSupervisorEmployeeKey(getEmployeeKey(user));
 
 export const isSubmittedNotebookManagerUser = (user) =>
   isFullAccessUser(user) || isSupervisorNavUser(user);
+
+const getUserLevelKey = (user) =>
+  String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
 
 export const isWheelChangeApproverUser = (user) =>
   isFullAccessUser(user) || getUserLevelKey(user) === "L2";

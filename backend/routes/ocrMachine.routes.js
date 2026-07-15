@@ -76,7 +76,6 @@ const MACHINE_FIELDS = [
 const APCT_FIELDS = [
   'Row Type',
   'Label',
-  'Tester',
   'Sample No',
   'N-1',
   'N',
@@ -94,8 +93,6 @@ const NOILS_FIELDS = [
   'Sliver Wt',
   'Noils Wt',
   'Noils %',
-  'Test ID',
-  'Machine ID',
   'Std. Noils %',
   'Total Test',
   'Number of Entries (N)',
@@ -104,7 +101,6 @@ const STRECH_FIELDS = [
   'Table No',
   'Row Type',
   'Label',
-  'Tester',
   'Test ID',
   'Total Test',
   'Number of Entries (N)',
@@ -342,201 +338,6 @@ function toTextOrDefault(value, fallback) {
   return s || fallback;
 }
 
-function extractBwcMetadata(rawText = '', filename = '') {
-  const text = String(rawText || '');
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => String(line || '').trim())
-    .filter(Boolean);
-  const joined = lines.join(' ');
-
-  let inspectionDate = '';
-  for (const line of lines) {
-    const match = line.match(/^date\s*[:\-]?\s*(.+)$/i);
-    if (match && match[1]) {
-      inspectionDate = match[1].trim();
-      break;
-    }
-  }
-  if (!inspectionDate) {
-    const match = joined.match(/\bdate\s*[:\-]?\s*([0-9]{2}[\/.-][0-9]{2}[\/.-][0-9]{4}(?:\s+[0-9]{2}:[0-9]{2}(?::[0-9]{2})?)?)/i);
-    if (match && match[1]) {
-      inspectionDate = match[1].trim();
-    }
-  }
-  if (!inspectionDate) {
-    const datePatterns = [
-      /\b(\d{2}[\/.-]\d{2}[\/.-]\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)\b/,
-      /\b(\d{4}[\/.-]\d{2}[\/.-]\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?)\b/,
-    ];
-    for (const pattern of datePatterns) {
-      const match = joined.match(pattern);
-      if (match) {
-        inspectionDate = match[1];
-        break;
-      }
-    }
-  }
-
-  let testId = '';
-  for (const line of lines) {
-    const match = line.match(/^test\s*id\s*[:#-]?\s*(.+)$/i);
-    if (match && match[1]) {
-      testId = match[1].trim();
-      break;
-    }
-  }
-  if (!testId) {
-    const compact = joined.match(/\btest\s*id\b\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9._/-]*)/i);
-    if (compact && compact[1]) {
-      testId = compact[1].trim();
-    }
-  }
-
-  const sourceText = `${filename} ${joined}`.toLowerCase();
-  const inspectionType = sourceText.includes('within')
-    ? 'Within'
-    : sourceText.includes('between')
-      ? 'Between'
-      : 'Within';
-
-  const typeCategory = 'Between & Within Card Data Entry';
-
-  return {
-    inspection_date: inspectionDate,
-    test_id: testId,
-    inspection_type: inspectionType,
-    type_category: typeCategory,
-  };
-}
-
-function extractTesterFromRawText(rawText = '') {
-  const lines = String(rawText || '')
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  const stopWords = [
-    'test id',
-    'total test',
-    'number of entries',
-    'standard a',
-    'std. stretch',
-    'std stretch',
-    'stretch %',
-    'sample no',
-    'remark',
-    'length',
-    'date',
-    'page',
-    'shift',
-    'process',
-  ];
-
-  const cleanTester = (value = '') => {
-    let text = String(value || '').replace(/\s+/g, ' ').trim();
-    text = text.replace(/\s*\[\d+\]\s*$/g, '').trim();
-    const labelPattern = /\b(?:test\s*id|total\s*test|number\s*of\s*entries|standard\s*a|std\.?\s*stretch|std\s*stretch|stretch\s*%|sample\s*no|remark|length|date|page|shift|process)\b/i;
-    const labelMatch = text.match(labelPattern);
-    if (labelMatch && labelMatch.index > 0) text = text.slice(0, labelMatch.index).trim();
-    for (const stopWord of stopWords) {
-      const index = text.toLowerCase().indexOf(stopWord);
-      if (index > 0) text = text.slice(0, index).trim();
-    }
-    return text.replace(/^[:=\-\s]+|[:=\-\s]+$/g, '').trim();
-  };
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const inline = line.match(/\b(?:tester(?:\s*name)?|tested\s*by|operator)\s*[:=\-]?\s*(.+)$/i);
-    if (inline) {
-      const value = cleanTester(inline[1]);
-      if (value) return value;
-    }
-    if (/^(?:tester(?:\s*name)?|tested\s*by|operator)$/i.test(line) && lines[i + 1]) {
-      const value = cleanTester(lines[i + 1]);
-      if (value) return value;
-    }
-  }
-
-  const joined = lines.join(' ');
-  const compact = joined.match(/\b(?:tester(?:\s*name)?|tested\s*by|operator)\s*[:=\-]?\s*([A-Za-z][A-Za-z0-9 ._/'-]{1,80})/i);
-  return compact ? cleanTester(compact[1]) : '';
-}
-
-function cleanTesterValue(value = '') {
-  const text = String(value || '');
-  return text.trim() ? text : '';
-}
-
-function ensureTesterMeta(result = {}) {
-  const docType = normalizeDocType(result.doc_type || '');
-  if (docType !== 'apct' && docType !== 'strech') return result;
-
-  const tester = extractTesterFromRawText(result.raw_text || '');
-  if (!tester) return result;
-
-  const patchRows = (rows) => {
-    if (!Array.isArray(rows)) return rows;
-    const patched = rows.map((row) => ({ ...row }));
-    let metaRow = patched.find((row) => String(row['Row Type'] || '').trim().toLowerCase() === 'meta');
-    if (!metaRow) {
-      metaRow = { 'Row Type': 'Meta' };
-      if (docType === 'strech') metaRow['Table No'] = '1';
-      patched.unshift(metaRow);
-    }
-    if (!String(metaRow.Tester || '').trim()) metaRow.Tester = tester;
-    return patched;
-  };
-
-  return {
-    ...result,
-    json_output: patchRows(result.json_output),
-    extracted_tables: patchRows(result.extracted_tables),
-    data: patchRows(result.data),
-    raw_tables: patchRows(result.raw_tables),
-  };
-}
-
-function extractMetaFromResult(result = {}) {
-  const meta = {
-    tester: '',
-    totalTest: '',
-    numberEntries: '',
-    standardApct: '',
-    apctNMinus1: '',
-    apctNPlus1: '',
-  };
-
-  const rows = getRowsFromOcrPayload(result);
-  if (Array.isArray(rows)) {
-    const metaRow = rows.find((r) => String(r['Row Type'] || '').trim().toLowerCase() === 'meta');
-    if (metaRow) {
-      meta.totalTest = String(metaRow['Total Test'] || '').trim();
-      meta.numberEntries = String(metaRow['Number of Entries (N)'] || '').trim();
-      meta.tester = String(metaRow.Tester ?? metaRow['Tester Name'] ?? metaRow['Tested By'] ?? '');
-      meta.standardApct = String(metaRow['Standard A%'] || '').trim();
-      meta.apctNMinus1 = String(metaRow['A% (N-1)'] || '').trim();
-      meta.apctNPlus1 = String(metaRow['A% (N+1)'] || '').trim();
-    }
-  }
-
-  if (!meta.tester) {
-    meta.tester = extractTesterFromRawText(result.raw_text || '');
-  }
-
-  return meta;
-}
-
-function attachMeta(result = {}) {
-  try {
-    const meta = extractMetaFromResult(result);
-    return { ...result, meta };
-  } catch (e) {
-    return { ...result, meta: {} };
-  }
-}
-
 async function saveBwcToCarding(payload) {
   const rows = Array.isArray(payload.manual_json) ? payload.manual_json : [];
   const row = rows[0] || {};
@@ -686,8 +487,7 @@ router.post('/api/ocr-json', upload.single('file'), async (req, res) => {
 
     try {
       await fs.writeFile(tempPath, req.file.buffer);
-      const rawResult = await runLocalOcr(tempPath, docType);
-      const result = attachMeta(ensureTesterMeta(rawResult));
+      const result = await runLocalOcr(tempPath, docType);
       if (!hasOcrRows(result) && !String(result.raw_text || '').trim()) {
         return res.status(422).json({ detail: buildOcrNoRowsMessage(result, docType) });
       }
@@ -699,7 +499,6 @@ router.post('/api/ocr-json', upload.single('file'), async (req, res) => {
         raw_tables: result.extracted_tables || [],
         fields: result.fields || APCT_FIELDS,
         raw_text: result.raw_text || '',
-        meta: result.meta || {},
       });
     } catch (error) {
       return res.status(503).json({ detail: `A% OCR failed: ${error.message}` });
@@ -715,8 +514,7 @@ router.post('/api/ocr-json', upload.single('file'), async (req, res) => {
 
   try {
     await fs.writeFile(tempPath, req.file.buffer);
-    const rawResult = await runLocalOcr(tempPath, docType);
-    const result = attachMeta(ensureTesterMeta(rawResult));
+    const result = await runLocalOcr(tempPath, docType);
     if (!hasOcrRows(result) && !String(result.raw_text || '').trim()) {
       return res.status(422).json({ detail: buildOcrNoRowsMessage(result, docType) });
     }
@@ -728,7 +526,6 @@ router.post('/api/ocr-json', upload.single('file'), async (req, res) => {
       raw_tables: result.extracted_tables || [],
       fields: result.fields || getFieldNames(result.doc_type || docType),
       raw_text: result.raw_text || '',
-      meta: result.meta || {},
     });
   } catch (error) {
     return res.status(503).json({ detail: `OCR failed: ${error.message}` });
@@ -759,8 +556,7 @@ router.post('/api/ocr', upload.single('file'), async (req, res) => {
       });
       await fs.writeFile(tempPath, req.file.buffer);
       sendSse(res, { step: 2, msg: 'Running A% OCR parser...' });
-      const rawResult = await runLocalOcr(tempPath, docType);
-      const result = attachMeta(ensureTesterMeta(rawResult));
+      const result = await runLocalOcr(tempPath, docType);
       sendSse(res, {
         step: 3,
         msg: `Parsed ${Array.isArray(result.json_output) ? result.json_output.length : 0} A% row(s).`,
@@ -770,44 +566,6 @@ router.post('/api/ocr', upload.single('file'), async (req, res) => {
       sendSse(res, {
         step: -1,
         msg: `A% OCR failed: ${error.message}`,
-        error: true,
-      });
-    } finally {
-      await fs.unlink(tempPath).catch(() => {});
-      res.end();
-    }
-    return;
-  }
-
-  if (docType === 'bwc') {
-    const tempPath = path.join(
-      os.tmpdir(),
-      `ocr-upload-${Date.now()}-${Math.random().toString(16).slice(2)}-${req.file.originalname || 'upload'}`
-    );
-
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    try {
-      sendSse(res, { step: 1, msg: 'File received. Running carding OCR...' });
-      await fs.writeFile(tempPath, req.file.buffer);
-      sendSse(res, { step: 2, msg: 'Extracting sample weights, hanks, and carding metadata...' });
-      const rawResult = await runLocalOcr(tempPath, docType);
-      const result = attachMeta(ensureTesterMeta(rawResult));
-      const metadata = extractBwcMetadata(result.raw_text || '', req.file.originalname || '');
-      sendSse(res, {
-        step: 99,
-        msg: 'Done',
-        result: {
-          ...result,
-          metadata,
-        },
-      });
-    } catch (error) {
-      sendSse(res, {
-        step: -1,
-        msg: `BWC OCR failed: ${error.message}`,
         error: true,
       });
     } finally {
@@ -831,8 +589,7 @@ router.post('/api/ocr', upload.single('file'), async (req, res) => {
       sendSse(res, { step: 1, msg: 'File received. Running machine OCR...' });
       await fs.writeFile(tempPath, req.file.buffer);
       sendSse(res, { step: 2, msg: 'Extracting table values...' });
-      const rawResult = await runLocalOcr(tempPath, docType);
-      const result = attachMeta(ensureTesterMeta(rawResult));
+      const result = await runLocalOcr(tempPath, docType);
       if (!hasOcrRows(result) && !String(result.raw_text || '').trim()) {
         sendSse(res, {
           step: -1,
@@ -867,11 +624,7 @@ router.post('/api/ocr', upload.single('file'), async (req, res) => {
     sendSse(res, { step: 1, msg: 'File received. Running local OCR pipeline...' });
     await fs.writeFile(tempPath, req.file.buffer);
     sendSse(res, { step: 2, msg: 'Extracting table values...' });
-    const rawResult = await runLocalOcr(tempPath, docType);
-    const result = attachMeta(ensureTesterMeta(rawResult));
-    if (docType === 'bwc') {
-      result.metadata = extractBwcMetadata(result.raw_text || '', req.file.originalname || '');
-    }
+    const result = await runLocalOcr(tempPath, docType);
     if (!hasOcrRows(result) && !String(result.raw_text || '').trim()) {
       sendSse(res, {
         step: -1,

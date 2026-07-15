@@ -53,30 +53,8 @@ export const getOperatorStatusOptions = (status) =>
   return exists ? baseOptions : [normalizedStatus, ...baseOptions];
 };
 
-// TAT escalation drives who a ticket is visible to: it starts at L1 (only the
-// operator sees it), moves to L2 once the operator submits or L1's TAT lapses,
-// and moves to L3 only if L2's TAT also lapses. A reject resets this back to
-// L1 server-side, which is what hides a Reopened ticket from L2 again.
-export const getTatCurrentLevel = (ticket) =>
-  String(
-    ticket?.tat_current_level ??
-      ticket?.tatCurrentLevel ??
-      ticket?.current_tat_level ??
-      ""
-  )
-    .trim()
-    .toUpperCase();
-
-export const isSupervisorVisibleTicket = (ticket) => {
-  if (String(ticket?.status || "").trim().toUpperCase() === "APPROVED") return false;
-
-  const level = getTatCurrentLevel(ticket);
-  // No tat_current_level on this ticket (older/unmigrated ticket types) — fall
-  // back to showing it rather than hiding tickets we can't classify.
-  if (!level) return true;
-
-  return level !== "L1";
-};
+export const isSupervisorVisibleTicket = (ticket) =>
+  String(ticket?.status || "").trim().toUpperCase() !== "APPROVED";
 
 export const getSupervisorStatusLabel = (status) =>
   String(status || "").trim().toLowerCase() === "submit"

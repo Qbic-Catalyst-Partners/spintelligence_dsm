@@ -226,8 +226,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   useEffect(() => {
     loadVersions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryId]);
+  }, []);
 
   useEffect(() => {
     if (entryId) {
@@ -416,10 +415,9 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       const response = targetVersionId
         ? await updateBlowroomProcessParameterApi(targetVersionId, payload)
         : await saveBlowroomProcessParameterApi(payload);
-      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(savedEntry, "Blowroom", form.countName);
+      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
+      registerProcessParameterId(response, "Blowroom", form.countName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();
@@ -588,6 +586,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
         {isSubmitting ? <div className={styles.loadingMessage}>Submitting...</div> : null}
       </div>
 
+      {savedVersionsPortal ? createPortal(historySection, savedVersionsPortal) : historySection}
     </>
   );
 });

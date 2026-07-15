@@ -48,6 +48,7 @@ const emptyWasteKgRow = () => ({ wasteType: '', wasteKgValue: '', wasteKgPercent
 const initialForm = { variety: '', cardingProduction: '', studyType: '' };
 const DEFAULT_BLOWROOM_STATE = { success: false };
 const FORM_NUMERIC_FIELDS = new Set(['cardingProduction']);
+const TYPE_3_MAX_ENTRIES = 10;
 const WASTE_KG_MAX_TYPES = 25;
 
 const getTotalWastePercent = (wasteKgRows) =>
@@ -114,9 +115,9 @@ const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2R
             delivery_speed: Number(row.deliverySpeed) || null,
             wing_setting_1: Number(row.wingSettling1) || null,
             wing_setting_2: Number(row.wingSettling2) || null,
-            lickerin_speed_1: Number(row.firstLickerinSpeed) || null,
-            lickerin_speed_2: Number(row.secondLickerinSpeed) || null,
-            lickerin_speed_3: Number(row.thirdLickerinSpeed) || null,
+            first_lickerin_speed: Number(row.firstLickerinSpeed) || null,
+            second_lickerin_speed: Number(row.secondLickerinSpeed) || null,
+            third_lickerin_speed: Number(row.thirdLickerinSpeed) || null,
             mc_no: row.mcNo || null,
             mc_production: Number(row.mcProduction) || null,
         };
@@ -189,11 +190,13 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [wasteTypeSaveStatus, setWasteTypeSaveStatus] = useState({});
     const wasteTypeAttemptRef = useRef({});
 
+    const [type2CountInput, setType2CountInput] = useState("1");
+    const [type3CountInput, setType3CountInput] = useState('3');
     const [wasteKgCountInput, setWasteKgCountInput] = useState('1');
 
     const [type1Rows, setType1Rows] = useState([emptyType1Row()]);
     const [type2Rows, setType2Rows] = useState([emptyType2Row()]);
-    const [type3Rows, setType3Rows] = useState([emptyType3Row()]);
+    const [type3Rows, setType3Rows] = useState(Array.from({ length: 3 }, emptyType3Row));
     const [wasteKgRows, setWasteKgRows] = useState([emptyWasteKgRow()]);
 
     const [overallWaste, setOverallWaste] = useState('');
@@ -257,6 +260,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     }))
                     : [emptyType2Row()]
             );
+            setType2CountInput(String(typeRows.length || 1));
         }
 
         if (studyType === "Type 3") {
@@ -267,14 +271,15 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                         deliverySpeed: row?.delivery_speed == null ? "" : String(row.delivery_speed),
                         wingSettling1: row?.wing_setting_1 == null ? "" : String(row.wing_setting_1),
                         wingSettling2: row?.wing_setting_2 == null ? "" : String(row.wing_setting_2),
-                        firstLickerinSpeed: row?.lickerin_speed_1 == null ? "" : String(row.lickerin_speed_1),
-                        secondLickerinSpeed: row?.lickerin_speed_2 == null ? "" : String(row.lickerin_speed_2),
-                        thirdLickerinSpeed: row?.lickerin_speed_3 == null ? "" : String(row.lickerin_speed_3),
+                        firstLickerinSpeed: "",
+                        secondLickerinSpeed: "",
+                        thirdLickerinSpeed: "",
                         mcNo: row?.mc_no || "",
                         mcProduction: row?.mc_production == null ? "" : String(row.mc_production),
                     }))
                     : [emptyType3Row()]
             );
+            setType3CountInput(String(typeRows.length || 1));
         }
 
         setWasteKgRows(
@@ -391,7 +396,25 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         });
     };
 
-const handleWasteKgRowChange = (index, field, value) => {
+    const applyType3Count = () => {
+        const n = Math.min(TYPE_3_MAX_ENTRIES, Math.max(1, parseInt(type3CountInput) || 1));
+        setType3Rows(prev => {
+            const arr = [...prev];
+            while (arr.length < n) arr.push(emptyType3Row());
+            return arr.slice(0, n);
+        });
+    };
+
+    const applyType2Count = () => {
+        const n = Math.max(1, parseInt(type2CountInput) || 1);
+        setType2Rows((prev) => {
+            const arr = [...prev];
+            while (arr.length < n) arr.push(emptyType2Row());
+            return arr.slice(0, n);
+        });
+    };
+
+    const handleWasteKgRowChange = (index, field, value) => {
         const nextValue =
             field === "wasteType"
                 ? value
@@ -509,7 +532,7 @@ const handleWasteKgRowChange = (index, field, value) => {
             setFormData(initialForm);
             setType1Rows([emptyType1Row()]);
             setType2Rows([emptyType2Row()]);
-            setType3Rows([emptyType3Row()]);
+            setType3Rows(Array.from({ length: 3 }, emptyType3Row));
             setWasteKgRows([emptyWasteKgRow()]);
             setOverallWaste('');
             setRemarks('');
@@ -751,6 +774,24 @@ const handleWasteKgRowChange = (index, field, value) => {
             {studyType === 'Type 2' && (
                 <>
                     <div className={styles['section-title']}>Type 2 Study Details</div>
+                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
+                        <div className={styles['mixx-group']}>
+                            <label>Number of Type 2 Entries</label>
+                            <input
+                                type="number"
+                                className={styles['mixx-input']}
+                                value={type2CountInput}
+                                min={1}
+                                onChange={e => setType2CountInput(sanitizeIntegerInput(e.target.value, 4))}
+                                onWheel={e => e.target.blur()}
+                            />
+                        </div>
+                        <div className={styles['mixx-group']}>
+                            <button className={styles['mixx-btn-primary']} onClick={applyType2Count}>
+                                Apply Type 2 Entries
+                            </button>
+                        </div>
+                    </div>
 
                     <div className={`${styles['type2-table']} ${styles['desktop-view']}`}>
                         <div className={styles['type2-header']}>
@@ -818,6 +859,25 @@ const handleWasteKgRowChange = (index, field, value) => {
             {studyType === 'Type 3' && (
                 <>
                     <div className={styles['section-title']}>Type 3 Study Details</div>
+                    {/* Apply row */}
+                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
+                        <div className={styles['mixx-group']}>
+                            <label>Number of Type 3 Entries (Max {TYPE_3_MAX_ENTRIES})</label>
+                            <input
+                                type="number"
+                                className={styles['mixx-input']}
+                                value={type3CountInput}
+                                min={1}
+                                onChange={e => setType3CountInput(sanitizeIntegerInput(e.target.value, 2))}
+                                onWheel={e => e.target.blur()}
+                            />
+                        </div>
+                        <div className={styles['mixx-group']}>
+                            <button className={styles['mixx-btn-primary']} onClick={applyType3Count}>
+                                Apply Type 3 Entries
+                            </button>
+                        </div>
+                    </div>
 
                     {/* Desktop table */}
                     <div className={`${styles['type3-table']} ${styles['desktop-view']}`}>

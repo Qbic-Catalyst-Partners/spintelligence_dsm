@@ -81,6 +81,9 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         const dropdown = await fetchComberUqcMasterDropdown();
         if (!active) return;
 
+        const nextShifts = dropdown.shifts
+          .map((item) => item?.value || item?.label || item)
+          .filter(Boolean);
         const nextVarieties = dropdown.varietyNames?.length
           ? dropdown.varietyNames
           : dropdown.varieties.map((item) => item.variety_name).filter(Boolean);
@@ -96,6 +99,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
               .filter((item) => item.value)
           : [];
 
+        if (nextShifts.length) setShiftOptions(nextShifts);
         if (nextVarieties.length) setVarietyOptions(nextVarieties);
         if (nextDepartments.length) setDepartmentOptions(nextDepartments);
         if (nextMcNos.length) setMcNoOptions(nextMcNos);
@@ -155,7 +159,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     { label: "U%", value: form.u_percent },
     { label: "CVM", value: form.cvm },
     { label: "1mCV", value: form.im_cvm },
-    { label: "3mCV", value: form.m3_cvm },
+    { label: "3 mCV", value: form.m3_cvm },
     { label: "Remarks", value: form.remarks },
   ];
 
@@ -291,7 +295,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
-          <label>3mCV</label>
+          <label>3 mCV</label>
           <input
             value={form.m3_cvm}
             onChange={(e) => handleChange("m3_cvm", e.target.value)}

@@ -519,10 +519,6 @@ router.get('/departments', async (req, res, next) => {
  *                     type: integer
  *                   name:
  *                     type: string
- *                   department_id:
- *                     type: integer
- *                   department_name:
- *                     type: string
  *                   route_path:
  *                     type: string
  *       500:
@@ -531,11 +527,10 @@ router.get('/departments', async (req, res, next) => {
 router.get('/screens', async (req, res, next) => {
   try {
     const result = await client.query(
-      `SELECT s.id, s.name, s.is_active, s.department_id, d.name AS department_name
-       FROM rbac.screens s
-       LEFT JOIN rbac.departments d ON d.id = s.department_id
-       WHERE s.is_active = true
-       ORDER BY s.id`
+      `SELECT id, name, is_active
+       FROM rbac.screens
+       WHERE is_active = true
+       ORDER BY id`
     );
 
     res.status(200).json(result.rows);
@@ -580,12 +575,10 @@ const getRoleDetailsById = async (id) => {
     ),
     client.query(
       `
-      SELECT s.id, s.name, s.is_active, s.department_id, d.name AS department_name
+      SELECT s.id, s.name, s.is_active
       FROM rbac.role_screens rs
       JOIN rbac.screens s
         ON s.id = rs.screen_id
-      LEFT JOIN rbac.departments d
-        ON d.id = s.department_id
       WHERE rs.role_id = $1
       ORDER BY s.id
       `,
@@ -605,9 +598,7 @@ const getRoleDetailsById = async (id) => {
     name: screen.name,
     label: screen.name,
     value: screen.id,
-    is_active: screen.is_active,
-    department_id: screen.department_id,
-    department_name: screen.department_name
+    is_active: screen.is_active
   }));
 
   const payload = {

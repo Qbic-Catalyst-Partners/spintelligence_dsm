@@ -5,24 +5,19 @@ const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, sendPrepVarietyDropdown, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
-const { UQC_SHIFTS, UQC_SHIFT_VALUES, normalizeUqcShift } = require('./uqcMasterData');
 const SCREEN_ID_PREFIXES = {
   lap_cv: 'CL',
-  nati_data_entry: 'NAT',
+  nati_data_entry: 'CN',
   uqc: 'CU',
-  nre: 'CNRE',
-  efficiency: 'CEFF'
+  nre_data_entry: 'CNR',
+  efficiency_data_entry: 'CEF'
 };
-
-// Screens whose entry_id is the plain "PREFIX-0001" value (no leading '#')
-const NO_HASH_SCREEN_IDS = new Set(['nati_data_entry', 'nre', 'efficiency']);
 
 const formatScreenEntryId = (screenKey, rawId) => {
   const prefix = SCREEN_ID_PREFIXES[screenKey];
   const numericId = Number(rawId);
   if (!prefix || !Number.isFinite(numericId)) return null;
-  const value = `${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
-  return NO_HASH_SCREEN_IDS.has(screenKey) ? value : `#${value}`;
+  return `#${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
 };
 
 const withScreenEntryId = (screenKey, record, idField = 'id') => {
@@ -88,22 +83,7 @@ const ensureComberTimestampColumnsHaveTimezone = async () => {
   }
 };
 
-const createNatiDataEntryId = async () => {
-  const result = await client.query(`
-    SELECT COALESCE(
-      MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
-      0
-    ) AS max_number
-    FROM comber.nati_data_entry
-  `);
-
-  const nextNumber = Number(result.rows[0]?.max_number || 0) + 1;
-  return `NAT-${String(nextNumber).padStart(4, '0')}`;
-};
-
-let comberEntryIdColumnsReady = false;
 const ensureComberEntryIdColumns = async () => {
-  if (comberEntryIdColumnsReady) return;
   await ensureComberPrimaryKeys();
   await ensureComberTimestampColumnsHaveTimezone();
   await client.query(`
@@ -115,11 +95,6 @@ const ensureComberEntryIdColumns = async () => {
     ON comber.ribbon_lap_cv_qc (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
-  await client.query(`
-    ALTER TABLE comber.ribbon_lap_cv_qc
-      ADD COLUMN IF NOT EXISTS lap_length NUMERIC(10,2),
-      ADD COLUMN IF NOT EXISTS grams_per_meter NUMERIC(10,2);
-  `);
 
   await client.query(`
     ALTER TABLE comber.nati_data_entry
@@ -127,7 +102,7 @@ const ensureComberEntryIdColumns = async () => {
   `);
   await client.query(`
     ALTER TABLE comber.nati_data_entry
-      DROP COLUMN IF EXISTS nati_id;
+      ALTER COLUMN nati_id DROP NOT NULL;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS comber_nati_data_entry_entry_id_uq
@@ -144,63 +119,6 @@ const ensureComberEntryIdColumns = async () => {
     ON comber.u_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS comber.nre_data_entry (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      type TEXT NOT NULL DEFAULT 'Comber NRE%',
-      silver_hank NUMERIC(10,2),
-      delivery_mtr_min NUMERIC(10,2),
-      comber_neps_min NUMERIC(10,2),
-      feed_mm_per_nep NUMERIC(10,2),
-      fiber_nep_in_comber_lap_gms NUMERIC(10,2),
-      fiber_nep_gms_in_silver NUMERIC(10,2),
-      comber_nre_percent NUMERIC(10,2),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS comber_nre_data_entry_entry_id_uq
-    ON comber.nre_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS comber.efficiency_data_entry (
-      id BIGSERIAL PRIMARY KEY,
-      entry_id TEXT,
-      type TEXT NOT NULL DEFAULT 'Comber Efficiency',
-      mc_name TEXT,
-      span_length_50_lap NUMERIC(10,2),
-      span_length_50_sliver NUMERIC(10,2),
-      combining_efficiency_formula TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS comber_efficiency_data_entry_entry_id_uq
-    ON comber.efficiency_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  // Resync id sequences in case rows were ever inserted with explicit ids
-  // (e.g. data import/restore), which leaves nextval() behind MAX(id) and
-  // causes spurious duplicate-key errors on the next insert.
-  for (const table of ['ribbon_lap_cv_qc', 'ribbon_lap_samples']) {
-    await client.query(`
-      SELECT setval(
-        pg_get_serial_sequence('comber.${table}', 'id'),
-        GREATEST(
-          (SELECT COALESCE(MAX(id), 0) FROM comber.${table}),
-          (SELECT last_value FROM comber.${table}_id_seq)
-        ),
-        true
-      );
-    `);
-  }
-
-  comberEntryIdColumnsReady = true;
 };
 
 router.get('/thresholds', async (req, res, next) => {
@@ -397,15 +315,6 @@ router.get('/ribbon-lap-cv/master/mc-nos', getRibbonLapMachineDropdown);
 router.get('/ribbon-lap-cv/master/mc-no', getRibbonLapMachineDropdown);
 router.get('/ribbon-lap-cv/master/machine-nos', getRibbonLapMachineDropdown);
 router.get('/ribbon-lap-cv/master/machine-numbers', getRibbonLapMachineDropdown);
-router.get('/ribbon-lap/master/varieties', getMasterVarieties);
-router.get('/ribbon-lap/master/dropdown', getMasterVarieties);
-router.get('/ribbon-lap/master/counts', getCountMasterDropdown);
-router.get('/ribbon-lap/master/count-dropdown', getCountMasterDropdown);
-router.get('/ribbon-lap/master/count-names', getCountMasterDropdown);
-router.get('/ribbon-lap/master/mc-nos', getRibbonLapMachineDropdown);
-router.get('/ribbon-lap/master/mc-no', getRibbonLapMachineDropdown);
-router.get('/ribbon-lap/master/machine-nos', getRibbonLapMachineDropdown);
-router.get('/ribbon-lap/master/machine-numbers', getRibbonLapMachineDropdown);
 router.get('/uqc/master/counts', getCountMasterDropdown);
 router.get('/uqc/master/count-dropdown', getCountMasterDropdown);
 router.get('/uqc/master/count-names', getCountMasterDropdown);
@@ -469,7 +378,11 @@ router.get('/uqc/master/dropdown', async (req, res, next) => {
       dept_name: String(r.dept_name || '').trim()
     })).filter((r) => r.mc_no);
 
-    const shifts = UQC_SHIFTS;
+    const shifts = [
+      { value: 'Shift 1', label: 'Shift 1' },
+      { value: 'Shift 2', label: 'Shift 2' },
+      { value: 'Shift 3', label: 'Shift 3' }
+    ];
 
     const shiftOptions = [{ text: '-- Select Shift --', value: '' }, ...shifts.map((s) => ({ text: s.label, value: s.value }))];
     const varietyOptions = [{ text: '-- Select Variety --', value: '' }, ...varieties.map((v) => ({ text: v.variety_name, value: v.variety_name }))];
@@ -693,8 +606,6 @@ const withTransaction = async (callback) => {
  *             variety: "Cotton"
  *             type: "Type A"
  *             lap_weight: 20
- *             lap_length: 40.5
- *             grams_per_meter: 493.83
  *             samples: [1.2, 1.5, 1.3]
  *             average: 1.33
  *             minimum: 1.2
@@ -732,6 +643,7 @@ router.post('/lap-cv', async (req, res) => {
     try {
         await ensureComberEntryIdColumns();
         const {
+            entry_id,
             record_date,
             machine_name,
             variety,
@@ -747,11 +659,15 @@ router.post('/lap-cv', async (req, res) => {
             cv_percent
         } = req.body;
 
+        if (!entry_id) {
+            return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
+
         if (!samples || !samples.length) {
             return res.status(400).json({ message: 'Samples required' });
         }
 
-        const { qc_id, entry_id } = await withTransaction(async () => {
+        const qc_id = await withTransaction(async () => {
 
             const main = await client.query(
                 `INSERT INTO comber.ribbon_lap_cv_qc
@@ -760,7 +676,7 @@ router.post('/lap-cv', async (req, res) => {
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
                 RETURNING id`,
                 [
-                    null,
+                    entry_id,
                     'Ribbon Lap CV Data Entry',
                     samples.length,
                     record_date,
@@ -768,8 +684,8 @@ router.post('/lap-cv', async (req, res) => {
                     variety,
                     type,
                     lap_weight,
-                    lap_length ?? null,
-                    grams_per_meter ?? null,
+                    lap_length,
+                    grams_per_meter,
                     average,
                     minimum,
                     maximum,
@@ -779,16 +695,6 @@ router.post('/lap-cv', async (req, res) => {
             );
 
             const qc_id = main.rows[0].id;
-            const entry_id = formatScreenEntryId('lap_cv', qc_id);
-
-            if (entry_id) {
-                await client.query(
-                    `UPDATE comber.ribbon_lap_cv_qc
-                        SET entry_id = $1
-                      WHERE id = $2`,
-                    [entry_id, qc_id]
-                );
-            }
 
             await client.query(
                 `INSERT INTO comber.ribbon_lap_samples (qc_id, sample_no, sample_value)
@@ -801,7 +707,7 @@ router.post('/lap-cv', async (req, res) => {
                 ]
             );
 
-            return { qc_id, entry_id };
+            return qc_id;
         });
 
         res.status(201).json({
@@ -811,10 +717,6 @@ router.post('/lap-cv', async (req, res) => {
         });
 
     } catch (err) {
-        if (isUniqueViolation(err)) {
-            console.error('Duplicate key on lap-cv insert:', err.constraint || err.message);
-            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-        }
         console.error(err);
         res.status(500).json({ message: 'Server error' });
     }
@@ -862,14 +764,6 @@ router.post('/lap-cv', async (req, res) => {
  *                   lap_weight:
  *                     type: number
  *                     example: 20
- *                   lap_length:
- *                     type: number
- *                     nullable: true
- *                     example: 40.5
- *                   grams_per_meter:
- *                     type: number
- *                     nullable: true
- *                     example: 493.83
  *                   average:
  *                     type: number
  *                     example: 1.33
@@ -905,22 +799,19 @@ router.get('/lap-cv', async (req, res) => {
         const result = await client.query(`
             SELECT
                 qc.*,
-                COALESCE(agg.samples, '[]') AS samples
-            FROM comber.ribbon_lap_cv_qc qc
-            LEFT JOIN (
-                SELECT
-                    qc_id,
+                COALESCE(
                     json_agg(
                         json_build_object(
-                            'sample_no', sample_no,
-                            'value', sample_value
+                            'sample_no', s.sample_no,
+                            'value', s.sample_value
                         )
-                        ORDER BY sample_no
-                    ) AS samples
-                FROM comber.ribbon_lap_samples
-                GROUP BY qc_id
-            ) agg
-            ON qc.id = agg.qc_id
+                    ) FILTER (WHERE s.sample_no IS NOT NULL),
+                    '[]'
+                ) AS samples
+            FROM comber.ribbon_lap_cv_qc qc
+            LEFT JOIN comber.ribbon_lap_samples s
+            ON qc.id = s.qc_id
+            GROUP BY qc.id
             ORDER BY qc.record_date DESC
         `);
 
@@ -984,58 +875,50 @@ router.get('/lap-cv', async (req, res) => {
 router.post('/nati-data-entry', async (req, res) => {
     try {
         await ensureComberEntryIdColumns();
-        const { type, entry_date, variety, entries } = req.body;
+        const { entry_id, type, entry_date, variety, entries } = req.body;
+
+        if (!entry_id) {
+            return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
 
         if (!entries || !entries.length) {
             return res.status(400).json({ message: 'Entries required' });
         }
 
-        let entry_id = '';
-        let qc_id = null;
+        const qc_id = await withTransaction(async () => {
 
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-            try {
-                qc_id = await withTransaction(async () => {
-                    await client.query('LOCK TABLE comber.nati_data_entry IN SHARE ROW EXCLUSIVE MODE');
-                    entry_id = await createNatiDataEntryId();
+            const main = await client.query(
+                `INSERT INTO comber.nati_data_entry
+                (entry_id, type, entry_date, variety)
+                VALUES ($1,$2,$3,$4)
+                RETURNING id`,
+                [entry_id, type, entry_date, variety]
+            );
 
-                    const main = await client.query(
-                        `INSERT INTO comber.nati_data_entry
-                        (entry_id, type, entry_date, variety)
-                        VALUES ($1,$2,$3,$4)
-                        RETURNING id`,
-                        [entry_id, type, entry_date, variety]
-                    );
+            const qc_id = main.rows[0].id;
 
-                    const qc_id = main.rows[0].id;
+            await client.query(
+                `INSERT INTO comber.neps_details
+                (qc_id, mc_no, ratio_size_1, ratio_size_07, ratio_size_05)
+                SELECT 
+                    $1, mc_no, r1, r07, r05
+                FROM unnest(
+                    $2::int[],
+                    $3::numeric[],
+                    $4::numeric[],
+                    $5::numeric[]
+                ) AS t(mc_no, r1, r07, r05)`,
+                [
+                    qc_id,
+                    entries.map(e => e.mc_no),
+                    entries.map(e => e.ratio_size_1),
+                    entries.map(e => e.ratio_size_07),
+                    entries.map(e => e.ratio_size_05)
+                ]
+            );
 
-                    await client.query(
-                        `INSERT INTO comber.neps_details
-                        (qc_id, mc_no, ratio_size_1, ratio_size_07, ratio_size_05)
-                        SELECT 
-                            $1, mc_no, r1, r07, r05
-                        FROM unnest(
-                            $2::int[],
-                            $3::numeric[],
-                            $4::numeric[],
-                            $5::numeric[]
-                        ) AS t(mc_no, r1, r07, r05)`,
-                        [
-                            qc_id,
-                            entries.map(e => e.mc_no),
-                            entries.map(e => e.ratio_size_1),
-                            entries.map(e => e.ratio_size_07),
-                            entries.map(e => e.ratio_size_05)
-                        ]
-                    );
-
-                    return qc_id;
-                });
-                break;
-            } catch (err) {
-                if (!isUniqueViolation(err) || attempt === 3) throw err;
-            }
-        }
+            return qc_id;
+        });
 
         res.status(201).json({
             message: 'Nati entry created',
@@ -1045,7 +928,7 @@ router.post('/nati-data-entry', async (req, res) => {
 
     } catch (err) {
         if (isUniqueViolation(err)) {
-            return res.status(409).json({ message: 'A newer NATI entry was saved at the same time. Please retry.' });
+            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
         }
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -1130,7 +1013,7 @@ router.get('/nati-data-entry', async (req, res) => {
             FROM comber.nati_data_entry qc
             LEFT JOIN comber.neps_details n
             ON qc.id = n.qc_id
-            GROUP BY qc.id, qc.entry_id, qc.type, qc.entry_date, qc.variety, qc.created_at
+            GROUP BY qc.id
             ORDER BY qc.entry_date DESC
         `);
 
@@ -1339,6 +1222,7 @@ router.post('/uqc', async (req, res) => {
         console.log("UQC BODY:", req.body);
 
         const {
+            entry_id,
             entry_type,
             entry_date,
             shift,
@@ -1352,6 +1236,10 @@ router.post('/uqc', async (req, res) => {
             remarks
         } = req.body;
 
+        if (!entry_id) {
+            return res.status(400).json({ message: "entry_id is required and must be unique" });
+        }
+
         // ✅ Validation
         if (!entry_type || !entry_date) {
             return res.status(400).json({
@@ -1363,14 +1251,14 @@ router.post('/uqc', async (req, res) => {
         const toNumber = (val) =>
             val === "" || val === undefined ? null : val;
 
-        const insertResult = await client.query(
+        const result = await client.query(
             `INSERT INTO comber.u_data_entry
             (entry_id, entry_type, entry_date, shift, variety, department, mc_no,
              u_percent, cvm, cvm_1m, cvm_3m, remarks)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
-                null,
+                entry_id,
                 entry_type,
                 entry_date,
                 shift,
@@ -1384,16 +1272,6 @@ router.post('/uqc', async (req, res) => {
                 remarks
             ]
         );
-        const entry_id = formatScreenEntryId('uqc', insertResult.rows[0]?.id);
-        const result = entry_id
-          ? await client.query(
-              `UPDATE comber.u_data_entry
-                  SET entry_id = $1
-                WHERE id = $2
-                RETURNING *`,
-              [entry_id, insertResult.rows[0].id]
-            )
-          : insertResult;
 
         res.status(201).json({
             message: "UQC entry created successfully",
@@ -1469,331 +1347,6 @@ router.get('/uqc', async (req, res) => {
 
     } catch (err) {
         console.error('❌ UQC FETCH ERROR:', err);
-        res.status(500).json({
-            message: 'Server error',
-            error: err.message
-        });
-    }
-});
-
-
-/**
- * @swagger
- * /comber/nre:
- *   post:
- *     summary: Create Comber NRE% entry
- *     tags: [Comber]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               entry_id:
- *                 type: string
- *                 example: "CNRE-0001"
- *               type:
- *                 type: string
- *                 example: "Comber NRE%"
- *               silver_hank:
- *                 type: number
- *               delivery_mtr_min:
- *                 type: number
- *               comber_neps_min:
- *                 type: number
- *               feed_mm_per_nep:
- *                 type: number
- *               fiber_nep_in_comber_lap_gms:
- *                 type: number
- *               fiber_nep_gms_in_silver:
- *                 type: number
- *               comber_nre_percent:
- *                 type: number
- *     responses:
- *       201:
- *         description: Comber NRE% entry created successfully
- *       500:
- *         description: Server error
- */
-router.post('/nre', async (req, res) => {
-    try {
-        await ensureComberEntryIdColumns();
-        console.log("COMBER NRE BODY:", req.body);
-
-        const {
-            type,
-            silver_hank,
-            delivery_mtr_min,
-            comber_neps_min,
-            feed_mm_per_nep,
-            fiber_nep_in_comber_lap_gms,
-            fiber_nep_gms_in_silver,
-            comber_nre_percent
-        } = req.body;
-
-        const toNumber = (val) =>
-            val === "" || val === undefined || val === null ? null : val;
-
-        const insertResult = await client.query(
-            `INSERT INTO comber.nre_data_entry
-            (entry_id, type, silver_hank, delivery_mtr_min, comber_neps_min,
-             feed_mm_per_nep, fiber_nep_in_comber_lap_gms, fiber_nep_gms_in_silver, comber_nre_percent)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-            RETURNING *`,
-            [
-                null,
-                type || 'Comber NRE%',
-                toNumber(silver_hank),
-                toNumber(delivery_mtr_min),
-                toNumber(comber_neps_min),
-                toNumber(feed_mm_per_nep),
-                toNumber(fiber_nep_in_comber_lap_gms),
-                toNumber(fiber_nep_gms_in_silver),
-                toNumber(comber_nre_percent)
-            ]
-        );
-        const entry_id = formatScreenEntryId('nre', insertResult.rows[0]?.id);
-        const result = entry_id
-          ? await client.query(
-              `UPDATE comber.nre_data_entry
-                  SET entry_id = $1
-                WHERE id = $2
-                RETURNING *`,
-              [entry_id, insertResult.rows[0].id]
-            )
-          : insertResult;
-
-        res.status(201).json({
-            message: "Comber NRE% entry created successfully",
-            data: withScreenEntryId('nre', result.rows[0])
-        });
-
-    } catch (err) {
-        if (isUniqueViolation(err)) {
-            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-        }
-        console.error('COMBER NRE INSERT ERROR:', err);
-        res.status(500).json({
-            message: 'Server error',
-            error: err.message
-        });
-    }
-});
-
-
-/**
- * @swagger
- * /comber/nre:
- *   get:
- *     summary: Get Comber NRE% entries with pagination
- *     tags: [Comber]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           example: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           example: 10
- *     responses:
- *       200:
- *         description: List of Comber NRE% entries
- *       500:
- *         description: Server error
- */
-router.get('/nre', async (req, res) => {
-    try {
-        await ensureComberEntryIdColumns();
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const offset = (page - 1) * limit;
-
-        const dataQuery = `
-            SELECT *
-            FROM comber.nre_data_entry
-            ORDER BY created_at DESC
-            LIMIT $1 OFFSET $2
-        `;
-
-        const countQuery = `
-            SELECT COUNT(*) FROM comber.nre_data_entry
-        `;
-
-        const dataResult = await client.query(dataQuery, [limit, offset]);
-        const countResult = await client.query(countQuery);
-
-        const total = parseInt(countResult.rows[0].count);
-
-        res.json({
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit),
-            data: dataResult.rows.map((row) => withScreenEntryId('nre', row))
-        });
-
-    } catch (err) {
-        console.error('COMBER NRE FETCH ERROR:', err);
-        res.status(500).json({
-            message: 'Server error',
-            error: err.message
-        });
-    }
-});
-
-
-/**
- * @swagger
- * /comber/efficiency:
- *   post:
- *     summary: Create Comber Efficiency entry
- *     tags: [Comber]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               entry_id:
- *                 type: string
- *                 example: "CEFF-0001"
- *               type:
- *                 type: string
- *                 example: "Comber Efficiency"
- *               mc_name:
- *                 type: string
- *               span_length_50_lap:
- *                 type: number
- *               span_length_50_sliver:
- *                 type: number
- *               combining_efficiency_formula:
- *                 type: string
- *     responses:
- *       201:
- *         description: Comber Efficiency entry created successfully
- *       500:
- *         description: Server error
- */
-router.post('/efficiency', async (req, res) => {
-    try {
-        await ensureComberEntryIdColumns();
-        console.log("COMBER EFFICIENCY BODY:", req.body);
-
-        const {
-            type,
-            mc_name,
-            span_length_50_lap,
-            span_length_50_sliver,
-            combining_efficiency_formula
-        } = req.body;
-
-        const toNumber = (val) =>
-            val === "" || val === undefined || val === null ? null : val;
-
-        const insertResult = await client.query(
-            `INSERT INTO comber.efficiency_data_entry
-            (entry_id, type, mc_name, span_length_50_lap, span_length_50_sliver, combining_efficiency_formula)
-            VALUES ($1,$2,$3,$4,$5,$6)
-            RETURNING *`,
-            [
-                null,
-                type || 'Comber Efficiency',
-                mc_name,
-                toNumber(span_length_50_lap),
-                toNumber(span_length_50_sliver),
-                combining_efficiency_formula
-            ]
-        );
-        const entry_id = formatScreenEntryId('efficiency', insertResult.rows[0]?.id);
-        const result = entry_id
-          ? await client.query(
-              `UPDATE comber.efficiency_data_entry
-                  SET entry_id = $1
-                WHERE id = $2
-                RETURNING *`,
-              [entry_id, insertResult.rows[0].id]
-            )
-          : insertResult;
-
-        res.status(201).json({
-            message: "Comber Efficiency entry created successfully",
-            data: withScreenEntryId('efficiency', result.rows[0])
-        });
-
-    } catch (err) {
-        if (isUniqueViolation(err)) {
-            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-        }
-        console.error('COMBER EFFICIENCY INSERT ERROR:', err);
-        res.status(500).json({
-            message: 'Server error',
-            error: err.message
-        });
-    }
-});
-
-
-/**
- * @swagger
- * /comber/efficiency:
- *   get:
- *     summary: Get Comber Efficiency entries with pagination
- *     tags: [Comber]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           example: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           example: 10
- *     responses:
- *       200:
- *         description: List of Comber Efficiency entries
- *       500:
- *         description: Server error
- */
-router.get('/efficiency', async (req, res) => {
-    try {
-        await ensureComberEntryIdColumns();
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const offset = (page - 1) * limit;
-
-        const dataQuery = `
-            SELECT *
-            FROM comber.efficiency_data_entry
-            ORDER BY created_at DESC
-            LIMIT $1 OFFSET $2
-        `;
-
-        const countQuery = `
-            SELECT COUNT(*) FROM comber.efficiency_data_entry
-        `;
-
-        const dataResult = await client.query(dataQuery, [limit, offset]);
-        const countResult = await client.query(countQuery);
-
-        const total = parseInt(countResult.rows[0].count);
-
-        res.json({
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit),
-            data: dataResult.rows.map((row) => withScreenEntryId('efficiency', row))
-        });
-
-    } catch (err) {
-        console.error('COMBER EFFICIENCY FETCH ERROR:', err);
         res.status(500).json({
             message: 'Server error',
             error: err.message
