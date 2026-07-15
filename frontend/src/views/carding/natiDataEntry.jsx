@@ -7,7 +7,7 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
-import { fetchCardingMasterMachineOptions, fetchCardingMasterVarieties } from "@/apis/carding";
+import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "./natiDataEntry.module.css";
 
@@ -52,7 +52,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             try {
                 const [varietyList, mcNos] = await Promise.all([
                     fetchCardingMasterVarieties(),
-                    fetchCardingMasterMachineOptions({ prefix: "CDG" }),
+                    fetchCardingMasterMachines({ prefix: "CDG" }),
                 ]);
                 if (active) {
                     setVarietyOptions(Array.isArray(varietyList) ? varietyList : []);
@@ -160,6 +160,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                 ratio_size_07: entry.ratio_size_07 === "" ? null : Number(entry.ratio_size_07),
                 ratio_size_05: entry.ratio_size_05 === "" ? null : Number(entry.ratio_size_05),
             })),
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const validateForm = () => {

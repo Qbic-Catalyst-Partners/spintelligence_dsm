@@ -6,7 +6,6 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const csv = require("csv-parser");
-const ExcelJS = require("exceljs");
 const { Parser } = require("json2csv");
 const saltRounds = 10;
 const dayjs = require("dayjs");
@@ -15,21 +14,6 @@ const normalizeUserLevel = (value) => {
   if (normalized === "L3") return "L3";
   if (normalized === "L2") return "L2";
   return "L1";
-};
-
-const TOP_DEPARTMENTS = ["Quality Control", "Electrical", "Mechanical"];
-const normalizeTopDepartment = (value) => {
-  const normalized = String(value || "").trim();
-  const match = TOP_DEPARTMENTS.find(
-    (d) => d.toLowerCase() === normalized.toLowerCase()
-  );
-  return match || null;
-};
-
-const EMPLOYEE_TYPES = ["EMP", "SUP", "ADMIN"];
-const normalizeEmployeeType = (value) => {
-  const normalized = String(value || "").trim().toUpperCase();
-  return EMPLOYEE_TYPES.includes(normalized) ? normalized : null;
 };
 
 /**
@@ -80,13 +64,11 @@ router.get('/', async (req, res, next) => {
       SELECT 
         id,
         employee_id,
-        employee_type,
-        full_name,
-        email,
+        full_name, 
+        email, 
         phone,
         level,
         role,
-        top_department,
         department,
         account_status,
         created_at
@@ -119,7 +101,6 @@ router.get('/', async (req, res, next) => {
  *               - email
  *               - phone
  *               - employee_id
- *               - employee_type
  *               - role
  *               - department
  *               - password
@@ -139,17 +120,9 @@ router.get('/', async (req, res, next) => {
  *               employee_id:
  *                 type: string
  *                 example: EMP024
- *               employee_type:
- *                 type: string
- *                 example: EMP
- *                 enum: [EMP, SUP, ADMIN]
  *               role:
  *                 type: string
  *                 example: Quality staff
- *               top_department:
- *                 type: string
- *                 example: Quality Control
- *                 enum: [Quality Control, Electrical, Mechanical]
  *               department:
  *                 type: string
  *                 example: Spinning
@@ -213,9 +186,7 @@ router.post('/add-user', async (req, res, next) => {
       email,
       phone,
       employee_id,
-      employee_type,
       role,
-      top_department,
       department,
       designation,
       level,
@@ -229,7 +200,6 @@ router.post('/add-user', async (req, res, next) => {
       !email ||
       !phone ||
       !employee_id ||
-      !employee_type ||
       !role ||
       !department ||
       !password
@@ -237,16 +207,6 @@ router.post('/add-user', async (req, res, next) => {
       return res.status(400).json({
         message: 'All fields are required'
       });
-    }
-
-    const top_department_name = normalizeTopDepartment(top_department);
-    if (top_department && !top_department_name) {
-      return res.status(400).json({ message: "Invalid top department name" });
-    }
-
-    const employee_type_name = normalizeEmployeeType(employee_type);
-    if (!employee_type_name) {
-      return res.status(400).json({ message: "Invalid employee type" });
     }
 
     await client.query("BEGIN");
@@ -285,11 +245,11 @@ router.post('/add-user', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO users.user_details
       (full_name, first_name, last_name, email, phone, password_hash,
-      employee_id, employee_type, role_id, role, top_department, department_id, department,
+      employee_id, role_id, role, department_id, department,
       designation, level, dob)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING id, full_name, email, phone,
-                employee_id, employee_type, role, top_department, department, designation, level, dob, created_at`,
+                role, department, designation, level, dob, created_at`,
       [
         full_name,
         first_name,
@@ -298,10 +258,8 @@ router.post('/add-user', async (req, res, next) => {
         phone,
         password_hash,
         employee_id,
-        employee_type_name,
         role_id,
         role_name,
-        top_department_name,
         department_id,
         department_name,
         designation || null,
@@ -433,14 +391,8 @@ router.patch('/change-password/:id', async (req, res, next) => {
  *                 type: string
  *               phone:
  *                 type: string
- *               employee_type:
- *                 type: string
- *                 enum: [EMP, SUP, ADMIN]
  *               role:
  *                 type: string
- *               top_department:
- *                 type: string
- *                 enum: [Quality Control, Electrical, Mechanical]
  *               department:
  *                 type: string
  *               dob:
@@ -461,23 +413,11 @@ router.patch('/:id', async (req, res, next) => {
       first_name,
       last_name,
       phone,
-      employee_type,
       role,
-      top_department,
       department,
       level,
       dob
     } = req.body;
-
-    const top_department_name = normalizeTopDepartment(top_department);
-    if (top_department && !top_department_name) {
-      return res.status(400).json({ message: "Invalid top department name" });
-    }
-
-    const employee_type_name = normalizeEmployeeType(employee_type);
-    if (employee_type && !employee_type_name) {
-      return res.status(400).json({ message: "Invalid employee type" });
-    }
 
     await client.query("BEGIN");
 
@@ -533,25 +473,21 @@ router.patch('/:id', async (req, res, next) => {
       SET first_name = COALESCE($1, first_name),
           last_name = COALESCE($2, last_name),
           phone = COALESCE($3, phone),
-          employee_type = COALESCE($4, employee_type),
-          role_id = COALESCE($5, role_id),
-          role = COALESCE($6, role),
-          top_department = COALESCE($7, top_department),
-          department_id = COALESCE($8, department_id),
-          department = COALESCE($9, department),
-          level = COALESCE($10, level),
-          dob = COALESCE($11, dob)
-      WHERE id = $12
-      RETURNING id, full_name, email, employee_type,
-                role, top_department, department, level, dob`,
+          role_id = COALESCE($4, role_id),
+          role = COALESCE($5, role),
+          department_id = COALESCE($6, department_id),
+          department = COALESCE($7, department),
+          level = COALESCE($8, level),
+          dob = COALESCE($9, dob)
+      WHERE id = $10
+      RETURNING id, full_name, email,
+                role, department, level, dob`,
       [
         first_name || null,
         last_name || null,
         phone || null,
-        employee_type_name,
         role_id,
         role_name,
-        top_department_name,
         department_id,
         department_name,
         level ? normalizeUserLevel(level) : null,
@@ -702,18 +638,11 @@ const storage = multer.diskStorage({
   },
 });
 
-const BULK_UPLOAD_EXTENSIONS = new Set([".csv", ".xlsx"]);
-const BULK_UPLOAD_MIMETYPES = new Set([
-  "text/csv",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-]);
-
 const fileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (BULK_UPLOAD_MIMETYPES.has(file.mimetype) || BULK_UPLOAD_EXTENSIONS.has(ext)) {
+  if (file.mimetype === "text/csv" || path.extname(file.originalname).toLowerCase() === ".csv") {
     cb(null, true);
   } else {
-    cb(new Error("Only CSV or XLSX files allowed"), false);
+    cb(new Error("Only CSV files allowed"), false);
   }
 };
 
@@ -864,66 +793,25 @@ const readCsvRows = (filePath) =>
       .on("error", reject);
   });
 
-const readXlsxRows = async (filePath) => {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
-  const sheet = workbook.worksheets[0];
-  if (!sheet) return [];
-
-  const headerRow = sheet.getRow(1);
-  const headers = [];
-  headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-    headers[colNumber] = String(cell.value ?? "").trim();
-  });
-
-  const rows = [];
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    const rowObj = {};
-    let hasValue = false;
-    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      const header = headers[colNumber];
-      if (!header) return;
-      const value = cell.value && typeof cell.value === "object" && "text" in cell.value
-        ? cell.value.text
-        : cell.value;
-      const stringValue = value === null || typeof value === "undefined" ? "" : String(value).trim();
-      if (stringValue) hasValue = true;
-      rowObj[header] = stringValue;
-    });
-    if (hasValue) rows.push(rowObj);
-  });
-
-  return rows;
-};
-
-const readBulkUploadRows = (filePath, originalName) => {
-  const ext = path.extname(originalName || "").toLowerCase();
-  return ext === ".xlsx" ? readXlsxRows(filePath) : readCsvRows(filePath);
-};
-
 /**
  * @swagger
  * /users/bulk-upload:
  *   post:
- *     summary: Bulk upload users via CSV or XLSX
+ *     summary: Bulk upload users via CSV
  *     tags: [User Management]
  *     description: |
- *       Upload users in bulk using CSV or the usermanagement_template.xlsx template.
+ *       Upload users in bulk using CSV.
  *       Supports DB-aware mapping for role/department using either IDs or names.
  *
- *       Accepted columns (template headers shown, snake_case also accepted):
- *       - Required: `First Name`, `Email Address`, `Mobile Number`, `Employee ID`,
- *         `Employee Type` (EMP/SUP/ADMIN), `Role Selection` (or `role_id`),
- *         `Sub Department` (or `department_id`)
- *       - Optional: `Last Name`, `Department` (top_department: Quality Control/Electrical/Mechanical),
- *         `designation`, `Level`, `dob`, `account_status`, `Password`
+ *       Accepted columns:
+ *       - Required (effective): `email`, `phone`, `employee_id`, `first_name` (or `full_name`), `role` (or `role_id`), `department` (or `department_id`)
+ *       - Optional: `last_name`, `designation`, `level`, `dob`, `account_status`
  *
  *       Notes:
  *       - If `full_name` is provided and `first_name` is missing, name is split automatically.
  *       - `level` is normalized to `L1` or `L2` (default `L1`).
  *       - `account_status` is normalized to `Active` / `Inactive` (default `Active`).
- *       - Default password for created users is `Password@123` if the Password column is blank.
+ *       - Default password for created users is `Password@123`.
  *       - Duplicate emails are skipped (`ON CONFLICT (email) DO NOTHING`).
  *     requestBody:
  *       required: true
@@ -967,7 +855,9 @@ router.post("/bulk-upload", upload.single("file"), async (req, res, next) => {
     }
 
     const filePath = req.file.path;
-    const usersData = await readBulkUploadRows(filePath, req.file.originalname);
+    let usersData = [];
+
+    usersData = await readCsvRows(filePath);
 
     const result = await processUsers(usersData);
     res.json({ message: "Bulk upload completed", ...result });
@@ -997,19 +887,16 @@ async function processUsers(data) {
       let first_name = getBulkValue(row, ["first_name", "first name", "firstname"]);
       let last_name = getBulkValue(row, ["last_name", "last name", "lastname"]);
       const email = getBulkValue(row, ["email", "email_address", "email address"]);
-      const phone = getBulkValue(row, ["phone", "phone_number", "phone number", "mobile", "mobile_number", "mobile number"]);
+      const phone = getBulkValue(row, ["phone", "phone_number", "phone number", "mobile"]);
       const employee_id = getBulkValue(row, ["employee_id", "employee id", "employeeid"]);
-      const employee_type_raw = getBulkValue(row, ["employee_type", "employee type"]);
-      const role = getBulkValue(row, ["role", "role_name", "role name", "role_selection", "role selection"]);
+      const role = getBulkValue(row, ["role", "role_name", "role name"]);
       const role_id_raw = getBulkValue(row, ["role_id", "role id"]);
-      const top_department_raw = getBulkValue(row, ["top_department", "department"]);
-      const department = getBulkValue(row, ["sub_department", "sub department", "department_name", "department name"]);
+      const department = getBulkValue(row, ["department", "department_name", "department name"]);
       const department_id_raw = getBulkValue(row, ["department_id", "department id"]);
       const designation = getBulkValue(row, ["designation"]);
       const level = getBulkValue(row, ["level", "user_level"]);
       const dob = getBulkValue(row, ["dob", "date_of_birth", "date of birth"]);
       const account_status = getBulkValue(row, ["account_status", "account status", "status"]);
-      const password_raw = getBulkValue(row, ["password"]);
 
       if ((!first_name || !String(first_name).trim()) && fullNameRaw) {
         const split = splitFullName(fullNameRaw);
@@ -1022,7 +909,6 @@ async function processUsers(data) {
         email,
         phone,
         employee_id,
-        employee_type: employee_type_raw,
         role: role || role_id_raw,
         department: department || department_id_raw
       };
@@ -1037,24 +923,8 @@ async function processUsers(data) {
         );
       }
 
-      const employee_type_name = normalizeEmployeeType(employee_type_raw);
-      if (!employee_type_name) {
-        throw createBulkUploadError(
-          `Invalid employee_type "${employee_type_raw}" in row ${rowNumber}. Must be one of: ${EMPLOYEE_TYPES.join(", ")}`,
-          { row: rowNumber, field: "employee_type", value: employee_type_raw }
-        );
-      }
-
-      const top_department_name = normalizeTopDepartment(top_department_raw);
-      if (top_department_raw && !top_department_name) {
-        throw createBulkUploadError(
-          `Invalid top_department "${top_department_raw}" in row ${rowNumber}. Must be one of: ${TOP_DEPARTMENTS.join(", ")}`,
-          { row: rowNumber, field: "top_department", value: top_department_raw }
-        );
-      }
-
       const full_name = `${String(first_name || "").trim()} ${String(last_name || "").trim()}`.trim();
-      const password_hash = await bcrypt.hash(password_raw || "Password@123", saltRounds);
+      const password_hash = await bcrypt.hash("Password@123", saltRounds);
       const roleResolved = await resolveRoleForBulk({
         roleIdRaw: role_id_raw,
         roleNameRaw: role,
@@ -1074,10 +944,10 @@ async function processUsers(data) {
       const insertResult = await client.query(
         `INSERT INTO users.user_details
         (full_name, first_name, last_name, email, phone, password_hash,
-        employee_id, employee_type, role_id, role, top_department,
+        employee_id, role_id, role,
         department_id, department,
         designation, level, dob, account_status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
         ON CONFLICT (email) DO NOTHING
         RETURNING id`,
         [
@@ -1088,10 +958,8 @@ async function processUsers(data) {
           phone,
           password_hash,
           employee_id,
-          employee_type_name,
           role_id,
           role_name,
-          top_department_name,
           department_id,
           department_name,
           designation || null,
@@ -1139,11 +1007,9 @@ router.get("/export", async (req, res) => {
         email,
         phone,
         employee_id,
-        employee_type,
         role,
         designation,
         level,
-        top_department,
         department,
         dob,
         created_at,

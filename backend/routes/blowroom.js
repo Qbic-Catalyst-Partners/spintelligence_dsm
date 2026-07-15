@@ -1,8 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
 const { sendPrepVarietyDropdown } = require('../utils/prepVariety');
@@ -10,10 +8,8 @@ const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const SCREEN_ID_PREFIXES = {
   sync: 'BS',
   drop_test: 'BD',
-  br_waste_study: 'BW'
-  // header (Process Parameter) intentionally has no prefix here — it must only ever
-  // surface the real, stored PP-000n entry_id, never a synthesized fallback id, since a
-  // fabricated id collides with the shared Process Parameter scheme.
+  br_waste_study: 'BW',
+  header: 'PP'
 };
 
 const BLOWROOM_NOTEBOOK_SLUGS = [
@@ -76,6 +72,25 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
   return entry_id ? { ...record, entry_id } : { ...record };
 };
+const withProcessParameterId = (record) => {
+  const row = record && typeof record === 'object' ? { ...record } : record;
+  const storedId = String(row?.entry_id || '').trim();
+  const paramId = storedId || formatScreenEntryId('header', row?.br_id);
+  return {
+    ...row,
+    original_entry_id: row?.entry_id || null,
+    entry_id: paramId,
+    param_id: paramId,
+    parameter_id: paramId,
+    process_parameter_id: paramId,
+    display_entry_id: paramId
+  };
+};
+const withoutDropId = (record) => {
+  if (!record || typeof record !== 'object') return record;
+  const { drop_id, ...rest } = record;
+  return rest;
+};
 const isUniqueViolation = (err) => err && err.code === '23505';
 
 const getDropTestParentId = (body) => {
@@ -127,25 +142,7 @@ const normalizeWasteType = (value) => {
   return text || null;
 };
 
-// Fixed, locked list of Blow Room waste types (see scripts/20260711_reset_blowroom_waste_study.sql).
-// No free-text/custom waste types are accepted; only these are valid.
-const BR_WASTE_TYPES = [
-  'Dropping waste in MO',
-  'Dropping waste in RK',
-  'Dropping waste in flexi clean',
-  'Dropping waste in KB',
-  'Dropping waste in Vario clean',
-  'Dropping waste in GBR',
-];
-const BR_WASTE_TYPE_KEYS = new Set(BR_WASTE_TYPES.map((w) => w.toLowerCase()));
-const isValidBrWasteType = (wasteType) => {
-  const normalized = normalizeWasteType(wasteType);
-  return !!normalized && BR_WASTE_TYPE_KEYS.has(normalized.toLowerCase());
-};
-// "Overall" is a summary/totals row, not a real waste type — exclude it from validation
-// and from the waste-type master table.
-const isOverallWasteRow = (wasteType) =>
-  normalizeWasteType(wasteType)?.toLowerCase() === 'overall';
+const BR_WASTE_TYPE_CLEANUP_PREFIXES = ['fla', 'flat str', 'flat stri'];
 
 const ensureBlowroomWasteTypeMasterTable = async () => {
   if (brWasteTypeMasterReady) return;
@@ -156,35 +153,22 @@ const ensureBlowroomWasteTypeMasterTable = async () => {
       id bigserial PRIMARY KEY,
       waste_type varchar(120) NOT NULL,
       waste_type_key varchar(120) NOT NULL,
-      sort_order integer NOT NULL DEFAULT 0,
       created_at timestamptz NOT NULL DEFAULT NOW()
     );
-  `);
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_type_master
-      ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS br_waste_type_master_waste_type_key_uq
     ON blowroom.br_waste_type_master (waste_type_key);
   `);
 
-  for (let i = 0; i < BR_WASTE_TYPES.length; i++) {
-    const wasteType = BR_WASTE_TYPES[i];
+  for (const prefix of BR_WASTE_TYPE_CLEANUP_PREFIXES) {
     await client.query(
-      `INSERT INTO blowroom.br_waste_type_master (waste_type, waste_type_key, sort_order)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (waste_type_key)
-       DO UPDATE SET waste_type = EXCLUDED.waste_type, sort_order = EXCLUDED.sort_order`,
-      [wasteType, wasteType.toLowerCase(), i + 1]
+      `DELETE FROM blowroom.br_waste_type_master
+       WHERE LOWER(TRIM(waste_type)) = $1
+          OR LOWER(TRIM(waste_type)) LIKE $2`,
+      [prefix, `${prefix}%`]
     );
   }
-
-  // Drop any legacy/custom waste types outside the fixed list.
-  await client.query(
-    `DELETE FROM blowroom.br_waste_type_master WHERE waste_type_key <> ALL($1::text[])`,
-    [BR_WASTE_TYPES.map((w) => w.toLowerCase())]
-  );
 
   brWasteTypeMasterReady = true;
 };
@@ -192,15 +176,18 @@ const ensureBlowroomWasteTypeMasterTable = async () => {
 const upsertBlowroomWasteType = async (wasteType) => {
   await ensureBlowroomWasteTypeMasterTable();
 
-  if (!isValidBrWasteType(wasteType)) return null;
   const normalizedWasteType = normalizeWasteType(wasteType);
-  const wasteTypeKey = normalizedWasteType.toLowerCase();
+  if (!normalizedWasteType) return null;
+  if (normalizedWasteType.length < 5) return null;
 
+  const wasteTypeKey = normalizedWasteType.toLowerCase();
   const result = await client.query(
-    `SELECT id, waste_type, waste_type_key, created_at
-     FROM blowroom.br_waste_type_master
-     WHERE waste_type_key = $1`,
-    [wasteTypeKey]
+    `INSERT INTO blowroom.br_waste_type_master (waste_type, waste_type_key)
+     VALUES ($1, $2)
+     ON CONFLICT (waste_type_key)
+     DO UPDATE SET waste_type = EXCLUDED.waste_type
+     RETURNING id, waste_type, waste_type_key, created_at`,
+    [normalizedWasteType, wasteTypeKey]
   );
 
   return result.rows[0] || null;
@@ -213,7 +200,7 @@ const fetchBlowroomWasteTypes = async (prefix = '') => {
     `SELECT id, waste_type, created_at
      FROM blowroom.br_waste_type_master
      WHERE ($1 = '' OR waste_type ILIKE $2)
-     ORDER BY sort_order`,
+     ORDER BY waste_type`,
     [prefix, `%${prefix}%`]
   );
 
@@ -273,6 +260,45 @@ const getCountMasterDropdown = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error fetching blowroom count names from SQL Server:', error);
+    next(error);
+  }
+};
+
+const getBlowroomHeaderMasterDropdown = async (req, res, next) => {
+  try {
+    if (!sqlServer.hasSqlServerEnv()) {
+      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
+    }
+
+    const prefix = String(req.query.prefix || '').trim();
+    const countPrefix = String(req.query.count_prefix || '').trim();
+    const counts = await fetchCountMaster(countPrefix || prefix);
+    const countOptions = [
+      { text: '-- Select Count Name --', value: '' },
+      ...counts.map((count) => ({
+        text: count.count_name,
+        label: count.count_name,
+        value: count.count_name,
+        count_code: count.count_code,
+        count_name: count.count_name
+      }))
+    ];
+
+    return res.status(200).json({
+      source: 'sqlserver',
+      table: 'Depot_CountMaster',
+      data: counts,
+      counts,
+      count_names: counts.map((r) => r.count_name),
+      names: counts.map((r) => r.count_name),
+      values: counts.map((r) => r.count_name),
+      options: {
+        count_name: countOptions,
+        count: countOptions
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching blowroom header count dropdown from SQL Server:', error);
     next(error);
   }
 };
@@ -413,17 +439,6 @@ const ensureBrWasteStudyTables = async () => {
 
   await client.query(`
     ALTER TABLE blowroom.br_waste_study
-      ADD COLUMN IF NOT EXISTS flat_speed numeric(12,4),
-      ADD COLUMN IF NOT EXISTS delivery_speed numeric(12,4),
-      ADD COLUMN IF NOT EXISTS wing1_speed numeric(12,4),
-      ADD COLUMN IF NOT EXISTS wing2_speed numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_1 numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_2 numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_3 numeric(12,4);
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study
       ALTER COLUMN carding_production_kg TYPE numeric(12,4),
       ALTER COLUMN waste_kg TYPE numeric(12,4),
       ALTER COLUMN waste_percent TYPE numeric(12,4),
@@ -437,9 +452,6 @@ const ensureBrWasteStudyTables = async () => {
       row_no integer NOT NULL,
       cylinder_speed numeric(12,4),
       lickerin_speed numeric(12,4),
-      lickerin_speed_1 numeric(12,4),
-      lickerin_speed_2 numeric(12,4),
-      lickerin_speed_3 numeric(12,4),
       flat_speed numeric(12,4),
       doffer_speed numeric(12,4),
       delivery_speed numeric(12,4),
@@ -461,13 +473,6 @@ const ensureBrWasteStudyTables = async () => {
       ALTER COLUMN wing_setting_1 TYPE numeric(12,4),
       ALTER COLUMN wing_setting_2 TYPE numeric(12,4),
       ALTER COLUMN mc_production TYPE numeric(12,4);
-  `);
-
-  await client.query(`
-    ALTER TABLE blowroom.br_waste_study_type_rows
-      ADD COLUMN IF NOT EXISTS lickerin_speed_1 numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_2 numeric(12,4),
-      ADD COLUMN IF NOT EXISTS lickerin_speed_3 numeric(12,4);
   `);
 
   await client.query(`
@@ -624,6 +629,19 @@ router.get('/master/user-names', getEmployeeMasterDropdown);
 router.get('/master/checked-by', getEmployeeMasterDropdown);
 router.get('/master/checked-by-dropdown', getEmployeeMasterDropdown);
 router.get('/master/checked-by-names', getEmployeeMasterDropdown);
+router.get('/header/master/dropdown', getBlowroomHeaderMasterDropdown);
+router.get('/header/master/counts', getCountMasterDropdown);
+router.get('/header/master/count-dropdown', getCountMasterDropdown);
+router.get('/header/master/count-names', getCountMasterDropdown);
+router.get('/header/master/waste-types', getBlowroomWasteTypeDropdown);
+router.get('/header/master/waste-type-dropdown', getBlowroomWasteTypeDropdown);
+router.get('/header/master/employees', getEmployeeMasterDropdown);
+router.get('/header/master/employee-dropdown', getEmployeeMasterDropdown);
+router.get('/header/master/employee-names', getEmployeeMasterDropdown);
+router.get('/header/master/checked-by', getEmployeeMasterDropdown);
+router.get('/header/master/checked-by-dropdown', getEmployeeMasterDropdown);
+router.get('/header/master/checked-by-names', getEmployeeMasterDropdown);
+
 for (const notebookSlug of BLOWROOM_NOTEBOOK_SLUGS) {
   router.get(`/${notebookSlug}/master/varieties`, getMasterVarieties);
   router.get(`/${notebookSlug}/master/dropdown`, getMasterVarieties);
@@ -650,9 +668,7 @@ router.post('/master/waste-types', async (req, res, next) => {
     const saved = await upsertBlowroomWasteType(wasteType);
 
     if (!saved) {
-      return res.status(400).json({
-        message: `waste_type must be one of: ${BR_WASTE_TYPES.join(', ')}`
-      });
+      return res.status(400).json({ message: 'waste_type is required' });
     }
 
     return res.status(201).json({
@@ -809,20 +825,7 @@ router.get('/sync', async (req, res, next) => {
     await ensureSyncStatsView();
 
     const result = await client.query(`
-      SELECT s.*, st.*,
-        (
-          SELECT json_agg(
-            json_build_object(
-              'entry_no', e.entry_no,
-              'value_a', e.value_a,
-              'value_b', e.value_b,
-              'value_c', e.value_c,
-              'sync_percentage', e.sync_percentage
-            ) ORDER BY e.entry_no
-          )
-          FROM blowroom.blow_room_sync_entries e
-          WHERE e.sync_id = s.id
-        ) AS entries
+      SELECT s.*, st.*
       FROM blowroom.blow_room_sync s
       LEFT JOIN blowroom.sync_stats st
       ON s.id = st.sync_id
@@ -898,7 +901,6 @@ router.post('/drop-test', async (req, res, next) => {
       tuft_variety,
       display_weight,
       actual_weight,
-      average_weight,
       difference,
       ratio_percent
     } = req.body;
@@ -912,7 +914,6 @@ router.post('/drop-test', async (req, res, next) => {
 
     const displayWeightValue = toNumberOrNull(display_weight);
     const actualWeightValue = toNumberOrNull(actual_weight);
-    const averageWeightValue = toNumberOrNull(average_weight);
     const differenceValue = toNumberOrNull(difference) ??
       (displayWeightValue !== null && actualWeightValue !== null
         ? Number((actualWeightValue - displayWeightValue).toFixed(4))
@@ -924,10 +925,10 @@ router.post('/drop-test', async (req, res, next) => {
       `INSERT INTO blowroom.drop_test (
         drop_id, entry_id, date, variety, blend,
         tuft_no, tuft_variety,
-        display_weight, actual_weight, average_weight,
+        display_weight, actual_weight,
         difference, ratio_percent
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *`,
       [
         dropId,
@@ -939,7 +940,6 @@ router.post('/drop-test', async (req, res, next) => {
         tuft_variety,
         displayWeightValue,
         actualWeightValue,
-        averageWeightValue,
         differenceValue,
         ratioPercentValue
       ]
@@ -947,7 +947,7 @@ router.post('/drop-test', async (req, res, next) => {
 
     res.status(201).json({
       message: 'Drop test created successfully',
-      data: withScreenEntryId('drop_test', result.rows[0])
+      data: withoutDropId(withScreenEntryId('drop_test', result.rows[0]))
     });
 
   } catch (error) {
@@ -1106,13 +1106,6 @@ router.post('/br-waste-study', async (req, res, next) => {
       waste_kg,
       waste_percent,
       overall_percent,
-      flat_speed,
-      delivery_speed,
-      wing1_speed,
-      wing2_speed,
-      lickerin_speed_1,
-      lickerin_speed_2,
-      lickerin_speed_3,
       remarks
     } = req.body;
 
@@ -1132,13 +1125,6 @@ router.post('/br-waste-study', async (req, res, next) => {
     if (normalizedWasteRows.length > 25) {
       return res.status(400).json({ message: 'No. of waste types must be 25 or less' });
     }
-    const invalidWasteType = [waste_type, ...normalizedWasteRows.map((row) => row?.waste_type)]
-      .find((wt) => wt && !isOverallWasteRow(wt) && !isValidBrWasteType(wt));
-    if (invalidWasteType) {
-      return res.status(400).json({
-        message: `Invalid waste_type "${invalidWasteType}". Must be one of: ${BR_WASTE_TYPES.join(', ')}`
-      });
-    }
     const productionValue = toNumberOrNull(carding_production_kg);
     const wasteKgValue = toDecimal4OrNull(waste_kg) ??
       normalizedWasteRows.reduce((sum, row) => sum + (toDecimal4OrNull(row?.waste_kgs_value ?? row?.waste_kg) || 0), 0);
@@ -1149,71 +1135,31 @@ router.post('/br-waste-study', async (req, res, next) => {
       : wastePercentValue;
 
     await client.query('BEGIN');
-
-    const existingLookup = await client.query(
-      `SELECT id FROM blowroom.br_waste_study
-       WHERE (entry_id IS NOT NULL AND entry_id = $1)
-          OR (waste_study_id IS NOT NULL AND waste_study_id = $2)
-       LIMIT 1`,
-      [entry_id || null, waste_study_id || null]
+    const result = await client.query(
+      `INSERT INTO blowroom.br_waste_study (
+        entry_id, waste_study_id, date, variety, entry_type, study_type,
+        carding_production_kg, type_entries,
+        waste_type, waste_kg, waste_percent, overall_percent,
+        remarks
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+      )
+      RETURNING *`,
+      [
+        entry_id || waste_study_id || null,
+        waste_study_id || entry_id || null,
+        resolvedDate,
+        variety || null,
+        type || null,
+        study_type,
+        productionValue, Array.isArray(type_entries) ? type_entries.length : toNumberOrNull(type_entries),
+        waste_type, wasteKgValue, wastePercentValue, overallPercentValue,
+        remarks
+      ]
     );
-    const existingId = existingLookup.rowCount > 0 ? existingLookup.rows[0].id : null;
 
-    const studyValues = [
-      entry_id || waste_study_id || null,
-      waste_study_id || entry_id || null,
-      resolvedDate,
-      variety || null,
-      type || null,
-      study_type,
-      productionValue, Array.isArray(type_entries) ? type_entries.length : toNumberOrNull(type_entries),
-      waste_type, wasteKgValue, wastePercentValue, overallPercentValue,
-      remarks,
-      toDecimal4OrNull(flat_speed),
-      toDecimal4OrNull(delivery_speed),
-      toDecimal4OrNull(wing1_speed),
-      toDecimal4OrNull(wing2_speed),
-      toDecimal4OrNull(lickerin_speed_1),
-      toDecimal4OrNull(lickerin_speed_2),
-      toDecimal4OrNull(lickerin_speed_3)
-    ];
-
-    let study;
-    if (existingId) {
-      const result = await client.query(
-        `UPDATE blowroom.br_waste_study SET
-          entry_id = $1, waste_study_id = $2, date = $3, variety = $4, entry_type = $5, study_type = $6,
-          carding_production_kg = $7, type_entries = $8,
-          waste_type = $9, waste_kg = $10, waste_percent = $11, overall_percent = $12,
-          remarks = $13,
-          flat_speed = $14, delivery_speed = $15, wing1_speed = $16, wing2_speed = $17,
-          lickerin_speed_1 = $18, lickerin_speed_2 = $19, lickerin_speed_3 = $20
-        WHERE id = $21
-        RETURNING *`,
-        [...studyValues, existingId]
-      );
-      study = result.rows[0];
-      await client.query(`DELETE FROM blowroom.br_waste_study_type_rows WHERE study_id = $1`, [existingId]);
-      await client.query(`DELETE FROM blowroom.br_waste_study_waste_rows WHERE study_id = $1`, [existingId]);
-    } else {
-      const result = await client.query(
-        `INSERT INTO blowroom.br_waste_study (
-          entry_id, waste_study_id, date, variety, entry_type, study_type,
-          carding_production_kg, type_entries,
-          waste_type, waste_kg, waste_percent, overall_percent,
-          remarks,
-          flat_speed, delivery_speed, wing1_speed, wing2_speed,
-          lickerin_speed_1, lickerin_speed_2, lickerin_speed_3
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
-        )
-        RETURNING *`,
-        studyValues
-      );
-      study = result.rows[0];
-    }
-
+    const study = result.rows[0];
     const normalizedTypeRows = Array.isArray(type_rows) ? type_rows : (Array.isArray(type_entries) ? type_entries : []);
 
     const wasteTypesToSave = [
@@ -1222,7 +1168,6 @@ router.post('/br-waste-study', async (req, res, next) => {
     ];
 
     for (const wasteType of wasteTypesToSave) {
-      if (!wasteType || isOverallWasteRow(wasteType)) continue;
       await upsertBlowroomWasteType(wasteType);
     }
 
@@ -1230,16 +1175,13 @@ router.post('/br-waste-study', async (req, res, next) => {
       const row = normalizedTypeRows[i] || {};
       await client.query(
         `INSERT INTO blowroom.br_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           study.id,
           row.row_no ?? (i + 1),
           toNumberOrNull(row.cylinder_speed),
           toNumberOrNull(row.lickerin_speed),
-          toNumberOrNull(row.lickerin_speed_1),
-          toNumberOrNull(row.lickerin_speed_2),
-          toNumberOrNull(row.lickerin_speed_3),
           toNumberOrNull(row.flat_speed),
           toNumberOrNull(row.doffer_speed),
           toNumberOrNull(row.delivery_speed),
@@ -1270,8 +1212,8 @@ router.post('/br-waste-study', async (req, res, next) => {
 
     await client.query('COMMIT');
 
-    res.status(existingId ? 200 : 201).json({
-      message: existingId ? 'Waste study updated successfully' : 'Waste study created successfully',
+    res.status(201).json({
+      message: 'Waste study created successfully',
       data: withScreenEntryId('br_waste_study', study)
     });
   } catch (error) {
@@ -1282,211 +1224,7 @@ router.post('/br-waste-study', async (req, res, next) => {
     next(error);
   }});
 
-/**
- * @swagger
- * /blowroom/br-waste-study/{id}:
- *   put:
- *     summary: Update a BR Waste Study entry
- *     tags: [Blowroom]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Waste study updated successfully
- *       400:
- *         description: Invalid input
- *       404:
- *         description: Waste study entry not found
- *       409:
- *         description: Duplicate waste study ID
- *       500:
- *         description: Server error
- */
-router.put('/br-waste-study/:id', async (req, res, next) => {
-  try {
-    await ensureBrWasteStudyTables();
-
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id) || id <= 0) {
-      return res.status(400).json({ message: 'Invalid ID supplied' });
-    }
-
-    const existing = await client.query(
-      `SELECT id FROM blowroom.br_waste_study WHERE id = $1`,
-      [id]
-    );
-    if (existing.rowCount === 0) {
-      return res.status(404).json({ message: 'Waste study entry not found' });
-    }
-
-    const {
-      type,
-      entry_id,
-      waste_study_id,
-      date,
-      entry_date,
-      variety,
-      study_type,
-      carding_production_kg,
-      type_entries,
-      type_rows,
-      waste_rows,
-      waste_type,
-      waste_kg,
-      waste_percent,
-      overall_percent,
-      flat_speed,
-      delivery_speed,
-      wing1_speed,
-      wing2_speed,
-      lickerin_speed_1,
-      lickerin_speed_2,
-      lickerin_speed_3,
-      remarks
-    } = req.body;
-
-    const resolvedDate = toDateOrNull(date || entry_date || req.body.inspection_date);
-
-    if (!resolvedDate || !study_type) {
-      return res.status(400).json({ message: 'date and study_type are required' });
-    }
-    if (!entry_id && !waste_study_id) {
-      return res.status(400).json({ message: 'entry_id (or waste_study_id) is required and must be unique' });
-    }
-    if (!['Type 1', 'Type 2', 'Type 3'].includes(study_type)) {
-      return res.status(400).json({ message: "study_type must be 'Type 1', 'Type 2', or 'Type 3'" });
-    }
-
-    const normalizedWasteRows = Array.isArray(waste_rows) ? waste_rows : [];
-    if (normalizedWasteRows.length > 25) {
-      return res.status(400).json({ message: 'No. of waste types must be 25 or less' });
-    }
-    const invalidWasteType = [waste_type, ...normalizedWasteRows.map((row) => row?.waste_type)]
-      .find((wt) => wt && !isOverallWasteRow(wt) && !isValidBrWasteType(wt));
-    if (invalidWasteType) {
-      return res.status(400).json({
-        message: `Invalid waste_type "${invalidWasteType}". Must be one of: ${BR_WASTE_TYPES.join(', ')}`
-      });
-    }
-    const productionValue = toNumberOrNull(carding_production_kg);
-    const wasteKgValue = toDecimal4OrNull(waste_kg) ??
-      normalizedWasteRows.reduce((sum, row) => sum + (toDecimal4OrNull(row?.waste_kgs_value ?? row?.waste_kg) || 0), 0);
-    const wastePercentValue = toDecimal4OrNull(waste_percent) ?? percentOf(wasteKgValue, productionValue);
-    const providedOverallPercent = toDecimal4OrNull(overall_percent);
-    const overallPercentValue = providedOverallPercent && providedOverallPercent > 0
-      ? providedOverallPercent
-      : wastePercentValue;
-
-    await client.query('BEGIN');
-    const result = await client.query(
-      `UPDATE blowroom.br_waste_study SET
-        entry_id = $1, waste_study_id = $2, date = $3, variety = $4, entry_type = $5, study_type = $6,
-        carding_production_kg = $7, type_entries = $8,
-        waste_type = $9, waste_kg = $10, waste_percent = $11, overall_percent = $12,
-        remarks = $13,
-        flat_speed = $15, delivery_speed = $16, wing1_speed = $17, wing2_speed = $18,
-        lickerin_speed_1 = $19, lickerin_speed_2 = $20, lickerin_speed_3 = $21
-      WHERE id = $14
-      RETURNING *`,
-      [
-        entry_id || waste_study_id || null,
-        waste_study_id || entry_id || null,
-        resolvedDate,
-        variety || null,
-        type || null,
-        study_type,
-        productionValue, Array.isArray(type_entries) ? type_entries.length : toNumberOrNull(type_entries),
-        waste_type, wasteKgValue, wastePercentValue, overallPercentValue,
-        remarks,
-        id,
-        toDecimal4OrNull(flat_speed),
-        toDecimal4OrNull(delivery_speed),
-        toDecimal4OrNull(wing1_speed),
-        toDecimal4OrNull(wing2_speed),
-        toDecimal4OrNull(lickerin_speed_1),
-        toDecimal4OrNull(lickerin_speed_2),
-        toDecimal4OrNull(lickerin_speed_3)
-      ]
-    );
-
-    const study = result.rows[0];
-    const normalizedTypeRows = Array.isArray(type_rows) ? type_rows : (Array.isArray(type_entries) ? type_entries : []);
-
-    const wasteTypesToSave = [
-      waste_type,
-      ...normalizedWasteRows.map((row) => row?.waste_type)
-    ];
-
-    for (const wasteType of wasteTypesToSave) {
-      if (!wasteType || isOverallWasteRow(wasteType)) continue;
-      await upsertBlowroomWasteType(wasteType);
-    }
-
-    await client.query(`DELETE FROM blowroom.br_waste_study_type_rows WHERE study_id = $1`, [id]);
-    await client.query(`DELETE FROM blowroom.br_waste_study_waste_rows WHERE study_id = $1`, [id]);
-
-    for (let i = 0; i < normalizedTypeRows.length; i++) {
-      const row = normalizedTypeRows[i] || {};
-      await client.query(
-        `INSERT INTO blowroom.br_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-        [
-          id,
-          row.row_no ?? (i + 1),
-          toNumberOrNull(row.cylinder_speed),
-          toNumberOrNull(row.lickerin_speed),
-          toNumberOrNull(row.lickerin_speed_1),
-          toNumberOrNull(row.lickerin_speed_2),
-          toNumberOrNull(row.lickerin_speed_3),
-          toNumberOrNull(row.flat_speed),
-          toNumberOrNull(row.doffer_speed),
-          toNumberOrNull(row.delivery_speed),
-          toNumberOrNull(row.wing_setting_1),
-          toNumberOrNull(row.wing_setting_2),
-          row.mc_no ?? null,
-          toNumberOrNull(row.mc_production)
-        ]
-      );
-    }
-
-    for (let i = 0; i < normalizedWasteRows.length; i++) {
-      const row = normalizedWasteRows[i] || {};
-      await client.query(
-        `INSERT INTO blowroom.br_waste_study_waste_rows
-         (study_id, row_no, waste_type, waste_kgs_value, waste_kgs_percent)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [
-          id,
-          row.row_no ?? (i + 1),
-          row.waste_type ?? null,
-          toDecimal4OrNull(row.waste_kgs_value ?? row.waste_kg),
-          toDecimal4OrNull(row.waste_kgs_percent ?? row.waste_percent) ??
-            percentOf(row.waste_kgs_value ?? row.waste_kg, productionValue)
-        ]
-      );
-    }
-
-    await client.query('COMMIT');
-
-    res.status(200).json({
-      message: 'Waste study updated successfully',
-      data: withScreenEntryId('br_waste_study', study)
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate waste study ID. Please use a unique ID.' });
-    }
-    next(error);
-  }
-});
-
-/**
+/**xing
  * @swagger
  * /blowroom/br-waste-study:
  *   get:
@@ -1568,10 +1306,81 @@ router.get('/br-waste-study', async (req, res, next) => {
   }
  });
 
+ /**
+ * @swagger
+ * /blowroom/header:
+ *   post:
+ *     summary: Create Blowroom production entry
+ *     tags: [Blowroom]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - entry_id
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               entry_id:
+ *                 type: string
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               line_numbers:
+ *                 type: number
+ *               rotary_beater_speed:
+ *                 type: number
+ *               depth:
+ *                 type: number
+ *               mpm_delivery_speed:
+ *                 type: number
+ *               mpm_delivery_pascals:
+ *                 type: number
+ *               condensor_speed:
+ *                 type: number
+ *               rk_feed_roll_beater:
+ *                 type: number
+ *               rk_beater_speed:
+ *                 type: number
+ *               flexi_to_feed_roll_beater:
+ *                 type: number
+ *               flexi_beater_speed:
+ *                 type: number
+ *               scutcher_no:
+ *                 type: number
+ *               rk_mo_speed:
+ *                 type: number
+ *               kb_speed:
+ *                 type: number
+ *               grid_bar:
+ *                 type: number
+ *               lap_weight:
+ *                 type: number
+ *               uniclean:
+ *                 type: number
+ *               srs:
+ *                 type: number
+ *               rk_flexi:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Blowroom entry created successfully
+ *       500:
+ *         description: Server error
+ */
+
 router.post('/header', async (req, res, next) => {
   try {
     await ensureBlowroomEntryIdColumns();
     const {
+      entry_id,
       count_name,
       consignee_name,
       creation_date,
@@ -1594,26 +1403,8 @@ router.post('/header', async (req, res, next) => {
       srs,
       rk_flexi
     } = req.body;
-
-    if (!count_name || !consignee_name || !creation_date) {
-      return res.status(400).json({
-        message: 'count_name, consignee_name and creation_date are required'
-      });
-    }
-
-    let entry_id;
-    try {
-      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
-    } catch (idErr) {
-      if (idErr instanceof InvalidProcessParameterEntryIdError) {
-        return res.status(400).json({ message: idErr.message });
-      }
-      throw idErr;
-    }
-
-    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
-    if (conflictingCountName) {
-      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
     const result = await client.query(
@@ -1647,22 +1438,9 @@ router.post('/header', async (req, res, next) => {
       ]
     );
 
-    recordPpNotebookSubmission({
-      notebook: 'Blowroom Header',
-      department: 'Blowroom',
-      entryId: entry_id,
-      sourceSchema: 'blowroom',
-      sourceTable: 'blowroom_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date }
-    }).catch((err) => console.warn('[pp-notebook-log] Blowroom Header failed:', err.message));
-
     res.status(201).json({
       message: 'Blowroom entry created successfully',
-      data: result.rows[0],
-      entry_id,
-      process_parameter_id: entry_id
+      data: withProcessParameterId(result.rows[0])
     });
 
   } catch (error) {
@@ -1672,6 +1450,30 @@ router.post('/header', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /blowroom/header:
+ *   get:
+ *     summary: Get Blowroom production entries
+ *     tags: [Blowroom]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Blowroom data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
 
 router.get('/header', async (req, res, next) => {
   try {
@@ -1694,7 +1496,7 @@ router.get('/header', async (req, res, next) => {
     );
 
     res.status(200).json({
-      data: result.rows,
+      data: result.rows.map((row) => withProcessParameterId(row)),
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
       limit: limitNum
@@ -1705,15 +1507,105 @@ router.get('/header', async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /blowroom/header/{br_id}:
+ *   put:
+ *     summary: Update Blowroom production entry
+ *     tags: [Blowroom]
+ *     parameters:
+ *       - in: path
+ *         name: br_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Blowroom header ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               line_numbers:
+ *                 type: number
+ *               rotary_beater_speed:
+ *                 type: number
+ *               depth:
+ *                 type: number
+ *               mpm_delivery_speed:
+ *                 type: number
+ *               mpm_delivery_pascals:
+ *                 type: number
+ *               condensor_speed:
+ *                 type: number
+ *               rk_feed_roll_beater:
+ *                 type: number
+ *               rk_beater_speed:
+ *                 type: number
+ *               flexi_to_feed_roll_beater:
+ *                 type: number
+ *               flexi_beater_speed:
+ *                 type: number
+ *               scutcher_no:
+ *                 type: number
+ *               rk_mo_speed:
+ *                 type: number
+ *               kb_speed:
+ *                 type: number
+ *               grid_bar:
+ *                 type: number
+ *               lap_weight:
+ *                 type: number
+ *               uniclean:
+ *                 type: number
+ *               srs:
+ *                 type: number
+ *               rk_flexi:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Blowroom entry updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Blowroom entry updated successfully
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: Blowroom entry not found
+ *       500:
+ *         description: Server error
+ */
+
 router.put('/header/:br_id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.br_id, 10);
 
+    // ✅ ID validation
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
     }
 
     const {
+      entry_id,
       count_name,
       consignee_name,
       creation_date,
@@ -1737,9 +1629,79 @@ router.put('/header/:br_id', async (req, res, next) => {
       rk_flexi
     } = req.body;
 
+    // ✅ Required field validation
     if (!count_name || !consignee_name || !creation_date) {
       return res.status(400).json({
         message: 'count_name, consignee_name and creation_date are required'
+      });
+    }
+
+    const currentResult = await client.query(
+      `SELECT entry_id
+       FROM blowroom.blowroom_header
+       WHERE br_id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({
+        message: 'Blowroom entry not found'
+      });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO blowroom.blowroom_header (
+          entry_id, count_name, consignee_name, creation_date,
+          line_numbers, rotary_beater_speed, depth,
+          mpm_delivery_speed, mpm_delivery_pascals,
+          condensor_speed, rk_feed_roll_beater, rk_beater_speed,
+          flexi_to_feed_roll_beater, flexi_beater_speed,
+          scutcher_no, rk_mo_speed, kb_speed,
+          grid_bar, lap_weight, uniclean, srs, rk_flexi
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,$7,
+          $8,$9,
+          $10,$11,$12,
+          $13,$14,
+          $15,$16,$17,
+          $18,$19,$20,$21,$22
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          count_name,
+          consignee_name,
+          creation_date,
+          line_numbers,
+          rotary_beater_speed,
+          depth,
+          mpm_delivery_speed,
+          mpm_delivery_pascals,
+          condensor_speed,
+          rk_feed_roll_beater,
+          rk_beater_speed,
+          flexi_to_feed_roll_beater,
+          flexi_beater_speed,
+          scutcher_no,
+          rk_mo_speed,
+          kb_speed,
+          grid_bar,
+          lap_weight,
+          uniclean,
+          srs,
+          rk_flexi
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Blowroom entry created successfully',
+        data: withProcessParameterId(insertResult.rows[0])
       });
     }
 
@@ -1794,23 +1756,24 @@ router.put('/header/:br_id', async (req, res, next) => {
       ]
     );
 
+    // ✅ Not found case
     if (result.rowCount === 0) {
       return res.status(404).json({
         message: 'Blowroom entry not found'
       });
     }
 
+    // ✅ Success response
     res.status(200).json({
       message: 'Blowroom entry updated successfully',
-      data: result.rows[0],
-      entry_id: result.rows[0].entry_id,
-      process_parameter_id: result.rows[0].entry_id
+      data: withProcessParameterId(result.rows[0])
     });
 
   } catch (error) {
     if (isUniqueViolation(error)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
+    console.error(error); // helpful for debugging
     next(error);
   }
 });
@@ -1927,8 +1890,5 @@ const createLapCvRoutes = (tableName, routePath, screenLabel) => {
 
 createLapCvRoutes('within_lap_cv', '/within-lap-cv', 'Within Lap CV entry');
 createLapCvRoutes('between_lap_cv', '/between-lap-cv', 'Between Lap CV entry');
-
-router.get('/within-lap-cv/master/mc-nos', getBlowroomBrMachineDropdown);
-router.get('/between-lap-cv/master/mc-nos', getBlowroomBrMachineDropdown);
 
 module.exports = router;

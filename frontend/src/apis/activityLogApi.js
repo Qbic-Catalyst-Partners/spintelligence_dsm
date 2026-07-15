@@ -1,6 +1,6 @@
 import apiConfig from "./apiConfig";
 
-const ACTIVITY_LOG_ENDPOINTS = ["/activity-logs", "/activity-log", "/audit/activity-log"];
+const ACTIVITY_LOG_ENDPOINTS = ["/activity-log", "/activity-logs", "/audit/activity-log"];
 
 const requestWithFallbacks = async (path = "", params = {}) => {
   let lastError = null;

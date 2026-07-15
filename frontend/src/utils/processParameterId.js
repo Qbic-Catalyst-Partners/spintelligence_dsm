@@ -1,5 +1,4 @@
 import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
-import { fetchNextProcessParameterId } from "@/apis/processParameter";
 
 export const normalizeProcessParameterId = (value) => {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -42,22 +41,9 @@ const extractSequence = (value) => {
   return match ? Number(match[1]) || 0 : 0;
 };
 
-// The backend enforces that any PP id a client submits must fall within the
-// range it has actually issued (see resolveOrCreateProcessParameterEntryId in
-// backend/utils/processParameterEntryId.js) - anything else is rejected with
-// "Invalid or unrecognized Process Parameter ID". This must therefore always
-// ask the server for the next id rather than guessing locally; a client-side
-// counter (e.g. localStorage) inevitably drifts from the server's sequence
-// and produces ids the backend then rejects.
-export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
-  const serverNextId = await fetchNextProcessParameterId();
-  if (serverNextId) {
-    return normalizeProcessParameterId(serverNextId);
-  }
+const GLOBAL_PROCESS_PARAMETER_COUNTER_KEY = "pp-global-id-counter";
 
-  // Backend unreachable - fall back to a local best-effort guess so the form
-  // isn't completely blocked. This may still be rejected by the backend once
-  // reachable again, since it isn't guaranteed to match the real sequence.
+export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
   const prefix = String(fallbackPrefix || "PP").trim().toUpperCase();
   const width = Number(fallbackWidth) || 4;
 
@@ -69,7 +55,18 @@ export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fal
     return candidate > max ? candidate : max;
   }, 0);
 
-  const nextSequence = Math.max(1, highestSequence + 1);
+  let nextSequence = Math.max(1, highestSequence + 1);
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = Number(window.localStorage.getItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY)) || 0;
+      nextSequence = Math.max(nextSequence, stored + 1);
+      window.localStorage.setItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY, String(nextSequence));
+    } catch {
+      // fall back to the registry-based sequence when storage is unavailable
+    }
+  }
+
   return `${prefix}-${String(nextSequence).padStart(width, "0")}`;
 };
 

@@ -149,12 +149,6 @@
   max-width: 300px;
 }
 
-.formGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
 .rulesTable {
   display: grid;
   gap: 14px;
@@ -510,7 +504,7 @@
   border-bottom: 1px solid #c9d0db;
   text-align: left;
   color: #42516a;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   background: #f8fbff;
 }
@@ -519,7 +513,7 @@
   padding: 14px 12px;
   border-bottom: 1px solid #e4e9f2;
   color: #2b3951;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .statusBadge {
@@ -579,12 +573,8 @@
   display: block;
   margin-top: 8px;
   color: #1e293b;
-  font-size: 16px;
+  font-size: 40px;
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
 }
 
 .existingThresholdCard {
@@ -638,7 +628,7 @@
   background: #d2d2d5;
   border-bottom: none;
   color: #111111;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -654,7 +644,6 @@
   padding: 14px 12px;
   color: #111111;
   font-weight: 600;
-  font-size: 12px;
   vertical-align: top;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -688,13 +677,6 @@
   gap: 6px;
   cursor: pointer;
   user-select: none;
-  border: none;
-  background: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  text-align: left;
 }
 
 .expandableCellPrimary {
@@ -712,6 +694,9 @@
 }
 
 .expandableCellDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
   min-width: 180px;
   max-width: 260px;
   border: 1px solid #dbe2ec;
@@ -721,7 +706,7 @@
   padding: 6px;
   display: grid;
   gap: 4px;
-  z-index: 1000;
+  z-index: 2;
 }
 
 .expandableCellItem {
@@ -993,54 +978,4 @@
     width: 100%;
     justify-content: flex-end;
   }
-}
-
-.paginationBar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 16px 14px;
-}
-
-.paginationControls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.paginationButton,
-.paginationNumber {
-  min-width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 6px;
-  background: #edf0f4;
-  color: #4a5568;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.paginationNumber {
-  background: #d9e8fb;
-  color: #385b8c;
-}
-
-.paginationNumberActive {
-  background: #4f63b6;
-  color: #ffffff;
-}
-
-.paginationButton:disabled,
-.paginationNumber:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.doubleChevron {
-  margin-left: -7px;
 }

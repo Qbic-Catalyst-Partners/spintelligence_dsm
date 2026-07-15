@@ -109,8 +109,8 @@ export default function UserManagement() {
     }
 
     const fileName = file.name?.toLowerCase() || "";
-    if (!fileName.endsWith(".csv") && !fileName.endsWith(".xlsx")) {
-      setUploadMessage("Please upload a CSV or Excel (.xlsx) file.");
+    if (!fileName.endsWith(".csv")) {
+      setUploadMessage("Please upload a CSV file.");
       setUploadError(true);
       event.target.value = "";
       return;
@@ -146,14 +146,50 @@ export default function UserManagement() {
     uploadInputRef.current?.click();
   };
 
+  const escapeCsvValue = (value) => {
+    const text = String(value ?? "");
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
   const downloadBulkUploadTemplate = () => {
     try {
+      const headers = [
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+        "employee_id",
+        "role",
+        "department",
+        "designation",
+        "level",
+        "dob",
+      ];
+      const sampleRow = [
+        "Fazal",
+        "M",
+        "fazal.m@example.com",
+        "9876543210",
+        "ADMIN001",
+        "Admin",
+        "IT",
+        "Administrator",
+        "L2",
+        "1992-05-12",
+      ];
+
+      const csv = [headers, sampleRow]
+        .map((row) => row.map(escapeCsvValue).join(","))
+        .join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = "/templates/usermanagement_template.xlsx";
-      link.setAttribute("download", "usermanagement_template.xlsx");
+      link.href = url;
+      link.setAttribute("download", "usermanagement_template.csv");
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error(error);
       setUploadMessage("Template download failed. Please try again.");
@@ -267,7 +303,7 @@ export default function UserManagement() {
               ref={uploadInputRef}
               type="file"
               hidden
-              accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".csv,text/csv"
               onChange={handleBulkUpload}
             />
 
@@ -623,7 +659,7 @@ export default function UserManagement() {
                 <h2>Bulk Upload Users</h2>
               </div>
               <p className={styles.modalText}>
-                Download the Excel template, keep the same columns, then upload.
+                Download the CSV template, keep the same columns, then upload.
               </p>
 
               <div className={styles.modalActions}>

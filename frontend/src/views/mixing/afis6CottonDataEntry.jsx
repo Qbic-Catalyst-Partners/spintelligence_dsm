@@ -27,8 +27,6 @@ const NUMERIC_FIELDS = [
   { key: "l_n_cv_percent", label: "L(n)CV" },
   { key: "sfc_n_percent", label: "SCF(n)<12.70mm" },
   { key: "five_pct_l_n_mm", label: "5%L(n)" },
-  { key: "sc_nep_count_g", label: "SCN/gm" },
-  { key: "crimp_percent", label: "Crimp %" },
 ];
 
 const EMPTY_FORM = [...TEXT_FIELDS, ...NUMERIC_FIELDS].reduce(
@@ -86,8 +84,6 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
     l_n_cv_percent: Number(formData.l_n_cv_percent) || 0,
     sfc_n_percent: Number(formData.sfc_n_percent) || 0,
     five_pct_l_n_mm: Number(formData.five_pct_l_n_mm) || 0,
-    sc_nep_count_g: Number(formData.sc_nep_count_g) || 0,
-    crimp_percent: Number(formData.crimp_percent) || 0,
     machine_name: "AFIS-6",
     department: "Mixing",
     sub_department: "Quality Control",
@@ -205,11 +201,6 @@ const Afis6CottonDataEntry = forwardRef(function Afis6CottonDataEntry(
         {renderField(NUMERIC_FIELDS[6])}
         {renderField(NUMERIC_FIELDS[7])}
         {renderField(NUMERIC_FIELDS[8])}
-      </div>
-
-      <div className={styles["mixx-row"]}>
-        {renderField(NUMERIC_FIELDS[9])}
-        {renderField(NUMERIC_FIELDS[10])}
       </div>
     </div>
   );

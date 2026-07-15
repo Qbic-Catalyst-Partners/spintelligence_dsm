@@ -16,15 +16,7 @@ const PUBLIC_DEPARTMENT_PATHS = [
   /^\/drawframe\/yarn-cv\/(?:machine-numbers|master\/.*)(?:\/.*)?$/i,
   /^\/autoconer\/(?:master-data|master\/.*|count-master|employee-master)$/i,
   /^\/autoconer\/[^/]+\/master-data$/i,
-  /^\/autoconer\/[^/]+\/master\/.*$/i,
-  /^\/carding\/qc-header(?:\/.*)?$/i,
-  /^\/api\/carding\/qc-header(?:\/.*)?$/i,
-  /^\/carding\/(?:wrapping-carding-notebook|wrapping\/carding-notebook|carding-notebook\/wrapping)(?:\/.*)?$/i,
-  /^\/api\/carding\/(?:wrapping-carding-notebook|wrapping\/carding-notebook|carding-notebook\/wrapping)(?:\/.*)?$/i,
-  /^\/simplex\/(?:wrapping-simplex-notebook|wrapping\/simplex-notebook|simplex-notebook\/wrapping)(?:\/.*)?$/i,
-  /^\/api\/simplex\/(?:wrapping-simplex-notebook|wrapping\/simplex-notebook|simplex-notebook\/wrapping)(?:\/.*)?$/i,
-  /^\/drawframe\/(?:wrapping-drawframe-notebook|wrapping\/drawframe-notebook|drawframe-notebook\/wrapping)(?:\/.*)?$/i,
-  /^\/api\/drawframe\/(?:wrapping-drawframe-notebook|wrapping\/drawframe-notebook|drawframe-notebook\/wrapping)(?:\/.*)?$/i
+  /^\/autoconer\/[^/]+\/master\/.*$/i
 ];
 
 const isPublicDepartmentPath = (path) =>

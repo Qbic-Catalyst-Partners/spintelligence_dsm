@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { FaCheckCircle } from "react-icons/fa";
 import { FiTrash2 } from "react-icons/fi";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -335,6 +335,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   ref
 ) {
   const dispatch = useDispatch();
+  const user = useSelector((state) => state.auth?.user);
   const formSectionRef = useRef(null);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
@@ -407,8 +408,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
   useEffect(() => {
     loadVersions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryId]);
+  }, []);
 
   useEffect(() => {
     if (entryId) {
@@ -567,12 +567,13 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const buildPayload = () => ({
-    entry_id: String(entryId || form.paramId || savedProcessParameterId || "").trim() || undefined,
+    entry_id: String(form.paramId || entryId || savedProcessParameterId || "").trim() || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
     process_parameter: "Mixing",
     status: "DONE",
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     blends: form.rows.map((row, index) => ({
       blend_no: index + 1,
       percentage: parseNumberValue(row.blend),
@@ -591,10 +592,9 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     const response = form.versionId
       ? await updateMixingProcessParameterEntry(form.versionId, payload)
       : await mixingProcessParameterDataEntry(payload);
-    const savedEntry = response?.data || response;
 
-    const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId || savedProcessParameterId);
-    registerProcessParameterId(savedEntry, "Mixing", form.countName);
+    const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
+    registerProcessParameterId(response, "Mixing", form.countName);
     setSavedProcessParameterId(nextParamId);
     await loadVersions();
     dispatch(clearMixingState());
@@ -800,6 +800,20 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
           </div>
           {formContent}
         </div>
+        {savedVersionsPortal
+          ? createPortal(
+              <SavedVersionsSection
+                versions={versions}
+                form={form}
+                expandedVersionId={expandedVersionId}
+                onVersionSelect={handleVersionSelect}
+                onVersionToggle={handleVersionToggle}
+                loading={false}
+                errorMessage=""
+              />,
+              savedVersionsPortal
+            )
+          : null}
       </>
     );
   }

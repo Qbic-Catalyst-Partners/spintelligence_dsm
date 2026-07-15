@@ -137,7 +137,6 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const [inspectionDate, setInspectionDate] = useState("");
     const [inspectionTime, setInspectionTime] = useState("");
     const [testId, setTestId] = useState("");
-    const [ocrPrefilled, setOcrPrefilled] = useState(false);
     const [mcName, setMcName] = useState("CDG-05");
     const [machineOptions, setMachineOptions] = useState(defaultMachineOptions);
     const [inspectionType, setInspectionType] = useState("Within");
@@ -253,7 +252,6 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             if (nextInspectionType) setInspectionType(nextInspectionType);
             if (nextInspectionDate) setInspectionDate(nextInspectionDate);
             if (nextTestId) setTestId(nextTestId);
-            if (nextInspectionDate || nextTestId) setOcrPrefilled(true);
             setEntryCount(detectedEntryCount);
             setRows(nextRows);
             if (typeof window !== "undefined") {
@@ -328,7 +326,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
         const nextErrors = {};
 
         if (!selectedType) nextErrors.selectedType = true;
-        if (ocrPrefilled && !inspectionDate) nextErrors.inspectionDate = true;
+        if (!inspectionDate) nextErrors.inspectionDate = true;
         if (!mcName) nextErrors.mcName = true;
         if (!inspectionType) nextErrors.inspectionType = true;
         if (!String(entryCount || "").trim()) nextErrors.entryCount = true;
@@ -360,6 +358,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             inspection_type: inspectionType,
             mc_name: mcName,
             inspection_date: inspectionDate,
+            inspection_time: inspectionTime,
             test_id: testId,
             sample_weights: activeRows.map((row) => toNumber(row.sampleWeight)),
             hanks: activeRows.map((row) => toHankNumber(row.hank)),
@@ -402,10 +401,8 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "Entry ID", value: displayEntryId },
-        ...(ocrPrefilled ? [
-            { label: "Date", value: inspectionDate },
-            { label: "Test ID", value: testId },
-        ] : []),
+        { label: "Date", value: inspectionDate },
+        { label: "Test ID", value: testId },
         { label: "MC Name", value: mcName },
         { label: "Inspection Type", value: inspectionType },
         { label: "Number of Entries", value: entryCount },
@@ -446,42 +443,38 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                         </div>
                     </div>
 
-                    {ocrPrefilled && (
-                        <div className="bwc-form-group">
-                            <label>Date</label>
-                            <div className="bwc-input-icon-wrap">
-                                <input
-                                    type="date"
-                                    value={inspectionDate}
-                                    onChange={(e) => {
-                                        setInspectionDate(e.target.value);
-                                        setErrors((current) => {
-                                            const next = { ...current };
-                                            delete next.inspectionDate;
-                                            return next;
-                                        });
-                                    }}
-                                    className={errors.inspectionDate ? "bwc-error-field" : ""}
-                                />
-                            </div>
+                    <div className="bwc-form-group">
+                        <label>Date</label>
+                        <div className="bwc-input-icon-wrap">
+                            <input
+                                type="date"
+                                value={inspectionDate}
+                                onChange={(e) => {
+                                    setInspectionDate(e.target.value);
+                                    setErrors((current) => {
+                                        const next = { ...current };
+                                        delete next.inspectionDate;
+                                        return next;
+                                    });
+                                }}
+                                className={errors.inspectionDate ? "bwc-error-field" : ""}
+                            />
                         </div>
-                    )}
+                    </div>
 
-                    {ocrPrefilled && (
-                        <div className="bwc-form-group">
-                            <label>Test ID</label>
-                            <div className="bwc-input-icon-wrap">
-                                <input
-                                    type="text"
-                                    value={testId}
-                                    onChange={(e) => {
-                                        setTestId(e.target.value);
-                                    }}
-                                    placeholder="Enter Test ID"
-                                />
-                            </div>
+                    <div className="bwc-form-group">
+                        <label>Test ID</label>
+                        <div className="bwc-input-icon-wrap">
+                            <input
+                                type="text"
+                                value={testId}
+                                onChange={(e) => {
+                                    setTestId(e.target.value);
+                                }}
+                                placeholder="Enter Test ID"
+                            />
                         </div>
-                    )}
+                    </div>
 
                     <div className="bwc-form-group">
                         <label>MC Name</label>

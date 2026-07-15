@@ -174,63 +174,55 @@ export const fetchTicketDetailsApi = async (ticketId) => {
   }
 };
 
-const getOperatorTicketIdCandidates = (ticketId) => {
-  const id = String(ticketId || "").trim();
-  const withoutHash = id.replace(/^#/, "");
-  const withHash = withoutHash ? `#${withoutHash}` : "";
-  return Array.from(new Set([withoutHash, withHash].filter(Boolean)));
-};
-
-// Both L2 accept and reject now go through the single ticket-lifecycle endpoint:
-// PATCH /operator-tickets/:id/status with status "approved" / "rejected".
-// (Reject also restarts the L1 TAT clock and hides the ticket from L2 server-side.)
+// ✅ APPROVE TICKET
 export const approveTicketApi = async (ticketId) => {
-  const candidates = getOperatorTicketIdCandidates(ticketId);
-  let lastError = null;
-  for (const candidate of candidates) {
-    try {
-      const response = await apiConfig.patch(
-        `/operator-tickets/${encodeURIComponent(candidate)}/status`,
-        { status: "approved" },
-        { skipGlobalErrorModal: true }
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const response = await requestSupervisorApi(
+      "patch",
+      `/tickets/approve?ticketId=${encodeId}`,
+      { status: "APPROVED" }
+    );
+
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(
+        error.response.data.message || "Failed to approve ticket"
       );
-      return response.data;
-    } catch (error) {
-      lastError = error;
-      if (error?.response?.status !== 404) break;
     }
+    throw new Error(error.message || "Server error occurred");
   }
-  throw new Error(
-    lastError?.response?.data?.message ||
-      lastError?.response?.data?.error ||
-      lastError?.message ||
-      "Failed to approve ticket"
-  );
 };
 
+// ✅ REJECT TICKET
 export const rejectTicketApi = async (ticketId, reason) => {
-  const candidates = getOperatorTicketIdCandidates(ticketId);
-  const normalizedReason = String(reason || "").trim();
-  let lastError = null;
-  for (const candidate of candidates) {
-    try {
-      const response = await apiConfig.patch(
-        `/operator-tickets/${encodeURIComponent(candidate)}/status`,
-        { status: "rejected", reason: normalizedReason },
-        { skipGlobalErrorModal: true }
+  try {
+    const encodeId = encodeURIComponent(formatTicketId(ticketId));
+    const normalizedReason = String(reason || "").trim();
+
+    const payload = {
+      reason: normalizedReason,
+      rejection_reason: normalizedReason,
+      comments: normalizedReason,
+      remark: normalizedReason,
+      status: "REJECTED",
+    };
+    const response = await requestSupervisorApi(
+      "patch",
+      `/tickets/reject?ticketId=${encodeId}`,
+      payload
+    );
+
+    return response.data;
+  } catch (error) {
+    if (error.response && error.response.data) {
+      throw new Error(
+        error.response.data.message || "Failed to reject ticket"
       );
-      return response.data;
-    } catch (error) {
-      lastError = error;
-      if (error?.response?.status !== 404) break;
     }
+    throw new Error(error.message || "Server error occurred");
   }
-  throw new Error(
-    lastError?.response?.data?.message ||
-      lastError?.response?.data?.error ||
-      lastError?.message ||
-      "Failed to reject ticket"
-  );
 };
 
 export const acknowledgeTicketApi = async (ticketId) => {

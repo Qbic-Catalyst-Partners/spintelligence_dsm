@@ -16,20 +16,6 @@ const initialFilters = {
 };
 
 const getOptionValue = (option) => String(option?.value ?? option?.user_id ?? option?.user_name ?? "");
-
-// The backend's filter options can carry duplicate values (e.g. the same
-// user_id listed twice under two employee_id aliases), which would otherwise
-// render two <option>s with the same key/value — dedupe by value so React
-// keys stay unique and the dropdown doesn't show a confusing repeated entry.
-const dedupeOptions = (options) => {
-  const seen = new Set();
-  return (Array.isArray(options) ? options : []).filter((option) => {
-    const value = getOptionValue(option);
-    if (seen.has(value)) return false;
-    seen.add(value);
-    return true;
-  });
-};
 const getOptionLabel = (option) => {
   const name = String(
     option?.label ??
@@ -337,7 +323,7 @@ function ActivityLogs() {
               onChange={(event) => updateFilter("action", event.target.value)}
             >
               <option value="">All Actions</option>
-              {dedupeOptions(filterOptions.actions).map((option) => (
+              {filterOptions.actions.map((option) => (
                 <option key={getOptionValue(option)} value={getOptionValue(option)}>
                   {getOptionLabel(option)}
                 </option>
@@ -353,7 +339,7 @@ function ActivityLogs() {
               onChange={(event) => updateFilter("user", event.target.value)}
             >
               <option value="">All Users</option>
-              {dedupeOptions(filterOptions.users).map((option) => (
+              {filterOptions.users.map((option) => (
                 <option key={getOptionValue(option)} value={getOptionValue(option)}>
                   {getOptionLabel(option)}
                 </option>
@@ -369,7 +355,7 @@ function ActivityLogs() {
               onChange={(event) => updateFilter("notebook", event.target.value)}
             >
               <option value="">All Notebooks</option>
-              {dedupeOptions(filterOptions.notebook_types).map((option) => (
+              {filterOptions.notebook_types.map((option) => (
                 <option key={getOptionValue(option)} value={getOptionValue(option)}>
                   {getOptionLabel(option)}
                 </option>
@@ -385,7 +371,7 @@ function ActivityLogs() {
               onChange={(event) => updateFilter("sub_department", event.target.value)}
             >
               <option value="">All Sub Departments</option>
-              {dedupeOptions(filterOptions.sub_departments).map((option) => (
+              {filterOptions.sub_departments.map((option) => (
                 <option key={getOptionValue(option)} value={getOptionValue(option)}>
                   {getOptionLabel(option)}
                 </option>

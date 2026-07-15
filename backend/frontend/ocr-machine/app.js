@@ -51,10 +51,7 @@ const jsonOutput      = $('jsonOutput');
 const copyJsonBtn     = $('copyJsonBtn');
 
 const sectionForm     = $('sectionForm');
-const metaGrid        = $('metaGrid');
 const formGrid        = $('formGrid');
-const inspectionTypeInput = $('inspectionTypeInput');
-const testIdInput = $('testIdInput');
 const formAlert       = $('formAlert');
 const hviForm         = $('hviForm');
 const saveBtn         = $('saveBtn');
@@ -250,7 +247,6 @@ function resetResults() {
   state.ocrResult = null;
   state.effectiveDocType = null;
   state.savedId = null;
-  if (metaGrid) metaGrid.classList.add('hidden');
 }
 
 // ── OCR trigger ───────────────────────────────────────────────────────────────
@@ -373,15 +369,6 @@ function populateResults(result) {
   // 3d: Build form
   buildForm(result.json_output || {});
   sectionForm.classList.remove('hidden');
-
-  if (state.effectiveDocType === 'bwc') {
-    metaGrid.classList.remove('hidden');
-    const meta = result.metadata || {};
-    if (inspectionTypeInput) inspectionTypeInput.value = meta.inspection_type || (String(result.raw_text || '').toLowerCase().includes('between') ? 'Between' : 'Within');
-    if (testIdInput) testIdInput.value = meta.test_id || '';
-  } else {
-    metaGrid.classList.add('hidden');
-  }
 
   // Scroll to results
   setTimeout(() => sectionResults.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
@@ -565,9 +552,6 @@ async function saveRecord() {
     ocr_json: state.ocrResult?.json_output || {},
     manual_json: manualJson,
     doc_type: state.effectiveDocType || docTypeSelect.value,
-    inspection_type: inspectionTypeInput?.value?.trim() || 'Within',
-    test_id: testIdInput?.value?.trim() || '',
-    type_category: 'Between & Within Card Data Entry',
   };
 
   try {

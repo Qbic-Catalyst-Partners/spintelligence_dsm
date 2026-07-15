@@ -14,18 +14,15 @@ import { useDispatch, useSelector } from "react-redux";
 import {
   fetchRoles,
   fetchDepartments,
-  fetchUsers,
   addUser,
   clearActionState,
 } from "../../store/slices/userSlice";
-
-const EMPLOYEE_TYPES = ["EMP", "SUP", "ADMIN"];
 
 export default function UmAddUser() {
   const dispatch = useDispatch();
   const router = useRouter();
 
-  const { roles, departments, users, actionLoading, error, actionSuccess } =
+  const { roles, departments, actionLoading, error, actionSuccess } =
     useSelector((state) => state.users);
 
   const [localError, setLocalError] = useState("");
@@ -39,38 +36,16 @@ export default function UmAddUser() {
     email: "",
     phone: "",
     employee_id: "",
-    employee_type: "",
     role: "",
     department: "",
-    top_department: "",
     level: "",
   });
-
-  const topDepartmentOptions = ["Quality Control", "Electrical", "Mechanical"];
 
   // FETCH DROPDOWN DATA
   useEffect(() => {
     dispatch(fetchRoles());
     dispatch(fetchDepartments());
-    dispatch(fetchUsers());
   }, [dispatch]);
-
-  // AUTO-GENERATE EMPLOYEE ID FROM SELECTED TYPE
-  useEffect(() => {
-    if (!formData.employee_type) return;
-
-    const prefix = formData.employee_type;
-    const maxNumber = users.reduce((max, user) => {
-      const match = String(user.employeeId || "").match(
-        new RegExp(`^${prefix}(\\d+)$`)
-      );
-      if (!match) return max;
-      return Math.max(max, parseInt(match[1], 10));
-    }, 0);
-
-    const nextNumber = String(maxNumber + 1).padStart(3, "0");
-    setFormData((prev) => ({ ...prev, employee_id: `${prefix}${nextNumber}` }));
-  }, [formData.employee_type, users]);
 
   // SUCCESS REDIRECT
   useEffect(() => {
@@ -115,9 +90,7 @@ export default function UmAddUser() {
       !formData.email ||
       !formData.phone ||
       !formData.employee_id ||
-      !formData.employee_type ||
       !formData.role ||
-      !formData.top_department ||
       !formData.department ||
       !formData.level ||
       !password
@@ -182,27 +155,9 @@ export default function UmAddUser() {
                 <input name="phone" placeholder="Enter mobile number" onChange={handleChange} />
               </div>
 
-              <div className={styles.formGroup}>
-                <label>Employee Type <span>*</span></label>
-                <select name="employee_type" value={formData.employee_type} onChange={handleChange}>
-                  <option value="">Select employee type</option>
-                  {EMPLOYEE_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.formGroup}>
+              <div className={`${styles.formGroup} ${styles.full}`}>
                 <label>Employee ID <span>*</span></label>
-                <input
-                  name="employee_id"
-                  value={formData.employee_id}
-                  placeholder="Select employee type first"
-                  readOnly
-                  disabled
-                />
+                <input name="employee_id" placeholder="Enter Employee ID" onChange={handleChange} />
               </div>
             </div>
           </div>
@@ -216,21 +171,21 @@ export default function UmAddUser() {
 
             <div className={styles.grid}>
               <div className={styles.formGroup}>
-                <label>Department <span>*</span></label>
-                <select name="top_department" value={formData.top_department} onChange={handleChange}>
-                  <option value="">Select department</option>
-                  {topDepartmentOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                <label>Role Selection <span>*</span></label>
+                <select name="role" value={formData.role} onChange={handleChange}>
+                  <option value="">Select user role</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.role_name || r.name || ""}>
+                      {r.role_name || r.name || "-"}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className={styles.formGroup}>
-                <label>Sub-Department <span>*</span></label>
+                <label>Department <span>*</span></label>
                 <select name="department" value={formData.department} onChange={handleChange}>
-                  <option value="">Select sub-department</option>
+                  <option value="">Select department</option>
                   {departments.map((department) => (
                     <option key={department.id} value={department.name}>
                       {department.name}
@@ -245,18 +200,6 @@ export default function UmAddUser() {
                   <option value="">Select level</option>
                   <option value="L1">L1</option>
                   <option value="L2">L2</option>
-                </select>
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>Role Selection <span>*</span></label>
-                <select name="role" value={formData.role} onChange={handleChange}>
-                  <option value="">Select user role</option>
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.role_name || r.name || ""}>
-                      {r.role_name || r.name || "-"}
-                    </option>
-                  ))}
                 </select>
               </div>
             </div>

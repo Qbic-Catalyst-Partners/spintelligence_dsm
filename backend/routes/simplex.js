@@ -1,8 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
-const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
@@ -11,9 +9,7 @@ const SCREEN_ID_PREFIXES = {
   smx_cots_change: 'SX',
   study: 'SS',
   uqc: 'SU',
-  // process_parameter intentionally has no prefix here — it must only ever surface the
-  // real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
-  // id collides with the shared Process Parameter scheme.
+  process_parameter: 'SP',
   wrapping_simplex_notebook: 'WS',
   simplex_wheel_change: 'SWC'
 };
@@ -22,17 +18,14 @@ const formatScreenEntryId = (screenKey, rawId) => {
   const prefix = SCREEN_ID_PREFIXES[screenKey];
   const numericId = Number(rawId);
   if (!prefix || !Number.isFinite(numericId)) return null;
-  return `${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
+  return `#${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
 };
 
 const withScreenEntryId = (screenKey, record, idField = 'id') => {
   if (!record || typeof record !== 'object') return record;
+  if (record.entry_id) return { ...record };
   const entry_id = formatScreenEntryId(screenKey, record[idField]);
-  if (!entry_id) return { ...record };
-  if (record.entry_id && String(record.entry_id).trim().toUpperCase() === entry_id.toUpperCase()) {
-    return { ...record, entry_id };
-  }
-  return { ...record, entry_id };
+  return entry_id ? { ...record, entry_id } : { ...record };
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
 // These Simplex tables store created_at/updated_at as `timestamp WITHOUT time zone` with a bare
@@ -100,115 +93,6 @@ const normalizeBreakItemName = (value) => {
   if (raw.toUpperCase() === 'SILVER BREAKS') return 'SLIVER BREAKS';
   return raw;
 };
-// Column order/labels mirror SMXBreaksStudyReport.jsx's breakColumns/breakRows exactly, so the
-// pivoted keys line up with the "SMX Breaks Study Report" catalog entry in fieldCatalog.js.
-const SMX_BREAK_CATEGORIES = [
-  'Roving Breaks at Finger',
-  'Roving Breaks at Front Roller Nip',
-  'Roving Breaks at Between Flyer',
-  'Undraft',
-  'Top Roller Lapping',
-  'Bottom Roller Lapping',
-  'SLIVER BREAKS',
-  'Can Exhaust',
-  'Unknown Stop'
-];
-const SMX_LENGTH_BUCKETS = [
-  '0-200', '201-400', '401-600', '601-800', '801-1000', '1001-1200', '1201-1400',
-  '1401-1600', '1601-1800', '1801-2000', '2001-2200', '2201-2400', '2401-2600'
-];
-const SMX_PERCENT_CATEGORIES = SMX_BREAK_CATEGORIES.slice(0, SMX_BREAK_CATEGORIES.indexOf('SLIVER BREAKS') + 1);
-const normalizeSmxLengthRange = (value) => String(value || '').replace(/\s*-\s*/g, '-').trim();
-const countCommaEntries = (value) => parseBreakArray(value).length;
-
-const buildSmxBreaksStudyRow = (header, items, otherRow) => {
-  const cellByKey = new Map();
-  (items || []).forEach((item) => {
-    if (!item?.length_range) return;
-    const category = normalizeBreakItemName(item.item_name);
-    const bucket = normalizeSmxLengthRange(item.length_range);
-    cellByKey.set(`${category}::${bucket}`, item.status_value);
-  });
-
-  // remarks is a ' | '-joined string: a leading JSON blob (tpi, tpm, mixing, etc — everything
-  // the form's own remarks payload carries) followed by plain KEY:VALUE tags the backend itself
-  // appends on write (S.NAME, START, END, TOTAL_MINUTES — see the /study POST handler). Start
-  // Time in particular only ever lands in the KEY:VALUE tags, never in the JSON blob, so both
-  // sources have to be parsed.
-  let extra = {};
-  const remarksSegments = String(otherRow?.remarks || '').split(' | ');
-  try {
-    extra = JSON.parse(remarksSegments[0]);
-  } catch (_) {
-    extra = {};
-  }
-  const remarksTags = {};
-  remarksSegments.slice(1).forEach((segment) => {
-    const separatorIndex = segment.indexOf(':');
-    if (separatorIndex === -1) return;
-    remarksTags[segment.slice(0, separatorIndex).trim().toUpperCase()] = segment.slice(separatorIndex + 1).trim();
-  });
-
-  const runningSpindles = Number(extra.running_spdl);
-  const totalMinutes = Number(extra.total_time_in_mins ?? extra.total_time ?? remarksTags.TOTAL_MINUTES);
-
-  const row = {
-    id: header.id,
-    entry_date: header.entry_date,
-    created_at: header.created_at,
-    'Simplex No.': header.s_no,
-    Date: header.entry_date,
-    'Sider Name': header.operator_name || remarksTags['S.NAME'] || null,
-    'Start Time': extra.start_time ?? remarksTags.START ?? null,
-    'End Time': extra.end_time ?? remarksTags.END ?? null,
-    'Total Minutes': extra.total_time_in_mins ?? extra.total_time ?? remarksTags.TOTAL_MINUTES ?? null,
-    TPI: extra.tpi ?? null,
-    TPM: extra.tpm ?? null,
-    'Average Speed': extra.average_speed ?? null,
-    'Start HK': extra.start_hk ?? remarksTags.START_HK ?? null,
-    'Finish HK': extra.finish_hk ?? remarksTags.FINISH_HK ?? null,
-    Hank: extra.hank ?? null,
-    Mixing: extra.mixing ?? null,
-    'Roving HK': extra.roving_hk ?? null,
-    'Doff Length': extra.doff_length ?? null,
-    'RH%': extra.rh_percent ?? null,
-    'TEMP%': extra.temp_percent ?? null,
-    'Total Spindles': extra.total_spdl ?? null,
-    'Running Spindles': extra.running_spdl ?? null,
-    'Idle Spindles': extra.idle_spindles ?? null
-  };
-
-  const columnTotals = {};
-  SMX_BREAK_CATEGORIES.forEach((category) => {
-    let total = 0;
-    SMX_LENGTH_BUCKETS.forEach((bucket) => {
-      const raw = cellByKey.get(`${category}::${bucket}`);
-      row[`Length ${bucket} - ${category}`] = raw ?? null;
-      total += countCommaEntries(raw);
-    });
-    columnTotals[category] = total;
-    row[`Total Breaks - ${category}`] = total;
-  });
-
-  const grandTotal = Object.values(columnTotals).reduce((sum, value) => sum + value, 0);
-  row['Grand Total'] = grandTotal;
-
-  SMX_PERCENT_CATEGORIES.forEach((category) => {
-    const rate = Number.isFinite(runningSpindles) && runningSpindles > 0
-      ? Number(((columnTotals[category] * 100) / runningSpindles).toFixed(2))
-      : 0;
-    row[`No. of Breaks per 100 Spindles / Hr - ${category}`] = rate;
-  });
-
-  const totalRate = Number.isFinite(runningSpindles) && runningSpindles > 0
-    && Number.isFinite(totalMinutes) && totalMinutes > 0 && grandTotal > 0
-    ? Number(((grandTotal * 100) / (runningSpindles * (totalMinutes / 60))).toFixed(2))
-    : 0;
-  row['Total No. of Breaks/100SH'] = totalRate;
-
-  return row;
-};
-
 const parseHHMM = (value) => {
   const raw = String(value ?? '').trim();
   const m = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
@@ -247,33 +131,6 @@ const toNullableNumber = (value) => {
   if (value === '' || value === null || value === undefined) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-};
-
-const pickText = (value) => {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string' || typeof value === 'number') {
-    return String(value).trim();
-  }
-  if (typeof value === 'object') {
-    return String(
-      value.value ??
-      value.label ??
-      value.text ??
-      value.name ??
-      value.count_name ??
-      value.consignee_name ??
-      ''
-    ).trim();
-  }
-  return String(value).trim();
-};
-
-const pickFirstText = (...values) => {
-  for (const value of values) {
-    const text = pickText(value);
-    if (text) return text;
-  }
-  return '';
 };
 
 const ensureWrappingSimplexNotebookTable = async () => {
@@ -375,39 +232,12 @@ const ensureSimplexEntryIdColumns = async () => {
   await ensureSimplexTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE IF EXISTS simplex.simplex_inspections
-      ADD COLUMN IF NOT EXISTS entry_id text,
-      ADD COLUMN IF NOT EXISTS type text,
-      ADD COLUMN IF NOT EXISTS entry_date date,
-      ADD COLUMN IF NOT EXISTS machine_name text;
-  `);
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.simplex_inspections
-      ALTER COLUMN s_no DROP NOT NULL;
+      ADD COLUMN IF NOT EXISTS entry_id text;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS simplex_inspections_entry_id_uq
     ON simplex.simplex_inspections (entry_id)
     WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS simplex.simplex_inspection_details (
-      id BIGSERIAL PRIMARY KEY,
-      inspection_id BIGINT NOT NULL,
-      item_name TEXT,
-      status_value TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.simplex_inspection_details
-      ADD COLUMN IF NOT EXISTS inspection_id BIGINT,
-      ADD COLUMN IF NOT EXISTS item_name TEXT,
-      ADD COLUMN IF NOT EXISTS status_value TEXT,
-      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS simplex_inspection_details_inspection_id_idx
-    ON simplex.simplex_inspection_details (inspection_id);
   `);
   await client.query(`
     ALTER TABLE IF EXISTS simplex.smx_breaks_study_header
@@ -417,10 +247,6 @@ const ensureSimplexEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS smx_breaks_study_header_entry_id_uq
     ON simplex.smx_breaks_study_header (entry_id)
     WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE IF EXISTS simplex.smx_breaks_inspection_items
-      ADD COLUMN IF NOT EXISTS length_range text;
   `);
   await client.query(`
     ALTER TABLE IF EXISTS simplex.u_data_entry
@@ -1229,6 +1055,16 @@ router.get('/uqc/master/machine-numbers', getSimplexUqcMasterDropdown);
 router.get('/uqc/master/counts', getCountMasterDropdown);
 router.get('/uqc/master/count-dropdown', getCountMasterDropdown);
 router.get('/uqc/master/count-names', getCountMasterDropdown);
+router.get('/process_parameter/master/counts', getCountMasterDropdown);
+router.get('/process_parameter/master/count-dropdown', getCountMasterDropdown);
+router.get('/process_parameter/master/count-names', getCountMasterDropdown);
+router.get('/process_parameter/master-data', getCountMasterDropdown);
+router.get('/process_parameter/master/dropdown', getCountMasterDropdown);
+router.get('/process-parameter/master/counts', getCountMasterDropdown);
+router.get('/process-parameter/master/count-dropdown', getCountMasterDropdown);
+router.get('/process-parameter/master/count-names', getCountMasterDropdown);
+router.get('/process-parameter/master-data', getCountMasterDropdown);
+router.get('/process-parameter/master/dropdown', getCountMasterDropdown);
 router.get('/study/master/employees', getEmployeeMasterDropdown);
 router.get('/study/master/employee-dropdown', getEmployeeMasterDropdown);
 router.get('/study/master/operator-names', getEmployeeMasterDropdown);
@@ -1254,6 +1090,7 @@ router.get('/SMXCotsChange/master/dropdown', getSimplexUqcMasterDropdown);
  *             type: object
  *             required:
  *               - type
+ *               - s_no
  *               - entry_date
  *               - machine_name
  *               - items
@@ -1261,6 +1098,9 @@ router.get('/SMXCotsChange/master/dropdown', getSimplexUqcMasterDropdown);
  *               type:
  *                 type: string
  *                 example: SMXCots Change Data Entry
+ *               s_no:
+ *                 type: string
+ *                 example: "2"
  *               entry_date:
  *                 type: string
  *                 format: date
@@ -1275,10 +1115,13 @@ router.get('/SMXCotsChange/master/dropdown', getSimplexUqcMasterDropdown);
  *                   properties:
  *                     item_name:
  *                       type: string
- *                       example: Front Cots Damage
+ *                       example: Cots Damage
  *                     status_value:
  *                       type: string
- *                       example: Damaged
+ *                       example: OK
+ *                     remarks:
+ *                       type: string
+ *                       example: Good condition
  *     responses:
  *       201:
  *         description: Saved successfully
@@ -1296,15 +1139,14 @@ const saveSimplexCotsChange = async (req, res) => {
     const {
       entry_id,
       type,
+      s_no,
       entry_date,
       machine_name,
       items
     } = req.body;
 
-    if (!type || !entry_date || !machine_name || !Array.isArray(items) || !items.length) {
-      return res.status(400).json({
-        message: 'Missing required fields: type, entry_date, machine_name, items'
-      });
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
     await client.query('BEGIN');
@@ -1312,29 +1154,27 @@ const saveSimplexCotsChange = async (req, res) => {
     // ✅ Insert header
     const headerResult = await client.query(
       `INSERT INTO simplex.simplex_inspections
-       (entry_id, type, entry_date, machine_name)
-       VALUES ($1,$2,$3,$4)
+       (entry_id, type, s_no, entry_date, machine_name)
+       VALUES ($1,$2,$3,$4,$5)
        RETURNING id`,
-      [entry_id || null, type, entry_date, machine_name]
+      [entry_id, type, s_no, entry_date, machine_name]
     );
 
     const inspection_id = headerResult.rows[0].id;
-    const normalizedItems = [];
 
     // ✅ Insert items
     for (const item of items) {
-      const item_name = String(item?.item_name || '').trim();
-      const status_value = item?.status_value ?? null;
-      if (!item_name) {
-        throw new Error('Each item must include item_name');
-      }
       await client.query(
         `INSERT INTO simplex.simplex_inspection_details
-         (inspection_id, item_name, status_value)
-         VALUES ($1,$2,$3)`,
-        [inspection_id, item_name, status_value]
+         (inspection_id, item_name, status_value, remarks)
+         VALUES ($1,$2,$3,$4)`,
+        [
+          inspection_id,
+          item.item_name,
+          item.status_value,
+          item.remarks
+        ]
       );
-      normalizedItems.push({ item_name, status_value });
     }
 
     await client.query('COMMIT');
@@ -1342,11 +1182,7 @@ const saveSimplexCotsChange = async (req, res) => {
     res.status(201).json({
       message: 'Saved successfully',
       inspection_id,
-      entry_id,
-      type,
-      entry_date,
-      machine_name,
-      items: normalizedItems
+      entry_id
     });
 
   } catch (err) {
@@ -1355,11 +1191,7 @@ const saveSimplexCotsChange = async (req, res) => {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
     console.error(err);
-    res.status(500).json({
-      message: 'Save failed',
-      error: err.message,
-      code: err.code
-    });
+    res.status(500).json({ message: 'Save failed' });
   }
 };
 
@@ -1400,12 +1232,10 @@ router.post('/cots-change-data-entry', saveSimplexCotsChange);
  *               data:
  *                 - id: 1
  *                   type: SMXCots Change Data Entry
+ *                   s_no: "2"
  *                   entry_date: "2026-04-01"
  *                   machine_name: MC-01
  *                   created_at: "2026-04-01T10:00:00.000Z"
- *                   items:
- *                     - item_name: Front Cots Damage
- *                       status_value: Damaged
  *       500:
  *         description: Server error
  */
@@ -1449,10 +1279,7 @@ const getSimplexCotsChange = async (req, res) => {
       total,
       page,
       limit,
-      data: result.rows.map((row) => withScreenEntryId('smx_cots_change', {
-        ...row,
-        items: Array.isArray(row.items) ? row.items : []
-      }))
+      data: result.rows.map((row) => withScreenEntryId('smx_cots_change', row))
     });
 
   } catch (err) {
@@ -1556,12 +1383,13 @@ router.get('/study/master/machine-names', getStudyMachineNamesFromSpxCots);
  *         application/json:
  *           schema:
  *             type: object
-*             required:
-*               - s_no
-*               - entry_date
-*               - machine_name
-*               - operator_name
-*             properties:
+ *             required:
+ *               - s_no
+ *               - entry_date
+ *               - machine_name
+ *               - operator_name
+ *               - shift
+ *             properties:
  *               s_no:
  *                 type: string
  *                 example: "1"
@@ -1573,9 +1401,10 @@ router.get('/study/master/machine-names', getStudyMachineNamesFromSpxCots);
  *                 example: MC-01
  *               operator_name:
  *                 type: string
-*               shift:
-*                 type: string
-*               inspection_items:
+ *               shift:
+ *                 type: string
+ *                 enum: [A, B, C]
+ *               inspection_items:
  *                 type: array
  *                 items:
  *                   type: object
@@ -1641,17 +1470,10 @@ router.post('/study', async (req, res, next) => {
       operator_name,
       shift,
       inspection_items,
-      items,
       user_fiber_parameters,
       epi_parameters,
       other_field_values
     } = req.body;
-    // The current SMX Breaks Study Report form (SMXBreaksStudyReport.jsx) posts the break-matrix
-    // cells under `items`, one row per (break category x length range) cell — `inspection_items`
-    // is kept as an accepted alias for older/other callers that send one row per category.
-    const breakMatrixItems = Array.isArray(inspection_items) ? inspection_items : items;
-    const normalizedShift = String(shift || '').trim();
-    const resolvedInspectionItems = Array.isArray(items) ? items : inspection_items;
 
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -1681,26 +1503,22 @@ router.post('/study', async (req, res, next) => {
        (entry_id, s_no, entry_date, machine_name, operator_name, shift)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [entry_id, s_no, entry_date, machine_name, operator_name, normalizedShift || null]
+      [entry_id, s_no, entry_date, machine_name, operator_name, shift]
     );
 
     const study_id = headerResult.rows[0].id;
 
-    // Each item is one (break category x length range) cell — item_name is the category,
-    // length_range is the bucket (e.g. "0 - 200"), status_value is the cell's raw text (which
-    // may itself be a comma-separated list of break events). Stored as-is; the report screen
-    // (GET /list) derives all totals/rates fresh from these raw cells rather than from
-    // pre-computed summary rows, so there's a single source of truth for the math.
+    const normalizedItems = [];
+    const breakTotalsByColumn = [];
     let grandTotalBreaks = 0;
     let includeInGrandTotal = true;
     const STOP_AT = 'SLIVER BREAKS';
 
     // Insert inspection items
     let derivedBreakCount = 0;
-    if (resolvedInspectionItems && Array.isArray(resolvedInspectionItems)) {
-      for (const item of resolvedInspectionItems) {
+    if (inspection_items && Array.isArray(inspection_items)) {
+      for (const item of inspection_items) {
         const normalizedName = normalizeBreakItemName(item?.item_name);
-        const lengthRange = item?.length_range ? String(item.length_range).trim() : null;
         const breakArray = parseBreakArray(item?.status_value).map((v) => String(toWholeNumberOrNull(v) ?? 0));
         const columnTotal = breakArray.length;
         const statusValue = breakArray.length ? toPgArrayLiteral(breakArray) : toWholeNumberOrNull(item?.status_value);
@@ -1712,17 +1530,18 @@ router.post('/study', async (req, res, next) => {
         }
         await client.query(
           `INSERT INTO simplex.smx_breaks_inspection_items
-           (study_id, item_name, length_range, status_value, remarks)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [study_id, normalizedName, lengthRange, statusValue, item.remarks || null]
+           (study_id, item_name, status_value, remarks)
+           VALUES ($1, $2, $3, $4)`,
+          [study_id, normalizedName, statusValue, item.remarks || null]
         );
-        normalizedItems.push({ item_name: normalizedName, length_range: lengthRange, status_value: statusValue });
+        normalizedItems.push({ item_name: normalizedName, status_value: statusValue });
       }
     }
 
     const startTime = parseHHMM(req.body?.start_time || other_field_values?.start_time);
     const endTime = parseHHMM(req.body?.end_time || other_field_values?.end_time);
     const totalMinutes = diffMinutes(startTime?.hhmm, endTime?.hhmm);
+    const totalHours = totalMinutes !== null ? (totalMinutes / 60) : null;
 
     const providedTotalSpdl = toWholeNumberOrNull(req.body?.total_spdl ?? other_field_values?.total_spdl);
     const dbTotalSpdl = providedTotalSpdl ? null : await fetchCdgTotalSpdlFromDb(machine_name);
@@ -1731,6 +1550,51 @@ router.post('/study', async (req, res, next) => {
     const runningSpdl = (Number.isInteger(totalSpdl) && Number.isInteger(idleSpindles))
       ? Math.max(totalSpdl - idleSpindles, 0)
       : null;
+
+    const startHk = toWholeNumberOrNull(req.body?.start_hk ?? other_field_values?.start_hk);
+    const finishHk = toWholeNumberOrNull(req.body?.finish_hk ?? other_field_values?.finish_hk);
+    const hank = (Number.isInteger(startHk) && Number.isInteger(finishHk))
+      ? (finishHk - startHk)
+      : null;
+
+    const overallBreakagePct = (runningSpdl && totalHours && totalHours > 0)
+      ? toWholePercent((grandTotalBreaks / runningSpdl / totalHours) * 100)
+      : 0;
+
+    const derivedRows = [];
+    if (hank !== null) derivedRows.push({ item_name: 'HANK', status_value: hank });
+    if (startTime?.hhmm) derivedRows.push({ item_name: 'START TIME', status_value: startTime.hhmm });
+    if (endTime?.hhmm) derivedRows.push({ item_name: 'END TIME', status_value: endTime.hhmm });
+    if (totalMinutes !== null) derivedRows.push({ item_name: 'TOTAL TIME (MINUTES)', status_value: totalMinutes });
+    if (Number.isInteger(idleSpindles)) derivedRows.push({ item_name: 'IDLE SPINDLES', status_value: idleSpindles });
+    if (Number.isInteger(totalSpdl)) derivedRows.push({ item_name: 'TOTAL SPDL', status_value: totalSpdl });
+    if (runningSpdl !== null) derivedRows.push({ item_name: 'RUNNING SPDL', status_value: runningSpdl });
+    derivedRows.push({ item_name: 'TOTAL BREAKS (GRAND)', status_value: grandTotalBreaks });
+    derivedRows.push({ item_name: 'OVERALL BREAKAGE (%)', status_value: overallBreakagePct });
+    const hasTotalBreakPercentRow = [...normalizedItems, ...derivedRows].some((row) => {
+      const name = String(row?.item_name || '').trim().toUpperCase();
+      return name === 'TOTAL BREAK (%)' || name === 'TOTAL BREAK %' || name === 'TOTAL BREAKAGE (%)';
+    });
+    if (!hasTotalBreakPercentRow) {
+      derivedRows.push({ item_name: 'TOTAL BREAK (%)', status_value: overallBreakagePct });
+    }
+
+    for (const col of breakTotalsByColumn) {
+      const ratio = grandTotalBreaks > 0 ? toWholePercent((col.total / grandTotalBreaks) * 100) : 0;
+      derivedRows.push({
+        item_name: `${col.name} BREAKS (%)`,
+        status_value: ratio
+      });
+    }
+
+    for (const row of derivedRows) {
+      await client.query(
+        `INSERT INTO simplex.smx_breaks_inspection_items
+         (study_id, item_name, status_value, remarks)
+         VALUES ($1, $2, $3, $4)`,
+        [study_id, row.item_name, String(row.status_value), 'derived']
+      );
+    }
 
     // Insert user fiber parameters
     if (user_fiber_parameters) {
@@ -1783,21 +1647,14 @@ router.post('/study', async (req, res, next) => {
     // Insert other field values
     if (other_field_values) {
       const providedBreakArray = parseBreakArray(other_field_values.break_count);
-      const computedBreakCount = providedBreakArray.length || grandTotalBreaks;
+      const computedBreakCount = providedBreakArray.length || grandTotalBreaks || derivedBreakCount;
       const siderName = String(req.body?.s_name ?? other_field_values.s_name ?? other_field_values.sider_name ?? '').trim();
-      // start_hk/finish_hk arrive only as top-level other_field_values fields (the form's own
-      // JSON-stringified remarks blob doesn't include them), so — like START/END/TOTAL_MINUTES —
-      // they have to be carried through as their own tag or they're lost on every submission.
-      const startHkValue = toWholeNumberOrNull(other_field_values.start_hk);
-      const finishHkValue = toWholeNumberOrNull(other_field_values.finish_hk);
       const remarksBlock = [
         other_field_values.remarks || null,
         siderName ? `S.NAME:${siderName}` : null,
         startTime?.hhmm ? `START:${startTime.hhmm}` : null,
         endTime?.hhmm ? `END:${endTime.hhmm}` : null,
-        totalMinutes !== null ? `TOTAL_MINUTES:${totalMinutes}` : null,
-        startHkValue !== null ? `START_HK:${startHkValue}` : null,
-        finishHkValue !== null ? `FINISH_HK:${finishHkValue}` : null
+        totalMinutes !== null ? `TOTAL_MINUTES:${totalMinutes}` : null
       ].filter(Boolean).join(' | ') || null;
       await client.query(
         `INSERT INTO simplex.smx_other_field_values
@@ -1805,7 +1662,7 @@ router.post('/study', async (req, res, next) => {
          VALUES ($1, $2, $3, $4)`,
         [
           study_id,
-          startTime?.hhmm || other_field_values.time || null,
+          startTime?.hhmm && endTime?.hhmm ? `${startTime.hhmm}-${endTime.hhmm}` : other_field_values.time,
           toWholeNumberOrNull(computedBreakCount),
           remarksBlock
         ]
@@ -1821,7 +1678,8 @@ router.post('/study', async (req, res, next) => {
       computed: {
         grand_total_breaks: grandTotalBreaks,
         total_time_minutes: totalMinutes,
-        running_spdl: runningSpdl
+        running_spdl: runningSpdl,
+        overall_breakage_percent: overallBreakagePct
       }
     });
 
@@ -1850,57 +1708,10 @@ router.get('/list', async (req, res, next) => {
   try {
     await ensureSimplexEntryIdColumns();
     const result = await client.query(
-      `SELECT h.*,
-              COALESCE(
-                json_agg(
-                  json_build_object(
-                    'item_name', i.item_name,
-                    'length_range', i.length_range,
-                    'status_value', i.status_value,
-                    'remarks', i.remarks
-                  )
-                ) FILTER (WHERE i.id IS NOT NULL),
-                '[]'
-              ) AS items
-       FROM simplex.smx_breaks_study_header h
-       LEFT JOIN simplex.smx_breaks_inspection_items i
-       ON i.study_id = h.id
-       GROUP BY h.id, h.s_no, h.entry_date, h.machine_name, h.operator_name, h.shift, h.remarks, h.created_at, h.updated_at, h.entry_id
-       ORDER BY h.entry_date DESC`
+      `SELECT * FROM simplex.smx_breaks_study_header ORDER BY entry_date DESC`
     );
 
-    const studyIds = headerResult.rows.map((row) => row.id);
-    const itemsByStudy = new Map();
-    const otherByStudy = new Map();
-
-    if (studyIds.length) {
-      const itemsResult = await client.query(
-        `SELECT * FROM simplex.smx_breaks_inspection_items WHERE study_id = ANY($1::int[])`,
-        [studyIds]
-      );
-      itemsResult.rows.forEach((item) => {
-        if (!itemsByStudy.has(item.study_id)) itemsByStudy.set(item.study_id, []);
-        itemsByStudy.get(item.study_id).push(item);
-      });
-
-      const otherResult = await client.query(
-        `SELECT DISTINCT ON (study_id) *
-         FROM simplex.smx_other_field_values
-         WHERE study_id = ANY($1::int[])
-         ORDER BY study_id, id DESC`,
-        [studyIds]
-      );
-      otherResult.rows.forEach((row) => otherByStudy.set(row.study_id, row));
-    }
-
-    const rows = headerResult.rows.map((header) =>
-      withScreenEntryId(
-        'study',
-        buildSmxBreaksStudyRow(header, itemsByStudy.get(header.id), otherByStudy.get(header.id))
-      )
-    );
-
-    res.status(200).json(rows);
+    res.status(200).json(result.rows.map((row) => withScreenEntryId('study', row)));
 
   } catch (err) {
     next(err);
@@ -2118,24 +1929,92 @@ router.get('/uqc/global', async (req, res) => {
     return getSimplexUqcEntries(req, res, { forceGlobal: true });
 });
 
+/**
+ * @swagger
+ * /simplex/process_parameter:
+ *   post:
+ *     summary: Create Simplex Process Parameter entry
+ *     tags: [Simplex]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: string
+ *               make:
+ *                 type: string
+ *               delivery_hank:
+ *                 type: number
+ *               tpi_tm:
+ *                 type: string
+ *               speed:
+ *                 type: number
+ *               bottom_roller_setting:
+ *                 type: string
+ *               top_roller_setting:
+ *                 type: string
+ *               break_draft:
+ *                 type: number
+ *               total_draft:
+ *                 type: number
+ *               creel_draft:
+ *                 type: number
+ *               false_twist_grooves:
+ *                 type: string
+ *               spacer:
+ *                 type: string
+ *               top_arm_pressure:
+ *                 type: number
+ *               back_pressure:
+ *                 type: string
+ *               middle_pressure:
+ *                 type: string
+ *               front_pressure:
+ *                 type: string
+ *               coil_inch:
+ *                 type: number
+ *               lifter_combination_wheel:
+ *                 type: string
+ *               lifter_wheel:
+ *                 type: string
+ *               tension_wheel:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Created successfully
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+
 router.post('/process_parameter', async (req, res, next) => {
   try {
     await ensureSimplexEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
-    const count_name = pickFirstText(data.count_name, data.countName, data.count, data.count_value);
-    const consignee_name = pickFirstText(data.consignee_name, data.consigneeName, data.consignee, data.consignee_value);
-    const creation_date = pickFirstText(data.creation_date, data.creationDate, data.entry_date, data.entryDate, data.date);
 
-    if (!count_name || !consignee_name || !creation_date) {
+    if (!data.entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
         message: 'count_name, consignee_name and creation_date are required'
       });
-    }
-
-    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
-    if (conflictingCountName) {
-      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
     }
 
     const result = await client.query(
@@ -2161,11 +2040,11 @@ router.post('/process_parameter', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        entry_id,
+        data.entry_id,
         data.type || 'Process Parameter',
-        count_name,
-        consignee_name,
-        creation_date,
+        data.count_name,
+        data.consignee_name,
+        data.creation_date,
         data.machine_no,
         data.make,
         data.delivery_hank,
@@ -2189,28 +2068,12 @@ router.post('/process_parameter', async (req, res, next) => {
       ]
     );
 
-    recordPpNotebookSubmission({
-      notebook: 'Simplex Process Parameter',
-      department: 'Simplex',
-      entryId: entry_id,
-      sourceSchema: 'simplex',
-      sourceTable: 'simplex_process_parameter',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date }
-    }).catch((err) => console.warn('[pp-notebook-log] Simplex Process Parameter failed:', err.message));
-
     res.status(201).json({
       message: 'Simplex entry created successfully',
-      data: result.rows[0],
-      entry_id,
-      process_parameter_id: entry_id
+      data: withScreenEntryId('process_parameter', result.rows[0])
     });
 
   } catch (error) {
-    if (error instanceof InvalidProcessParameterEntryIdError) {
-      return res.status(400).json({ message: 'Invalid or unrecognized Process Parameter ID' });
-    }
     if (isUniqueViolation(error)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -2218,6 +2081,30 @@ router.post('/process_parameter', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * @swagger
+ * /simplex/process_parameter:
+ *   get:
+ *     summary: Get all Simplex entries
+ *     tags: [Simplex]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
 
 router.get('/process_parameter', async (req, res, next) => {
   try {
@@ -2241,7 +2128,7 @@ router.get('/process_parameter', async (req, res, next) => {
     );
 
     res.status(200).json({
-      data: result.rows,
+      data: result.rows.map((row) => withScreenEntryId('process_parameter', row)),
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
       limit: limitNum
@@ -2253,80 +2140,29 @@ router.get('/process_parameter', async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /simplex/process_parameter/{id}:
+ *   put:
+ *     summary: Update Simplex entry
+ *     tags: [Simplex]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Updated successfully
+ *       404:
+ *         description: Entry not found
+ */
+
 router.put('/process_parameter/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
     const data = req.body;
-
-    const currentResult = await client.query(
-      `SELECT entry_id FROM simplex.simplex_process_parameter WHERE id = $1`,
-      [id]
-    );
-
-    if (currentResult.rowCount === 0) {
-      return res.status(404).json({ message: 'Entry not found' });
-    }
-
-    const requestedEntryId = String(data.entry_id || '').trim();
-    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
-
-    if (requestedEntryId && requestedEntryId !== currentEntryId) {
-      const insertResult = await client.query(
-        `INSERT INTO simplex.simplex_process_parameter (
-          entry_id, type, count_name, consignee_name, creation_date,
-          machine_no, make,
-          delivery_hank, tpi_tm, speed,
-          bottom_roller_setting, top_roller_setting,
-          break_draft, total_draft, creel_draft,
-          false_twist_grooves, spacer,
-          top_arm_pressure, back_pressure, middle_pressure, front_pressure,
-          coil_inch, lifter_combination_wheel, lifter_wheel, tension_wheel
-        )
-        VALUES (
-          $1,$2,$3,$4,$5,
-          $6,$7,
-          $8,$9,$10,
-          $11,$12,
-          $13,$14,$15,
-          $16,$17,
-          $18,$19,$20,$21,
-          $22,$23,$24,$25
-        )
-        RETURNING *`,
-        [
-          requestedEntryId,
-          data.type || 'Process Parameter',
-          data.count_name,
-          data.consignee_name,
-          data.creation_date,
-          data.machine_no,
-          data.make,
-          data.delivery_hank,
-          data.tpi_tm,
-          data.speed,
-          data.bottom_roller_setting,
-          data.top_roller_setting,
-          data.break_draft,
-          data.total_draft,
-          data.creel_draft,
-          data.false_twist_grooves,
-          data.spacer,
-          data.top_arm_pressure,
-          data.back_pressure,
-          data.middle_pressure,
-          data.front_pressure,
-          data.coil_inch,
-          data.lifter_combination_wheel,
-          data.lifter_wheel,
-          data.tension_wheel
-        ]
-      );
-
-      return res.status(201).json({
-        message: 'Simplex entry created successfully',
-        data: withScreenEntryId('process_parameter', insertResult.rows[0])
-      });
-    }
 
     const result = await client.query(
       `UPDATE simplex.simplex_process_parameter
@@ -2359,9 +2195,9 @@ router.put('/process_parameter/:id', async (req, res, next) => {
        RETURNING *`,
       [
         data.type || 'Process Parameter',
-        count_name,
-        consignee_name,
-        creation_date,
+        data.count_name,
+        data.consignee_name,
+        data.creation_date,
         data.machine_no,
         data.make,
         data.delivery_hank,
@@ -2392,9 +2228,7 @@ router.put('/process_parameter/:id', async (req, res, next) => {
 
     res.status(200).json({
       message: 'Updated successfully',
-      data: result.rows[0],
-      entry_id: result.rows[0].entry_id,
-      process_parameter_id: result.rows[0].entry_id
+      data: withScreenEntryId('process_parameter', result.rows[0])
     });
 
   } catch (error) {

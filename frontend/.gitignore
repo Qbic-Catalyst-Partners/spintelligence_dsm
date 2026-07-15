@@ -57,5 +57,4 @@ _backend_tmp/
 *.xlsx
 *.xls
 *.xlsm
-!public/templates/*.xlsx
 

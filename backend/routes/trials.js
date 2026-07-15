@@ -113,50 +113,11 @@ const getCountMasterDropdown = async (req, res, next) => {
 
 const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trials');
 
-const ensureTrialsColumns = async () => {
-  await client.query(`
-    ALTER TABLE trials.trials
-      ADD COLUMN IF NOT EXISTS entry_time TIME,
-      ADD COLUMN IF NOT EXISTS mc_no VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS product VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS trial_type VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS raw_material_mixing VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS yarn_remarks TEXT,
-      ADD COLUMN IF NOT EXISTS jm DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS cvb DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS fl_cut DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS fd_cut DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS df_drg_mc_no VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS df_finish_u_percent DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS df_cvim DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS df_cvb DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS smx_no VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS spl_no VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS roving_percent DECIMAL(6,2),
-      ADD COLUMN IF NOT EXISTS smx_cvim DECIMAL(6,2);
-  `);
-  await client.query(`
-    ALTER TABLE trials.trials
-      ALTER COLUMN trial_id_name DROP NOT NULL;
-  `);
-  await client.query(`
-    ALTER TABLE trials.trials
-      ALTER COLUMN count_name TYPE VARCHAR(255),
-      ALTER COLUMN user_id TYPE VARCHAR(255),
-      ALTER COLUMN trial_id_name TYPE VARCHAR(255),
-      ALTER COLUMN type TYPE VARCHAR(255),
-      ALTER COLUMN nature TYPE VARCHAR(255),
-      ALTER COLUMN spinning_machine TYPE VARCHAR(255),
-      ALTER COLUMN unit_no TYPE VARCHAR(255),
-      ALTER COLUMN autoconer_machine TYPE VARCHAR(255);
-  `);
-};
-
 /**
  * @swagger
  * tags:
- *   name: Individual Card performance Data
- *   description: Individual Card performance Data (Carding Trials) APIs
+ *   name: Trials
+ *   description: Trials Department APIs
  */
 
 
@@ -164,8 +125,8 @@ const ensureTrialsColumns = async () => {
  * @swagger
  * /trials:
  *   post:
- *     summary: Create a new Individual Card performance Data entry
- *     tags: [Individual Card performance Data]
+ *     summary: Create a new Trial entry
+ *     tags: [Trials]
  *     requestBody:
  *       required: true
  *       content:
@@ -176,39 +137,22 @@ const ensureTrialsColumns = async () => {
  *               - date
  *               - spinning_machine
  *               - count_name
+ *               - trial_id_name
  *             properties:
  *               date:
  *                 type: string
  *                 format: date
- *               entry_date:
- *                 type: string
- *                 format: date
- *                 description: Alias for date
- *               time:
- *                 type: string
- *               entry_time:
- *                 type: string
- *                 description: Alias for time
- *               mc_no:
- *                 type: string
  *               spinning_machine:
  *                 type: string
  *               autoconer_machine:
  *                 type: string
  *               count_name:
  *                 type: string
- *               product:
- *                 type: string
  *               purpose:
  *                 type: string
  *               trial_id_name:
  *                 type: string
  *               type:
- *                 type: string
- *               entry_type:
- *                 type: string
- *                 description: Alias for type
- *               trial_type:
  *                 type: string
  *               nature:
  *                 type: string
@@ -218,37 +162,9 @@ const ensureTrialsColumns = async () => {
  *                 type: string
  *               mixing:
  *                 type: string
- *               raw_material_mixing:
- *                 type: string
- *               yarn_remarks:
- *                 type: string
- *               cvb:
- *                 type: number
- *               fl_cut:
- *                 type: number
- *               fd_cut:
- *                 type: number
- *               jm:
- *                 type: number
- *               df_drg_mc_no:
- *                 type: string
- *               df_finish_u_percent:
- *                 type: number
- *               df_cvim:
- *                 type: number
- *               df_cvb:
- *                 type: number
- *               smx_no:
- *                 type: string
- *               spl_no:
- *                 type: string
- *               roving_percent:
- *                 type: number
- *               smx_cvim:
- *                 type: number
  *     responses:
  *       201:
- *         description: Individual Card performance Data entry created successfully
+ *         description: Trial created successfully
  *       500:
  *         description: Server error
  */
@@ -275,15 +191,9 @@ router.post('/', async (req, res) => {
 
     try {
 
-        await ensureTrialsColumns();
+        await ensureTrialsEntryIdColumn();
 
-        const raw = req.body;
-        const data = Object.fromEntries(
-            Object.entries(raw).map(([key, value]) => [key, value === '' ? null : value])
-        );
-        const entryDate = data.date ?? data.entry_date;
-        const entryTime = data.time ?? data.entry_time;
-        const entryType = data.type ?? data.entry_type;
+        const data = req.body;
 
         if (!data.entry_id) {
             return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -293,20 +203,15 @@ router.post('/', async (req, res) => {
             `INSERT INTO trials.trials(
                 entry_id,
                 date,
-                entry_time,
                 mc_no,
                 spinning_machine,
                 autoconer_machine,
                 count_name,
                 product,
-                purpose,
-                trial_id_name,
-                type,
                 trial_type,
+                type,
                 nature,
-                unit_no,
-                raw_material,
-                mixing,
+                entry_time,
                 raw_material_mixing,
                 yarn_results,
                 yarn_remarks,
@@ -381,26 +286,21 @@ router.post('/', async (req, res) => {
                 $41,$42,$43,$44,$45,$46,$47,$48,$49,$50,
                 $51,$52,$53,$54,$55,$56,$57,$58,$59,$60,
                 $61,$62,$63,$64,$65,$66,$67,$68,$69,$70,
-                $71,$72,$73,$74,$75,$76,$77,$78,$79,$80,$81
+                $71,$72,$73,$74,$75,$76
             )
             RETURNING *`,
             [
                 data.entry_id,
-                entryDate,
-                entryTime,
+                data.date,
                 data.mc_no,
                 data.spinning_machine,
                 data.autoconer_machine,
                 data.count_name,
                 data.product,
-                data.purpose,
-                data.trial_id_name,
-                entryType,
                 data.trial_type,
+                data.type,
                 data.nature,
-                data.unit_no,
-                data.raw_material,
-                data.mixing,
+                data.entry_time || null,
                 data.raw_material_mixing,
                 data.yarn_results,
                 data.yarn_remarks,
@@ -453,9 +353,9 @@ router.post('/', async (req, res) => {
                 toNumberOrNull(data.g),
                 toNumberOrNull(data.h1),
                 toNumberOrNull(data.h2),
-                toNumberOrNull(data.l1 ?? data.i1),
-                toNumberOrNull(data.l2 ?? data.i2),
-                toNumberOrNull(data.cvb ?? data.cvp),
+                toNumberOrNull(data.l1),
+                toNumberOrNull(data.l2),
+                toNumberOrNull(data.cvb),
                 toNumberOrNull(data.fl_cut),
                 toNumberOrNull(data.fd_cut),
                 data.df_drg_mc_no,
@@ -488,8 +388,8 @@ router.post('/', async (req, res) => {
  * @swagger
  * /trials:
  *   get:
- *     summary: Get Individual Card performance Data with pagination
- *     tags: [Individual Card performance Data]
+ *     summary: Get Trials with pagination
+ *     tags: [Trials]
  *     parameters:
  *       - in: query
  *         name: page
@@ -503,7 +403,7 @@ router.post('/', async (req, res) => {
  *           default: 10
  *     responses:
  *       200:
- *         description: Individual Card performance Data retrieved successfully
+ *         description: Trials retrieved successfully
  *       500:
  *         description: Server error
  */
@@ -541,7 +441,7 @@ router.get('/', async (req, res) => {
  * /trials/master/spinning-machines:
  *   get:
  *     summary: Get spinning machine names for Trials form
- *     tags: [Individual Card performance Data]
+ *     tags: [Trials]
  *     parameters:
  *       - in: query
  *         name: prefix
@@ -613,7 +513,7 @@ router.get('/master/spinning-machines', async (req, res) => {
  * /trials/master/autoconer-machines:
  *   get:
  *     summary: Get autoconer machine names for Trials form
- *     tags: [Individual Card performance Data]
+ *     tags: [Trials]
  *     parameters:
  *       - in: query
  *         name: prefix
@@ -680,7 +580,7 @@ router.get('/master/autoconer-machines', async (req, res) => {
  * /trials/master/varieties:
  *   get:
  *     summary: Get variety names for Trials/Nati Data Entry form
- *     tags: [Individual Card performance Data]
+ *     tags: [Trials]
  *     parameters:
  *       - in: query
  *         name: prefix

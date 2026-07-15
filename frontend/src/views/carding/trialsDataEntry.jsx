@@ -527,7 +527,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
 
                         <h3 className={`${styles.cutsTitle} ${styles.noGapTitle}`}>Simplex</h3>
                         <div className={styles.cardRow}>
-                            {[["SMX No.", "smxNo"], ["SPL No.", "splNo"], ["Roving U%", "rovingPercent"], ["CVIM", "smxCvim"]].map(([label, name]) => (
+                            {[["SMX No.", "smxNo"], ["SPL No.", "splNo"], ["Roving%", "rovingPercent"], ["CVIM", "smxCvim"]].map(([label, name]) => (
                                 <div className={styles.cardFormGroup} key={name}>
                                     <label>{label}</label>
                                     <input name={name} value={formData[name] || ""} onChange={handleChange} className={fieldClass(name)} />

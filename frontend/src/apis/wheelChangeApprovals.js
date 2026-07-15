@@ -41,14 +41,6 @@ const extractApiError = (error, fallbackMessage) => {
     return error?.message || fallbackMessage;
 };
 
-// Preserves the HTTP status on the thrown Error (lost otherwise) so callers
-// can tell "you're not allowed to see this" (403) apart from "nothing to show".
-const throwWithStatus = (error, fallbackMessage) => {
-    const wrapped = new Error(extractApiError(error, fallbackMessage));
-    wrapped.status = error?.response?.status;
-    throw wrapped;
-};
-
 export const fetchPendingWheelChangeApprovals = async (params = {}) => {
     try {
         const response = await apiConfig.get(
@@ -58,7 +50,7 @@ export const fetchPendingWheelChangeApprovals = async (params = {}) => {
         );
         return response.data;
     } catch (error) {
-        throwWithStatus(error, "Unable to load pending wheel change approvals.");
+        throw new Error(extractApiError(error, "Unable to load pending wheel change approvals."));
     }
 };
 
