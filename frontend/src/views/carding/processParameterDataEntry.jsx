@@ -791,22 +791,6 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
           </div>
         ) : null}
       </div>
-
-      {savedVersionsPortal
-        ? createPortal(
-            <SavedVersionsSection
-              versions={versions}
-              form={form}
-              expandedVersionId={expandedVersionId}
-              onVersionSelect={handleVersionSelect}
-              onVersionToggle={handleVersionToggle}
-              loading={false}
-              errorMessage=""
-            />,
-            savedVersionsPortal
-          )
-        : null}
-
     </>
   );
 });

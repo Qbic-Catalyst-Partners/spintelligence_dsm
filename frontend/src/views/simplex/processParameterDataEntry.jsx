@@ -660,21 +660,6 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
           </div>
         ) : null}
       </div>
-
-      {savedVersionsPortal
-        ? createPortal(
-            <SavedVersionsSection
-              versions={versions}
-              form={form}
-              expandedVersionId={expandedVersionId}
-              onVersionSelect={handleVersionSelect}
-              onVersionToggle={handleVersionToggle}
-              loading={false}
-              errorMessage=""
-            />,
-            savedVersionsPortal
-          )
-        : null}
     </>
   );
 });

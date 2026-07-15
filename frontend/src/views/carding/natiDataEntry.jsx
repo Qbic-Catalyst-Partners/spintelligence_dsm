@@ -144,6 +144,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     };
 
     const buildPayload = () => ({
+        entry_id: entryId || "",
         type: selectedType,
         entry_date: entryDate,
         variety,

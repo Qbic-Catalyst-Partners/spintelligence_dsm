@@ -1,6 +1,14 @@
 const { dedupeVarieties } = require('./variety');
 
 const loggedAccessDeniedKeys = new Set();
+const loggedConnectionFailureKeys = new Set();
+const CONNECTION_FAILURE_COOLDOWN_MS = 60000;
+const connectionFailureUntil = new Map();
+
+const isConnectionFailure = (error) => {
+  const code = error?.code || error?.originalError?.code;
+  return code === 'ETIMEOUT' || code === 'ESOCKET' || code === 'ECONNREFUSED';
+};
 
 const quoteSqlServerIdentifier = (value) => {
   const text = String(value || '').trim();
@@ -78,6 +86,11 @@ const sendPrepVarietyDropdown = (prepSqlServer, moduleName = 'preparation') => a
       return res.status(503).json({ message: 'SQL Server is not configured on backend' });
     }
 
+    const cooldownUntil = connectionFailureUntil.get(moduleName);
+    if (cooldownUntil && cooldownUntil > Date.now()) {
+      return res.status(503).json({ message: 'SQL Server is currently unreachable' });
+    }
+
     const prefix = String(req.query.variety_prefix || req.query.prefix || '').trim();
     const data = await fetchPrepVarieties(prepSqlServer, prefix);
     const options = buildPrepVarietyOptions(data);
@@ -110,6 +123,16 @@ const sendPrepVarietyDropdown = (prepSqlServer, moduleName = 'preparation') => a
         database: databaseName,
         table: 'dbo.prepvariety'
       });
+    }
+
+    if (isConnectionFailure(error)) {
+      connectionFailureUntil.set(moduleName, Date.now() + CONNECTION_FAILURE_COOLDOWN_MS);
+      if (!loggedConnectionFailureKeys.has(moduleName)) {
+        loggedConnectionFailureKeys.add(moduleName);
+        setTimeout(() => loggedConnectionFailureKeys.delete(moduleName), CONNECTION_FAILURE_COOLDOWN_MS);
+        console.error(`Error fetching ${moduleName} prep varieties from SQL Server (suppressing repeats for ${CONNECTION_FAILURE_COOLDOWN_MS / 1000}s):`, error);
+      }
+      return res.status(503).json({ message: 'SQL Server is currently unreachable' });
     }
 
     console.error(`Error fetching ${moduleName} prep varieties from SQL Server:`, error);

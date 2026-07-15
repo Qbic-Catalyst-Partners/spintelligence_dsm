@@ -588,7 +588,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
         {isSubmitting ? <div className={styles.loadingMessage}>Submitting...</div> : null}
       </div>
 
-      {savedVersionsPortal ? createPortal(historySection, savedVersionsPortal) : historySection}
     </>
   );
 });

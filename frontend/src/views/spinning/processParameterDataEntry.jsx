@@ -812,20 +812,6 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
           </div>
           {formContent}
         </div>
-        {savedVersionsPortal
-          ? createPortal(
-              <SavedVersionsSection
-                versions={versions}
-                form={form}
-                expandedVersionId={expandedVersionId}
-                onVersionSelect={handleVersionSelect}
-                onVersionToggle={handleVersionToggle}
-                loading={false}
-                errorMessage=""
-              />,
-              savedVersionsPortal
-            )
-          : null}
       </>
     );
   }

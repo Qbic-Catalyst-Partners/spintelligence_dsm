@@ -2184,12 +2184,17 @@ router.post('/header', async (req, res, next) => {
       no_of_ends,
       bottom_roll_setting,
       breaker_draft,
+      break_draft,
       total_draft,
       hank,
       web_tension_draft,
       trumpet_size,
+      insert_size,
+      web_funnel_size,
+      delivery_hank,
       delivery_speed,
-      pressure_bar
+      pressure_bar,
+      scanning_rolls_size
     } = req.body;
 
     // ✅ Required validation
@@ -2199,22 +2204,39 @@ router.post('/header', async (req, res, next) => {
       });
     }
 
+    let resolvedEntryId;
+    try {
+      resolvedEntryId = await resolveOrCreateProcessParameterEntryId(entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO drawframe.drawframe_qc_header (
         entry_id, entry_scope, type, count_name, consignee_name, creation_date,
         make, no_of_ends, bottom_roll_setting,
         breaker_draft, total_draft, hank,
-        web_tension_draft, trumpet_size, delivery_speed, pressure_bar
+        web_tension_draft, trumpet_size, delivery_speed, pressure_bar,
+        insert_size, web_funnel_size, delivery_hank, scanning_rolls_size
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,
         $7,$8,$9,
         $10,$11,$12,
-        $13,$14,$15,$16
+        $13,$14,$15,$16,
+        $17,$18,$19,$20
       )
       RETURNING *`,
       [
-        entry_id || null,
+        resolvedEntryId,
         entry_scope || null,
         type,
         count_name,
@@ -2223,19 +2245,36 @@ router.post('/header', async (req, res, next) => {
         make,
         no_of_ends,
         bottom_roll_setting,
-        breaker_draft,
+        breaker_draft ?? break_draft,
         total_draft,
         hank,
         web_tension_draft,
         trumpet_size,
         delivery_speed,
-        pressure_bar
+        pressure_bar,
+        insert_size,
+        web_funnel_size,
+        delivery_hank,
+        scanning_rolls_size
       ]
     );
 
+    recordPpNotebookSubmission({
+      notebook: 'Drawframe QC Header',
+      department: 'Drawframe',
+      entryId: resolvedEntryId,
+      sourceSchema: 'drawframe',
+      sourceTable: 'drawframe_qc_header',
+      submittedByUserId: req.user?.id,
+      submittedByName: req.user?.employee_id,
+      submittedPayload: { count_name, consignee_name, creation_date }
+    }).catch((err) => console.warn('[pp-notebook-log] Drawframe QC Header failed:', err.message));
+
     res.status(201).json({
       message: 'Drawframe entry created successfully',
-      data: withScreenEntryId('header', result.rows[0], 'ins_id')
+      data: withScreenEntryId('header', result.rows[0], 'ins_id'),
+      entry_id: resolvedEntryId,
+      process_parameter_id: resolvedEntryId
     });
 
   } catch (error) {
@@ -2282,7 +2321,7 @@ router.get('/header', async (req, res, next) => {
     const result = await client.query(
       `SELECT *
        FROM drawframe.drawframe_qc_header
-       ORDER BY creation_date DESC
+       ORDER BY created_at DESC, ins_id DESC
        OFFSET $1 LIMIT $2`,
       [offset, limitNum]
     );
@@ -2413,8 +2452,6 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
         dataParams
       ),
       client.query(
-        `SELECT COUNT(*) FROM drawframe.wheel_change ${whereClause}`,
-        filterParams
         `SELECT COUNT(*) FROM drawframe.wheel_change ${whereClause}`,
         filterParams
       )
@@ -2685,137 +2722,6 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   }
 });
 
-router.post('/header', async (req, res, next) => {
-  try {
-    await ensureDrawframeEntryIdColumns();
-    const {
-      type,
-      count_name,
-      consignee_name,
-      creation_date,
-      make,
-      no_of_ends,
-      bottom_roll_setting,
-      breaker_draft,
-      total_draft,
-      hank,
-      web_tension_draft,
-      trumpet_size,
-      delivery_speed,
-      pressure_bar
-    } = req.body;
-
-    if (!count_name || !consignee_name || !creation_date) {
-      return res.status(400).json({
-        message: 'count_name, consignee_name and creation_date are required'
-      });
-    }
-
-    let entry_id;
-    try {
-      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
-    } catch (idErr) {
-      if (idErr instanceof InvalidProcessParameterEntryIdError) {
-        return res.status(400).json({ message: idErr.message });
-      }
-      throw idErr;
-    }
-
-    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
-    if (conflictingCountName) {
-      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
-    }
-
-    const result = await client.query(
-      `INSERT INTO drawframe.drawframe_qc_header (
-        entry_id, type, count_name, consignee_name, creation_date,
-        make, no_of_ends, bottom_roll_setting,
-        breaker_draft, total_draft, hank,
-        web_tension_draft, trumpet_size, delivery_speed, pressure_bar
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,
-        $9,$10,$11,
-        $12,$13,$14,$15
-      )
-      RETURNING *`,
-      [
-        entry_id,
-        type,
-        count_name,
-        consignee_name,
-        creation_date,
-        make,
-        no_of_ends,
-        bottom_roll_setting,
-        breaker_draft,
-        total_draft,
-        hank,
-        web_tension_draft,
-        trumpet_size,
-        delivery_speed,
-        pressure_bar
-      ]
-    );
-
-    recordPpNotebookSubmission({
-      notebook: 'Drawframe QC Header',
-      department: 'Drawframe',
-      entryId: entry_id,
-      sourceSchema: 'drawframe',
-      sourceTable: 'drawframe_qc_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date }
-    }).catch((err) => console.warn('[pp-notebook-log] Drawframe QC Header failed:', err.message));
-
-    res.status(201).json({
-      message: 'Drawframe entry created successfully',
-      data: result.rows[0],
-      entry_id,
-      process_parameter_id: entry_id
-    });
-
-  } catch (error) {
-    console.error(error);
-    next(error);
-  }
-});
-
-router.get('/header', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 10 } = req.query;
-
-    const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
-    const offset = (pageNum - 1) * limitNum;
-
-    const result = await client.query(
-      `SELECT *
-       FROM drawframe.drawframe_qc_header
-       ORDER BY created_at DESC, ins_id DESC
-       OFFSET $1 LIMIT $2`,
-      [offset, limitNum]
-    );
-
-    const totalResult = await client.query(
-      `SELECT COUNT(*) FROM drawframe.drawframe_qc_header`
-    );
-
-    res.status(200).json({
-      data: result.rows,
-      total: parseInt(totalResult.rows[0].count),
-      page: pageNum,
-      limit: limitNum
-    });
-
-  } catch (error) {
-    console.error(error);
-    next(error);
-  }
-});
-
 router.put('/header/:ins_id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.ins_id, 10);
@@ -2838,13 +2744,19 @@ router.put('/header/:ins_id', async (req, res, next) => {
       no_of_ends,
       bottom_roll_setting,
       breaker_draft,
+      break_draft,
       total_draft,
       hank,
       web_tension_draft,
       trumpet_size,
+      insert_size,
+      web_funnel_size,
+      delivery_hank,
       delivery_speed,
-      pressure_bar
+      pressure_bar,
+      scanning_rolls_size
     } = req.body;
+    const resolvedBreakerDraft = breaker_draft ?? break_draft;
 
     if (!count_name || !consignee_name || !creation_date) {
       return res.status(400).json({
@@ -2870,13 +2782,15 @@ router.put('/header/:ins_id', async (req, res, next) => {
           entry_id, entry_scope, type, count_name, consignee_name, creation_date,
           make, no_of_ends, bottom_roll_setting,
           breaker_draft, total_draft, hank,
-          web_tension_draft, trumpet_size, delivery_speed, pressure_bar
+          web_tension_draft, trumpet_size, delivery_speed, pressure_bar,
+          insert_size, web_funnel_size, delivery_hank, scanning_rolls_size
         )
         VALUES (
           $1,$2,$3,$4,$5,$6,
           $7,$8,$9,
           $10,$11,$12,
-          $13,$14,$15,$16
+          $13,$14,$15,$16,
+          $17,$18,$19,$20
         )
         RETURNING *`,
         [
@@ -2889,13 +2803,17 @@ router.put('/header/:ins_id', async (req, res, next) => {
           make,
           no_of_ends,
           bottom_roll_setting,
-          breaker_draft,
+          resolvedBreakerDraft,
           total_draft,
           hank,
           web_tension_draft,
           trumpet_size,
           delivery_speed,
-          pressure_bar
+          pressure_bar,
+          insert_size,
+          web_funnel_size,
+          delivery_hank,
+          scanning_rolls_size
         ]
       );
 
@@ -2921,8 +2839,12 @@ router.put('/header/:ins_id', async (req, res, next) => {
            web_tension_draft = $12,
            trumpet_size = $13,
            delivery_speed = $14,
-           pressure_bar = $15
-       WHERE ins_id = $16
+           pressure_bar = $15,
+           insert_size = $16,
+           web_funnel_size = $17,
+           delivery_hank = $18,
+           scanning_rolls_size = $19
+       WHERE ins_id = $20
        RETURNING *`,
       [
         type,
@@ -2933,13 +2855,17 @@ router.put('/header/:ins_id', async (req, res, next) => {
         make,
         no_of_ends,
         bottom_roll_setting,
-        breaker_draft,
+        resolvedBreakerDraft,
         total_draft,
         hank,
         web_tension_draft,
         trumpet_size,
         delivery_speed,
         pressure_bar,
+        insert_size,
+        web_funnel_size,
+        delivery_hank,
+        scanning_rolls_size,
         id
       ]
     );
