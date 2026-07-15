@@ -3101,7 +3101,6 @@ router.post('/qc', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const {
-      entry_id,
       count_name,
       consignee_name,
       creation_date,
@@ -3131,8 +3130,19 @@ router.post('/qc', async (req, res, next) => {
       offset
     } = req.body;
 
-    if (!entry_id) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
+
+    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
     }
 
     const result = await client.query(
@@ -3200,14 +3210,27 @@ router.post('/qc', async (req, res, next) => {
         slub_max,
         thickness_min,
         thickness_max,
-        ramp,
-        offset
+        ramp ?? null,
+        offset ?? null
       ]
     );
 
+    recordPpNotebookSubmission({
+      notebook: 'Spinning QC Header',
+      department: 'Spinning',
+      entryId: entry_id,
+      sourceSchema: 'spinning',
+      sourceTable: 'spinning_qc_header',
+      submittedByUserId: req.user?.id,
+      submittedByName: req.user?.employee_id,
+      submittedPayload: { count_name, consignee_name, creation_date, machine_no }
+    }).catch((err) => console.warn('[pp-notebook-log] Spinning QC Header failed:', err.message));
+
     res.status(201).json({
       message: 'Spinning QC created successfully',
-      data: result.rows[0]
+      data: result.rows[0],
+      entry_id,
+      process_parameter_id: entry_id
     });
 
   } catch (error) {
@@ -5153,298 +5176,6 @@ router.post('/wheel-change/approvals/:id/reject', rejectWheelChangeEntry);
 router.getWheelChangeApprovals = getWheelChangeApprovals;
 router.approveWheelChangeEntry = approveWheelChangeEntry;
 router.rejectWheelChangeEntry = rejectWheelChangeEntry;
-
-router.post('/qc', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const {
-      count_name,
-      consignee_name,
-      creation_date,
-      machine_no,
-      bottom_roll_setting,
-      top_roll_setting,
-      break_draft,
-      total_draft,
-      tpi_tm,
-      spacer,
-      traveller,
-      speed,
-      make,
-      denier,
-      merge_no,
-      lycra_draft,
-      lycra_percent,
-      slub_partcy_code,
-      slub_mtr,
-      pause_min,
-      pause_max,
-      slub_min,
-      slub_max,
-      thickness_min,
-      thickness_max,
-      ramp,
-      offset
-    } = req.body;
-
-    let entry_id;
-    try {
-      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
-    } catch (idErr) {
-      if (idErr instanceof InvalidProcessParameterEntryIdError) {
-        return res.status(400).json({ message: idErr.message });
-      }
-      throw idErr;
-    }
-
-    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
-    if (conflictingCountName) {
-      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
-    }
-
-    const result = await client.query(
-      `INSERT INTO spinning.spinning_qc_header (
-        entry_id,
-        count_name,
-        consignee_name,
-        creation_date,
-        machine_no,
-        bottom_roll_setting,
-        top_roll_setting,
-        break_draft,
-        total_draft,
-        tpi_tm,
-        spacer,
-        traveller,
-        speed,
-        make,
-        denier,
-        merge_no,
-        lycra_draft,
-        lycra_percent,
-        slub_partcy_code,
-        slub_mtr,
-        pause_min,
-        pause_max,
-        slub_min,
-        slub_max,
-        thickness_min,
-        thickness_max,
-        ramp,
-        "offset"
-      )
-      VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-        $11,$12,$13,$14,$15,$16,$17,$18,
-        $19,$20,$21,$22,$23,$24,$25,$26,
-        $27,$28
-      )
-      RETURNING *`,
-      [
-        entry_id,
-        count_name,
-        consignee_name,
-        creation_date,
-        machine_no,
-        bottom_roll_setting,
-        top_roll_setting,
-        break_draft,
-        total_draft,
-        tpi_tm,
-        spacer,
-        traveller,
-        speed,
-        make,
-        denier,
-        merge_no,
-        lycra_draft,
-        lycra_percent,
-        slub_partcy_code,
-        slub_mtr,
-        pause_min,
-        pause_max,
-        slub_min,
-        slub_max,
-        thickness_min,
-        thickness_max,
-        ramp ?? null,
-        offset ?? null
-      ]
-    );
-
-    recordPpNotebookSubmission({
-      notebook: 'Spinning QC Header',
-      department: 'Spinning',
-      entryId: entry_id,
-      sourceSchema: 'spinning',
-      sourceTable: 'spinning_qc_header',
-      submittedByUserId: req.user?.id,
-      submittedByName: req.user?.employee_id,
-      submittedPayload: { count_name, consignee_name, creation_date, machine_no }
-    }).catch((err) => console.warn('[pp-notebook-log] Spinning QC Header failed:', err.message));
-
-    res.status(201).json({
-      message: 'Spinning QC created successfully',
-      data: result.rows[0],
-      entry_id,
-      process_parameter_id: entry_id
-    });
-
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-    }
-    next(error);
-  }
-});
-
-router.get('/qc', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 10 } = req.query;
-
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const offset = (pageNum - 1) * limitNum;
-
-    const result = await client.query(
-      `SELECT *
-       FROM spinning.spinning_qc_header
-       ORDER BY qc_id DESC
-       OFFSET $1 LIMIT $2`,
-      [offset, limitNum]
-    );
-
-    const total = await client.query(
-      `SELECT COUNT(*) FROM spinning.spinning_qc_header`
-    );
-
-    res.status(200).json({
-      data: result.rows,
-      total: parseInt(total.rows[0].count),
-      page: pageNum,
-      limit: limitNum
-    });
-
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.put('/qc/:qc_id', async (req, res, next) => {
-  try {
-    const qc_id = parseInt(req.params.qc_id, 10);
-
-    if (!Number.isInteger(qc_id) || qc_id <= 0) {
-      return res.status(400).json({ message: 'Invalid QC ID supplied' });
-    }
-
-    const {
-      count_name,
-      consignee_name,
-      creation_date,
-      machine_no,
-      bottom_roll_setting,
-      top_roll_setting,
-      break_draft,
-      total_draft,
-      tpi_tm,
-      spacer,
-      traveller,
-      speed,
-      make,
-      denier,
-      merge_no,
-      lycra_draft,
-      lycra_percent,
-      slub_partcy_code,
-      slub_mtr,
-      pause_min,
-      pause_max,
-      slub_min,
-      slub_max,
-      thickness_min,
-      thickness_max,
-      ramp,
-      offset
-    } = req.body;
-
-    const result = await client.query(
-      `UPDATE spinning.spinning_qc_header
-       SET count_name = $1,
-           consignee_name = $2,
-           creation_date = $3,
-           machine_no = $4,
-           bottom_roll_setting = $5,
-           top_roll_setting = $6,
-           break_draft = $7,
-           total_draft = $8,
-           tpi_tm = $9,
-           spacer = $10,
-           traveller = $11,
-           speed = $12,
-           make = $13,
-           denier = $14,
-           merge_no = $15,
-           lycra_draft = $16,
-           lycra_percent = $17,
-           slub_partcy_code = $18,
-           slub_mtr = $19,
-           pause_min = $20,
-           pause_max = $21,
-           slub_min = $22,
-           slub_max = $23,
-           thickness_min = $24,
-           thickness_max = $25,
-           ramp = $26,
-           "offset" = $27
-       WHERE qc_id = $28
-       RETURNING *`,
-      [
-        count_name,
-        consignee_name,
-        creation_date,
-        machine_no,
-        bottom_roll_setting,
-        top_roll_setting,
-        break_draft,
-        total_draft,
-        tpi_tm,
-        spacer,
-        traveller,
-        speed,
-        make,
-        denier,
-        merge_no,
-        lycra_draft,
-        lycra_percent,
-        slub_partcy_code,
-        slub_mtr,
-        pause_min,
-        pause_max,
-        slub_min,
-        slub_max,
-        thickness_min,
-        thickness_max,
-        ramp ?? null,
-        offset ?? null,
-        qc_id
-      ]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Spinning QC entry not found' });
-    }
-
-    res.status(200).json({
-      message: 'Spinning QC updated successfully',
-      data: result.rows[0],
-      entry_id: result.rows[0].entry_id,
-      process_parameter_id: result.rows[0].entry_id
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 module.exports = router;
 

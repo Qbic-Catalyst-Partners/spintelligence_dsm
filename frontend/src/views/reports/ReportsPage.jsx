@@ -1181,6 +1181,10 @@ const reportFieldAliases = {
   "CVT": ["cvd"],
   "I1": ["l1"],
   "I2": ["l2"],
+  "N": ["n_value"],
+  "S": ["s_value"],
+  "L": ["l_value"],
+  "CVP": ["cvb"],
   "RHS (Spindle Number)": ["rhs_value"],
   "LHS Remarks": ["lhs_textremarks"],
   "RHS Remarks": ["rhs_textremarks"],
@@ -1483,7 +1487,13 @@ const getReportFieldValue = (row, field) => {
     const fuzzyMatch = rowKeys.find((rowKey) => {
       if (rowKeyDenylist.has(rowKey)) return false;
       const normalizedRowKey = normalizeLookupKey(rowKey);
-      return normalizedRowKey.includes(target) || target.includes(normalizedRowKey);
+      // A short/generic target (e.g. "n", "s") can accidentally sit inside an unrelated long
+      // column name ("count_name" normalizes to "countname", which contains "n"). Only allow
+      // that direction once the target itself is specific enough to not be a coincidental
+      // substring. The reverse direction (a short row key contained in a longer target, e.g.
+      // alias "n_value" containing row key "n") stays unrestricted since it's the row key —
+      // the known, real column — that's short, not the search target.
+      return (target.length >= 3 && normalizedRowKey.includes(target)) || target.includes(normalizedRowKey);
     });
     const matchedKey = exactMatch || fuzzyMatch;
     if (matchedKey && row[matchedKey] !== null && typeof row[matchedKey] !== "undefined" && row[matchedKey] !== "") {
@@ -1963,7 +1973,11 @@ function ReportsPage() {
     const withEntryId = hasEntryIdField ? sourceFields : [...sourceFields, ENTRY_ID_FIELD];
     // Every notebook type entry is submitted by someone — surface who, resolved against the
     // submitted-notebooks record for that entry id, regardless of dept/type.
-    const withOperator = isTeamPerformanceReport ? withEntryId : [...withEntryId, OPERATOR_FIELD];
+    const isOperatorExcludedAutoconerReport =
+      subDepartment === "Autoconer" &&
+      ["Process Parameter", "PP - Autoconer Q2", "PP - Autoconer Q3"].includes(reportType);
+    const withOperator =
+      isTeamPerformanceReport || isOperatorExcludedAutoconerReport ? withEntryId : [...withEntryId, OPERATOR_FIELD];
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
     return withOperator.filter((field) => !selectedKeys.has(field.key));
   }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields, subDepartment]);

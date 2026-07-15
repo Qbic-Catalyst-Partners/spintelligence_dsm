@@ -359,7 +359,6 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             inspection_type: inspectionType,
             mc_name: mcName,
             inspection_date: inspectionDate,
-            inspection_time: inspectionTime,
             test_id: testId,
             sample_weights: activeRows.map((row) => toNumber(row.sampleWeight)),
             hanks: activeRows.map((row) => toHankNumber(row.hank)),

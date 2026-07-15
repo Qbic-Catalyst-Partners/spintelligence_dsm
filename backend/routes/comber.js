@@ -70,7 +70,7 @@ const ensureComberEntryIdColumns = async () => {
   `);
   await client.query(`
     ALTER TABLE comber.nati_data_entry
-      ALTER COLUMN nati_id DROP NOT NULL;
+      DROP COLUMN IF EXISTS nati_id;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS comber_nati_data_entry_entry_id_uq

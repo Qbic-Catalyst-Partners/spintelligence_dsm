@@ -19,7 +19,7 @@ import {
   getProcessParameterCountName,
   readProcessParameterRegistry,
 } from "@/utils/processParameterRegistry";
-import { fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import { fetchDrawFrameHeaderEntries, fetchDrawFrameFinisherEntries } from "@/apis/draw-frame";
 import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import {
   buildProcessParameterOptions,
@@ -37,6 +37,7 @@ import {
   fetchAutoconerConsigneeMaster,
 } from "@/apis/autoconer";
 import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
+import { fetchNextProcessParameterId } from "@/apis/processParameter";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "@/styles/processParameterPage.module.css";
@@ -156,11 +157,7 @@ const REMOTE_STATUS_SOURCES = [
   },
   {
     index: 4,
-    fetch: async () => {
-      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
-      const allRows = getEntryRows(response);
-      return { data: allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === "finisher") };
-    },
+    fetch: (filters) => fetchDrawFrameFinisherEntries({ page: 1, limit: 200, ...buildFilterParams(filters) }),
     getId: (entry) => entry?.param_id ?? entry?.entry_id,
     isDone: () => true,
     getDetails: getEntryDetails,
@@ -600,13 +597,23 @@ export default function ProcessParameterPage() {
       .sort((a, b) => getPpSequence(b.id) - getPpSequence(a.id));
   }, [dynamicRows, remoteStatusMap]);
 
-  const nextAvailableId = useMemo(() => {
-    const highestSequence = mergedRows.reduce(
-      (max, row) => Math.max(max, getPpSequence(row.id)),
-      0
-    );
-    return `PP-${String(highestSequence + 1).padStart(4, "0")}`;
-  }, [mergedRows]);
+  // The backend is the only source of truth for the next PP id (see
+  // resolveOrCreateProcessParameterEntryId in backend/utils/processParameterEntryId.js,
+  // which rejects anything outside the range it has actually issued). Computing this
+  // locally from whatever rows happen to be loaded (registry/remote statuses) can drift
+  // from the server's real sequence and produces ids the backend then rejects with
+  // "Invalid or unrecognized Process Parameter ID".
+  const [nextAvailableId, setNextAvailableId] = useState("");
+
+  const refreshNextAvailableId = () => {
+    fetchNextProcessParameterId().then((id) => {
+      if (id) setNextAvailableId(normalizeProcessParameterId(id));
+    });
+  };
+
+  useEffect(() => {
+    refreshNextAvailableId();
+  }, []);
 
   const getRowCountName = (rowId) => getProcessParameterCountName(rowId) || remoteCountNameMap[rowId] || "";
   const getRowConsigneeNames = (rowId) => remoteConsigneeNameMap[rowId] || [];
@@ -1270,7 +1277,10 @@ export default function ProcessParameterPage() {
                     const nextEntryId = resolveProcessParameterDisplayId(response, selectedEntryId);
 
                     if (nextEntryId) {
-                      if (!selectedEntryId) setSelectedEntryId(nextEntryId);
+                      if (!selectedEntryId) {
+                        setSelectedEntryId(nextEntryId);
+                        refreshNextAvailableId();
+                      }
                       refreshRegistryRows();
                     }
                   }}

@@ -24,7 +24,14 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { submitDrawFrameHeaderEntry, updateDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import {
+  submitDrawFrameHeaderEntry,
+  updateDrawFrameHeaderEntry,
+  fetchDrawFrameHeaderEntries,
+  submitDrawFrameFinisherEntry,
+  updateDrawFrameFinisherEntry,
+  fetchDrawFrameFinisherEntries,
+} from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
@@ -383,9 +390,14 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     let rows = [];
     setFormMessage("");
     try {
-      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
-      const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
-      rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === config.entryScope);
+      if (type === "PP - Finisher Drawing") {
+        const response = await fetchDrawFrameFinisherEntries({ page: 1, limit: 100 });
+        rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+      } else {
+        const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
+        const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+        rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() !== "finisher");
+      }
     } catch (error) {
       setFormMessage(error.message || "Unable to load saved draw frame entries.");
     }
@@ -590,9 +602,14 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         entry_id: paramId,
         param_id: paramId,
       };
+      const isFinisher = activeType === "PP - Finisher Drawing";
       const response = selectedExistingEntry
-        ? await updateDrawFrameHeaderEntry(selectedExistingEntry.id, payload)
-        : await submitDrawFrameHeaderEntry(payload);
+        ? isFinisher
+          ? await updateDrawFrameFinisherEntry(selectedExistingEntry.id, payload)
+          : await updateDrawFrameHeaderEntry(selectedExistingEntry.id, payload)
+        : isFinisher
+          ? await submitDrawFrameFinisherEntry(payload)
+          : await submitDrawFrameHeaderEntry(payload);
       const savedEntry = response?.data || response;
 
       registerProcessParameterId(savedEntry, activeType, form.countName);

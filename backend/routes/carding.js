@@ -44,6 +44,19 @@ const createNatiDataEntryId = async () => {
   return `NAT-${String(nextNumber).padStart(4, '0')}`;
 };
 
+const createUqcEntryId = async () => {
+  const result = await client.query(`
+    SELECT COALESCE(
+      MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
+      0
+    ) AS max_number
+    FROM carding.u_data_entry
+  `);
+
+  const nextNumber = Number(result.rows[0]?.max_number || 0) + 1;
+  return `UQ-${String(nextNumber).padStart(4, '0')}`;
+};
+
 const withScreenEntryId = (screenKey, record, idField = 'id') => {
   if (!record || typeof record !== 'object') return record;
   if (record.entry_id) return { ...record };
@@ -2189,6 +2202,13 @@ function createBetweenWithinEntryId() {
     return `#CB-${timestamp}${suffix}`;
 }
 
+const ensureBetweenWithinCardColumns = async () => {
+    await client.query(`
+        ALTER TABLE carding.inspections
+            ADD COLUMN IF NOT EXISTS test_id TEXT;
+    `);
+};
+
 function createCardingQcHeaderEntryId() {
     const timestamp = Date.now().toString(36).toUpperCase();
     const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -2197,14 +2217,18 @@ function createCardingQcHeaderEntryId() {
 
 router.post('/between-within-card', async (req, res) => {
     try {
+        await ensureBetweenWithinCardColumns();
+
         const {
             type_category,
             inspection_type,
             mc_name,
             inspection_date,
+            test_id,
         } = req.body;
         const entry_id = String(req.body.entry_id || '').trim() || createBetweenWithinEntryId();
         const resolvedInspectionDate = String(inspection_date || '').trim() || null;
+        const resolvedTestId = String(test_id || '').trim() || null;
         const { sample_weights, hanks } = getBwcArrays(req.body);
 
         if (!Array.isArray(sample_weights) || sample_weights.length === 0 || sample_weights.length > 100) {
@@ -2226,9 +2250,9 @@ router.post('/between-within-card', async (req, res) => {
 
         await client.query(
             `INSERT INTO carding.inspections
-            (id, type_category, inspection_type, mc_name, inspection_date, num_entries)
-            VALUES ($1,$2,$3,$4,$5,$6)`,
-            [id, type_category, inspection_type, mc_name, resolvedInspectionDate, num_entries]
+            (id, type_category, inspection_type, mc_name, inspection_date, num_entries, test_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [id, type_category, inspection_type, mc_name, resolvedInspectionDate, num_entries, resolvedTestId]
         );
 
         for (let i = 0; i < sample_weights.length; i++) {
@@ -2738,10 +2762,8 @@ router.get('/nati-data-entry', async (req, res) => {
 router.post('/uqc', async (req, res) => {
     try {
         await ensureCardingEntryIdColumns();
-        console.log("UQC BODY:", req.body);
 
         const {
-            entry_id,
             entry_type,
             entry_date,
             shift,
@@ -2753,10 +2775,7 @@ router.post('/uqc', async (req, res) => {
             cvm_3m,
             remarks
         } = req.body;
-
-        if (!entry_id) {
-            return res.status(400).json({ message: "entry_id is required and must be unique" });
-        }
+        const requestedEntryId = String(req.body.entry_id || '').trim();
 
         // ✅ Validation
         if (!entry_type || !entry_date) {
@@ -2769,37 +2788,55 @@ router.post('/uqc', async (req, res) => {
         const toNumber = (val) =>
             val === "" || val === undefined ? null : val;
 
-        const result = await client.query(
-            `INSERT INTO carding.u_data_entry
-            (entry_id, entry_type, entry_date, shift, variety, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            ON CONFLICT (entry_id) DO UPDATE SET
-              entry_type = EXCLUDED.entry_type,
-              entry_date = EXCLUDED.entry_date,
-              shift = EXCLUDED.shift,
-              variety = EXCLUDED.variety,
-              mc_no = EXCLUDED.mc_no,
-              u_percent = EXCLUDED.u_percent,
-              cvm = EXCLUDED.cvm,
-              cvm_1m = EXCLUDED.cvm_1m,
-              cvm_3m = EXCLUDED.cvm_3m,
-              remarks = EXCLUDED.remarks
-            RETURNING *`,
-            [
-                entry_id,
-                entry_type,
-                entry_date,
-                shift,
-                variety,
-                mc_no,
-                toNumber(u_percent),
-                toNumber(cvm),
-                toNumber(cvm_1m),
-                toNumber(cvm_3m),
-                remarks
-            ]
-        );
+        let entry_id = requestedEntryId;
+        let result;
+
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+                await client.query('BEGIN');
+                await client.query('LOCK TABLE carding.u_data_entry IN SHARE ROW EXCLUSIVE MODE');
+
+                entry_id = requestedEntryId || await createUqcEntryId();
+
+                result = await client.query(
+                    `INSERT INTO carding.u_data_entry
+                    (entry_id, entry_type, entry_date, shift, variety, mc_no,
+                     u_percent, cvm, cvm_1m, cvm_3m, remarks)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    ON CONFLICT (entry_id) DO UPDATE SET
+                      entry_type = EXCLUDED.entry_type,
+                      entry_date = EXCLUDED.entry_date,
+                      shift = EXCLUDED.shift,
+                      variety = EXCLUDED.variety,
+                      mc_no = EXCLUDED.mc_no,
+                      u_percent = EXCLUDED.u_percent,
+                      cvm = EXCLUDED.cvm,
+                      cvm_1m = EXCLUDED.cvm_1m,
+                      cvm_3m = EXCLUDED.cvm_3m,
+                      remarks = EXCLUDED.remarks
+                    RETURNING *`,
+                    [
+                        entry_id,
+                        entry_type,
+                        entry_date,
+                        shift,
+                        variety,
+                        mc_no,
+                        toNumber(u_percent),
+                        toNumber(cvm),
+                        toNumber(cvm_1m),
+                        toNumber(cvm_3m),
+                        remarks
+                    ]
+                );
+
+                await client.query('COMMIT');
+                break;
+            } catch (err) {
+                await client.query('ROLLBACK');
+                if (!isUniqueViolation(err) || requestedEntryId || attempt === 3) throw err;
+            }
+        }
 
         res.status(201).json({
             message: "UQC entry created successfully",

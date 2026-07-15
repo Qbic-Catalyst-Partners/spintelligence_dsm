@@ -500,6 +500,7 @@ app.use('/help', helpContentRouter);
 app.use('/submitted-notebooks', submittedNotebooksRouter);
 app.use('/l2/submitted-notebooks', submittedNotebooksRouter);
 app.use('/pp-threshold', ppThresholdRouter);
+app.use('/process-parameters', processParametersRouter);
 app.use('/glossary', (req, res, next) => {
   req.url = `/glossary${req.url === '/' ? '' : req.url}`;
   return helpContentRouter(req, res, next);
