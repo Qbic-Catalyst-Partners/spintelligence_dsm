@@ -246,7 +246,11 @@ const analyzeViolations = (parameterName, actualValue, thresholdRules) => {
       const plusNum = Number(rule?.plus_threshold);
       const minusNum = Number(rule?.minus_threshold);
       const baseActual = Number(rule?.actual_value);
-      const mode = (rule?.condition_level || 'More Than').toLowerCase();
+      const mode = String(rule?.condition_level || 'More Than')
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
       if (mode === 'more than' && Number.isFinite(plusNum) && plusNum !== 0) {
         deviationPercent = Math.abs(((actualNum - plusNum) / plusNum) * 100);
@@ -551,6 +555,18 @@ const ensureOperatorTicketApprovalColumns = async () => {
   await client.query(`
     ALTER TABLE ticketing_system.operator_tickets
     ADD COLUMN IF NOT EXISTS l3_tat_hours integer NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS description text NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS ticket_kind varchar(50) NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS source varchar(50) NULL
   `);
 };
 
@@ -2783,7 +2799,10 @@ router.post('/', async (req, res, next) => {
       sub_department,
       input_screen,
       management_field,
-      erp_product_code
+      erp_product_code,
+      description,
+      ticket_kind,
+      source
     } = req.body;
 
     const normalizedParameterNames = normalizeParameterNames(parameter_name);
@@ -2794,6 +2813,17 @@ router.post('/', async (req, res, next) => {
 
     if (!machine_name || !parameter_name || !actual_value) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const PROCESS_PARAMETER_SCREENS = new Set([
+      'Process Parameter',
+      'PP - Breaker Drawing',
+      'PP - Finisher Drawing',
+      'PP - Autoconer Q2',
+      'PP - Autoconer Q3'
+    ]);
+    if (PROCESS_PARAMETER_SCREENS.has(String(input_screen || '').trim()) && !/^PP-\d{4,}$/i.test(String(machine_name).trim())) {
+      return res.status(400).json({ message: 'machine_name must be a valid PP-000n process parameter id for this input_screen' });
     }
 
     let assignedUserId = user_id || parsePositiveInt(req.user?.id) || null;
@@ -2864,22 +2894,25 @@ router.post('/', async (req, res, next) => {
       effectiveThresholds
     );
 
-    if (!ticketReason) {
+    const trimmedDescription = typeof description === 'string' ? description.trim() : '';
+
+    if (!ticketReason && !trimmedDescription) {
       return res.status(400).json({
-        message: 'No violations found. Ticket requires null actual values or threshold breaches.'
+        message: 'No violations found. Ticket requires null actual values, threshold breaches, or a description.'
       });
     }
+
     const severity = resolveSeverity(requestedSeverity, violationDetails);
 
     const insertQuery = `
       INSERT INTO ticketing_system.operator_tickets
-      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, l1_tat_hours, l2_tat_hours, l3_tat_hours, l1_tat_due_at, tat_current_level)
+      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, l1_tat_hours, l2_tat_hours, l3_tat_hours, l1_tat_due_at, tat_current_level, description, ticket_kind, source)
       VALUES (
         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
         $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[],
         $15::int, $16::int, $17::int,
         CASE WHEN $15::int IS NOT NULL THEN CURRENT_TIMESTAMP + ($15::int || ' hours')::interval ELSE NULL END,
-        'L1'
+        'L1', $18, $19, $20
       )
       RETURNING *;
     `;
@@ -2894,14 +2927,17 @@ router.post('/', async (req, res, next) => {
       severity,
       management_field || null,
       erp_product_code || null,
-      ticketReason,
+      ticketReason || 'Manual Submission',
       JSON.stringify(violationDetails),
       approvalL1UserIds,
       approvalL2UserIds,
       approvalL3UserIds,
       tatHours.l1_tat_hours,
       tatHours.l2_tat_hours,
-      tatHours.l3_tat_hours
+      tatHours.l3_tat_hours,
+      trimmedDescription || null,
+      ticket_kind || null,
+      source || null
     ]);
 
     const ticket = result.rows[0];

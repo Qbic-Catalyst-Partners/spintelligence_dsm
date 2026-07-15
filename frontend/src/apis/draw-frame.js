@@ -671,23 +671,11 @@ export const fetchDrawFrameHeaderEntries = async ({ page = 1, limit = 10 } = {})
     }
 };
 
-// /drawframe/header serves both Breaker and Finisher process parameter entries together,
-// distinguished only by the entry_scope field each was saved with — split them here so each
-// can be reported on separately.
-const fetchDrawFrameHeaderEntriesByScope = async (scope, { page = 1, limit = 10 } = {}) => {
-    const response = await fetchDrawFrameHeaderEntries({ page, limit });
-    const rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
-    return {
-        ...(response && typeof response === "object" && !Array.isArray(response) ? response : {}),
-        data: rows.filter((row) => (row?.entry_scope || "").toLowerCase() === scope),
-    };
-};
-
 export const fetchDrawFrameBreakerProcessParameterEntries = (params) =>
-    fetchDrawFrameHeaderEntriesByScope("breaker", params);
+    fetchDrawFrameHeaderEntries(params);
 
 export const fetchDrawFrameFinisherProcessParameterEntries = (params) =>
-    fetchDrawFrameHeaderEntriesByScope("finisher", params);
+    fetchDrawFrameFinisherEntries(params);
 
 export const submitDrawFrameFinisherEntry = async (payload) => {
     try {

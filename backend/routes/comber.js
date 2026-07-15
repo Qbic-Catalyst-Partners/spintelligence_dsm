@@ -33,6 +33,61 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
 
+// `id` on these tables was never given a PRIMARY KEY, so the GET routes' `GROUP BY qc.id`
+// (selecting other qc.* columns via functional dependency) fail with "must appear in the GROUP
+// BY clause" on every request. Add the missing PK (id is a NOT NULL serial with no duplicates)
+// so those report queries can actually run.
+const ensureComberPrimaryKeys = async () => {
+  const tables = ['ribbon_lap_cv_qc', 'nati_data_entry'];
+  for (const table of tables) {
+    await client.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'comber.${table}'::regclass AND contype = 'p'
+        ) THEN
+          ALTER TABLE comber.${table} ADD PRIMARY KEY (id);
+        END IF;
+      END $$;
+    `);
+  }
+};
+
+// Ribbon Lap CV1M/Nati/U% store created_at/updated_at as `timestamp WITHOUT time zone`
+// (CURRENT_TIMESTAMP default), unlike Comber NRE%/Efficiency's `timestamp WITH time zone` — on
+// this DB, a "without time zone" default silently gets written using a different offset than the
+// session's own display timezone, so Custom Report's "Created At" comes out shifted by several
+// hours (sometimes onto the wrong calendar day) for these three screens while NRE%/Efficiency
+// display correctly. Converting the column type to timestamptz makes new rows store an
+// unambiguous absolute instant, matching NRE%/Efficiency's already-correct behavior.
+const ensureComberTimestampColumnsHaveTimezone = async () => {
+  const columnsByTable = {
+    ribbon_lap_cv_qc: ['created_at', 'updated_at'],
+    nati_data_entry: ['created_at', 'updated_at'],
+    u_data_entry: ['created_at']
+  };
+  for (const [table, columns] of Object.entries(columnsByTable)) {
+    for (const column of columns) {
+      await client.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'comber' AND table_name = '${table}' AND column_name = '${column}'
+              AND data_type = 'timestamp without time zone'
+          ) THEN
+            ALTER TABLE comber.${table}
+              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
+            ALTER TABLE comber.${table}
+              ALTER COLUMN ${column} SET DEFAULT now();
+          END IF;
+        END $$;
+      `);
+    }
+  }
+};
+
 const createNatiDataEntryId = async () => {
   const result = await client.query(`
     SELECT COALESCE(
@@ -49,6 +104,8 @@ const createNatiDataEntryId = async () => {
 let comberEntryIdColumnsReady = false;
 const ensureComberEntryIdColumns = async () => {
   if (comberEntryIdColumnsReady) return;
+  await ensureComberPrimaryKeys();
+  await ensureComberTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE comber.ribbon_lap_cv_qc
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -70,7 +127,7 @@ const ensureComberEntryIdColumns = async () => {
   `);
   await client.query(`
     ALTER TABLE comber.nati_data_entry
-      ALTER COLUMN nati_id DROP NOT NULL;
+      DROP COLUMN IF EXISTS nati_id;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS comber_nati_data_entry_entry_id_uq
@@ -844,6 +901,7 @@ router.post('/lap-cv', async (req, res) => {
  */
 router.get('/lap-cv', async (req, res) => {
     try {
+        await ensureComberEntryIdColumns();
         const result = await client.query(`
             SELECT
                 qc.*,
@@ -1049,8 +1107,9 @@ router.post('/nati-data-entry', async (req, res) => {
  */
 router.get('/nati-data-entry', async (req, res) => {
     try {
+        await ensureComberEntryIdColumns();
         const result = await client.query(`
-            SELECT 
+            SELECT
                 qc.id,
                 qc.entry_id,
                 qc.type,
@@ -1076,6 +1135,138 @@ router.get('/nati-data-entry', async (req, res) => {
         `);
 
         res.json(result.rows.map((row) => withScreenEntryId('nati_data_entry', row)));
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Comber NRE% has a fully-formed frontend (comberNreDataEntry.jsx) and its own DB table
+// (comber.nre_data_entry, with entry_id/unique-index already in place) but was never given a
+// backend route at all — every submission fell through to Express's default 404, which the
+// frontend's error handling shows as the generic "Invalid payload data." fallback message.
+router.post('/nre', async (req, res) => {
+    try {
+        const {
+            entry_id,
+            type,
+            silver_hank,
+            delivery_mtr_min,
+            comber_neps_min,
+            feed_mm_per_nep,
+            fiber_nep_in_comber_lap_gms,
+            fiber_nep_gms_in_silver,
+            comber_nre_percent
+        } = req.body;
+
+        if (!entry_id) {
+            return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
+
+        const result = await client.query(
+            `INSERT INTO comber.nre_data_entry
+            (entry_id, type, silver_hank, delivery_mtr_min, comber_neps_min, feed_mm_per_nep,
+             fiber_nep_in_comber_lap_gms, fiber_nep_gms_in_silver, comber_nre_percent)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            RETURNING *`,
+            [
+                entry_id,
+                type,
+                silver_hank,
+                delivery_mtr_min,
+                comber_neps_min,
+                feed_mm_per_nep,
+                fiber_nep_in_comber_lap_gms,
+                fiber_nep_gms_in_silver,
+                comber_nre_percent
+            ]
+        );
+
+        res.status(201).json({
+            message: 'Comber NRE% entry created',
+            data: withScreenEntryId('nre_data_entry', result.rows[0])
+        });
+    } catch (err) {
+        if (isUniqueViolation(err)) {
+            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+        }
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+router.get('/nre', async (req, res) => {
+    try {
+        const result = await client.query(`
+            SELECT *
+            FROM comber.nre_data_entry
+            ORDER BY created_at DESC
+        `);
+
+        res.json(result.rows.map((row) => withScreenEntryId('nre_data_entry', row)));
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Comber Efficiency has the same gap as Comber NRE% above — a complete frontend and its own DB
+// table (comber.efficiency_data_entry, entry_id/unique-index already in place) but no backend
+// route, so every submission 404'd and showed as "Invalid payload data." on the frontend.
+router.post('/efficiency', async (req, res) => {
+    try {
+        const {
+            entry_id,
+            type,
+            mc_name,
+            span_length_50_lap,
+            span_length_50_sliver,
+            combining_efficiency_formula
+        } = req.body;
+
+        if (!entry_id) {
+            return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
+
+        const result = await client.query(
+            `INSERT INTO comber.efficiency_data_entry
+            (entry_id, type, mc_name, span_length_50_lap, span_length_50_sliver, combining_efficiency_formula)
+            VALUES ($1,$2,$3,$4,$5,$6)
+            RETURNING *`,
+            [
+                entry_id,
+                type,
+                mc_name,
+                span_length_50_lap,
+                span_length_50_sliver,
+                combining_efficiency_formula
+            ]
+        );
+
+        res.status(201).json({
+            message: 'Comber Efficiency entry created',
+            data: withScreenEntryId('efficiency_data_entry', result.rows[0])
+        });
+    } catch (err) {
+        if (isUniqueViolation(err)) {
+            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+        }
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+router.get('/efficiency', async (req, res) => {
+    try {
+        const result = await client.query(`
+            SELECT *
+            FROM comber.efficiency_data_entry
+            ORDER BY created_at DESC
+        `);
+
+        res.json(result.rows.map((row) => withScreenEntryId('efficiency_data_entry', row)));
 
     } catch (err) {
         console.error(err);
@@ -1247,6 +1438,7 @@ router.post('/uqc', async (req, res) => {
  */
 router.get('/uqc', async (req, res) => {
     try {
+        await ensureComberEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;

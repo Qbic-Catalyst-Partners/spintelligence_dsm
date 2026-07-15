@@ -523,8 +523,11 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     wheelchange: ['spinning.wheel_change']
   },
   autoconer: {
+    processparameter: ['autoconer.autoconer_process_parameter'],
     ppautoconerq2: ['autoconer.autoconer_q2_inspection'],
     ppautoconerq3: ['autoconer.autoconer_q3_inspection'],
+    rewindingstudy: ['autoconer.rewinding_study'],
+    conedensity: ['autoconer.cone_density'],
     inspectiondataentry: ['autoconer.inspection_data_entry'],
     conepackingaudit: ['autoconer.cone_packing_audit'],
     lycrachecking: ['autoconer.lycra_checking_inspections'],
@@ -544,6 +547,137 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
 // source lists exactly the fields present on the Openness form UI (no
 // system/id columns), so "available fields" matches the form 1:1.
 const GENERAL_REPORT_CUSTOM_SOURCES = {
+  spinning: {
+    // COTS Checking form — spinning.cots_checking has no "checking type" column;
+    // report only the fields the form actually collects.
+    cotschecking: {
+      fromClause: 'spinning.cots_checking',
+      selectColumns: [
+        'entry_id',
+        'inspectiondate',
+        'machineno',
+        'lhs_value',
+        'rhs_value',
+        'lhs_textremarks',
+        'rhs_textremarks',
+        'createdat'
+      ],
+      dateColumn: 'inspectiondate'
+    },
+    // Count Change form — header table + per-reading child table. Drop count_change_type
+    // and the per-reading average/rollup columns (reading_avg, count_avg, strength_avg,
+    // generated_rows, overall_csp, cv_percent_2), which aren't collected by the form.
+    countchange: {
+      fromClause: 'spinning.count_change_inspections i '
+        + 'JOIN spinning.count_change_readings r ON r.inspection_id = i.id',
+      selectColumns: [
+        'i.entry_id',
+        'i.rf_no',
+        'i.lycra_draft',
+        'i.count_name_from',
+        'i.count_name_to',
+        'i.no_of_readings',
+        'r.reading_no',
+        'r.reading_value',
+        'r.count',
+        'r.cv_percent',
+        'r.strength',
+        'r.mean',
+        'r.csp',
+        'i.created_at'
+      ],
+      dateColumn: 'i.entry_date'
+    },
+    // Process Parameter form (POST /spinning/process-parameter) — single table, all fields live on spinning.spinning_qc_header.
+    processparameter: {
+      fromClause: 'spinning.spinning_qc_header',
+      selectColumns: [
+        'entry_id',
+        'count_name',
+        'consignee_name',
+        'machine_no',
+        'bottom_roll_setting',
+        'top_roll_setting',
+        'break_draft',
+        'total_draft',
+        'tpi_tm',
+        'spacer',
+        'traveller',
+        'speed',
+        'make',
+        'denier',
+        'merge_no',
+        'slub_partcy_code',
+        'slub_mtr',
+        'pause_min',
+        'pause_max',
+        'slub_min',
+        'slub_max',
+        'thickness_min',
+        'thickness_max',
+        'ramp',
+        'offset',
+        'lycra_draft',
+        'lycra_percent',
+        'created_at'
+      ],
+      dateColumn: 'creation_date'
+    },
+    // Ring Frame Log Book form — header table + per-machine row table + summary table,
+    // joined so the general report sees the full set of fields the form collects.
+    ringframelogbook: {
+      fromClause: 'spinning.ring_frame_inspections i '
+        + 'JOIN spinning.ring_frame_rows r ON r.inspection_id = i.id '
+        + 'JOIN spinning.ring_frame_summary s ON s.inspection_id = i.id',
+      selectColumns: [
+        'i.entry_id',
+        'i.entry_date',
+        'i.shift',
+        'i.checker_name',
+        'r.mc_no',
+        'r.lycra',
+        'r.bobbin_color',
+        'r.spindle_1',
+        'r.spindle_2',
+        'r.spindle_3',
+        'r.spindle_4',
+        'r.spindle_5',
+        'r.spindle_6',
+        'r.lycra_missing',
+        'r.guide_roll_lapping',
+        'r.others',
+        'r.total',
+        's.out_of_center',
+        's.out_of_center_ac',
+        's.out_of_center_rf',
+        's.fault_cops',
+        's.total_cops',
+        's.comments',
+        'i.created_at'
+      ],
+      dateColumn: 'i.entry_date'
+    },
+    wheelchangetype1: {
+      fromClause: 'spinning.wheel_change',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    },
+    wheelchangetype2: {
+      fromClause: 'spinning.wheel_change_inspection',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    },
+    wheelchangetype3: {
+      fromClause: 'spinning.wheel_change_v2',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    },
+    wheelchangetype4: {
+      fromClause: 'spinning.wheel_change_type4',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    }
+  },
   mixing: {
     opennessdataentry: {
       fromClause: 'mixing.openness_inspection i JOIN mixing.openness_entries e ON e.inspection_id = i.id',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import {
   FiCalendar,
@@ -65,6 +65,7 @@ import {
   fetchDrawFrameBreakerProcessParameterEntries,
   fetchDrawFrameFinisherProcessParameterEntries,
 } from "@/apis/draw-frame";
+import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import {
   fetchMixingAfisEntries,
   fetchMixingAfis6CottonEntries,
@@ -233,13 +234,11 @@ const reportSources = {
       "Draw Frame Cots Data Entry": { fetcher: fetchDrawFrameCotsEntries },
       "U% Data Entry": { fetcher: fetchDrawFrameUqcEntries },
       "A%": { endpoint: "/drawframe/a-percent" },
-      "Wheel Change Type-1 (SB20)": { endpoint: "/drawframe/wheel-change/type1" },
-      "Wheel Change Type-2 (TD7)": { endpoint: "/drawframe/wheel-change/type2" },
-      "Wheel Change Type-3 (TD9)": { endpoint: "/drawframe/wheel-change/type3" },
-      "Wheel Change Type-1 (LRSB)": { endpoint: "/drawframe/wheel-change/finisher-type1-lrsb" },
-      "Wheel Change Type-2 (D40)": { endpoint: "/drawframe/wheel-change/type2-d40" },
-      "Wheel Change Type-3 (D50/D55)": { endpoint: "/drawframe/wheel-change/type3-d50-d55" },
-      "Wheel Change Type-4 (LDF3S)": { endpoint: "/drawframe/wheel-change/type4-ldf3s" },
+      "PP - Breaker Drawing": { fetcher: fetchDrawFrameBreakerProcessParameterEntries },
+      "PP - Finisher Drawing": { fetcher: fetchDrawFrameFinisherProcessParameterEntries },
+      "Wheel Change": {
+        fetcher: (params) => fetchDrawFrameWheelChangeEntries({ ...params, approval_status: "approved" }),
+      },
     },
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },
@@ -931,7 +930,7 @@ const getRowDate = (row) =>
 
 // Draw Frame's "A%" notebook stores 10 sample rows + 7 named summary rows in a single flat
 // array (each shaped { sampleNo, nMinus1, n, nPlus1 }), rather than as top-level fields. Custom
-// Report needs one column per (row label) x (N-1/N/N+1) combination — synthesize those from the
+// Report needs one column per (row label) x (N-1/N/N+1) combination â€” synthesize those from the
 // catalog's "<Label> - <Column>" field names by looking up the matching row in that array.
 const A_PERCENT_SUMMARY_LABELS = ["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"];
 const A_PERCENT_ROW_COLUMN_KEYS = { "N-1": "nMinus1", N: "n", "N+1": "nPlus1" };
@@ -962,7 +961,7 @@ const getAPercentTableValue = (row, fieldLabel) => {
 
 // Simplex's "SMXCots Change Data Entry" saves its 14 damage/status checks as a single `items`
 // array (each shaped { item_name, status_value }) describing one entry, not 14 separate
-// records. Custom Report needs one column per item label — look each one up by item_name.
+// records. Custom Report needs one column per item label â€” look each one up by item_name.
 const SMX_COTS_CHANGE_ITEM_LABELS = [
   "Front Cots Damage",
   "Third Cots Damage",
@@ -989,7 +988,7 @@ const getSmxCotsChangeItemValue = (row, fieldLabel) => {
 
 // Simplex's "SMX Breaks Study Report" saves a 13 (length range) x 9 (break type) matrix as one
 // `items` array, each shaped { item_name: <break type>, length_range: <e.g. "0 - 200">,
-// status_value }. Custom Report needs one column per (length range x break type) cell —
+// status_value }. Custom Report needs one column per (length range x break type) cell â€”
 // generated as catalog labels like "Length 0-200 - Roving Breaks at Finger".
 const SMX_BREAKS_STUDY_COLUMNS = [
   "Roving Breaks at Finger",
@@ -1023,7 +1022,7 @@ const getSmxBreaksStudyCellValue = (row, fieldLabel) => {
 };
 
 // Simplex's "Stretch %" notebook stores a dynamic number of tables (each with its own meta
-// fields + samples[] + summaries[] arrays) under one `tables` array — one PDF can OCR into any
+// fields + samples[] + summaries[] arrays) under one `tables` array â€” one PDF can OCR into any
 // number of tables/sample rows, so Custom Report generates a capped set of columns like
 // "Table 1 - Test ID", "Table 1 - Sample 2 - Initial Bobbin", "Table 1 - Summary Hank - Full
 // Bobbin" (see fieldCatalog.js's "Stretch %" entry) and this resolves each back to the matching
@@ -1079,7 +1078,7 @@ const getStretchTableValue = (row, fieldLabel) => {
 };
 
 // Autoconer's "Drum wise Appearance" saves per-drum ok/not-ok flags as a `drum_inspections`
-// array, not a single "Appearance" value — sum across drums for a meaningful per-entry total.
+// array, not a single "Appearance" value â€” sum across drums for a meaningful per-entry total.
 const DRUM_WISE_APPEARANCE_FIELD_KEYS = {
   "Appearance OK Count": "appearance_ok_count",
   "Appearance Not OK Count": "appearance_not_ok_count",
@@ -1100,7 +1099,7 @@ const ENTRY_ID_FIELD = { key: "Entry ID", label: "Entry ID" };
 const normalizeEntryKey = (value) => String(value ?? "").trim().toLowerCase();
 
 // Priority order: try each candidate key (case/format-insensitive) in turn, and only move on to
-// the next if the found value is missing/empty — an empty `entry_id` shouldn't block falling
+// the next if the found value is missing/empty â€” an empty `entry_id` shouldn't block falling
 // back to a distinct, non-empty `id` field (an empty string is not nullish, so `??` chaining
 // alone would get stuck on it).
 const ENTRY_KEY_CANDIDATES = ["entry_id", "entryid", "lot_no", "lotno", "id"];
@@ -1182,6 +1181,10 @@ const reportFieldAliases = {
   "CVT": ["cvd"],
   "I1": ["l1"],
   "I2": ["l2"],
+  "N": ["n_value"],
+  "S": ["s_value"],
+  "L": ["l_value"],
+  "CVP": ["cvb"],
   "RHS (Spindle Number)": ["rhs_value"],
   "LHS Remarks": ["lhs_textremarks"],
   "RHS Remarks": ["rhs_textremarks"],
@@ -1199,6 +1202,7 @@ const reportFieldAliases = {
   "Ratio into size-0.7": ["ratio_size_07", "ratioSize07"],
   "Ratio into size-0.5": ["ratio_size_05", "ratioSize05"],
   "Lot No.": ["lot_no"],
+  "Blend No.": ["blend_no"],
   "Blend-1": ["percentage", "blend"],
   "Merge No.": ["merge_no"],
   "Process Parameter ID": ["entry_id", "param_id", "paramId"],
@@ -1465,7 +1469,7 @@ const getReportFieldValue = (row, field) => {
   // Explicit aliases go first: they were added precisely because the plain label/key either
   // doesn't exist on the row or fuzzy-matches the WRONG field (e.g. "Process Parameter ID" can
   // substring-match an unrelated "process_parameter" type field before ever trying its real
-  // "entry_id" alias) — an alias should always win over a blind fuzzy guess on the label itself.
+  // "entry_id" alias) â€” an alias should always win over a blind fuzzy guess on the label itself.
   const keys = [
     ...(reportFieldAliases[field?.label] || []),
     ...(reportFieldAliases[field?.key] || []),
@@ -1483,7 +1487,13 @@ const getReportFieldValue = (row, field) => {
     const fuzzyMatch = rowKeys.find((rowKey) => {
       if (rowKeyDenylist.has(rowKey)) return false;
       const normalizedRowKey = normalizeLookupKey(rowKey);
-      return normalizedRowKey.includes(target) || target.includes(normalizedRowKey);
+      // A short/generic target (e.g. "n", "s") can accidentally sit inside an unrelated long
+      // column name ("count_name" normalizes to "countname", which contains "n"). Only allow
+      // that direction once the target itself is specific enough to not be a coincidental
+      // substring. The reverse direction (a short row key contained in a longer target, e.g.
+      // alias "n_value" containing row key "n") stays unrestricted since it's the row key â€”
+      // the known, real column â€” that's short, not the search target.
+      return (target.length >= 3 && normalizedRowKey.includes(target)) || target.includes(normalizedRowKey);
     });
     const matchedKey = exactMatch || fuzzyMatch;
     if (matchedKey && row[matchedKey] !== null && typeof row[matchedKey] !== "undefined" && row[matchedKey] !== "") {
@@ -1511,7 +1521,7 @@ const getReportFieldValue = (row, field) => {
 };
 
 // Any field recognized as "a date" (by its raw backend key or its display label) gets rendered
-// through formatDate as day-month-year — including backend-supplied generic fields like
+// through formatDate as day-month-year â€” including backend-supplied generic fields like
 // "CREATED_AT" that arrive as a raw ISO timestamp with a time component.
 const DATE_FIELD_NORMALIZED_KEYS = new Set(
   [
@@ -1538,7 +1548,7 @@ const getCellValue = (row, field, operatorByEntryKey = {}) => {
   }
 
   // A field like "Sample 3 - N" or "Weight (Max) - N-1" only exists inside the A% notebook's
-  // nested rows array, not as a real key on the row — if it doesn't resolve there, show "-"
+  // nested rows array, not as a real key on the row â€” if it doesn't resolve there, show "-"
   // instead of falling through to the generic fallback below, which would otherwise return
   // some unrelated value scraped from elsewhere in the row (the exact "all fields show the
   // same value" bug this guarded against).
@@ -1574,7 +1584,7 @@ const getCellValue = (row, field, operatorByEntryKey = {}) => {
 
   const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
-  // Several forms (e.g. Cone Packing Audit's Yes/No radio fields) save these as real booleans —
+  // Several forms (e.g. Cone Packing Audit's Yes/No radio fields) save these as real booleans â€”
   // show them the same way the form does ("Yes"/"No") instead of the raw "true"/"false".
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "object") return JSON.stringify(value);
@@ -1923,7 +1933,7 @@ function ReportsPage() {
     const backendFields = uniqueOptions(builderOptions.input_fields).map(toReportField).filter(Boolean);
     const rawCatalogFields = uniqueOptions(getThresholdFieldsForScreen(reportType, subDepartment)).map(toReportField).filter(Boolean);
     // getThresholdFieldsForScreen is keyed by type name only, and a few names (e.g. "Process
-    // Parameter") are reused across unrelated departments with different field sets — for those,
+    // Parameter") are reused across unrelated departments with different field sets â€” for those,
     // only keep catalog fields that actually exist on the rows fetched for this dept/type. Names
     // unique to one department are trusted outright, so fields still show before any rows load.
     // If nothing in the catalog matches the fetched rows (no rows loaded yet, or this dept/type's
@@ -1935,7 +1945,7 @@ function ReportsPage() {
       : rawCatalogFields;
     // "Date" is excluded for the Wrapping OCR notebook types (Carding/Drawing/Simplex sub-types,
     // where it duplicates the separate "Report Date" column) and for every report type under the
-    // "Simplex" sub-department — other screens (e.g. Draw Frame's U% Data Entry) genuinely use
+    // "Simplex" sub-department â€” other screens (e.g. Draw Frame's U% Data Entry) genuinely use
     // "Date" as one of their own form fields and should show it.
     const screenExcludedReportFields =
       (subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)) ||
@@ -1951,19 +1961,23 @@ function ReportsPage() {
         !excludedFieldKeys.has(getCanonicalReportFieldKey(field)) &&
         index === list.findIndex((item) => getCanonicalReportFieldKey(item) === getCanonicalReportFieldKey(field))
     );
-    // When this notebook type has a defined field set, show only those fields — no extra
+    // When this notebook type has a defined field set, show only those fields â€” no extra
     // columns pulled in from the raw row shape (ids, internal/meta keys, etc). Only fall back
     // to inferring fields from the rows when nothing is defined for this screen at all.
     const sourceFields = definedFields.length ? definedFields : inferredFields;
     // Every notebook type has an entry id, whether or not the catalog for that
-    // screen happens to list it — surface it everywhere unless already present.
+    // screen happens to list it â€” surface it everywhere unless already present.
     const hasEntryIdField = sourceFields.some(
       (field) => getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(ENTRY_ID_FIELD)
     );
     const withEntryId = hasEntryIdField ? sourceFields : [...sourceFields, ENTRY_ID_FIELD];
-    // Every notebook type entry is submitted by someone — surface who, resolved against the
+    // Every notebook type entry is submitted by someone â€” surface who, resolved against the
     // submitted-notebooks record for that entry id, regardless of dept/type.
-    const withOperator = isTeamPerformanceReport ? withEntryId : [...withEntryId, OPERATOR_FIELD];
+    const isOperatorExcludedAutoconerReport =
+      subDepartment === "Autoconer" &&
+      ["Process Parameter", "PP - Autoconer Q2", "PP - Autoconer Q3"].includes(reportType);
+    const withOperator =
+      isTeamPerformanceReport || isOperatorExcludedAutoconerReport ? withEntryId : [...withEntryId, OPERATOR_FIELD];
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
     return withOperator.filter((field) => !selectedKeys.has(field.key));
   }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields, subDepartment]);
@@ -1990,7 +2004,7 @@ function ReportsPage() {
     let isMounted = true;
     const loadOperators = async () => {
       try {
-        // The backend paginates /submitted-notebooks like every other list endpoint — fetching
+        // The backend paginates /submitted-notebooks like every other list endpoint â€” fetching
         // without page/limit only returns the first page, so most entries had no match and
         // showed "-". Page through all of it so every entry id can resolve an operator.
         const notebookRows = await fetchAllReportRows(
@@ -2215,7 +2229,7 @@ function ReportsPage() {
         // Draw Frame's "A%" notebook and Simplex's "SMXCots Change Data Entry"/"SMX Breaks Study
         // Report"/"Stretch %" all store one entry's per-item breakdown as a nested array
         // (rows/manual_json/ocr_json, `items`, or `tables`) describing a single record, not
-        // multiple physical entries — skip the generic nested-array row expansion for these
+        // multiple physical entries â€” skip the generic nested-array row expansion for these
         // screens (unlike Wrapping's OCR notebooks, where each nested row really is its own
         // separate entry).
         const skipsNestedRowExpansion =
@@ -3108,7 +3122,7 @@ function ReportsPage() {
             <section className={styles.previewCard}>
               <h2>Report Preview</h2>
               <p>
-                Drag to reorder, click X to remove · {filteredRows.length}{" "}
+                Drag to reorder, click X to remove Â· {filteredRows.length}{" "}
                 {filteredRows.length === 1 ? "entry" : "entries"} loaded
               </p>
               <div

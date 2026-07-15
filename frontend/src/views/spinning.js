@@ -156,6 +156,25 @@ const getMachineText = (value) => {
     ).trim();
 };
 
+// Options can mix bare numbers ("1") with formatted labels ("R/F NO 14") depending on
+// which source they came from, so sort by the embedded number rather than lexically —
+// otherwise "R/F NO 14" sorts before "R/F NO 2" and plain "1"/"2" scatter out of order.
+const getMachineOptionSortKey = (option) => {
+    const text = String(option?.value ?? option?.label ?? "");
+    const match = text.match(/(\d+(?:\.\d+)?)/);
+    return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+};
+
+const sortMachineOptions = (options) =>
+    [...options].sort((a, b) => {
+        const numA = getMachineOptionSortKey(a);
+        const numB = getMachineOptionSortKey(b);
+        if (numA !== numB) return numA - numB;
+        return String(a?.label ?? a?.value ?? "").localeCompare(String(b?.label ?? b?.value ?? ""), undefined, {
+            numeric: true,
+        });
+    });
+
 const normalizeMachineOptions = (payload) => {
     const rows = Array.isArray(payload)
         ? payload
@@ -193,7 +212,7 @@ const normalizeMachineOptions = (payload) => {
 
     const seen = new Set();
 
-    return rows
+    const dedupedOptions = rows
         .map((row) => {
             const rawValue =
                 row?.value ??
@@ -245,6 +264,7 @@ const normalizeMachineOptions = (payload) => {
             seen.add(option.value);
             return true;
         });
+    return sortMachineOptions(dedupedOptions);
 };
 
 const normalizeCotsSideValue = (value) => {
@@ -293,7 +313,10 @@ const InspectionEntryIcon = () => (
 );
 
 function SpinningDepartment() {
-    const currentDateLabel = new Date().toLocaleDateString("en-IN");
+    const [currentDateLabel, setCurrentDateLabel] = useState("");
+    useEffect(() => {
+        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+    }, []);
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
@@ -1225,7 +1248,7 @@ function SpinningDepartment() {
                             onWheelChangeTypeChange={isWheelChange ? setWheelChangeSubType : undefined}
                             onSubmitSuccess={showSuccessOnce}
                             standaloneSection={isProcessParameter}
-                            savedVersionsTargetId={isProcessParameter ? "spinning-process-parameter-saved-versions" : ""}
+                            savedVersionsTargetId=""
                         />
                     ) : (
                         <>
@@ -1694,10 +1717,6 @@ function SpinningDepartment() {
                         <Footer isMobile={isMobile} onBack={() => router.push("/departments/quality-control")} onClear={handleClearForm} onSave={handleSaveRecord} />
                     </div>
                 </div>
-
-                {isProcessParameter && SelectedComponent ? (
-                    <div id="spinning-process-parameter-saved-versions" className="mt-5" />
-                ) : null}
             </div>
 
             <PreviewModal

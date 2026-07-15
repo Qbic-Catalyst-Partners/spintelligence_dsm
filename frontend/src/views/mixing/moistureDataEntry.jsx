@@ -14,6 +14,7 @@ const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
 const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
+    const user = useSelector((state) => state.auth?.user);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [moistureValues, setMoistureValues] = useState(Array(10).fill(''));
@@ -91,6 +92,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
         value9:  parseFloat(moistureValues[8]) || 0,
         value10: parseFloat(moistureValues[9]) || 0,
         average: parseFloat(average) || 0,
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const handleSubmit = async () => {

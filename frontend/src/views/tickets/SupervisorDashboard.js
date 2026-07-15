@@ -46,6 +46,8 @@ const formatDateDisplay = (value) => {
   return year && month && day ? `${day}-${month}-${year}` : String(value);
 };
 
+const PP_ENTRY_ID_PATTERN = /^PP-\d{4,}$/i;
+
 // PP_NOTEBOOK_INCOMPLETE tickets from /operator-tickets/process-parameter-ticketing —
 // these no longer appear in the generic /tickets feed (segregation fix), so they're
 // fetched separately here, same pattern as Operator dashboard's fetchSubmissionTickets.
@@ -251,6 +253,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   // generic /tickets feed safeTickets is built from), so they get their own
   // simple filter pass instead of running through the shared filteredTickets logic.
   const processParameterTickets = processParameterTicketData.filter((t) => {
+    if (!PP_ENTRY_ID_PATTERN.test(String(t.entryId || "").trim())) return false;
     const ticketDate = t.created_at ? new Date(t.created_at) : null;
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;

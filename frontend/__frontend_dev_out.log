@@ -1,19 +1,14 @@
-
-> spintelligence-frontend-beta1@0.1.0 dev
-> next dev --port 3000
-
 ▲ Next.js 16.2.0 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://192.168.29.56:3000
+- Network:       http://192.168.1.15:3000
 - Environments: .env
-✓ Ready in 3.0s
-Creating turbopack project {
-  dir: 'C:\\Users\\Sneha\\Downloads\\spintelligence-frontend-beta1',
-  testMode: true
-}
+✓ Ready in 1447ms
 
-○ Compiling /carding ...
- GET /carding?type=Process%20Parameter 200 in 15.4s (next.js: 14.9s, application-code: 497ms)
-✓ Compiled in 6s
-✓ Compiled in 2.5s
-[?25h
+○ Compiling /reports/general ...
+ GET /reports/general 304 in 7.3s (next.js: 7.0s, application-code: 300ms)
+ GET / 200 in 1026ms (next.js: 936ms, application-code: 90ms)
+ GET /process-parameter 200 in 314ms (next.js: 277ms, application-code: 36ms)
+ GET /reports/general 304 in 75ms (next.js: 14ms, application-code: 60ms)
+ GET /reports/general 304 in 110ms (next.js: 28ms, application-code: 82ms)
+ GET /reports/general 304 in 81ms (next.js: 21ms, application-code: 59ms)
+ GET /reports/general 200 in 127ms (next.js: 27ms, application-code: 100ms)

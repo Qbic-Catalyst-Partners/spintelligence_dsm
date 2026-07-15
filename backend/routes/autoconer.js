@@ -3,11 +3,12 @@ const router = express.Router();
 const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const SCREEN_ID_PREFIXES = {
-  q2: 'A2',
-  q3: 'A3'
+  // process/q2/q3 (Process Parameter screens) intentionally have no prefix here — they
+  // must only ever surface the real, stored PP-000n entry_id, never a synthesized fallback
+  // id, since a fabricated id collides with the shared Process Parameter scheme.
 };
 
 const AUTOCONER_SCREEN_SLUGS = [
@@ -645,7 +646,59 @@ const sendAutoconerMachineDropdown = async (req, res, next) => {
   }
 };
 
+// These tables store their submission timestamp as `timestamp WITHOUT time zone` with a bare
+// default — on this DB, that silently writes a different offset than what gets displayed back,
+// shifting "Created At" by several hours (sometimes onto the wrong calendar day) in Custom Report.
+// Same root cause and same fix as every other department's equivalent tables: convert to
+// timestamptz so new rows store an unambiguous absolute instant. (rewinding_study's own CREATE
+// TABLE statement already declares TIMESTAMPTZ, but that only applies to a fresh table — this
+// one was created earlier under the old plain-timestamp definition, so it still needs the same
+// ALTER here.)
+const ensureAutoconerTimestampColumnsHaveTimezone = async () => {
+  const tablesAndColumn = [
+    ['autoconer.autoconer_process_parameter', 'created_at'],
+    ['autoconer.autoconer_process_parameter', 'updated_at'],
+    ['autoconer.autoconer_q2_inspection', 'created_at'],
+    ['autoconer.autoconer_q2_inspection', 'updated_at'],
+    ['autoconer.autoconer_q3_inspection', 'created_at'],
+    ['autoconer.autoconer_q3_inspection', 'updated_at'],
+    ['autoconer.cone_density', 'created_at'],
+    ['autoconer.cone_density_notebook', 'created_at'],
+    ['autoconer.cone_density_notebook', 'updated_at'],
+    ['autoconer.cone_density_notebook_drums', 'created_at'],
+    ['autoconer.cone_packing_audit', 'created_at'],
+    ['autoconer.count_wise_cuts', 'created_at'],
+    ['autoconer.drum_readings', 'created_at'],
+    ['autoconer.drum_wise', 'created_at'],
+    ['autoconer.inspection_data_entry', 'created_at'],
+    ['autoconer.inspections', 'created_at'],
+    ['autoconer.lycra_checking_inspections', 'created_at'],
+    ['autoconer.parameter_entries', 'created_at'],
+    ['autoconer.parameter_entries', 'updated_at'],
+    ['autoconer.rewinding_study', 'created_at']
+  ];
+  for (const [tableName, column] of tablesAndColumn) {
+    const [schemaName, relationName] = tableName.split('.');
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = '${schemaName}' AND table_name = '${relationName}' AND column_name = '${column}'
+            AND data_type = 'timestamp without time zone'
+        ) THEN
+          ALTER TABLE ${tableName}
+            ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
+          ALTER TABLE ${tableName}
+            ALTER COLUMN ${column} SET DEFAULT now();
+        END IF;
+      END $$;
+    `);
+  }
+};
+
 const ensureAutoconerEntryIdColumns = async () => {
+  await ensureAutoconerTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE autoconer.autoconer_process_parameter
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -673,6 +726,106 @@ const ensureAutoconerEntryIdColumns = async () => {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q3_inspection_entry_id_uq
     ON autoconer.autoconer_q3_inspection (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.lycra_checking_inspections
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS lycra_checking_inspections_entry_id_uq
+    ON autoconer.lycra_checking_inspections (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  // Neither table was ever given a real PRIMARY KEY (just a plain `id` column) — harmless until
+  // GET /lycra-checking's GROUP BY i.id, s.id runs, since without a declared primary key Postgres
+  // can't apply the functional-dependency rule that normally lets `i.*`/`s.*` be selected once
+  // grouped by their own id, and instead rejects the whole query with "column ... must appear in
+  // the GROUP BY clause" — meaning this route has been failing outright on every fetch.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.lycra_checking_inspections'::regclass AND contype = 'p'
+      ) THEN
+        ALTER TABLE autoconer.lycra_checking_inspections ADD PRIMARY KEY (id);
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.lycra_checking_summary'::regclass AND contype = 'p'
+      ) THEN
+        ALTER TABLE autoconer.lycra_checking_summary ADD PRIMARY KEY (id);
+      END IF;
+    END $$;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.drum_wise
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS drum_wise_entry_id_uq
+    ON autoconer.drum_wise (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.inspections
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_inspections_entry_id_uq
+    ON autoconer.inspections (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.cone_density
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cone_density_entry_id_uq
+    ON autoconer.cone_density (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.cone_packing_audit
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cone_packing_audit_entry_id_uq
+    ON autoconer.cone_packing_audit (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.parameter_entries
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS parameter_entries_entry_id_uq
+    ON autoconer.parameter_entries (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.count_wise_cuts
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS count_wise_cuts_entry_id_uq
+    ON autoconer.count_wise_cuts (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  // cone_density_notebook already has an entry_id column (it's the table the Cone Density screen
+  // actually reads/writes via /cone-density-notebook, unlike the older, effectively unused
+  // /cone-density + autoconer.cone_density pairing above) but never had a uniqueness guard.
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cone_density_notebook_entry_id_uq
+    ON autoconer.cone_density_notebook (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
 };
@@ -732,7 +885,15 @@ const createProcessParameterEntry = async (req, res, next) => {
   try {
     await ensureAutoconerEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
@@ -1031,7 +1192,9 @@ router.get('/thresholds', async (req, res, next) => {
  */
 router.post('/lycra-checking', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       inspection_type,
       test_no,
       entry_date,
@@ -1055,12 +1218,13 @@ router.post('/lycra-checking', async (req, res) => {
     // ✅ 1. Insert Header
     const header = await client.query(`
             INSERT INTO autoconer.lycra_checking_inspections
-            (inspection_type, test_no, entry_date, lycra_draft,
+            (entry_id, inspection_type, test_no, entry_date, lycra_draft,
              count_name, no_of_readings,
              lycra_weight, fabric_weight, total_weight, lycra_percent)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             RETURNING id
         `, [
+      entry_id || null,
       inspection_type,
       test_no,
       entry_date,
@@ -1140,13 +1304,16 @@ router.post('/lycra-checking', async (req, res) => {
  */
 router.get('/lycra-checking', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
 
     const result = await client.query(`
             SELECT
                 i.*,
 
-                -- Readings
+                -- Readings (ordered by insertion order — DISTINCT alone sorts by the aggregated
+                -- value, not insertion order, so "Reading 1" could silently show a different row
+                -- than the first one actually entered)
                 COALESCE(
                     (
                       SELECT json_agg(
@@ -1375,12 +1542,16 @@ router.get('/count-wise-cuts', async (req, res) => {
  */
 router.post('/drum-wise', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       test_no,
       entry_date,
       type,
       machine_id,
       count_id,
+      machine_code,
+      count_name,
       drum_from,
       drum_to,
       remarks,
@@ -1393,12 +1564,18 @@ router.post('/drum-wise', async (req, res) => {
 
     await client.query('BEGIN');
 
+    // The form only ever has the machine/count CODE strings available (not the internal
+    // autoconer.machine/count_master serial ids), so it also sends machine_code/count_name as
+    // plain text — but this insert only ever wrote machine_id/count_id (which the form can't
+    // correctly populate anyway, since Number("AC03") is NaN), leaving both permanently null and
+    // "Auto Coner No."/"Count Name" always blank in Custom Report. Persist the plain-text columns
+    // that drum_wise already has for exactly this purpose.
     const drumWiseResult = await client.query(
       `INSERT INTO autoconer.drum_wise
-            (test_no, entry_date, type, machine_id, count_id, drum_from, drum_to, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (entry_id, test_no, entry_date, type, machine_code, count_name, drum_from, drum_to, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id`,
-      [test_no, entry_date, type, machine_id ?? null, count_id ?? null, drum_from, drum_to, remarks]
+      [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, drum_from, drum_to, remarks]
     );
 
     const drum_wise_id = drumWiseResult.rows[0].id;
@@ -1504,13 +1681,18 @@ router.post('/drum-wise', async (req, res) => {
  */
 router.get('/drum-wise', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    // dw.machine_code/dw.count_name are the plain-text values the form actually sends and are now
+    // actually persisted (see POST above) — prefer them, falling back to the machine_id/count_id
+    // join only in case that ever gets populated by some other means.
     const dataQuery = `
-            SELECT 
+            SELECT
                 dw.id,
+                dw.entry_id,
                 dw.test_no,
                 dw.entry_date,
                 dw.type,
@@ -1518,8 +1700,8 @@ router.get('/drum-wise', async (req, res) => {
                 dw.drum_to,
                 dw.remarks,
                 dw.created_at,
-                m.machine_code,
-                cm.count_name,
+                COALESCE(dw.machine_code, m.machine_code) AS machine_code,
+                COALESCE(dw.count_name, cm.count_name) AS count_name,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -1527,7 +1709,7 @@ router.get('/drum-wise', async (req, res) => {
                             'appearance_ok', di.appearance_ok,
                             'appearance_ok_count', vds.appearance_ok,
                             'appearance_not_ok_count', vds.appearance_not_ok
-                        )
+                        ) ORDER BY di.id
                     ) FILTER (WHERE di.id IS NOT NULL),
                     '[]'
                 ) AS drum_inspections
@@ -1536,7 +1718,7 @@ router.get('/drum-wise', async (req, res) => {
             LEFT JOIN autoconer.count_master cm ON dw.count_id = cm.id
             LEFT JOIN autoconer.drum_inspection di ON dw.id = di.drum_wise_id
             LEFT JOIN autoconer.v_drum_summary vds ON dw.id = vds.drum_wise_id AND di.drum_no = vds.drum_no
-            GROUP BY dw.id, m.machine_code, cm.count_name
+            GROUP BY dw.id, dw.machine_code, dw.count_name, m.machine_code, cm.count_name
             ORDER BY dw.entry_date DESC, dw.created_at DESC
             LIMIT $1 OFFSET $2
         `;
@@ -1669,7 +1851,9 @@ module.exports = router;
  */
 router.post('/splice-strength', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       type,
       test_no,
       inspection_date,
@@ -1691,10 +1875,10 @@ router.post('/splice-strength', async (req, res) => {
 
     const inspectionResult = await client.query(
       `INSERT INTO autoconer.inspections
-            (type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (entry_id, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id`,
-      [type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
+      [entry_id || null, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
     );
 
     const inspection_id = inspectionResult.rows[0].id;
@@ -1814,12 +1998,13 @@ router.post('/splice-strength', async (req, res) => {
  */
 router.get('/splice-strength', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
     const dataQuery = `
-            SELECT 
+            SELECT
                 i.*,
                 s.avg_splice_strength,
                 s.avg_parent_yarn,
@@ -2116,9 +2301,12 @@ router.post('/inspection-data-entry', async (req, res) => {
       );
     }
     await client.query('COMMIT');
-    res.status(201).json({ message: 'Inspection data entry created successfully', inspection_data_entry_id });
+    res.status(201).json({ message: 'Inspection data entry created successfully', inspection_data_entry_id, entry_id });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     console.error('Error creating inspection data entry:', err);
     res.status(500).json({ message: 'Server error' });
   }
@@ -2352,7 +2540,9 @@ router.get('/rewinding-study/:id', async (req, res) => {
  */
 router.post('/cone-density', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       test_no,
       entry_date,
       type,
@@ -2377,10 +2567,10 @@ router.post('/cone-density', async (req, res) => {
 
     const coneDensityResult = await client.query(
       `INSERT INTO autoconer.cone_density
-            (test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            (entry_id, test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
             RETURNING id`,
-      [test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks]
+      [entry_id || null, test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks]
     );
 
     const cone_density_id = coneDensityResult.rows[0].id;
@@ -2517,6 +2707,7 @@ router.post('/cone-density', async (req, res) => {
  */
 router.get('/cone-density', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -2700,6 +2891,172 @@ const fetchAutoconerMasterData = async (query = {}) => {
     }
   };
 };
+
+router.get('/cone-density/master-data', async (req, res) => {
+  try {
+    const payload = await fetchAutoconerMasterData(req.query);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error fetching cone density master data:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Legacy alias for clients that use "conedensity" as one word.
+router.get('/conedensity/master-data', async (req, res) => {
+  try {
+    const payload = await fetchAutoconerMasterData(req.query);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error fetching cone density master data:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Cone Density's actual notebook screen (frontend/src/views/autoconer/ConeDensity.jsx) submits to
+// and fetches from /cone-density-notebook — not /cone-density above, which is a separate, older
+// table (autoconer.cone_density/cone_density_readings) with almost no real data. This route never
+// existed at all, so every Cone Density submission from the real form has been failing outright,
+// and Custom Report's fetch for this screen returned nothing. autoconer.cone_density_notebook and
+// cone_density_notebook_drums already exist with the right columns (created for this purpose
+// earlier) — just needed the routes wired up.
+router.post('/cone-density-notebook', async (req, res) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const {
+      entry_id,
+      entry_date,
+      type,
+      count_name,
+      cntcode,
+      auto_coner_no,
+      drum_from,
+      drum_to,
+      cone_tip,
+      remarks,
+      drums
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+    if (!drums || !drums.length) {
+      return res.status(400).json({ message: 'Drum readings required' });
+    }
+
+    await client.query('BEGIN');
+
+    const headerResult = await client.query(
+      `INSERT INTO autoconer.cone_density_notebook
+        (entry_id, entry_date, type, count_name, cntcode, auto_coner_no, drum_from, drum_to, cone_tip, remarks)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id`,
+      [entry_id, entry_date, type || 'Cone Density', count_name, cntcode || null, auto_coner_no, drum_from, drum_to, cone_tip, remarks || null]
+    );
+    const notebook_id = headerResult.rows[0].id;
+
+    for (const drum of drums) {
+      await client.query(
+        `INSERT INTO autoconer.cone_density_notebook_drums
+          (notebook_id, drum_no, base_dia_e_d1, nose_dia_e_d2, base_dia_i_d3, nose_dia_i_d4,
+           slant_height_b1, vertical_height_b2, cone_weight_gms, volume_cm3, density_gms_cm3,
+           gms_litre, winding_speed_m_min, cn_tension, tensioner_rpm, tensioner_force,
+           n_cradle_pressure, remarks)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [
+          notebook_id,
+          drum.drum_no,
+          drum.base_dia_e_d1,
+          drum.nose_dia_e_d2,
+          drum.base_dia_i_d3,
+          drum.nose_dia_i_d4,
+          drum.slant_height_b1,
+          drum.vertical_height_b2,
+          drum.cone_weight_gms,
+          drum.volume_cm3,
+          drum.density_gms_cm3,
+          drum.gms_litre,
+          drum.winding_speed_m_min,
+          drum.cn_tension,
+          drum.tensioner_rpm,
+          drum.tensioner_force,
+          drum.n_cradle_pressure,
+          drum.remarks || null
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Cone density record created successfully', notebook_id, entry_id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error('Error creating cone density notebook record:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/cone-density-notebook', async (req, res) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const dataQueryBase = `
+      SELECT
+        cdn.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'drum_no', cdnd.drum_no,
+              'base_dia_e_d1', cdnd.base_dia_e_d1,
+              'nose_dia_e_d2', cdnd.nose_dia_e_d2,
+              'base_dia_i_d3', cdnd.base_dia_i_d3,
+              'nose_dia_i_d4', cdnd.nose_dia_i_d4,
+              'slant_height_b1', cdnd.slant_height_b1,
+              'vertical_height_b2', cdnd.vertical_height_b2,
+              'cone_weight_gms', cdnd.cone_weight_gms,
+              'volume_cm3', cdnd.volume_cm3,
+              'density_gms_cm3', cdnd.density_gms_cm3,
+              'gms_litre', cdnd.gms_litre,
+              'winding_speed_m_min', cdnd.winding_speed_m_min,
+              'cn_tension', cdnd.cn_tension,
+              'tensioner_rpm', cdnd.tensioner_rpm,
+              'tensioner_force', cdnd.tensioner_force,
+              'n_cradle_pressure', cdnd.n_cradle_pressure,
+              'remarks', cdnd.remarks
+            ) ORDER BY cdnd.id
+          ) FILTER (WHERE cdnd.id IS NOT NULL),
+          '[]'
+        ) AS drums
+      FROM autoconer.cone_density_notebook cdn
+      LEFT JOIN autoconer.cone_density_notebook_drums cdnd ON cdn.id = cdnd.notebook_id
+      GROUP BY cdn.id
+      ORDER BY cdn.entry_date DESC, cdn.created_at DESC
+    `;
+    const dataQuery = fetchAll ? dataQueryBase : `${dataQueryBase} LIMIT $1 OFFSET $2`;
+    const countQuery = `SELECT COUNT(*) FROM autoconer.cone_density_notebook`;
+
+    const dataResult = fetchAll ? await client.query(dataQuery) : await client.query(dataQuery, [limit, offset]);
+    const countResult = await client.query(countQuery);
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      page: fetchAll ? 1 : page,
+      limit: fetchAll ? total : limit,
+      total,
+      totalPages: fetchAll ? 1 : Math.ceil(total / limit),
+      data: dataResult.rows
+    });
+  } catch (err) {
+    console.error('Error fetching cone density notebook records:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 // Shared master-data endpoint for screens needing Count Name + Autoconer No.
 router.get('/master-data', async (req, res) => {
@@ -2976,7 +3333,9 @@ router.get('/q3/master/consignee-dropdown', sendAutoconerConsigneeDropdown);
  */
 router.post('/cone-packing-audit', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       inspection_date,
       packed_date,
       count_name,
@@ -3008,13 +3367,14 @@ router.post('/cone-packing-audit', async (req, res) => {
 
     const auditResult = await client.query(
       `INSERT INTO autoconer.cone_packing_audit
-            (inspection_date, packed_date, count_name, gross_weight_std, gross_weight_actual,
+            (entry_id, inspection_date, packed_date, count_name, gross_weight_std, gross_weight_actual,
              box_colour, cone_colour, gum_tape_colour, count_label, cone_damage,
              cover_missing, cone_hardness, stap_cone, disk, barcode, center_pad,
              net_weight, tare_weight, strap_colour)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
             RETURNING id`,
       [
+        entry_id || null,
         inspection_date,
         packed_date,
         count_name,
@@ -3066,8 +3426,11 @@ router.post('/cone-packing-audit', async (req, res) => {
 
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     console.error('Error creating cone packing audit:', err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
@@ -3179,43 +3542,40 @@ router.post('/cone-packing-audit', async (req, res) => {
  */
 router.get('/cone-packing-audit', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    // Two separate one-to-many child tables (drum_entries, yarn_readings) joined straight onto the
+    // same parent row would fan out into a cross product (2 drum entries x 2 yarn readings = 4
+    // rows before grouping), which is why the old query needed `json_agg(DISTINCT ...)` to collapse
+    // the duplicates back down — but DISTINCT sorts by the aggregated value itself, not insertion
+    // order, so "Reading 1"/"Drum 1" could silently show the wrong row. Aggregate each child table
+    // independently in its own LATERAL subquery first, so there's no fan-out and no need for
+    // DISTINCT, and order each list by its own row id.
     const dataQuery = `
             SELECT
                 cpa.*,
-                COALESCE(
-                    (
-                      SELECT json_agg(
-                        jsonb_build_object(
-                          'drum_no', de.drum_no,
-                          'gross_weight', de.gross_weight,
-                          'average', de.average
-                        )
-                        ORDER BY de.drum_no ASC, de.id ASC
-                      )
-                      FROM autoconer.drum_entries de
-                      WHERE de.audit_id = cpa.id
-                    ),
-                    '[]'
-                ) AS drum_entries,
-                COALESCE(
-                    (
-                      SELECT json_agg(
-                        jsonb_build_object(
-                          'reading_number', yr.reading_number,
-                          'percent_yarn', yr.percent_yarn
-                        )
-                        ORDER BY yr.reading_number ASC, yr.id ASC
-                      )
-                      FROM autoconer.yarn_readings yr
-                      WHERE yr.audit_id = cpa.id
-                    ),
-                    '[]'
-                ) AS yarn_readings
+                COALESCE(de_agg.drum_entries, '[]') AS drum_entries,
+                COALESCE(yr_agg.yarn_readings, '[]') AS yarn_readings
             FROM autoconer.cone_packing_audit cpa
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                jsonb_build_object('drum_no', de.drum_no, 'gross_weight', de.gross_weight, 'average', de.average)
+                ORDER BY de.id
+              ) AS drum_entries
+              FROM autoconer.drum_entries de
+              WHERE de.audit_id = cpa.id
+            ) de_agg ON true
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                jsonb_build_object('reading_number', yr.reading_number, 'percent_yarn', yr.percent_yarn)
+                ORDER BY yr.id
+              ) AS yarn_readings
+              FROM autoconer.yarn_readings yr
+              WHERE yr.audit_id = cpa.id
+            ) yr_agg ON true
             ORDER BY cpa.created_at DESC
             LIMIT $1 OFFSET $2
         `;
@@ -3271,6 +3631,7 @@ router.get('/cone-packing-audit', async (req, res) => {
  */
 router.post('/parameter-entries', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     let phase = 'pending';
@@ -3284,6 +3645,7 @@ router.post('/parameter-entries', async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO autoconer.parameter_entries (
+        entry_id,
         inspection_type,
         entry_date,
         count_name,
@@ -3323,16 +3685,18 @@ router.post('/parameter-entries', async (req, res) => {
       )
       VALUES (
         $1,$2,$3,
-        $4,$5,$6,$7,$8,
-        $9,$10,$11,
-        $12,$13,$14,$15,$16,
-        $17,$18,$19,$20,
-        $21,$22,$23,$24,$25,
-        $26,$27,
-        $28,$29
+        $4,
+        $5,$6,$7,$8,$9,
+        $10,$11,$12,
+        $13,$14,$15,$16,$17,
+        $18,$19,$20,$21,
+        $22,$23,$24,$25,$26,
+        $27,$28,
+        $29,$30
       )
       RETURNING *`,
       [
+        data.entry_id || null,
         data.inspection_type,
         data.entry_date,
         data.count_name,
@@ -3519,6 +3883,7 @@ router.put('/parameter-entries/:id', async (req, res) => {
  */
 router.get('/parameter-entries', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const result = await client.query(
       `SELECT * FROM autoconer.parameter_entries ORDER BY id DESC`
     );
@@ -3599,6 +3964,724 @@ router.get('/parameter-entries/pending-quality', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /autoconer/process:
+ *   post:
+ *     summary: Create Autoconer Process Parameter entry
+ *     tags: [Autoconer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *                 example: "40s Cotton"
+ *               consignee_name:
+ *                 type: string
+ *                 example: "ABC Mills"
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-04-15"
+ *               machine_no:
+ *                 type: string
+ *                 example: "AUTO-01"
+ *               drum_no:
+ *                 type: string
+ *                 example: "DR-10"
+ *               speed:
+ *                 type: number
+ *                 example: 1200
+ *               p_cone_identification:
+ *                 type: string
+ *                 example: "Cone-A"
+ *               cone_weight:
+ *                 type: number
+ *                 example: 1.25
+ *               initial_winding_tension:
+ *                 type: number
+ *                 example: 15
+ *               standard_winding_tension:
+ *                 type: number
+ *                 example: 14
+ *               touch_winding_tension:
+ *                 type: number
+ *                 example: 13
+ *               t_release_add_tension:
+ *                 type: number
+ *                 example: 2
+ *               tension_release_end_yarn_layer:
+ *                 type: number
+ *                 example: 5
+ *               tension_release_decrease_ratio:
+ *                 type: number
+ *                 example: 0.8
+ *               tension_release_valid_yarn_layer:
+ *                 type: number
+ *                 example: 6
+ *               splicing_setting:
+ *                 type: string
+ *                 example: "Standard"
+ *               water_on_off:
+ *                 type: string
+ *                 example: "ON"
+ *               splicing_length_adjust_parameter:
+ *                 type: number
+ *                 example: 3.5
+ *               splicing_nozzle:
+ *                 type: string
+ *                 example: "Nozzle-A"
+ *               cradle_pressure:
+ *                 type: number
+ *                 example: 10
+ *               cone_density:
+ *                 type: number
+ *                 example: 0.45
+ *               cone_cops:
+ *                 type: string
+ *                 example: "Cone"
+ *     responses:
+ *       201:
+ *         description: Autoconer entry created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Autoconer entry created successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     ins_code:
+ *                       type: string
+ *                       example: "PP001"
+ *                     type:
+ *                       type: string
+ *                       example: "Process Parameter"
+ *                     count_name:
+ *                       type: string
+ *                       example: "40s Cotton"
+ *                     consignee_name:
+ *                       type: string
+ *                       example: "ABC Mills"
+ *                     creation_date:
+ *                       type: string
+ *                       format: date
+ *                       example: "2026-04-15"
+ *                     machine_no:
+ *                       type: string
+ *                     drum_no:
+ *                       type: string
+ *                     speed:
+ *                       type: number
+ *                     p_cone_identification:
+ *                       type: string
+ *                     cone_weight:
+ *                       type: number
+ *                     initial_winding_tension:
+ *                       type: number
+ *                     standard_winding_tension:
+ *                       type: number
+ *                     touch_winding_tension:
+ *                       type: number
+ *                     t_release_add_tension:
+ *                       type: number
+ *                     tension_release_end_yarn_layer:
+ *                       type: number
+ *                     tension_release_decrease_ratio:
+ *                       type: number
+ *                     tension_release_valid_yarn_layer:
+ *                       type: number
+ *                     splicing_setting:
+ *                       type: string
+ *                     water_on_off:
+ *                       type: string
+ *                     splicing_length_adjust_parameter:
+ *                       type: number
+ *                     splicing_nozzle:
+ *                       type: string
+ *                     cradle_pressure:
+ *                       type: number
+ *                     cone_density:
+ *                       type: number
+ *                     cone_cops:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid input (missing required fields)
+ *       500:
+ *         description: Server error
+ */
+router.post('/process', async (req, res, next) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const data = req.body;
+
+    if (!data.count_name || !data.consignee_name || !data.creation_date) {
+      return res.status(400).json({
+        message: 'count_name, consignee_name and creation_date are required'
+      });
+    }
+
+    const result = await client.query(
+      `INSERT INTO autoconer.autoconer_process_parameter (
+        entry_id,
+        count_name, consignee_name, creation_date,
+        machine_no, drum_no,
+        speed, p_cone_identification, cone_weight, initial_winding_tension,
+        standard_winding_tension, touch_winding_tension, t_release_add_tension,
+        tension_release_end_yarn_layer, tension_release_decrease_ratio, tension_release_valid_yarn_layer,
+        splicing_setting, water_on_off, splicing_length_adjust_parameter, splicing_nozzle,
+        cradle_pressure, cone_density, cone_cops
+      )
+      VALUES (
+        $1,$2,$3,$4,
+        $5,$6,
+        $7,$8,$9,$10,
+        $11,$12,$13,
+        $14,$15,$16,
+        $17,$18,$19,$20,
+        $21,$22,$23
+      )
+      RETURNING *`,
+      [
+        data.entry_id || null,
+        data.count_name,
+        data.consignee_name,
+        data.creation_date,
+        data.machine_no,
+        data.drum_no,
+        data.speed,
+        data.p_cone_identification,
+        data.cone_weight,
+        data.initial_winding_tension,
+        data.standard_winding_tension,
+        data.touch_winding_tension,
+        data.t_release_add_tension,
+        data.tension_release_end_yarn_layer,
+        data.tension_release_decrease_ratio,
+        data.tension_release_valid_yarn_layer,
+        data.splicing_setting,
+        data.water_on_off,
+        data.splicing_length_adjust_parameter,
+        data.splicing_nozzle,
+        data.cradle_pressure,
+        data.cone_density,
+        data.cone_cops
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Autoconer entry created successfully',
+      data: withScreenEntryId('process', result.rows[0])
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error(error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /autoconer/process:
+ *   get:
+ *     summary: Get all Autoconer entries
+ *     tags: [Autoconer]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of records per page
+ *     responses:
+ *       200:
+ *         description: Autoconer data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       ins_code:
+ *                         type: string
+ *                         example: "PP001"
+ *                       type:
+ *                         type: string
+ *                         example: "Process Parameter"
+ *                       count_name:
+ *                         type: string
+ *                         example: "40s Cotton"
+ *                       consignee_name:
+ *                         type: string
+ *                         example: "ABC Mills"
+ *                       creation_date:
+ *                         type: string
+ *                         format: date
+ *                         example: "2026-04-15"
+ *                       machine_no:
+ *                         type: string
+ *                         example: "AUTO-01"
+ *                       drum_no:
+ *                         type: string
+ *                         example: "DR-10"
+ *                       speed:
+ *                         type: number
+ *                         example: 1200
+ *                       p_cone_identification:
+ *                         type: string
+ *                         example: "Cone-A"
+ *                       cone_weight:
+ *                         type: number
+ *                         example: 1.25
+ *                       initial_winding_tension:
+ *                         type: number
+ *                         example: 15
+ *                       standard_winding_tension:
+ *                         type: number
+ *                         example: 14
+ *                       touch_winding_tension:
+ *                         type: number
+ *                         example: 13
+ *                       t_release_add_tension:
+ *                         type: number
+ *                         example: 2
+ *                       tension_release_end_yarn_layer:
+ *                         type: number
+ *                         example: 5
+ *                       tension_release_decrease_ratio:
+ *                         type: number
+ *                         example: 0.8
+ *                       tension_release_valid_yarn_layer:
+ *                         type: number
+ *                         example: 6
+ *                       splicing_setting:
+ *                         type: string
+ *                         example: "Standard"
+ *                       water_on_off:
+ *                         type: string
+ *                         example: "ON"
+ *                       splicing_length_adjust_parameter:
+ *                         type: number
+ *                         example: 3.5
+ *                       splicing_nozzle:
+ *                         type: string
+ *                         example: "Nozzle-A"
+ *                       cradle_pressure:
+ *                         type: number
+ *                         example: 10
+ *                       cone_density:
+ *                         type: number
+ *                         example: 0.45
+ *                       cone_cops:
+ *                         type: string
+ *                         example: "Cone"
+ *                       created_at:
+ *                         type: string
+ *                         format: date-time
+ *                       updated_at:
+ *                         type: string
+ *                         format: date-time
+ *                 total:
+ *                   type: integer
+ *                   example: 25
+ *                 page:
+ *                   type: integer
+ *                   example: 1
+ *                 limit:
+ *                   type: integer
+ *                   example: 10
+ *       500:
+ *         description: Server error
+ */
+router.get('/process', async (req, res, next) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM autoconer.autoconer_process_parameter
+       ORDER BY creation_date DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM autoconer.autoconer_process_parameter`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('process', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /autoconer/process/{id}:
+ *   put:
+ *     summary: Update Autoconer Process Parameter entry
+ *     tags: [Autoconer]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Autoconer Entry ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *                 example: "40s Cotton"
+ *               consignee_name:
+ *                 type: string
+ *                 example: "ABC Mills"
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-04-15"
+ *               machine_no:
+ *                 type: string
+ *                 example: "AUTO-01"
+ *               drum_no:
+ *                 type: string
+ *                 example: "DR-10"
+ *               speed:
+ *                 type: number
+ *                 example: 1200
+ *               p_cone_identification:
+ *                 type: string
+ *                 example: "Cone-A"
+ *               cone_weight:
+ *                 type: number
+ *                 example: 1.25
+ *               initial_winding_tension:
+ *                 type: number
+ *                 example: 15
+ *               standard_winding_tension:
+ *                 type: number
+ *                 example: 14
+ *               touch_winding_tension:
+ *                 type: number
+ *                 example: 13
+ *               t_release_add_tension:
+ *                 type: number
+ *                 example: 2
+ *               tension_release_end_yarn_layer:
+ *                 type: number
+ *                 example: 5
+ *               tension_release_decrease_ratio:
+ *                 type: number
+ *                 example: 0.8
+ *               tension_release_valid_yarn_layer:
+ *                 type: number
+ *                 example: 6
+ *               splicing_setting:
+ *                 type: string
+ *                 example: "Standard"
+ *               water_on_off:
+ *                 type: string
+ *                 example: "ON"
+ *               splicing_length_adjust_parameter:
+ *                 type: number
+ *                 example: 3.5
+ *               splicing_nozzle:
+ *                 type: string
+ *                 example: "Nozzle-A"
+ *               cradle_pressure:
+ *                 type: number
+ *                 example: 10
+ *               cone_density:
+ *                 type: number
+ *                 example: 0.45
+ *               cone_cops:
+ *                 type: string
+ *                 example: "Cone"
+ *     responses:
+ *       200:
+ *         description: Autoconer entry updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Updated successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     ins_code:
+ *                       type: string
+ *                       example: "PP001"
+ *                     type:
+ *                       type: string
+ *                       example: "Process Parameter"
+ *                     count_name:
+ *                       type: string
+ *                       example: "40s Cotton"
+ *                     consignee_name:
+ *                       type: string
+ *                       example: "ABC Mills"
+ *                     creation_date:
+ *                       type: string
+ *                       format: date
+ *                     machine_no:
+ *                       type: string
+ *                     drum_no:
+ *                       type: string
+ *                     speed:
+ *                       type: number
+ *                     p_cone_identification:
+ *                       type: string
+ *                     cone_weight:
+ *                       type: number
+ *                     initial_winding_tension:
+ *                       type: number
+ *                     standard_winding_tension:
+ *                       type: number
+ *                     touch_winding_tension:
+ *                       type: number
+ *                     t_release_add_tension:
+ *                       type: number
+ *                     tension_release_end_yarn_layer:
+ *                       type: number
+ *                     tension_release_decrease_ratio:
+ *                       type: number
+ *                     tension_release_valid_yarn_layer:
+ *                       type: number
+ *                     splicing_setting:
+ *                       type: string
+ *                     water_on_off:
+ *                       type: string
+ *                     splicing_length_adjust_parameter:
+ *                       type: number
+ *                     splicing_nozzle:
+ *                       type: string
+ *                     cradle_pressure:
+ *                       type: number
+ *                     cone_density:
+ *                       type: number
+ *                     cone_cops:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     updated_at:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid input or ID
+ *       404:
+ *         description: Entry not found
+ *       500:
+ *         description: Server error
+ */
+
+router.put('/process/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const data = req.body;
+
+    if (!id || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID' });
+    }
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM autoconer.autoconer_process_parameter WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO autoconer.autoconer_process_parameter (
+          entry_id,
+          count_name, consignee_name, creation_date,
+          machine_no, drum_no,
+          speed, p_cone_identification, cone_weight, initial_winding_tension,
+          standard_winding_tension, touch_winding_tension, t_release_add_tension,
+          tension_release_end_yarn_layer, tension_release_decrease_ratio, tension_release_valid_yarn_layer,
+          splicing_setting, water_on_off, splicing_length_adjust_parameter, splicing_nozzle,
+          cradle_pressure, cone_density, cone_cops
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,
+          $7,$8,$9,$10,
+          $11,$12,$13,
+          $14,$15,$16,
+          $17,$18,$19,$20,
+          $21,$22,$23
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.count_name,
+          data.consignee_name,
+          data.creation_date,
+          data.machine_no,
+          data.drum_no,
+          data.speed,
+          data.p_cone_identification,
+          data.cone_weight,
+          data.initial_winding_tension,
+          data.standard_winding_tension,
+          data.touch_winding_tension,
+          data.t_release_add_tension,
+          data.tension_release_end_yarn_layer,
+          data.tension_release_decrease_ratio,
+          data.tension_release_valid_yarn_layer,
+          data.splicing_setting,
+          data.water_on_off,
+          data.splicing_length_adjust_parameter,
+          data.splicing_nozzle,
+          data.cradle_pressure,
+          data.cone_density,
+          data.cone_cops
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Autoconer entry created successfully',
+        data: withScreenEntryId('process', insertResult.rows[0])
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE autoconer.autoconer_process_parameter
+       SET count_name=$1,
+           consignee_name=$2,
+           creation_date=$3,
+           machine_no=$4,
+           drum_no=$5,
+           speed=$6,
+           p_cone_identification=$7,
+           cone_weight=$8,
+           initial_winding_tension=$9,
+           standard_winding_tension=$10,
+           touch_winding_tension=$11,
+           t_release_add_tension=$12,
+           tension_release_end_yarn_layer=$13,
+           tension_release_decrease_ratio=$14,
+           tension_release_valid_yarn_layer=$15,
+           splicing_setting=$16,
+           water_on_off=$17,
+           splicing_length_adjust_parameter=$18,
+           splicing_nozzle=$19,
+           cradle_pressure=$20,
+           cone_density=$21,
+           cone_cops=$22,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id=$23
+       RETURNING *`,
+      [
+        data.count_name,
+        data.consignee_name,
+        data.creation_date,
+        data.machine_no,
+        data.drum_no,
+        data.speed,
+        data.p_cone_identification,
+        data.cone_weight,
+        data.initial_winding_tension,
+        data.standard_winding_tension,
+        data.touch_winding_tension,
+        data.t_release_add_tension,
+        data.tension_release_end_yarn_layer,
+        data.tension_release_decrease_ratio,
+        data.tension_release_valid_yarn_layer,
+        data.splicing_setting,
+        data.water_on_off,
+        data.splicing_length_adjust_parameter,
+        data.splicing_nozzle,
+        data.cradle_pressure,
+        data.cone_density,
+        data.cone_cops,
+        id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Updated successfully',
+      data: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error(error);
+    next(error);
+  }
+});
 
 /**
  * @swagger
@@ -3637,7 +4720,15 @@ router.post('/q2', async (req, res, next) => {
   try {
     await ensureAutoconerEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
@@ -3959,6 +5050,64 @@ router.put('/q2/:id', async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid ID' });
     }
 
+    const currentResult = await client.query(
+      `SELECT entry_id FROM autoconer.autoconer_q2_inspection WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO autoconer.autoconer_q2_inspection (
+          entry_id,
+          count_name, consignee_name, creation_date,
+          n_value, s_value, l_value,
+          lh1, lh2, lh3, lh4, lh5, lh6,
+          tht, th1, th2, th3, th4, th5, th6,
+          cp, cm, ccp, ccm, pc,
+          fault_distance, no_of_faults, jp, jm, up, fl,
+          flh1, flh2, flh3, flh4,
+          fd, fdh1, fdh2, fdh3, fdh4, fdh5,
+          reference_length, measurement, upper_alarm_limit, lower_alarm_limit, action
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,$7,
+          $8,$9,$10,$11,$12,$13,
+          $14,$15,$16,$17,$18,$19,$20,
+          $21,$22,$23,$24,$25,
+          $26,$27,$28,$29,$30,$31,
+          $32,$33,$34,$35,
+          $36,$37,$38,$39,$40,$41,
+          $42,$43,$44,$45,$46
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.count_name, data.consignee_name, data.creation_date,
+          data.n_value, data.s_value, data.l_value,
+          data.lh1, data.lh2, data.lh3, data.lh4, data.lh5, data.lh6,
+          data.tht, data.th1, data.th2, data.th3, data.th4, data.th5, data.th6,
+          data.cp, data.cm, data.ccp, data.ccm, data.pc,
+          data.fault_distance, data.no_of_faults, data.jp, data.jm, data.up, data.fl,
+          data.flh1, data.flh2, data.flh3, data.flh4,
+          data.fd, data.fdh1, data.fdh2, data.fdh3, data.fdh4, data.fdh5,
+          data.reference_length, data.measurement, data.upper_alarm_limit, data.lower_alarm_limit, data.action
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Q2 entry created successfully',
+        data: withScreenEntryId('q2', insertResult.rows[0])
+      });
+    }
+
     const result = await client.query(
       `UPDATE autoconer.autoconer_q2_inspection
        SET count_name=$1,
@@ -4166,7 +5315,15 @@ router.post('/q3', async (req, res, next) => {
   try {
     await ensureAutoconerEntryIdColumns();
     const data = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(data.entry_id, { forceNew: data.force_new === true || data.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
       return res.status(400).json({
@@ -4427,6 +5584,67 @@ router.put('/q3/:id', async (req, res, next) => {
 
     if (!id || id <= 0) {
       return res.status(400).json({ message: 'Invalid ID' });
+    }
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM autoconer.autoconer_q3_inspection WHERE id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    const requestedEntryId = String(data.entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO autoconer.autoconer_q3_inspection (
+          entry_id,
+          count_name, consignee_name, creation_date,
+          nsl1, nsl2, nsl3, nsl4, nsl5, nsl6, nsl7,
+          t1, t2, t3, t4, t5,
+          pf_sensing, pf_no_of_periods,
+          oc, cp, cm, ccp1, ccp2, ccm1, ccm2,
+          jp1, jp2, jp3, jp4, jp5, jp6, jp7,
+          jp_clearing, jp_u_percent, jp_jm,
+          fd1, fd2, fd3, fd4, fd5, fd6,
+          reference_length, suction, measurement, upper_limit, lower_limit,
+          action, suction_status, blocking
+        )
+        VALUES (
+          $1,$2,$3,$4,
+          $5,$6,$7,$8,$9,$10,$11,
+          $12,$13,$14,$15,$16,
+          $17,$18,
+          $19,$20,$21,$22,$23,$24,$25,
+          $26,$27,$28,$29,$30,$31,$32,
+          $33,$34,$35,
+          $36,$37,$38,$39,$40,$41,
+          $42,$43,$44,$45,$46,
+          $47,$48,$49
+        )
+        RETURNING *`,
+        [
+          requestedEntryId,
+          data.count_name, data.consignee_name, data.creation_date,
+          data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
+          data.t1, data.t2, data.t3, data.t4, data.t5,
+          data.pf_sensing, data.pf_no_of_periods,
+          data.oc, data.cp, data.cm, data.ccp1, data.ccp2, data.ccm1, data.ccm2,
+          data.jp1, data.jp2, data.jp3, data.jp4, data.jp5, data.jp6, data.jp7,
+          data.jp_clearing, data.jp_u_percent, data.jp_jm,
+          data.fd1, data.fd2, data.fd3, data.fd4, data.fd5, data.fd6,
+          data.reference_length, data.suction, data.measurement, data.upper_limit, data.lower_limit,
+          data.action, data.suction_status, data.blocking
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Q3 entry created successfully',
+        data: withScreenEntryId('q3', insertResult.rows[0])
+      });
     }
 
     const result = await client.query(

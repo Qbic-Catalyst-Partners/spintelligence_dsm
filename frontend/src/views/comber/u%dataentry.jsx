@@ -27,7 +27,7 @@ const initialForm = () => ({
   remarks: "",
 });
 
-const SHIFT_OPTIONS = ["Shift-1", "Shift-2", "Shift-3"];
+const SHIFT_OPTIONS = STATIC_SHIFT_OPTIONS.map((item) => item.value);
 const DEPARTMENT_OPTIONS = ["Comber", "Drawing", "Preparatory"];
 const MC_NO_OPTIONS = ["MC-01", "MC-02", "MC-03", "CB-01", "CB-02", "CB-03", "CB-04"];
 const VARIETY_FALLBACK_OPTIONS = ["Cotton", "WPSF 0.90", "WPSF 1.20", "PSF Blend"];

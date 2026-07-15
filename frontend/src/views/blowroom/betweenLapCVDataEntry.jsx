@@ -79,7 +79,7 @@ const BetweenLapCVDataEntry = forwardRef(function BetweenLapCVDataEntry(
     };
 
     useEffect(() => {
-        const nextCount = Math.max(1, Number(sampleCount) || defaultSampleCount);
+        const nextCount = Math.min(100, Math.max(1, Number(sampleCount) || defaultSampleCount));
         setSamples((currentSamples) => {
             if (currentSamples.length === nextCount) return currentSamples;
             const nextSamples = createEmptySamples(nextCount);

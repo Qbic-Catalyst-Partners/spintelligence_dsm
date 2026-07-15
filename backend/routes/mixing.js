@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
@@ -56,6 +56,9 @@ const SCREEN_ID_PREFIXES = {
   afis6_mmf: 'AFIC',
   moisture: 'MO',
   openness: 'OP'
+  // qc (Process Parameter) intentionally has no prefix here — it must only ever surface
+  // the real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
 };
 
 const MIXING_NOTEBOOK_SLUGS = [
@@ -68,18 +71,13 @@ const MIXING_NOTEBOOK_SLUGS = [
   'openness'
 ];
 
-const formatScreenEntryId = (screenKey, rawId) => {
-  const prefix = SCREEN_ID_PREFIXES[screenKey];
-  const numericId = Number(rawId);
-  if (!prefix || !Number.isFinite(numericId)) return null;
-  return `#${prefix}-${String(Math.trunc(numericId)).padStart(4, '0')}`;
-};
-
-const withScreenEntryId = (screenKey, record, idField = 'id') => {
+// Mixing screens now require a real, form-submitted entry_id on every new row (see the `!entry_id`
+// 400 checks below), so this no longer fabricates a substitute ID from the row's numeric db id —
+// legacy rows saved before that requirement just pass through with whatever entry_id they have
+// (possibly none), rather than showing a synthesized value that was never actually submitted.
+const withScreenEntryId = (screenKey, record) => {
   if (!record || typeof record !== 'object') return record;
-  if (record.entry_id) return { ...record };
-  const entry_id = formatScreenEntryId(screenKey, record[idField]);
-  return entry_id ? { ...record, entry_id } : { ...record };
+  return { ...record };
 };
 const persistMixingEntryId = async (tableName, screenKey, row) => {
   if (!row || row.entry_id || row.id == null) return row;
@@ -506,7 +504,30 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
 
 const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'mixing');
 
+// openness_inspection stores its submission timestamp as `timestamp WITHOUT time zone` with a bare
+// default — on this DB, that silently writes a different offset than what gets displayed back,
+// shifting "Created At" by several hours. Same root cause and same fix as every other
+// department's equivalent tables: convert to timestamptz so new rows store an unambiguous instant.
+const ensureMixingTimestampColumnsHaveTimezone = async () => {
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'mixing' AND table_name = 'openness_inspection' AND column_name = 'created_at'
+          AND data_type = 'timestamp without time zone'
+      ) THEN
+        ALTER TABLE mixing.openness_inspection
+          ALTER COLUMN created_at TYPE timestamptz USING created_at AT TIME ZONE 'UTC';
+        ALTER TABLE mixing.openness_inspection
+          ALTER COLUMN created_at SET DEFAULT now();
+      END IF;
+    END $$;
+  `);
+};
+
 const ensureMixingEntryIdColumns = async () => {
+  await ensureMixingTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE mixing.cotton_hvi_data_entry
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -633,6 +654,7 @@ const ensureMixingEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE mixing.openness_inspection
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS br_line TEXT,
       ADD COLUMN IF NOT EXISTS br_line_no VARCHAR(100);
   `);
   await client.query(`
@@ -647,6 +669,17 @@ const ensureMixingEntryIdColumns = async () => {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS mixing_qc_header_entry_id_uq
     ON mixing.mixing_qc_header (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
+    ON mixing.afis6_cotton_data_entry (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
+    ON mixing.afis6_mmf_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
   await client.query(`
@@ -686,7 +719,6 @@ const ensureMixingEntryIdColumns = async () => {
     CREATE VIEW mixing.mixing_qc_dashboard_entries AS
     SELECT
       h.qc_id,
-      h.param_id,
       h.entry_id,
       h.consignee_name,
       h.count_name,
@@ -698,7 +730,8 @@ const ensureMixingEntryIdColumns = async () => {
       b.cut_length,
       b.tenacity,
       b.elongation,
-      b.merge_no
+      b.merge_no,
+      h.param_id
     FROM mixing.mixing_qc_header h
     LEFT JOIN mixing.mixing_qc_blends b ON b.qc_id = h.qc_id;
   `);
@@ -1375,7 +1408,9 @@ router.get('/cotton-hvi', async (req, res, next) => {
  */
 router.post('/fibre', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
     const {
+      entry_id,
       inspection_date,
       lot_no,
       variety,
@@ -1391,24 +1426,35 @@ router.post('/fibre', async (req, res, next) => {
       cv_per_elongation,
       crimp,
       whiteness_index,
-      spin_finish
+      spin_finish,
+      user_name
     } = req.body;
 
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    // mixing.fibre_data_entry already has its own "operator" column, but this insert never wrote
+    // to it — user_name was only ever forwarded to autoCreateTicket, not persisted on the row
+    // itself. Custom Report's Operator resolution checks the row's own operator column directly,
+    // so persist it here rather than relying solely on the (separately fragile) submitted-notebook
+    // recording flow.
     const result = await client.query(
       `INSERT INTO mixing.fibre_data_entry (
-        inspection_date, lot_no, variety, invoice_no, invoice_date,
+        entry_id, inspection_date, lot_no, variety, invoice_no, invoice_date,
         cut_length, length_cv, mean_denier, cv_per_denier,
         tenacity, cv_per_tenacity, elongation, cv_per_elongation,
-        crimp, whiteness_index, spin_finish
+        crimp, whiteness_index, spin_finish, operator
       )
       VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,$9,
-        $10,$11,$12,$13,
-        $14,$15,$16
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,$10,
+        $11,$12,$13,$14,
+        $15,$16,$17,$18
       )
       RETURNING *`,
       [
+        entry_id,
         inspection_date,
         lot_no,
         variety,
@@ -1424,7 +1470,8 @@ router.post('/fibre', async (req, res, next) => {
         cv_per_elongation,
         crimp,
         whiteness_index,
-        spin_finish
+        spin_finish,
+        user_name || null
       ]
     );
 
@@ -1446,6 +1493,9 @@ router.post('/fibre', async (req, res, next) => {
     });
 
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });
@@ -1476,6 +1526,7 @@ router.post('/fibre', async (req, res, next) => {
  */
 router.get('/fibre', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1564,7 +1615,9 @@ router.get('/fibre', async (req, res, next) => {
  */
 router.post('/afis', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
     const {
+      entry_id,
       inspection_date,
       lot_no,
       variety,
@@ -1578,22 +1631,32 @@ router.post('/afis', async (req, res, next) => {
       sfc_w,
       maturity,
       fineness,
-      scn_gms
+      scn_gms,
+      user_name
     } = req.body;
 
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    // mixing.afis_data_entry already has its own "operator" column, but this insert never wrote to
+    // it — user_name was only ever forwarded to autoCreateTicket, not persisted on the row itself.
+    // Same fix as Fibre Data Entry: persist it directly so Custom Report's Operator resolution
+    // (which checks the row's own operator column first) works reliably.
     const result = await client.query(
       `INSERT INTO mixing.afis_data_entry (
-        inspection_date, lot_no, variety, invoice_no, invoice_date,
+        entry_id, inspection_date, lot_no, variety, invoice_no, invoice_date,
         uql, l5, sfc_n, ifc, fibre_neps_gms,
-        sfc_w, maturity, fineness, scn_gms
+        sfc_w, maturity, fineness, scn_gms, operator
       )
       VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,$9,$10,
-        $11,$12,$13,$14
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,$10,$11,
+        $12,$13,$14,$15,$16
       )
       RETURNING *`,
       [
+        entry_id,
         inspection_date,
         lot_no,
         variety,
@@ -1607,7 +1670,8 @@ router.post('/afis', async (req, res, next) => {
         sfc_w,
         maturity,
         fineness,
-        scn_gms
+        scn_gms,
+        user_name || null
       ]
     );
 
@@ -1629,6 +1693,9 @@ router.post('/afis', async (req, res, next) => {
     });
 
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });
@@ -1659,6 +1726,7 @@ router.post('/afis', async (req, res, next) => {
  */
 router.get('/afis', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1684,6 +1752,152 @@ router.get('/afis', async (req, res, next) => {
       limit: limitNum
     });
 
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Mixing's "AFIS-6 Cotton" and "AFIS-6 MMF" screens post to /mixing/afis6-cotton and
+// /mixing/afis6-mmf (see frontend/src/apis/mixing.js) — but neither route ever existed, so both
+// screens have been failing outright with "API not found" on every submission and every Custom
+// Report fetch, even though their backing tables (mixing.afis6_cotton_data_entry/
+// afis6_mmf_data_entry) already exist with the right columns (including entry_id and operator).
+router.post('/afis6-cotton', async (req, res, next) => {
+  try {
+    await ensureMixingEntryIdColumns();
+    const {
+      entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
+      blow_room, carding, breaker_drawing, finisher_drawing, comber,
+      scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
+      l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+      user_name
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO mixing.afis6_cotton_data_entry (
+        entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
+        blow_room, carding, breaker_drawing, finisher_drawing, comber,
+        scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
+        l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm, operator
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+      RETURNING *`,
+      [
+        entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
+        blow_room, carding, breaker_drawing, finisher_drawing, comber,
+        scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
+        l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm, user_name || null
+      ]
+    );
+
+    res.status(201).json({
+      message: 'AFIS-6 Cotton data created successfully',
+      data: withScreenEntryId('afis6_cotton', result.rows[0])
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
+  }
+});
+
+router.get('/afis6-cotton', async (req, res, next) => {
+  try {
+    await ensureMixingEntryIdColumns();
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT * FROM mixing.afis6_cotton_data_entry ORDER BY inspection_date DESC, created_at DESC OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+    const totalResult = await client.query(`SELECT COUNT(*) FROM mixing.afis6_cotton_data_entry`);
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('afis6_cotton', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/afis6-mmf', async (req, res, next) => {
+  try {
+    await ensureMixingEntryIdColumns();
+    const {
+      entry_id, inspection_date, machine_name, material_class, comment,
+      total_nep_count_g, total_nep_mean_size_um, cut_length_n_mm,
+      l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+      fineness_den, fineness_cv_percent,
+      long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80,
+      user_name
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO mixing.afis6_mmf_data_entry (
+        entry_id, inspection_date, machine_name, material_class, comment,
+        total_nep_count_g, total_nep_mean_size_um, cut_length_n_mm,
+        l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+        fineness_den, fineness_cv_percent,
+        long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, operator
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      RETURNING *`,
+      [
+        entry_id, inspection_date, machine_name, material_class, comment,
+        total_nep_count_g, total_nep_mean_size_um, cut_length_n_mm,
+        l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+        fineness_den, fineness_cv_percent,
+        long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, user_name || null
+      ]
+    );
+
+    res.status(201).json({
+      message: 'AFIS-6 MMF data created successfully',
+      data: withScreenEntryId('afis6_mmf', result.rows[0])
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
+  }
+});
+
+router.get('/afis6-mmf', async (req, res, next) => {
+  try {
+    await ensureMixingEntryIdColumns();
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT * FROM mixing.afis6_mmf_data_entry ORDER BY inspection_date DESC, created_at DESC OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+    const totalResult = await client.query(`SELECT COUNT(*) FROM mixing.afis6_mmf_data_entry`);
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('afis6_mmf', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
   } catch (error) {
     next(error);
   }
@@ -2270,7 +2484,9 @@ router.get('/afis6-mmf', async (req, res, next) => {
  */
 router.post('/moisture', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
     const {
+      entry_id,
       inspection_date,
       party_lot_no,
       variety,
@@ -2286,22 +2502,31 @@ router.post('/moisture', async (req, res, next) => {
       value8,
       value9,
       value10,
-      average
+      average,
+      user_name
     } = req.body;
 
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    // mixing.moisture_data_entry already has its own "operator" column, but this insert never
+    // wrote to it — same fix as Fibre/AFIS Data Entry: persist user_name directly so Custom
+    // Report's Operator resolution (which checks the row's own operator column first) works.
     const result = await client.query(
       `INSERT INTO mixing.moisture_data_entry (
-        inspection_date, party_lot_no, variety, party_name, pr_no,
+        entry_id, inspection_date, party_lot_no, variety, party_name, pr_no,
         value1, value2, value3, value4, value5,
-        value6, value7, value8, value9, value10, average
+        value6, value7, value8, value9, value10, average, operator
       )
       VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,$9,$10,
-        $11,$12,$13,$14,$15,$16
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,$10,$11,
+        $12,$13,$14,$15,$16,$17,$18
       )
       RETURNING *`,
       [
+        entry_id,
         inspection_date,
         party_lot_no,
         variety,
@@ -2317,7 +2542,8 @@ router.post('/moisture', async (req, res, next) => {
         value8,
         value9,
         value10,
-        average
+        average,
+        user_name || null
       ]
     );
 
@@ -2337,6 +2563,9 @@ router.post('/moisture', async (req, res, next) => {
     });
 
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });
@@ -2367,6 +2596,7 @@ router.post('/moisture', async (req, res, next) => {
  */
 router.get('/moisture', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -2477,12 +2707,19 @@ router.post('/openness', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
+      entry_id,
       inspection_date,
-      br_line_no,
+      mixing,
+      br_line,
       actual_specific_volume_target,
       no_of_entries,
-      entries
+      entries,
+      user_name
     } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
 
     if (!entries || entries.length === 0) {
       return res.status(400).json({ error: "Entries required" });
@@ -2490,20 +2727,27 @@ router.post('/openness', async (req, res, next) => {
 
     await client.query('BEGIN');
 
+    // mixing.openness_inspection already has its own "operator" column, but this insert never
+    // wrote to it — same fix as Fibre/AFIS/Moisture Data Entry: persist user_name directly so
+    // Custom Report's Operator resolution (which checks the row's own operator column first) works.
     const inspectionResult = await client.query(
       `INSERT INTO mixing.openness_inspection
-      (inspection_date, br_line_no, actual_specific_volume_target, no_of_entries)
-      VALUES ($1,$2,$3,$4)
-      RETURNING *`,
+      (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      RETURNING id, entry_id`,
       [
+        entry_id,
         inspection_date,
-        br_line_no || null,
+        mixing,
+        br_line || null,
         actual_specific_volume_target,
-        no_of_entries
+        no_of_entries,
+        user_name || null
       ]
     );
 
     const inspectionId = inspectionResult.rows[0].id;
+    const savedEntryId = inspectionResult.rows[0].entry_id;
     const perStage = no_of_entries / 3;
     for (let i = 0; i < entries.length; i++) {
       const entryNo = i + 1;
@@ -2566,13 +2810,15 @@ router.post('/openness', async (req, res, next) => {
     res.status(201).json({
       message: "Openness created successfully",
       inspection_id: inspectionId,
-      entry_id: persistedInspection.entry_id || formatScreenEntryId('openness', inspectionId),
-      br_line_no: persistedInspection.br_line_no,
+      entry_id: savedEntryId,
       ticket
     });
 
   } catch (error) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });
@@ -2593,6 +2839,7 @@ router.post('/openness', async (req, res, next) => {
 
 router.get('/openness', async (req, res, next) => {
   try {
+    await ensureMixingEntryIdColumns();
 
     const inspections = await client.query(
       `SELECT *
@@ -2674,7 +2921,15 @@ router.post('/qc', async (req, res, next) => {
       blends
     } = req.body;
 
-    const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     const conflictingCountName = await getCountNameConflict(entry_id, count_name);
     if (conflictingCountName) {
@@ -2724,12 +2979,14 @@ router.post('/qc', async (req, res, next) => {
     res.status(201).json({
       message: 'Mixing QC created successfully',
       qc_id,
-      entry_id,
-      process_parameter_id: entry_id,
+      entry_id: headerResult.rows[0].entry_id,
       param_id: headerResult.rows[0].param_id
     });
 
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     next(error);
   }
 });
@@ -2800,6 +3057,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
     const { qc_id } = req.params;
 
     const {
+      entry_id,
       consignee_name,
       count_name,
       creation_date,
@@ -2807,21 +3065,50 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       blends
     } = req.body;
 
-    await client.query(
-      `UPDATE mixing.mixing_qc_header
-       SET consignee_name = $1,
-           count_name = $2,
-           creation_date = $3,
-           status = $4
-       WHERE qc_id = $5`,
-      [consignee_name, count_name, creation_date, status, qc_id]
-    );
-
-    await client.query(
-      `DELETE FROM mixing.mixing_qc_blends
-       WHERE qc_id = $1`,
+    const currentResult = await client.query(
+      `SELECT entry_id FROM mixing.mixing_qc_header WHERE qc_id = $1`,
       [qc_id]
     );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Mixing QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    let targetQcId = qc_id;
+    let createdNewRow = false;
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO mixing.mixing_qc_header
+         (entry_id, consignee_name, count_name, creation_date, status)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING qc_id, entry_id`,
+        [requestedEntryId, consignee_name, count_name, creation_date, status]
+      );
+      targetQcId = insertResult.rows[0].qc_id;
+      createdNewRow = true;
+    } else {
+      // 1?????? Update Header
+      await client.query(
+        `UPDATE mixing.mixing_qc_header
+         SET consignee_name = $1,
+             count_name = $2,
+             creation_date = $3,
+             status = $4
+         WHERE qc_id = $5`,
+        [consignee_name, count_name, creation_date, status, qc_id]
+      );
+
+      // 2?????? Delete old blends (simple approach)
+      await client.query(
+        `DELETE FROM mixing.mixing_qc_blends
+         WHERE qc_id = $1`,
+        [qc_id]
+      );
+    }
 
     for (const b of (blends || []).filter(hasBlendData)) {
       await client.query(
@@ -2829,7 +3116,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         (qc_id, blend_no, percentage, lot_no, cut_length, tenacity, elongation, merge_no)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
-          qc_id,
+          targetQcId,
           b.blend_no ?? 0,
           b.percentage ?? 0,
           b.lot_no ?? '',
@@ -2846,11 +3133,10 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       [qc_id]
     );
 
-    res.status(200).json({
-      message: 'Mixing QC updated successfully',
-      qc_id,
-      entry_id: updated.rows[0]?.entry_id,
-      process_parameter_id: updated.rows[0]?.entry_id
+    res.status(createdNewRow ? 201 : 200).json({
+      message: createdNewRow ? 'Mixing QC created successfully' : 'Mixing QC updated successfully',
+      qc_id: targetQcId,
+      entry_id: requestedEntryId || currentEntryId
     });
 
   } catch (error) {

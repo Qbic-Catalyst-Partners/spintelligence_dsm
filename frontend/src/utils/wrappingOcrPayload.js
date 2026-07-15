@@ -157,7 +157,7 @@ export const buildWrappingOcrPayload = ({
     ocr_json: cleanRows,
     manual_json: cleanRows,
     rows: cleanRows,
-    meta: metaRows.map((row) => stripEmpty(buildMeta(row))),
+    meta: stripEmpty(firstMeta),
     samples: isNoils ? sampleRows.map(buildNoilsSample) : sampleRows.map(buildStretchSample),
     summaries: isNoils ? summaryRows.map(buildNoilsSummary) : summaryRows.map(buildStretchSummary),
     tables,

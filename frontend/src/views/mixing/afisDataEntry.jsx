@@ -22,6 +22,7 @@ const NUMERIC_FIELDS = new Set([
 const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
+    const user = useSelector((state) => state.auth?.user);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
@@ -78,6 +79,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
         maturity:         Number(formData.maturity)     || 0,
         fineness:         Number(formData.fineness)     || 0,
         scn_gms:          Number(formData.scnGms)       || 0,
+        user_name:        user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const handleSubmit = async () => {

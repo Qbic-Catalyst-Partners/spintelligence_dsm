@@ -80,8 +80,19 @@ const resetProcessParameterEntryIdSequence = async () => {
 // req.body.entry_id, and should reuse it rather than minting a new one — that
 // is how one global PP id ends up shared across all 10 screens. A supplied
 // value is only honored if it's a real, previously-issued id (its numeric
-// part falls within the sequence already handed out); anything else (blank,
-// garbage, spoofed) falls back to generating a fresh one.
+// part falls within the sequence already handed out, or is exactly the
+// not-yet-reserved "next" id). A blank/missing value mints a fresh id, but a
+// non-blank value that doesn't resolve to a real id is rejected outright
+// (InvalidProcessParameterEntryIdError) instead of silently being swapped
+// for a different, freshly-minted id.
+class InvalidProcessParameterEntryIdError extends Error {
+  constructor(providedValue) {
+    super('Invalid or unrecognized Process Parameter ID');
+    this.name = 'InvalidProcessParameterEntryIdError';
+    this.providedValue = providedValue;
+  }
+}
+
 const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {}) => {
   // When the caller explicitly says "this is a new PP, not a continuation of
   // an existing batch" (e.g. the frontend's "New PP" action), always mint a
@@ -92,6 +103,10 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
   }
 
   const normalized = normalizeProcessParameterEntryId(providedValue);
+  if (!normalized) {
+    return createProcessParameterEntryId();
+  }
+
   const match = normalized.match(/^PP-(\d+)$/);
   if (match) {
     const numericValue = Number(match[1]);
@@ -116,7 +131,7 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
     }
   }
 
-  return createProcessParameterEntryId();
+  throw new InvalidProcessParameterEntryIdError(providedValue);
 };
 
 const advanceProcessParameterEntryIdSequence = async (minimumLastNumber) => {
@@ -176,4 +191,5 @@ module.exports = {
   advanceProcessParameterEntryIdSequence,
   getExistingCountNameForEntryId,
   getCountNameConflict,
+  InvalidProcessParameterEntryIdError,
 };

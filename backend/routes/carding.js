@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
@@ -15,6 +15,9 @@ const SCREEN_ID_PREFIXES = {
   nati_data_entry: 'NAT',
   uqc: 'CU',
   dfk_pressure: 'CD',
+  // qc_header (Process Parameter) intentionally has no prefix here — it must only ever
+  // surface the real, stored PP-000n entry_id, never a synthesized fallback id, since a
+  // fabricated id collides with the shared Process Parameter scheme.
   card_change_control: 'CC',
   card_waste_study: 'CW',
   wrapping_carding_notebook: 'WR'
@@ -41,6 +44,19 @@ const createNatiDataEntryId = async () => {
   return `NAT-${String(nextNumber).padStart(4, '0')}`;
 };
 
+const createUqcEntryId = async () => {
+  const result = await client.query(`
+    SELECT COALESCE(
+      MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
+      0
+    ) AS max_number
+    FROM carding.u_data_entry
+  `);
+
+  const nextNumber = Number(result.rows[0]?.max_number || 0) + 1;
+  return `UQ-${String(nextNumber).padStart(4, '0')}`;
+};
+
 const withScreenEntryId = (screenKey, record, idField = 'id') => {
   if (!record || typeof record !== 'object') return record;
   if (record.entry_id) return { ...record };
@@ -48,6 +64,7 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   return entry_id ? { ...record, entry_id } : { ...record };
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
+const ALLOWED_SHIFT_TYPES = new Set(['Shift 1', 'Shift 2', 'Shift 3']);
 const CDG_MACHINE_REGEX = /^CDG[-\s]?\d+/i;
 let cardWasteTypeMasterReady = false;
 let cardingEntryIdMigrationReady = false;
@@ -614,10 +631,16 @@ const upsertCardWasteType = async (wasteType) => {
   const wasteTypeKey = normalizedWasteType.toLowerCase();
 
   const result = await client.query(
-    `SELECT id, waste_type, waste_type_key, created_at
-     FROM carding.card_waste_type_master
-     WHERE waste_type_key = $1`,
-    [wasteTypeKey]
+    `INSERT INTO carding.card_waste_type_master (waste_type, waste_type_key, sort_order)
+     VALUES (
+       $1,
+       $2,
+       COALESCE((SELECT MAX(sort_order) FROM carding.card_waste_type_master), 0) + 1
+     )
+     ON CONFLICT (waste_type_key)
+     DO UPDATE SET waste_type = EXCLUDED.waste_type
+     RETURNING id, waste_type, waste_type_key, created_at`,
+    [normalizedWasteType, wasteTypeKey]
   );
 
   return result.rows[0] || null;
@@ -1069,7 +1092,15 @@ router.post('/qc-header', async (req, res, next) => {
       doffer,
       flats
     } = req.body;
-    const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
     const type = String(req.body.type || req.body.process || req.body.process_parameter || 'Process Parameter').trim() || 'Process Parameter';
 
     if (!count_name || !consignee_name || !creation_date) {
@@ -2178,6 +2209,13 @@ function createBetweenWithinEntryId() {
     return `#CB-${timestamp}${suffix}`;
 }
 
+const ensureBetweenWithinCardColumns = async () => {
+    await client.query(`
+        ALTER TABLE carding.inspections
+            ADD COLUMN IF NOT EXISTS test_id TEXT;
+    `);
+};
+
 function createCardingQcHeaderEntryId() {
     const timestamp = Date.now().toString(36).toUpperCase();
     const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -2186,14 +2224,18 @@ function createCardingQcHeaderEntryId() {
 
 router.post('/between-within-card', async (req, res) => {
     try {
+        await ensureBetweenWithinCardColumns();
+
         const {
             type_category,
             inspection_type,
             mc_name,
             inspection_date,
+            test_id,
         } = req.body;
         const entry_id = String(req.body.entry_id || '').trim() || createBetweenWithinEntryId();
         const resolvedInspectionDate = String(inspection_date || '').trim() || null;
+        const resolvedTestId = String(test_id || '').trim() || null;
         const { sample_weights, hanks } = getBwcArrays(req.body);
 
         if (!Array.isArray(sample_weights) || sample_weights.length === 0 || sample_weights.length > 100) {
@@ -2215,9 +2257,9 @@ router.post('/between-within-card', async (req, res) => {
 
         await client.query(
             `INSERT INTO carding.inspections
-            (id, type_category, inspection_type, mc_name, inspection_date, num_entries)
-            VALUES ($1,$2,$3,$4,$5,$6)`,
-            [id, type_category, inspection_type, mc_name, resolvedInspectionDate, num_entries]
+            (id, type_category, inspection_type, mc_name, inspection_date, num_entries, test_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [id, type_category, inspection_type, mc_name, resolvedInspectionDate, num_entries, resolvedTestId]
         );
 
         for (let i = 0; i < sample_weights.length; i++) {
@@ -2727,10 +2769,8 @@ router.get('/nati-data-entry', async (req, res) => {
 router.post('/uqc', async (req, res) => {
     try {
         await ensureCardingEntryIdColumns();
-        console.log("UQC BODY:", req.body);
 
         const {
-            entry_id,
             entry_type,
             entry_date,
             shift,
@@ -2742,10 +2782,7 @@ router.post('/uqc', async (req, res) => {
             cvm_3m,
             remarks
         } = req.body;
-
-        if (!entry_id) {
-            return res.status(400).json({ message: "entry_id is required and must be unique" });
-        }
+        const requestedEntryId = String(req.body.entry_id || '').trim();
 
         // ✅ Validation
         if (!entry_type || !entry_date) {
@@ -2754,41 +2791,65 @@ router.post('/uqc', async (req, res) => {
             });
         }
 
+        if (shift && !ALLOWED_SHIFT_TYPES.has(String(shift).trim())) {
+            return res.status(400).json({
+                message: "shift must be one of: Shift 1, Shift 2, Shift 3"
+            });
+        }
+
         // ✅ Handle numeric safely
         const toNumber = (val) =>
             val === "" || val === undefined ? null : val;
 
-        const result = await client.query(
-            `INSERT INTO carding.u_data_entry
-            (entry_id, entry_type, entry_date, shift, variety, mc_no,
-             u_percent, cvm, cvm_1m, cvm_3m, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            ON CONFLICT (entry_id) DO UPDATE SET
-              entry_type = EXCLUDED.entry_type,
-              entry_date = EXCLUDED.entry_date,
-              shift = EXCLUDED.shift,
-              variety = EXCLUDED.variety,
-              mc_no = EXCLUDED.mc_no,
-              u_percent = EXCLUDED.u_percent,
-              cvm = EXCLUDED.cvm,
-              cvm_1m = EXCLUDED.cvm_1m,
-              cvm_3m = EXCLUDED.cvm_3m,
-              remarks = EXCLUDED.remarks
-            RETURNING *`,
-            [
-                entry_id,
-                entry_type,
-                entry_date,
-                shift,
-                variety,
-                mc_no,
-                toNumber(u_percent),
-                toNumber(cvm),
-                toNumber(cvm_1m),
-                toNumber(cvm_3m),
-                remarks
-            ]
-        );
+        let entry_id = requestedEntryId;
+        let result;
+
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+                await client.query('BEGIN');
+                await client.query('LOCK TABLE carding.u_data_entry IN SHARE ROW EXCLUSIVE MODE');
+
+                entry_id = requestedEntryId || await createUqcEntryId();
+
+                result = await client.query(
+                    `INSERT INTO carding.u_data_entry
+                    (entry_id, entry_type, entry_date, shift, variety, mc_no,
+                     u_percent, cvm, cvm_1m, cvm_3m, remarks)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                    ON CONFLICT (entry_id) DO UPDATE SET
+                      entry_type = EXCLUDED.entry_type,
+                      entry_date = EXCLUDED.entry_date,
+                      shift = EXCLUDED.shift,
+                      variety = EXCLUDED.variety,
+                      mc_no = EXCLUDED.mc_no,
+                      u_percent = EXCLUDED.u_percent,
+                      cvm = EXCLUDED.cvm,
+                      cvm_1m = EXCLUDED.cvm_1m,
+                      cvm_3m = EXCLUDED.cvm_3m,
+                      remarks = EXCLUDED.remarks
+                    RETURNING *`,
+                    [
+                        entry_id,
+                        entry_type,
+                        entry_date,
+                        shift,
+                        variety,
+                        mc_no,
+                        toNumber(u_percent),
+                        toNumber(cvm),
+                        toNumber(cvm_1m),
+                        toNumber(cvm_3m),
+                        remarks
+                    ]
+                );
+
+                await client.query('COMMIT');
+                break;
+            } catch (err) {
+                await client.query('ROLLBACK');
+                if (!isUniqueViolation(err) || requestedEntryId || attempt === 3) throw err;
+            }
+        }
 
         res.status(201).json({
             message: "UQC entry created successfully",
@@ -3109,6 +3170,439 @@ router.get('/dfk-pressure', async (req, res) => {
     } catch (err) {
         res.status(500).json({ message: "Server error" });
     }
+});
+
+/**
+ * @swagger
+ * /carding/qc-header:
+ *   post:
+ *     summary: Create Carding QC entry
+ *     tags: [Carding]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 example: Process Parameter
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: number
+ *               lickerin_speed:
+ *                 type: number
+ *               cylinder_speed:
+ *                 type: number
+ *               flats_speed:
+ *                 type: number
+ *               delivery_speed:
+ *                 type: number
+ *               draft_speed:
+ *                 type: number
+ *               tension_draft:
+ *                 type: number
+ *               delivery_hank:
+ *                 type: number
+ *               setting:
+ *                 type: string
+ *               feed_roll_to_lickerin:
+ *                 type: number
+ *               lickerin_to_cylinder:
+ *                 type: number
+ *               cylinder_to_flats:
+ *                 type: number
+ *               cylinder_to_doffer:
+ *                 type: number
+ *               sfl:
+ *                 type: number
+ *               sfd:
+ *                 type: number
+ *               lickerin:
+ *                 type: number
+ *               cylinder:
+ *                 type: number
+ *               doffer:
+ *                 type: number
+ *               flats:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Carding QC entry created successfully
+ *       500:
+ *         description: Server error
+ */
+router.post('/qc-header', async (req, res, next) => {
+  try {
+    await ensureCardingEntryIdColumns();
+    const {
+      entry_id,
+      type,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      lickerin_speed,
+      cylinder_speed,
+      flats_speed,
+      delivery_speed,
+      draft_speed,
+      tension_draft,
+      delivery_hank,
+      setting,
+      feed_roll_to_lickerin,
+      lickerin_to_cylinder,
+      cylinder_to_flats,
+      cylinder_to_doffer,
+      sfl,
+      sfd,
+      lickerin,
+      cylinder,
+      doffer,
+      flats
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO carding.carding_qc_header (
+        entry_id, type, count_name, consignee_name, creation_date,
+        machine_no, lickerin_speed, cylinder_speed, flats_speed,
+        delivery_speed, draft_speed, tension_draft, delivery_hank,
+        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+        cylinder_to_flats, cylinder_to_doffer,
+        sfl, sfd, lickerin, cylinder, doffer, flats
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,
+        $10,$11,$12,$13,
+        $14,$15,$16,
+        $17,$18,
+        $19,$20,$21,$22,$23,$24
+      )
+      RETURNING *`,
+      [
+        entry_id, type, count_name, consignee_name, creation_date,
+        machine_no, lickerin_speed, cylinder_speed, flats_speed,
+        delivery_speed, draft_speed, tension_draft, delivery_hank,
+        setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+        cylinder_to_flats, cylinder_to_doffer,
+        sfl, sfd, lickerin, cylinder, doffer, flats
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Carding QC entry created successfully',
+      data: withScreenEntryId('qc_header', result.rows[0])
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /carding/qc-header:
+ *   get:
+ *     summary: Get Carding QC entries
+ *     tags: [Carding]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Carding QC data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get('/qc-header', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM carding.carding_qc_header
+       ORDER BY creation_date DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM carding.carding_qc_header`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('qc_header', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /carding/qc-header/{id}:
+ *   put:
+ *     summary: Update Carding QC entry
+ *     tags: [Carding]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               type:
+ *                 type: string
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: number
+ *               lickerin_speed:
+ *                 type: number
+ *               cylinder_speed:
+ *                 type: number
+ *               flats_speed:
+ *                 type: number
+ *               delivery_speed:
+ *                 type: number
+ *               draft_speed:
+ *                 type: number
+ *               tension_draft:
+ *                 type: number
+ *               delivery_hank:
+ *                 type: number
+ *               setting:
+ *                 type: string
+ *               feed_roll_to_lickerin:
+ *                 type: number
+ *               lickerin_to_cylinder:
+ *                 type: number
+ *               cylinder_to_flats:
+ *                 type: number
+ *               cylinder_to_doffer:
+ *                 type: number
+ *               sfl:
+ *                 type: number
+ *               sfd:
+ *                 type: number
+ *               lickerin:
+ *                 type: number
+ *               cylinder:
+ *                 type: number
+ *               doffer:
+ *                 type: number
+ *               flats:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Carding QC entry updated successfully
+ *       400:
+ *         description: Invalid ID supplied
+ *       404:
+ *         description: Carding QC entry not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/qc-header/:qc_id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.qc_id, 10);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+
+    const {
+      entry_id,
+      type,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      lickerin_speed,
+      cylinder_speed,
+      flats_speed,
+      delivery_speed,
+      draft_speed,
+      tension_draft,
+      delivery_hank,
+      setting,
+      feed_roll_to_lickerin,
+      lickerin_to_cylinder,
+      cylinder_to_flats,
+      cylinder_to_doffer,
+      sfl,
+      sfd,
+      lickerin,
+      cylinder,
+      doffer,
+      flats
+    } = req.body;
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM carding.carding_qc_header WHERE qc_id = $1`,
+      [id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Carding QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO carding.carding_qc_header (
+          entry_id, type, count_name, consignee_name, creation_date,
+          machine_no, lickerin_speed, cylinder_speed, flats_speed,
+          delivery_speed, draft_speed, tension_draft, delivery_hank,
+          setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+          cylinder_to_flats, cylinder_to_doffer,
+          sfl, sfd, lickerin, cylinder, doffer, flats
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,
+          $6,$7,$8,$9,
+          $10,$11,$12,$13,
+          $14,$15,$16,
+          $17,$18,
+          $19,$20,$21,$22,$23,$24
+        )
+        RETURNING *`,
+        [
+          requestedEntryId, type, count_name, consignee_name, creation_date,
+          machine_no, lickerin_speed, cylinder_speed, flats_speed,
+          delivery_speed, draft_speed, tension_draft, delivery_hank,
+          setting, feed_roll_to_lickerin, lickerin_to_cylinder,
+          cylinder_to_flats, cylinder_to_doffer,
+          sfl, sfd, lickerin, cylinder, doffer, flats
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Carding QC entry created successfully',
+        data: withScreenEntryId('qc_header', insertResult.rows[0])
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE carding.carding_qc_header
+       SET type = $1,
+           count_name = $2,
+           consignee_name = $3,
+           creation_date = $4,
+           machine_no = $5,
+           lickerin_speed = $6,
+           cylinder_speed = $7,
+           flats_speed = $8,
+           delivery_speed = $9,
+           draft_speed = $10,
+           tension_draft = $11,
+           delivery_hank = $12,
+           setting = $13,
+           feed_roll_to_lickerin = $14,
+           lickerin_to_cylinder = $15,
+           cylinder_to_flats = $16,
+           cylinder_to_doffer = $17,
+           sfl = $18,
+           sfd = $19,
+           lickerin = $20,
+           cylinder = $21,
+           doffer = $22,
+           flats = $23
+       WHERE qc_id = $24
+       RETURNING *`,
+      [
+        type,
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        lickerin_speed,
+        cylinder_speed,
+        flats_speed,
+        delivery_speed,
+        draft_speed,
+        tension_draft,
+        delivery_hank,
+        setting,
+        feed_roll_to_lickerin,
+        lickerin_to_cylinder,
+        cylinder_to_flats,
+        cylinder_to_doffer,
+        sfl,
+        sfd,
+        lickerin,
+        cylinder,
+        doffer,
+        flats,
+        id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Carding QC entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Carding QC entry updated successfully',
+      data: withScreenEntryId('qc_header', result.rows[0])
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -4039,6 +4533,10 @@ router.post('/nre', async (req, res, next) => {
       carding_nre_percent
     } = req.body;
 
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
     const result = await client.query(
       `INSERT INTO carding.nre (
         entry_id, machine_model, mc_name,
@@ -4076,40 +4574,18 @@ router.post('/nre', async (req, res, next) => {
     );
 
     res.status(201).json({
-      message: 'Carding NRE% entry created successfully',
-      data: result.rows[0]
+      message: 'Carding NRE% data created successfully',
+      data: withScreenEntryId('nre', result.rows[0])
     });
-  } catch (error) {
-    if (isUniqueViolation(error)) {
+  } catch (err) {
+    if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
-    next(error);
+    console.error('Error inserting Carding NRE% data:', err);
+    next(err);
   }
 });
 
-/**
- * @swagger
- * /carding/nre:
- *   get:
- *     summary: Get Carding NRE% entries with pagination
- *     tags: [Carding]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *     responses:
- *       200:
- *         description: Carding NRE% entries retrieved successfully
- *       500:
- *         description: Server error
- */
 router.get('/nre', async (req, res, next) => {
   try {
     await ensureCardingNreTable();
@@ -4128,13 +4604,14 @@ router.get('/nre', async (req, res, next) => {
     const totalResult = await client.query(`SELECT COUNT(*) FROM carding.nre`);
 
     res.status(200).json({
-      data: result.rows,
-      total: parseInt(totalResult.rows[0].count),
       page,
-      limit
+      limit,
+      total: parseInt(totalResult.rows[0].count, 10),
+      data: result.rows.map((row) => withScreenEntryId('nre', row))
     });
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    console.error('Error fetching Carding NRE% data:', err);
+    next(err);
   }
 });
 
