@@ -21,6 +21,7 @@ const NUMERIC_FIELDS = new Set([
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
+    const user = useSelector((state) => state.auth?.user);
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
 
@@ -83,6 +84,7 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         trash_content_percentage: Number(formData.trashContentPercent) || 0,
         rd:              Number(formData.rd)          || 0,
         colour_grade:    Number(formData.colourGrade) || 0,
+        user_name:       user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const handleSubmit = async (overrideEntryId) => {

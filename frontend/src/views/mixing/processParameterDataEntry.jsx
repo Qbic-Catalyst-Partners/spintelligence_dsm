@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { FaCheckCircle } from "react-icons/fa";
 import { FiTrash2 } from "react-icons/fi";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -335,6 +335,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   ref
 ) {
   const dispatch = useDispatch();
+  const user = useSelector((state) => state.auth?.user);
   const formSectionRef = useRef(null);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
@@ -572,6 +573,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     creation_date: form.creationDate,
     process_parameter: "Mixing",
     status: "DONE",
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     blends: form.rows.map((row, index) => ({
       blend_no: index + 1,
       percentage: parseNumberValue(row.blend),

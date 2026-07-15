@@ -28,6 +28,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     const router = useRouter();
     const dispatch = useDispatch();
     const { data, error, isLoading } = useSelector((state) => state.comber ?? emptyComberState);
+    const user = useSelector((state) => state.auth?.user);
 
     const [entryDate, setEntryDate] = useState("");
     const [variety, setVariety] = useState("");
@@ -148,6 +149,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                 ratio_size_07: entry.ratio_size_07 === "" ? null : Number(entry.ratio_size_07),
                 ratio_size_05: entry.ratio_size_05 === "" ? null : Number(entry.ratio_size_05),
             })),
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const validate = () => {

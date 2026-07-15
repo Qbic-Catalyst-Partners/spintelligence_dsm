@@ -160,6 +160,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
                 ratio_size_07: entry.ratio_size_07 === "" ? null : Number(entry.ratio_size_07),
                 ratio_size_05: entry.ratio_size_05 === "" ? null : Number(entry.ratio_size_05),
             })),
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const validateForm = () => {

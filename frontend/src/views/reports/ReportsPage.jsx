@@ -1686,6 +1686,38 @@ const normalizeOpennessRows = (response) =>
     };
   });
 
+// Mixing's "Process Parameter" screen collects however many "blend" rows the user adds (no fixed
+// count) — the GET /mixing/qc response nests them as a `blends: [...]` array per submission
+// (json_agg'd from mixing.mixing_qc_blends). Custom Report previously only ever showed a single
+// "Blend-1" column (aliased to whichever blend happened to match first), silently dropping every
+// blend past the first — same class of bug as Openness Data Entry before it got numbered columns.
+// Expose each blend's own fields as numbered columns instead, so a submission with 4 blends offers
+// "Blend 1".."Blend 4" and one with 2 offers "Blend 1".."Blend 2".
+const MIXING_BLEND_METRIC_KEYS = ["lot_no", "percentage", "cut_length", "tenacity", "elongation", "merge_no"];
+const MIXING_BLEND_METRIC_LABELS = {
+  lot_no: "Lot No.",
+  percentage: "Blend %",
+  cut_length: "Cut Length",
+  tenacity: "Tenacity",
+  elongation: "Elongation",
+  merge_no: "Merge No.",
+};
+
+const normalizeMixingProcessParameterRows = (response) =>
+  extractResponseRows(response).map((row) => {
+    if (!isRecordObject(row)) return row;
+    const blends = Array.isArray(row.blends) ? row.blends : [];
+    const blendColumns = { no_of_blends_entered: blends.length };
+    blends.forEach((blend, index) => {
+      const n = blend?.blend_no ?? index + 1;
+      MIXING_BLEND_METRIC_KEYS.forEach((metric) => {
+        blendColumns[`blend_${n}_${metric}`] = blend?.[metric] ?? null;
+      });
+    });
+    const { blends: _blends, ...rest } = row;
+    return { ...rest, ...blendColumns };
+  });
+
 const getTotalPages = (response) => {
   const candidates = [
     response?.totalPages,
@@ -2188,7 +2220,6 @@ const reportFieldAliases = {
   "Ratio into size-0.5": ["ratio_size_05", "ratioSize05"],
   "Lot No.": ["lot_no"],
   "B/R Line No": ["br_line"],
-  "Blend-1": ["percentage", "blend"],
   "Merge No.": ["merge_no"],
   "Process Parameter ID": ["entry_id", "param_id", "paramId"],
   "Break Draft": ["breaker_draft", "break_draft"],
@@ -2242,7 +2273,10 @@ const reportFieldAliases = {
   "Diff (Actual Wt. - Display Wt.)": ["difference"],
   "Ratio (Average Wt. / Total) * 100": ["ratio_percent"],
   "Number of Tufts (N)": ["no_of_tufts"],
-  "Number of Neps Entries": ["no_of_neps_entries"],
+  // Carding's Nati Data Entry normalizer stores this count as "no_of_neps_entries", Comber's
+  // (same-shaped but distinct report type) stores it as "comber_no_of_neps_entries" — both need to
+  // resolve against this one shared catalog label.
+  "Number of Neps Entries": ["no_of_neps_entries", "comber_no_of_neps_entries"],
   "Grams / Meter": ["grams_per_meter"],
   "Standard Deviation": ["std_deviation"],
   "Coefficient of Variation (CV%)": ["cv_percent"],
@@ -2964,6 +2998,29 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
       : "-";
   }
 
+  // Same reasoning as the openness_entry_ guard above — Mixing's Process Parameter per-blend
+  // columns (`blend_<N>_<metric>`) only exist on a row up to however many blends that submission
+  // actually had.
+  if (field.key.startsWith("blend_")) {
+    const blendValue = row?.[field.key];
+    return blendValue !== null && typeof blendValue !== "undefined" && String(blendValue).trim() !== ""
+      ? String(blendValue)
+      : "-";
+  }
+
+  // Same reasoning as the openness_entry_/blend_ guards above — Carding's and Comber's Nati Data
+  // Entry per-entry columns (`nati_*_<N>` / `comber_nati_*_<N>`) are now offered for all 10 slots
+  // regardless of how many entries any given row actually has (see natiEntryColumnCount /
+  // comberNatiEntryColumnCount above), so most rows won't have most of these keys at all. Without
+  // this guard, a missing key would fall through getReportFieldValue's blind whole-row fallback
+  // and incorrectly display some unrelated field's value instead of a blank cell.
+  if (field.key.startsWith("nati_") || field.key.startsWith("comber_nati_")) {
+    const natiEntryValue = row?.[field.key];
+    return natiEntryValue !== null && typeof natiEntryValue !== "undefined" && String(natiEntryValue).trim() !== ""
+      ? String(natiEntryValue)
+      : "-";
+  }
+
   const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
   // Several forms (e.g. Cone Packing Audit's Yes/No radio fields) save these as real booleans —
@@ -3428,9 +3485,7 @@ function ReportsPage() {
       (field) => getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(CREATED_AT_FIELD)
     );
     const withCreatedAt =
-      (["Blow Room", "Carding", "Comber", "Draw Frame", "Simplex", "Spinning", "Autoconer"].includes(subDepartment) ||
-        (subDepartment === "Mixing" &&
-          ["AFIS-6 Cotton", "AFIS-6 MMF", "Moisture Data Entry", "Openness Data Entry"].includes(reportType))) &&
+      ["Blow Room", "Carding", "Comber", "Draw Frame", "Simplex", "Spinning", "Autoconer", "Mixing", "Individual Card Performance"].includes(subDepartment) &&
       !hasCreatedAtField
         ? [...withOperator, CREATED_AT_FIELD]
         : withOperator;
@@ -3560,15 +3615,22 @@ function ReportsPage() {
       : withBwcEntryColumns;
     // Carding's Nati Data Entry rows carry however many numbered neps entries that submission's
     // own "Number of Neps Entries" produced — same reasoning as the tuft/waste-type/sample columns.
+    // The form caps "Number of Neps Entries" at 10 (natiDataEntry.jsx), so always offer all 10
+    // slots as selectable fields rather than only however many happen to appear in currently
+    // loaded rows — otherwise Available Fields shows none of them until a submission with that
+    // many entries has actually been made (or is within the current date filter).
     const isCardingNatiReport = subDepartment === "Carding" && reportType === "Nati Data Entry";
     const natiEntryColumnCount = isCardingNatiReport
-      ? rows.reduce((max, row) => {
-          let count = 0;
-          while (Object.prototype.hasOwnProperty.call(row || {}, `nati_mc_no_${count + 1}`)) {
-            count += 1;
-          }
-          return Math.max(max, count);
-        }, 0)
+      ? Math.max(
+          10,
+          rows.reduce((max, row) => {
+            let count = 0;
+            while (Object.prototype.hasOwnProperty.call(row || {}, `nati_mc_no_${count + 1}`)) {
+              count += 1;
+            }
+            return Math.max(max, count);
+          }, 0)
+        )
       : 0;
     const natiEntryFields = Array.from({ length: natiEntryColumnCount }, (_, index) => {
       const n = index + 1;
@@ -3583,16 +3645,20 @@ function ReportsPage() {
       ? [...withMachineColumns, ...natiEntryFields]
       : withMachineColumns;
     // Comber's Nati Data Entry rows carry the same shape as Carding's above, but keyed under
-    // `comber_nati_*` so the two report types' dynamic columns never collide.
+    // `comber_nati_*` so the two report types' dynamic columns never collide. Same "always offer
+    // all 10 slots" reasoning as Carding's above (Comber's natiDataEntry.jsx also caps at 10).
     const isComberNatiReport = subDepartment === "Comber" && reportType === "Nati Data Entry";
     const comberNatiEntryColumnCount = isComberNatiReport
-      ? rows.reduce((max, row) => {
-          let count = 0;
-          while (Object.prototype.hasOwnProperty.call(row || {}, `comber_nati_mc_no_${count + 1}`)) {
-            count += 1;
-          }
-          return Math.max(max, count);
-        }, 0)
+      ? Math.max(
+          10,
+          rows.reduce((max, row) => {
+            let count = 0;
+            while (Object.prototype.hasOwnProperty.call(row || {}, `comber_nati_mc_no_${count + 1}`)) {
+              count += 1;
+            }
+            return Math.max(max, count);
+          }, 0)
+        )
       : 0;
     const comberNatiEntryFields = Array.from({ length: comberNatiEntryColumnCount }, (_, index) => {
       const n = index + 1;
@@ -3881,8 +3947,30 @@ function ReportsPage() {
     const withOpennessColumns = opennessEntryFields.length
       ? [...withSpliceStrengthColumns, ...opennessEntryFields]
       : withSpliceStrengthColumns;
+    // Mixing's Process Parameter rows carry however many "blend" rows the user added, same
+    // reasoning as Openness above.
+    const isMixingProcessParameterReport = subDepartment === "Mixing" && reportType === "Process Parameter";
+    const mixingBlendCount = isMixingProcessParameterReport
+      ? rows.reduce((max, row) => {
+          let count = 0;
+          while (Object.prototype.hasOwnProperty.call(row || {}, `blend_${count + 1}_lot_no`)) {
+            count += 1;
+          }
+          return Math.max(max, count);
+        }, 0)
+      : 0;
+    const mixingBlendFields = Array.from({ length: mixingBlendCount }, (_, index) => {
+      const n = index + 1;
+      return MIXING_BLEND_METRIC_KEYS.map((metric) => ({
+        key: `blend_${n}_${metric}`,
+        label: `Blend ${n} - ${MIXING_BLEND_METRIC_LABELS[metric]}`,
+      }));
+    }).flat();
+    const withBlendColumns = mixingBlendFields.length
+      ? [...withOpennessColumns, ...mixingBlendFields]
+      : withOpennessColumns;
     const selectedKeys = new Set(selectedFields.map((field) => field.key));
-    return withOpennessColumns.filter((field) => !selectedKeys.has(field.key));
+    return withBlendColumns.filter((field) => !selectedKeys.has(field.key));
   }, [builderOptions.input_fields, isTeamPerformanceReport, reportType, rows, selectedFields, subDepartment]);
 
   const filteredRows = useMemo(() => {
@@ -4152,6 +4240,7 @@ function ReportsPage() {
           (subDepartment === "Spinning" && ["Count Change", "Ring Frame Log Book"].includes(reportType)) ||
           (subDepartment === "Autoconer" && ["Drum wise Appearance"].includes(reportType));
         const isOpennessReport = subDepartment === "Mixing" && reportType === "Openness Data Entry";
+        const isMixingProcessParameterReport = subDepartment === "Mixing" && reportType === "Process Parameter";
         const brWasteStudyType =
           subDepartment === "Blow Room"
             ? BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE[reportType]
@@ -4182,9 +4271,11 @@ function ReportsPage() {
         const isAutoconerSpliceStrengthReport = subDepartment === "Autoconer" && reportType === "Splice Strength";
         const extractRows = isOpennessReport
           ? normalizeOpennessRows
-          : brWasteStudyType
-            ? normalizeBrWasteStudyRows(brWasteStudyType)
-            : isDropTestReport
+          : isMixingProcessParameterReport
+            ? normalizeMixingProcessParameterRows
+            : brWasteStudyType
+              ? normalizeBrWasteStudyRows(brWasteStudyType)
+              : isDropTestReport
               ? normalizeDropTestRows
               : isLapCvReport
                 ? normalizeLapCvRows

@@ -1,15 +1,14 @@
 export const thresholdFieldCatalog = {
+    // Blend fields ("Lot No.", "Blend %", "Cut Length", "Tenacity", "Elongation", "Merge No.") are
+    // intentionally not listed here — Mixing's Process Parameter collects a variable number of
+    // blend rows per submission, so ReportsPage.jsx generates "Blend 1 - X".."Blend N - X" columns
+    // dynamically based on how many blends are actually present in the fetched rows, instead of a
+    // fixed set of singular fields that would only ever show the first blend.
     "Mixing::Process Parameter": [
         "Process Parameter ID",
         "Created Date",
         "Count Name",
         "Consignee Name",
-        "Lot No.",
-        "Blend-1",
-        "Cut Length",
-        "Tenacity",
-        "Elongation",
-        "Merge No.",
     ],
     "Mixing::AFIS-6 Cotton": [
         "Lot No.",
@@ -461,11 +460,13 @@ export const thresholdFieldCatalog = {
     ],
     "Carding::Nati Data Entry": [
         "Entry ID",
+        "Entry Date",
         "Variety",
         "Number of Neps Entries",
     ],
     "Comber::Nati Data Entry": [
         "Entry ID",
+        "Entry Date",
         "Variety",
         "Number of Neps Entries",
     ],

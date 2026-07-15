@@ -50,6 +50,18 @@ const withScreenEntryId = (screenKey, record) => {
   return { ...record };
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
+// mixing.mixing_qc_header appears to have been converted into a (non-updatable) view by a schema
+// change made outside this codebase — Postgres reports that as either 42P16 ("cannot change name
+// of view column ...", raised when this file's own ADD COLUMN setup step runs against it) or 42703
+// (undefined column) once a query actually tries to read/write a column the view doesn't expose.
+// Surface a clear, actionable message instead of a bare 500 when either hits this route.
+const MIXING_QC_SCHEMA_ERROR_CODES = new Set(['42P16', '42703']);
+const isMixingQcSchemaMismatch = (err) => err && MIXING_QC_SCHEMA_ERROR_CODES.has(err.code);
+const sendMixingQcSchemaMismatchError = (res) =>
+  res.status(503).json({
+    message:
+      'Mixing Process Parameter storage is out of sync with this server version (mixing.mixing_qc_header no longer matches the expected table shape). Contact an admin to reconcile the database schema before retrying.',
+  });
 
 const fetchMasterVarieties = async (prefix = '') => {
   const likeToken = `%${prefix}%`;
@@ -515,92 +527,129 @@ const ensureMixingTimestampColumnsHaveTimezone = async () => {
   `);
 };
 
+// Each table's setup runs independently, isolated in its own try/catch — if any single table has
+// drifted out of sync with what this function assumes (e.g. it's actually a view now, from a schema
+// change made outside this codebase), that failure must not block every other Mixing table's setup
+// from running, which would otherwise 500 every Mixing route that shares this function (they all
+// call it before touching their own table).
+const runMixingSchemaStep = async (label, fn) => {
+  try {
+    await fn();
+  } catch (error) {
+    console.error(`ensureMixingEntryIdColumns: skipping "${label}" step after error:`, error.message);
+  }
+};
+
 const ensureMixingEntryIdColumns = async () => {
-  await ensureMixingTimestampColumnsHaveTimezone();
-  await client.query(`
-    ALTER TABLE mixing.cotton_hvi_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cotton_hvi_data_entry_entry_id_uq
-    ON mixing.cotton_hvi_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    WITH numbered AS (
-      SELECT
-        ctid,
-        ROW_NUMBER() OVER (ORDER BY inspection_date, invoice_date, lot_no, invoice_no, ctid) AS rn
-      FROM mixing.cotton_hvi_data_entry
-      WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
-    )
-    UPDATE mixing.cotton_hvi_data_entry t
-    SET entry_id = LPAD(numbered.rn::text, 4, '0')
-    FROM numbered
-    WHERE t.ctid = numbered.ctid;
-  `);
+  await runMixingSchemaStep('timestamp columns', () => ensureMixingTimestampColumnsHaveTimezone());
 
-  await client.query(`
-    ALTER TABLE mixing.fibre_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS fibre_data_entry_entry_id_uq
-    ON mixing.fibre_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
+  await runMixingSchemaStep('cotton_hvi_data_entry columns', async () => {
+    await client.query(`
+      ALTER TABLE mixing.cotton_hvi_data_entry
+        ADD COLUMN IF NOT EXISTS entry_id TEXT,
+        ADD COLUMN IF NOT EXISTS operator TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS cotton_hvi_data_entry_entry_id_uq
+      ON mixing.cotton_hvi_data_entry (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+    await client.query(`
+      WITH numbered AS (
+        SELECT
+          ctid,
+          ROW_NUMBER() OVER (ORDER BY inspection_date, invoice_date, lot_no, invoice_no, ctid) AS rn
+        FROM mixing.cotton_hvi_data_entry
+        WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
+      )
+      UPDATE mixing.cotton_hvi_data_entry t
+      SET entry_id = LPAD(numbered.rn::text, 4, '0')
+      FROM numbered
+      WHERE t.ctid = numbered.ctid;
+    `);
+  });
 
-  await client.query(`
-    ALTER TABLE mixing.afis_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS afis_data_entry_entry_id_uq
-    ON mixing.afis_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
+  await runMixingSchemaStep('fibre_data_entry columns', async () => {
+    await client.query(`
+      ALTER TABLE mixing.fibre_data_entry
+        ADD COLUMN IF NOT EXISTS entry_id TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS fibre_data_entry_entry_id_uq
+      ON mixing.fibre_data_entry (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+  });
 
-  await client.query(`
-    ALTER TABLE mixing.moisture_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS moisture_data_entry_entry_id_uq
-    ON mixing.moisture_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
+  await runMixingSchemaStep('afis_data_entry columns', async () => {
+    await client.query(`
+      ALTER TABLE mixing.afis_data_entry
+        ADD COLUMN IF NOT EXISTS entry_id TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS afis_data_entry_entry_id_uq
+      ON mixing.afis_data_entry (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+  });
 
-  await client.query(`
-    ALTER TABLE mixing.openness_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS br_line TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS openness_inspection_entry_id_uq
-    ON mixing.openness_inspection (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
+  await runMixingSchemaStep('moisture_data_entry columns', async () => {
+    await client.query(`
+      ALTER TABLE mixing.moisture_data_entry
+        ADD COLUMN IF NOT EXISTS entry_id TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS moisture_data_entry_entry_id_uq
+      ON mixing.moisture_data_entry (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+  });
 
-  await client.query(`
-    ALTER TABLE mixing.mixing_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS mixing_qc_header_entry_id_uq
-    ON mixing.mixing_qc_header (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
+  await runMixingSchemaStep('openness_inspection columns', async () => {
+    await client.query(`
+      ALTER TABLE mixing.openness_inspection
+        ADD COLUMN IF NOT EXISTS entry_id TEXT,
+        ADD COLUMN IF NOT EXISTS br_line TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS openness_inspection_entry_id_uq
+      ON mixing.openness_inspection (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+    // The form sends beater_type/beater_speed_rpm per entry, but these columns never existed on
+    // openness_entries — the values were silently dropped on every submission (never inserted,
+    // never selectable), leaving "Entry N - Beater Type"/"Entry N - Beater Speed (RPM)" blank in
+    // Custom Report even though every other per-entry field worked.
+    await client.query(`
+      ALTER TABLE mixing.openness_entries
+        ADD COLUMN IF NOT EXISTS beater_type TEXT,
+        ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC;
+    `);
+  });
 
-  await client.query(`
+  await runMixingSchemaStep('mixing_qc_header columns', async () => {
+    await client.query(`
+      ALTER TABLE mixing.mixing_qc_header
+        ADD COLUMN IF NOT EXISTS entry_id TEXT,
+        ADD COLUMN IF NOT EXISTS operator TEXT;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS mixing_qc_header_entry_id_uq
+      ON mixing.mixing_qc_header (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+  });
+
+  await runMixingSchemaStep('afis6_cotton_data_entry index', () => client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
     ON mixing.afis6_cotton_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
+  `));
+  await runMixingSchemaStep('afis6_mmf_data_entry index', () => client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
     ON mixing.afis6_mmf_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
-  `);
+  `));
 };
 
 const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '_');
@@ -1007,7 +1056,8 @@ router.post('/cotton-hvi', async (req, res, next) => {
       trash_content_percentage,
       invisible_loss_percentage,
       rd,
-      colour_grade
+      colour_grade,
+      user_name
     } = req.body;
 
     if (!entry_id) {
@@ -1046,13 +1096,14 @@ router.post('/cotton-hvi', async (req, res, next) => {
         trash_content_percentage,
         invisible_loss_percentage,
         rd,
-        colour_grade
+        colour_grade,
+        operator
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,
         $7,$8,$9,$10,$11,
         $12,$13,$14,$15,$16,
-        $17,$18,$19,$20,$21,$22
+        $17,$18,$19,$20,$21,$22,$23
       )
       RETURNING *`,
       [
@@ -1077,7 +1128,8 @@ router.post('/cotton-hvi', async (req, res, next) => {
         numericValues.trash_content_percentage,
         numericValues.invisible_loss_percentage,
         numericValues.rd,
-        numericValues.colour_grade
+        numericValues.colour_grade,
+        user_name || null
       ]
     );
 
@@ -2056,14 +2108,17 @@ router.post('/openness', async (req, res, next) => {
       await client.query(
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
+         beater_type, beater_speed_rpm,
          weight, volume_1, volume_2,
          apparent_specific_volume, actual_op_value)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
         [
           inspectionId,
           entryNo,
           stageNo,
           e.machine_name,
+          e.beater_type,
+          e.beater_speed_rpm,
           e.weight,
           e.volume_1,
           e.volume_2,
@@ -2137,6 +2192,7 @@ router.get('/openness', async (req, res, next) => {
 
       const entries = await client.query(
         `SELECT entry_no, stage_no, machine_name,
+                beater_type, beater_speed_rpm,
                 weight, volume_1, volume_2,
                 apparent_specific_volume, actual_op_value
          FROM mixing.openness_entries
@@ -2244,20 +2300,25 @@ router.post('/qc', async (req, res, next) => {
       count_name,
       creation_date,
       status = 'UNDONE',
-      blends
+      blends,
+      user_name
     } = req.body;
 
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    if (!Array.isArray(blends) || !blends.length) {
+      return res.status(400).json({ error: 'Entries required' });
+    }
+
     // 1?????? Insert Header
     const headerResult = await client.query(
       `INSERT INTO mixing.mixing_qc_header
-      (entry_id, consignee_name, count_name, creation_date, status)
-      VALUES ($1, $2, $3, $4, $5)
+      (entry_id, consignee_name, count_name, creation_date, status, operator)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING qc_id, param_id, entry_id`,
-      [entry_id, consignee_name, count_name, creation_date, status]
+      [entry_id, consignee_name, count_name, creation_date, status, user_name || null]
     );
 
     const qc_id = headerResult.rows[0].qc_id;
@@ -2292,6 +2353,9 @@ router.post('/qc', async (req, res, next) => {
     if (isUniqueViolation(error)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
+    if (isMixingQcSchemaMismatch(error)) {
+      return sendMixingQcSchemaMismatchError(res);
+    }
     next(error);
   }
 });
@@ -2321,6 +2385,11 @@ router.post('/qc', async (req, res, next) => {
  */
 router.get('/qc', async (req, res, next) => {
   try {
+    // This route SELECTs h.operator, which only exists after ensureMixingEntryIdColumns() has run.
+    // Every other mixing route calls it first; this one didn't, so a fresh deploy (or any process
+    // that hits GET /qc before a POST /qc/cotton-hvi/etc. has run) would 500 with
+    // "column h.operator does not exist".
+    await ensureMixingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = parseInt(page);
@@ -2336,6 +2405,7 @@ router.get('/qc', async (req, res, next) => {
         h.count_name,
         h.creation_date,
         h.status,
+        h.operator,
         h.created_at,
 
         COALESCE(
@@ -2376,6 +2446,9 @@ router.get('/qc', async (req, res, next) => {
     });
 
   } catch (error) {
+    if (isMixingQcSchemaMismatch(error)) {
+      return sendMixingQcSchemaMismatchError(res);
+    }
     next(error);
   }
 });
@@ -2436,6 +2509,11 @@ router.get('/qc', async (req, res, next) => {
  */
 router.put('/qc/:qc_id', async (req, res, next) => {
   try {
+    // This route's UPDATE writes to mixing_qc_header.operator, which only exists after
+    // ensureMixingEntryIdColumns() has run. Every other mixing route calls it first; this one
+    // didn't, so it would 500 with "column operator does not exist" until some other mixing route
+    // happened to run first in the process lifetime.
+    await ensureMixingEntryIdColumns();
     const { qc_id } = req.params;
 
     const {
@@ -2443,8 +2521,13 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       count_name,
       creation_date,
       status,
-      blends
+      blends,
+      user_name
     } = req.body;
+
+    if (!Array.isArray(blends) || !blends.length) {
+      return res.status(400).json({ error: 'Entries required' });
+    }
 
     // 1?????? Update Header
     await client.query(
@@ -2452,9 +2535,10 @@ router.put('/qc/:qc_id', async (req, res, next) => {
        SET consignee_name = $1,
            count_name = $2,
            creation_date = $3,
-           status = $4
+           status = $4,
+           operator = COALESCE($6, operator)
        WHERE qc_id = $5`,
-      [consignee_name, count_name, creation_date, status, qc_id]
+      [consignee_name, count_name, creation_date, status, qc_id, user_name || null]
     );
 
     // 2?????? Delete old blends (simple approach)
@@ -2489,6 +2573,9 @@ router.put('/qc/:qc_id', async (req, res, next) => {
     });
 
   } catch (error) {
+    if (isMixingQcSchemaMismatch(error)) {
+      return sendMixingQcSchemaMismatchError(res);
+    }
     next(error);
   }
 });

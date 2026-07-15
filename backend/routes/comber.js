@@ -98,7 +98,8 @@ const ensureComberEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE comber.nati_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     ALTER TABLE comber.nati_data_entry
@@ -875,7 +876,7 @@ router.get('/lap-cv', async (req, res) => {
 router.post('/nati-data-entry', async (req, res) => {
     try {
         await ensureComberEntryIdColumns();
-        const { entry_id, type, entry_date, variety, entries } = req.body;
+        const { entry_id, type, entry_date, variety, entries, user_name } = req.body;
 
         if (!entry_id) {
             return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -889,10 +890,10 @@ router.post('/nati-data-entry', async (req, res) => {
 
             const main = await client.query(
                 `INSERT INTO comber.nati_data_entry
-                (entry_id, type, entry_date, variety)
-                VALUES ($1,$2,$3,$4)
+                (entry_id, type, entry_date, variety, operator)
+                VALUES ($1,$2,$3,$4,$5)
                 RETURNING id`,
-                [entry_id, type, entry_date, variety]
+                [entry_id, type, entry_date, variety, user_name || null]
             );
 
             const qc_id = main.rows[0].id;
@@ -998,6 +999,7 @@ router.get('/nati-data-entry', async (req, res) => {
                 qc.type,
                 qc.entry_date,
                 qc.variety,
+                qc.operator,
                 qc.created_at,
                 COALESCE(
                     json_agg(

@@ -189,6 +189,8 @@ function BlowRoom() {
   const handleSuccessClose = () => {
     setShowSuccess(false);
     successHandledRef.current = false;
+    setValidationMessage("");
+    childRef.current?.clear?.();
     dispatch(resetBlowroom());
   };
   const isSyncType = selectedTypeName === "Blow Room Sync";
