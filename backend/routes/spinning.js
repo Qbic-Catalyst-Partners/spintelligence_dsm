@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
@@ -16,6 +16,9 @@ const SCREEN_ID_PREFIXES = {
   rsm_lycra_offline: 'SRF',
   ring_frame: 'SRI',
   count_change: 'SCC',
+  // qc (Process Parameter) intentionally has no prefix here — it must only ever surface
+  // the real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
   wheel_change_type1: 'SW1',
   wheel_change_type2: 'SW2',
   wheel_change_type3: 'SW3',
@@ -42,6 +45,11 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
 
 const withoutTestNumber = (record = {}) => {
   const { test_no, test_number, ...rest } = record;
+  return rest;
+};
+
+const withoutCheckingType = (record = {}) => {
+  const { type, checking_type, ...rest } = record;
   return rest;
 };
 
@@ -180,7 +188,11 @@ const ensureRingFrameLogBookTables = async () => {
       ADD COLUMN IF NOT EXISTS out_of_center_ac INTEGER,
       ADD COLUMN IF NOT EXISTS out_of_center_rf INTEGER,
       ADD COLUMN IF NOT EXISTS lycra_missing_ac INTEGER,
-      ADD COLUMN IF NOT EXISTS lycra_missing_rf INTEGER;
+      ADD COLUMN IF NOT EXISTS lycra_missing_rf INTEGER,
+      ADD COLUMN IF NOT EXISTS fault_cops_ac NUMERIC,
+      ADD COLUMN IF NOT EXISTS fault_cops_rf NUMERIC,
+      ADD COLUMN IF NOT EXISTS total_cops_ac NUMERIC,
+      ADD COLUMN IF NOT EXISTS total_cops_rf NUMERIC;
   `);
 };
 
@@ -209,11 +221,63 @@ const normalizeRingFrameSummary = (summary = {}) => ({
   lycra_missing_ac: toIntegerOrNull(summary.lycra_missing_ac ?? summary.txtlmac),
   lycra_missing_rf: toIntegerOrNull(summary.lycra_missing_rf ?? summary.txtlmrf ?? summary.lycra_missing),
   fault_cops: summary.fault_cops ?? summary.txtftc ?? null,
+  fault_cops_ac: summary.fault_cops_ac ?? null,
+  fault_cops_rf: summary.fault_cops_rf ?? null,
   total_cops: summary.total_cops ?? summary.txttcop ?? null,
+  total_cops_ac: summary.total_cops_ac ?? null,
+  total_cops_rf: summary.total_cops_rf ?? null,
   comments: summary.comments ?? summary.comment ?? summary.txtdesc ?? null
 });
 
+// These tables store their submission timestamp as `timestamp WITHOUT time zone` (some under
+// `created_at`, the older ones under `createdat` with no separator) with a bare default — on this
+// DB, that silently writes a different offset than what gets displayed back, shifting "Created
+// At" by several hours (sometimes onto the wrong calendar day) in Custom Report. Same root cause
+// and same fix as every other department's equivalent tables: convert to timestamptz so new rows
+// store an unambiguous absolute instant.
+const ensureSpinningTimestampColumnsHaveTimezone = async () => {
+  const tablesAndColumn = [
+    ['spinning.speed_checking', 'createdat'],
+    ['spinning.cots_checking', 'createdat'],
+    ['spinning.lycra_missing', 'createdat'],
+    ['spinning.bottom_apron_checking', 'createdat'],
+    ['spinning.lycra_centering', 'createdat'],
+    ['spinning.rsm_and_lycrasensor_cheking_online', 'createdat'],
+    ['spinning.rsm_and_lycrasensor_cheking_offline', 'createdat'],
+    ['spinning.ring_frame_inspections', 'created_at'],
+    ['spinning.count_change_inspections', 'created_at'],
+    ['spinning.spinning_qc_header', 'created_at'],
+    ['spinning.wheel_change_inspection', 'created_at'],
+    ['spinning.wheel_change_inspection', 'updated_at'],
+    ['spinning.wheel_change_v2', 'created_at'],
+    ['spinning.wheel_change_v2', 'updated_at'],
+    ['spinning.wheel_change', 'created_at'],
+    ['spinning.wheel_change', 'updated_at'],
+    ['spinning.wheel_change_type4', 'created_at'],
+    ['spinning.wheel_change_type4', 'updated_at']
+  ];
+  for (const [tableName, column] of tablesAndColumn) {
+    const [schemaName, relationName] = tableName.split('.');
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = '${schemaName}' AND table_name = '${relationName}' AND column_name = '${column}'
+            AND data_type = 'timestamp without time zone'
+        ) THEN
+          ALTER TABLE ${tableName}
+            ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
+          ALTER TABLE ${tableName}
+            ALTER COLUMN ${column} SET DEFAULT now();
+        END IF;
+      END $$;
+    `);
+  }
+};
+
 const ensureSpinningEntryIdColumns = async () => {
+  await ensureSpinningTimestampColumnsHaveTimezone();
   await client.query(`
     CREATE TABLE IF NOT EXISTS spinning.wheel_change_type4 (
       id BIGSERIAL PRIMARY KEY,
@@ -359,6 +423,17 @@ const ensureSpinningEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS tw_proposed VARCHAR(100),
       ADD COLUMN IF NOT EXISTS total_draft_existing NUMERIC,
       ADD COLUMN IF NOT EXISTS total_draft_proposed NUMERIC;
+  `);
+
+  // wheel_change_type4 already existed (created for the Type 4 form) but was missing its
+  // "Count From" column entirely — Type 4 is the only wheel-change type keyed off a variety
+  // dropdown AND a machine number, and this column was simply never added, so every Type 4
+  // submission's Count From selection was silently lost (no POST /wheel-change/type4 route even
+  // existed to insert it until now).
+  await client.query(`
+    ALTER TABLE spinning.wheel_change_type4
+      ADD COLUMN IF NOT EXISTS count_from_existing VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS count_from_proposed VARCHAR(100);
   `);
 
   await client.query(`
@@ -1155,6 +1230,8 @@ router.get('/wheel-change/type2/varieties', getSpinningVarieties);
 router.get('/wheel-change/type2/master/varieties', getSpinningVarieties);
 router.get('/wheel-change/type3/varieties', getSpinningVarieties);
 router.get('/wheel-change/type3/master/varieties', getSpinningVarieties);
+router.get('/wheel-change/type4/varieties', getSpinningVarieties);
+router.get('/wheel-change/type4/master/varieties', getSpinningVarieties);
 router.get('/wheel-change/count-names', getCountChangeCountNames);
 router.get('/wheel-change/count-dropdown', getCountChangeCountNames);
 router.get('/wheel-change/master/counts', getCountChangeCountNames);
@@ -1171,6 +1248,8 @@ router.get('/wheel-change/type2/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type2/master/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type3/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type3/master/dropdown', getWheelChangeMasterDropdown);
+router.get('/wheel-change/type4/dropdown', getWheelChangeMasterDropdown);
+router.get('/wheel-change/type4/master/dropdown', getWheelChangeMasterDropdown);
 
 const getCountChangeRfNos = async (req, res, next) => {
   try {
@@ -1339,6 +1418,10 @@ router.get('/wheel-change/type3/rf-nos', getCountChangeRfNos);
 router.get('/wheel-change/type3/rf-numbers', getCountChangeRfNos);
 router.get('/wheel-change/type3/master/rf-nos', getCountChangeRfNos);
 router.get('/wheel-change/type3/fr-nos', getCountChangeRfNos);
+router.get('/wheel-change/type4/rf-nos', getCountChangeRfNos);
+router.get('/wheel-change/type4/rf-numbers', getCountChangeRfNos);
+router.get('/wheel-change/type4/master/rf-nos', getCountChangeRfNos);
+router.get('/wheel-change/type4/fm-nos', getCountChangeRfNos);
 
 router.get('/master/machine-numbers', getSpinningLycraMachineNumbers);
 router.get('/master/machine-nos', getSpinningLycraMachineNumbers);
@@ -1497,12 +1580,14 @@ router.post('/speed-checking', async (req, res, next) => {
 
 router.get('/speed-checking', async (req, res, next) => {
   try {
+    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
-      SELECT 
-        id,
+      SELECT
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
+        EmployeeName,
         Display_Speed,
         Spindle_Speed,
         Difference,
@@ -1525,51 +1610,6 @@ router.get('/speed-checking', async (req, res, next) => {
   }
 });
 
-/**
- * @swagger
- * /spinning/speed-checking:
- *   get:
- *     summary: Get all speed-checking records
- *     tags:
- *       - Spinning
- *     responses:
- *       200:
- *         description: List of records
- *       500:
- *         description: Internal server error
- */
-
-router.get('/speed-checking', async (req, res, next) => {
-  try {
-    const result = await client.query(`
-      SELECT 
-        id,
-        entry_id,
-        InspectionDate,
-        MachineNo,
-        Display_Speed,
-        Spindle_Speed,
-        LHS_Value,
-        RHS_Value,
-        Difference,
-        LHS_TextRemarks,
-        encode(LHS_Audio, 'base64') AS LHS_Audio,
-        RHS_TextRemarks,
-        encode(RHS_Audio, 'base64') AS RHS_Audio,
-        CreatedAt
-      FROM spinning.speed_checking
-      ORDER BY CreatedAt DESC;
-    `);
-
-    res.json({
-      count: result.rowCount,
-      data: result.rows.map((row) => withScreenEntryId('speed_checking', row))
-    });
-
-  } catch (err) {
-    next(err);
-  }
-});
 
 /**
  * @swagger
@@ -1698,7 +1738,7 @@ router.post('/cots-checking', async (req, res, next) =>{
  */
 router.get('/cots-checking', async (req, res, next) => {
   try {
-    const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
         entry_id AS id,
@@ -1713,9 +1753,9 @@ router.get('/cots-checking', async (req, res, next) => {
         encode(RHS_Audio, 'base64') as RHS_Audio,
         CreatedAt
       FROM spinning.cots_checking
-      WHERE InspectionDate::date = $1::date
+      WHERE $1::date IS NULL OR InspectionDate::date = $1::date
       ORDER BY CreatedAt DESC;
-    `, [filterDate]);
+    `, [req.query.date || null]);
 
     res.json({
       count: result.rowCount,
@@ -1843,7 +1883,7 @@ router.get('/lycra-missing', async (req, res, next) => {
     const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
     const result = await client.query(`
       SELECT
-        id,
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -1982,10 +2022,10 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
  */
 router.get('/bottom-apron-checking', async (req, res, next) => {
   try {
-    const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        id,
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -1997,9 +2037,9 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
         encode(RHS_Audio, 'base64') as RHS_Audio,
         CreatedAt
       FROM spinning.bottom_apron_checking
-      WHERE InspectionDate::date = $1::date
+      WHERE $1::date IS NULL OR InspectionDate::date = $1::date
       ORDER BY CreatedAt DESC;
-    `, [filterDate]);
+    `, [req.query.date || null]);
 
     res.json({
       count: result.rowCount,
@@ -2124,10 +2164,10 @@ router.post('/lycra-centering', async (req, res, next) => {
  */
 router.get('/lycra-centering', async (req, res, next) => {
   try {
-    const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        id,
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2139,9 +2179,9 @@ router.get('/lycra-centering', async (req, res, next) => {
         encode(RHS_Audio, 'base64') as RHS_Audio,
         CreatedAt
       FROM spinning.lycra_centering
-      WHERE InspectionDate::date = $1::date
+      WHERE $1::date IS NULL OR InspectionDate::date = $1::date
       ORDER BY CreatedAt DESC;
-    `, [filterDate]);
+    `, [req.query.date || null]);
 
     res.json({
       count: result.rowCount,
@@ -2266,10 +2306,10 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
  */
 router.get('/rsm-lycra-online', async (req, res, next) => {
   try {
-    const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        id,
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2281,9 +2321,9 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
         encode(RHS_Audio, 'base64') as RHS_Audio,
         CreatedAt
       FROM spinning.RSM_and_lycrasensor_cheking_online
-      WHERE InspectionDate::date = $1::date
+      WHERE $1::date IS NULL OR InspectionDate::date = $1::date
       ORDER BY CreatedAt DESC;
-    `, [filterDate]);
+    `, [req.query.date || null]);
 
     res.json({
       count: result.rowCount,
@@ -2408,10 +2448,10 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
  */
 router.get('/rsm-lycra-offline', async (req, res, next) => {
   try {
-    const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+    await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        id,
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2423,9 +2463,9 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
         encode(RHS_Audio, 'base64') as RHS_Audio,
         CreatedAt
       FROM spinning.RSM_and_lycrasensor_cheking_offline
-      WHERE InspectionDate::date = $1::date
+      WHERE $1::date IS NULL OR InspectionDate::date = $1::date
       ORDER BY CreatedAt DESC;
-    `, [filterDate]);
+    `, [req.query.date || null]);
 
     res.json({
       count: result.rowCount,
@@ -2552,8 +2592,9 @@ router.post('/ring-frame', async (req, res) => {
         INSERT INTO spinning.ring_frame_summary
         (inspection_id, out_of_center, out_of_center_ac, out_of_center_rf,
          lycra_missing, lycra_missing_ac, lycra_missing_rf,
-         fault_cops, total_cops, comments)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         fault_cops, fault_cops_ac, fault_cops_rf,
+         total_cops, total_cops_ac, total_cops_rf, comments)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       `, [
         inspection_id,
         normalizedSummary.out_of_center,
@@ -2563,7 +2604,11 @@ router.post('/ring-frame', async (req, res) => {
         normalizedSummary.lycra_missing_ac,
         normalizedSummary.lycra_missing_rf,
         normalizedSummary.fault_cops,
+        normalizedSummary.fault_cops_ac,
+        normalizedSummary.fault_cops_rf,
         normalizedSummary.total_cops,
+        normalizedSummary.total_cops_ac,
+        normalizedSummary.total_cops_rf,
         normalizedSummary.comments
       ]);
     }
@@ -2773,12 +2818,13 @@ router.get('/ring-frame', async (req, res) => {
     const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
     const result = await client.query(`
       SELECT
-        i.*,
+        i.id, i.entry_date, i.shift, i.checker_name, i.created_at, i.entry_id,
 
-        -- Rows
+        -- Rows (ordered by insertion order, i.e. the same top-to-bottom order the form was
+        -- filled in, so "Row 1" in Custom Report always means the first machine row entered)
         COALESCE(
           json_agg(
-            DISTINCT jsonb_build_object(
+            jsonb_build_object(
               'mc_no', r.mc_no,
               'lycra', r.lycra,
               'bobbin_color', r.bobbin_color,
@@ -2793,7 +2839,7 @@ router.get('/ring-frame', async (req, res) => {
               'guide_roll_lapping', r.guide_roll_lapping,
               'others', r.others,
               'total', r.total
-            )
+            ) ORDER BY r.id
           ) FILTER (WHERE r.id IS NOT NULL), '[]'
         ) AS rows,
 
@@ -2806,7 +2852,11 @@ router.get('/ring-frame', async (req, res) => {
           'lycra_missing_ac', s.lycra_missing_ac,
           'lycra_missing_rf', s.lycra_missing_rf,
           'fault_cops', s.fault_cops,
+          'fault_cops_ac', s.fault_cops_ac,
+          'fault_cops_rf', s.fault_cops_rf,
           'total_cops', s.total_cops,
+          'total_cops_ac', s.total_cops_ac,
+          'total_cops_rf', s.total_cops_rf,
           'comments', s.comments
         ) AS summary
 
@@ -3017,7 +3067,7 @@ router.post('/count-change', async (req, res) => {
 
 router.get('/count-change', async (req, res) => {
   try {
-    const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+    await ensureSpinningEntryIdColumns();
     const hasMcMaster = await hasPostgresTable('ticketing_system.mc_master');
     const rfSelect = hasMcMaster
       ? `,
@@ -3050,22 +3100,570 @@ router.get('/count-change', async (req, res) => {
       ${rfJoin}
       LEFT JOIN spinning.count_change_readings r
       ON i.id = r.inspection_id
-      WHERE i.entry_date::date = $1::date
+      WHERE $1::date IS NULL OR i.entry_date::date = $1::date
       GROUP BY i.id
       ${hasMcMaster ? ', m.mcname, m.deptcode, m.deptname' : ''}
       ORDER BY i.created_at DESC;
-    `, [filterDate]);
+    `, [req.query.date || null]);
 
     res.json({
       count: result.rowCount,
       data: result.rows.map((row) => {
-        return withScreenEntryId('count_change', withoutTestNumber(row));
+        const { type, ...rest } = withoutTestNumber(row);
+        return withScreenEntryId('count_change', rest);
       })
     });
 
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /spinning/qc:
+ *   post:
+ *     summary: Create Spinning QC entry
+ *     tags: [Spinning]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: integer
+ *               bottom_roll_setting:
+ *                 type: string
+ *               top_roll_setting:
+ *                 type: string
+ *               break_draft:
+ *                 type: number
+ *               total_draft:
+ *                 type: number
+ *               tpi_tm:
+ *                 type: string
+ *               spacer:
+ *                 type: string
+ *               traveller:
+ *                 type: string
+ *               speed:
+ *                 type: integer
+ *               make:
+ *                 type: string
+ *               denier:
+ *                 type: number
+ *               merge_no:
+ *                 type: string
+ *               lycra_draft:
+ *                 type: number
+ *               lycra_percent:
+ *                 type: number
+ *               slub_partcy_code:
+ *                 type: string
+ *               slub_mtr:
+ *                 type: number
+ *               pause_min:
+ *                 type: number
+ *               pause_max:
+ *                 type: number
+ *               slub_min:
+ *                 type: number
+ *               slub_max:
+ *                 type: number
+ *               thickness_min:
+ *                 type: number
+ *               thickness_max:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Spinning QC created successfully
+ *       500:
+ *         description: Server error
+ */
+
+router.post('/qc', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const {
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      bottom_roll_setting,
+      top_roll_setting,
+      break_draft,
+      total_draft,
+      tpi_tm,
+      spacer,
+      traveller,
+      speed,
+      make,
+      denier,
+      merge_no,
+      lycra_draft,
+      lycra_percent,
+      slub_partcy_code,
+      slub_mtr,
+      pause_min,
+      pause_max,
+      slub_min,
+      slub_max,
+      thickness_min,
+      thickness_max,
+      ramp,
+      offset
+    } = req.body;
+
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
+
+    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
+    const result = await client.query(
+      `INSERT INTO spinning.spinning_qc_header (
+        entry_id,
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        bottom_roll_setting,
+        top_roll_setting,
+        break_draft,
+        total_draft,
+        tpi_tm,
+        spacer,
+        traveller,
+        speed,
+        make,
+        denier,
+        merge_no,
+        lycra_draft,
+        lycra_percent,
+        slub_partcy_code,
+        slub_mtr,
+        pause_min,
+        pause_max,
+        slub_min,
+        slub_max,
+        thickness_min,
+        thickness_max,
+        ramp,
+        "offset"
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+        $11,$12,$13,$14,$15,$16,$17,$18,
+        $19,$20,$21,$22,$23,$24,$25,$26,
+        $27,$28
+      )
+      RETURNING *`,
+      [
+        entry_id,
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        bottom_roll_setting,
+        top_roll_setting,
+        break_draft,
+        total_draft,
+        tpi_tm,
+        spacer,
+        traveller,
+        speed,
+        make,
+        denier,
+        merge_no,
+        lycra_draft,
+        lycra_percent,
+        slub_partcy_code,
+        slub_mtr,
+        pause_min,
+        pause_max,
+        slub_min,
+        slub_max,
+        thickness_min,
+        thickness_max,
+        ramp ?? null,
+        offset ?? null
+      ]
+    );
+
+    recordPpNotebookSubmission({
+      notebook: 'Spinning QC Header',
+      department: 'Spinning',
+      entryId: entry_id,
+      sourceSchema: 'spinning',
+      sourceTable: 'spinning_qc_header',
+      submittedByUserId: req.user?.id,
+      submittedByName: req.user?.employee_id,
+      submittedPayload: { count_name, consignee_name, creation_date, machine_no }
+    }).catch((err) => console.warn('[pp-notebook-log] Spinning QC Header failed:', err.message));
+
+    res.status(201).json({
+      message: 'Spinning QC created successfully',
+      data: result.rows[0],
+      entry_id,
+      process_parameter_id: entry_id
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /spinning/qc:
+ *   get:
+ *     summary: Get Spinning QC entries
+ *     tags: [Spinning]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Data fetched successfully
+ *       500:
+ *         description: Server error
+ */
+
+router.get('/qc', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const { page = 1, limit = 10, consignee_name, count_name, date_from, date_to } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const offset = (pageNum - 1) * limitNum;
+
+    const conditions = [];
+    const params = [];
+    if (consignee_name) {
+      params.push(consignee_name);
+      conditions.push(`consignee_name = $${params.length}`);
+    }
+    if (count_name) {
+      params.push(count_name);
+      conditions.push(`count_name = $${params.length}`);
+    }
+    if (date_from) {
+      params.push(date_from);
+      conditions.push(`creation_date >= $${params.length}`);
+    }
+    if (date_to) {
+      params.push(date_to);
+      conditions.push(`creation_date <= $${params.length}`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await client.query(
+      `SELECT *
+       FROM spinning.spinning_qc_header
+       ${whereClause}
+       ORDER BY qc_id DESC
+       OFFSET $${params.length + 1} LIMIT $${params.length + 2}`,
+      [...params, offset, limitNum]
+    );
+
+    const total = await client.query(
+      `SELECT COUNT(*) FROM spinning.spinning_qc_header ${whereClause}`,
+      params
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('qc', row, 'qc_id')),
+      total: parseInt(total.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /spinning/qc/{qc_id}:
+ *   put:
+ *     summary: Update Spinning QC entry
+ *     tags: [Spinning]
+ *     parameters:
+ *       - in: path
+ *         name: qc_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - count_name
+ *               - consignee_name
+ *               - creation_date
+ *             properties:
+ *               count_name:
+ *                 type: string
+ *               consignee_name:
+ *                 type: string
+ *               creation_date:
+ *                 type: string
+ *                 format: date
+ *               machine_no:
+ *                 type: integer
+ *               bottom_roll_setting:
+ *                 type: string
+ *               top_roll_setting:
+ *                 type: string
+ *               break_draft:
+ *                 type: number
+ *               total_draft:
+ *                 type: number
+ *               tpi_tm:
+ *                 type: string
+ *               spacer:
+ *                 type: string
+ *               traveller:
+ *                 type: string
+ *               speed:
+ *                 type: integer
+ *               make:
+ *                 type: string
+ *               denier:
+ *                 type: number
+ *               merge_no:
+ *                 type: string
+ *               lycra_draft:
+ *                 type: number
+ *               lycra_percent:
+ *                 type: number
+ *               slub_partcy_code:
+ *                 type: string
+ *               slub_mtr:
+ *                 type: number
+ *               pause_min:
+ *                 type: number
+ *               pause_max:
+ *                 type: number
+ *               slub_min:
+ *                 type: number
+ *               slub_max:
+ *                 type: number
+ *               thickness_min:
+ *                 type: number
+ *               thickness_max:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Spinning QC updated successfully
+ *       400:
+ *         description: Invalid QC ID supplied
+ *       404:
+ *         description: Spinning QC entry not found
+ *       500:
+ *         description: Server error
+ */
+router.put('/qc/:qc_id', async (req, res, next) => {
+  try {
+    const qc_id = parseInt(req.params.qc_id, 10);
+
+    if (!Number.isInteger(qc_id) || qc_id <= 0) {
+      return res.status(400).json({ message: 'Invalid QC ID supplied' });
+    }
+
+    const {
+      entry_id,
+      count_name,
+      consignee_name,
+      creation_date,
+      machine_no,
+      bottom_roll_setting,
+      top_roll_setting,
+      break_draft,
+      total_draft,
+      tpi_tm,
+      spacer,
+      traveller,
+      speed,
+      make,
+      denier,
+      merge_no,
+      lycra_draft,
+      lycra_percent,
+      slub_partcy_code,
+      slub_mtr,
+      pause_min,
+      pause_max,
+      slub_min,
+      slub_max,
+      thickness_min,
+      thickness_max,
+      ramp,
+      offset
+    } = req.body;
+
+    const currentResult = await client.query(
+      `SELECT entry_id FROM spinning.spinning_qc_header WHERE qc_id = $1`,
+      [qc_id]
+    );
+
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO spinning.spinning_qc_header (
+          entry_id, count_name, consignee_name, creation_date,
+          machine_no, bottom_roll_setting, top_roll_setting,
+          break_draft, total_draft, tpi_tm, spacer, traveller,
+          speed, make, denier, merge_no, lycra_draft, lycra_percent,
+          slub_partcy_code, slub_mtr, pause_min, pause_max,
+          slub_min, slub_max, thickness_min, thickness_max,
+          ramp, "offset"
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18,
+          $19,$20,$21,$22,$23,$24,$25,$26,
+          $27,$28
+        )
+        RETURNING *`,
+        [
+          requestedEntryId, count_name, consignee_name, creation_date,
+          machine_no, bottom_roll_setting, top_roll_setting,
+          break_draft, total_draft, tpi_tm, spacer, traveller,
+          speed, make, denier, merge_no, lycra_draft, lycra_percent,
+          slub_partcy_code, slub_mtr, pause_min, pause_max,
+          slub_min, slub_max, thickness_min, thickness_max,
+          ramp, offset
+        ]
+      );
+
+      return res.status(201).json({
+        message: 'Spinning QC created successfully',
+        data: insertResult.rows[0]
+      });
+    }
+
+    const result = await client.query(
+      `UPDATE spinning.spinning_qc_header
+       SET count_name = $1,
+           consignee_name = $2,
+           creation_date = $3,
+           machine_no = $4,
+           bottom_roll_setting = $5,
+           top_roll_setting = $6,
+           break_draft = $7,
+           total_draft = $8,
+           tpi_tm = $9,
+           spacer = $10,
+           traveller = $11,
+           speed = $12,
+           make = $13,
+           denier = $14,
+           merge_no = $15,
+           lycra_draft = $16,
+           lycra_percent = $17,
+           slub_partcy_code = $18,
+           slub_mtr = $19,
+           pause_min = $20,
+           pause_max = $21,
+           slub_min = $22,
+           slub_max = $23,
+           thickness_min = $24,
+           thickness_max = $25,
+           ramp = $26,
+           "offset" = $27
+       WHERE qc_id = $28
+       RETURNING *`,
+      [
+        count_name,
+        consignee_name,
+        creation_date,
+        machine_no,
+        bottom_roll_setting,
+        top_roll_setting,
+        break_draft,
+        total_draft,
+        tpi_tm,
+        spacer,
+        traveller,
+        speed,
+        make,
+        denier,
+        merge_no,
+        lycra_draft,
+        lycra_percent,
+        slub_partcy_code,
+        slub_mtr,
+        pause_min,
+        pause_max,
+        slub_min,
+        slub_max,
+        thickness_min,
+        thickness_max,
+        ramp,
+        offset,
+        qc_id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Spinning QC updated successfully',
+      data: result.rows[0]
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(error);
   }
 });
 
@@ -3491,6 +4089,32 @@ router.post('/wheel-change/type1', async (req, res, next) => {
   }
 });
 
+// Custom Report's "Wheel Change" report type was pointed at this plain /wheel-change endpoint,
+// but it never existed — only the 3 type-specific endpoints below did, each backed by its own
+// table with its own distinct column set (76/68/68 columns, different names/order), so a SQL
+// UNION isn't possible — fetch each separately and merge in JS instead.
+router.get('/wheel-change', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const [type1, type2, type3, type4] = await Promise.all([
+      client.query(`SELECT * FROM spinning.wheel_change_inspection`),
+      client.query(`SELECT * FROM spinning.wheel_change_v2`),
+      client.query(`SELECT * FROM spinning.wheel_change`),
+      client.query(`SELECT * FROM spinning.wheel_change_type4`)
+    ]);
+    const rows = [
+      ...type1.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type1' })),
+      ...type2.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type2' })),
+      ...type3.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type3' })),
+      ...type4.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type4' }))
+    ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    res.status(200).json({ data: rows });
+  } catch (error) {
+    console.error('Spinning combined wheel change fetch error:', error);
+    next(error);
+  }
+});
+
 /**
  * @swagger
  * /spinning/wheel-change/type1:
@@ -3503,6 +4127,7 @@ router.post('/wheel-change/type1', async (req, res, next) => {
  */
 router.get('/wheel-change/type1', async (req, res, next) => {
   try {
+    await ensureSpinningEntryIdColumns();
     await ensureWheelChangeApprovalColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const approvalStatus = requestedApprovalStatus(req.query);
@@ -3520,8 +4145,8 @@ router.get('/wheel-change/type1', async (req, res, next) => {
       : null;
 
     res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type1', row, 'fm_no'), 'fm_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type1', latestRecord, 'fm_no'), 'fm_no') : null
+      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type1', withoutCheckingType(row), 'fm_no'), 'fm_no')),
+      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type1', withoutCheckingType(latestRecord), 'fm_no'), 'fm_no') : null
     });
 
   } catch (err) {
@@ -3716,6 +4341,7 @@ router.post('/wheel-change/type2', async (req, res, next) => {
  */
 router.get('/wheel-change/type2', async (req, res, next) => {
   try {
+    await ensureSpinningEntryIdColumns();
     await ensureWheelChangeApprovalColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const approvalStatus = requestedApprovalStatus(req.query);
@@ -3733,8 +4359,8 @@ router.get('/wheel-change/type2', async (req, res, next) => {
       : null;
 
     res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type2', row, 'fm_no'), 'fm_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type2', latestRecord, 'fm_no'), 'fm_no') : null
+      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type2', withoutCheckingType(row), 'fm_no'), 'fm_no')),
+      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type2', withoutCheckingType(latestRecord), 'fm_no'), 'fm_no') : null
     });
 
   } catch (err) {
@@ -3929,6 +4555,7 @@ router.post('/wheel-change/type3', async (req, res, next) => {
  */
 router.get('/wheel-change/type3', async (req, res, next) => {
   try {
+    await ensureSpinningEntryIdColumns();
     await ensureWheelChangeApprovalColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const approvalStatus = requestedApprovalStatus(req.query);
@@ -3978,8 +4605,8 @@ router.get('/wheel-change/type3', async (req, res, next) => {
       : null;
 
     res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeType3Aliases(row), 'fr_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeType3Aliases(latestRecord), 'fr_no') : null
+      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeType3Aliases(withoutCheckingType(row)), 'fr_no')),
+      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeType3Aliases(withoutCheckingType(latestRecord)), 'fr_no') : null
     });
 
   } catch (err) {
@@ -4250,6 +4877,7 @@ router.post('/wheel-change/type4', async (req, res, next) => {
  */
 router.get('/wheel-change/type4', async (req, res, next) => {
   try {
+    await ensureSpinningEntryIdColumns();
     await ensureWheelChangeApprovalColumns();
     const approvalStatus = requestedApprovalStatus(req.query);
     // Type 4 has no "Count From"/variety field (manual entry only), so unlike
@@ -4268,8 +4896,8 @@ router.get('/wheel-change/type4', async (req, res, next) => {
       : null;
 
     res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', row, 'fm_no'), 'fm_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', latestRecord, 'fm_no'), 'fm_no') : null
+      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', withoutCheckingType(row), 'fm_no'), 'fm_no')),
+      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', withoutCheckingType(latestRecord), 'fm_no'), 'fm_no') : null
     });
 
   } catch (err) {
@@ -4711,7 +5339,15 @@ router.post('/qc', async (req, res, next) => {
       offset
     } = req.body;
 
-    const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
 
     const conflictingCountName = await getCountNameConflict(entry_id, count_name);
     if (conflictingCountName) {

@@ -18,10 +18,9 @@ import { normalizeProcessParameterId, resolveProcessParameterDisplayId } from "@
 import {
   getProcessParameterCountName,
   readProcessParameterRegistry,
-  resetProcessParameterLocalState,
 } from "@/utils/processParameterRegistry";
-import { loadLocalEntries } from "@/utils/localProcessParameterStore";
-import { fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import { fetchDrawFrameHeaderEntries, fetchDrawFrameFinisherEntries } from "@/apis/draw-frame";
+import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_COUNT_OPTIONS,
@@ -38,6 +37,7 @@ import {
   fetchAutoconerConsigneeMaster,
 } from "@/apis/autoconer";
 import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
+import { fetchNextProcessParameterId } from "@/apis/processParameter";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
 import { fetchNextProcessParameterId } from "@/apis/processParameter";
 import { getColumnForNotebookKey } from "@/utils/ppNotebookKeys";
@@ -119,11 +119,8 @@ const buildFilterParams = (filters) => ({
 
 // Each source's `getId` mirrors the entry_id extraction used by that department's own
 // ProcessParameterDataEntry view, so remote completion state lines up with what those pages show.
-// Spinning doesn't hit the backend yet — it saves to the browser's local store (see
-// localProcessParameterStore), so its source reads from there too (filter query params are
-// meaningless for it since there's no server round-trip). Draw Frame Breaker/Finisher now save
-// via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries (/drawframe/header), distinguished
-// by the entry_scope field.
+// Draw Frame Breaker/Finisher save via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries
+// (/drawframe/header), distinguished by the entry_scope field.
 const REMOTE_STATUS_SOURCES = [
   {
     index: 0,
@@ -161,11 +158,7 @@ const REMOTE_STATUS_SOURCES = [
   },
   {
     index: 4,
-    fetch: async () => {
-      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
-      const allRows = getEntryRows(response);
-      return { data: allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === "finisher") };
-    },
+    fetch: (filters) => fetchDrawFrameFinisherEntries({ page: 1, limit: 200, ...buildFilterParams(filters) }),
     getId: (entry) => entry?.param_id ?? entry?.entry_id,
     isDone: () => true,
     getDetails: getEntryDetails,
@@ -179,9 +172,9 @@ const REMOTE_STATUS_SOURCES = [
   },
   {
     index: 6,
-    fetch: () => Promise.resolve({ data: loadLocalEntries("spinning") }),
-    getId: (entry) => entry?.param_id ?? entry?.entry_id,
-    isDone: (entry) => (entry?.status || "DONE") === "DONE",
+    fetch: (filters) => getSpinningProcessParameterEntries({ page: 1, limit: 200, ...buildFilterParams(filters) }),
+    getId: (entry) => entry?.entry_id ?? entry?.param_id,
+    isDone: () => true,
     getDetails: getEntryDetails,
   },
   {
@@ -258,7 +251,7 @@ const getDepartmentFormProps = (department, selectedTypeName, typeOptions) => {
     selectedType: selectedTypeName,
     onTypeChange: () => { },
     standaloneSection: true,
-    savedVersionsTargetId: "process-parameter-saved-versions",
+    savedVersionsTargetId: "",
   };
 
   if (department === "Simplex") {
@@ -332,6 +325,7 @@ export default function ProcessParameterPage() {
   const [drawFrameType, setDrawFrameType] = useState("PP - Breaker Drawing");
   const [autoconerType, setAutoconerType] = useState("Process Parameter");
   const [selectedEntryId, setSelectedEntryId] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [completedCells, setCompletedCells] = useState({});
   const [dynamicRows, setDynamicRows] = useState([]);
   const [remoteStatusMap, setRemoteStatusMap] = useState({});
@@ -1029,27 +1023,6 @@ export default function ProcessParameterPage() {
                   <MdPrint /> Print Matrix
                 </button>
               ) : null}
-              <button
-                type="button"
-                className={styles.printMatrixButton}
-                title="Clears this browser's PP id counter and locally-stored Draw Frame/Spinning entries so new PPs start from PP-0001 again. Does not delete backend records (Mixing/Blow Room/Carding/Simplex/Autoconer/Q2/Q3) — those must be removed from the database separately."
-                onClick={() => {
-                  const confirmed = window.confirm(
-                    "This clears the PP id counter and locally-stored Draw Frame/Spinning entries on this browser so new PPs start from PP-0001.\n\n" +
-                      "It does NOT delete backend records (Mixing, Blow Room, Carding, Simplex, Autoconer, AC-Q2, AC-Q3) — those must be deleted from the database first, otherwise their rows and PP ids will still appear.\n\n" +
-                      "Continue?"
-                  );
-                  if (!confirmed) return;
-                  resetProcessParameterLocalState();
-                  setDynamicRows(loadRegistryRows());
-                  loadRemoteStatuses();
-                  setSelectedEntryId("");
-                  setOpenEditTabs([]);
-                  setActiveTab("new");
-                }}
-              >
-                Reset Local PP Data
-              </button>
               <div className={styles.currentDate}>Current Date : {currentDate}</div>
             </div>
           </div>
@@ -1313,7 +1286,10 @@ export default function ProcessParameterPage() {
                     const nextEntryId = resolveProcessParameterDisplayId(response, selectedEntryId);
 
                     if (nextEntryId) {
-                      if (!selectedEntryId) setSelectedEntryId(nextEntryId);
+                      if (!selectedEntryId) {
+                        setSelectedEntryId(nextEntryId);
+                        refreshNextAvailableId();
+                      }
                       refreshRegistryRows();
                     }
                   }}
@@ -1336,14 +1312,33 @@ export default function ProcessParameterPage() {
               )}
               {showFooter ? (
                 <div className={styles.footerWrap}>
+                  {saveError ? (
+                    <div className={styles.messageBox} style={{ color: "#b42318", marginBottom: "8px" }}>
+                      {saveError}
+                    </div>
+                  ) : null}
                   <Footer
                     onBack={() => { }}
                     onClear={() => componentRef.current?.clear?.()}
                     onSave={async () => {
+                      setSaveError("");
                       const valid = componentRef.current?.validate?.();
-                      if (valid === false) return;
+                      if (valid === false) {
+                        setSaveError("Please fill all required fields highlighted in red before saving.");
+                        return;
+                      }
                       const previewItems = componentRef.current?.getPreviewData?.() || [];
-                      const result = await componentRef.current?.submit?.();
+                      let result;
+                      try {
+                        result = await componentRef.current?.submit?.();
+                      } catch (error) {
+                        setSaveError(error?.message || "Unable to save this entry. Please try again.");
+                        return;
+                      }
+                      if (result === false) {
+                        setSaveError("Unable to save this entry. Please check the form and try again.");
+                        return;
+                      }
                       refreshRegistryRows();
                       const batchDisplayId = resolveProcessParameterDisplayId(result, selectedEntryId);
                       if (batchDisplayId && !selectedEntryId) setSelectedEntryId(batchDisplayId);

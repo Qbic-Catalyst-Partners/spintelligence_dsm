@@ -14,7 +14,6 @@ import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 
 const ALL_TYPES_VALUE = "__all_types__";
-const today = new Date();
 const padDatePart = (value) => String(value).padStart(2, "0");
 const toInputDate = (date) =>
   `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
@@ -86,7 +85,18 @@ const buildRowGroups = (rows) => {
   return groups;
 };
 
-const isMergedReportField = () => false;
+// Report types whose rows are exploded one-per-child-record (e.g. one row per drum) need their
+// header-level fields (everything except the per-child fields listed here) rendered once and
+// spanned across the group, instead of repeating on every exploded row.
+const PER_CHILD_REPORT_FIELDS = {
+  "Drum wise Appearance": new Set(["Appearance OK Count", "Appearance Not OK Count"]),
+};
+
+const isMergedReportField = (typeName, field) => {
+  const perChildFields = PER_CHILD_REPORT_FIELDS[typeName];
+  if (!perChildFields) return false;
+  return !perChildFields.has(field?.label);
+};
 
 const THICK_PLACE_CV_SCREEN_NAME = "Thick place & CV";
 
@@ -258,6 +268,50 @@ const fieldsFromComberNolisPivotedRows = (rows) => {
   }));
 };
 
+const SMX_COTS_CHANGE_SCREEN_NAME = "SMXCots Change Data Entry";
+const SMX_COTS_CHANGE_ITEM_LABELS = [
+  "Front Cots Damage",
+  "Third Cots Damage",
+  "Back Cots Damage",
+  "Apron Damage",
+  "Front Cots Tilting",
+  "Second Cots Tilting",
+  "Third Cots Tilting",
+  "Back Cots Tilting",
+  "Cradle Lifting",
+  "Floating Condensor Missing",
+  "Middle Condensor Missing",
+  "Back Condensor Missing",
+  "Others 1",
+  "Others 2",
+];
+
+const pivotSmxCotsChangeRows = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const groups = buildRowGroups(list);
+
+  return groups.map((group) => {
+    const [firstRow] = group;
+    if (!firstRow || typeof firstRow !== "object") return firstRow;
+
+    const items = Array.isArray(firstRow.items)
+      ? firstRow.items
+      : group
+          .filter((row) => row?.item_name !== undefined && row?.item_name !== null)
+          .map((row) => ({ item_name: row.item_name, status_value: row.status_value }));
+
+    const pivoted = { ...firstRow };
+    items.forEach((item) => {
+      if (!item || typeof item !== "object") return;
+      const itemName = item.item_name;
+      if (SMX_COTS_CHANGE_ITEM_LABELS.includes(itemName)) {
+        pivoted[`item::${itemName}`] = item.status_value;
+      }
+    });
+    return pivoted;
+  });
+};
+
 const NATI_DATA_ENTRY_SCREEN_NAME = "Nati Data Entry";
 const NATI_ENTRY_FIELD_LABELS = [
   { key: "mc_no", label: "MC No" },
@@ -409,6 +463,21 @@ const REPORT_FIELD_ALIASES = {
   "1m CV in Metres": ["cvm_1m"],
   "3m CV in Metres": ["cvm_3m"],
   "Feed in mm / Nep": ["feed_mm_per_nep"],
+  "MC Name": ["machine_name"],
+  "Front Cots Damage": ["item::Front Cots Damage"],
+  "Third Cots Damage": ["item::Third Cots Damage"],
+  "Back Cots Damage": ["item::Back Cots Damage"],
+  "Apron Damage": ["item::Apron Damage"],
+  "Front Cots Tilting": ["item::Front Cots Tilting"],
+  "Second Cots Tilting": ["item::Second Cots Tilting"],
+  "Third Cots Tilting": ["item::Third Cots Tilting"],
+  "Back Cots Tilting": ["item::Back Cots Tilting"],
+  "Cradle Lifting": ["item::Cradle Lifting"],
+  "Floating Condensor Missing": ["item::Floating Condensor Missing"],
+  "Middle Condensor Missing": ["item::Middle Condensor Missing"],
+  "Back Condensor Missing": ["item::Back Condensor Missing"],
+  "Others 1": ["item::Others 1"],
+  "Others 2": ["item::Others 2"],
   "Comber NRE%": ["comber_nre_percent"],
   "50% span length in LAP": ["span_length_50_lap"],
   "50% span length in Sliver": ["span_length_50_sliver"],
@@ -440,6 +509,19 @@ const REPORT_FIELD_ALIASES = {
   "HANK (1/2Y)": ["hank_half"],
   "SD (1/2Y)": ["sd_half"],
   "CV% (1/2Y)": ["cv_half"],
+  "Table No": ["meta_table_no", "table_no"],
+  "Test ID": ["meta_test_id", "test_id"],
+  "Total Test": ["meta_total_test", "total_test"],
+  "Number of Entries (N)": ["meta_number_of_entries", "number_of_entries"],
+  "Length": ["meta_length", "length"],
+  "Tester": ["meta_tester", "tester"],
+  "Std. Stretch %": ["meta_std_stretch_percent", "std_stretch_percent"],
+  "Stretch %": ["meta_stretch_percent", "stretch_percent"],
+  "Remark": ["meta_remark", "remark"],
+  "Sample No": ["sample_no"],
+  "Initial Bobbin": ["initial_bobbin"],
+  "Full Bobbin": ["full_bobbin"],
+  "Std. Noils %": ["meta_std_noils_percent", "std_noils_percent"],
   "Process Type": ["sub_type"],
   "Stripper Waste": ["stripper_w"],
   "Auto Leveller": ["auto_level"],
@@ -603,6 +685,13 @@ const BLEND_FIELD_PATTERN = /^blend-\d+$/i;
 // more than one blend per row. "Blend-1" (the % typed into the form) and "Blend No." (the
 // blend's sequence number) are simply two different flat columns already on that row.
 const BLEND_NO_FIELD_LABEL = "blend no.";
+const BLEND_FIELD_PATTERN = /^blend-\d+$/i;
+// By the time a row reaches here it has already been through normalizeDashboardRows, which
+// flattens each mixing_qc_blends row into its own report row with plain "blend_no"/
+// "percentage" keys — there is never a surviving nested "blends" array to look into, and never
+// more than one blend per row. "Blend-1" (the % typed into the form) and "Blend No." (the
+// blend's sequence number) are simply two different flat columns already on that row.
+const BLEND_NO_FIELD_LABEL = "blend no.";
 
 const getBlendFieldValue = (row, field) => {
   const label = String(field?.label || field?.key || "").trim();
@@ -755,6 +844,9 @@ const getReportFieldValue = (row, field) => {
 
   const blendValue = getBlendFieldValue(row, field);
   if (typeof blendValue !== "undefined") return blendValue;
+
+  const smxBreaksStudyValue = getSmxBreaksStudyFieldValue(row, field);
+  if (typeof smxBreaksStudyValue !== "undefined") return smxBreaksStudyValue;
 
   const sampleValue = getSampleFieldValue(row, field);
   if (typeof sampleValue !== "undefined") return sampleValue;
@@ -931,8 +1023,8 @@ const getWorksheetName = (name, index, usedNames) => {
 
 export default function GeneralReport() {
   const router = useRouter();
-  const [fromDate, setFromDate] = useState(toInputDate(today));
-  const [toDate, setToDate] = useState(toInputDate(today));
+  const [fromDate, setFromDate] = useState(() => toInputDate(new Date()));
+  const [toDate, setToDate] = useState(() => toInputDate(new Date()));
   const fromDateInputRef = useRef(null);
   const toDateInputRef = useRef(null);
 
@@ -969,6 +1061,7 @@ export default function GeneralReport() {
     if (typeName === THICK_PLACE_CV_SCREEN_NAME) return pivotThickPlaceCvRows(typeRows);
     if (typeName === NATI_DATA_ENTRY_SCREEN_NAME) return pivotNatiDataEntryRows(typeRows);
     if (typeName === COMBER_NOLIS_SCREEN_NAME) return pivotComberNolisRows(typeRows);
+    if (typeName === SMX_COTS_CHANGE_SCREEN_NAME) return { pivotedRows: pivotSmxCotsChangeRows(typeRows), pivotedFields: null };
     if (SAMPLE_PIVOT_SCREEN_NAMES.has(typeName)) return pivotSampleRows(typeRows);
     return { pivotedRows: typeRows, pivotedFields: null };
   };
@@ -1158,8 +1251,13 @@ export default function GeneralReport() {
     const input = inputRef.current;
     if (!input) return;
     if (typeof input.showPicker === "function") {
-      input.showPicker();
-      return;
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // Some browsers reject showPicker() outside a trusted-gesture window;
+        // fall back to focus+click below instead of surfacing the error.
+      }
     }
     input.focus();
     input.click();

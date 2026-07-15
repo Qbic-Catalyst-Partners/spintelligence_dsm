@@ -121,7 +121,7 @@ const DECIMAL_FIELD_CONFIG = {
     csp: { precision: 8, scale: 2 },
 };
 
-function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false, entryId = "" }) {
+function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {}, showForm = false, entryId = "", reserveEntryId }) {
     const router = useRouter();
     const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [time, setTime] = useState("");
@@ -266,6 +266,7 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         const totalHs = totalHsValue;
 
         const payload = {
+            entry_id: entryId || "",
             date,
             time,
             type: selectedType,
@@ -357,9 +358,11 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
             setFormMessage("");
             setIsError(false);
             setShowSuccess(true);
+            await reserveEntryId?.();
         } catch (error) {
             setFormMessage(error.message || "Failed to submit trials data.");
             setIsError(true);
+            await reserveEntryId?.();
         }
     };
 

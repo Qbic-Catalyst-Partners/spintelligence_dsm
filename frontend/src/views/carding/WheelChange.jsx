@@ -158,7 +158,7 @@ const applyUnapprovedProposedValues = (existingValues, entry) =>
     return record;
   }, {});
 
-function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "" }) {
+function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeChange, entryId = "", reserveEntryId }) {
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
   const operatorName = trimValue(user?.name || user?.full_name || user?.user_name || user?.username || "");
@@ -399,6 +399,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     }, {});
 
     return {
+      entry_id: entryId || "",
       type: CHANGE_CONTROL_TYPE,
       department: "Carding",
       approval_status: "pending",
@@ -444,10 +445,12 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       setShowPreview(false);
       setShowSuccess(true);
       setEntryDate(getTodayDate());
+      await reserveEntryId?.();
       await loadLatestSaved(values.mixing?.existing || values.mixing?.proposed || "");
     } catch (error) {
       setShowPreview(false);
       setMessage(error?.response?.data?.message || error?.message || "Wheel Change could not be submitted.");
+      await reserveEntryId?.();
     } finally {
       setSubmitting(false);
     }

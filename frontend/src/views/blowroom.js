@@ -46,7 +46,10 @@ const normalizeTypeName = (value = "") =>
   String(value).trim().toLowerCase();
 
 function BlowRoom() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
+  const [currentDateLabel, setCurrentDateLabel] = useState("");
+  useEffect(() => {
+    setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+  }, []);
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);
@@ -248,6 +251,8 @@ function BlowRoom() {
                       <div className="flex gap-2.5">
                         <input
                           type="number"
+                          min="1"
+                          max="100"
                           className="h-[38px] px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-colors flex-1 min-w-0"
                           style={{ backgroundColor: "#f1f5f9" }}
                           value={sampleCount}
@@ -257,7 +262,7 @@ function BlowRoom() {
                         <button
                           type="button"
                           className="h-[38px] px-4 rounded-lg bg-[#3D539F] text-white text-[14px] font-semibold whitespace-nowrap"
-                          onClick={() => setSampleCount((current) => Math.max(1, Number(current) || 5))}
+                          onClick={() => setSampleCount((current) => Math.min(100, Math.max(1, Number(current) || 5)))}
                         >
                           Generate
                         </button>
@@ -290,7 +295,7 @@ function BlowRoom() {
                   onLotNoChange={setLotNo}
                   sampleCount={sampleCount}
                   onSampleCountChange={setSampleCount}
-                  savedVersionsTargetId="blowroom-process-parameter-history"
+                  savedVersionsTargetId=""
                   postFooterPortalTargetId="blowroom-post-footer-slot"
                 />
               ) : (
@@ -346,10 +351,6 @@ function BlowRoom() {
 
           <div id="blowroom-post-footer-slot" />
         </div>
-
-        {isProcessParameterType ? (
-          <div id="blowroom-process-parameter-history" className="w-full max-w-7xl pt-5" />
-        ) : null}
       </div>
 
       <PreviewModal

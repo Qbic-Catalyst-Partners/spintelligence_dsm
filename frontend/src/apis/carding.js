@@ -129,7 +129,9 @@ export const submitNatiDataEntry = async (payload) => {
 
 export const submitTrialsDataEntry = async (payload) => {
     try {
-        const response = await apiConfig.post("/carding/trials", payload);
+        // trials.js is mounted at plain /trials (backend/server.js), never under /carding — this
+        // wrong path meant every real submission from this form has been failing outright.
+        const response = await apiConfig.post("/trials", payload);
         return response.data;
     } catch (error) {
         if (error.response) {

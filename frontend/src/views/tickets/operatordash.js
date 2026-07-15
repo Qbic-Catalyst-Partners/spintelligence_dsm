@@ -22,6 +22,8 @@ import {
     TICKET_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
 
+const PP_ENTRY_ID_PATTERN = /^PP-\d{4,}$/i;
+
 const formatDateTime = (dateString) => {
     if (!dateString) return "-";
     const date = new Date(dateString);
@@ -256,6 +258,13 @@ export default function operatorboard() {
         try {
             setSubmissionError("");
             const response = await getSubmissionTickets({ page: 1, limit: 500, user_id: authUserId, _ts: Date.now() });
+            const isRecognizedShape =
+                Array.isArray(response) ||
+                Array.isArray(response?.data?.tickets) ||
+                Array.isArray(response?.data?.rows) ||
+                Array.isArray(response?.data) ||
+                Array.isArray(response?.tickets) ||
+                Array.isArray(response?.rows);
             const ticketsArray = Array.isArray(response)
                 ? response
                 : response?.data?.tickets ||
@@ -265,7 +274,7 @@ export default function operatorboard() {
                   response?.rows ||
                   [];
 
-            if (!ticketsArray.length && response && typeof response === "object") {
+            if (!isRecognizedShape && response && typeof response === "object") {
                 console.warn("getSubmissionTickets returned an unrecognized response shape:", response);
             }
 
@@ -296,7 +305,11 @@ export default function operatorboard() {
                 console.warn("getProcessParameterTickets returned an unrecognized response shape:", response);
             }
 
-            setProcessParameterTicketData(ticketsArray.map(formatProcessParameterTicket));
+            setProcessParameterTicketData(
+                ticketsArray
+                    .map(formatProcessParameterTicket)
+                    .filter((ticket) => PP_ENTRY_ID_PATTERN.test(String(ticket.entryId || "").trim()))
+            );
         } catch (ppError) {
             console.error("Error fetching process parameter tickets:", ppError);
             setProcessParameterTicketData([]);

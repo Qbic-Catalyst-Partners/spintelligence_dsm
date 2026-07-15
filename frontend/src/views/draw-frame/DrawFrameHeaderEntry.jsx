@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import { useSelector } from "react-redux";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { MdOutlineEditNote } from "react-icons/md";
@@ -23,7 +24,14 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { submitDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import {
+  submitDrawFrameHeaderEntry,
+  updateDrawFrameHeaderEntry,
+  fetchDrawFrameHeaderEntries,
+  submitDrawFrameFinisherEntry,
+  updateDrawFrameFinisherEntry,
+  fetchDrawFrameFinisherEntries,
+} from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
@@ -352,6 +360,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   ref
 ) {
   const router = useRouter();
+  const user = useSelector((state) => state.auth?.user);
   const activeType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
   const activeConfig = TYPE_CONFIG[activeType];
 
@@ -381,9 +390,14 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     let rows = [];
     setFormMessage("");
     try {
-      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
-      const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
-      rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === config.entryScope);
+      if (type === "PP - Finisher Drawing") {
+        const response = await fetchDrawFrameFinisherEntries({ page: 1, limit: 100 });
+        rows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+      } else {
+        const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
+        const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
+        rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() !== "finisher");
+      }
     } catch (error) {
       setFormMessage(error.message || "Unable to load saved draw frame entries.");
     }
@@ -585,11 +599,21 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
       const payload = {
         ...activeConfig.buildPayload(form, entryId),
-        id: selectedExistingEntry ? selectedExistingEntry.id : undefined,
         entry_id: paramId,
         param_id: paramId,
+        // drawframe_qc_header now has its own "operator" column (see backend) — persist it
+        // directly rather than relying solely on the submitted-notebook recording below, which
+        // has proven fragile for this screen (some entries never got recorded).
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
       };
-      const response = await submitDrawFrameHeaderEntry(payload);
+      const isFinisher = activeType === "PP - Finisher Drawing";
+      const response = selectedExistingEntry
+        ? isFinisher
+          ? await updateDrawFrameFinisherEntry(selectedExistingEntry.id, payload)
+          : await updateDrawFrameHeaderEntry(selectedExistingEntry.id, payload)
+        : isFinisher
+          ? await submitDrawFrameFinisherEntry(payload)
+          : await submitDrawFrameHeaderEntry(payload);
       const savedEntry = response?.data || response;
 
       registerProcessParameterId(savedEntry, activeType, form.countName);
@@ -800,73 +824,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         onClose={handleSuccessClose}
       />
 
-      <div className={styles.headerEntryList}>
-        {recentEntries.length ? (
-          recentEntries.map((entry, index) => (
-            <div key={`${entry.id}-${index}`} className={styles.headerEntryCard}>
-              <div className={styles.headerEntryCardHeader}>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaBlock} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Param ID</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.paramId || entry.id)}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaMain} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Consignee Name</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.consigneeName)}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaMain} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Count Name</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.countName)}</span>
-                </button>
-                <div className={styles.headerEntryCardStatus}>
-                  {isEntryComplete(entry) ? <FaCheckCircle className={styles.headerEntryStatusIcon} /> : null}
-                </div>
-                <button
-                  type="button"
-                  className={styles.headerEntryToggle}
-                  onClick={() => handleEntryToggle(entry)}
-                  aria-label={
-                    String(expandedEntryId) === String(entry.id)
-                      ? "Collapse saved entry details"
-                      : "Expand saved entry details"
-                  }
-                >
-                  {String(expandedEntryId) === String(entry.id) ? <HiChevronUp /> : <HiChevronDown />}
-                </button>
-              </div>
-
-              {String(expandedEntryId) === String(entry.id) ? (
-                <div className={styles.headerEntryCardDetails}>
-                  <div className={styles.headerEntryDetailsGrid}>
-                    {entry.details.map((detail) => (
-                      <div key={`${entry.id}-${detail.label}`} className={styles.headerEntryDetailItem}>
-                        <span className={styles.headerEntryMetaLabel}>{detail.label}</span>
-                        <span className={styles.headerEntryMetaValue}>{displaySavedValue(detail.value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.headerEntryCardDate}>
-                    {formatDisplayDate(entry.creationDate) || "-"}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))
-        ) : (
-          <p className={styles.messageInfo}>No entries found.</p>
-        )}
-      </div>
     </>
   );
 });

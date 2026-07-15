@@ -80,7 +80,9 @@ const screenEndpoints = {
       "Wheel Change": "/carding/change-control",
     },
     "Individual Card Performance": {
-      "Individual Card performance Data": "/carding/trials",
+      // Mounted at plain /trials (backend/server.js) — trials.js is its own router, never
+      // actually registered under carding.js.
+      "Individual Card performance Data": "/trials",
     },
     Comber: {
       "Ribbon Lap CV1M Data Entry": "/comber/lap-cv",
@@ -105,10 +107,13 @@ const screenEndpoints = {
       "Wheel Change Type-4 (LDF3S)": "/drawframe/wheel-change/type4-ldf3s",
     },
     Simplex: {
-      "Process Parameter": "/simplex/process-parameters",
+      "Process Parameter": "/simplex/process_parameter",
+      "Process Parameter": "/simplex/process_parameter",
       "SMXCots Change Data Entry": "/simplex/cots-change",
       "SMX Breaks Study Report": "/simplex/list",
       "U% Data Entry": "/simplex/uqc",
+      "Wheel Change": "/simplex/wheel-change",
+      "Stretch %": "/drawframe/stretch-percent",
     },
     Spinning: {
       "Process Parameter": "/spinning/qc",
@@ -124,16 +129,16 @@ const screenEndpoints = {
       "Wheel Change": "/spinning/wheel-change",
     },
     Autoconer: {
-      "Process Parameter": "/autoconer?type=Process%20Parameter",
-      "PP - Autoconer Q2": "/autoconer?type=PP%20-%20Autoconer%20Q2",
-      "PP - Autoconer Q3": "/autoconer?type=PP%20-%20Autoconer%20Q3",
-      "Rewinding Study": "/autoconer/rewinding-study",
+      "Process Parameter": "/autoconer/process-parameter",
+      "PP - Autoconer Q2": "/autoconer/q2",
+      "PP - Autoconer Q3": "/autoconer/q3",
+      "Rewinding Study": "/autoconer/inspection-data-entry",
       "Cone Density": "/autoconer/cone-density",
       "Cone Packing Audit": "/autoconer/cone-packing-audit",
       "Lycra % Checking": "/autoconer/lycra-checking",
       "Count Wise Cuts Record": "/autoconer/count-wise-cuts",
       "Splice Strength": "/autoconer/splice-strength",
-      "Drum wise Appearance": "/autoconer/drum-wise-appearance",
+      "Drum wise Appearance": "/autoconer/drum-wise",
       "CSP Parameter Entries": "/autoconer/parameter-entries/pending-csp",
       "U% Parameter Entries": "/autoconer/parameter-entries/pending-quality",
     },
@@ -217,13 +222,55 @@ const normalizeKey = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
+// Some form field labels don't share enough characters with their raw db column name for the
+// exact/substring match below to ever find them (e.g. "LHS (Spindle Number)" vs "lhs_value",
+// "Machine" vs "machineno") — list those pairings explicitly so widget tables can resolve them.
+const dashboardFieldAliases = {
+  lhsspindlenumber: ["lhs_value"],
+  rhsspindlenumber: ["rhs_value"],
+  lhsremarks: ["lhs_textremarks"],
+  rhsremarks: ["rhs_textremarks"],
+  machine: ["machineno", "machine_no"],
+  break1millionmeter: ["break_per_million_meter", "break_per_lakh"],
+  grosswtstd: ["gross_weight_std"],
+  grosswtact: ["gross_weight_actual"],
+  i1: ["l1"],
+  i2: ["l2"],
+  noofreadings: ["total_readings"],
+  autoconerno: ["machine_code"],
+  fibreweight: ["fabric_weight"],
+  shortcuts: ["shorts_cuts"],
+  thin50: ["thin_minus_50"],
+  thick50: ["thick_plus_50"],
+  thin40: ["thin_minus_40"],
+  thick35: ["thick_plus_35"],
+  thin30: ["thin_minus_30"],
+};
+
 export const getDashboardFieldValue = (row, fieldName) => {
   if (!row || !fieldName) return null;
-  if (row[fieldName] !== undefined) return row[fieldName];
+  if (row[fieldName] !== undefined && row[fieldName] !== null && row[fieldName] !== "") return row[fieldName];
 
   const target = normalizeKey(fieldName);
-  const matchedKey = Object.keys(row).find((key) => normalizeKey(key) === target);
-  return matchedKey ? row[matchedKey] : null;
+  const rowKeys = Object.keys(row);
+
+  const exactMatch = rowKeys.find((key) => normalizeKey(key) === target);
+  if (exactMatch && row[exactMatch] !== null && row[exactMatch] !== "") return row[exactMatch];
+
+  const aliasCandidates = dashboardFieldAliases[target] || [];
+  for (const candidate of aliasCandidates) {
+    const candidateTarget = normalizeKey(candidate);
+    const aliasMatch = rowKeys.find((key) => normalizeKey(key) === candidateTarget);
+    if (aliasMatch && row[aliasMatch] !== null && row[aliasMatch] !== "") return row[aliasMatch];
+  }
+
+  const fuzzyMatch = rowKeys.find((key) => {
+    const normalizedKey = normalizeKey(key);
+    return normalizedKey.includes(target) || target.includes(normalizedKey);
+  });
+  if (fuzzyMatch && row[fuzzyMatch] !== null && row[fuzzyMatch] !== "") return row[fuzzyMatch];
+
+  return exactMatch ? row[exactMatch] : null;
 };
 
 const toNumber = (value) => {

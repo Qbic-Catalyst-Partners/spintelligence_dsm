@@ -158,6 +158,11 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/carding/nre': 'carding.nre'
 };
 
+// Routes whose entry_id is generated straight off their own table's MAX(entry_id) (see
+// getRouteTableName below) rather than the shared ticketing_system registry — these always get
+// a freshly generated id, even if the frontend already sent one.
+const DIRECT_TABLE_ENTRY_ID_ROUTES = new Set(Object.keys(ENTRY_ID_ROUTE_TABLES));
+
 const getRouteTableName = (routePath, source = {}) => {
   if (routePath === '/autoconer') {
     const scope = normalizePoolKey(
@@ -183,10 +188,47 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   '/carding/nre': { prefix: 'CNRE', width: 4, separator: '-' }
 };
 
-const DIRECT_TABLE_ENTRY_ID_ROUTES = new Set([
+// The 9 backend tables that share ONE canonical PP-000n id across departments (the
+// "Process Parameter" screens). If the frontend ever submits one of these routes without
+// an entry_id, the fallback below must generate the next PP-000n id from the combined max
+// across ALL of these tables — never a bare unprefixed number scoped to just one table,
+// which is what caused ids like "0012"/"0007" to leak into the shared PP-000n scheme.
+const PP_SHARED_TABLES = [
+  'mixing.mixing_qc_header',
+  'blowroom.blowroom_header',
+  'carding.carding_qc_header',
+  'drawframe.drawframe_qc_header',
+  'simplex.simplex_process_parameter',
+  'spinning.spinning_qc_header',
+  'autoconer.autoconer_process_parameter',
+  'autoconer.autoconer_q2_inspection',
+  'autoconer.autoconer_q3_inspection'
+];
+
+const PP_SHARED_ROUTES = new Set([
+  '/mixing/qc',
+  '/blowroom/header',
+  '/blowroom/process-parameter',
+  '/blowroom/process_parameter',
+  '/carding/qc-header',
+  '/drawframe/header',
+  '/simplex/process_parameter',
+  '/spinning/qc',
+  '/autoconer/process',
   '/autoconer/q2',
   '/autoconer/q3'
 ]);
+
+const PP_SHARED_PREFIX = { prefix: 'PP', width: 4, separator: '-' };
+
+const getCombinedPpEntryIdMax = async () => {
+  let max = 0;
+  for (const tableName of PP_SHARED_TABLES) {
+    const tableMax = await getTableEntryIdMax(tableName);
+    if (tableMax > max) max = tableMax;
+  }
+  return max;
+};
 
 const getRegisteredEntryIdMaxSql = `
   SELECT COALESCE(
@@ -232,8 +274,22 @@ const extractFrontendEntryId = (body) => {
 };
 
 const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
-  const mappedTable = getRouteTableName(routePath, { scope: moduleName });
-  const tableMax = await getTableEntryIdMax(mappedTable);
+  if (PP_SHARED_ROUTES.has(routePath)) {
+    const combinedMax = await getCombinedPpEntryIdMax();
+    const nextNumber = combinedMax + 1;
+    const entryId = `${PP_SHARED_PREFIX.prefix}${PP_SHARED_PREFIX.separator}${String(nextNumber).padStart(PP_SHARED_PREFIX.width, '0')}`;
+    return {
+      source: 'postgres',
+      module_name: moduleName,
+      route_path: routePath,
+      next_number: nextNumber,
+      entry_id: entryId,
+      value: entryId
+    };
+  }
+
+  const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
+  const tableMax = mappedTable ? await getTableEntryIdMax(mappedTable) : 0;
   const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath, moduleName]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
   const nextNumber = (mappedTable ? tableMax : Math.max(registryMax, tableMax)) + 1;
@@ -368,11 +424,8 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
-const {
-  router: submittedNotebooksRouter,
-  generateOverdueNotebookTickets,
-  generatePpNotebookBatchIncompleteTickets
-} = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, generatePpNotebookBatchIncompleteTickets } = require('./routes/submittedNotebooks.routes');
+const { router: ppThresholdRouter } = require('./routes/ppThreshold.routes');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
 const ocrMachineRouter = require('./routes/ocrMachine.routes');
 
@@ -471,10 +524,8 @@ app.use('/notifications', inAppNotificationsRouter);
 app.use('/help', helpContentRouter);
 app.use('/submitted-notebooks', submittedNotebooksRouter);
 app.use('/l2/submitted-notebooks', submittedNotebooksRouter);
+app.use('/pp-threshold', ppThresholdRouter);
 app.use('/process-parameters', processParametersRouter);
-app.use('/api/process-parameters', processParametersRouter);
-app.use('/pp-threshold', require('./routes/ppThreshold.routes'));
-app.use('/api/pp-threshold', require('./routes/ppThreshold.routes'));
 app.use('/glossary', (req, res, next) => {
   req.url = `/glossary${req.url === '/' ? '' : req.url}`;
   return helpContentRouter(req, res, next);
@@ -526,7 +577,9 @@ app.use((err, req, res, next) => {
 
   console.error(err);
   return res.status(err.statusCode || 500).json({
-    message: err.statusCode ? err.message : 'Server error'
+    message: err.statusCode ? err.message : (err.message || 'Server error'),
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.detail ? { detail: err.detail } : {})
   });
 });
 
@@ -558,8 +611,11 @@ const startSubmittedNotebookAckWorker = () => {
 
 startSubmittedNotebookAckWorker();
 
-const startPpNotebookBreachWorker = () => {
-  const intervalMs = Number(process.env.PP_NOTEBOOK_TAT_WORKER_INTERVAL_MS || 15 * 60 * 1000);
+// PP tickets are driven solely by the PP-Threshold screen (ticketing_system.pp_threshold_master)
+// via generatePpNotebookBatchIncompleteTickets — the older pp_batch_config-driven
+// runPpBatchCompletionCheck is intentionally no longer run automatically here.
+const startPpThresholdWorker = () => {
+  const intervalMs = Number(process.env.PP_BATCH_COMPLETION_WORKER_INTERVAL_MS || 15 * 60 * 1000);
   const run = async () => {
     try {
       await db.initPromise.catch(() => {});
@@ -568,7 +624,7 @@ const startPpNotebookBreachWorker = () => {
         console.log(`[pp-notebooks] created ${created.length} incomplete-batch ticket(s), expired ${expired.length}`);
       }
     } catch (error) {
-      console.warn('[pp-notebooks] batch-completion worker skipped:', error.message);
+      console.warn('[pp-threshold] worker skipped:', error.message);
     }
   };
 

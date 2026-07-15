@@ -1316,6 +1316,12 @@
   color: #aeb6c2;
 }
 
+@media (max-width: 1100px) {
+  .filterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .filterGrid,
   .contentGrid {
@@ -1344,9 +1350,43 @@
   .scheduledActions {
     justify-content: flex-end;
   }
+
+  .generalReportCard {
+    padding: 20px 16px;
+  }
+
+  .generalReportHeader {
+    align-items: flex-start;
+  }
+
+  .reportMetaBar {
+    padding: 0 4px 4px;
+  }
 }
 
 @media (max-width: 560px) {
+  .generalReportHeader {
+    gap: 12px;
+  }
+
+  .generalReportHeader h1 {
+    font-size: 18px;
+    line-height: 24px;
+  }
+
+  .generateActionGroup {
+    align-items: stretch;
+  }
+
+  .generateReportButton {
+    width: 100%;
+  }
+
+  .reportMetaBar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .modalTwoColumns {
     grid-template-columns: 1fr;
   }

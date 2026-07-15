@@ -181,6 +181,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   ];
 
   const buildPayload = () => ({
+    entry_id: entryId || undefined,
     inspection_date: form.date,
     packed_date: form.packedDate,
     count_name: form.countName,

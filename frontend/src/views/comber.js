@@ -56,7 +56,7 @@ const COMBER_ENTRY_ID_CONFIG = {
     "Ribbon Lap CV1M Data Entry": { prefix: "RLC", width: 4, routePath: "/comber/lap-cv" },
     "Nati Data Entry": { prefix: "NAT", width: 4, routePath: "/comber/nati-data-entry" },
     "U% Data Entry": { prefix: "COU", width: 4, routePath: "/comber/uqc" },
-    "Comber Nolis %": { prefix: "CNP",  },
+    "Comber Nolis %": { prefix: "CNP", width: 4, routePath: "/drawframe/comber-noil-percent" },
     "Comber NRE%": { prefix: "CNRE", width: 4, routePath: "/comber/nre" },
     "Comber Efficiency": { prefix: "CEFF", width: 4, routePath: "/comber/efficiency" },
 };
@@ -65,7 +65,10 @@ const getComberEntryConfig = (typeName) =>
     COMBER_ENTRY_ID_CONFIG[typeName] || { prefix: "COM" };
 
 function Comber() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
+  const [currentDateLabel, setCurrentDateLabel] = useState("");
+  useEffect(() => {
+    setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+  }, []);
     const router = useRouter();
     const dispatch = useDispatch();
     const { data, isLoading, listLoading, uqcEntries = [] } = useSelector((state) => state.comber ?? {});

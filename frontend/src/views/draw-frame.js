@@ -663,7 +663,10 @@ function APercentDataTable({ title, rows, columns, onCellChange, emptyText }) {
 }
 
 function DrawFrame() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
+  const [currentDateLabel, setCurrentDateLabel] = useState("");
+  useEffect(() => {
+    setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+  }, []);
   const router = useRouter();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
@@ -1605,6 +1608,10 @@ function DrawFrame() {
           remarks: form.remarks,
           num_readings: Number(form.readingCount),
           operator: operatorName,
+          readings: {
+            one_yard: oneYardReadings.map((value) => (value === "" ? null : Number(value))),
+            half_yard: halfYardReadings.map((value) => (value === "" ? null : Number(value))),
+          },
           results: {
             avg_1yd: Number(oneYardMetrics[0]?.avg) || 0,
             hank_1yd: Number(oneYardMetrics[0]?.hank) || 0,

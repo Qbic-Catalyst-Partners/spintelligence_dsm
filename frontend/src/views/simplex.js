@@ -74,7 +74,10 @@ const getEntryCreatedTime = (entry = {}) =>
   "";
 
 function Simplex() {
-  const currentDateLabel = new Date().toLocaleDateString("en-IN");
+  const [currentDateLabel, setCurrentDateLabel] = useState("");
+  useEffect(() => {
+    setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+  }, []);
   const router = useRouter();
   const dispatch = useDispatch();
   const childRef = useRef(null);

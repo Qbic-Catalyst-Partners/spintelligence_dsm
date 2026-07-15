@@ -1,9 +1,6 @@
 import { resolveProcessParameterDisplayId } from "@/utils/processParameterId";
-import { clearLocalEntries } from "@/utils/localProcessParameterStore";
 
 const REGISTRY_KEY = "process-parameter-registry";
-const GLOBAL_ID_COUNTER_KEY = "pp-global-id-counter";
-const LOCAL_NAMESPACES = ["draw-frame-breaker", "draw-frame-finisher", "spinning"];
 
 const safeRead = () => {
   if (typeof window === "undefined") return [];
@@ -77,21 +74,3 @@ export const removeProcessParameterId = (displayId) => {
 
 export const readProcessParameterBatchDisplayId = () => "";
 export const markProcessParameterBatchColumn = () => {};
-
-// Clears everything this browser tracks locally about process parameters: the matrix
-// registry/status cache, the next-id counter, and the locally-stored Draw Frame/Spinning
-// entries (those departments don't have a backend yet, so this is their only copy).
-// This does NOT delete backend records for Mixing/Blow Room/Carding/Simplex/Autoconer/Q2/Q3
-// — those live in the database and must be removed there for "Create New PP" to truly
-// start from PP-0001 again.
-export const resetProcessParameterLocalState = () => {
-  safeWrite([]);
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.removeItem(GLOBAL_ID_COUNTER_KEY);
-    } catch {
-      // ignore storage failures
-    }
-  }
-  LOCAL_NAMESPACES.forEach(clearLocalEntries);
-};

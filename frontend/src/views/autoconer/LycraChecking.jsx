@@ -162,6 +162,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     if (!validate()) return false;
     try {
       const payload = {
+        entry_id: entryId || undefined,
         inspection_type: selectedType,
         entry_date: entryDate,
         lycra_draft: lycraDraft,

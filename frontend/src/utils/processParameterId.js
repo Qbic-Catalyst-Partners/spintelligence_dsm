@@ -1,5 +1,6 @@
 import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
 import { fetchNextProcessParameterId } from "@/apis/processParameter";
+import { fetchNextProcessParameterId } from "@/apis/processParameter";
 
 export const normalizeProcessParameterId = (value) => {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -52,6 +53,14 @@ const GLOBAL_PROCESS_PARAMETER_COUNTER_KEY = "pp-global-id-counter";
 // last-resort fallback if the backend call fails (e.g. offline), not as the
 // primary source of truth.
 export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
+  const serverNextId = await fetchNextProcessParameterId();
+  if (serverNextId) {
+    return normalizeProcessParameterId(serverNextId);
+  }
+
+  // Backend unreachable - fall back to a local best-effort guess so the form
+  // isn't completely blocked. This may still be rejected by the backend once
+  // reachable again, since it isn't guaranteed to match the real sequence.
   const prefix = String(fallbackPrefix || "PP").trim().toUpperCase();
   const width = Number(fallbackWidth) || 4;
 
@@ -68,18 +77,7 @@ export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fal
     return candidate > max ? candidate : max;
   }, 0);
 
-  let nextSequence = Math.max(1, highestSequence + 1);
-
-  if (typeof window !== "undefined") {
-    try {
-      const stored = Number(window.localStorage.getItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY)) || 0;
-      nextSequence = Math.max(nextSequence, stored + 1);
-      window.localStorage.setItem(GLOBAL_PROCESS_PARAMETER_COUNTER_KEY, String(nextSequence));
-    } catch {
-      // fall back to the registry-based sequence when storage is unavailable
-    }
-  }
-
+  const nextSequence = Math.max(1, highestSequence + 1);
   return `${prefix}-${String(nextSequence).padStart(width, "0")}`;
 };
 

@@ -437,7 +437,16 @@ function Mixing() {
             return;
         }
 
+        // Captured synchronously, before reserveEntryId()/showSuccessOnce() run any state updates
+        // that could re-render/detach the child form ahead of the recordSubmittedNotebook call
+        // below. recordSubmittedNotebook is never passed childRef here (only this snapshot, with
+        // previewItems as an ultimate fallback) — reading childRef.current.getPayload() live at
+        // record-time is exactly the pattern that left "AFIS Data Entry" with zero submitted-
+        // notebook rows ever recorded, while AFIS-6 Cotton's separate submit handler (which never
+        // touches childRef, just its own locally-built data) has always worked.
+        let capturedPayload = null;
         try {
+            capturedPayload = childRef.current?.getPayload?.() || null;
             const ok = await childRef.current?.submit?.();
             if (ok === false) return;
             await reserveEntryId();
@@ -454,7 +463,7 @@ function Mixing() {
                 notebookName: selectedTypeName,
                 entryId,
                 lotNo,
-                childRef,
+                registeredActions: capturedPayload ? { getPayload: () => capturedPayload } : undefined,
                 previewItems,
                 user,
             });
@@ -1332,7 +1341,7 @@ function Mixing() {
                                     : handleOpennessSubmitSuccess
                             }
                             standaloneSection
-                            savedVersionsTargetId="mixing-process-parameter-saved-versions"
+                            savedVersionsTargetId=""
                         />
                     ) : (
                         <div className="p-5">
@@ -1358,10 +1367,6 @@ function Mixing() {
                         disabled={actionLoading || entryIdLoading}
                     />
                 </div>
-
-                {isProcessParameter && SelectedComponent ? (
-                    <div id="mixing-process-parameter-saved-versions" className="mt-5" />
-                ) : null}
             </div>
 
             <PreviewModal

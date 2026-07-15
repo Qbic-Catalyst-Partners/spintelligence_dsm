@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 
@@ -311,6 +311,12 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   const [previewNextId, setPreviewNextId] = useState("");
   const displayEntryId = form.paramId || entryId || previewNextId || "Generating next ID...";
 
+  // See AutoconerQ2.jsx for why this ref exists: the `entryId` prop lags behind the
+  // parent's re-render after a submit, so matching solely on it in loadVersions() can
+  // lose the just-saved row and wipe form.versionId back to blank - causing the next
+  // save to create a brand-new PP id instead of updating the row just created.
+  const currentParamIdRef = useRef("");
+
   const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countOptions = buildProcessParameterOptions(
     masterCountOptions.length
@@ -326,12 +332,13 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   );
 
   const loadVersions = async () => {
+    const targetParamId = entryId || currentParamIdRef.current;
     let response;
     try {
       response = await fetchAutoconerQ3Entries({ page: 1, limit: 200 });
     } catch {
       setVersions([]);
-      setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
+      setForm({ ...createDefaultForm(selectedType), paramId: targetParamId || "" });
       setExpandedVersionId(null);
       return;
     }
@@ -344,31 +351,34 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
 
     if (nextVersions.length > 0) {
       const latestCompleteVersion = nextVersions.find(isVersionComplete) || nextVersions[0];
-      const matchByEntryId = entryId
+      const matchByEntryId = targetParamId
         ? nextVersions.find(
-            (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(entryId)
+            (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(targetParamId)
           )
         : null;
       if (matchByEntryId) {
+        currentParamIdRef.current = targetParamId;
         setForm({
           ...matchByEntryId.data,
           versionId: matchByEntryId.id,
-          paramId: entryId || matchByEntryId.data.paramId || "",
+          paramId: targetParamId || matchByEntryId.data.paramId || "",
           type: selectedType,
         });
       } else {
-        setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
+        setForm({ ...createDefaultForm(selectedType), paramId: targetParamId || "" });
       }
       setExpandedVersionId(latestCompleteVersion?.id || null);
     } else {
-      setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
+      setForm({ ...createDefaultForm(selectedType), paramId: targetParamId || "" });
       setExpandedVersionId(null);
     }
   };
 
   useEffect(() => {
+    if (entryId) currentParamIdRef.current = entryId;
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) return;
@@ -468,6 +478,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   };
 
   const handleVersionSelect = (version) => {
+    currentParamIdRef.current = version.data.paramId || currentParamIdRef.current;
     setForm({
       ...createDefaultForm(selectedType),
       ...version.data,
@@ -528,10 +539,13 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
       const response = targetVersionId
         ? await updateAutoconerQ3Entry(targetVersionId, payload)
         : await submitAutoconerQ3Entry(payload);
+      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
-      setForm((current) => ({ ...current, paramId: nextParamId }));
-      registerProcessParameterId(response, "Autoconer", form.countName);
+      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId);
+      const savedRowId = getEntryId(savedEntry) || targetVersionId || "";
+      currentParamIdRef.current = nextParamId || currentParamIdRef.current;
+      setForm((current) => ({ ...current, paramId: nextParamId, versionId: savedRowId || current.versionId }));
+      registerProcessParameterId(savedEntry, "Autoconer", form.countName);
 
       await ensureSiblingQ2Entry(nextParamId);
       await loadVersions();
@@ -564,8 +578,10 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
           creationDate: form.creationDate,
         })
       );
-    } catch {
-      // Sibling auto-submit is best-effort; ignore failures here.
+    } catch (error) {
+      // Sibling auto-submit is best-effort — don't block the main save — but log so
+      // failures aren't invisible.
+      console.warn("Autoconer Q2 sibling auto-submit failed:", error?.response?.data || error?.message || error);
     }
   };
 
@@ -731,7 +747,6 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
         {isSubmitting ? <div className={styles.loadingMessage}>Submitting...</div> : null}
       </div>
 
-      {savedVersionsPortal ? createPortal(historySection, savedVersionsPortal) : historySection}
     </>
   );
 });

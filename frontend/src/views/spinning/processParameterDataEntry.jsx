@@ -17,7 +17,11 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { loadLocalEntries, saveLocalEntry } from "@/utils/localProcessParameterStore";
+import {
+  spinningProcessParameterDataEntry,
+  updateSpinningProcessParameterEntry,
+  getSpinningProcessParameterEntries,
+} from "@/apis/spinning";
 import styles from "@/styles/spinning.module.css";
 
 const createDefaultForm = () => ({
@@ -114,7 +118,7 @@ const isVersionComplete = (version) =>
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
-  const paramId = coerceProcessParameterId(entry?.param_id || "");
+  const paramId = coerceProcessParameterId(entry?.entry_id || entry?.param_id || "");
 
   return {
     id: String(entry?.qc_id ?? entry?.param_id ?? Date.now()),
@@ -482,8 +486,15 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     form.countName
   );
 
-  const loadVersions = () => {
-    const nextVersions = loadLocalEntries("spinning").map(mapApiEntryToVersion);
+  const loadVersions = async () => {
+    let nextVersions = [];
+    try {
+      const response = await getSpinningProcessParameterEntries({ page: 1, limit: 200 });
+      const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
+      nextVersions = rows.map(mapApiEntryToVersion);
+    } catch {
+      nextVersions = [];
+    }
 
     setVersions(nextVersions);
 
@@ -517,7 +528,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
 
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -628,9 +640,10 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     return Object.keys(nextErrors).length === 0;
   };
 
-  const buildPayload = () => ({
-    entry_id: String(form.paramId || savedProcessParameterId || entryId || "").trim() || undefined,
+  const buildPayload = (paramId) => ({
+    entry_id: String(paramId || "").trim() || undefined,
     count_name: form.countName,
+    consignee_name: form.consigneeName,
     creation_date: form.creationDate,
     machine_no: parseNumberValue(form.machineNo),
     bottom_roll_setting: form.bottomRollSetting,
@@ -652,6 +665,8 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     slub_max: parseNumberValue(form.slubMax),
     thickness_min: parseNumberValue(form.thicknessMin),
     thickness_max: parseNumberValue(form.thicknessMax),
+    ramp: form.ramp,
+    offset: form.offset,
     lycra_draft: parseNumberValue(form.lycraDraft),
     lycra_percent: parseNumberValue(form.lycraPercent),
   });
@@ -659,20 +674,26 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const submit = async () => {
     if (!validate()) return false;
 
-    const versionId = form.versionId || String(Date.now());
-    const paramId = form.versionId
-      ? form.paramId || savedProcessParameterId
-      : savedProcessParameterId || entryId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
-    const payload = buildPayload();
-    const savedEntry = saveLocalEntry("spinning", {
-      ...payload,
-      qc_id: versionId,
-      param_id: paramId,
-    });
+    // entryId (the PP-000n selected via "Update Existing PP") always wins over
+    // whatever this form last resolved locally, so edits never drift onto a
+    // stale/wrong id.
+    const paramId =
+      entryId || form.paramId || savedProcessParameterId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
+    const payload = buildPayload(paramId);
+
+    const existingVersion = versions.find(
+      (item) => normalizeProcessParameterId(item.data.paramId) === normalizeProcessParameterId(paramId)
+    );
+
+    const response = existingVersion
+      ? await updateSpinningProcessParameterEntry(existingVersion.id, payload)
+      : await spinningProcessParameterDataEntry(payload);
+    const savedEntry = response?.data || response;
+
     setSavedProcessParameterId(resolveProcessParameterDisplayId(savedEntry, paramId));
     registerProcessParameterId(savedEntry, "Spinning", form.countName);
 
-    loadVersions();
+    await loadVersions();
     onSubmitSuccess?.();
     return true;
   };
@@ -791,20 +812,6 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
           </div>
           {formContent}
         </div>
-        {savedVersionsPortal
-          ? createPortal(
-              <SavedVersionsSection
-                versions={versions}
-                form={form}
-                expandedVersionId={expandedVersionId}
-                onVersionSelect={handleVersionSelect}
-                onVersionToggle={handleVersionToggle}
-                loading={false}
-                errorMessage=""
-              />,
-              savedVersionsPortal
-            )
-          : null}
       </>
     );
   }

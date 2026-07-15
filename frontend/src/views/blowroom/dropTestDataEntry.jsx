@@ -83,7 +83,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         ["variety","blend"].forEach((k)=>{ if (!String(formData[k]||"").trim()) nextErrors[k]=true; });
         if (!numTufts || Number(numTufts) <=0) nextErrors.numTufts = true;
         tufts.forEach((tuft, idx)=>{
-            ["tuftVariety","actDisplay","displayWt","actWt"].forEach(k=>{
+            ["tuftVariety","displayWt","actWt"].forEach(k=>{
                 if (String(tuft[k]||"").trim()==="") nextErrors[`tuft-${idx}-${k}`]=true;
             });
         });
@@ -149,18 +149,22 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
             ? value
             : sanitizeNumericInput(value, { precision: 8, scale: 4 });
 
+        updated.forEach((tuft) => {
+            const displayWt = Number(tuft.displayWt) || 0;
+            const actualWt = Number(tuft.actWt) || 0;
+            const hasDiffInput = String(tuft.displayWt || '').trim() || String(tuft.actWt || '').trim();
+
+            tuft.actDisplay = hasDiffInput ? ((displayWt + actualWt) / 2).toFixed(4) : '';
+            tuft.diff = hasDiffInput ? (actualWt - displayWt).toFixed(4) : '';
+        });
+
         const totalAverageWt = updated.reduce(
             (sum, tuft) => sum + (Number(tuft.actDisplay) || 0),
             0
         );
 
         updated.forEach((tuft) => {
-            const displayWt = Number(tuft.displayWt) || 0;
-            const actualWt = Number(tuft.actWt) || 0;
             const averageWt = Number(tuft.actDisplay) || 0;
-            const hasDiffInput = String(tuft.displayWt || '').trim() || String(tuft.actWt || '').trim();
-
-            tuft.diff = hasDiffInput ? (actualWt - displayWt).toFixed(4) : '';
             tuft.ratio = totalAverageWt ? ((averageWt / totalAverageWt) * 100).toFixed(4) : '';
         });
 
@@ -307,10 +311,10 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                                 <div className={styles['mixx-group']}>
                                     <label>Average Wt.</label>
                                     <input
-                                        className={`${styles['mixx-input']} ${errors[`tuft-${i}-actDisplay`] ? styles['mixx-error'] : ''}`}
-                                        placeholder="0.00"
+                                        className={styles['mixx-input']}
                                         value={tuft.actDisplay}
-                                        onChange={e => handleTuftFieldChange(i, 'actDisplay', e.target.value)}
+                                        disabled
+                                        placeholder="0.00"
                                     />
                                 </div>
                             </div>
