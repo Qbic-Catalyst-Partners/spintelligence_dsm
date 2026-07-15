@@ -172,9 +172,14 @@ def _extract_pdf_word_results(file_bytes: bytes, filename: str, pdf_page: str = 
         try:
             if len(doc) == 0:
                 return []
-            page_index = len(doc) - 1 if pdf_page == "last" else 0
-            page = doc.load_page(page_index)
-            words = page.get_text("words") or []
+            if pdf_page == "all":
+                words = []
+                for page in doc:
+                    words.extend(page.get_text("words") or [])
+            else:
+                page_index = len(doc) - 1 if pdf_page == "last" else 0
+                page = doc.load_page(page_index)
+                words = page.get_text("words") or []
         finally:
             doc.close()
     except Exception:
@@ -211,13 +216,41 @@ def _reconstruct_with_pdf_text_if_needed(
     pdf_results = _extract_pdf_word_results(
         file_bytes,
         filename,
-        pdf_page="last" if _normalize_doc_type(doc_type) == "fibre" else "first",
+        pdf_page="last" if _normalize_doc_type(doc_type) == "fibre" else "all" if _normalize_doc_type(doc_type) == "noils" else "first",
     )
     if not pdf_results:
         return extracted_tables
 
     pdf_tables = parser.reconstruct_table(pdf_results)
     return pdf_tables or extracted_tables
+
+
+def _maybe_reconstruct_noils_with_pdf_text(
+    filename: str,
+    file_bytes: bytes,
+    parser,
+    extracted_tables: list,
+    doc_type: str = "hvi",
+) -> list:
+    if not filename.lower().endswith(".pdf") or _normalize_doc_type(doc_type) != "noils":
+        return extracted_tables
+
+    pdf_results = _extract_pdf_word_results(file_bytes, filename, pdf_page="all")
+    if not pdf_results:
+        return extracted_tables
+
+    pdf_tables = parser.reconstruct_table(pdf_results)
+    if not pdf_tables:
+        return extracted_tables
+
+    current_meta = extracted_tables[0] if extracted_tables and extracted_tables[0].get("Row Type") == "Meta" else {}
+    pdf_meta = pdf_tables[0] if pdf_tables and pdf_tables[0].get("Row Type") == "Meta" else {}
+    current_score = sum(1 for key in ("Test ID", "Machine ID") if current_meta.get(key))
+    pdf_score = sum(1 for key in ("Test ID", "Machine ID") if pdf_meta.get(key))
+    if pdf_score > current_score:
+        return pdf_tables
+
+    return extracted_tables
 
 
 @app.get("/")
@@ -305,6 +338,13 @@ async def run_ocr(
             yield _sse(5, f"Detecting {effective_doc_type.upper()} header row from bounding boxes...")
             logger.info("[Step 5] Running table reconstruction...")
             extracted_tables = parser.reconstruct_table(results)
+            extracted_tables = _maybe_reconstruct_noils_with_pdf_text(
+                filename,
+                file_bytes,
+                parser,
+                extracted_tables,
+                effective_doc_type,
+            )
             extracted_tables = _reconstruct_with_pdf_text_if_needed(
                 filename,
                 file_bytes,
@@ -405,6 +445,13 @@ async def run_ocr_json(
         effective_doc_type = _detect_doc_type(raw_text, doc_type)
         parser, mapper = _get_parser_and_mapper(effective_doc_type)
         extracted_tables = parser.reconstruct_table(results)
+        extracted_tables = _maybe_reconstruct_noils_with_pdf_text(
+            filename,
+            file_bytes,
+            parser,
+            extracted_tables,
+            effective_doc_type,
+        )
         extracted_tables = _reconstruct_with_pdf_text_if_needed(
             filename,
             file_bytes,

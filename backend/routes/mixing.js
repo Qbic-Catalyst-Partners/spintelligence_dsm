@@ -1,9 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const client = require('../connection');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, InvalidProcessParameterEntryIdError } = require('../utils/processParameterEntryId');
+const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+
+// Drops blend rows the user never actually filled in (frontend grid ships
+// unfilled rows padded with 0/blank defaults) so only entered rows are saved.
+const hasBlendData = (b) =>
+  Boolean(
+    (b.percentage !== undefined && b.percentage !== null && b.percentage !== 0 && b.percentage !== '') ||
+    (b.lot_no && String(b.lot_no).trim()) ||
+    (b.cut_length !== undefined && b.cut_length !== null && b.cut_length !== 0 && b.cut_length !== '') ||
+    (b.tenacity !== undefined && b.tenacity !== null && b.tenacity !== 0 && b.tenacity !== '') ||
+    (b.elongation !== undefined && b.elongation !== null && b.elongation !== 0 && b.elongation !== '') ||
+    (b.merge_no && String(b.merge_no).trim())
+  );
 
 const COTTON_HVI_PARAMETERS = [
   'sci',
@@ -28,17 +42,36 @@ const SCREEN_NAMES = {
   cotton_hvi: 'Cotton HVI Data Entry',
   fibre: 'Fibre Data Entry',
   afis: 'AFIS Data Entry',
+  afis6_cotton: 'AFIS-6 Cotton Data Entry',
+  afis6_mmf: 'AFIS-6 MMF Data Entry',
   moisture: 'Moisture Data Entry',
   openness: 'Openness Data Entry'
 };
 
+<<<<<<< HEAD
+=======
+const SCREEN_ID_PREFIXES = {
+  cotton_hvi: 'CH',
+  fibre: 'FB',
+  afis: 'AF',
+  afis6_cotton: 'AFIC',
+  afis6_mmf: 'AFIC',
+  moisture: 'MO',
+  openness: 'OP'
+  // qc (Process Parameter) intentionally has no prefix here — it must only ever surface
+  // the real, stored PP-000n entry_id, never a synthesized fallback id, since a fabricated
+  // id collides with the shared Process Parameter scheme.
+};
+
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 const MIXING_NOTEBOOK_SLUGS = [
   'cotton-hvi',
   'fibre',
   'afis',
+  'afis6-cotton',
+  'afis6-mmf',
   'moisture',
-  'openness',
-  'qc'
+  'openness'
 ];
 
 // Mixing screens now require a real, form-submitted entry_id on every new row (see the `!entry_id`
@@ -48,6 +81,22 @@ const MIXING_NOTEBOOK_SLUGS = [
 const withScreenEntryId = (screenKey, record) => {
   if (!record || typeof record !== 'object') return record;
   return { ...record };
+};
+const persistMixingEntryId = async (tableName, screenKey, row) => {
+  if (!row || row.entry_id || row.id == null) return row;
+
+  const entryId = formatScreenEntryId(screenKey, row.id);
+  if (!entryId) return row;
+
+  const updated = await client.query(
+    `UPDATE ${tableName}
+     SET entry_id = $1
+     WHERE id = $2
+     RETURNING *`,
+    [entryId, row.id]
+  );
+
+  return updated.rows[0] || { ...row, entry_id: entryId };
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
 
@@ -133,9 +182,11 @@ const fetchLotMasterDetails = async (prefix = '', exactLotNo = '') => {
        MAX(CAST(l.lotdate AS DATE)) AS lot_date,
        MAX(LTRIM(RTRIM(CAST(v.varname AS VARCHAR(255))))) AS variety,
        MAX(LTRIM(RTRIM(CAST(l.pinvno AS VARCHAR(100))))) AS invoice_no,
-       MAX(CAST(l.pidate AS DATE)) AS invoice_date
+       MAX(CAST(l.pidate AS DATE)) AS invoice_date,
+       MAX(LTRIM(RTRIM(CAST(lm.Ledger_Name AS VARCHAR(255))))) AS party_name
      FROM dbo.lotmaster l
      LEFT JOIN dbo.variety v ON l.varcode = v.varcode
+     LEFT JOIN dbo.ledger_master lm ON l.ledgercode = lm.Ledger_Code
      WHERE LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) <> ''
        AND (@exactLotNo = '' OR LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) = @exactLotNo)
        AND (@prefix = '' OR LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) LIKE @lotPrefix)
@@ -150,7 +201,8 @@ const fetchLotMasterDetails = async (prefix = '', exactLotNo = '') => {
     date: toDateOnly(row.lot_date),
     variety: row.variety || '',
     invoice_no: row.invoice_no || '',
-    invoice_date: toDateOnly(row.invoice_date)
+    invoice_date: toDateOnly(row.invoice_date),
+    party_name: row.party_name || ''
   }));
 };
 
@@ -267,7 +319,8 @@ const getLotMasterDropdown = async (req, res, next) => {
         date: lot.date,
         lot_date: lot.lot_date,
         invoice_no: lot.invoice_no,
-        invoice_date: lot.invoice_date
+        invoice_date: lot.invoice_date,
+        party_name: lot.party_name
       }))
     ];
 
@@ -326,7 +379,7 @@ const getPsfReceiptDropdown = async (req, res, next) => {
   }
 };
 
-const getCottonHviLotDropdown = getPsfReceiptDropdown;
+const getCottonHviLotDropdown = getLotMasterDropdown;
 
 const getPsfReceiptMasterDropdown = async (req, res, next) => {
   try {
@@ -397,7 +450,7 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     const exactLotNo = String(req.query.lot_no || '').trim();
     const [varietiesResult, lotsResult] = await Promise.allSettled([
       fetchMasterVarieties(varietyPrefix || prefix),
-      fetchPsfReceiptDetails(lotPrefix || prefix, exactLotNo)
+      fetchCottonLotDetails(lotPrefix || prefix, exactLotNo)
     ]);
 
     if (varietiesResult.status === 'rejected') {
@@ -405,7 +458,7 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     }
 
     if (lotsResult.status === 'rejected') {
-      console.warn('Cotton HVI PSF receipt lots unavailable; returning variety dropdown only:', lotsResult.reason?.message || lotsResult.reason);
+      console.warn('Cotton HVI lotmaster lots unavailable; returning variety dropdown only:', lotsResult.reason?.message || lotsResult.reason);
     }
 
     const varieties = varietiesResult.value || [];
@@ -432,7 +485,7 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     return res.status(200).json({
       source: lotsResult.status === 'fulfilled' ? 'sqlserver' : 'sqlserver-partial',
       warnings: lotsResult.status === 'rejected'
-        ? [{ field: 'lot_no', message: 'Cotton HVI PSF receipt lots are unavailable; varieties were loaded' }]
+        ? [{ field: 'lot_no', message: 'Cotton HVI lotmaster lots are unavailable; varieties were loaded' }]
         : [],
       data: lots,
       lots,
@@ -448,45 +501,6 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error fetching Cotton HVI master dropdown from SQL Server:', error);
-    next(error);
-  }
-};
-
-const getMixingQcMasterDropdown = async (req, res, next) => {
-  try {
-    if (!sqlServer.hasSqlServerEnv()) {
-      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
-    }
-
-    const prefix = String(req.query.prefix || '').trim();
-    const countPrefix = String(req.query.count_prefix || '').trim();
-    const counts = await fetchCountMaster(countPrefix || prefix);
-    const countOptions = [
-      { text: '-- Select Count Name --', value: '' },
-      ...counts.map((count) => ({
-        text: count.count_name,
-        label: count.count_name,
-        value: count.count_name,
-        count_code: count.count_code,
-        count_name: count.count_name
-      }))
-    ];
-
-    return res.status(200).json({
-      source: 'sqlserver',
-      table: 'Depot_CountMaster',
-      data: counts,
-      counts,
-      count_names: counts.map((r) => r.count_name),
-      names: counts.map((r) => r.count_name),
-      values: counts.map((r) => r.count_name),
-      options: {
-        count_name: countOptions,
-        count: countOptions
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching Mixing QC count dropdown from SQL Server:', error);
     next(error);
   }
 };
@@ -549,6 +563,22 @@ const ensureMixingEntryIdColumns = async () => {
     ON mixing.fibre_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
+  await client.query(`
+    WITH existing_max AS (
+      SELECT COALESCE(MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::int), 0) AS max_no
+      FROM mixing.fibre_data_entry
+      WHERE entry_id ~ '^#FB-\\d+$'
+    ),
+    numbered AS (
+      SELECT ctid, ROW_NUMBER() OVER (ORDER BY ctid) AS rn
+      FROM mixing.fibre_data_entry
+      WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
+    )
+    UPDATE mixing.fibre_data_entry t
+    SET entry_id = '#FB-' || LPAD((numbered.rn + existing_max.max_no)::text, 4, '0')
+    FROM numbered, existing_max
+    WHERE t.ctid = numbered.ctid;
+  `);
 
   await client.query(`
     ALTER TABLE mixing.afis_data_entry
@@ -557,6 +587,44 @@ const ensureMixingEntryIdColumns = async () => {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS afis_data_entry_entry_id_uq
     ON mixing.afis_data_entry (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+  await client.query(`
+    WITH existing_max AS (
+      SELECT COALESCE(MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::int), 0) AS max_no
+      FROM mixing.afis_data_entry
+      WHERE entry_id ~ '^#AF-\\d+$'
+    ),
+    numbered AS (
+      SELECT ctid, ROW_NUMBER() OVER (ORDER BY ctid) AS rn
+      FROM mixing.afis_data_entry
+      WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
+    )
+    UPDATE mixing.afis_data_entry t
+    SET entry_id = '#AF-' || LPAD((numbered.rn + existing_max.max_no)::text, 4, '0')
+    FROM numbered, existing_max
+    WHERE t.ctid = numbered.ctid;
+  `);
+
+  await client.query(`
+    ALTER TABLE mixing.afis6_cotton_data_entry
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
+    ON mixing.afis6_cotton_data_entry (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE mixing.afis6_mmf_data_entry
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS material_class VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS comment VARCHAR(255);
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
+    ON mixing.afis6_mmf_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
 
@@ -569,18 +637,37 @@ const ensureMixingEntryIdColumns = async () => {
     ON mixing.moisture_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
+  await client.query(`
+    WITH existing_max AS (
+      SELECT COALESCE(MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::int), 0) AS max_no
+      FROM mixing.moisture_data_entry
+      WHERE entry_id ~ '^#MO-\\d+$'
+    ),
+    numbered AS (
+      SELECT ctid, ROW_NUMBER() OVER (ORDER BY ctid) AS rn
+      FROM mixing.moisture_data_entry
+      WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
+    )
+    UPDATE mixing.moisture_data_entry t
+    SET entry_id = '#MO-' || LPAD((numbered.rn + existing_max.max_no)::text, 4, '0')
+    FROM numbered, existing_max
+    WHERE t.ctid = numbered.ctid;
+  `);
 
   await client.query(`
     ALTER TABLE mixing.openness_inspection
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
+<<<<<<< HEAD
       ADD COLUMN IF NOT EXISTS br_line TEXT;
+=======
+      ADD COLUMN IF NOT EXISTS br_line_no VARCHAR(100);
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS openness_inspection_entry_id_uq
     ON mixing.openness_inspection (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
-
   await client.query(`
     ALTER TABLE mixing.mixing_qc_header
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -590,6 +677,7 @@ const ensureMixingEntryIdColumns = async () => {
     ON mixing.mixing_qc_header (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
+<<<<<<< HEAD
 
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
@@ -600,8 +688,68 @@ const ensureMixingEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
     ON mixing.afis6_mmf_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
+=======
+  await client.query(`
+    ALTER TABLE mixing.openness_entries
+      ADD COLUMN IF NOT EXISTS beater_type VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC(10,2),
+      ADD COLUMN IF NOT EXISTS average_volume NUMERIC(12,3);
+  `);
+
+  // Dashboard/report widgets need a single table+date-column source per screen.
+  // Openness and Mixing QC are header+child splits, so flatten them into views.
+  await client.query(`
+    CREATE OR REPLACE VIEW mixing.openness_dashboard_entries AS
+    SELECT
+      i.id AS inspection_id,
+      i.inspection_date,
+      i.br_line_no,
+      i.actual_specific_volume_target,
+      i.no_of_entries,
+      i.entry_id,
+      e.entry_no,
+      e.stage_no,
+      e.machine_name,
+      e.weight,
+      e.volume_1,
+      e.volume_2,
+      e.average_volume,
+      e.apparent_specific_volume,
+      e.actual_op_value,
+      e.beater_type,
+      e.beater_speed_rpm
+    FROM mixing.openness_inspection i
+    JOIN mixing.openness_entries e ON e.inspection_id = i.id;
+  `);
+  // CREATE OR REPLACE VIEW can only append columns at the end or keep existing ones in place —
+  // it can't rename/reorder a column already deployed. The live view already has entry_id as
+  // column 2, so param_id is appended at the end instead of being inserted before it.
+  await client.query(`
+    CREATE OR REPLACE VIEW mixing.mixing_qc_dashboard_entries AS
+    SELECT
+      h.qc_id,
+      h.entry_id,
+      h.consignee_name,
+      h.count_name,
+      h.creation_date,
+      h.status,
+      b.blend_no,
+      b.percentage,
+      b.lot_no,
+      b.cut_length,
+      b.tenacity,
+      b.elongation,
+      b.merge_no,
+      h.param_id
+    FROM mixing.mixing_qc_header h
+    LEFT JOIN mixing.mixing_qc_blends b ON b.qc_id = h.qc_id;
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   `);
 };
+
+ensureMixingEntryIdColumns().catch((err) => {
+  console.warn('[mixing.js] Startup schema/view sync failed (non-fatal):', err.message);
+});
 
 const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '_');
 const resolveFieldValue = (obj, fieldName) => {
@@ -616,16 +764,19 @@ const evaluateBreach = (actualRaw, rule) => {
   const condition = String(rule?.condition_level || 'More Than').toLowerCase();
   const plus = Number(rule?.plus_threshold);
   const minus = Number(rule?.minus_threshold);
+  const fallbackThreshold = Number(rule?.threshold_value);
+  const effectivePlus = Number.isFinite(plus) ? plus : fallbackThreshold;
+  const effectiveMinus = Number.isFinite(minus) ? minus : fallbackThreshold;
   const baseline = Number(rule?.actual_value);
 
   if (!Number.isFinite(actual)) return null;
   if (condition === 'more than') {
-    if (!Number.isFinite(plus)) return null;
-    return actual > plus;
+    if (!Number.isFinite(effectivePlus)) return null;
+    return actual > effectivePlus;
   }
   if (condition === 'less than') {
-    if (!Number.isFinite(minus)) return null;
-    return actual < minus;
+    if (!Number.isFinite(effectiveMinus)) return null;
+    return actual < effectiveMinus;
   }
   if (condition === 'more and less than') {
     if (!Number.isFinite(baseline) || !Number.isFinite(plus) || !Number.isFinite(minus)) return null;
@@ -651,24 +802,56 @@ const autoCreateTicket = async ({
   user_name,
   values
 }) => {
-  if (!machine_name || !department || !sub_department) return null;
+  if (!machine_name) return null;
 
   const paramNames = Object.keys(values || {});
   if (!paramNames.length) return null;
 
+  const thresholdParams = [SCREEN_NAMES[screenKey], machine_name];
+  const thresholdFilters = [
+    `lower(trim(COALESCE(input_screen, machine_name, ''))) = lower(trim($1))`,
+    `lower(trim(COALESCE(machine_name, ''))) = lower(trim($2))`
+  ];
+
+  if (department) {
+    thresholdParams.push(department);
+    thresholdFilters.push(`lower(trim(COALESCE(department, management_field, ''))) = lower(trim($${thresholdParams.length}))`);
+  }
+
+  if (sub_department) {
+    thresholdParams.push(sub_department);
+    thresholdFilters.push(`lower(trim(COALESCE(sub_department, erp_product_code, ''))) = lower(trim($${thresholdParams.length}))`);
+  }
+
   const thresholdsRes = await client.query(
-    `SELECT input_field, condition_level, plus_threshold, minus_threshold, actual_value,
+    `SELECT input_field, condition_level, plus_threshold, minus_threshold, threshold_value, actual_value,
+            department, management_field, sub_department, erp_product_code,
             approval_l1_user_id, approval_l2_user_id, approval_l3_user_id
      FROM ticketing_system.threshold_master
-     WHERE department = $1
-       AND sub_department = $2
-       AND input_screen = $3
-       AND machine_name = $4
-       AND is_active = true`,
-    [department, sub_department, SCREEN_NAMES[screenKey], machine_name]
+     WHERE ${thresholdFilters.join(' AND ')}
+       AND is_active = true
+     ORDER BY
+       CASE
+         WHEN ${department ? `lower(trim(COALESCE(department, management_field, ''))) = lower(trim($${thresholdParams.length - (sub_department ? 1 : 0)}))` : 'true'}
+          AND ${sub_department ? `lower(trim(COALESCE(sub_department, erp_product_code, ''))) = lower(trim($${thresholdParams.length}))` : 'true'}
+         THEN 0 ELSE 1
+       END,
+       input_field`,
+    thresholdParams
   );
 
   if (!thresholdsRes.rows.length) return null;
+
+  const resolvedDepartment =
+    department ||
+    thresholdsRes.rows[0].department ||
+    thresholdsRes.rows[0].management_field ||
+    null;
+  const resolvedSubDepartment =
+    sub_department ||
+    thresholdsRes.rows[0].sub_department ||
+    thresholdsRes.rows[0].erp_product_code ||
+    null;
 
   const rules = {};
   for (const row of thresholdsRes.rows) {
@@ -751,8 +934,8 @@ const autoCreateTicket = async ({
       JSON.stringify(values),
       JSON.stringify(thresholdPayload),
       severity,
-      department,
-      sub_department,
+      resolvedDepartment,
+      resolvedSubDepartment,
       ticketReason,
       JSON.stringify({ missing_fields: missingFields, threshold_breaches: breaches }),
       approvalL1UserIds[0] || null,
@@ -773,9 +956,9 @@ const getThresholds = async ({ management_field, erp_product_code, machine_name,
   let query = `
     SELECT parameter_name, threshold_value, is_active, updated_at
     FROM ticketing_system.threshold_master
-    WHERE management_field = $1
-      AND erp_product_code = $2
-      AND machine_name = $3
+    WHERE lower(trim(COALESCE(management_field, department, ''))) = lower(trim($1))
+      AND lower(trim(COALESCE(erp_product_code, sub_department, ''))) = lower(trim($2))
+      AND lower(trim(COALESCE(machine_name, input_screen, ''))) = lower(trim($3))
       AND is_active = true
   `;
   const values = [management_field, erp_product_code, machine_name];
@@ -872,6 +1055,9 @@ router.get('/master/dropdown', getMasterVarieties);
 router.get('/master/counts', getCountMasterDropdown);
 router.get('/master/count-dropdown', getCountMasterDropdown);
 router.get('/master/count-names', getCountMasterDropdown);
+router.get('/qc/master/count-names', getCountMasterDropdown);
+router.get('/qc/master/dropdown', getMasterVarieties);
+router.get('/qc/master/counts', getCountMasterDropdown);
 router.get('/master/employees', getEmployeeMasterDropdown);
 router.get('/master/employee-dropdown', getEmployeeMasterDropdown);
 router.get('/master/employee-names', getEmployeeMasterDropdown);
@@ -882,7 +1068,7 @@ router.get('/cotton-hvi/master-data', getCottonHviMasterDropdown);
 router.get('/cotton-hvi/master/master-data', getCottonHviMasterDropdown);
 router.get('/cotton-hvi/dropdown', getCottonHviMasterDropdown);
 
-for (const notebookSlug of MIXING_NOTEBOOK_SLUGS.filter((slug) => !['cotton-hvi', 'fibre', 'qc'].includes(slug))) {
+for (const notebookSlug of MIXING_NOTEBOOK_SLUGS.filter((slug) => !['cotton-hvi', 'fibre'].includes(slug))) {
   router.get(`/${notebookSlug}/master/varieties`, getMasterVarieties);
   router.get(`/${notebookSlug}/master/dropdown`, getMasterVarieties);
 }
@@ -904,15 +1090,6 @@ router.get('/mmf-hvi/lots', getPsfReceiptDropdown);
 router.get('/moisture/master/lots', getLotMasterDropdown);
 router.get('/moisture/master/lot-dropdown', getLotMasterDropdown);
 router.get('/moisture/lots', getLotMasterDropdown);
-router.get('/qc/master/dropdown', getMixingQcMasterDropdown);
-router.get('/qc/master/counts', getCountMasterDropdown);
-router.get('/qc/master/count-dropdown', getCountMasterDropdown);
-router.get('/qc/master/count-names', getCountMasterDropdown);
-router.get('/qc/master/employees', getEmployeeMasterDropdown);
-router.get('/qc/master/employee-dropdown', getEmployeeMasterDropdown);
-router.get('/qc/master/employee-names', getEmployeeMasterDropdown);
-router.get('/qc/master/user-names', getEmployeeMasterDropdown);
-
 /**
  * @swagger
  * /mixing/cotton-hvi:
@@ -1010,9 +1187,7 @@ router.post('/cotton-hvi', async (req, res, next) => {
       colour_grade
     } = req.body;
 
-    if (!entry_id) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
-    }
+    const resolvedEntryId = String(entry_id || '').trim() || null;
 
     const numericFields = normalizeNumericFields(req.body, COTTON_HVI_PARAMETERS);
     if (numericFields.errors.length) {
@@ -1056,7 +1231,7 @@ router.post('/cotton-hvi', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        entry_id,
+        resolvedEntryId,
         inspection_date,
         lot_no,
         variety,
@@ -1080,6 +1255,8 @@ router.post('/cotton-hvi', async (req, res, next) => {
         numericValues.colour_grade
       ]
     );
+
+    const persistedRow = await persistMixingEntryId('mixing.cotton_hvi_data_entry', 'cotton_hvi', result.rows[0]);
 
     const ticket = await autoCreateTicket({
       screenKey: 'cotton_hvi',
@@ -1109,7 +1286,7 @@ router.post('/cotton-hvi', async (req, res, next) => {
 
     res.status(201).json({
       message: 'Cotton HVI data created successfully',
-      data: withScreenEntryId('cotton_hvi', result.rows[0]),
+      data: withScreenEntryId('cotton_hvi', persistedRow),
       ticket
     });
 
@@ -1305,6 +1482,8 @@ router.post('/fibre', async (req, res, next) => {
       ]
     );
 
+    const persistedRow = await persistMixingEntryId('mixing.fibre_data_entry', 'fibre', result.rows[0]);
+
     const ticket = await autoCreateTicket({
       screenKey: 'fibre',
       machine_name: req.body.machine_name || SCREEN_NAMES.fibre,
@@ -1316,7 +1495,7 @@ router.post('/fibre', async (req, res, next) => {
 
     res.status(201).json({
       message: 'Fibre data created successfully',
-      data: withScreenEntryId('fibre', result.rows[0]),
+      data: withScreenEntryId('fibre', persistedRow),
       ticket
     });
 
@@ -1503,6 +1682,8 @@ router.post('/afis', async (req, res, next) => {
       ]
     );
 
+    const persistedRow = await persistMixingEntryId('mixing.afis_data_entry', 'afis', result.rows[0]);
+
     const ticket = await autoCreateTicket({
       screenKey: 'afis',
       machine_name: req.body.machine_name || SCREEN_NAMES.afis,
@@ -1514,7 +1695,7 @@ router.post('/afis', async (req, res, next) => {
 
     res.status(201).json({
       message: 'AFIS data created successfully',
-      data: withScreenEntryId('afis', result.rows[0]),
+      data: withScreenEntryId('afis', persistedRow),
       ticket
     });
 
@@ -1724,6 +1905,527 @@ router.get('/afis6-mmf', async (req, res, next) => {
       page: pageNum,
       limit: limitNum
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /mixing/afis6-cotton:
+ *   post:
+ *     summary: Create a new AFIS-6 Cotton data entry
+ *     tags: [Mixing]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               entry_id:
+ *                 type: string
+ *               lot_no:
+ *                 type: string
+ *               variety:
+ *                 type: string
+ *               invoice_date:
+ *                 type: string
+ *                 format: date
+ *               mc_name:
+ *                 type: string
+ *               blow_room:
+ *                 type: string
+ *               carding:
+ *                 type: string
+ *               breaker_drawing:
+ *                 type: string
+ *               finisher_drawing:
+ *                 type: string
+ *               comber:
+ *                 type: string
+ *               scp_nep_count:
+ *                 type: number
+ *               l_w_mm:
+ *                 type: number
+ *               l_w_cv:
+ *                 type: number
+ *               sfc_w_percent:
+ *                 type: number
+ *               uql_w_mm:
+ *                 type: number
+ *               l_n_mm:
+ *                 type: number
+ *               l_n_cv_percent:
+ *                 type: number
+ *               sfc_n_percent:
+ *                 type: number
+ *               five_pct_l_n_mm:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: AFIS-6 Cotton data created successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.post('/afis6-cotton', async (req, res, next) => {
+  try {
+    await ensureMixingEntryIdColumns();
+
+    const NUMERIC_FIELDS = [
+      'scp_nep_count',
+      'l_w_mm',
+      'l_w_cv',
+      'sfc_w_percent',
+      'uql_w_mm',
+      'l_n_mm',
+      'l_n_cv_percent',
+      'sfc_n_percent',
+      'five_pct_l_n_mm',
+      'sc_nep_count_g',
+      'crimp_percent'
+    ];
+
+    const { normalized, errors } = normalizeNumericFields(req.body, NUMERIC_FIELDS);
+    if (errors.length) {
+      return res.status(400).json({ message: 'Validation error', errors });
+    }
+
+    const entry_id = String(req.body.entry_id || '').trim() || null;
+    const lot_no = String(req.body.lot_no || '').trim() || null;
+    const variety = String(req.body.variety || '').trim() || null;
+    const mc_name = String(req.body.mc_name || '').trim() || null;
+    const blow_room = String(req.body.blow_room || '').trim() || null;
+    const carding = String(req.body.carding || '').trim() || null;
+    const breaker_drawing = String(req.body.breaker_drawing || '').trim() || null;
+    const finisher_drawing = String(req.body.finisher_drawing || '').trim() || null;
+    const comber = String(req.body.comber || '').trim() || null;
+    const inspection_date = toDateOnly(req.body.inspection_date) || toDateOnly(new Date());
+    const invoice_date = toDateOnly(req.body.invoice_date);
+
+    const result = await client.query(
+      `INSERT INTO mixing.afis6_cotton_data_entry (
+        entry_id, inspection_date, lot_no, variety, invoice_date,
+        mc_name, blow_room, carding, breaker_drawing, finisher_drawing, comber,
+        scp_nep_count,
+        l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
+        l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+        sc_nep_count_g, crimp_percent
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,$10,$11,
+        $12,
+        $13,$14,$15,$16,
+        $17,$18,$19,$20,
+        $21,$22
+      )
+      RETURNING *`,
+      [
+        entry_id,
+        inspection_date,
+        lot_no,
+        variety,
+        invoice_date,
+        mc_name,
+        blow_room,
+        carding,
+        breaker_drawing,
+        finisher_drawing,
+        comber,
+        normalized.scp_nep_count,
+        normalized.l_w_mm,
+        normalized.l_w_cv,
+        normalized.sfc_w_percent,
+        normalized.uql_w_mm,
+        normalized.l_n_mm,
+        normalized.l_n_cv_percent,
+        normalized.sfc_n_percent,
+        normalized.five_pct_l_n_mm,
+        normalized.sc_nep_count_g,
+        normalized.crimp_percent
+      ]
+    );
+
+    const row = await persistMixingEntryId(
+      'mixing.afis6_cotton_data_entry',
+      'afis6_cotton',
+      result.rows[0]
+    );
+
+    const ticket = await autoCreateTicket({
+      screenKey: 'afis6_cotton',
+      machine_name: req.body.machine_name || SCREEN_NAMES.afis6_cotton,
+      department: req.body.department || req.body.management_field,
+      sub_department: req.body.sub_department || req.body.erp_product_code,
+      user_name: req.body.user_name,
+      values: normalized
+    });
+
+    res.status(201).json({
+      message: 'AFIS-6 Cotton data created successfully',
+      data: withScreenEntryId('afis6_cotton', row),
+      ticket
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id, please retry' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /mixing/afis6-cotton:
+ *   get:
+ *     summary: Get AFIS-6 Cotton data entries with pagination
+ *     tags: [Mixing]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: AFIS-6 Cotton data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get('/afis6-cotton', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM mixing.afis6_cotton_data_entry
+       ORDER BY inspection_date DESC, id DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM mixing.afis6_cotton_data_entry`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('afis6_cotton', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /mixing/afis6-mmf:
+ *   post:
+ *     summary: Create a new AFIS-6 MMF data entry
+ *     tags: [Mixing]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               entry_id:
+ *                 type: string
+ *               machine_name:
+ *                 type: string
+ *               material_class:
+ *                 type: string
+ *               comment:
+ *                 type: string
+ *               lot_no:
+ *                 type: string
+ *               variety:
+ *                 type: string
+ *               invoice_date:
+ *                 type: string
+ *                 format: date
+ *               mc_name:
+ *                 type: string
+ *               blow_room:
+ *                 type: string
+ *               carding:
+ *                 type: string
+ *               breaker_drawing:
+ *                 type: string
+ *               finisher_drawing:
+ *                 type: string
+ *               comber:
+ *                 type: string
+ *               total_nep_count_g:
+ *                 type: number
+ *               total_nep_mean_size_um:
+ *                 type: number
+ *               fiber_nep_count_g:
+ *                 type: number
+ *               fiber_nep_mean_size_um:
+ *                 type: number
+ *               sc_nep_count_g:
+ *                 type: number
+ *               sc_nep_mean_size_um:
+ *                 type: number
+ *               l_w_mm:
+ *                 type: number
+ *               l_w_cv:
+ *                 type: number
+ *               sfc_w_percent:
+ *                 type: number
+ *               uql_w_mm:
+ *                 type: number
+ *               l_n_mm:
+ *                 type: number
+ *               l_n_cv_percent:
+ *                 type: number
+ *               sfc_n_percent:
+ *                 type: number
+ *               five_pct_l_n_mm:
+ *                 type: number
+ *               fitness_index:
+ *                 type: number
+ *               maturity_ratio_mat1:
+ *                 type: number
+ *               ifc_percent:
+ *                 type: number
+ *               fifty_pct_l_n_mm:
+ *                 type: number
+ *               cut_length_n_mm:
+ *                 type: number
+ *               fineness_den:
+ *                 type: number
+ *               fineness_cv_percent:
+ *                 type: number
+ *               long_fiber_gt_46_80_percent:
+ *                 type: number
+ *               long_fiber_count_gt_46_80:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: AFIS-6 MMF data created successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
+router.post('/afis6-mmf', async (req, res, next) => {
+  try {
+    await ensureMixingEntryIdColumns();
+
+    const NUMERIC_FIELDS = [
+      'total_nep_count_g',
+      'total_nep_mean_size_um',
+      'fiber_nep_count_g',
+      'fiber_nep_mean_size_um',
+      'sc_nep_count_g',
+      'sc_nep_mean_size_um',
+      'l_w_mm',
+      'l_w_cv',
+      'sfc_w_percent',
+      'uql_w_mm',
+      'l_n_mm',
+      'l_n_cv_percent',
+      'sfc_n_percent',
+      'five_pct_l_n_mm',
+      'fitness_index',
+      'maturity_ratio_mat1',
+      'ifc_percent',
+      'fifty_pct_l_n_mm',
+      'cut_length_n_mm',
+      'fineness_den',
+      'fineness_cv_percent',
+      'long_fiber_gt_45_60_percent',
+      'long_fiber_count_gt_45_60',
+      'crimp_percent'
+    ];
+
+    const { normalized, errors } = normalizeNumericFields(req.body, NUMERIC_FIELDS);
+    if (errors.length) {
+      return res.status(400).json({ message: 'Validation error', errors });
+    }
+
+    const entry_id = String(req.body.entry_id || '').trim() || null;
+    const machine_name = req.body.machine_name || null;
+    const material_class = String(req.body.material_class || '').trim() || null;
+    const comment = String(req.body.comment || '').trim() || null;
+    const lot_no = String(req.body.lot_no || '').trim() || null;
+    const variety = String(req.body.variety || '').trim() || null;
+    const mc_name = String(req.body.mc_name || '').trim() || null;
+    const blow_room = String(req.body.blow_room || '').trim() || null;
+    const carding = String(req.body.carding || '').trim() || null;
+    const breaker_drawing = String(req.body.breaker_drawing || '').trim() || null;
+    const finisher_drawing = String(req.body.finisher_drawing || '').trim() || null;
+    const comber = String(req.body.comber || '').trim() || null;
+    const inspection_date = toDateOnly(req.body.inspection_date) || toDateOnly(new Date());
+    const invoice_date = toDateOnly(req.body.invoice_date);
+
+    const result = await client.query(
+      `INSERT INTO mixing.afis6_mmf_data_entry (
+        entry_id, inspection_date, machine_name, material_class, comment, lot_no, variety, invoice_date,
+        mc_name, blow_room, carding, breaker_drawing, finisher_drawing, comber,
+        total_nep_count_g, total_nep_mean_size_um,
+        fiber_nep_count_g, fiber_nep_mean_size_um,
+        sc_nep_count_g, sc_nep_mean_size_um,
+        l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
+        l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+        fitness_index, maturity_ratio_mat1, ifc_percent, fifty_pct_l_n_mm,
+        cut_length_n_mm, fineness_den, fineness_cv_percent,
+        long_fiber_gt_45_60_percent, long_fiber_count_gt_45_60,
+        crimp_percent
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,
+        $9,$10,$11,$12,$13,$14,
+        $15,$16,
+        $17,$18,
+        $19,$20,$21,$22,
+        $23,$24,$25,$26,
+        $27,$28,$29,$30,
+        $31,$32,$33,
+        $34,$35,
+        $36
+      )
+      RETURNING *`,
+      [
+        entry_id,
+        inspection_date,
+        machine_name,
+        material_class,
+        comment,
+        lot_no,
+        variety,
+        invoice_date,
+        mc_name,
+        blow_room,
+        carding,
+        breaker_drawing,
+        finisher_drawing,
+        comber,
+        normalized.total_nep_count_g,
+        normalized.total_nep_mean_size_um,
+        normalized.fiber_nep_count_g,
+        normalized.fiber_nep_mean_size_um,
+        normalized.sc_nep_count_g,
+        normalized.sc_nep_mean_size_um,
+        normalized.l_w_mm,
+        normalized.l_w_cv,
+        normalized.sfc_w_percent,
+        normalized.uql_w_mm,
+        normalized.l_n_mm,
+        normalized.l_n_cv_percent,
+        normalized.sfc_n_percent,
+        normalized.five_pct_l_n_mm,
+        normalized.fitness_index,
+        normalized.maturity_ratio_mat1,
+        normalized.ifc_percent,
+        normalized.fifty_pct_l_n_mm,
+        normalized.cut_length_n_mm,
+        normalized.fineness_den,
+        normalized.fineness_cv_percent,
+        normalized.long_fiber_gt_45_60_percent,
+        normalized.long_fiber_count_gt_45_60,
+        normalized.crimp_percent
+      ]
+    );
+
+    const row = await persistMixingEntryId(
+      'mixing.afis6_mmf_data_entry',
+      'afis6_mmf',
+      result.rows[0]
+    );
+
+    const ticket = await autoCreateTicket({
+      screenKey: 'afis6_mmf',
+      machine_name: req.body.machine_name || SCREEN_NAMES.afis6_mmf,
+      department: req.body.department || req.body.management_field,
+      sub_department: req.body.sub_department || req.body.erp_product_code,
+      user_name: req.body.user_name,
+      values: normalized
+    });
+
+    res.status(201).json({
+      message: 'AFIS-6 MMF data created successfully',
+      data: withScreenEntryId('afis6_mmf', row),
+      ticket
+    });
+
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id, please retry' });
+    }
+    next(error);
+  }
+});
+
+/**
+ * @swagger
+ * /mixing/afis6-mmf:
+ *   get:
+ *     summary: Get AFIS-6 MMF data entries with pagination
+ *     tags: [Mixing]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: AFIS-6 MMF data retrieved successfully
+ *       500:
+ *         description: Server error
+ */
+router.get('/afis6-mmf', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.max(1, parseInt(limit) || 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM mixing.afis6_mmf_data_entry
+       ORDER BY inspection_date DESC, id DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM mixing.afis6_mmf_data_entry`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('afis6_mmf', row)),
+      total: parseInt(totalResult.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
   } catch (error) {
     next(error);
   }
@@ -1955,9 +2657,9 @@ router.get('/moisture', async (req, res, next) => {
  *                 type: string
  *                 format: date
  *                 example: "2026-03-20"
- *               mixing:
+ *               br_line_no:
  *                 type: string
- *                 example: "Line 1"
+ *                 example: "BR 04(TD 7-3)"
  *               actual_specific_volume_target:
  *                 type: number
  *                 example: 2.5
@@ -1995,6 +2697,12 @@ router.get('/moisture', async (req, res, next) => {
  *                     actual_op_value:
  *                       type: number
  *                       example: 85
+ *                     beater_type:
+ *                       type: string
+ *                       example: "Blade"
+ *                     beater_speed_rpm:
+ *                       type: number
+ *                       example: 850
  *     responses:
  *       201:
  *         description: Openness created successfully
@@ -2008,8 +2716,12 @@ router.post('/openness', async (req, res, next) => {
     const {
       entry_id,
       inspection_date,
+<<<<<<< HEAD
       mixing,
       br_line,
+=======
+      br_line_no,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       actual_specific_volume_target,
       no_of_entries,
       entries,
@@ -2031,14 +2743,24 @@ router.post('/openness', async (req, res, next) => {
     // Custom Report's Operator resolution (which checks the row's own operator column first) works.
     const inspectionResult = await client.query(
       `INSERT INTO mixing.openness_inspection
+<<<<<<< HEAD
       (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING id, entry_id`,
+=======
+      (inspection_date, br_line_no, actual_specific_volume_target, no_of_entries)
+      VALUES ($1,$2,$3,$4)
+      RETURNING *`,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       [
         entry_id,
         inspection_date,
+<<<<<<< HEAD
         mixing,
         br_line || null,
+=======
+        br_line_no || null,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         actual_specific_volume_target,
         no_of_entries,
         user_name || null
@@ -2052,13 +2774,19 @@ router.post('/openness', async (req, res, next) => {
       const entryNo = i + 1;
       const stageNo = Math.ceil(entryNo / perStage);
       const e = entries[i];
+      const volume1 = Number(e.volume_1);
+      const volume2 = Number(e.volume_2);
+      const averageVolume = Number.isFinite(volume1) && Number.isFinite(volume2)
+        ? (volume1 + volume2) / 2
+        : null;
 
       await client.query(
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
-         weight, volume_1, volume_2,
-         apparent_specific_volume, actual_op_value)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+         weight, volume_1, volume_2, average_volume,
+         apparent_specific_volume, actual_op_value,
+         beater_type, beater_speed_rpm)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           inspectionId,
           entryNo,
@@ -2067,11 +2795,20 @@ router.post('/openness', async (req, res, next) => {
           e.weight,
           e.volume_1,
           e.volume_2,
+          averageVolume,
           e.apparent_specific_volume,
-          e.actual_op_value
+          e.actual_op_value,
+          e.beater_type,
+          e.beater_speed_rpm
         ]
       );
     }
+
+    const persistedInspection = await persistMixingEntryId(
+      'mixing.openness_inspection',
+      'openness',
+      inspectionResult.rows[0]
+    );
 
     await client.query('COMMIT');
 
@@ -2094,7 +2831,12 @@ router.post('/openness', async (req, res, next) => {
     res.status(201).json({
       message: "Openness created successfully",
       inspection_id: inspectionId,
+<<<<<<< HEAD
       entry_id: savedEntryId,
+=======
+      entry_id: persistedInspection.entry_id || formatScreenEntryId('openness', inspectionId),
+      br_line_no: persistedInspection.br_line_no,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       ticket
     });
 
@@ -2137,8 +2879,9 @@ router.get('/openness', async (req, res, next) => {
 
       const entries = await client.query(
         `SELECT entry_no, stage_no, machine_name,
-                weight, volume_1, volume_2,
-                apparent_specific_volume, actual_op_value
+                weight, volume_1, volume_2, average_volume,
+                apparent_specific_volume, actual_op_value,
+                beater_type, beater_speed_rpm
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,
@@ -2160,11 +2903,29 @@ router.get('/openness', async (req, res, next) => {
         [ins.id]
       );
 
+      const inspectionRow = withScreenEntryId('openness', ins);
+      const overallRow = overall.rows[0] || null;
+
+      const numericValues = (key) => entries.rows
+        .map((row) => Number(row[key]))
+        .filter((value) => Number.isFinite(value));
+      const average = (values) => values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+
       result.push({
-        inspection: withScreenEntryId('openness', ins),
+        ...inspectionRow,
         entries: entries.rows,
         stage_stats: stageStats.rows,
-        overall: overall.rows[0] || null
+        overall_avg_weight: average(numericValues('weight')),
+        overall_avg_volume: average(numericValues('average_volume')),
+        overall_avg_apparent_specific_volume: overallRow?.avg_apparent_specific_volume ?? null,
+        overall_avg_actual_op_value: overallRow?.avg_actual_op_value ?? null,
+        overall_max_actual_op_value: overallRow?.max_actual_op_value ?? null,
+        overall_min_actual_op_value: overallRow?.min_actual_op_value ?? null,
+        overall_range_actual_op_value: overallRow?.range_actual_op_value ?? null,
+        overall_sd_actual_op_value: overallRow?.sd_actual_op_value ?? null,
+        overall_cv_actual_op_value: overallRow?.cv_actual_op_value ?? null,
+        inspection: inspectionRow,
+        overall: overallRow
       });
     }
 
@@ -2174,66 +2935,6 @@ router.get('/openness', async (req, res, next) => {
     next(error);
   }
 });
-
-/**
- * @swagger
- * /mixing/qc:
- *   post:
- *     summary: Create Mixing QC entry with blends
- *     tags: [Mixing]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - consignee_name
- *               - count_name
- *               - creation_date
- *               - blends
- *             properties:
- *               process_parameter:
- *                 type: string
- *                 example: Mixing
- *               consignee_name:
- *                 type: string
- *               count_name:
- *                 type: string
- *               creation_date:
- *                 type: string
- *                 format: date
- *               status:
- *                 type: string
- *                 enum: [DONE, UNDONE]
- *               blends:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required:
- *                     - blend_no
- *                     - percentage
- *                   properties:
- *                     blend_no:
- *                       type: integer
- *                     percentage:
- *                       type: number
- *                     lot_no:
- *                       type: string
- *                     cut_length:
- *                       type: string
- *                     tenacity:
- *                       type: number
- *                     elongation:
- *                       type: number
- *                     merge_no:
- *                       type: string
- *     responses:
- *       201:
- *         description: Mixing QC created successfully
- *       500:
- *         description: Server error
- */
 
 router.post('/qc', async (req, res, next) => {
   try {
@@ -2247,23 +2948,45 @@ router.post('/qc', async (req, res, next) => {
       blends
     } = req.body;
 
+<<<<<<< HEAD
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
     // 1?????? Insert Header
+=======
+    let entry_id;
+    try {
+      entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
+    } catch (idErr) {
+      if (idErr instanceof InvalidProcessParameterEntryIdError) {
+        return res.status(400).json({ message: idErr.message });
+      }
+      throw idErr;
+    }
+
+    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const headerResult = await client.query(
       `INSERT INTO mixing.mixing_qc_header
       (entry_id, consignee_name, count_name, creation_date, status)
       VALUES ($1, $2, $3, $4, $5)
+<<<<<<< HEAD
       RETURNING qc_id, param_id, entry_id`,
       [entry_id, consignee_name, count_name, creation_date, status]
+=======
+      RETURNING qc_id, entry_id`,
+      [entry_id || null, consignee_name, count_name, creation_date, status]
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     );
 
     const qc_id = headerResult.rows[0].qc_id;
 
-    // 2?????? Insert Blends
-    for (const b of blends) {
+    for (const b of (blends || []).filter(hasBlendData)) {
       await client.query(
         `INSERT INTO mixing.mixing_qc_blends
         (qc_id, blend_no, percentage, lot_no, cut_length, tenacity, elongation, merge_no)
@@ -2281,11 +3004,27 @@ router.post('/qc', async (req, res, next) => {
       );
     }
 
+    recordPpNotebookSubmission({
+      notebook: 'Mixing QC Header',
+      department: 'Mixing',
+      entryId: entry_id,
+      sourceSchema: 'mixing',
+      sourceTable: 'mixing_qc_header',
+      sourceRecordId: String(qc_id),
+      submittedByUserId: req.user?.id,
+      submittedByName: req.user?.employee_id,
+      submittedPayload: { count_name, consignee_name, creation_date }
+    }).catch((err) => console.warn('[pp-notebook-log] Mixing QC Header failed:', err.message));
+
     res.status(201).json({
       message: 'Mixing QC created successfully',
       qc_id,
+<<<<<<< HEAD
       entry_id: headerResult.rows[0].entry_id,
       param_id: headerResult.rows[0].param_id
+=======
+      entry_id: headerResult.rows[0].entry_id
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     });
 
   } catch (error) {
@@ -2296,29 +3035,6 @@ router.post('/qc', async (req, res, next) => {
   }
 });
 
-/**
- * @swagger
- * /mixing/qc:
- *   get:
- *     summary: Get Mixing QC entries with blends
- *     tags: [Mixing]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *     responses:
- *       200:
- *         description: Data retrieved successfully
- *       500:
- *         description: Server error
- */
 router.get('/qc', async (req, res, next) => {
   try {
     const { page = 1, limit = 10 } = req.query;
@@ -2330,7 +3046,10 @@ router.get('/qc', async (req, res, next) => {
     const result = await client.query(
       `SELECT
         h.qc_id,
+<<<<<<< HEAD
         h.param_id,
+=======
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         h.entry_id,
         h.consignee_name,
         h.count_name,
@@ -2380,65 +3099,12 @@ router.get('/qc', async (req, res, next) => {
   }
 });
 
-/**
- * @swagger
- * /mixing/qc/{qc_id}:
- *   put:
- *     summary: Update Mixing QC entry with blends
- *     tags: [Mixing]
- *     parameters:
- *       - in: path
- *         name: qc_id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               consignee_name:
- *                 type: string
- *               count_name:
- *                 type: string
- *               creation_date:
- *                 type: string
- *                 format: date
- *               status:
- *                 type: string
- *                 enum: [DONE, UNDONE]
- *               blends:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     blend_no:
- *                       type: integer
- *                     percentage:
- *                       type: number
- *                     lot_no:
- *                       type: string
- *                     cut_length:
- *                       type: string
- *                     tenacity:
- *                       type: number
- *                     elongation:
- *                       type: number
- *                     merge_no:
- *                       type: string
- *     responses:
- *       200:
- *         description: Updated successfully
- *       500:
- *         description: Server error
- */
 router.put('/qc/:qc_id', async (req, res, next) => {
   try {
     const { qc_id } = req.params;
 
     const {
+      entry_id,
       consignee_name,
       count_name,
       creation_date,
@@ -2446,32 +3112,58 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       blends
     } = req.body;
 
-    // 1?????? Update Header
-    await client.query(
-      `UPDATE mixing.mixing_qc_header
-       SET consignee_name = $1,
-           count_name = $2,
-           creation_date = $3,
-           status = $4
-       WHERE qc_id = $5`,
-      [consignee_name, count_name, creation_date, status, qc_id]
-    );
-
-    // 2?????? Delete old blends (simple approach)
-    await client.query(
-      `DELETE FROM mixing.mixing_qc_blends
-       WHERE qc_id = $1`,
+    const currentResult = await client.query(
+      `SELECT entry_id FROM mixing.mixing_qc_header WHERE qc_id = $1`,
       [qc_id]
     );
 
-    // 3?????? Insert new blends
-    for (const b of blends) {
+    if (currentResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Mixing QC entry not found' });
+    }
+
+    const requestedEntryId = String(entry_id || '').trim();
+    const currentEntryId = String(currentResult.rows[0].entry_id || '').trim();
+
+    let targetQcId = qc_id;
+    let createdNewRow = false;
+
+    if (requestedEntryId && requestedEntryId !== currentEntryId) {
+      const insertResult = await client.query(
+        `INSERT INTO mixing.mixing_qc_header
+         (entry_id, consignee_name, count_name, creation_date, status)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING qc_id, entry_id`,
+        [requestedEntryId, consignee_name, count_name, creation_date, status]
+      );
+      targetQcId = insertResult.rows[0].qc_id;
+      createdNewRow = true;
+    } else {
+      // 1?????? Update Header
+      await client.query(
+        `UPDATE mixing.mixing_qc_header
+         SET consignee_name = $1,
+             count_name = $2,
+             creation_date = $3,
+             status = $4
+         WHERE qc_id = $5`,
+        [consignee_name, count_name, creation_date, status, qc_id]
+      );
+
+      // 2?????? Delete old blends (simple approach)
+      await client.query(
+        `DELETE FROM mixing.mixing_qc_blends
+         WHERE qc_id = $1`,
+        [qc_id]
+      );
+    }
+
+    for (const b of (blends || []).filter(hasBlendData)) {
       await client.query(
         `INSERT INTO mixing.mixing_qc_blends
         (qc_id, blend_no, percentage, lot_no, cut_length, tenacity, elongation, merge_no)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
-          qc_id,
+          targetQcId,
           b.blend_no ?? 0,
           b.percentage ?? 0,
           b.lot_no ?? '',
@@ -2483,9 +3175,15 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       );
     }
 
-    res.status(200).json({
-      message: 'Mixing QC updated successfully',
-      qc_id
+    const updated = await client.query(
+      `SELECT qc_id, entry_id FROM mixing.mixing_qc_header WHERE qc_id = $1`,
+      [qc_id]
+    );
+
+    res.status(createdNewRow ? 201 : 200).json({
+      message: createdNewRow ? 'Mixing QC created successfully' : 'Mixing QC updated successfully',
+      qc_id: targetQcId,
+      entry_id: requestedEntryId || currentEntryId
     });
 
   } catch (error) {
@@ -2494,4 +3192,3 @@ router.put('/qc/:qc_id', async (req, res, next) => {
 });
 
 module.exports = router;
-

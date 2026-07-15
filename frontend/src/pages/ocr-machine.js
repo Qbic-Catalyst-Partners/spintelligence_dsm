@@ -328,13 +328,6 @@ export default function OcrMachinePage() {
           : Array.isArray(result?.data)
             ? result.data
             : [];
-      // const firstHasData = rawParsed[0] && Object.keys(rawParsed[0]).length > 0;
-      // const parsed = firstHasData
-      //   ? rawParsed
-      //   : (() => {
-      //       const extracted = extractHviFields(result?.raw_text, result?.fields || []);
-      //       return Object.keys(extracted).length > 0 ? [extracted] : rawParsed;
-      //     })();
       if (docType === "bwc") {
         const rawText = String(result?.raw_text || "").toLowerCase();
         const looksLikeHviReport =
@@ -374,7 +367,24 @@ export default function OcrMachinePage() {
           ...(docType === "carding" ? extractMachinePrefill(result) : {}),
         });
       } else {
-        setFormValues(first);
+        const first = parsed[0] || {};
+        const hasData = Object.keys(first).length > 0;
+        if (!hasData && docType === "hvi") {
+          const extracted = extractHviFields(result?.raw_text, result?.fields || []);
+          if (Object.keys(extracted).length > 0) {
+            setRows([extracted]);
+            setFormValues(extracted);
+          } else {
+            const emptyHviFields = HVI_LABEL_MAP.reduce((acc, { field }) => {
+              acc[field] = "";
+              return acc;
+            }, { "Colour Grade": "" });
+            setRows([emptyHviFields]);
+            setFormValues(emptyHviFields);
+          }
+        } else {
+          setFormValues(first);
+        }
       }
     } catch (e) {
       const isNetworkFailure = e instanceof TypeError && /fetch/i.test(e.message || "");
@@ -509,23 +519,27 @@ export default function OcrMachinePage() {
                       style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
                     />
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Inspection Date</span>
-                    <input
-                      type="date"
-                      value={meta.inspection_date}
-                      onChange={(e) => setMeta((prev) => ({ ...prev, inspection_date: e.target.value }))}
-                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
-                    />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Test ID</span>
-                    <input
-                      value={meta.test_id}
-                      onChange={(e) => setMeta((prev) => ({ ...prev, test_id: e.target.value }))}
-                      style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
-                    />
-                  </label>
+                  {meta.inspection_date ? (
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Inspection Date</span>
+                      <input
+                        type="date"
+                        value={meta.inspection_date}
+                        onChange={(e) => setMeta((prev) => ({ ...prev, inspection_date: e.target.value }))}
+                        style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
+                      />
+                    </label>
+                  ) : null}
+                  {meta.test_id ? (
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>Test ID</span>
+                      <input
+                        value={meta.test_id}
+                        onChange={(e) => setMeta((prev) => ({ ...prev, test_id: e.target.value }))}
+                        style={{ height: 32, borderRadius: 6, border: `1px solid ${colors.fieldBorder}`, background: colors.fieldBg, color: colors.fieldText, padding: "0 8px", fontSize: 12 }}
+                      />
+                    </label>
+                  ) : null}
                 </div>
               ) : null}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>

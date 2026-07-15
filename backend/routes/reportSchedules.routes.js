@@ -456,6 +456,7 @@ const getGeneralReportFilterOptions = async ({ department = '', subDepartment = 
 
 const normalizeReportKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const quoteReportIdent = (value) => `"${String(value).replace(/"/g, '""')}"`;
+const quoteQualifiedReportIdent = (value) => String(value).split('.').map(quoteReportIdent).join('.');
 const parsePositiveInteger = (value, fallback, max = 1000) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
@@ -464,24 +465,22 @@ const parsePositiveInteger = (value, fallback, max = 1000) => {
 
 const GENERAL_REPORT_SOURCE_CANDIDATES = {
   mixing: {
-    processparameter: ['mixing.mixing_qc_header'],
     cottonhvidataentry: ['mixing.cotton_hvi_data_entry'],
     fibredataentry: ['mixing.fibre_data_entry'],
     afisdataentry: ['mixing.afis_data_entry'],
+    afis6cottondataentry: ['mixing.afis6_cotton_data_entry'],
+    afis6mmfdataentry: ['mixing.afis6_mmf_data_entry'],
     moisturedataentry: ['mixing.moisture_data_entry'],
     opennessdataentry: ['mixing.openness_inspection']
   },
   blowroom: {
     blowroomsync: ['blowroom.blow_room_sync'],
     blowroomsyncdataentry: ['blowroom.blow_room_sync'],
-    processparameter: ['blowroom.blowroom_header'],
     brwastestudyentry: ['blowroom.br_waste_study', 'mixing.br_waste_study'],
     droptestdataentry: ['blowroom.drop_test']
   },
   carding: {
-    processparameter: ['carding.carding_qc_header'],
     betweenwithincarddataentry: ['carding.inspections'],
-    cardthickplaceentry: ['carding.card_thick_place'],
     trialsdataentryform: ['carding.carding_change_request'],
     natidataentry: ['carding.nati_data_entry'],
     udataentry: ['carding.u_data_entry'],
@@ -500,19 +499,15 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     yarncvcalculationform: ['drawframe.yarn_cv_percent'],
     drawframecotsdataentry: ['drawframe.cots_data_entry'],
     udataentry: ['drawframe.u_data_entry'],
-    upercentdataentry: ['drawframe.u_data_entry'],
-    ppbreakerdrawing: ['drawframe.drawframe_qc_header'],
-    ppfinisherdrawing: ['drawframe.finisher_drawing_inspection']
+    upercentdataentry: ['drawframe.u_data_entry']
   },
   simplex: {
-    processparameter: ['simplex.simplex_process_parameter'],
     smxcotschangedataentry: ['simplex.simplex_inspections'],
     smxbreaksstudyreport: ['simplex.smx_breaks_study_header'],
     udataentry: ['simplex.u_data_entry'],
     upercentdataentry: ['simplex.u_data_entry']
   },
   spinning: {
-    processparameter: ['spinning.spinning_qc_header'],
     cotschecking: ['spinning.cots_checking'],
     countchange: ['spinning.count_change_inspections'],
     ringframelogbook: ['spinning.ring_frame_inspections'],
@@ -520,6 +515,9 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     lycramissing: ['spinning.lycra_missing'],
     bottomapronchecking: ['spinning.bottom_apron_checking'],
     lycracentering: ['spinning.lycra_centering'],
+    // Frontend label is "Lycra Out of Centering", which normalizes to
+    // "lycraoutofcentering" — alias it onto the same table as lycracentering.
+    lycraoutofcentering: ['spinning.lycra_centering'],
     rsmlycrasensorcheckingonline: ['spinning.rsm_and_lycrasensor_cheking_online'],
     rsmlycrasensorcheckingoffline: ['spinning.rsm_and_lycrasensor_cheking_offline'],
     wheelchange: ['spinning.wheel_change']
@@ -528,8 +526,9 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     processparameter: ['autoconer.autoconer_process_parameter'],
     ppautoconerq2: ['autoconer.autoconer_q2_inspection'],
     ppautoconerq3: ['autoconer.autoconer_q3_inspection'],
-    inspectiondataentry: ['autoconer.inspection_data_entry'],
+    rewindingstudy: ['autoconer.rewinding_study'],
     conedensity: ['autoconer.cone_density'],
+    inspectiondataentry: ['autoconer.inspection_data_entry'],
     conepackingaudit: ['autoconer.cone_packing_audit'],
     lycrachecking: ['autoconer.lycra_checking_inspections'],
     countwisecutsrecord: ['autoconer.count_wise_cuts'],
@@ -539,6 +538,632 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     uparameterentries: ['autoconer.parameter_entries']
   }
 };
+
+// The Openness form (mixing/openness) writes its header fields to
+// mixing.openness_inspection and its per-entry measurement fields to the
+// child table mixing.openness_entries. The generic single-table candidate
+// list above can only see the header table, so the custom report was
+// missing every entry-level field the form actually collects. This joined
+// source lists exactly the fields present on the Openness form UI (no
+// system/id columns), so "available fields" matches the form 1:1.
+const GENERAL_REPORT_CUSTOM_SOURCES = {
+  spinning: {
+    // COTS Checking form — spinning.cots_checking has no "checking type" column;
+    // report only the fields the form actually collects.
+    cotschecking: {
+      fromClause: 'spinning.cots_checking',
+      selectColumns: [
+        'entry_id',
+        'inspectiondate',
+        'machineno',
+        'lhs_value',
+        'rhs_value',
+        'lhs_textremarks',
+        'rhs_textremarks',
+        'createdat'
+      ],
+      dateColumn: 'inspectiondate'
+    },
+    // Count Change form — header table + per-reading child table. Drop count_change_type
+    // and the per-reading average/rollup columns (reading_avg, count_avg, strength_avg,
+    // generated_rows, overall_csp, cv_percent_2), which aren't collected by the form.
+    countchange: {
+      fromClause: 'spinning.count_change_inspections i '
+        + 'JOIN spinning.count_change_readings r ON r.inspection_id = i.id',
+      selectColumns: [
+        'i.entry_id',
+        'i.rf_no',
+        'i.lycra_draft',
+        'i.count_name_from',
+        'i.count_name_to',
+        'i.no_of_readings',
+        'r.reading_no',
+        'r.reading_value',
+        'r.count',
+        'r.cv_percent',
+        'r.strength',
+        'r.mean',
+        'r.csp',
+        'i.created_at'
+      ],
+      dateColumn: 'i.entry_date'
+    },
+    // Process Parameter form (POST /spinning/process-parameter) — single table, all fields live on spinning.spinning_qc_header.
+    processparameter: {
+      fromClause: 'spinning.spinning_qc_header',
+      selectColumns: [
+        'entry_id',
+        'count_name',
+        'consignee_name',
+        'machine_no',
+        'bottom_roll_setting',
+        'top_roll_setting',
+        'break_draft',
+        'total_draft',
+        'tpi_tm',
+        'spacer',
+        'traveller',
+        'speed',
+        'make',
+        'denier',
+        'merge_no',
+        'slub_partcy_code',
+        'slub_mtr',
+        'pause_min',
+        'pause_max',
+        'slub_min',
+        'slub_max',
+        'thickness_min',
+        'thickness_max',
+        'ramp',
+        'offset',
+        'lycra_draft',
+        'lycra_percent',
+        'created_at'
+      ],
+      dateColumn: 'creation_date'
+    },
+    // Ring Frame Log Book form — header table + per-machine row table + summary table,
+    // joined so the general report sees the full set of fields the form collects.
+    ringframelogbook: {
+      fromClause: 'spinning.ring_frame_inspections i '
+        + 'JOIN spinning.ring_frame_rows r ON r.inspection_id = i.id '
+        + 'JOIN spinning.ring_frame_summary s ON s.inspection_id = i.id',
+      selectColumns: [
+        'i.entry_id',
+        'i.entry_date',
+        'i.shift',
+        'i.checker_name',
+        'r.mc_no',
+        'r.lycra',
+        'r.bobbin_color',
+        'r.spindle_1',
+        'r.spindle_2',
+        'r.spindle_3',
+        'r.spindle_4',
+        'r.spindle_5',
+        'r.spindle_6',
+        'r.lycra_missing',
+        'r.guide_roll_lapping',
+        'r.others',
+        'r.total',
+        's.out_of_center',
+        's.out_of_center_ac',
+        's.out_of_center_rf',
+        's.fault_cops',
+        's.total_cops',
+        's.comments',
+        'i.created_at'
+      ],
+      dateColumn: 'i.entry_date'
+    },
+    wheelchangetype1: {
+      fromClause: 'spinning.wheel_change',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    },
+    wheelchangetype2: {
+      fromClause: 'spinning.wheel_change_inspection',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    },
+    wheelchangetype3: {
+      fromClause: 'spinning.wheel_change_v2',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    },
+    wheelchangetype4: {
+      fromClause: 'spinning.wheel_change_type4',
+      selectColumns: ['entry_id', 'created_at'],
+      dateColumn: 'created_at'
+    }
+  },
+  mixing: {
+    opennessdataentry: {
+      fromClause: 'mixing.openness_inspection i JOIN mixing.openness_entries e ON e.inspection_id = i.id',
+      selectColumns: [
+        'i.inspection_date',
+        'i.br_line_no',
+        'i.actual_specific_volume_target',
+        'i.no_of_entries',
+        'e.machine_name',
+        'e.weight',
+        'e.volume_1',
+        'e.volume_2',
+        'e.average_volume',
+        'e.apparent_specific_volume',
+        'e.actual_op_value',
+        'e.beater_type',
+        'e.beater_speed_rpm'
+      ],
+      dateColumn: 'i.inspection_date'
+    }
+  },
+  blowroom: {
+    // Process Parameter form (POST /blowroom/header) — single table, all fields live on blowroom.blowroom_header.
+    processparameter: {
+      fromClause: 'blowroom.blowroom_header',
+      selectColumns: [
+        'entry_id',
+        'count_name',
+        'consignee_name',
+        'creation_date',
+        'line_numbers',
+        'rotary_beater_speed',
+        'depth',
+        'mpm_delivery_speed',
+        'mpm_delivery_pascals',
+        'condensor_speed',
+        'rk_feed_roll_beater',
+        'rk_beater_speed',
+        'flexi_to_feed_roll_beater',
+        'flexi_beater_speed',
+        'scutcher_no',
+        'rk_mo_speed',
+        'kb_speed',
+        'grid_bar',
+        'lap_weight',
+        'uniclean',
+        'srs',
+        'rk_flexi'
+      ],
+      dateColumn: 'creation_date'
+    },
+    // Blow Room Sync form (POST /blowroom/sync) — header + per-entry child table, same
+    // header/child split as Openness (blow_room_sync_entries.sync_id -> blow_room_sync.id).
+    blowroomsync: {
+      fromClause: 'blowroom.blow_room_sync s JOIN blowroom.blow_room_sync_entries e ON e.sync_id = s.id',
+      selectColumns: [
+        's.entry_id',
+        's.inspection_date',
+        's.line_no',
+        's.variety',
+        's.checked_by',
+        's.beater',
+        's.total_time',
+        'e.entry_no',
+        'e.value_a',
+        'e.value_b',
+        'e.value_c',
+        'e.sync_percentage'
+      ],
+      dateColumn: 's.inspection_date'
+    },
+    // BR Waste Study Entry form (POST /blowroom/br-waste-study) — header + two per-row
+    // child tables (type_rows, waste_rows) matched up by row_no within the same study.
+    // Both child tables have their own "waste_type" column, so the header's is aliased
+    // to avoid a name collision in the report output.
+    brwastestudyentry: {
+      fromClause: `blowroom.br_waste_study w
+        LEFT JOIN blowroom.br_waste_study_type_rows t ON t.study_id = w.id
+        LEFT JOIN blowroom.br_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
+      selectColumns: [
+        'w.entry_id',
+        'w.waste_study_id',
+        'w.date',
+        'w.variety',
+        'w.study_type',
+        'w.carding_production_kg',
+        'w.type_entries',
+        'w.waste_type AS study_waste_type',
+        'w.waste_kg',
+        'w.waste_percent',
+        'w.overall_percent',
+        'w.remarks',
+        't.row_no',
+        't.cylinder_speed',
+        't.lickerin_speed',
+        't.flat_speed',
+        't.doffer_speed',
+        't.delivery_speed',
+        't.wing_setting_1',
+        't.wing_setting_2',
+        't.mc_no',
+        't.mc_production',
+        'wr.waste_type AS row_waste_type',
+        'wr.waste_kgs_value',
+        'wr.waste_kgs_percent'
+      ],
+      dateColumn: 'w.date'
+    },
+    // Drop Test Data Entry form (POST /blowroom/drop-test) — single table, explicit list
+    // so surrogate id/drop_id columns don't leak into "available fields".
+    droptestdataentry: {
+      fromClause: 'blowroom.drop_test',
+      selectColumns: [
+        'entry_id',
+        'date',
+        'variety',
+        'blend',
+        'tuft_no',
+        'tuft_variety',
+        'display_weight',
+        'actual_weight',
+        'difference',
+        'ratio_percent'
+      ],
+      dateColumn: 'date'
+    },
+    // BR CV1m Data Entry / "Within Lap" form (POST /blowroom/within-lap-cv) — single table.
+    brcv1mdataentry: {
+      fromClause: 'blowroom.within_lap_cv',
+      selectColumns: [
+        'entry_id',
+        'record_date',
+        'machine_name',
+        'variety',
+        'type',
+        'lap_weight',
+        'lap_length',
+        'grams_per_meter',
+        'samples',
+        'average',
+        'minimum',
+        'maximum',
+        'std_deviation',
+        'cv_percent'
+      ],
+      dateColumn: 'record_date'
+    },
+    // BR Between LapCV% form (POST /blowroom/between-lap-cv) — single table, same shape as within-lap-cv.
+    brbetweenlapcv: {
+      fromClause: 'blowroom.between_lap_cv',
+      selectColumns: [
+        'entry_id',
+        'record_date',
+        'machine_name',
+        'variety',
+        'type',
+        'lap_weight',
+        'lap_length',
+        'grams_per_meter',
+        'samples',
+        'average',
+        'minimum',
+        'maximum',
+        'std_deviation',
+        'cv_percent'
+      ],
+      dateColumn: 'record_date'
+    }
+  },
+  carding: {
+    // Process Parameter form (POST /carding/qc-header) — single table.
+    processparameter: {
+      fromClause: 'carding.carding_qc_header',
+      selectColumns: [
+        'entry_id',
+        'count_name',
+        'consignee_name',
+        'creation_date',
+        'machine_no',
+        'lickerin_speed',
+        'cylinder_speed',
+        'flats_speed',
+        'delivery_speed',
+        'draft_speed',
+        'tension_draft',
+        'delivery_hank',
+        'setting',
+        'feed_roll_to_lickerin',
+        'lickerin_to_cylinder',
+        'cylinder_to_flats',
+        'cylinder_to_doffer',
+        'sfl',
+        'sfd',
+        'lickerin',
+        'cylinder',
+        'doffer',
+        'flats'
+      ],
+      dateColumn: 'creation_date'
+    },
+    // Between Card Data Entry (POST /carding/between-within-card, type_category = 'Between')
+    // — header + two per-entry child tables (sample_weights, hanks) matched by entry_no.
+    // carding.inspections has no entry_id column: the form's entry_id IS the header's id.
+    betweencarddataentry: {
+      fromClause: `(SELECT * FROM carding.inspections WHERE inspection_type = 'Between') i
+        LEFT JOIN carding.hanks h ON h.inspection_id = i.id
+        LEFT JOIN carding.sample_weights sw ON sw.inspection_id = i.id AND sw.entry_no = h.entry_no
+        LEFT JOIN carding.sample_weight_stats sws ON sws.inspection_id = i.id
+        LEFT JOIN carding.hank_stats hs ON hs.inspection_id = i.id`,
+      selectColumns: [
+        'i.id AS entry_id',
+        'i.mc_name',
+        'i.inspection_type',
+        'i.inspection_date',
+        'i.num_entries',
+        'h.entry_no',
+        'sw.value AS sample_weight',
+        'h.value AS hank',
+        'sws.avg AS sample_weight_avg',
+        'sws.max AS sample_weight_max',
+        'sws.min AS sample_weight_min',
+        'sws.range AS sample_weight_range',
+        'sws.sd AS sample_weight_sd',
+        'sws.cv AS sample_weight_cv',
+        'hs.avg AS hank_avg',
+        'hs.max AS hank_max',
+        'hs.min AS hank_min',
+        'hs.range AS hank_range',
+        'hs.sd AS hank_sd',
+        'hs.cv AS hank_cv'
+      ],
+      dateColumn: 'i.inspection_date'
+    },
+    // Within Card Data Entry — same source table as Between, filtered to inspection_type = 'Within'.
+    withincarddataentry: {
+      fromClause: `(SELECT * FROM carding.inspections WHERE inspection_type = 'Within') i
+        LEFT JOIN carding.hanks h ON h.inspection_id = i.id
+        LEFT JOIN carding.sample_weights sw ON sw.inspection_id = i.id AND sw.entry_no = h.entry_no
+        LEFT JOIN carding.sample_weight_stats sws ON sws.inspection_id = i.id
+        LEFT JOIN carding.hank_stats hs ON hs.inspection_id = i.id`,
+      selectColumns: [
+        'i.id AS entry_id',
+        'i.mc_name',
+        'i.inspection_type',
+        'i.inspection_date',
+        'i.num_entries',
+        'h.entry_no',
+        'sw.value AS sample_weight',
+        'h.value AS hank',
+        'sws.avg AS sample_weight_avg',
+        'sws.max AS sample_weight_max',
+        'sws.min AS sample_weight_min',
+        'sws.range AS sample_weight_range',
+        'sws.sd AS sample_weight_sd',
+        'sws.cv AS sample_weight_cv',
+        'hs.avg AS hank_avg',
+        'hs.max AS hank_max',
+        'hs.min AS hank_min',
+        'hs.range AS hank_range',
+        'hs.sd AS hank_sd',
+        'hs.cv AS hank_cv'
+      ],
+      dateColumn: 'i.inspection_date'
+    },
+    // Card Thick Place & CV form (POST /carding/card-thick-place) — header + per-machine
+    // child table (card_thick_place_values.header_id -> card_thick_place_header.id).
+    cardthickplaceentry: {
+      fromClause: `carding.card_thick_place_header ph
+        LEFT JOIN carding.card_thick_place_values pv ON pv.header_id = ph.id`,
+      selectColumns: [
+        'ph.entry_id',
+        'ph.entry_date',
+        'pv.machine',
+        'pv.cv_value',
+        'pv.cv_5m_value',
+        'pv.unit',
+        'ph.remarks',
+        'ph.created_at'
+      ],
+      dateColumn: 'ph.entry_date'
+    },
+    // DFK Pressure Checking form (POST /carding/dfk-pressure) — single table.
+    dfkpressurechecking: {
+      fromClause: 'carding.card_dfk_pressure_checking',
+      selectColumns: [
+        'entry_id',
+        'inspection_type',
+        'entry_date',
+        'machine_name',
+        'dfk',
+        'ccd',
+        'icfd_1',
+        'lt',
+        'cds',
+        'silver_draft',
+        'icfd_2',
+        'idf_in',
+        'idf_out',
+        'al_on',
+        'created_at'
+      ],
+      dateColumn: 'entry_date'
+    },
+    // Carding NRE% form (POST /carding/nre) — single table.
+    nre: {
+      fromClause: 'carding.nre',
+      selectColumns: [
+        'entry_id',
+        'machine_model',
+        'mc_name',
+        'cylinder_specs',
+        'cylinder_tonnage_1',
+        'cylinder_tonnage_2',
+        'doffer_specs',
+        'doffer_tonnage_1',
+        'doffer_tonnage_2',
+        'flat_specs',
+        'flat_tonnage_1',
+        'flat_tonnage_2',
+        'lickerin_specs',
+        'lickerin_tonnage_1',
+        'lickerin_tonnage_2',
+        'silver_hank',
+        'delivery_mtr_min',
+        'fibre_nep_gms_card_mat',
+        'fibre_nep_gms_silver',
+        'carding_nre_percent',
+        'created_at'
+      ],
+      dateColumn: 'created_at'
+    },
+    // Nati Data Entry form (POST /carding/nati-data-entry) — header + per-machine
+    // neps ratio child table (neps_details.qc_id -> nati_data_entry.id).
+    natidataentry: {
+      fromClause: `carding.nati_data_entry qc
+        LEFT JOIN carding.neps_details n ON n.qc_id = qc.id`,
+      selectColumns: [
+        'qc.entry_id',
+        'qc.type',
+        'qc.entry_date',
+        'qc.variety',
+        'n.mc_no',
+        'n.ratio_size_1',
+        'n.ratio_size_07',
+        'n.ratio_size_05',
+        'qc.created_at'
+      ],
+      dateColumn: 'qc.entry_date'
+    },
+    // U% Data Entry form (POST /carding/uqc) — single table.
+    udataentry: {
+      fromClause: 'carding.u_data_entry',
+      selectColumns: [
+        'entry_id',
+        'entry_type',
+        'entry_date',
+        'shift',
+        'variety',
+        'mc_no',
+        'u_percent',
+        'cvm',
+        'cvm_1m',
+        'cvm_3m',
+        'remarks',
+        'created_at'
+      ],
+      dateColumn: 'entry_date'
+    },
+    // Wheel Change form (POST /carding/change-control) — writes to carding_change_request
+    // (carding.card_change_control / card_change_control_lines are unused legacy tables).
+    wheelchange: {
+      fromClause: 'carding.carding_change_request',
+      selectColumns: [
+        'entry_id',
+        'type',
+        'test_no',
+        'entry_date',
+        'cdo_no',
+        'cdg_no_proposed',
+        'mixing_existing',
+        'mixing_proposed',
+        'blend_percent_existing',
+        'blend_percent_proposed',
+        'del_hank_existing',
+        'del_hank_proposed',
+        'feed_weight_existing',
+        'feed_weight_proposed',
+        'speed_existing',
+        'speed_proposed',
+        'licker_in_speed_1_existing',
+        'licker_in_speed_1_proposed',
+        'licker_in_speed_2_existing',
+        'licker_in_speed_2_proposed',
+        'cylinder_speed_existing',
+        'cylinder_speed_proposed',
+        'flats_speed_mm_min_existing',
+        'flats_speed_mm_min_proposed',
+        'feed_plate_to_licker_in_existing',
+        'feed_plate_to_licker_in_proposed',
+        'sfl_existing',
+        'sfl_proposed',
+        'sfd_existing',
+        'sfd_proposed',
+        'cylinder_to_flats_existing',
+        'cylinder_to_flats_proposed',
+        'cylinder_in_doffer_existing',
+        'cylinder_in_doffer_proposed',
+        'web_speed_draft_mw_v4_existing',
+        'web_speed_draft_mw_v4_proposed',
+        'lc_wing_setting_existing',
+        'lc_wing_setting_proposed',
+        'rr_rk_beater_speed_existing',
+        'rr_rk_beater_speed_proposed',
+        'remarks',
+        'operator',
+        'approval_status',
+        'created_at'
+      ],
+      dateColumn: 'entry_date'
+    },
+    // Individual Card Waste Study form (POST /carding/card-waste-study) — header + two
+    // per-row child tables (type_rows, waste_rows) matched up by row_no within the same study.
+    // Both child tables have their own "waste_type" column, so the header's is aliased
+    // to avoid a name collision in the report output.
+    individualcardwastestudy: {
+      fromClause: `carding.card_waste_study w
+        LEFT JOIN carding.card_waste_study_type_rows t ON t.study_id = w.id
+        LEFT JOIN carding.card_waste_study_waste_rows wr ON wr.study_id = w.id AND wr.row_no = t.row_no`,
+      selectColumns: [
+        'w.entry_id',
+        'w.waste_study_id',
+        'w.date',
+        'w.variety',
+        'w.study_type',
+        'w.carding_production_kg',
+        'w.type_entries',
+        'w.waste_type AS study_waste_type',
+        'w.waste_kg',
+        'w.waste_percent',
+        'w.overall_percent',
+        'w.remarks',
+        't.row_no',
+        't.cylinder_speed',
+        't.lickerin_speed',
+        't.lickerin_speed_1',
+        't.lickerin_speed_2',
+        't.lickerin_speed_3',
+        't.flat_speed',
+        't.doffer_speed',
+        't.delivery_speed',
+        't.wing_setting_1',
+        't.wing_setting_2',
+        't.mc_no',
+        't.mc_production',
+        'wr.waste_type AS row_waste_type',
+        'wr.waste_kgs_value',
+        'wr.waste_kgs_percent'
+      ],
+      dateColumn: 'w.date'
+    }
+  }
+};
+
+GENERAL_REPORT_CUSTOM_SOURCES.carding.upercentdataentry = GENERAL_REPORT_CUSTOM_SOURCES.carding.udataentry;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardwastestudy = GENERAL_REPORT_CUSTOM_SOURCES.carding.individualcardwastestudy;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardwastestudyentry = GENERAL_REPORT_CUSTOM_SOURCES.carding.individualcardwastestudy;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardingnre = GENERAL_REPORT_CUSTOM_SOURCES.carding.nre;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardingnrepercent = GENERAL_REPORT_CUSTOM_SOURCES.carding.nre;
+
+GENERAL_REPORT_CUSTOM_SOURCES.carding.carddfkpressurechecking = GENERAL_REPORT_CUSTOM_SOURCES.carding.dfkpressurechecking;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.cardthickplaceandcv = GENERAL_REPORT_CUSTOM_SOURCES.carding.cardthickplaceentry;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.thickplaceandcv = GENERAL_REPORT_CUSTOM_SOURCES.carding.cardthickplaceentry;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.thickplacecv = GENERAL_REPORT_CUSTOM_SOURCES.carding.cardthickplaceentry;
+GENERAL_REPORT_CUSTOM_SOURCES.carding.processparameterdataentry = GENERAL_REPORT_CUSTOM_SOURCES.carding.processparameter;
+
+// Some report-type labels normalize to more than one plausible key depending on how the
+// dropdown phrases them (e.g. "BR CV1M Data Entry Within Lap" vs "BR CV1m Data Entry").
+// Alias the extra normalized forms onto the canonical entries above.
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.blowroomsyncdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.blowroomsync;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.processparameterdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.processparameter;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brcv1mdataentrywithinlap = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brcv1mdataentry;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.withinlapcv = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brcv1mdataentry;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.withinlapcvdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brcv1mdataentry;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcvdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcv;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.betweenlapcv = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcv;
+GENERAL_REPORT_CUSTOM_SOURCES.blowroom.betweenlapcvdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcv;
 
 const DATE_COLUMN_PREFERENCE = [
   'entry_date', 'inspection_date', 'inspectiondate', 'date', 'created_at', 'createdat', 'createdAt', 'updated_at'
@@ -570,6 +1195,21 @@ const getReportTableColumns = async (tableName) => {
 const resolveGeneralReportSource = async ({ department, subDepartment, reportType }) => {
   const departmentKey = normalizeReportKey(subDepartment || department);
   const reportKey = normalizeReportKey(reportType);
+
+  const customSource = (GENERAL_REPORT_CUSTOM_SOURCES[departmentKey] || GENERAL_REPORT_CUSTOM_SOURCES[normalizeReportKey(department)] || {})[reportKey];
+  if (customSource) {
+    const columns = customSource.selectColumns.map((column) => {
+      const aliasMatch = column.match(/\sAS\s+(\w+)\s*$/i);
+      return aliasMatch ? aliasMatch[1] : column.split('.').pop();
+    });
+    return {
+      tableName: customSource.fromClause,
+      selectList: customSource.selectColumns.join(', '),
+      columns,
+      dateColumn: customSource.dateColumn || ''
+    };
+  }
+
   const departmentSources = GENERAL_REPORT_SOURCE_CANDIDATES[departmentKey] || GENERAL_REPORT_SOURCE_CANDIDATES[normalizeReportKey(department)] || {};
   const candidates = departmentSources[reportKey] || [];
   const tableName = await getExistingReportTable(candidates);
@@ -579,7 +1219,7 @@ const resolveGeneralReportSource = async ({ department, subDepartment, reportTyp
   const dateColumn = DATE_COLUMN_PREFERENCE.find((column) => columns.includes(column))
     || DATE_COLUMN_PREFERENCE.map(normalizeReportKey).map((key) => normalizedColumns.get(key)).find(Boolean)
     || '';
-  return { tableName, columns, dateColumn };
+  return { tableName, columns, dateColumn, selectList: '*' };
 };
 
 const fetchGeneralReportRows = async ({ department, subDepartment, reportType, startDate, endDate, page, limit }) => {
@@ -594,22 +1234,26 @@ const fetchGeneralReportRows = async ({ department, subDepartment, reportType, s
   const values = [];
   if (source.dateColumn && startDate) {
     values.push(startDate);
-    where.push(`${quoteReportIdent(source.dateColumn)} >= $${values.length}`);
+    where.push(`${quoteQualifiedReportIdent(source.dateColumn)} >= $${values.length}`);
   }
   if (source.dateColumn && endDate) {
     values.push(endDate);
-    where.push(`${quoteReportIdent(source.dateColumn)} <= $${values.length}`);
+    where.push(`${quoteQualifiedReportIdent(source.dateColumn)} <= $${values.length}`);
   }
 
   const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
   const orderColumn = source.dateColumn || (source.columns.includes('id') ? 'id' : source.columns[0]);
+  const tiebreakColumn = source.columns.includes('id') && orderColumn !== 'id' ? 'id' : null;
+  const orderBySql = tiebreakColumn
+    ? `${quoteQualifiedReportIdent(orderColumn)} DESC, ${quoteQualifiedReportIdent(tiebreakColumn)} DESC`
+    : `${quoteQualifiedReportIdent(orderColumn)} DESC`;
   const safeLimit = parsePositiveInteger(limit, 100, 1000);
   const safePage = parsePositiveInteger(page, 1, 100000);
   const offset = (safePage - 1) * safeLimit;
 
   const countResult = await client.query(`SELECT COUNT(*)::integer AS total FROM ${source.tableName}${whereSql}`, values);
   const rowsResult = await client.query(
-    `SELECT * FROM ${source.tableName}${whereSql} ORDER BY ${quoteReportIdent(orderColumn)} DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+    `SELECT ${source.selectList || '*'} FROM ${source.tableName}${whereSql} ORDER BY ${orderBySql} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
     [...values, safeLimit, offset]
   );
 

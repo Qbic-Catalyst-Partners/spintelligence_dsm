@@ -1,4 +1,10 @@
 import apiConfig from "@/apis/apiConfig";
+import {
+  getCardingProcessParameterEntries,
+  fetchCardingUqcEntries,
+  fetchCardingDfkPressureEntries,
+  fetchCardingChangeControlEntries,
+} from "@/apis/carding";
 
 export const FIELD_WIDGET_TYPE = "field_metric";
 export const getDashboardWidgetsStorageKey = (userId) =>
@@ -42,7 +48,8 @@ const screenEndpoints = {
   "Quality Control": {
     Mixing: {
       "Process Parameter": "/mixing/qc",
-      "AFIS-6 Cotton Data Entry": "/mixing/afis-6-cotton",
+      "AFIS-6 Cotton Data Entry": "/mixing/afis6-cotton",
+      "AFIS-6 MMF Data Entry": "/mixing/afis6-mmf",
       "Cotton HVI Data Entry": "/mixing/cotton-hvi",
       "Fibre Data Entry": "/mixing/fibre",
       "AFIS Data Entry": "/mixing/afis",
@@ -52,19 +59,25 @@ const screenEndpoints = {
     "Blow Room": {
       "Blow Room Sync": "/blowroom/sync",
       "Process Parameter": "/blowroom/header",
-      "BR Waste Study Entry": "/blowroom/br-waste-study",
+      "BR Waste Study T-1": "/blowroom/br-waste-study",
+      "BR Waste Study T-2": "/blowroom/br-waste-study",
+      "BR Waste Study T-3": "/blowroom/br-waste-study",
       "Drop Test Data Entry": "/blowroom/drop-test",
       "B/R CV1M Data Entry Within Lap": "/blowroom/within-lap-cv",
       "B/R Between Lap CV%": "/blowroom/between-lap-cv",
     },
     Carding: {
-      "Process Parameter": "/carding/process-parameters",
+      "Process Parameter": "/carding/qc-header",
       "Between & Within Card Data Entry": "/carding/between-within-card",
     "Thick place & CV": "/carding/card-thick-place",
       "Carding NRE%": "/carding/nre",
-      "Nati Data Entry": "/carding/nati-data",
+      "Nati Data Entry": "/carding/nati-data-entry",
       "U% Data Entry": "/carding/uqc",
       "Card DFK Data": "/carding/dfk-pressure",
+      "Card Waste Study T-1": "/carding/card-waste-study",
+      "Card Waste Study T-2": "/carding/card-waste-study",
+      "Card Waste Study T-3": "/carding/card-waste-study",
+      "Wheel Change": "/carding/change-control",
     },
     "Individual Card Performance": {
       // Mounted at plain /trials (backend/server.js) — trials.js is its own router, never
@@ -75,19 +88,32 @@ const screenEndpoints = {
       "Ribbon Lap CV1M Data Entry": "/comber/lap-cv",
       "Nati Data Entry": "/comber/nati-data-entry",
       "U% Data Entry": "/comber/uqc",
+      "Comber Nolis %": "/drawframe/comber-noil-percent",
+      "Comber NRE%": "/comber/nre",
+      "Comber Efficiency": "/comber/efficiency",
     },
     "Draw Frame": {
       "1 Yard / Half Yard CV Entry": "/drawframe/yarn-cv",
       "Draw Frame Cots Data Entry": "/drawframe/cots",
       "U% Data Entry": "/drawframe/uqc",
-      "PP - Breaker Drawing": "/draw-frame?type=PP%20-%20Breaker%20Drawing",
-      "PP - Finisher Drawing": "/draw-frame?type=PP%20-%20Finisher%20Drawing",
+      "PP - Breaker Drawing": "/drawframe/header",
+      "PP - Finisher Drawing": "/drawframe/finisher",
+      "Wheel Change Type-1 (SB20)": "/drawframe/wheel-change/type1",
+      "Wheel Change Type-2 (TD7)": "/drawframe/wheel-change/type2",
+      "Wheel Change Type-3 (TD9)": "/drawframe/wheel-change/type3",
+      "Wheel Change Type-1 (LRSB)": "/drawframe/wheel-change/finisher-type1-lrsb",
+      "Wheel Change Type-2 (D40)": "/drawframe/wheel-change/type2-d40",
+      "Wheel Change Type-3 (D50/D55)": "/drawframe/wheel-change/type3-d50-d55",
+      "Wheel Change Type-4 (LDF3S)": "/drawframe/wheel-change/type4-ldf3s",
     },
     Simplex: {
-      "Process Parameter": "/simplex/process-parameters",
+      "Process Parameter": "/simplex/process_parameter",
+      "Process Parameter": "/simplex/process_parameter",
       "SMXCots Change Data Entry": "/simplex/cots-change",
       "SMX Breaks Study Report": "/simplex/list",
       "U% Data Entry": "/simplex/uqc",
+      "Wheel Change": "/simplex/wheel-change",
+      "Stretch %": "/drawframe/stretch-percent",
     },
     Spinning: {
       "Process Parameter": "/spinning/qc",
@@ -103,18 +129,29 @@ const screenEndpoints = {
       "Wheel Change": "/spinning/wheel-change",
     },
     Autoconer: {
-      "Process Parameter": "/autoconer?type=Process%20Parameter",
-      "PP - Autoconer Q2": "/autoconer?type=PP%20-%20Autoconer%20Q2",
-      "PP - Autoconer Q3": "/autoconer?type=PP%20-%20Autoconer%20Q3",
-      "Rewinding Study": "/autoconer/rewinding-study",
+      "Process Parameter": "/autoconer/process-parameter",
+      "PP - Autoconer Q2": "/autoconer/q2",
+      "PP - Autoconer Q3": "/autoconer/q3",
+      "Rewinding Study": "/autoconer/inspection-data-entry",
       "Cone Density": "/autoconer/cone-density",
       "Cone Packing Audit": "/autoconer/cone-packing-audit",
       "Lycra % Checking": "/autoconer/lycra-checking",
       "Count Wise Cuts Record": "/autoconer/count-wise-cuts",
       "Splice Strength": "/autoconer/splice-strength",
-      "Drum wise Appearance": "/autoconer/drum-wise-appearance",
+      "Drum wise Appearance": "/autoconer/drum-wise",
       "CSP Parameter Entries": "/autoconer/parameter-entries/pending-csp",
       "U% Parameter Entries": "/autoconer/parameter-entries/pending-quality",
+    },
+  },
+};
+
+const screenFetchers = {
+  "Quality Control": {
+    Carding: {
+      "Process Parameter": getCardingProcessParameterEntries,
+      "U% Data Entry": fetchCardingUqcEntries,
+      "Card DFK Data": fetchCardingDfkPressureEntries,
+      "Wheel Change": fetchCardingChangeControlEntries,
     },
   },
 };
@@ -139,7 +176,11 @@ const flattenRecord = (record, prefix = "") => {
 
   return Object.entries(record).reduce((flat, [key, value]) => {
     const flatKey = prefix ? `${prefix}_${key}` : key;
-    if (Array.isArray(value)) return flat;
+    if (Array.isArray(value)) {
+      if (value.some(isRecordObject)) return flat;
+      flat[flatKey] = value;
+      return flat;
+    }
     if (isRecordObject(value)) return { ...flat, ...flattenRecord(value, flatKey) };
     flat[flatKey] = value;
     return flat;
@@ -156,8 +197,13 @@ export const normalizeDashboardRows = (response) => {
     if (!nestedArrays.length) return flattenRecord(row);
 
     const parent = flattenRecord(row);
-    return nestedArrays.flatMap(([, value]) =>
-      value.map((item) => ({ ...parent, ...flattenRecord(item) }))
+    const maxLength = Math.max(...nestedArrays.map(([, value]) => value.length));
+
+    return Array.from({ length: maxLength }, (_, index) =>
+      nestedArrays.reduce(
+        (merged, [, value]) => ({ ...merged, ...flattenRecord(value[index]) }),
+        parent
+      )
     );
   });
 };
@@ -176,13 +222,55 @@ const normalizeKey = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
+// Some form field labels don't share enough characters with their raw db column name for the
+// exact/substring match below to ever find them (e.g. "LHS (Spindle Number)" vs "lhs_value",
+// "Machine" vs "machineno") — list those pairings explicitly so widget tables can resolve them.
+const dashboardFieldAliases = {
+  lhsspindlenumber: ["lhs_value"],
+  rhsspindlenumber: ["rhs_value"],
+  lhsremarks: ["lhs_textremarks"],
+  rhsremarks: ["rhs_textremarks"],
+  machine: ["machineno", "machine_no"],
+  break1millionmeter: ["break_per_million_meter", "break_per_lakh"],
+  grosswtstd: ["gross_weight_std"],
+  grosswtact: ["gross_weight_actual"],
+  i1: ["l1"],
+  i2: ["l2"],
+  noofreadings: ["total_readings"],
+  autoconerno: ["machine_code"],
+  fibreweight: ["fabric_weight"],
+  shortcuts: ["shorts_cuts"],
+  thin50: ["thin_minus_50"],
+  thick50: ["thick_plus_50"],
+  thin40: ["thin_minus_40"],
+  thick35: ["thick_plus_35"],
+  thin30: ["thin_minus_30"],
+};
+
 export const getDashboardFieldValue = (row, fieldName) => {
   if (!row || !fieldName) return null;
-  if (row[fieldName] !== undefined) return row[fieldName];
+  if (row[fieldName] !== undefined && row[fieldName] !== null && row[fieldName] !== "") return row[fieldName];
 
   const target = normalizeKey(fieldName);
-  const matchedKey = Object.keys(row).find((key) => normalizeKey(key) === target);
-  return matchedKey ? row[matchedKey] : null;
+  const rowKeys = Object.keys(row);
+
+  const exactMatch = rowKeys.find((key) => normalizeKey(key) === target);
+  if (exactMatch && row[exactMatch] !== null && row[exactMatch] !== "") return row[exactMatch];
+
+  const aliasCandidates = dashboardFieldAliases[target] || [];
+  for (const candidate of aliasCandidates) {
+    const candidateTarget = normalizeKey(candidate);
+    const aliasMatch = rowKeys.find((key) => normalizeKey(key) === candidateTarget);
+    if (aliasMatch && row[aliasMatch] !== null && row[aliasMatch] !== "") return row[aliasMatch];
+  }
+
+  const fuzzyMatch = rowKeys.find((key) => {
+    const normalizedKey = normalizeKey(key);
+    return normalizedKey.includes(target) || target.includes(normalizedKey);
+  });
+  if (fuzzyMatch && row[fuzzyMatch] !== null && row[fuzzyMatch] !== "") return row[fuzzyMatch];
+
+  return exactMatch ? row[exactMatch] : null;
 };
 
 const toNumber = (value) => {
@@ -280,12 +368,30 @@ export const buildFieldWidgetData = (widget, rows, startDate, endDate) => {
   };
 };
 
+const BR_WASTE_STUDY_TYPE_BY_SCREEN = {
+  "BR Waste Study T-1": "Type 1",
+  "BR Waste Study T-2": "Type 2",
+  "BR Waste Study T-3": "Type 3",
+  "Card Waste Study T-1": "Type 1",
+  "Card Waste Study T-2": "Type 2",
+  "Card Waste Study T-3": "Type 3",
+};
+
 export const fetchRowsForDashboardWidget = async (widget) => {
+  const screenName = widget?.input_screen || widget?.screen_name;
+  const fetcher =
+    screenFetchers?.[widget?.department]?.[widget?.sub_department]?.[screenName];
   const endpoint =
     widget?.endpoint ||
-    screenEndpoints?.[widget?.department]?.[widget?.sub_department]?.[
-      widget?.input_screen || widget?.screen_name
-    ];
+    screenEndpoints?.[widget?.department]?.[widget?.sub_department]?.[screenName];
+  const brWasteStudyType = BR_WASTE_STUDY_TYPE_BY_SCREEN[screenName];
+
+  if (fetcher) {
+    const rows = normalizeDashboardRows(await fetcher({ page: 1, limit: 500 }));
+    return brWasteStudyType
+      ? rows.filter((row) => row?.study_type === brWasteStudyType)
+      : rows;
+  }
 
   const fallbackParams = {
     department: widget?.department,
@@ -317,7 +423,10 @@ export const fetchRowsForDashboardWidget = async (widget) => {
       { skipGlobalErrorModal: true }
     );
 
-    return normalizeDashboardRows(response?.data);
+    const rows = normalizeDashboardRows(response?.data);
+    return brWasteStudyType
+      ? rows.filter((row) => row?.study_type === brWasteStudyType)
+      : rows;
   } catch (error) {
     if (error?.response?.status === 404) {
       return fetchFallbackRows();

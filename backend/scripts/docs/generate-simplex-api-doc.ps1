@@ -133,7 +133,7 @@ $fieldRows = @(
 
 $payloadRows = @(
   @('Wrapping Notebook', 'entry_id, serial_no, date/date_text, mac_name, shift, std_hank, avg_hank, sd, cv, user_name, remark'),
-  @('SMX Cots Change', 'entry_id, type, s_no, entry_date, machine_name, items[]'),
+  @('SMX Cots Change', 'entry_id, type, entry_date, machine_name, items[]'),
   @('Study', 'entry_id, s_no, entry_date, machine_name, operator_name, shift, inspection_items, user_fiber_parameters, epi_parameters, other_field_values'),
   @('UQC', 'entry_id, entry_type, entry_date, shift, variety, department, mc_no, u_percent, cvm, cvm_1m, cvm_3m, remarks'),
   @('Process Parameter', 'entry_id, count_name, consignee_name, creation_date, machine_no, make, delivery_hank, tpi_tm, speed, roller settings, drafts, pressure fields, wheels')
@@ -150,7 +150,7 @@ $idRows = @(
 $dbRows = @(
   @('wrapping.simplex_notebook', 'Wrapping simplex notebook rows'),
   @('simplex.simplex_inspections', 'SMX Cots Change inspection headers'),
-  @('simplex.simplex_inspection_details', 'SMX Cots Change detail items'),
+  @('simplex.simplex_inspection_details', 'SMX Cots Change detail items (item_name, status_value)'),
   @('simplex.smx_breaks_study_header', 'SMX Breaks Study headers'),
   @('simplex.smx_breaks_inspection_items', 'Study inspection and derived rows'),
   @('simplex.smx_user_fiber_parameters', 'Study user fiber values'),

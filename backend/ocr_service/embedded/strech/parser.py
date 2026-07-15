@@ -174,6 +174,7 @@ def _extract_meta_for_block(rows: List[List[OCRResult]], header_idx: int, next_h
     raw = raw_before_header
     meta: Dict[str, str] = {}
 
+    tester = _extract_tester(raw)
     test_ids = re.findall(r"test\s*id\s*[:=\-]?\s*(\d+)", raw, re.IGNORECASE)
     total_tests = re.findall(r"total\s*test\s*[:=\-]?\s*(\d+)", raw, re.IGNORECASE)
     lengths = re.findall(r"\blength\s*[:=\-]?\s*(\d+(?:\.\d+)?)", raw_length_scope, re.IGNORECASE)
@@ -195,6 +196,8 @@ def _extract_meta_for_block(rows: List[List[OCRResult]], header_idx: int, next_h
     )
     remarks = re.findall(r"remark\s*[:=\-]?\s*(.*?)(?=\s+test\s*id\s*:|\s*$)", raw, re.IGNORECASE)
 
+    if tester:
+        meta["Tester"] = tester
     if test_ids:
         meta["Test ID"] = test_ids[-1].strip()
     if total_tests:
@@ -232,6 +235,67 @@ def _rows_until_next_test_id(rows: List[List[OCRResult]]) -> List[List[OCRResult
 
 def _clean_meta_value(value: str) -> str:
     return re.sub(r"\s+", "", value.strip())
+
+
+def _extract_tester(raw: str) -> Optional[str]:
+    lines = [
+        re.sub(r"\s+", " ", line).strip()
+        for line in re.split(r"\r?\n|\s{3,}", raw or "")
+        if line and line.strip()
+    ]
+    stop_words = [
+        "test id",
+        "total test",
+        "number of entries",
+        "std. stretch",
+        "std stretch",
+        "stretch %",
+        "sample no",
+        "remark",
+        "length",
+        "date",
+        "page",
+        "shift",
+        "process",
+    ]
+
+    def clean(value: str) -> str:
+        text = re.sub(r"\s+", " ", value or "").strip(" :=-")
+        label_pattern = re.compile(
+            r"\b(?:"
+            r"test\s*id|total\s*test|number\s*of\s*entries|std\.?\s*stretch|std\s*stretch|stretch\s*%|"
+            r"sample\s*no|remark|length|date|page|shift|process"
+            r")\b",
+            re.IGNORECASE,
+        )
+        match = label_pattern.search(text)
+        if match and match.start() > 0:
+            text = text[:match.start()].strip(" :=-")
+        lower = text.lower()
+        for stop_word in stop_words:
+            index = lower.find(stop_word)
+            if index > 0:
+                text = text[:index].strip(" :=-")
+                lower = text.lower()
+        return text
+
+    for idx, line in enumerate(lines):
+        match = re.search(r"\btester(?:\s*name)?\s*[:=\-]?\s*(.+)$", line, re.IGNORECASE)
+        if match:
+            value = clean(match.group(1))
+            if value:
+                return value
+        if re.match(r"^tester(?:\s*name)?$", line, re.IGNORECASE) and idx + 1 < len(lines):
+            value = clean(lines[idx + 1])
+            if value:
+                return value
+
+    match = re.search(r"\btester(?:\s*name)?\s*[:=\-]?\s*([A-Za-z][A-Za-z0-9 ._/'-]{1,80})", raw or "", re.IGNORECASE)
+    if match:
+        value = clean(match.group(1))
+        if value:
+            return value
+    return None
 
 
 def _assign_to_column(x: float, col_centers: Dict[str, float], threshold: int = 90) -> Optional[str]:
@@ -377,6 +441,7 @@ def _extract_meta_from_tokens(tokens: List[str], table_no: str) -> Dict[str, str
     raw = " ".join(tokens)
     meta = {"Row Type": "Meta", "Table No": table_no}
 
+    tester = _extract_tester(raw)
     test_ids = re.findall(r"test\s*id\s*[:=\-]?\s*(\d+)", raw, re.IGNORECASE)
     total_tests = re.findall(r"total\s*test\s*[:=\-]?\s*(\d+)", raw, re.IGNORECASE)
     lengths = re.findall(r"\blength\s*[:=\-]?\s*(\d+(?:\.\d+)?)", raw, re.IGNORECASE)
@@ -398,6 +463,8 @@ def _extract_meta_from_tokens(tokens: List[str], table_no: str) -> Dict[str, str
     )
     remarks = re.findall(r"remark\s*[:=\-]?\s*(.*?)(?=\s+test\s*id\s*:|\s*$)", raw, re.IGNORECASE)
 
+    if tester:
+        meta["Tester"] = tester
     if test_ids:
         meta["Test ID"] = test_ids[0].strip()
     if total_tests:

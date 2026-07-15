@@ -46,102 +46,7 @@ const formatDateDisplay = (value) => {
   return year && month && day ? `${day}-${month}-${year}` : String(value);
 };
 
-const parseMaybeJson = (value) => {
-  if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  if (!trimmed || !["{", "["].includes(trimmed[0])) return value;
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return value;
-  }
-};
-
-const firstText = (...values) => {
-  for (const value of values) {
-    const parsed = parseMaybeJson(value);
-
-    if (Array.isArray(parsed)) {
-      const nested = firstText(...parsed);
-      if (nested) return nested;
-      continue;
-    }
-
-    if (parsed && typeof parsed === "object") {
-      const nested = firstText(
-        parsed.full_name,
-        parsed.fullName,
-        parsed.name,
-        parsed.user_name,
-        parsed.userName,
-        parsed.employee_name,
-        parsed.employeeName,
-        parsed.employee_id,
-        parsed.employeeId,
-        parsed.id
-      );
-      if (nested) return nested;
-      continue;
-    }
-
-    const text = String(parsed ?? "").trim();
-    if (text) return text;
-  }
-
-  return "";
-};
-
-const REVIEW_STATUS_FILTER_OPTIONS = [
-  "Pending Approval",
-  "Open",
-  "In Progress",
-  "Submit",
-  "Reopened",
-];
-
-const getReviewSubDepartment = (ticket) =>
-  firstText(
-    ticket?.sub_department,
-    ticket?.subDepartment,
-    ticket?.sub_department_name,
-    ticket?.subDepartmentName,
-    ticket?.management_field,
-    ticket?.managementField,
-    ticket?.department
-  ) || "-";
-
-const getReviewL2 = (ticket) =>
-  firstText(
-    ticket?.l2_approvers,
-    ticket?.l2Approvers,
-    ticket?.approval_l2_name,
-    ticket?.approvalL2Name,
-    ticket?.l2_approver_name,
-    ticket?.l2ApproverName,
-    ticket?.l2_name,
-    ticket?.assigned_l2_name,
-    ticket?.approval_l2_user_ids,
-    ticket?.approvalL2UserIds,
-    ticket?.approval_l2,
-    ticket?.l2_approver
-  ) || "-";
-
-const getReviewL3 = (ticket) =>
-  firstText(
-    ticket?.l3_approvers,
-    ticket?.l3Approvers,
-    ticket?.approval_l3_name,
-    ticket?.approvalL3Name,
-    ticket?.l3_approver_name,
-    ticket?.l3ApproverName,
-    ticket?.l3_name,
-    ticket?.assigned_l3_name,
-    ticket?.approval_l3_user_ids,
-    ticket?.approvalL3UserIds,
-    ticket?.approval_l3,
-    ticket?.l3_approver
-  ) || getReviewL2(ticket);
+const PP_ENTRY_ID_PATTERN = /^PP-\d{4,}$/i;
 
 // PP_NOTEBOOK_INCOMPLETE tickets from /operator-tickets/process-parameter-ticketing —
 // these no longer appear in the generic /tickets feed (segregation fix), so they're
@@ -168,6 +73,8 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const dispatch = useDispatch();
   const router = useRouter();
   const isL3Mode = String(mode || "").trim().toUpperCase() === "L3";
+  // L3 is a full-visibility review role — it can see and switch between every
+  // ticketing system (threshold, submission, process parameter), not just one.
 
   const { tickets, isLoading, error } =
     useSelector((state) => state.supervisor) || {};
@@ -183,19 +90,23 @@ export default function SupervisorDashboard({ mode = "L2" }) {
         ? tickets.data
         : [];
 
+  // L3 is a full-visibility review role — it sees every ticket regardless of
+  // which TAT level (L1/L2/L3) currently owns it, same as an admin user.
+  const visibilityCheck = isSupervisorVisibleTicket;
   const safeTickets = applyStoredTicketStatuses(sourceTickets)
-    .filter((ticket) => isAdminUser || isSupervisorVisibleTicket(ticket))
+    .filter((ticket) => isAdminUser || isL3Mode || visibilityCheck(ticket))
     .map(transformTicket);
-  const supervisorTicketQuery = isAdminUser
-    ? {
-        include_all: true,
-        all_users: true,
-        all_tickets: true,
-        scope: "all",
-      }
-    : {};
+  const supervisorTicketQuery =
+    isAdminUser || isL3Mode
+      ? {
+          include_all: true,
+          all_users: true,
+          all_tickets: true,
+          scope: "all",
+        }
+      : {};
 
-  const [status, setStatus] = useState(isReviewOnlyL3Mode ? "Pending Approval" : "");
+  const [status, setStatus] = useState("");
   const [severity, setSeverity] = useState("");
   const [operator, setOperator] = useState("");
   const [notebookType, setNotebookType] = useState("");
@@ -204,7 +115,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
-  const [activeTicketingView, setActiveTicketingView] = useState(isReviewOnlyL3Mode ? "review" : "threshold");
+  const [activeTicketingView, setActiveTicketingView] = useState("threshold");
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
   const [processParameterTicketData, setProcessParameterTicketData] = useState([]);
   const [processParameterError, setProcessParameterError] = useState("");
@@ -228,7 +139,10 @@ export default function SupervisorDashboard({ mode = "L2" }) {
         console.warn("getProcessParameterTickets returned an unrecognized response shape:", response);
       }
 
-      setProcessParameterTicketData(ticketsArray.map(formatProcessParameterTicket));
+      const formattedPpTickets = ticketsArray.map(formatProcessParameterTicket);
+      setProcessParameterTicketData(
+        isAdminUser || isL3Mode ? formattedPpTickets : formattedPpTickets.filter(visibilityCheck)
+      );
     } catch (ppError) {
       console.error("Error fetching process parameter tickets:", ppError);
       setProcessParameterTicketData([]);
@@ -276,16 +190,6 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     input.click();
   };
 
-  useEffect(() => {
-    if (!isReviewOnlyL3Mode) return;
-    setActiveTicketingView("review");
-    setStatus("Pending Approval");
-    setSeverity("");
-    setOperator("");
-    setNotebookType("");
-    setPage(1);
-  }, [isReviewOnlyL3Mode]);
-
   const filteredTickets = safeTickets.filter((t) => {
     const ticketDate = t.created_at ? new Date(t.created_at) : null;
     const start = startDate ? new Date(startDate) : null;
@@ -300,24 +204,20 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
     const normalizedTicketStatus = String(t.status || "").trim().toLowerCase();
     const normalizedFilterStatus = String(status || "").trim().toLowerCase();
-    const statusMatch = activeTicketingView === "review" && normalizedFilterStatus === "pending approval"
-      ? true
-      : !status ||
-        normalizedTicketStatus === normalizedFilterStatus ||
-        (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
-        (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
+    const statusMatch =
+      !status ||
+      normalizedTicketStatus === normalizedFilterStatus ||
+      (normalizedFilterStatus === "closed" && normalizedTicketStatus === "submit") ||
+      (normalizedFilterStatus === "submit" && normalizedTicketStatus === "closed");
 
-    const operatorMatch = activeTicketingView === "review"
-      ? (!operator || getReviewL3(t) === operator)
-      : (!operator || t.user_name === operator);
-    const notebookTypeMatch = activeTicketingView === "review"
-      ? (!notebookType || getReviewSubDepartment(t) === notebookType)
-      : (!notebookType || (t.notebook_type || t.notebookType || t.notebook || "") === notebookType);
+    const operatorMatch = !operator || t.user_name === operator;
+    const notebookTypeMatch =
+      !notebookType || (t.notebook_type || t.notebookType || t.notebook || "") === notebookType;
 
     return (
       dateMatch &&
       statusMatch &&
-      (activeTicketingView === "review" || !severity || t.severity === severity) &&
+      (!severity || t.severity === severity) &&
       operatorMatch &&
       notebookTypeMatch &&
       (!search ||
@@ -337,26 +237,23 @@ export default function SupervisorDashboard({ mode = "L2" }) {
         .filter(Boolean)
     ),
   ];
-  const reviewSourceTickets = safeTickets.filter(isAcknowledgementReviewTicket);
-  const uniqueReviewSubDepartments = [
-    ...new Set(reviewSourceTickets.map(getReviewSubDepartment).filter((value) => value && value !== "-")),
-  ];
-  const uniqueReviewL3Users = [
-    ...new Set(reviewSourceTickets.map(getReviewL3).filter((value) => value && value !== "-")),
-  ];
-  const statusFilterOptions = activeTicketingView === "review"
-    ? REVIEW_STATUS_FILTER_OPTIONS
-    : SUPERVISOR_VISIBLE_STATUS_OPTIONS;
+  const statusFilterOptions = SUPERVISOR_VISIBLE_STATUS_OPTIONS;
 
-  const reviewTickets = filteredTickets.filter(isAcknowledgementReviewTicket);
-  const submissionTickets = filteredTickets.filter(
-    (ticket) => isSubmissionTicketRecord(ticket) && !isAcknowledgementReviewTicket(ticket)
+  // Acknowledgement-overdue tickets are just another kind of submission
+  // ticket now — no separate Review tab/category.
+  const submissionTickets = filteredTickets.filter(isSubmissionTicketRecord);
+  // PP batch-completion (process parameter) tickets have their own dedicated
+  // tab/endpoint above — exclude them here so they don't also show up mixed
+  // into the Threshold Ticketing Sys. tab just because the generic /tickets
+  // feed happens to include them alongside real threshold tickets.
+  const thresholdTickets = filteredTickets.filter(
+    (ticket) => !isSubmissionTicketRecord(ticket) && !isPpBatchCompletionTicketRecord(ticket)
   );
-  const thresholdTickets = filteredTickets.filter((ticket) => !isSubmissionTicketRecord(ticket));
   // Process parameter tickets come from their own dedicated endpoint (not the
   // generic /tickets feed safeTickets is built from), so they get their own
   // simple filter pass instead of running through the shared filteredTickets logic.
   const processParameterTickets = processParameterTicketData.filter((t) => {
+    if (!PP_ENTRY_ID_PATTERN.test(String(t.entryId || "").trim())) return false;
     const ticketDate = t.created_at ? new Date(t.created_at) : null;
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate) : null;
@@ -383,11 +280,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const displayTickets =
     activeTicketingView === "threshold"
       ? thresholdTickets
-      : activeTicketingView === "submission"
-        ? submissionTickets
-        : activeTicketingView === "process_parameter"
-          ? processParameterTickets
-          : reviewTickets;
+      : activeTicketingView === "process_parameter"
+        ? processParameterTickets
+        : submissionTickets;
 
   const totalPages = Math.max(
     1,
@@ -402,15 +297,14 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   };
 
   const handleDashboardTicketClick = (ticket) => {
-    if (activeTicketingView === "review" || isAcknowledgementReviewTicket(ticket)) return;
+    if (isAcknowledgementReviewTicket(ticket)) return;
     handleTicketClick(ticket.ticket_id);
   };
 
   const selectTicketingView = (view) => {
-    if (isReviewOnlyL3Mode && view !== "review") return;
     setActiveTicketingView(view);
     setPage(1);
-    setStatus(view === "review" ? "Pending Approval" : "");
+    setStatus("");
     setSeverity("");
     setOperator("");
     setNotebookType("");
@@ -468,38 +362,29 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     <div className={styles["sup-page"]}>
       <div className={styles["sup-content"]}>
         <h1 className={styles["sup-title"]}>{mode} Ticketing Dashboard</h1>
-        {!isReviewOnlyL3Mode ? (
-          <div className={styles["ticketing-toggle"]}>
-            <button
-              type="button"
-              className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "threshold" ? styles["ticketing-toggle-btn-active"] : ""}`}
-              onClick={() => selectTicketingView("threshold")}
-              >
-              Threshold Ticketing Sys.
-            </button>
-            <button
-              type="button"
-              className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "submission" ? styles["ticketing-toggle-btn-active"] : ""}`}
-              onClick={() => selectTicketingView("submission")}
-              >
-              Submission Ticketing Sys.
-            </button>
-            <button
-              type="button"
-              className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "review" ? styles["ticketing-toggle-btn-active"] : ""}`}
-              onClick={() => selectTicketingView("review")}
-              >
-              Review Ticketing Sys.
-            </button>
-            <button
-              type="button"
-              className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "process_parameter" ? styles["ticketing-toggle-btn-active"] : ""}`}
-              onClick={() => selectTicketingView("process_parameter")}
-              >
-              Process Parameter Tickets
-            </button>
-          </div>
-        ) : null}
+        <div className={styles["ticketing-toggle"]}>
+          <button
+            type="button"
+            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "threshold" ? styles["ticketing-toggle-btn-active"] : ""}`}
+            onClick={() => selectTicketingView("threshold")}
+            >
+            Threshold Ticketing Sys.
+          </button>
+          <button
+            type="button"
+            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "submission" ? styles["ticketing-toggle-btn-active"] : ""}`}
+            onClick={() => selectTicketingView("submission")}
+            >
+            Submission Ticketing Sys.
+          </button>
+          <button
+            type="button"
+            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "process_parameter" ? styles["ticketing-toggle-btn-active"] : ""}`}
+            onClick={() => selectTicketingView("process_parameter")}
+            >
+            Process Parameter Tickets
+          </button>
+        </div>
 
         {activeTicketingView === "process_parameter" && processParameterError ? (
           <div
@@ -543,89 +428,51 @@ export default function SupervisorDashboard({ mode = "L2" }) {
             </select>
           </div>
 
-          {activeTicketingView === "review" ? (
-            <>
-              <div className={styles["sup-filter"]}>
-                <label>Sub-Department</label>
-                <select
-                  className={styles["sup-select"]}
-                  value={notebookType}
-                  onChange={(e) => setNotebookType(e.target.value)}
-                >
-                  <option value="">All</option>
-                  {uniqueReviewSubDepartments.map((type, i) => (
-                    <option key={i} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          <div className={styles["sup-filter"]}>
+            <label>Severity</label>
+            <select
+              className={styles["sup-select"]}
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value)}
+            >
+              <option value="">All</option>
+              <option>High</option>
+              <option>Medium</option>
+              <option>Low</option>
+            </select>
+          </div>
 
-              <div className={styles["sup-filter"]}>
-                <label>L3</label>
-                <select
-                  className={styles["sup-select"]}
-                  value={operator}
-                  onChange={(e) => setOperator(e.target.value)}
-                >
-                  <option value="">All</option>
-                  {uniqueReviewL3Users.map((op, i) => (
-                    <option key={i} value={op}>
-                      {op}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className={styles["sup-filter"]}>
-                <label>Severity</label>
-                <select
-                  className={styles["sup-select"]}
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value)}
-                >
-                  <option value="">All</option>
-                  <option>High</option>
-                  <option>Medium</option>
-                  <option>Low</option>
-                </select>
-              </div>
+          <div className={styles["sup-filter"]}>
+            <label>Operator</label>
+            <select
+              className={styles["sup-select"]}
+              value={operator}
+              onChange={(e) => setOperator(e.target.value)}
+            >
+              <option value="">All</option>
+              {uniqueOperators.map((op, i) => (
+                <option key={i} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          </div>
 
-              <div className={styles["sup-filter"]}>
-                <label>Operator</label>
-                <select
-                  className={styles["sup-select"]}
-                  value={operator}
-                  onChange={(e) => setOperator(e.target.value)}
-                >
-                  <option value="">All</option>
-                  {uniqueOperators.map((op, i) => (
-                    <option key={i} value={op}>
-                      {op}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles["sup-filter"]}>
-                <label>Notebook Type</label>
-                <select
-                  className={styles["sup-select"]}
-                  value={notebookType}
-                  onChange={(e) => setNotebookType(e.target.value)}
-                >
-                  <option value="">All</option>
-                  {uniqueNotebookTypes.map((type, i) => (
-                    <option key={i} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
+          <div className={styles["sup-filter"]}>
+            <label>Notebook Type</label>
+            <select
+              className={styles["sup-select"]}
+              value={notebookType}
+              onChange={(e) => setNotebookType(e.target.value)}
+            >
+              <option value="">All</option>
+              {uniqueNotebookTypes.map((type, i) => (
+                <option key={i} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className={styles["sup-date-group"]}>
             <div className={styles["sup-filter"]}>
@@ -676,15 +523,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
             <thead>
               <tr>
                 <th>TICKET ID</th>
-                {activeTicketingView === "review" ? (
-                  <>
-                    <th>SUB DEPARTMENT</th>
-                    <th>L2</th>
-                    <th>NOTEBOOK</th>
-                    <th>STATUS</th>
-                    <th>CREATED AT</th>
-                  </>
-                ) : activeTicketingView === "submission" ? (
+                {activeTicketingView === "submission" ? (
                   <>
                     <th>OPERATOR</th>
                     <th>NOTEBOOK</th>
@@ -739,13 +578,32 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                       <td className={styles["sup-ticket-link"]}>
                         {t.ticket_id}
                       </td>
-                      {activeTicketingView === "review" ? (
+                      {activeTicketingView === "submission" ? (
                         <>
-                          <td>{getReviewSubDepartment(t)}</td>
-                          <td>{getReviewL2(t)}</td>
+                          <td>{t.user_name}</td>
                           <td>{getTicketNotebookLabel(t)}</td>
+                          <td>{primaryParam}</td>
                           <td>
-                            {isReviewOnlyL3Mode ? (
+                            {isPpBatchCompletionTicketRecord(t) || isAcknowledgementReviewTicket(t)
+                              ? `${Math.max(0, Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60)))}h`
+                              : t.frequency || t.submission_frequency || t.check_frequency || "-"}
+                          </td>
+                          <td>
+                            {isPpBatchCompletionTicketRecord(t) || isAcknowledgementReviewTicket(t)
+                              ? 1
+                              : t.occurrences || t.occurrence_count || t.count || "-"}
+                          </td>
+                          <td>
+                            <span
+                              className={`${styles["sup-badge"]} ${
+                                styles[t.severity?.toLowerCase()]
+                              }`}
+                            >
+                              {t.severity}
+                            </span>
+                          </td>
+                          <td>
+                            {isReviewOnlyL3Mode && isAcknowledgementReviewTicket(t) ? (
                               <span
                                 className={`${styles["status-badge"]} ${
                                   styles[`status-${getStatusClassKey(t.status)}`] ||
@@ -771,39 +629,6 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                                 </select>
                               </span>
                             )}
-                          </td>
-                          <td>{formatDateTime(t.created_at)}</td>
-                        </>
-                      ) : activeTicketingView === "submission" ? (
-                        <>
-                          <td>{t.user_name}</td>
-                          <td>{getTicketNotebookLabel(t)}</td>
-                          <td>{primaryParam}</td>
-                          <td>
-                            {isPpBatchCompletionTicketRecord(t)
-                              ? `${Math.max(0, Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60)))}h`
-                              : t.frequency || t.submission_frequency || t.check_frequency || "-"}
-                          </td>
-                          <td>{isPpBatchCompletionTicketRecord(t) ? 1 : t.occurrences || t.occurrence_count || t.count || "-"}</td>
-                          <td>
-                            <span
-                              className={`${styles["sup-badge"]} ${
-                                styles[t.severity?.toLowerCase()]
-                              }`}
-                            >
-                              {t.severity}
-                            </span>
-                          </td>
-                          <td>
-                            <span
-                              className={`${styles["status-badge"]} ${
-                                styles[`status-${getStatusClassKey(t.status)}`] ||
-                                styles[getStatusClassKey(t.status).replace(/-/g, "_")] ||
-                                ""
-                              }`}
-                            >
-                              {getSupervisorStatusLabel(t.status)}
-                            </span>
                           </td>
                           <td>{formatDateTime(t.created_at)}</td>
                         </>
@@ -879,13 +704,11 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                 <tr>
                   <td
                     colSpan={
-                      activeTicketingView === "review"
-                        ? "6"
-                        : activeTicketingView === "submission"
+                      activeTicketingView === "submission"
+                        ? "9"
+                        : activeTicketingView === "process_parameter"
                           ? "9"
-                          : activeTicketingView === "process_parameter"
-                            ? "9"
-                            : "10"
+                          : "10"
                     }
                     style={{ textAlign: "center", padding: "24px" }}
                   >
@@ -985,13 +808,11 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
                   <div>
                     <div className={styles["sup-small-label"]}>
-                      {activeTicketingView === "review" ? "Hours Pending" : activeTicketingView === "submission" ? "Frequency" : "Actual"}
+                      {activeTicketingView === "submission" ? "Frequency" : "Actual"}
                     </div>
                     <div className={styles["sup-actual-value"]}>
-                      {activeTicketingView === "review"
-                        ? `${Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60))}h`
-                        : activeTicketingView === "submission"
-                        ? isPpBatchCompletionTicketRecord(t)
+                      {activeTicketingView === "submission"
+                        ? isPpBatchCompletionTicketRecord(t) || isAcknowledgementReviewTicket(t)
                           ? `${Math.max(0, Math.round((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60)))}h`
                           : t.frequency || t.submission_frequency || t.check_frequency || "-"
                         : t.actual ?? "-"}
@@ -1000,33 +821,15 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                 </div>
 
                 <div className={styles["sup-card-bottom"]}>
-                  {activeTicketingView === "review" ? (
-                    isReviewOnlyL3Mode ? (
-                      <div
-                        className={`${styles["status-text"]} ${
-                          styles[getStatusClassKey(t.status).replace(/-/g, "_")]
-                        }`}
-                      >
-                        <span className={styles["status-dot"]} />
-                        {getSupervisorStatusLabel(t.status)}
-                      </div>
-                    ) : (
-                      <div className={styles["status-text"]} onClick={(event) => event.stopPropagation()}>
-                        <span className={styles["status-dot"]} />
-                        <select
-                          className={styles["mobile-status-select"]}
-                          value={t.status}
-                          disabled={statusUpdatingId === t.ticket_id}
-                          onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
-                        >
-                          {getDisplayStatusOptions(t.status).map((option) => (
-                            <option key={option} value={option}>
-                              {getOperatorStatusLabel(option)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )
+                  {isReviewOnlyL3Mode && isAcknowledgementReviewTicket(t) ? (
+                    <div
+                      className={`${styles["status-text"]} ${
+                        styles[getStatusClassKey(t.status).replace(/-/g, "_")]
+                      }`}
+                    >
+                      <span className={styles["status-dot"]} />
+                      {getSupervisorStatusLabel(t.status)}
+                    </div>
                   ) : isAcknowledgementReviewTicket(t) ? (
                     <div className={styles["status-text"]} onClick={(event) => event.stopPropagation()}>
                       <span className={styles["status-dot"]} />
@@ -1053,7 +856,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                       {getSupervisorStatusLabel(t.status)}
                     </div>
                   )}
-                  {activeTicketingView === "review" || isAcknowledgementReviewTicket(t) ? null : (
+                  {isAcknowledgementReviewTicket(t) ? null : (
                     <div className={styles["details-link"]}>Details &gt;</div>
                   )}
                 </div>
@@ -1090,84 +893,48 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                   </select>
                 </div>
 
-                {activeTicketingView === "review" ? (
-                  <>
-                    <div className={styles["sup-filter-group"]}>
-                      <label>Sub-Department</label>
-                      <select
-                        value={notebookType}
-                        onChange={(e) => setNotebookType(e.target.value)}
-                      >
-                        <option value="">All</option>
-                        {uniqueReviewSubDepartments.map((type, i) => (
-                          <option key={i} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                <div className={styles["sup-filter-group"]}>
+                  <label>Severity</label>
+                  <select
+                    value={severity}
+                    onChange={(e) => setSeverity(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    <option>High</option>
+                    <option>Medium</option>
+                    <option>Low</option>
+                  </select>
+                </div>
 
-                    <div className={styles["sup-filter-group"]}>
-                      <label>L3</label>
-                      <select
-                        value={operator}
-                        onChange={(e) => setOperator(e.target.value)}
-                      >
-                        <option value="">All</option>
-                        {uniqueReviewL3Users.map((op, i) => (
-                          <option key={i} value={op}>
-                            {op}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className={styles["sup-filter-group"]}>
-                      <label>Severity</label>
-                      <select
-                        value={severity}
-                        onChange={(e) => setSeverity(e.target.value)}
-                      >
-                        <option value="">All</option>
-                        <option>High</option>
-                        <option>Medium</option>
-                        <option>Low</option>
-                      </select>
-                    </div>
+                <div className={styles["sup-filter-group"]}>
+                  <label>Notebook Type</label>
+                  <select
+                    value={notebookType}
+                    onChange={(e) => setNotebookType(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    {uniqueNotebookTypes.map((type, i) => (
+                      <option key={i} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                    <div className={styles["sup-filter-group"]}>
-                      <label>Notebook Type</label>
-                      <select
-                        value={notebookType}
-                        onChange={(e) => setNotebookType(e.target.value)}
-                      >
-                        <option value="">All</option>
-                        {uniqueNotebookTypes.map((type, i) => (
-                          <option key={i} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className={styles["sup-filter-group"]}>
-                      <label>Operator</label>
-                      <select
-                        value={operator}
-                        onChange={(e) => setOperator(e.target.value)}
-                      >
-                        <option value="">All</option>
-                        {uniqueOperators.map((op, i) => (
-                          <option key={i} value={op}>
-                            {op}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
+                <div className={styles["sup-filter-group"]}>
+                  <label>Operator</label>
+                  <select
+                    value={operator}
+                    onChange={(e) => setOperator(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    {uniqueOperators.map((op, i) => (
+                      <option key={i} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <label>Date Range</label>
                 <div className={styles["sup-date-row"]}>
@@ -1187,7 +954,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                   <button
                     className={styles["reset-btn"]}
                     onClick={() => {
-                      setStatus(isReviewOnlyL3Mode ? "Pending Approval" : "");
+                      setStatus("");
                       setSeverity("");
                       setOperator("");
                       setNotebookType("");

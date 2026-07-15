@@ -18,10 +18,9 @@ import { normalizeProcessParameterId, resolveProcessParameterDisplayId } from "@
 import {
   getProcessParameterCountName,
   readProcessParameterRegistry,
-  resetProcessParameterLocalState,
 } from "@/utils/processParameterRegistry";
-import { loadLocalEntries } from "@/utils/localProcessParameterStore";
 import { fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import {
   buildProcessParameterOptions,
   PROCESS_PARAMETER_COUNT_OPTIONS,
@@ -39,6 +38,7 @@ import {
 } from "@/apis/autoconer";
 import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "@/styles/processParameterPage.module.css";
 
 const updateExistingColumns = [
@@ -117,11 +117,8 @@ const buildFilterParams = (filters) => ({
 
 // Each source's `getId` mirrors the entry_id extraction used by that department's own
 // ProcessParameterDataEntry view, so remote completion state lines up with what those pages show.
-// Spinning doesn't hit the backend yet — it saves to the browser's local store (see
-// localProcessParameterStore), so its source reads from there too (filter query params are
-// meaningless for it since there's no server round-trip). Draw Frame Breaker/Finisher now save
-// via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries (/drawframe/header), distinguished
-// by the entry_scope field.
+// Draw Frame Breaker/Finisher save via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries
+// (/drawframe/header), distinguished by the entry_scope field.
 const REMOTE_STATUS_SOURCES = [
   {
     index: 0,
@@ -177,9 +174,9 @@ const REMOTE_STATUS_SOURCES = [
   },
   {
     index: 6,
-    fetch: () => Promise.resolve({ data: loadLocalEntries("spinning") }),
-    getId: (entry) => entry?.param_id ?? entry?.entry_id,
-    isDone: (entry) => (entry?.status || "DONE") === "DONE",
+    fetch: (filters) => getSpinningProcessParameterEntries({ page: 1, limit: 200, ...buildFilterParams(filters) }),
+    getId: (entry) => entry?.entry_id ?? entry?.param_id,
+    isDone: () => true,
     getDetails: getEntryDetails,
   },
   {
@@ -256,7 +253,7 @@ const getDepartmentFormProps = (department, selectedTypeName, typeOptions) => {
     selectedType: selectedTypeName,
     onTypeChange: () => { },
     standaloneSection: true,
-    savedVersionsTargetId: "process-parameter-saved-versions",
+    savedVersionsTargetId: "",
   };
 
   if (department === "Simplex") {
@@ -330,6 +327,7 @@ export default function ProcessParameterPage() {
   const [drawFrameType, setDrawFrameType] = useState("PP - Breaker Drawing");
   const [autoconerType, setAutoconerType] = useState("Process Parameter");
   const [selectedEntryId, setSelectedEntryId] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [completedCells, setCompletedCells] = useState({});
   const [dynamicRows, setDynamicRows] = useState([]);
   const [remoteStatusMap, setRemoteStatusMap] = useState({});
@@ -487,7 +485,7 @@ export default function ProcessParameterPage() {
           if (!notebookName) return;
           const hours = Number(row?.completion_threshold_hours ?? row?.completionThresholdHours);
           if (!Number.isFinite(hours) || hours <= 0) return;
-          map[notebookName] = hours;
+          map[getColumnForNotebookKey(notebookName)] = hours;
         });
         setPpThresholdMap(map);
       })
@@ -516,7 +514,7 @@ export default function ProcessParameterPage() {
             ticket?.notebook || ticket?.notebook_name || ticket?.notebookName || ticket?.screen_name || ""
           ).trim();
           if (!entryIdValue || !notebookName) return;
-          map[`${entryIdValue}::${notebookName}`] =
+          map[`${entryIdValue}::${getColumnForNotebookKey(notebookName)}`] =
             ticket?.ticket_id || ticket?.ticketId || ticket?.id || ticket?._id || true;
         });
         setPpTicketMap(map);
@@ -873,7 +871,16 @@ export default function ProcessParameterPage() {
       if (typeof saved?.selectedSubDepartment === "string") {
         setSelectedSubDepartment(saved.selectedSubDepartment);
       }
-      if (typeof saved?.selectedEntryId === "string") {
+      // "Create New PP" (the default/most common restored tab) must always
+      // start blank — restoring a leftover selectedEntryId here would make
+      // the backend treat a brand-new PP as a continuation of whatever batch
+      // was last open before the reload (backend can't tell the difference;
+      // both look like "a valid previously-issued entry_id"). Genuine batch
+      // continuation happens through "Update Existing PP" clicking a real
+      // matrix row (handleMatrixCellClick/handleSelectEditTab), not through
+      // this reload restore, so only restore it for the "existing" tab,
+      // which never submits an entry itself.
+      if (typeof saved?.selectedEntryId === "string" && saved?.activeTab === "existing") {
         setSelectedEntryId(saved.selectedEntryId);
       }
       if (typeof saved?.drawFrameType === "string") {
@@ -1000,27 +1007,6 @@ export default function ProcessParameterPage() {
                   <MdPrint /> Print Matrix
                 </button>
               ) : null}
-              <button
-                type="button"
-                className={styles.printMatrixButton}
-                title="Clears this browser's PP id counter and locally-stored Draw Frame/Spinning entries so new PPs start from PP-0001 again. Does not delete backend records (Mixing/Blow Room/Carding/Simplex/Autoconer/Q2/Q3) — those must be removed from the database separately."
-                onClick={() => {
-                  const confirmed = window.confirm(
-                    "This clears the PP id counter and locally-stored Draw Frame/Spinning entries on this browser so new PPs start from PP-0001.\n\n" +
-                      "It does NOT delete backend records (Mixing, Blow Room, Carding, Simplex, Autoconer, AC-Q2, AC-Q3) — those must be deleted from the database first, otherwise their rows and PP ids will still appear.\n\n" +
-                      "Continue?"
-                  );
-                  if (!confirmed) return;
-                  resetProcessParameterLocalState();
-                  setDynamicRows(loadRegistryRows());
-                  loadRemoteStatuses();
-                  setSelectedEntryId("");
-                  setOpenEditTabs([]);
-                  setActiveTab("new");
-                }}
-              >
-                Reset Local PP Data
-              </button>
               <div className={styles.currentDate}>Current Date : {currentDate}</div>
             </div>
           </div>
@@ -1307,14 +1293,33 @@ export default function ProcessParameterPage() {
               )}
               {showFooter ? (
                 <div className={styles.footerWrap}>
+                  {saveError ? (
+                    <div className={styles.messageBox} style={{ color: "#b42318", marginBottom: "8px" }}>
+                      {saveError}
+                    </div>
+                  ) : null}
                   <Footer
                     onBack={() => { }}
                     onClear={() => componentRef.current?.clear?.()}
                     onSave={async () => {
+                      setSaveError("");
                       const valid = componentRef.current?.validate?.();
-                      if (valid === false) return;
+                      if (valid === false) {
+                        setSaveError("Please fill all required fields highlighted in red before saving.");
+                        return;
+                      }
                       const previewItems = componentRef.current?.getPreviewData?.() || [];
-                      const result = await componentRef.current?.submit?.();
+                      let result;
+                      try {
+                        result = await componentRef.current?.submit?.();
+                      } catch (error) {
+                        setSaveError(error?.message || "Unable to save this entry. Please try again.");
+                        return;
+                      }
+                      if (result === false) {
+                        setSaveError("Unable to save this entry. Please check the form and try again.");
+                        return;
+                      }
                       refreshRegistryRows();
                       const batchDisplayId = resolveProcessParameterDisplayId(result, selectedEntryId);
                       if (batchDisplayId && !selectedEntryId) setSelectedEntryId(batchDisplayId);

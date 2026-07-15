@@ -1,5 +1,30 @@
+import { normalizeNameList } from "./submittedNotebookAssignment";
+
 export const getTicketParameterKey = (parameterName) =>
   String(parameterName || "").toLowerCase().trim();
+
+// Tickets can carry their L1 approver(s) under any of these field names
+// depending on ticket type/backend version — same candidate list used for
+// notebook L1 assignment elsewhere in the app.
+const L1_APPROVER_FIELD_CANDIDATES = [
+  "approval_l1_names",
+  "approval_l1_name",
+  "approval_l1",
+  "l1_approver_names",
+  "l1_approver_name",
+  "l1_approver",
+  "l1_users",
+  "l1_user_names",
+  "assigned_l1_names",
+  "assigned_l1",
+];
+
+export const getTicketL1ApproverNames = (ticket) => {
+  const names = L1_APPROVER_FIELD_CANDIDATES.flatMap((field) =>
+    normalizeNameList(ticket?.[field])
+  );
+  return Array.from(new Set(names.filter(Boolean)));
+};
 
 const tryParseJsonObject = (value) => {
   if (typeof value !== "string") return value;
@@ -139,9 +164,19 @@ const getViolationDetails = (ticket) => {
   return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 };
 
-// PP batch-completion tickets (one entry_id spanning up to 10 department screens) carry a
-// distinctive violation_details shape regardless of how the backend's category/ticket_type
-// wording has shifted across iterations — `missing_screens` is the most reliable signal.
+// PP batch-completion / PP notebook-incomplete tickets (one entry_id or PP id
+// spanning one or more department notebooks) carry a distinctive
+// violation_details shape regardless of how the backend's category/ticket_type
+// wording has shifted across iterations — `missing_screens` is the most
+// reliable signal for the multi-screen batch case.
+//
+// The single-notebook "overdue" case (e.g. PP-0002's Mixing cell past its 1h
+// threshold) is emitted by the backend with top-level ticket_type "THRESHOLD"
+// — identical to a real threshold-violation ticket — so it can't be told
+// apart by ticket_type/category at all. Its threshold_value is instead always
+// a JSON object shaped like {"completion_threshold_hours": N}, which a real
+// threshold ticket never has (those carry an actual measured value), so that
+// field is the only reliable signal for this case.
 export const isPpBatchCompletionTicketRecord = (ticket) => {
   const violationDetails = getViolationDetails(ticket);
   const category = String(violationDetails?.category || "").toLowerCase();
@@ -149,8 +184,16 @@ export const isPpBatchCompletionTicketRecord = (ticket) => {
   const hasMissingScreens =
     Array.isArray(violationDetails?.missing_screens) && violationDetails.missing_screens.length > 0;
 
+  const thresholdValue = tryParseJsonObject(ticket?.threshold_value);
+  const hasCompletionThresholdHours =
+    thresholdValue &&
+    typeof thresholdValue === "object" &&
+    !Array.isArray(thresholdValue) &&
+    thresholdValue.completion_threshold_hours !== undefined;
+
   return (
     hasMissingScreens ||
+    hasCompletionThresholdHours ||
     category.includes("missed_frequency") ||
     category.includes("batch") ||
     ticketType.includes("pp_notebook") ||
@@ -472,6 +515,87 @@ export const formatStandardValue = (value) => {
     normalizedValue.nominal_value ??
     "-";
   return actualValue;
+};
+
+// Builds a best-effort multi-step activity timeline directly from the ticket record when
+// the backend's dedicated timeline endpoint returns nothing (which happens today for
+// Submission and Process Parameter tickets, since that endpoint only knows about the
+// Threshold ticket table). Steps are derived from fields every ticket kind already carries
+// (created_at/updated_at, status, violation_details comments) rather than a live audit log,
+// so timestamps for intermediate steps are approximate (they reuse updated_at). Consumers
+// map `type` to their own icon set and format `at` with their own date formatter.
+export const buildTicketActivityTimelineSteps = (ticket) => {
+  const steps = [];
+  const createdAt = ticket?.created_at || ticket?.rawCreatedAt;
+  const machineName = ticket?.machine_name || ticket?.notebook || "system";
+
+  if (createdAt) {
+    steps.push({
+      type: "created",
+      at: createdAt,
+      title: "Ticket Created",
+      description: `Automated system alert triggered by ${machineName}`,
+    });
+  }
+
+  const violationDetails = getViolationDetails(ticket);
+  const statusText = String(
+    ticket?.status ?? ticket?.ticket_status ?? ticket?.current_status ?? ticket?.state ?? ""
+  ).trim().toLowerCase();
+  const updatedAt = ticket?.updated_at || ticket?.updatedAt || createdAt;
+
+  const operatorComment =
+    violationDetails?.operator_comment ||
+    violationDetails?.comment ||
+    violationDetails?.remarks ||
+    ticket?.operator_comment ||
+    null;
+
+  if (operatorComment) {
+    steps.push({
+      type: "operator_comment",
+      at: updatedAt,
+      title: "Fix Submitted",
+      description: operatorComment,
+    });
+  }
+
+  const l2Comment =
+    violationDetails?.l2_comment ||
+    violationDetails?.l2_remarks ||
+    violationDetails?.supervisor_comment ||
+    violationDetails?.rejection_reason ||
+    violationDetails?.reject_reason ||
+    violationDetails?.approver_comment ||
+    ticket?.rejection_reason ||
+    null;
+
+  if (l2Comment) {
+    const isRejection = statusText.includes("reopen") || /reject/i.test(String(l2Comment));
+    steps.push({
+      type: isRejection ? "l2_rejected" : "l2_approved",
+      at: updatedAt,
+      title: isRejection ? "Rejected by L2" : "Approved by L2",
+      description: l2Comment,
+    });
+  } else if (statusText.includes("closed") || statusText.includes("approved")) {
+    const isAcknowledge = String(ticket?.action_mode || ticket?.actionMode || "").trim().toUpperCase() === "ACKNOWLEDGE";
+    steps.push({
+      type: "closed",
+      at: updatedAt,
+      title: isAcknowledge ? "Acknowledged" : "Closed",
+      description: isAcknowledge ? "Ticket acknowledged by L2." : "Ticket marked closed.",
+    });
+  } else if (statusText.includes("in progress")) {
+    steps.push({
+      type: "in_progress",
+      at: updatedAt,
+      title: "In Progress",
+      description: "Ticket picked up and is being worked on.",
+    });
+  }
+
+  return steps;
 };
 
 export const transformTicket = (ticket) => {

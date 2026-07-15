@@ -38,11 +38,12 @@ def reconstruct_table(results: List[OCRResult]) -> List[Dict[str, str]]:
         return []
 
     total_test = _extract_total_test(results)
+    tester = _extract_tester(results)
     standard_apct, apct_n_minus1, apct_n_plus1 = _extract_apct_meta(results)
     rows = _group_into_rows(results)
     if not rows:
         extracted_rows = _extract_rows_from_result_text(results)
-        return _prepend_meta_row(extracted_rows, total_test, standard_apct, apct_n_minus1, apct_n_plus1)
+        return _prepend_meta_row(extracted_rows, total_test, standard_apct, apct_n_minus1, apct_n_plus1, tester)
 
     header_idx, col_centers = _find_header_row(rows)
     if header_idx == -1:
@@ -52,7 +53,7 @@ def reconstruct_table(results: List[OCRResult]) -> List[Dict[str, str]]:
         if _count_data_rows(fallback_rows) > _count_data_rows(extracted_rows):
             extracted_rows = fallback_rows
         logger.info(f"[A% Parser] Fallback extracted {len(extracted_rows)} rows.")
-        return _prepend_meta_row(extracted_rows, total_test, standard_apct, apct_n_minus1, apct_n_plus1)
+        return _prepend_meta_row(extracted_rows, total_test, standard_apct, apct_n_minus1, apct_n_plus1, tester)
 
     extracted_rows: List[Dict[str, str]] = []
 
@@ -82,7 +83,7 @@ def reconstruct_table(results: List[OCRResult]) -> List[Dict[str, str]]:
             extracted_rows = fallback_rows
 
     logger.info(f"[A% Parser] Extracted {len(extracted_rows)} rows.")
-    return _prepend_meta_row(extracted_rows, total_test, standard_apct, apct_n_minus1, apct_n_plus1)
+    return _prepend_meta_row(extracted_rows, total_test, standard_apct, apct_n_minus1, apct_n_plus1, tester)
 
 
 def _prepend_meta_row(
@@ -91,11 +92,14 @@ def _prepend_meta_row(
     standard_apct: Optional[str],
     apct_n_minus1: Optional[str],
     apct_n_plus1: Optional[str],
+    tester: Optional[str],
 ) -> List[Dict[str, str]]:
-    if not (total_test or standard_apct or apct_n_minus1 or apct_n_plus1):
+    if not (total_test or standard_apct or apct_n_minus1 or apct_n_plus1 or tester):
         return extracted_rows
 
     meta_row = {"Row Type": "Meta"}
+    if tester:
+        meta_row["Tester"] = tester
     if total_test:
         meta_row["Total Test"] = str(total_test)
         meta_row["Number of Entries (N)"] = str(total_test)
@@ -130,6 +134,49 @@ def _extract_apct_meta(results: List[OCRResult]) -> Tuple[Optional[str], Optiona
     n_plus1_val = n_plus1_match.group(1).strip() if n_plus1_match else None
 
     return std_val, n_minus1_val, n_plus1_val
+
+
+def _extract_tester(results: List[OCRResult]) -> Optional[str]:
+    lines = [r.text.strip() for r in results if r.text and r.text.strip()]
+    stop_words = [
+        "test id",
+        "total test",
+        "number of entries",
+        "standard a",
+        "a% ",
+        "sample no",
+        "date",
+        "page",
+    ]
+
+    def clean(value: str) -> str:
+        text = re.sub(r"\s+", " ", value or "").strip(" :=-")
+        lower = text.lower()
+        for stop_word in stop_words:
+            index = lower.find(stop_word)
+            if index > 0:
+                text = text[:index].strip(" :=-")
+                lower = text.lower()
+        return text
+
+    for idx, line in enumerate(lines):
+        match = re.search(r"\b(?:tester(?:\s*name)?|tested\s*by|operator)\s*[:=\-]?\s*(.+)$", line, re.IGNORECASE)
+        if match:
+            value = clean(match.group(1))
+            if value:
+                return value
+        if re.match(r"^(?:tester(?:\s*name)?|tested\s*by|operator)$", line, re.IGNORECASE) and idx + 1 < len(lines):
+            value = clean(lines[idx + 1])
+            if value:
+                return value
+
+    raw = " ".join(lines)
+    match = re.search(r"\b(?:tester(?:\s*name)?|tested\s*by|operator)\s*[:=\-]?\s*([A-Za-z][A-Za-z0-9 ._/'-]{1,80})", raw, re.IGNORECASE)
+    if match:
+        value = clean(match.group(1))
+        if value:
+            return value
+    return None
 
 
 def _group_into_rows(results: List[OCRResult], y_tolerance: int = 12) -> List[List[OCRResult]]:

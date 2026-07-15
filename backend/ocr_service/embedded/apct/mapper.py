@@ -15,6 +15,7 @@ DASH_PLACEHOLDERS = {"â€”", "â€“"}
 FIELD_ORDER = [
     "Row Type",
     "Label",
+    "Tester",
     "Sample No",
     "N-1",
     "N",
@@ -29,6 +30,7 @@ FIELD_ORDER = [
 FIELD_MAP: Dict[str, str] = {
     "Row Type": "Row Type",
     "Label": "Label",
+    "Tester": "Tester",
     "Sample No": "Sample No",
     "N-1": "N-1",
     "N": "N",
@@ -45,8 +47,8 @@ def clean_mapped_value(value) -> Optional[str]:
     if value is None:
         return None
 
-    text = str(value).strip()
-    if not text or text in DASH_PLACEHOLDERS or all(char in DASH_CHARS for char in text):
+    text = str(value)
+    if not text.strip() or text.strip() in DASH_PLACEHOLDERS or all(char in DASH_CHARS for char in text.strip()):
         return None
     return text
 

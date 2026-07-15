@@ -14,6 +14,7 @@ const resultsCard = $('resultsCard');
 
 const totalTest = $('totalTest');
 const numberEntries = $('numberEntries');
+const tester = $('tester');
 const standardApct = $('standardApct');
 const apctNMinus1 = $('apctNMinus1');
 const apctNPlus1 = $('apctNPlus1');
@@ -42,9 +43,11 @@ runOcrBtn.addEventListener('click', async () => {
 
   try {
     const result = await runApctOcr(formData);
-    const rows = result.json_output || result.data || result.extracted_tables || [];
-    populateFields(rows);
+    const rawText = getRawTextFromOcrResponse(result);
+    const serverTester = (result?.meta && result.meta.tester) ? result.meta.tester : '';
+    const rows = backfillTesterRows(getRowsFromOcrResponse(result), rawText, serverTester);
     resultsCard.style.display = 'block';
+    populateFields(rows);
     statusText.textContent = 'Extraction complete.';
   } catch (err) {
     statusText.textContent = `Error: ${err.message}`;
@@ -57,6 +60,26 @@ function resolveApiBase() {
   if (window.OCR_API_BASE) return String(window.OCR_API_BASE).replace(/\/$/, '');
   if (window.location.protocol === 'file:') return 'http://localhost:4000/ocr-machine';
   return `${window.location.origin}/ocr-machine`;
+}
+
+function getRowsFromOcrResponse(data) {
+  const result = data?.result || data || {};
+  return (
+    firstArray(result.data) ||
+    firstArray(result.json_output) ||
+    firstArray(result.extracted_tables) ||
+    firstArray(result.raw_tables) ||
+    []
+  );
+}
+
+function getRawTextFromOcrResponse(data) {
+  const result = data?.result || data || {};
+  return result.raw_text || '';
+}
+
+function firstArray(value) {
+  return Array.isArray(value) ? value : null;
 }
 
 async function runApctOcr(formData) {
@@ -108,6 +131,7 @@ async function runApctOcr(formData) {
 function populateFields(rows) {
   const parsed = parseApctRows(rows);
   const total = parsed.meta.totalTest || parsed.samples.length.toString();
+  tester.value = preserveTesterValue(parsed.meta.tester);
   totalTest.value = total || '';
   numberEntries.value = parsed.meta.numberEntries || total || '';
   standardApct.value = parsed.meta.standardApct || '';
@@ -124,6 +148,7 @@ function parseApctRows(rows) {
   const meta = {
     totalTest: '',
     numberEntries: '',
+    tester: '',
     standardApct: '',
     apctNMinus1: '',
     apctNPlus1: '',
@@ -136,6 +161,7 @@ function parseApctRows(rows) {
     if (rowType === 'meta') {
       meta.totalTest = cleanDisplayValue(row['Total Test']);
       meta.numberEntries = cleanDisplayValue(row['Number of Entries (N)']);
+      meta.tester = preserveTesterValue(row.Tester || row['Tester Name'] || row['Tested By'] || row.tester);
       meta.standardApct = cleanDisplayValue(row['Standard A%']);
       meta.apctNMinus1 = cleanDisplayValue(row['A% (N-1)']);
       meta.apctNPlus1 = cleanDisplayValue(row['A% (N+1)']);
@@ -163,6 +189,60 @@ function parseApctRows(rows) {
   });
 
   return { samples, summary, meta };
+}
+
+function backfillTesterRows(rows, rawText, serverTester) {
+  const patched = Array.isArray(rows) ? rows.map((row) => ({ ...row })) : [];
+  let metaRow = patched.find((row) => String(row['Row Type'] || '').trim().toLowerCase() === 'meta');
+  if (!metaRow) {
+    metaRow = { 'Row Type': 'Meta' };
+    patched.unshift(metaRow);
+  }
+  const current = preserveTesterValue(metaRow.Tester);
+  if (serverTester && !current) {
+    metaRow.Tester = preserveTesterValue(serverTester);
+    return patched;
+  }
+  const testerValue = extractTesterFromRawText(rawText);
+  if (!current && testerValue) metaRow.Tester = preserveTesterValue(testerValue);
+  return patched;
+}
+
+function preserveTesterValue(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().replace(/^[:=\-\s]+|[:=\-\s]+$/g, '');
+}
+
+function extractTesterFromRawText(rawText) {
+  const lines = String(rawText || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const stopWords = ['test id', 'total test', 'number of entries', 'standard a', 'a% ', 'sample no', 'date', 'page', 'shift', 'process'];
+  const cleanTester = (value) => {
+    let text = preserveTesterValue(value);
+    const lower = text.toLowerCase();
+    for (const stopWord of stopWords) {
+      const index = lower.indexOf(stopWord);
+      if (index > 0) text = text.slice(0, index).trim();
+    }
+    return preserveTesterValue(text);
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const inline = lines[i].match(/\b(?:tester(?:\s*name)?|tested\s*by|operator)\s*[:=\-]?\s*(.+)$/i);
+    if (inline) {
+      const value = cleanTester(inline[1]);
+      if (value) return value;
+    }
+    if (/^(?:tester(?:\s*name)?|tested\s*by|operator)$/i.test(lines[i]) && lines[i + 1]) {
+      const value = cleanTester(lines[i + 1]);
+      if (value) return value;
+    }
+  }
+
+  const joined = lines.join(' ');
+  const compact = joined.match(/\b(?:tester(?:\s*name)?|tested\s*by|operator)\s*[:=\-]?\s*([A-Za-z][A-Za-z0-9 .,'/_-]{1,120})/i);
+  return compact ? cleanTester(compact[1]) : '';
 }
 
 function renderSamples(samples) {

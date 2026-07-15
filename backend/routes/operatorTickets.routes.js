@@ -15,6 +15,17 @@ const nonAcknowledgementTicketWhere = `NOT (
   AND COALESCE(ot.violation_details->>'ticket_type', '') IN ('SUBMISSION_ACKNOWLEDGEMENT', 'NOTEBOOK_ACK_OVERDUE')
 )`;
 
+// Process Parameter (PP notebook) tickets get their own tab (see
+// /process-parameter-ticketing below), same as acknowledgement tickets do --
+// so they must be excluded here to avoid also showing up in the generic
+// ticket list and the Submission tab, both of which otherwise match on
+// ticket_reason = 'MISSING_VALUE' AND category = 'MISSED_FREQUENCY' alone.
+const nonPpNotebookTicketWhere = `NOT (
+  ot.ticket_reason = 'MISSING_VALUE'
+  AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
+  AND COALESCE(ot.violation_details->>'ticket_type', '') IN ('PP_NOTEBOOK_INCOMPLETE', 'PP_BATCH_INCOMPLETE')
+)`;
+
 const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '_');
 const normalizeParameterNames = (parameterName) => {
   if (Array.isArray(parameterName)) {
@@ -161,15 +172,18 @@ const evaluateThresholdBreach = (actual, rule) => {
     .trim();
   const plusThreshold = Number(rule?.plus_threshold);
   const minusThreshold = Number(rule?.minus_threshold);
+  const fallbackThreshold = Number(rule?.threshold_value);
+  const effectivePlus = Number.isFinite(plusThreshold) ? plusThreshold : fallbackThreshold;
+  const effectiveMinus = Number.isFinite(minusThreshold) ? minusThreshold : fallbackThreshold;
 
   if (condition === 'more than') {
-    if (!Number.isFinite(plusThreshold)) return null;
-    return actualNum > plusThreshold;
+    if (!Number.isFinite(effectivePlus)) return null;
+    return actualNum > effectivePlus;
   }
 
   if (condition === 'less than') {
-    if (!Number.isFinite(minusThreshold)) return null;
-    return actualNum < minusThreshold;
+    if (!Number.isFinite(effectiveMinus)) return null;
+    return actualNum < effectiveMinus;
   }
 
   if (condition === 'more and less than') {
@@ -291,6 +305,16 @@ const deriveSeverity = (violationDetails) => {
   return breaches.length ? 'Low' : 'Medium';
 };
 
+const VALID_SEVERITIES = ['High', 'Medium', 'Low'];
+
+// The criticality configured on the threshold rule (Value Threshold page) is authoritative —
+// only fall back to the deviation-based derivation when the caller didn't supply a valid one.
+const resolveSeverity = (requestedSeverity, violationDetails) => {
+  const normalized = String(requestedSeverity || '').trim();
+  const match = VALID_SEVERITIES.find((s) => s.toLowerCase() === normalized.toLowerCase());
+  return match || deriveSeverity(violationDetails);
+};
+
 const getUserById = async (userId) => {
   const result = await client.query(
     `SELECT id, employee_id, full_name, email, level, department, role
@@ -314,9 +338,8 @@ const getUserByEmployeeId = async (employeeId) => {
 };
 
 const isAdminApproverUser = (user) => {
-  const employeeId = String(user?.employee_id || '').trim().toUpperCase();
   const role = String(user?.role || '').trim().toLowerCase();
-  return employeeId === 'ADMIN001' || ['admin', 'super admin', 'superadmin'].includes(role);
+  return ['admin', 'super admin', 'superadmin'].includes(role);
 };
 
 const getUserByFullName = async (fullName) => {
@@ -513,6 +536,37 @@ const ensureOperatorTicketApprovalColumns = async () => {
     ALTER TABLE ticketing_system.operator_tickets
     ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL
   `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS l1_tat_hours integer NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS l2_tat_hours integer NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+    ADD COLUMN IF NOT EXISTS l3_tat_hours integer NULL
+  `);
+};
+
+const ensureThresholdMasterTatColumns = async () => {
+  await client.query(`
+    ALTER TABLE ticketing_system.threshold_master
+    ADD COLUMN IF NOT EXISTS l1_tat_hours integer NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.threshold_master
+    ADD COLUMN IF NOT EXISTS l2_tat_hours integer NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.threshold_master
+    ADD COLUMN IF NOT EXISTS l3_tat_hours integer NULL
+  `);
 };
 
 const ensureNotificationRecipientColumn = async () => {
@@ -570,6 +624,41 @@ const getThresholdApproversFromMaster = async ({
     approval_l1_user_ids: result.rows[0].approval_l1_user_ids || [],
     approval_l2_user_ids: result.rows[0].approval_l2_user_ids || [],
     approval_l3_user_ids: result.rows[0].approval_l3_user_ids || []
+  };
+};
+
+const getThresholdTatHoursFromMaster = async ({
+  department,
+  subDepartment,
+  inputScreen,
+  machineName,
+  parameterName
+}) => {
+  await ensureThresholdMasterTatColumns();
+  const normalizedParameters = normalizeParameterNames(parameterName);
+  if (!department || !subDepartment || !inputScreen || !normalizedParameters.length) {
+    return { l1_tat_hours: null, l2_tat_hours: null, l3_tat_hours: null };
+  }
+
+  const result = await client.query(
+    `SELECT tm.l1_tat_hours, tm.l2_tat_hours, tm.l3_tat_hours
+     FROM ticketing_system.threshold_master tm
+     WHERE tm.department = $1
+       AND tm.sub_department = $2
+       AND tm.input_screen = $3
+       AND tm.input_field = ANY($4::text[])
+       AND tm.is_active = true
+       AND ($5::text IS NULL OR tm.machine_name = $5 OR tm.machine_name IS NULL)
+     ORDER BY CASE WHEN tm.machine_name = $5 THEN 0 ELSE 1 END, tm.id DESC
+     LIMIT 1`,
+    [department, subDepartment, inputScreen, normalizedParameters, machineName || null]
+  );
+
+  if (!result.rows.length) return { l1_tat_hours: null, l2_tat_hours: null, l3_tat_hours: null };
+  return {
+    l1_tat_hours: result.rows[0].l1_tat_hours ?? null,
+    l2_tat_hours: result.rows[0].l2_tat_hours ?? null,
+    l3_tat_hours: result.rows[0].l3_tat_hours ?? null
   };
 };
 
@@ -959,6 +1048,7 @@ const SCREEN_SUBMISSION_SOURCES = {
   'Cotton HVI Data Entry': { table: 'mixing.cotton_hvi_data_entry', dateColumn: 'inspection_date' },
   'Fibre Data Entry': { table: 'mixing.fibre_data_entry', dateColumn: 'inspection_date' },
   'AFIS Data Entry': { table: 'mixing.afis_data_entry', dateColumn: 'inspection_date' },
+  'AFIS-6 Cotton Data Entry': { table: 'mixing.afis6_cotton_data_entry', dateColumn: 'inspection_date' },
   'Moisture Data Entry': { table: 'mixing.moisture_data_entry', dateColumn: 'inspection_date' },
   'Openness Data Entry': { table: 'mixing.openness_inspection', dateColumn: 'inspection_date' }
 };
@@ -1058,12 +1148,21 @@ const ensureScreenFrequencyTable = async () => {
     ALTER TABLE ticketing_system.screen_submission_frequency
     ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL
   `);
+  // submission_window_minutes was a per-screen concept that turned out to be
+  // the wrong model (PP completion is tracked per entry_id batch instead, see
+  // pp_notebook_batch_config in submittedNotebooks.routes.js); drop it rather
+  // than leave it as dead cruft.
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    DROP COLUMN IF EXISTS submission_window_minutes
+  `);
 };
 
 const runSubmissionFrequencyTatCheck = async () => {
   await ensureScreenFrequencyTable();
   await ensureOperatorTicketApprovalColumns();
 
+  // L1 -> L2: only once the L1 grace window (from ticket creation) has actually elapsed.
   await client.query(
     `UPDATE ticketing_system.operator_tickets ot
      SET tat_current_level = 'L2',
@@ -1081,10 +1180,57 @@ const runSubmissionFrequencyTatCheck = async () => {
      WHERE sf.id = ot.submission_frequency_config_id
        AND ot.ticket_reason = 'MISSING_VALUE'
        AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
-       AND COALESCE(ot.tat_current_level, 'L1') = 'L1'`
+       AND COALESCE(ot.tat_current_level, 'L1') = 'L1'
+       AND sf.is_active = true
+       AND sf.l1_tat_hours IS NOT NULL
+       AND sf.l1_tat_hours > 0
+       AND ot.created_at + (sf.l1_tat_hours || ' hours')::interval <= NOW()`
   );
 
-  const result = await client.query(
+  // L2 -> L3: only when an L3 TAT is configured; otherwise the ticket keeps the
+  // legacy two-level behavior and expires straight out of L2 below.
+  await client.query(
+    `UPDATE ticketing_system.operator_tickets ot
+     SET tat_current_level = 'L3',
+         l2_tat_due_at = NULL,
+         l3_tat_due_at = COALESCE(
+           ot.l3_tat_due_at,
+           ot.created_at + (sf.l3_tat_hours || ' hours')::interval
+         ),
+         approval_l3_user_ids = COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])
+     FROM ticketing_system.screen_submission_frequency sf
+     WHERE sf.id = ot.submission_frequency_config_id
+       AND ot.ticket_reason = 'MISSING_VALUE'
+       AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
+       AND ot.tat_current_level = 'L2'
+       AND sf.is_active = true
+       AND sf.l2_tat_hours IS NOT NULL
+       AND sf.l2_tat_hours > 0
+       AND sf.l3_tat_hours IS NOT NULL
+       AND sf.l3_tat_hours > 0
+       AND ot.created_at + (sf.l2_tat_hours || ' hours')::interval <= NOW()`
+  );
+
+  // Expire out of L3 once its TAT elapses.
+  const expiredFromL3 = await client.query(
+    `UPDATE ticketing_system.operator_tickets ot
+     SET status = 'No Due',
+         tat_current_level = 'EXPIRED_L3'
+     FROM ticketing_system.screen_submission_frequency sf
+     WHERE sf.id = ot.submission_frequency_config_id
+       AND ot.status = 'In Progress'
+       AND ot.ticket_reason = 'MISSING_VALUE'
+       AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
+       AND ot.tat_current_level = 'L3'
+       AND sf.is_active = true
+       AND sf.l3_tat_hours IS NOT NULL
+       AND sf.l3_tat_hours > 0
+       AND ot.created_at + (sf.l3_tat_hours || ' hours')::interval <= NOW()
+     RETURNING ot.ticket_id, ot.machine_name, ot.created_at, sf.l1_tat_hours, sf.l2_tat_hours, sf.l3_tat_hours`
+  );
+
+  // Legacy fallback: configs with no L3 TAT still expire directly out of L2.
+  const expiredFromL2 = await client.query(
     `UPDATE ticketing_system.operator_tickets ot
      SET status = 'No Due',
          tat_current_level = 'EXPIRED_L2'
@@ -1093,14 +1239,96 @@ const runSubmissionFrequencyTatCheck = async () => {
        AND ot.status = 'In Progress'
        AND ot.ticket_reason = 'MISSING_VALUE'
        AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'
+       AND ot.tat_current_level = 'L2'
        AND sf.is_active = true
+       AND (sf.l3_tat_hours IS NULL OR sf.l3_tat_hours <= 0)
        AND sf.l2_tat_hours IS NOT NULL
        AND sf.l2_tat_hours > 0
        AND ot.created_at + (sf.l2_tat_hours || ' hours')::interval <= NOW()
-     RETURNING ot.ticket_id, ot.machine_name, ot.created_at, sf.l1_tat_hours, sf.l2_tat_hours`
+     RETURNING ot.ticket_id, ot.machine_name, ot.created_at, sf.l1_tat_hours, sf.l2_tat_hours, sf.l3_tat_hours`
   );
 
-  return result.rows;
+  return [...expiredFromL3.rows, ...expiredFromL2.rows];
+};
+
+// Same L1->L2->L3 TAT escalation as submission-frequency tickets, but for
+// threshold-violation tickets, which carry their own denormalized TAT hours
+// (set from threshold_master at creation time) instead of joining out to
+// screen_submission_frequency.
+const runThresholdTicketTatCheck = async () => {
+  await ensureOperatorTicketApprovalColumns();
+
+  // L1 -> L2: L1 never submitted within its TAT window.
+  const escalatedToL2 = await client.query(
+    `UPDATE ticketing_system.operator_tickets ot
+     SET tat_current_level = 'L2',
+         status = CASE WHEN ot.status = 'Open' THEN 'In Progress' ELSE ot.status END,
+         l1_tat_due_at = NULL,
+         l2_tat_due_at = CASE
+           WHEN ot.l2_tat_hours IS NOT NULL THEN CURRENT_TIMESTAMP + (ot.l2_tat_hours || ' hours')::interval
+           ELSE NULL
+         END
+     WHERE ot.submission_frequency_config_id IS NULL
+       AND COALESCE(ot.tat_current_level, 'L1') = 'L1'
+       AND ot.l1_tat_due_at IS NOT NULL
+       AND ot.l1_tat_due_at <= NOW()
+     RETURNING ot.ticket_id, ot.machine_name, ot.approval_l2_user_ids`
+  );
+
+  for (const row of escalatedToL2.rows) {
+    await createNotificationsForUsers(row.approval_l2_user_ids || [], {
+      ticketId: row.ticket_id,
+      type: 'TICKET_ASSIGNED',
+      category: 'Tickets',
+      priority: 'High',
+      title: `Ticket ${row.ticket_id} needs your attention`,
+      body: `${row.machine_name || 'A ticket'} missed its L1 TAT and was escalated to you.`,
+      linkUrl: `/operator-tickets/${row.ticket_id}`,
+      payload: { ticket_id: row.ticket_id, role: 'L2', reason: 'L1_TAT_EXPIRED' }
+    });
+  }
+
+  // L2 -> L3: L2 never accepted/rejected within its TAT window.
+  const escalatedToL3 = await client.query(
+    `UPDATE ticketing_system.operator_tickets ot
+     SET tat_current_level = 'L3',
+         l2_tat_due_at = NULL,
+         l3_tat_due_at = CASE
+           WHEN ot.l3_tat_hours IS NOT NULL THEN CURRENT_TIMESTAMP + (ot.l3_tat_hours || ' hours')::interval
+           ELSE NULL
+         END
+     WHERE ot.submission_frequency_config_id IS NULL
+       AND ot.tat_current_level = 'L2'
+       AND ot.l2_tat_due_at IS NOT NULL
+       AND ot.l2_tat_due_at <= NOW()
+     RETURNING ot.ticket_id, ot.machine_name, ot.approval_l3_user_ids`
+  );
+
+  for (const row of escalatedToL3.rows) {
+    await createNotificationsForUsers(row.approval_l3_user_ids || [], {
+      ticketId: row.ticket_id,
+      type: 'TICKET_ASSIGNED',
+      category: 'Tickets',
+      priority: 'Critical',
+      title: `Ticket ${row.ticket_id} needs your attention`,
+      body: `${row.machine_name || 'A ticket'} missed its L2 TAT and was escalated to you.`,
+      linkUrl: `/operator-tickets/${row.ticket_id}`,
+      payload: { ticket_id: row.ticket_id, role: 'L3', reason: 'L2_TAT_EXPIRED' }
+    });
+  }
+
+  // Expire out of L3 once its TAT elapses (no L4 to escalate to).
+  const expiredFromL3 = await client.query(
+    `UPDATE ticketing_system.operator_tickets ot
+     SET tat_current_level = 'EXPIRED_L3'
+     WHERE ot.submission_frequency_config_id IS NULL
+       AND ot.tat_current_level = 'L3'
+       AND ot.l3_tat_due_at IS NOT NULL
+       AND ot.l3_tat_due_at <= NOW()
+     RETURNING ot.ticket_id, ot.machine_name, ot.created_at`
+  );
+
+  return expiredFromL3.rows;
 };
 
 router.post('/submission-frequency/tat/check', async (req, res, next) => {
@@ -1318,6 +1546,7 @@ router.get('/submission-frequency', async (req, res, next) => {
          approval_l2_name,
          l1_tat_hours,
          l2_tat_hours,
+         l3_tat_hours,
          created_at,
          updated_at
        FROM ticketing_system.screen_submission_frequency
@@ -1344,16 +1573,17 @@ router.get('/submission-frequency', async (req, res, next) => {
  *       200:
  *         description: Submission frequency check completed
  */
-router.post('/submission-frequency/check', async (req, res, next) => {
-  try {
+const checkSubmissionFrequencyTickets = async () => {
     await ensureScreenFrequencyTable();
     await ensureOperatorTicketApprovalColumns();
 
     const noDueTickets = await runSubmissionFrequencyTatCheck();
+    await runThresholdTicketTatCheck();
 
     const today = new Date();
     const rows = await client.query(
-      `SELECT id, screen_name, department, sub_department, frequency, occurrences, is_active, l1_tat_hours, l2_tat_hours, l3_tat_hours
+      `SELECT id, screen_name, department, sub_department, frequency, occurrences, is_active, l1_tat_hours, l2_tat_hours, l3_tat_hours,
+              approval_l1, approval_l2, approval_l3
        FROM ticketing_system.screen_submission_frequency
        WHERE is_active = true`
     );
@@ -1406,21 +1636,120 @@ router.post('/submission-frequency/check', async (req, res, next) => {
         continue;
       }
 
-      skipped.push({
+      const existingOpenTicket = await client.query(
+        `SELECT 1
+         FROM ticketing_system.operator_tickets
+         WHERE submission_frequency_config_id = $1
+           AND status IN ('Open', 'In Progress')
+         LIMIT 1`,
+        [config.id]
+      );
+      if (existingOpenTicket.rows.length) {
+        skipped.push({
+          screen_name: config.screen_name,
+          reason: 'open_ticket_already_exists'
+        });
+        continue;
+      }
+
+      const l1User = config.approval_l1 ? await getUserByEmployeeId(config.approval_l1) : null;
+      const l2User = config.approval_l2 ? await getUserByEmployeeId(config.approval_l2) : null;
+      const l3User = config.approval_l3 ? await getUserByEmployeeId(config.approval_l3) : null;
+      const approvalL1UserIds = l1User ? [l1User.id] : [];
+      const approvalL2UserIds = l2User ? [l2User.id] : [];
+      const approvalL3UserIds = l3User ? [l3User.id] : [];
+
+      const violationDetails = {
+        category: 'MISSED_FREQUENCY',
+        ticket_type: 'SUBMISSION_FREQUENCY',
+        action_type: 'REVIEW',
         screen_name: config.screen_name,
-        reason: 'acknowledgement_ticket_removed'
-      });
-      continue;
+        department: config.department,
+        sub_department: config.sub_department,
+        last_submission_date: lastSubmission ? lastSubmission.toISOString() : null,
+        expected_occurrences: minOccurrences > 0 ? minOccurrences : null,
+        actual_occurrences: actualOccurrences,
+        missed_frequency: missedFrequency,
+        missed_occurrences: missedOccurrences,
+        message: missedFrequency
+          ? `"${config.screen_name}" was not submitted within its configured frequency.`
+          : `"${config.screen_name}" was submitted ${actualOccurrences} time(s), fewer than the required ${minOccurrences}.`
+      };
+
+      const inserted = await client.query(
+        `INSERT INTO ticketing_system.operator_tickets
+         (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+          severity, status, created_at, management_field, erp_product_code,
+          ticket_reason, violation_details, ticket_type,
+          approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids,
+          submission_frequency_config_id, tat_current_level,
+          l1_tat_due_at)
+         VALUES (
+           'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+           $1, $2::jsonb, $3::jsonb, $4::jsonb,
+           'High', 'Open', NOW(), $5, $6,
+           'MISSING_VALUE', $7::jsonb, 'SUBMISSION_FREQUENCY',
+           $8::int[], $9::int[], $10::int[],
+           $11, 'L1',
+           CASE WHEN $12::int IS NOT NULL THEN NOW() + ($12::int || ' hours')::interval ELSE NULL END
+         )
+         RETURNING *`,
+        [
+          config.screen_name,
+          JSON.stringify([config.screen_name]),
+          JSON.stringify({}),
+          JSON.stringify({ frequency: config.frequency, occurrences: config.occurrences }),
+          config.department,
+          config.sub_department,
+          JSON.stringify(violationDetails),
+          approvalL1UserIds,
+          approvalL2UserIds,
+          approvalL3UserIds,
+          config.id,
+          config.l1_tat_hours || null
+        ]
+      );
+
+      const ticket = inserted.rows[0];
+      createdTickets.push(ticket);
+
+      await client.query(
+        `INSERT INTO ticketing_system.ticket_logs
+         (ticket_id, action, performed_by, role, created_at)
+         VALUES ($1, 'SUBMISSION_FREQUENCY_MISSED', 'System', 'System', NOW())`,
+        [ticket.ticket_id]
+      );
+
+      if (approvalL1UserIds.length) {
+        await createNotificationsForUsers(approvalL1UserIds, {
+          ticketId: ticket.ticket_id,
+          type: 'SUBMISSION_FREQUENCY',
+          category: 'Tickets',
+          priority: 'High',
+          title: `Submission missed: ${config.screen_name}`,
+          body: violationDetails.message,
+          linkUrl: `/operator-tickets/${ticket.ticket_id}`,
+          payload: { ticket_id: ticket.ticket_id, screen_name: config.screen_name, role: 'L1' }
+        });
+      }
     }
 
-    res.status(200).json({
-      message: 'Submission frequency check completed',
+    return {
       created_count: createdTickets.length,
       no_due_count: noDueTickets.length,
       skipped_count: skipped.length,
       created_tickets: createdTickets,
       no_due_tickets: noDueTickets,
       skipped
+    };
+};
+
+router.post('/submission-frequency/check', async (req, res, next) => {
+  try {
+    const result = await checkSubmissionFrequencyTickets();
+    res.status(200).json({
+      message: 'Submission frequency check completed',
+      ...result
     });
   } catch (err) {
     next(err);
@@ -1577,15 +1906,19 @@ const getThresholdMapFromMaster = async ({
   }
 
   const result = await client.query(
-    `SELECT input_field, plus_threshold, minus_threshold, actual_value, condition_level, machine_name
+    `SELECT input_field, plus_threshold, minus_threshold, threshold_value, actual_value, condition_level, machine_name
      FROM ticketing_system.threshold_master
-     WHERE department = $1
-       AND sub_department = $2
-       AND input_screen = $3
-       AND input_field = ANY($4::text[])
+     WHERE lower(trim(COALESCE(department, management_field, ''))) = lower(trim($1))
+       AND lower(trim(COALESCE(sub_department, erp_product_code, ''))) = lower(trim($2))
+       AND lower(trim(COALESCE(input_screen, machine_name, ''))) = lower(trim($3))
+       AND EXISTS (
+         SELECT 1
+         FROM unnest($4::text[]) AS v
+         WHERE lower(trim(v)) = lower(trim(input_field))
+       )
        AND is_active = true
-       AND ($5::text IS NULL OR machine_name = $5 OR machine_name IS NULL)
-     ORDER BY CASE WHEN machine_name = $5 THEN 0 ELSE 1 END`,
+       AND ($5::text IS NULL OR lower(trim(COALESCE(machine_name, ''))) = lower(trim($5)) OR machine_name IS NULL)
+     ORDER BY CASE WHEN lower(trim(COALESCE(machine_name, ''))) = lower(trim($5)) THEN 0 ELSE 1 END`,
     [department, subDepartment, inputScreen, normalizedParameters, machineName || null]
   );
 
@@ -1595,6 +1928,7 @@ const getThresholdMapFromMaster = async ({
     thresholdMap[row.input_field] = {
       plus_threshold: row.plus_threshold,
       minus_threshold: row.minus_threshold,
+      threshold_value: row.threshold_value,
       actual_value: row.actual_value,
       condition_level: row.condition_level
     };
@@ -1831,6 +2165,7 @@ router.get('/', async (req, res, next) => {
     const where = [];
     const values = [];
     where.push(nonAcknowledgementTicketWhere);
+    where.push(nonPpNotebookTicketWhere);
     const normalizedStatus = String(status || '').trim();
     const normalizedSeverity = String(severity || '').trim();
     const normalizedMachine = String(machine || '').trim();
@@ -1862,16 +2197,24 @@ router.get('/', async (req, res, next) => {
 
     const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
     const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
     const canViewAllTickets =
-      requesterEmployeeId === 'ADMIN001' ||
       requesterRole === 'admin' ||
       requesterRole === 'super admin' ||
-      requesterRole === 'superadmin';
+      requesterRole === 'superadmin' ||
+      requesterLevel === 'L3';
 
     const viewerUserId = canViewAllTickets ? null : parsePositiveInt(user_id);
     if (viewerUserId) {
       values.push(viewerUserId);
-      where.push(`(ot.user_id = $${values.length} OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])))`);
+      // L1 approvers see a ticket as soon as it's created; L2/L3 only see it once
+      // the prior level has submitted and tat_current_level has advanced to their level.
+      where.push(`(
+        ot.user_id = $${values.length}
+        OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+        OR ($${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) AND ot.tat_current_level IN ('L2', 'L3'))
+        OR ($${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])) AND ot.tat_current_level IN ('L3', 'EXPIRED_L3', 'EXPIRED_L2'))
+      )`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -1888,6 +2231,10 @@ router.get('/', async (req, res, next) => {
           ot.severity,
           ot.status,
           ot.created_at,
+          COALESCE(ot.tat_current_level, 'L1') AS tat_current_level,
+          ot.l1_tat_due_at,
+          ot.l2_tat_due_at,
+          ot.l3_tat_due_at,
           COUNT(*) OVER()::int AS total_count,
           COALESCE(
               json_agg(
@@ -1915,7 +2262,11 @@ router.get('/', async (req, res, next) => {
           ot.threshold_value,
           ot.severity,
           ot.status,
-          ot.created_at
+          ot.created_at,
+          ot.tat_current_level,
+          ot.l1_tat_due_at,
+          ot.l2_tat_due_at,
+          ot.l3_tat_due_at
       ORDER BY ot.created_at DESC;
     `;
 
@@ -1959,6 +2310,7 @@ router.get('/submission-ticketing', async (req, res, next) => {
     // Submission tickets: frequency/missed-submission category.
     where.push(`(COALESCE(ot.ticket_type, 'THRESHOLD') = 'SUBMISSION_FREQUENCY' OR (ot.ticket_reason = 'MISSING_VALUE' AND (ot.violation_details->>'category') = 'MISSED_FREQUENCY'))`);
     where.push(nonAcknowledgementTicketWhere);
+    where.push(nonPpNotebookTicketWhere);
 
     if (status && status.toLowerCase() !== 'all') {
       values.push(status);
@@ -1985,6 +2337,24 @@ router.get('/submission-ticketing', async (req, res, next) => {
       where.push(`ot.created_at::date <= $${values.length}::date`);
     }
 
+    const requesterRoleForSubmission = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevelForSubmission = String(req.user?.level || '').trim().toUpperCase();
+    const canViewAllSubmissionTickets =
+      requesterRoleForSubmission === 'admin' ||
+      requesterRoleForSubmission === 'super admin' ||
+      requesterRoleForSubmission === 'superadmin' ||
+      requesterLevelForSubmission === 'L3';
+    const submissionViewerUserId = canViewAllSubmissionTickets ? null : parsePositiveInt(req.query.user_id);
+    if (submissionViewerUserId) {
+      values.push(submissionViewerUserId);
+      where.push(`(
+        ot.user_id = $${values.length}
+        OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+        OR ($${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) AND COALESCE(ot.tat_current_level, 'L1') IN ('L2', 'L3'))
+        OR ($${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])) AND ot.tat_current_level IN ('L3', 'EXPIRED_L3', 'EXPIRED_L2'))
+      )`);
+    }
+
     values.push(limit);
     const limitIndex = values.length;
     values.push(offset);
@@ -2000,9 +2370,141 @@ router.get('/submission-ticketing', async (req, res, next) => {
          ot.severity,
          ot.status,
          ot.created_at,
+         (ot.threshold_value->>'frequency')::int AS frequency,
+         (ot.threshold_value->>'occurrences')::int AS occurrences,
+         COALESCE(ot.tat_current_level, 'L1') AS tat_current_level,
+         ot.l1_tat_due_at,
+         ot.l2_tat_due_at,
+         ot.l3_tat_due_at,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.operator_tickets ot
        LEFT JOIN users.user_details ud ON ud.id = ot.user_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY ot.created_at DESC
+       LIMIT $${limitIndex}
+       OFFSET $${offsetIndex}`,
+      values
+    );
+
+    const totalCount = result.rows[0]?.total_count || 0;
+    return res.status(200).json({
+      tickets: result.rows,
+      data: result.rows,
+      pagination: {
+        totalItems: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Process Parameter tab: same shape as /submission-ticketing, but a PP
+// notebook ticket has no frequency/occurrences config -- instead each one
+// carries the notebook's configured completion_threshold_hours ("completion
+// time provided") and, since the deadline is entry_id-creation-time +
+// that threshold, how far past that deadline it still is right now
+// ("time lagged"), both computed from violation_details on the fly.
+router.get('/process-parameter-ticketing', async (req, res, next) => {
+  try {
+    await ensureOperatorTicketApprovalColumns();
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const offset = (page - 1) * limit;
+
+    const status = String(req.query.status || '').trim();
+    const severity = String(req.query.severity || '').trim();
+    const notebook = String(req.query.notebook || req.query.machine || '').trim();
+    const entryId = String(req.query.entry_id || '').trim();
+    const startDate = String(req.query.start_date || '').trim();
+    const endDate = String(req.query.end_date || '').trim();
+
+    const values = [];
+    const where = [];
+
+    where.push(`ot.ticket_reason = 'MISSING_VALUE'`);
+    where.push(`(ot.violation_details->>'category') = 'MISSED_FREQUENCY'`);
+    where.push(`(ot.violation_details->>'ticket_type') = 'PP_NOTEBOOK_INCOMPLETE'`);
+
+    if (status && status.toLowerCase() !== 'all') {
+      values.push(status);
+      where.push(`ot.status = $${values.length}`);
+    }
+    if (severity && severity.toLowerCase() !== 'all') {
+      values.push(severity);
+      where.push(`ot.severity = $${values.length}`);
+    }
+    if (notebook && notebook.toLowerCase() !== 'all') {
+      values.push(notebook);
+      where.push(`ot.machine_name = $${values.length}`);
+    }
+    if (entryId) {
+      values.push(entryId);
+      where.push(`(ot.violation_details->>'entry_id') = $${values.length}`);
+    }
+    if (startDate) {
+      values.push(startDate);
+      where.push(`ot.created_at::date >= $${values.length}::date`);
+    }
+    if (endDate) {
+      values.push(endDate);
+      where.push(`ot.created_at::date <= $${values.length}::date`);
+    }
+
+    const requesterRoleForPp = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevelForPp = String(req.user?.level || '').trim().toUpperCase();
+    const canViewAllPpTickets =
+      requesterRoleForPp === 'admin' ||
+      requesterRoleForPp === 'super admin' ||
+      requesterRoleForPp === 'superadmin' ||
+      requesterLevelForPp === 'L3';
+    const ppViewerUserId = canViewAllPpTickets ? null : parsePositiveInt(req.query.user_id);
+    if (ppViewerUserId) {
+      values.push(ppViewerUserId);
+      where.push(`(
+        ot.user_id = $${values.length}
+        OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+        OR ($${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) AND COALESCE(ot.tat_current_level, 'L1') IN ('L2', 'L3'))
+        OR ($${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])) AND ot.tat_current_level IN ('L3', 'EXPIRED_L3', 'EXPIRED_L2'))
+      )`);
+    }
+
+    values.push(limit);
+    const limitIndex = values.length;
+    values.push(offset);
+    const offsetIndex = values.length;
+
+    const result = await client.query(
+      `SELECT
+         ot.ticket_id,
+         ot.violation_details->>'entry_id' AS entry_id,
+         ot.machine_name AS notebook,
+         ot.severity,
+         ot.status,
+         ot.created_at,
+         COALESCE(ot.tat_current_level, 'L1') AS tat_current_level,
+         ot.l1_tat_due_at,
+         ot.l2_tat_due_at,
+         ot.l3_tat_due_at,
+         (ot.violation_details->>'completion_threshold_hours')::numeric AS completion_time_provided_hours,
+         (ot.violation_details->>'first_created_at')::timestamptz AS entry_created_at,
+         GREATEST(
+           ROUND(
+             (EXTRACT(EPOCH FROM (
+               NOW() - (
+                 (ot.violation_details->>'first_created_at')::timestamptz
+                 + ((ot.violation_details->>'completion_threshold_hours')::numeric || ' hours')::interval
+               )
+             )) / 3600)::numeric,
+             2
+           ),
+           0
+         ) AS time_lagged_hours,
+         COUNT(*) OVER()::int AS total_count
+       FROM ticketing_system.operator_tickets ot
        WHERE ${where.join(' AND ')}
        ORDER BY ot.created_at DESC
        LIMIT $${limitIndex}
@@ -2107,7 +2609,7 @@ router.get('/:id/timeline', async (req, res, next) => {
          ot.approval_l1_user_ids,
          ot.approval_l2_user_ids
        FROM ticketing_system.operator_tickets ot
-       WHERE ot.ticket_id = $1
+       WHERE (ot.ticket_id = $1 OR ot.ticket_id = '#' || $1)
          AND ${nonAcknowledgementTicketWhere}`,
       [ticketId]
     );
@@ -2119,7 +2621,7 @@ router.get('/:id/timeline', async (req, res, next) => {
        FROM ticketing_system.ticket_logs
        WHERE ticket_id = $1
        ORDER BY created_at ASC`,
-      [ticketId]
+      [ticket.ticket_id]
     );
 
     const assignedLog = logRes.rows.find((r) => String(r.action || '').toUpperCase().includes('ASSIGN'));
@@ -2172,7 +2674,7 @@ router.get('/:id/timeline', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const ticketId = req.params.id; // accept alphanumeric IDs
+    const ticketId = req.params.id; // accept alphanumeric IDs, with or without a leading '#'
 
     const query = `
       SELECT
@@ -2185,10 +2687,14 @@ router.get('/:id', async (req, res, next) => {
           ot.threshold_value,
           ot.severity,
           ot.status,
-          ot.created_at
+          ot.created_at,
+          COALESCE(ot.tat_current_level, 'L1') AS tat_current_level,
+          ot.l1_tat_due_at,
+          ot.l2_tat_due_at,
+          ot.l3_tat_due_at
 
       FROM ticketing_system.operator_tickets ot
-      WHERE ot.ticket_id = $1
+      WHERE (ot.ticket_id = $1 OR ot.ticket_id = '#' || $1)
         AND ${nonAcknowledgementTicketWhere};
     `;
 
@@ -2272,6 +2778,7 @@ router.post('/', async (req, res, next) => {
       parameter_name,
       actual_value,
       threshold_value,
+      severity: requestedSeverity,
       department,
       sub_department,
       input_screen,
@@ -2287,6 +2794,17 @@ router.post('/', async (req, res, next) => {
 
     if (!machine_name || !parameter_name || !actual_value) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const PROCESS_PARAMETER_SCREENS = new Set([
+      'Process Parameter',
+      'PP - Breaker Drawing',
+      'PP - Finisher Drawing',
+      'PP - Autoconer Q2',
+      'PP - Autoconer Q3'
+    ]);
+    if (PROCESS_PARAMETER_SCREENS.has(String(input_screen || '').trim()) && !/^PP-\d{4,}$/i.test(String(machine_name).trim())) {
+      return res.status(400).json({ message: 'machine_name must be a valid PP-000n process parameter id for this input_screen' });
     }
 
     let assignedUserId = user_id || parsePositiveInt(req.user?.id) || null;
@@ -2337,6 +2855,13 @@ router.post('/', async (req, res, next) => {
     const approvalL1UserIds = thresholdApprovers.approval_l1_user_ids || [];
     const approvalL2UserIds = thresholdApprovers.approval_l2_user_ids || [];
     const approvalL3UserIds = thresholdApprovers.approval_l3_user_ids || [];
+    const tatHours = await getThresholdTatHoursFromMaster({
+      department: department || management_field,
+      subDepartment: sub_department || erp_product_code,
+      inputScreen: input_screen,
+      machineName: machine_name,
+      parameterName: normalizedParameterNames
+    });
 
     if (!effectiveThresholds) {
       return res.status(400).json({
@@ -2355,12 +2880,18 @@ router.post('/', async (req, res, next) => {
         message: 'No violations found. Ticket requires null actual values or threshold breaches.'
       });
     }
-    const severity = deriveSeverity(violationDetails);
+    const severity = resolveSeverity(requestedSeverity, violationDetails);
 
     const insertQuery = `
-      INSERT INTO ticketing_system.operator_tickets 
-      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids)
-      VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[])
+      INSERT INTO ticketing_system.operator_tickets
+      (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, l1_tat_hours, l2_tat_hours, l3_tat_hours, l1_tat_due_at, tat_current_level)
+      VALUES (
+        'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+        $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[],
+        $15::int, $16::int, $17::int,
+        CASE WHEN $15::int IS NOT NULL THEN CURRENT_TIMESTAMP + ($15::int || ' hours')::interval ELSE NULL END,
+        'L1'
+      )
       RETURNING *;
     `;
 
@@ -2378,12 +2909,16 @@ router.post('/', async (req, res, next) => {
       JSON.stringify(violationDetails),
       approvalL1UserIds,
       approvalL2UserIds,
-      approvalL3UserIds
+      approvalL3UserIds,
+      tatHours.l1_tat_hours,
+      tatHours.l2_tat_hours,
+      tatHours.l3_tat_hours
     ]);
 
     const ticket = result.rows[0];
-    await createTicketNotificationsForApprovers(ticket.ticket_id, [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds]);
-    await createThresholdBreachNotifications(ticket, [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds], violationDetails);
+    // Only L1 is notified at creation; L2/L3 are notified once the prior level submits (see PUT /submit/:id).
+    await createTicketNotificationsForApprovers(ticket.ticket_id, approvalL1UserIds);
+    await createThresholdBreachNotifications(ticket, approvalL1UserIds, violationDetails);
 
     await sendEmail({
       to: ticket.supevisor_email || 'otpdemoin@gmail.com',
@@ -2421,7 +2956,7 @@ router.post('/generate', async (req, res, next) => {
         parameter_name,
         actual_value,
         threshold_value,
-        severity: _severity,
+        severity: requestedSeverity,
         department = null,
         sub_department = null,
         input_screen = null,
@@ -2483,6 +3018,13 @@ router.post('/generate', async (req, res, next) => {
       const approvalL1UserIds = thresholdApprovers.approval_l1_user_ids || [];
       const approvalL2UserIds = thresholdApprovers.approval_l2_user_ids || [];
       const approvalL3UserIds = thresholdApprovers.approval_l3_user_ids || [];
+      const tatHours = await getThresholdTatHoursFromMaster({
+        department: department || management_field,
+        subDepartment: sub_department || erp_product_code,
+        inputScreen: input_screen,
+        machineName: machine_name,
+        parameterName: normalizedParameterNames
+      });
       if (!effectiveThresholds) {
         skipped.push({
           machine_name,
@@ -2508,12 +3050,17 @@ router.post('/generate', async (req, res, next) => {
         });
         continue;
       }
-      const severity = deriveSeverity(violationDetails);
+      const severity = resolveSeverity(requestedSeverity, violationDetails);
 
       const result = await client.query(
         `INSERT INTO ticketing_system.operator_tickets
-         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids)
-         VALUES ('TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[])
+         (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value, severity, status, created_at, management_field, erp_product_code, ticket_reason, violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, l1_tat_hours, l2_tat_hours, l3_tat_hours, l1_tat_due_at, tat_current_level)
+         VALUES (
+           'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'), $1, $2, $3, $4, $5, $6, $7, 'Open', CURRENT_TIMESTAMP, $8, $9, $10, $11::jsonb, $12::int[], $13::int[], $14::int[],
+           $15::int, $16::int, $17::int,
+           CASE WHEN $15::int IS NOT NULL THEN CURRENT_TIMESTAMP + ($15::int || ' hours')::interval ELSE NULL END,
+           'L1'
+         )
          RETURNING *;`,
         [
           assignedUserId,
@@ -2529,12 +3076,16 @@ router.post('/generate', async (req, res, next) => {
           JSON.stringify(violationDetails),
           approvalL1UserIds,
           approvalL2UserIds,
-          approvalL3UserIds
+          approvalL3UserIds,
+          tatHours.l1_tat_hours,
+          tatHours.l2_tat_hours,
+          tatHours.l3_tat_hours
         ]
       );
 
-      await createTicketNotificationsForApprovers(result.rows[0].ticket_id, [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds]);
-      await createThresholdBreachNotifications(result.rows[0], [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds], violationDetails);
+      // Only L1 is notified at creation; L2/L3 are notified once the prior level submits (see PUT /submit/:id).
+      await createTicketNotificationsForApprovers(result.rows[0].ticket_id, approvalL1UserIds);
+      await createThresholdBreachNotifications(result.rows[0], approvalL1UserIds, violationDetails);
       generated.push(result.rows[0]);
     }
 
@@ -2856,6 +3407,9 @@ router.post('/thresholds', async (req, res, next) => {
       plusThreshold,
       minus_threshold,
       minusThreshold,
+      threshold_value,
+      threshold,
+      value,
       actual_value,
       actualValue,
       approval_l1_name,
@@ -2885,8 +3439,8 @@ router.post('/thresholds', async (req, res, next) => {
     const inputFieldValue = pickDropdownValue(input_field ?? inputField);
     const conditionLevelValue = pickDropdownValue(condition_level ?? condition) || 'More Than';
     const normalized = normalizeThresholdInputs(
-      plus_threshold ?? plusThreshold,
-      minus_threshold ?? minusThreshold,
+      plus_threshold ?? plusThreshold ?? threshold_value ?? threshold ?? value,
+      minus_threshold ?? minusThreshold ?? threshold_value ?? threshold ?? value,
       actual_value ?? actualValue ?? null
     );
     const plusThresholdFinal = normalized.plusThreshold;
@@ -2939,7 +3493,7 @@ router.post('/thresholds', async (req, res, next) => {
 
     if (!departmentValue || !subDepartmentValue || !inputScreenValue || !machine_name || !inputFieldValue || plusThresholdFinal === undefined || minusThresholdFinal === undefined) {
       return res.status(400).json({
-        message: 'department, sub_department, input_screen, machine_name, input_field, plus_threshold and minus_threshold are required'
+        message: 'department, sub_department, input_screen, machine_name, input_field and a threshold value are required'
       });
     }
 
@@ -3007,6 +3561,7 @@ router.post('/thresholds/bulk', async (req, res, next) => {
         plusThreshold,
         minus_threshold,
         minusThreshold,
+        threshold_value,
         threshold,
         value,
         actual_value,
@@ -3038,8 +3593,8 @@ router.post('/thresholds/bulk', async (req, res, next) => {
       const inputFieldValue = pickDropdownValue(input_field ?? inputField ?? field_name ?? fieldName);
       const conditionLevelValue = pickDropdownValue(condition_level ?? condition ?? conditionLevel) || 'More Than';
       const normalized = normalizeThresholdInputs(
-        plus_threshold ?? plusThreshold ?? threshold ?? value,
-        minus_threshold ?? minusThreshold ?? threshold ?? value,
+        plus_threshold ?? plusThreshold ?? threshold_value ?? threshold ?? value,
+        minus_threshold ?? minusThreshold ?? threshold_value ?? threshold ?? value,
         actual_value ?? actualValue ?? null
       );
       const plusThresholdFinal = normalized.plusThreshold;
@@ -3085,7 +3640,7 @@ router.post('/thresholds/bulk', async (req, res, next) => {
       const machineNameValue = machine_name ?? machineName ?? rootMachineName ?? null;
 
       if (!departmentValue || !subDepartmentValue || !inputScreenValue || !machineNameValue || !inputFieldValue || plusThresholdFinal === undefined || minusThresholdFinal === undefined) {
-        throw new Error('Each threshold must include department, sub_department, input_screen, machine_name, input_field, plus_threshold, minus_threshold');
+        throw new Error('Each threshold must include department, sub_department, input_screen, machine_name, input_field and a threshold value');
       }
 
       const savedRow = await upsertThresholdMaster({
@@ -3288,21 +3843,51 @@ router.put('/:id/assign', async (req, res, next) => {
       return res.status(404).json({ message: 'Assigned user not found' });
     }
 
-    const ticketResult = await client.query(
+    const existing = await client.query(
+      `SELECT ot.ticket_id, ot.tat_current_level, ot.approval_l1_user_ids, ot.approval_l2_user_ids, ot.approval_l3_user_ids
+       FROM ticketing_system.operator_tickets ot
+       WHERE ot.ticket_id = $1 OR ot.ticket_id = '#' || $1`,
+      [ticketId]
+    );
+
+    if (!existing.rowCount) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    const ticketRow = existing.rows[0];
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const isAdmin = requesterRole === 'admin' || requesterRole === 'super admin' || requesterRole === 'superadmin';
+    const requesterId = parsePositiveInt(req.user?.id);
+
+    if (!isAdmin) {
+      const currentLevel = ticketRow.tat_current_level || 'L1';
+      const approverIdsByLevel = {
+        L1: ticketRow.approval_l1_user_ids || [],
+        L2: ticketRow.approval_l2_user_ids || [],
+        L3: ticketRow.approval_l3_user_ids || [],
+        EXPIRED_L3: ticketRow.approval_l3_user_ids || [],
+        EXPIRED_L2: ticketRow.approval_l3_user_ids?.length ? ticketRow.approval_l3_user_ids : (ticketRow.approval_l2_user_ids || [])
+      };
+      const eligibleApproverIds = approverIdsByLevel[currentLevel] || [];
+
+      if (!requesterId || !eligibleApproverIds.includes(requesterId)) {
+        return res.status(403).json({
+          message: `Only ${currentLevel} approvers can reassign this ticket at its current stage`
+        });
+      }
+    }
+
+    const updated = await client.query(
       `UPDATE ticketing_system.operator_tickets
        SET user_id = $1, user_name = $2
        WHERE ticket_id = $3
        RETURNING *`,
-      [user.id, user.full_name, ticketId]
+      [user.id, user.full_name, ticketRow.ticket_id]
     );
-
-    if (!ticketResult.rowCount) {
-      return res.status(404).json({ message: 'Ticket not found' });
-    }
 
     res.status(200).json({
       message: 'Ticket assigned successfully',
-      ticket: ticketResult.rows[0]
+      ticket: updated.rows[0]
     });
   } catch (err) {
     next(err);
@@ -3311,7 +3896,7 @@ router.put('/:id/assign', async (req, res, next) => {
 
 const updateOperatorTicketStatusHandler = async (req, res, next) => {
   try {
-    const ticketId = String(req.params.id || req.body?.ticket_id || req.body?.ticketId || '').trim();
+    let ticketId = String(req.params.id || req.body?.ticket_id || req.body?.ticketId || '').trim();
     const status = normalizeTicketStatusInput(req.body?.status || req.body?.ticket_status || req.body?.ticketStatus);
 
     if (!ticketId) return res.status(400).json({ message: 'ticketId is required' });
@@ -3322,13 +3907,65 @@ const updateOperatorTicketStatusHandler = async (req, res, next) => {
       });
     }
 
+    const existing = await client.query(
+      `SELECT ot.ticket_id, ot.tat_current_level, ot.approval_l1_user_ids, ot.approval_l2_user_ids, ot.approval_l3_user_ids
+       FROM ticketing_system.operator_tickets ot
+       WHERE (ot.ticket_id = $1 OR ot.ticket_id = '#' || $1)
+         AND ${nonAcknowledgementTicketWhere}`,
+      [ticketId]
+    );
+
+    if (!existing.rowCount) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    const ticketRow = existing.rows[0];
+    ticketId = ticketRow.ticket_id; // normalize to the canonical stored id (with '#') for all following queries
+    const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const isAdmin = requesterRole === 'admin' || requesterRole === 'super admin' || requesterRole === 'superadmin';
+    const requesterId = parsePositiveInt(req.user?.id);
+
+    if (!isAdmin) {
+      const currentLevel = ticketRow.tat_current_level || 'L1';
+      // EXPIRED_L2/EXPIRED_L3 are terminal TAT-breach states, not new levels -
+      // the L3 (or, for the legacy no-L3-configured path, L2) approvers who
+      // could already see the escalated ticket keep the same optional-review
+      // ability to act on it once it's expired.
+      const approverIdsByLevel = {
+        L1: ticketRow.approval_l1_user_ids || [],
+        L2: ticketRow.approval_l2_user_ids || [],
+        L3: ticketRow.approval_l3_user_ids || [],
+        EXPIRED_L3: ticketRow.approval_l3_user_ids || [],
+        EXPIRED_L2: ticketRow.approval_l3_user_ids?.length ? ticketRow.approval_l3_user_ids : (ticketRow.approval_l2_user_ids || [])
+      };
+      const eligibleApproverIds = approverIdsByLevel[currentLevel] || [];
+
+      if (!requesterId || !eligibleApproverIds.includes(requesterId)) {
+        return res.status(403).json({
+          message: `Only ${currentLevel} approvers can act on this ticket at its current stage`
+        });
+      }
+    }
+
+    // A reject sends the ticket back to L1: restart the L1 TAT clock and drop
+    // tat_current_level back to 'L1' so L2/L3 stop seeing it until L1 resubmits.
+    const isReject = status === 'Reopened';
+
     const updated = await client.query(
       `UPDATE ticketing_system.operator_tickets ot
-       SET status = $2
+       SET status = $2,
+           tat_current_level = CASE WHEN $3::boolean THEN 'L1' ELSE tat_current_level END,
+           l1_tat_due_at = CASE
+             WHEN $3::boolean AND ot.l1_tat_hours IS NOT NULL THEN CURRENT_TIMESTAMP + (ot.l1_tat_hours || ' hours')::interval
+             WHEN $3::boolean THEN NULL
+             ELSE l1_tat_due_at
+           END,
+           l2_tat_due_at = CASE WHEN $3::boolean THEN NULL ELSE l2_tat_due_at END,
+           l3_tat_due_at = CASE WHEN $3::boolean THEN NULL ELSE l3_tat_due_at END
        WHERE ot.ticket_id = $1
          AND ${nonAcknowledgementTicketWhere}
        RETURNING *`,
-      [ticketId, status]
+      [ticketId, status, isReject]
     );
 
     if (!updated.rowCount) {
@@ -3448,7 +4085,7 @@ router.get('/workflow/guide', async (req, res) => {
 router.put('/submit/:id', async (req, res, next) => {
   try {
 
-    const ticketId = req.params.id;
+    let ticketId = req.params.id;
     // Accept multiple payload aliases and persist as operator_comment.
     const operatorCommentRaw =
       req.body?.operator_comment ??
@@ -3461,9 +4098,9 @@ router.put('/submit/:id', async (req, res, next) => {
         : String(operatorCommentRaw).trim();
 
     const ticketResult = await client.query(
-      `SELECT * 
+      `SELECT *
        FROM ticketing_system.operator_tickets ot
-       WHERE ot.ticket_id = $1
+       WHERE (ot.ticket_id = $1 OR ot.ticket_id = '#' || $1)
          AND ${nonAcknowledgementTicketWhere}`,
       [ticketId]
     );
@@ -3473,6 +4110,7 @@ router.put('/submit/:id', async (req, res, next) => {
     }
 
     const ticket = ticketResult.rows[0];
+    ticketId = ticket.ticket_id; // normalize to the canonical stored id (with '#') for all following queries
 
     const normalizedStatus = String(ticket.status || '').trim().toLowerCase();
 
@@ -3489,16 +4127,25 @@ router.put('/submit/:id', async (req, res, next) => {
       });
     }
 
+    const l2ApproverIdsOnTicket = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
+    const shouldAdvanceToL2 = l2ApproverIdsOnTicket.length > 0 && (ticket.tat_current_level || 'L1') === 'L1';
+
     const updateResult = await client.query(
       `UPDATE ticketing_system.operator_tickets
        SET status = 'In Progress',
+           tat_current_level = CASE WHEN $3::boolean THEN 'L2' ELSE tat_current_level END,
+           l1_tat_due_at = CASE WHEN $3::boolean THEN NULL ELSE l1_tat_due_at END,
+           l2_tat_due_at = CASE
+             WHEN $3::boolean AND l2_tat_hours IS NOT NULL THEN CURRENT_TIMESTAMP + (l2_tat_hours || ' hours')::interval
+             ELSE l2_tat_due_at
+           END,
            violation_details = CASE
              WHEN $2::text IS NULL OR btrim($2::text) = '' THEN violation_details
              ELSE COALESCE(violation_details, '{}'::jsonb) || jsonb_build_object('operator_comment', $2::text)
            END
        WHERE ticket_id = $1
        RETURNING *`,
-      [ticketId, operatorComment]
+      [ticketId, operatorComment, shouldAdvanceToL2]
     );
 
     const updatedTicket = updateResult.rows[0];
@@ -3514,6 +4161,27 @@ router.put('/submit/:id', async (req, res, next) => {
         req.user?.role || 'Operator'
       ]
     );
+
+    if (shouldAdvanceToL2) {
+      const l2ApproverIds = Array.isArray(updatedTicket.approval_l2_user_ids) ? updatedTicket.approval_l2_user_ids : [];
+      const isPpNotebookIncomplete = updatedTicket.violation_details?.ticket_type === 'PP_NOTEBOOK_INCOMPLETE';
+      const notebook = updatedTicket.violation_details?.notebook;
+      const entryId = updatedTicket.violation_details?.entry_id;
+      await createNotificationsForUsers(l2ApproverIds, {
+        ticketId: updatedTicket.ticket_id,
+        type: isPpNotebookIncomplete ? 'PP_NOTEBOOK_INCOMPLETE' : 'TICKET_ASSIGNED',
+        category: 'Tickets',
+        priority: 'High',
+        title: isPpNotebookIncomplete
+          ? `Process Parameter ${entryId} needs your attention`
+          : `Ticket ${updatedTicket.ticket_id} needs your attention`,
+        body: isPpNotebookIncomplete
+          ? `"${notebook}" was submitted by L1 and needs your review.`
+          : `${updatedTicket.machine_name || 'A ticket'} was submitted by L1 and needs your review.`,
+        linkUrl: `/supervisor-tickets/${updatedTicket.ticket_id}`,
+        payload: { ticket_id: updatedTicket.ticket_id, entry_id: entryId, notebook, role: 'L2' }
+      });
+    }
 
     sendEmail({
       to: ticket.supevisor_email || 'otpdemoin@gmail.com',
@@ -3616,6 +4284,11 @@ router.patch('/thresholds/:id', async (req, res, next) => {
       Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_id') ||
       Object.prototype.hasOwnProperty.call(req.body, 'approval_l3_ids');
 
+    const hasConditionLevelInput = Object.prototype.hasOwnProperty.call(req.body, 'condition_level');
+    const hasPlusThresholdInput = Object.prototype.hasOwnProperty.call(req.body, 'plus_threshold');
+    const hasMinusThresholdInput = Object.prototype.hasOwnProperty.call(req.body, 'minus_threshold');
+    const hasActualValueInput = Object.prototype.hasOwnProperty.call(req.body, 'actual_value');
+
     const normalized = normalizeThresholdInputs(
       plus_threshold,
       minus_threshold,
@@ -3655,10 +4328,10 @@ router.patch('/thresholds/:id', async (req, res, next) => {
 
     const result = await client.query(
       `UPDATE ticketing_system.threshold_master
-       SET condition_level = $1,
-           plus_threshold = $2,
-           minus_threshold = $3,
-           actual_value = $4,
+       SET condition_level = CASE WHEN $12::boolean THEN $1 ELSE condition_level END,
+           plus_threshold = CASE WHEN $13::boolean THEN $2 ELSE plus_threshold END,
+           minus_threshold = CASE WHEN $14::boolean THEN $3 ELSE minus_threshold END,
+           actual_value = CASE WHEN $15::boolean THEN $4 ELSE actual_value END,
            approval_l1_user_id = CASE WHEN $5 THEN $6 ELSE approval_l1_user_id END,
            approval_l2_user_id = CASE WHEN $7 THEN $8 ELSE approval_l2_user_id END,
            approval_l3_user_id = CASE WHEN $9 THEN $10 ELSE approval_l3_user_id END,
@@ -3676,7 +4349,11 @@ router.patch('/thresholds/:id', async (req, res, next) => {
         approvalL2UserIds?.[0] ?? null,
         hasL3ApproverInput,
         approvalL3UserIds?.[0] ?? null,
-        id
+        id,
+        hasConditionLevelInput,
+        hasPlusThresholdInput,
+        hasMinusThresholdInput,
+        hasActualValueInput
       ]
     );
 
@@ -3727,4 +4404,11 @@ router.delete('/thresholds/:id', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+module.exports = {
+  router,
+  runSubmissionFrequencyTatCheck,
+  runThresholdTicketTatCheck,
+  checkSubmissionFrequencyTickets,
+  ensureScreenFrequencyTable,
+  ensureOperatorTicketApprovalColumns
+};

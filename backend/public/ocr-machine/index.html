@@ -175,6 +175,10 @@
           <label for="inspectionDateInput">Inspection Date</label>
           <input id="inspectionDateInput" name="inspection_date" type="text" placeholder="dd-mm-yyyy" />
         </div>
+        <div class="form-field">
+          <label for="testIdInput">Test ID</label>
+          <input id="testIdInput" name="test_id" type="text" placeholder="Enter Test ID" />
+        </div>
       </div>
       <div class="form-grid" id="formGrid">
         <!-- Fields injected by JS -->
@@ -184,6 +188,7 @@
         <button class="btn btn-primary btn-lg hidden" id="useAsInputBtn" type="button">
           Use as Input Screen
         </button>
+        <span class="badge" id="inputIdBadge" aria-live="polite">Shared ID not requested yet</span>
         <button class="btn btn-primary btn-lg" id="saveBtn" type="submit">Save Record</button>
         <button class="btn btn-ghost btn-lg" id="clearFormBtn" type="button">
           ✕ Clear Form

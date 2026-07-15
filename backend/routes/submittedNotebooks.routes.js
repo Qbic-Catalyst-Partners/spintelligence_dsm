@@ -3,6 +3,8 @@ const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
 const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { ensureOperatorTicketApprovalColumns } = require('./operatorTickets.routes');
+const { ensurePpThresholdTable, getActivePpThresholdsMap } = require('./ppThreshold.routes');
 
 const MAX_LIMIT = 100;
 const ACK_DEADLINE_HOURS = 24;
@@ -15,6 +17,21 @@ const parsePositiveInt = (value, fallback = null) => {
 const cleanText = (value) => {
   const text = String(value ?? '').trim();
   return text || null;
+};
+
+// The PP registry (frontend normalizeProcessParameterId) only ever produces the
+// zero-padded canonical form "PP-0001". Anything else that starts with "PP" but
+// isn't in that exact shape (e.g. "PP-1", "PP-000001", "pp-0001") is a stray/
+// malformed id, not a second real batch — canonicalize it here so a typo or a
+// caller that skipped the frontend normalizer can't spin up a duplicate "batch"
+// with its own set of PP_NOTEBOOK_INCOMPLETE tickets that no PP matrix row ever
+// matches. Non-PP entry ids (lot numbers, etc.) are left untouched.
+const canonicalizePpEntryId = (value) => {
+  const raw = String(value ?? '').trim().toUpperCase();
+  if (!raw) return value;
+  const match = raw.match(/^PP-?(\d+)$/);
+  if (!match) return value;
+  return `PP-${match[1].padStart(4, '0')}`;
 };
 
 const toJson = (value, fallback = null) => JSON.stringify(value === undefined ? fallback : value);
@@ -107,11 +124,204 @@ const getApproverIdsByLevel = async (providedValues = [], { level = 'L2', useDef
   return [];
 };
 
+const getL1ApproverIds = (providedValues = [], options = {}) =>
+  getApproverIdsByLevel(providedValues, { ...options, level: 'L1' });
+
 const getL2ApproverIds = (providedValues = [], options = {}) =>
   getApproverIdsByLevel(providedValues, { ...options, level: 'L2' });
 
 const getL3ApproverIds = (providedValues = [], options = {}) =>
   getApproverIdsByLevel(providedValues, { ...options, level: 'L3' });
+
+// The 7 sub-departments / 10 notebooks that make up one PP (Process Parameter) batch.
+// Order and labels here are what GET /pp-batch-config returns verbatim.
+const PP_BATCH_NOTEBOOKS = [
+  { sub_department: 'Mixing', notebook: 'Mixing QC Header', label: 'Mixing QC Header' },
+  { sub_department: 'Carding', notebook: 'Carding QC Header', label: 'Carding QC Header' },
+  { sub_department: 'Blowroom', notebook: 'Blowroom Header', label: 'Blowroom Header' },
+  { sub_department: 'Drawframe', notebook: 'Drawframe QC Header', label: 'PP-Breaker' },
+  { sub_department: 'Drawframe', notebook: 'Drawframe Finisher Drawing Inspection', label: 'PP-Finisher' },
+  { sub_department: 'Simplex', notebook: 'Simplex Process Parameter', label: 'Simplex Process Parameter' },
+  { sub_department: 'Spinning', notebook: 'Spinning QC Header', label: 'Spinning QC Header' },
+  { sub_department: 'Autoconer', notebook: 'Autoconer Process Parameter', label: 'Autoconer Process Parameter' },
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q2 Inspection', label: 'Autoconer Q2 Inspection' },
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q3 Inspection', label: 'Autoconer Q3 Inspection' }
+];
+
+const ensurePpBatchConfigTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.pp_batch_config (
+      config_key text PRIMARY KEY DEFAULT 'global',
+      completion_threshold_hours integer NOT NULL DEFAULT 24,
+      l2_tat_hours integer NULL,
+      approval_l1_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
+      approval_l2_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
+      is_active boolean NOT NULL DEFAULT true,
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+};
+
+const getOrCreatePpBatchConfig = async () => {
+  await ensurePpBatchConfigTable();
+  const existing = await client.query(
+    `SELECT * FROM ticketing_system.pp_batch_config WHERE config_key = 'global'`
+  );
+  if (existing.rows[0]) return existing.rows[0];
+
+  const created = await client.query(
+    `INSERT INTO ticketing_system.pp_batch_config (config_key)
+     VALUES ('global')
+     ON CONFLICT (config_key) DO UPDATE SET config_key = EXCLUDED.config_key
+     RETURNING *`
+  );
+  return created.rows[0];
+};
+
+const runPpBatchCompletionCheck = async () => {
+  const config = await getOrCreatePpBatchConfig();
+  const created = [];
+  const expiredTickets = [];
+
+  if (!config.is_active) {
+    return { success: true, created_count: 0, expired_count: 0, tickets: [], expired_tickets: [] };
+  }
+
+  await ensureSubmittedNotebookTables();
+  const notebookNames = PP_BATCH_NOTEBOOKS.map((item) => item.notebook);
+
+  const groups = await client.query(
+    `SELECT entry_id,
+            ARRAY_AGG(DISTINCT notebook) AS completed_screens,
+            MIN(submitted_at) AS first_created_at
+     FROM ticketing_system.submitted_notebooks
+     WHERE entry_id ~ '^PP-\\d{4,}$'
+       AND notebook = ANY($1::text[])
+     GROUP BY entry_id`,
+    [notebookNames]
+  );
+
+  for (const group of groups.rows) {
+    const completedScreens = Array.isArray(group.completed_screens) ? group.completed_screens : [];
+    const missingScreens = notebookNames.filter((name) => !completedScreens.includes(name));
+    if (!missingScreens.length) continue;
+
+    const firstCreatedAt = new Date(group.first_created_at);
+    const hoursElapsed = (Date.now() - firstCreatedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursElapsed < Number(config.completion_threshold_hours)) continue;
+
+    const existingTicket = await client.query(
+      `SELECT ticket_id
+       FROM ticketing_system.operator_tickets
+       WHERE ticket_reason = 'MISSING_VALUE'
+         AND (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
+         AND (violation_details->>'entry_id') = $1
+       LIMIT 1`,
+      [group.entry_id]
+    );
+    if (existingTicket.rows[0]) continue;
+
+    const approvalL1UserIds = await getL1ApproverIds(config.approval_l1_user_ids || [], { useDefault: true });
+    const approvalL2UserIds = await getL2ApproverIds(config.approval_l2_user_ids || [], { useDefault: true });
+    const l2TatDueAt = Number(config.l2_tat_hours) > 0
+      ? new Date(Date.now() + Number(config.l2_tat_hours) * 60 * 60 * 1000).toISOString()
+      : null;
+
+    const violationDetails = {
+      category: 'MISSED_FREQUENCY',
+      ticket_type: 'PP_BATCH_INCOMPLETE',
+      entry_id: group.entry_id,
+      first_created_at: group.first_created_at,
+      completion_threshold_hours: Number(config.completion_threshold_hours),
+      completed_screens: completedScreens,
+      missing_screens: missingScreens,
+      message: `Process Parameter ${group.entry_id} was not completed by L1 within ${config.completion_threshold_hours} hour(s). Missing: ${missingScreens.join(', ')}.`
+    };
+
+    const insert = await client.query(
+      `INSERT INTO ticketing_system.operator_tickets
+       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+        severity, status, created_at, ticket_reason, violation_details,
+        approval_l1_user_ids, approval_l2_user_ids, tat_current_level, l2_tat_due_at)
+       VALUES (
+         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+         $1, $2::jsonb, $3::jsonb, $4::jsonb,
+         'High', 'In Progress', NOW(), 'MISSING_VALUE', $5::jsonb,
+         $6::int[], $7::int[], 'L2', $8::timestamptz
+       )
+       RETURNING *`,
+      [
+        group.entry_id,
+        toJson(missingScreens, []),
+        toJson({}, {}),
+        toJson({ completion_threshold_hours: config.completion_threshold_hours }, {}),
+        toJson(violationDetails, {}),
+        approvalL1UserIds,
+        approvalL2UserIds,
+        l2TatDueAt
+      ]
+    );
+
+    const inserted = insert.rows[0];
+    created.push(inserted);
+
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_logs
+       (ticket_id, action, performed_by, role, created_at)
+       VALUES ($1, 'PP_BATCH_INCOMPLETE_CREATED', 'System', 'System', NOW())`,
+      [inserted.ticket_id]
+    );
+
+    await createNotificationsForUsers([...approvalL1UserIds, ...approvalL2UserIds], {
+      ticketId: inserted.ticket_id,
+      type: 'PP_BATCH_INCOMPLETE',
+      category: 'Tickets',
+      priority: 'High',
+      title: `Process Parameter ${group.entry_id} incomplete`,
+      body: violationDetails.message,
+      linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
+      payload: { ticket_id: inserted.ticket_id, entry_id: group.entry_id }
+    });
+  }
+
+  // Expire tickets whose L2 TAT has passed (only meaningful when l2_tat_hours is configured).
+  const expiring = await client.query(
+    `SELECT ticket_id
+     FROM ticketing_system.operator_tickets
+     WHERE ticket_reason = 'MISSING_VALUE'
+       AND (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
+       AND tat_current_level = 'L2'
+       AND l2_tat_due_at IS NOT NULL
+       AND l2_tat_due_at <= NOW()`
+  );
+
+  for (const row of expiring.rows) {
+    const updated = await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET tat_current_level = 'EXPIRED_L2'
+       WHERE ticket_id = $1
+       RETURNING *`,
+      [row.ticket_id]
+    );
+    if (updated.rows[0]) {
+      expiredTickets.push(updated.rows[0]);
+      await client.query(
+        `INSERT INTO ticketing_system.ticket_logs
+         (ticket_id, action, performed_by, role, created_at)
+         VALUES ($1, 'PP_BATCH_L2_EXPIRED', 'System', 'System', NOW())`,
+        [row.ticket_id]
+      );
+    }
+  }
+
+  return {
+    success: true,
+    created_count: created.length,
+    expired_count: expiredTickets.length,
+    tickets: created,
+    expired_tickets: expiredTickets
+  };
+};
 
 const ensureSubmittedNotebookTables = async () => {
   await client.query(`
@@ -239,6 +449,13 @@ const ensureScreenFrequencyTable = async () => {
       ADD COLUMN IF NOT EXISTS l1_tat_hours INTEGER NULL,
       ADD COLUMN IF NOT EXISTS l2_tat_hours INTEGER NULL,
       ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL
+  `);
+  // submission_window_minutes was a per-screen concept that turned out to be
+  // the wrong model (PP completion is tracked per entry_id batch instead, see
+  // pp_notebook_batch_config); drop it rather than leave it as dead cruft.
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    DROP COLUMN IF EXISTS submission_window_minutes
   `);
   await client.query(`
     DELETE FROM ticketing_system.screen_submission_frequency f
@@ -417,11 +634,106 @@ const buildSubmissionId = ({ notebook, entryId, sourceTable, sourceRecordId }) =
   return `NB-${parts.filter(Boolean).join('-')}`.slice(0, 240);
 };
 
+// Autoconer machines are either Q2-type or Q3-type, never both -- a batch only
+// ever gets a real submission for one of the two. Per the business rule, the
+// other is auto-completed with value 0 the moment either one is submitted, so
+// PP batch completion never waits on a screen that machine physically can't
+// produce. This is enforced by companion-logging, below, not by writing fake
+// rows into the real autoconer.autoconer_q2_inspection/_q3_inspection tables.
+const AUTOCONER_Q2_Q3_COMPANION = {
+  'Autoconer Q2 Inspection': { notebook: 'Autoconer Q3 Inspection', sourceTable: 'autoconer_q3_inspection' },
+  'Autoconer Q3 Inspection': { notebook: 'Autoconer Q2 Inspection', sourceTable: 'autoconer_q2_inspection' }
+};
+
+// Submission-timestamp log only, used by the PP department screens (spinning,
+// carding, drawframe, mixing, simplex, autoconer, blowroom) so the missed-
+// submission breach worker has a last-submitted-at to compare against.
+// Status is deliberately 'LOGGED', not the default 'PENDING_ACK' -- these
+// entries have no acknowledgement workflow, and generateOverdueNotebookTickets
+// only ever looks at status = 'PENDING_ACK', so this row is invisible to that
+// worker and never generates an overdue-acknowledgement ticket/notification.
+const recordPpNotebookSubmission = async ({
+  notebook,
+  inputScreen = null,
+  department = null,
+  subDepartment = null,
+  entryId = null,
+  sourceSchema = null,
+  sourceTable = null,
+  sourceRecordId = null,
+  submittedByUserId = null,
+  submittedByName = null,
+  submittedPayload = {},
+  submittedAt = null
+}, { skipCompanion = false } = {}) => {
+  const cleanedNotebook = cleanText(notebook);
+  if (!cleanedNotebook) return null;
+
+  await ensureSubmittedNotebookTables();
+
+  const notebookSubmissionId = buildSubmissionId({
+    notebook: cleanedNotebook,
+    entryId,
+    sourceTable,
+    sourceRecordId
+  });
+
+  const result = await client.query(
+    `INSERT INTO ticketing_system.submitted_notebooks
+     (notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
+      source_schema, source_table, source_record_id, submitted_by_user_id, submitted_by_name,
+      submitted_payload, l2_approver_user_ids, l3_approver_user_ids, status, submitted_at, ack_due_at)
+     VALUES (
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,ARRAY[]::int[],ARRAY[]::int[],'LOGGED',
+       COALESCE($13::timestamptz, NOW()),
+       COALESCE($13::timestamptz, NOW())
+     )
+     ON CONFLICT (notebook_submission_id)
+     DO UPDATE SET
+       submitted_payload = EXCLUDED.submitted_payload,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      notebookSubmissionId,
+      cleanText(department),
+      cleanText(subDepartment),
+      cleanedNotebook,
+      cleanText(inputScreen) || cleanedNotebook,
+      cleanText(entryId),
+      cleanText(sourceSchema),
+      cleanText(sourceTable),
+      cleanText(sourceRecordId),
+      parsePositiveInt(submittedByUserId),
+      cleanText(submittedByName),
+      toJson(submittedPayload, {}),
+      cleanText(submittedAt)
+    ]
+  );
+
+  const companion = !skipCompanion && AUTOCONER_Q2_Q3_COMPANION[cleanedNotebook];
+  if (companion && cleanText(entryId)) {
+    recordPpNotebookSubmission({
+      notebook: companion.notebook,
+      inputScreen: companion.notebook,
+      department,
+      subDepartment,
+      entryId,
+      sourceSchema,
+      sourceTable: companion.sourceTable,
+      submittedByUserId,
+      submittedByName,
+      submittedPayload: { value: 0, auto_submitted: true, companion_of: cleanedNotebook },
+      submittedAt
+    }, { skipCompanion: true }).catch((err) => console.warn('[pp-notebook-log] Autoconer Q2/Q3 companion log failed:', err.message));
+  }
+
+  return result.rows[0];
+};
+
 const canViewSubmission = (req, row) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
   const requesterId = parsePositiveInt(req.user?.id);
-  const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-  if (role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001') return true;
+  if (role === 'admin' || role === 'super admin' || role === 'superadmin') return true;
   if (!requesterId) return false;
   if (row.submitted_by_user_id === requesterId) return true;
   return (
@@ -467,18 +779,29 @@ const generateOverdueNotebookTickets = async () => {
       AND NULLIF(violation_details->>'notebook_submission_id', '') IS NOT NULL
   `);
 
+  // Process Parameter notebooks have their own dedicated ticket type (PP_BATCH_INCOMPLETE,
+  // see runPpBatchCompletionCheck) — raising a second generic acknowledgement ticket for the
+  // same PP form here would be a duplicate.
+  const ppNotebookNames = PP_BATCH_NOTEBOOKS.map((item) => item.notebook);
+
   const due = await client.query(
     `SELECT *
      FROM ticketing_system.submitted_notebooks
      WHERE status = 'PENDING_ACK'
        AND ack_due_at <= NOW()
        AND overdue_ticket_id IS NULL
+       AND NOT (notebook = ANY($1::text[]))
      ORDER BY ack_due_at ASC, id ASC
-     LIMIT 100`
+     LIMIT 100`,
+    [ppNotebookNames]
   );
 
   const created = [];
   for (const submission of due.rows) {
+    // Dedup by (notebook, entry_id) as well as the submission-specific ids — a form that
+    // was recorded more than once (e.g. re-saved) produces multiple submitted_notebooks
+    // rows with different notebook_submission_ids, but must still only ever raise ONE
+    // overdue ticket for the same logical form.
     const existingTicket = await client.query(
       `SELECT ticket_id
        FROM ticketing_system.operator_tickets
@@ -488,10 +811,15 @@ const generateOverdueNotebookTickets = async () => {
          AND (
            violation_details->>'notebook_submission_id' = $1
            OR violation_details->>'submitted_notebook_id' = $2
+           OR (
+             NULLIF(violation_details->>'entry_id', '') IS NOT NULL
+             AND violation_details->>'entry_id' = $3
+             AND violation_details->>'notebook' = $4
+           )
          )
        ORDER BY created_at DESC
        LIMIT 1`,
-      [submission.notebook_submission_id, String(submission.id)]
+      [submission.notebook_submission_id, String(submission.id), submission.entry_id, submission.notebook]
     );
 
     if (existingTicket.rows[0]?.ticket_id) {
@@ -519,6 +847,8 @@ const generateOverdueNotebookTickets = async () => {
       action_type: 'ACKNOWLEDGE_ONLY',
       submitted_notebook_id: submission.id,
       notebook_submission_id: submission.notebook_submission_id,
+      notebook: submission.notebook,
+      entry_id: submission.entry_id,
       ack_due_at: submission.ack_due_at,
       message: 'Submitted notebook was not acknowledged within the configured time.'
     };
@@ -587,6 +917,231 @@ const generateOverdueNotebookTickets = async () => {
   }
 
   return created;
+};
+
+// The fixed set of PP (Process Parameter) department screens that share one
+// entry_id per batch. A batch is "complete" once every one of these has a
+// logged submission for that entry_id. Structured by sub_department because
+// Drawframe (PP-Breaker, PP-Finisher) and Autoconer (3 pages) each cover more
+// than one notebook; every other sub-department has exactly one. `label` is
+// a display-only name (used by the overview reporting below) -- the `notebook`
+// value itself is the canonical identifier already persisted in
+// ticketing_system.submitted_notebooks by recordPpNotebookSubmission() and
+// must never change, or past/future submissions stop matching.
+const PP_SUB_DEPARTMENTS = [
+  { sub_department: 'Mixing', notebooks: [{ notebook: 'Mixing QC Header', label: 'Mixing QC Header' }] },
+  { sub_department: 'Carding', notebooks: [{ notebook: 'Carding QC Header', label: 'Carding QC Header' }] },
+  { sub_department: 'Blowroom', notebooks: [{ notebook: 'Blowroom Header', label: 'Blowroom Header' }] },
+  {
+    sub_department: 'Drawframe',
+    notebooks: [
+      { notebook: 'Drawframe QC Header', label: 'PP-Breaker' },
+      { notebook: 'Drawframe Finisher Drawing Inspection', label: 'PP-Finisher' }
+    ]
+  },
+  { sub_department: 'Simplex', notebooks: [{ notebook: 'Simplex Process Parameter', label: 'Simplex Process Parameter' }] },
+  { sub_department: 'Spinning', notebooks: [{ notebook: 'Spinning QC Header', label: 'Spinning QC Header' }] },
+  {
+    sub_department: 'Autoconer',
+    notebooks: [
+      { notebook: 'Autoconer Process Parameter', label: 'Autoconer Process Parameter' },
+      { notebook: 'Autoconer Q2 Inspection', label: 'Autoconer Q2 Inspection' },
+      { notebook: 'Autoconer Q3 Inspection', label: 'Autoconer Q3 Inspection' }
+    ]
+  }
+];
+
+const PP_REQUIRED_NOTEBOOKS = PP_SUB_DEPARTMENTS.flatMap((group) => group.notebooks.map((n) => n.notebook));
+
+const ensurePpNotebookBatchConfigTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.pp_notebook_batch_config (
+      config_key TEXT PRIMARY KEY DEFAULT 'global',
+      completion_threshold_hours INTEGER NOT NULL DEFAULT 24,
+      l2_tat_hours INTEGER NULL,
+      approval_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::integer[],
+      approval_l2_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::integer[],
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.pp_notebook_batch_config
+      ADD COLUMN IF NOT EXISTS l2_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS approval_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::integer[],
+      ADD COLUMN IF NOT EXISTS approval_l2_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::integer[]
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.pp_notebook_batch_config
+      DROP COLUMN IF EXISTS l1_tat_hours,
+      DROP COLUMN IF EXISTS l3_tat_hours,
+      DROP COLUMN IF EXISTS approval_l1,
+      DROP COLUMN IF EXISTS approval_l1_name,
+      DROP COLUMN IF EXISTS approval_l2,
+      DROP COLUMN IF EXISTS approval_l2_name,
+      DROP COLUMN IF EXISTS approval_l3,
+      DROP COLUMN IF EXISTS approval_l3_name
+  `);
+  await client.query(`
+    INSERT INTO ticketing_system.pp_notebook_batch_config (config_key)
+    VALUES ('global')
+    ON CONFLICT (config_key) DO NOTHING
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_pp_batch_entry_id_uq
+    ON ticketing_system.operator_tickets ((violation_details->>'entry_id'))
+    WHERE ticket_reason = 'MISSING_VALUE'
+      AND (violation_details->>'category') = 'MISSED_FREQUENCY'
+      AND (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
+      AND NULLIF(violation_details->>'entry_id', '') IS NOT NULL
+  `);
+};
+
+const getPpNotebookBatchConfig = async () => {
+  await ensurePpNotebookBatchConfigTable();
+  const result = await client.query(
+    `SELECT * FROM ticketing_system.pp_notebook_batch_config WHERE config_key = 'global'`
+  );
+  return result.rows[0];
+};
+
+// One ticket ever exists per (entry_id, notebook) pair -- this unique index,
+// plus the existence check in generatePpNotebookBatchIncompleteTickets below,
+// is what keeps repeated worker passes from raising duplicates for the same
+// notebook threshold breach.
+const ensurePpNotebookIncompleteTicketIndex = async () => {
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_pp_notebook_incomplete_uq
+    ON ticketing_system.operator_tickets ((violation_details->>'entry_id'), (violation_details->>'notebook'))
+    WHERE ticket_reason = 'MISSING_VALUE'
+      AND (violation_details->>'category') = 'MISSED_FREQUENCY'
+      AND (violation_details->>'ticket_type') = 'PP_NOTEBOOK_INCOMPLETE'
+      AND NULLIF(violation_details->>'entry_id', '') IS NOT NULL
+  `);
+};
+
+// Every PP batch with submission activity is considered (not just one
+// hardcoded entry_id - see PP_ELIGIBLE_ENTRY_ID history). One ticket per
+// (entry_id, notebook) pair is raised the first time that notebook's
+// deadline passes without a submission; the DB unique index plus the
+// existence check below keep every later worker pass from raising a second
+// one for the same pair.
+const generatePpNotebookBatchIncompleteTickets = async () => {
+  await ensureSubmittedNotebookTables();
+  await ensureOperatorTicketApprovalColumns();
+  await ensureNotificationMetadataColumns();
+  await ensurePpThresholdTable();
+  await ensurePpNotebookIncompleteTicketIndex();
+
+  const thresholds = await getActivePpThresholdsMap();
+  if (!thresholds.size) return { created: [], expired: [] };
+
+  const candidates = await client.query(
+    `SELECT entry_id,
+            MIN(submitted_at) AS first_created_at,
+            array_agg(DISTINCT notebook) AS completed_notebooks
+     FROM ticketing_system.submitted_notebooks
+     WHERE entry_id ~ '^PP-\\d{4,}$'
+     GROUP BY entry_id`
+  );
+
+  const created = [];
+  for (const row of candidates.rows) {
+    const completed = Array.isArray(row.completed_notebooks) ? row.completed_notebooks : [];
+    const firstCreatedAt = new Date(row.first_created_at);
+
+    for (const notebook of PP_REQUIRED_NOTEBOOKS) {
+      if (completed.includes(notebook)) continue;
+
+      const threshold = thresholds.get(notebook);
+      if (!threshold) continue; // no threshold configured for this notebook yet
+
+      const dueAt = new Date(firstCreatedAt.getTime() + Number(threshold.completion_threshold_hours) * 3600 * 1000);
+      if (dueAt > new Date()) continue; // not overdue yet
+
+      const existing = await client.query(
+        `SELECT 1
+         FROM ticketing_system.operator_tickets
+         WHERE ticket_reason = 'MISSING_VALUE'
+           AND (violation_details->>'category') = 'MISSED_FREQUENCY'
+           AND (violation_details->>'ticket_type') = 'PP_NOTEBOOK_INCOMPLETE'
+           AND (violation_details->>'entry_id') = $1
+           AND (violation_details->>'notebook') = $2
+         LIMIT 1`,
+        [row.entry_id, notebook]
+      );
+      if (existing.rows.length) continue;
+
+      const l1ApproverIds = await getL1ApproverIds(threshold.approval_l1_user_ids || [], { useDefault: true });
+      const l2ApproverIds = await getL2ApproverIds(threshold.approval_l2_user_ids || [], { useDefault: true });
+
+      const violationDetails = {
+        category: 'MISSED_FREQUENCY',
+        ticket_type: 'PP_NOTEBOOK_INCOMPLETE',
+        action_type: 'REVIEW',
+        entry_id: row.entry_id,
+        notebook,
+        first_created_at: row.first_created_at,
+        completion_threshold_hours: threshold.completion_threshold_hours,
+        message: `Process Parameter ${row.entry_id}: "${notebook}" was not completed within ${threshold.completion_threshold_hours} hour(s).`
+      };
+
+      // Ticket opens with L1 only; L2 is not notified/engaged until L1
+      // submits it via PUT /operator-tickets/submit/:id, which bumps
+      // tat_current_level to 'L2' and fires the L2 notification then.
+      let inserted;
+      try {
+        const ticket = await client.query(
+          `INSERT INTO ticketing_system.operator_tickets
+           (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+            severity, status, created_at, ticket_reason, violation_details,
+            approval_l1_user_ids, approval_l2_user_ids, tat_current_level)
+           VALUES (
+             'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+             $1, $2::jsonb, $3::jsonb, $4::jsonb,
+             'High', 'Open', NOW(), 'MISSING_VALUE',
+             $5::jsonb, $6::int[], $7::int[], 'L1'
+           )
+           RETURNING *`,
+          [
+            notebook,
+            toJson([notebook], []),
+            toJson({}, {}),
+            toJson({ completion_threshold_hours: threshold.completion_threshold_hours }, {}),
+            toJson(violationDetails, {}),
+            l1ApproverIds,
+            l2ApproverIds
+          ]
+        );
+        inserted = ticket.rows[0];
+      } catch (err) {
+        if (err?.code === '23505') continue; // another pass already ticketed this (entry_id, notebook)
+        throw err;
+      }
+
+      await client.query(
+        `INSERT INTO ticketing_system.ticket_logs
+         (ticket_id, action, performed_by, role, created_at)
+         VALUES ($1, 'PP_NOTEBOOK_INCOMPLETE', 'System', 'System', NOW())`,
+        [inserted.ticket_id]
+      );
+
+      await createNotificationsForUsers(l1ApproverIds, {
+        ticketId: inserted.ticket_id,
+        type: 'PP_NOTEBOOK_INCOMPLETE',
+        category: 'Tickets',
+        priority: 'High',
+        title: `Process Parameter ${row.entry_id} incomplete`,
+        body: `"${notebook}" was not completed within ${threshold.completion_threshold_hours} hour(s).`,
+        linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
+        payload: { ticket_id: inserted.ticket_id, entry_id: row.entry_id, notebook, role: 'L1' }
+      });
+
+      created.push(inserted);
+    }
+  }
+
+  return { created, expired: [] };
 };
 
 router.use(auth);
@@ -711,7 +1266,7 @@ router.post('/', async (req, res, next) => {
       [],
       { useDefault: false }
     );
-    const entryId = cleanText(req.body?.entry_id);
+    const entryId = canonicalizePpEntryId(cleanText(req.body?.entry_id));
     const sourceTable = cleanText(req.body?.source_table);
     const sourceRecordId = cleanText(req.body?.source_record_id || req.body?.record_id);
     const notebookSubmissionId = cleanText(req.body?.notebook_submission_id) || buildSubmissionId({
@@ -810,7 +1365,7 @@ router.get('/', async (req, res, next) => {
 
     const role = String(req.user?.role || '').trim().toLowerCase();
     const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-    const canViewAll = role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+    const canViewAll = role === 'admin' || role === 'super admin' || role === 'superadmin';
     if (!canViewAll) {
       params.push(requesterId);
       where.push(`($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) OR submitted_by_user_id = $${params.length})`);
@@ -872,6 +1427,45 @@ router.post('/generate-overdue-tickets', async (req, res, next) => {
   try {
     const created = await generateOverdueNotebookTickets();
     return res.status(200).json({ success: true, created_count: created.length, tickets: created });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/pp-batch-config', async (req, res, next) => {
+  try {
+    const config = await getOrCreatePpBatchConfig();
+
+    const subDepartmentMap = new Map();
+    for (const item of PP_BATCH_NOTEBOOKS) {
+      if (!subDepartmentMap.has(item.sub_department)) {
+        subDepartmentMap.set(item.sub_department, []);
+      }
+      subDepartmentMap.get(item.sub_department).push(item);
+    }
+
+    const subDepartments = [];
+    for (const [subDepartment, notebooks] of subDepartmentMap.entries()) {
+      const notebookEntries = [];
+      for (const item of notebooks) {
+        const lastSaved = await client.query(
+          `SELECT entry_id, submitted_at, submitted_by_name
+           FROM ticketing_system.submitted_notebooks
+           WHERE notebook = $1
+           ORDER BY submitted_at DESC
+           LIMIT 1`,
+          [item.notebook]
+        );
+        notebookEntries.push({
+          notebook: item.notebook,
+          label: item.label,
+          last_saved_entry: lastSaved.rows[0] || null
+        });
+      }
+      subDepartments.push({ sub_department: subDepartment, notebooks: notebookEntries });
+    }
+
+    return res.status(200).json({ config, sub_departments: subDepartments });
   } catch (error) {
     next(error);
   }
@@ -954,9 +1548,60 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
   }
 });
 
+router.post('/pp-batch-config', async (req, res, next) => {
+  try {
+    await ensurePpBatchConfigTable();
+
+    const completionThresholdHours = parseTatHours(req.body?.completion_threshold_hours);
+    if (!completionThresholdHours) {
+      return res.status(400).json({ message: 'completion_threshold_hours is required and must be a positive integer' });
+    }
+
+    const l2TatHours = parseTatHours(req.body?.l2_tat_hours, null);
+    const approvalL1UserIds = toArray(req.body?.approval_l1_user_ids)
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const approvalL2UserIds = toArray(req.body?.approval_l2_user_ids)
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.pp_batch_config
+       (config_key, completion_threshold_hours, l2_tat_hours, approval_l1_user_ids, approval_l2_user_ids, is_active, updated_at)
+       VALUES ('global', $1, $2, $3::int[], $4::int[], $5, NOW())
+       ON CONFLICT (config_key) DO UPDATE SET
+         completion_threshold_hours = EXCLUDED.completion_threshold_hours,
+         l2_tat_hours = EXCLUDED.l2_tat_hours,
+         approval_l1_user_ids = EXCLUDED.approval_l1_user_ids,
+         approval_l2_user_ids = EXCLUDED.approval_l2_user_ids,
+         is_active = EXCLUDED.is_active,
+         updated_at = NOW()
+       RETURNING *`,
+      [completionThresholdHours, l2TatHours, approvalL1UserIds, approvalL2UserIds, isActive]
+    );
+
+    return res.status(200).json({ message: 'PP batch config saved successfully', config: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/pp-batch-completion-check', async (req, res, next) => {
+  try {
+    const result = await runPpBatchCompletionCheck();
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = {
   router,
   ensureSubmittedNotebookTables,
   ensureAcknowledgementThresholdTable,
-  generateOverdueNotebookTickets
+  generateOverdueNotebookTickets,
+  runPpBatchCompletionCheck,
+  generatePpNotebookBatchIncompleteTickets,
+  recordPpNotebookSubmission
 };

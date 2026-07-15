@@ -407,7 +407,8 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
 
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -566,7 +567,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   };
 
   const buildPayload = () => ({
-    entry_id: String(form.paramId || entryId || savedProcessParameterId || "").trim() || undefined,
+    entry_id: String(entryId || form.paramId || savedProcessParameterId || "").trim() || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -590,9 +591,10 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     const response = form.versionId
       ? await updateMixingProcessParameterEntry(form.versionId, payload)
       : await mixingProcessParameterDataEntry(payload);
+    const savedEntry = response?.data || response;
 
-    const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-    registerProcessParameterId(response, "Mixing", form.countName);
+    const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId || savedProcessParameterId);
+    registerProcessParameterId(savedEntry, "Mixing", form.countName);
     setSavedProcessParameterId(nextParamId);
     await loadVersions();
     dispatch(clearMixingState());

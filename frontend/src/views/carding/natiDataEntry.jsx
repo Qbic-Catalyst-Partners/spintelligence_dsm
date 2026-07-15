@@ -7,8 +7,12 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
+<<<<<<< HEAD
 import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+=======
+import { fetchCardingMasterMachineOptions, fetchCardingMasterVarieties } from "@/apis/carding";
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -52,7 +56,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             try {
                 const [varietyList, mcNos] = await Promise.all([
                     fetchCardingMasterVarieties(),
-                    fetchCardingMasterMachines({ prefix: "CDG" }),
+                    fetchCardingMasterMachineOptions({ prefix: "CDG" }),
                 ]);
                 if (active) {
                     setVarietyOptions(Array.isArray(varietyList) ? varietyList : []);

@@ -366,7 +366,8 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
 
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) {
@@ -489,7 +490,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   };
 
   const buildPayload = () => ({
-    entry_id: String(form.paramId || entryId || savedProcessParameterId || "").trim() || undefined,
+    entry_id: String(entryId || form.paramId || savedProcessParameterId || "").trim() || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,
@@ -548,9 +549,10 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
       const response = targetVersionId
         ? await updateSimplexProcessParameterEntry(targetVersionId, payload)
         : await submitSimplexProcessParameterEntry(payload);
+      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(response, "Simplex", form.countName);
+      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId || savedProcessParameterId);
+      registerProcessParameterId(savedEntry, "Simplex", form.countName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();

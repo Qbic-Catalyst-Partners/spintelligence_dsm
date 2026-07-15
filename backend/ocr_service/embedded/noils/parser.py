@@ -6,7 +6,7 @@ Noils report table reconstruction.
 Extracts:
 - Sample rows: Sample No, Sliver Wt, Noils Wt, Noils %
 - Summary rows starting at Average Weight: Average Weight, Weight (Max), Weight (Min), Range, SD, CV
-- Meta: Total Test, Number of Entries (N)
+- Meta: Test ID, Machine ID, Total Test, Number of Entries (N), Tester
 """
 
 import logging
@@ -47,12 +47,14 @@ def reconstruct_table(results: List[OCRResult]) -> List[Dict[str, str]]:
     if not results:
         return []
 
+    test_id, machine_id = _extract_report_meta(results)
     total_test = _extract_total_test(results)
     std_noils, noils_pct = _extract_noils_meta(results)
+    tester = _extract_tester(results)
     rows = _group_into_rows(results)
     if not rows:
         extracted_rows = _extract_rows_from_result_text(results)
-        return _prepend_meta_row(extracted_rows, total_test, std_noils, noils_pct)
+        return _prepend_meta_row(extracted_rows, test_id, machine_id, total_test, std_noils, noils_pct, tester)
 
     header_idx, col_centers = _find_header_row(rows)
     if header_idx == -1:
@@ -62,7 +64,7 @@ def reconstruct_table(results: List[OCRResult]) -> List[Dict[str, str]]:
         if _count_data_rows(fallback_rows) > _count_data_rows(extracted_rows):
             extracted_rows = fallback_rows
         logger.info(f"[Noils Parser] Fallback extracted {len(extracted_rows)} rows.")
-        return _prepend_meta_row(extracted_rows, total_test, std_noils, noils_pct)
+        return _prepend_meta_row(extracted_rows, test_id, machine_id, total_test, std_noils, noils_pct, tester)
 
     extracted_rows: List[Dict[str, str]] = []
 
@@ -94,19 +96,26 @@ def reconstruct_table(results: List[OCRResult]) -> List[Dict[str, str]]:
             logger.info(f"[Noils Parser] Text-stream fallback recovered {len(fallback_rows)} rows.")
             extracted_rows = fallback_rows
 
-    return _prepend_meta_row(extracted_rows, total_test, std_noils, noils_pct)
+    return _prepend_meta_row(extracted_rows, test_id, machine_id, total_test, std_noils, noils_pct, tester)
 
 
 def _prepend_meta_row(
     extracted_rows: List[Dict[str, str]],
+    test_id: Optional[str],
+    machine_id: Optional[str],
     total_test: Optional[int],
     std_noils: Optional[str],
     noils_pct: Optional[str],
+    tester: Optional[str],
 ) -> List[Dict[str, str]]:
-    if not (total_test or std_noils or noils_pct):
+    if not (test_id or machine_id or total_test or std_noils or noils_pct or tester):
         return extracted_rows
 
     meta_row = {"Row Type": "Meta"}
+    if test_id:
+        meta_row["Test ID"] = test_id
+    if machine_id:
+        meta_row["Machine ID"] = machine_id
     if total_test:
         meta_row["Total Test"] = str(total_test)
         meta_row["Number of Entries (N)"] = str(total_test)
@@ -114,6 +123,8 @@ def _prepend_meta_row(
         meta_row["Std. Noils %"] = std_noils
     if noils_pct:
         meta_row["Noils %"] = noils_pct
+    if tester:
+        meta_row["Tester"] = tester
     return [meta_row, *extracted_rows]
 
 
@@ -125,6 +136,46 @@ def _extract_total_test(results: List[OCRResult]) -> Optional[int]:
             return int(match.group(1))
         except ValueError:
             return None
+    return None
+
+
+def _extract_report_meta(results: List[OCRResult]) -> Tuple[Optional[str], Optional[str]]:
+    raw = " ".join(r.text for r in results)
+    lines = [re.sub(r"\s+", " ", r.text or "").strip() for r in results if r.text and r.text.strip()]
+
+    test_id = _extract_labeled_value(
+        lines,
+        raw,
+        [
+            r"\btest\s*id\b\s*[:=#\-]?\s*([A-Za-z0-9][A-Za-z0-9._/\-]*)",
+            r"\btest\s*no\b\s*[:=#\-]?\s*([A-Za-z0-9][A-Za-z0-9._/\-]*)",
+        ],
+    )
+    machine_id = _extract_labeled_value(
+        lines,
+        raw,
+        [
+            r"\bmachine\s*id\b\s*[:=#\-]?\s*([A-Za-z0-9][A-Za-z0-9._/\-]*)",
+            r"\bmachine\s*no\b\s*[:=#\-]?\s*([A-Za-z0-9][A-Za-z0-9._/\-]*)",
+            r"\bmc\s*no\b\s*[:=#\-]?\s*([A-Za-z0-9][A-Za-z0-9._/\-]*)",
+        ],
+    )
+
+    return test_id, machine_id
+
+
+def _extract_labeled_value(lines: List[str], raw: str, patterns: List[str]) -> Optional[str]:
+    for line in lines:
+        for pattern in patterns:
+            match = re.search(pattern, line, re.IGNORECASE)
+            if match and match.group(1):
+                return match.group(1).strip()
+
+    for pattern in patterns:
+        match = re.search(pattern, raw, re.IGNORECASE)
+        if match and match.group(1):
+            return match.group(1).strip()
+
     return None
 
 
@@ -151,6 +202,53 @@ def _extract_noils_meta(results: List[OCRResult]) -> Tuple[Optional[str], Option
     noils_val = noils_match.group(1).strip() if noils_match else None
 
     return std_val, noils_val
+
+
+def _extract_tester(results: List[OCRResult]) -> Optional[str]:
+    raw = " ".join(r.text for r in results)
+    if not raw.strip():
+        return None
+
+    def normalize_tester(value: str) -> str:
+        text = re.sub(r"\s+", " ", value or "").strip(" -:;,.\t\r\n")
+        text = re.split(r"\b(?:shift|process|date|page)\b", text, flags=re.IGNORECASE)[0].strip(" -:;,.\t\r\n")
+        return text
+
+    def format_tester(value: str) -> str:
+        text = normalize_tester(value)
+        if not text:
+            return ""
+        match = re.match(r"^(.*?)(?:\s*\[(\d+)\])?$", text)
+        if not match:
+            return text
+        name = match.group(1).strip(" -:;,.\t\r\n")
+        number = match.group(2)
+        return f"{name} [{number}]" if number else name
+
+    patterns = [
+        r"(?:tester|tested\s*by|test\s*by|operator)\s*[:=\-]?\s*([A-Za-z][A-Za-z .,'/\-\[\]0-9]{1,120})",
+        r"\btester\s+name\s*[:=\-]?\s*([A-Za-z][A-Za-z .,'/\-\[\]0-9]{1,120})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, raw, re.IGNORECASE)
+        if match:
+            tester = format_tester(match.group(1))
+            if tester:
+                return tester
+
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for line in lines[:6] + lines[-6:]:
+        match = re.search(
+            r"(?:tester|tested\s*by|test\s*by|operator)\s*[:=\-]?\s*(.+)$",
+            line,
+            re.IGNORECASE,
+        )
+        if match:
+            tester = format_tester(match.group(1))
+            if tester:
+                return tester
+
+    return None
 
 
 def _group_into_rows(results: List[OCRResult], y_tolerance: int = 12) -> List[List[OCRResult]]:

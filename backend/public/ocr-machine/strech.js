@@ -44,7 +44,9 @@ runOcrBtn.addEventListener('click', async () => {
     }
 
     const data = await resp.json();
-    const rows = getRowsFromOcrResponse(data);
+    const rawText = getRawTextFromOcrResponse(data);
+    const serverTester = (data?.meta && data.meta.tester) ? data.meta.tester : '';
+    const rows = backfillTesterRows(getRowsFromOcrResponse(data), rawText, serverTester);
     if (rows.length === 0) {
       throw new Error('OCR completed but no Stretch rows were returned.');
     }
@@ -69,6 +71,11 @@ function getRowsFromOcrResponse(data) {
   );
 }
 
+function getRawTextFromOcrResponse(data) {
+  const result = data?.result || data || {};
+  return result.raw_text || '';
+}
+
 function firstArray(value) {
   return Array.isArray(value) ? value : null;
 }
@@ -89,6 +96,7 @@ function parseStrechRows(rows) {
         tableNo,
         meta: {
           testId: '',
+          tester: '',
           totalTest: '',
           numberEntries: '',
           length: '',
@@ -106,6 +114,7 @@ function parseStrechRows(rows) {
 
     if (rowType === 'meta') {
       table.meta.testId = cleanDisplayValue(row['Test ID']);
+      table.meta.tester = cleanTesterValue(row.Tester);
       table.meta.totalTest = cleanDisplayValue(row['Total Test']);
       table.meta.numberEntries = cleanDisplayValue(row['Number of Entries (N)']);
       table.meta.length = cleanDisplayValue(row.Length);
@@ -169,6 +178,7 @@ function renderMeta(meta, total) {
   grid.className = 'meta-grid';
 
   const fields = [
+    ['Tester', meta.tester],
     ['Test ID', meta.testId],
     ['Total Test', total],
     ['Number of Entries (N)', meta.numberEntries || total],
@@ -189,6 +199,68 @@ function renderMeta(meta, total) {
   });
 
   return grid;
+}
+
+function backfillTesterRows(rows, rawText, serverTester) {
+  const patched = Array.isArray(rows) ? rows.map((row) => ({ ...row })) : [];
+  let metaRows = patched.filter((row) => String(row['Row Type'] || '').trim().toLowerCase() === 'meta');
+  if (metaRows.length === 0) {
+    const metaRow = { 'Row Type': 'Meta', 'Table No': '1' };
+    patched.unshift(metaRow);
+    metaRows = [metaRow];
+  }
+  metaRows.forEach((row) => {
+    const current = cleanTesterValue(row.Tester);
+    if (serverTester && !current) row.Tester = serverTester;
+  });
+  if (serverTester) return patched;
+  const testerValue = extractTesterFromRawText(rawText);
+  if (!testerValue) return patched;
+  metaRows.forEach((row) => {
+    if (!cleanDisplayValue(row.Tester)) row.Tester = testerValue;
+  });
+  return patched;
+}
+
+function extractTesterFromRawText(rawText) {
+  const lines = String(rawText || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const stopWords = ['test id', 'total test', 'number of entries', 'std. stretch', 'std stretch', 'stretch %', 'sample no', 'remark', 'length', 'date', 'page'];
+
+  const cleanTester = (value) => {
+    let text = String(value || '').replace(/\s+/g, ' ').trim().replace(/^[:=\-\s]+|[:=\-\s]+$/g, '');
+    const labelPattern = /\b(?:test\s*id|total\s*test|number\s*of\s*entries|std\.?\s*stretch|std\s*stretch|stretch\s*%|sample\s*no|remark|length|date|page|shift|process)\b/i;
+    const labelMatch = text.match(labelPattern);
+    if (labelMatch && labelMatch.index > 0) text = text.slice(0, labelMatch.index).trim();
+    const lower = text.toLowerCase();
+    for (const stopWord of stopWords) {
+      const index = lower.indexOf(stopWord);
+      if (index > 0) text = text.slice(0, index).trim();
+    }
+    return text;
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const inline = lines[i].match(/\btester(?:\s*name)?\s*[:=\-]?\s*(.+)$/i);
+    if (inline) {
+      const value = cleanTester(inline[1]);
+      if (value) return value;
+    }
+    if (/^tester(?:\s*name)?$/i.test(lines[i]) && lines[i + 1]) {
+      const value = cleanTester(lines[i + 1]);
+      if (value) return value;
+    }
+  }
+
+  return '';
+}
+
+function cleanTesterValue(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return extractTesterFromRawText(`Tester: ${text}`) || text.replace(/^[:=\-\s]+|[:=\-\s]+$/g, '').trim();
 }
 
 function renderSampleTable(samples) {

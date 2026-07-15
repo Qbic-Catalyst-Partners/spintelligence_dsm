@@ -236,6 +236,64 @@ const initPromise = (async () => {
   `);
 
   await pool.query(`
+    CREATE SCHEMA IF NOT EXISTS users;
+  `);
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS users.user_details
+      ADD COLUMN IF NOT EXISTS level varchar(5) NOT NULL DEFAULT 'L1';
+  `);
+
+  await pool.query(`
+    UPDATE users.user_details
+    SET level = 'L1'
+    WHERE level IS NULL OR btrim(level) = '';
+  `);
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS users.user_details
+      ADD COLUMN IF NOT EXISTS top_department varchar(50);
+  `);
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS users.user_details
+      ADD COLUMN IF NOT EXISTS employee_type varchar(10);
+  `);
+
+  const mixingCreatedAtTables = [
+    'mixing.cotton_hvi_data_entry',
+    'mixing.fibre_data_entry',
+    'mixing.afis_data_entry',
+    'mixing.afis6_cotton_data_entry',
+    'mixing.afis6_mmf_data_entry',
+    'mixing.moisture_data_entry',
+    'mixing.openness_inspection',
+    'mixing.mixing_qc_header',
+  ];
+  for (const table of mixingCreatedAtTables) {
+    await pool.query(`
+      ALTER TABLE IF EXISTS ${table}
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    `);
+  }
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS mixing.afis6_cotton_data_entry
+      ADD COLUMN IF NOT EXISTS sc_nep_count_g NUMERIC,
+      ADD COLUMN IF NOT EXISTS crimp_percent NUMERIC;
+  `);
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS mixing.afis6_mmf_data_entry
+      ADD COLUMN IF NOT EXISTS crimp_percent NUMERIC;
+  `);
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS blowroom.drop_test
+      ADD COLUMN IF NOT EXISTS average_weight NUMERIC;
+  `);
+
+  await pool.query(`
     CREATE SEQUENCE IF NOT EXISTS ticketing_system.ticket_seq
       START WITH 1
       INCREMENT BY 1;
@@ -644,6 +702,112 @@ const initPromise = (async () => {
       UNIQUE (threshold_master_id, approver_user_id)
     );
   `);
+
+  await pool.query(`
+    CREATE SCHEMA IF NOT EXISTS mixing;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mixing.afis6_cotton_data_entry (
+      id serial PRIMARY KEY,
+      entry_id text,
+      inspection_date date NOT NULL DEFAULT CURRENT_DATE,
+      material_class varchar(255),
+      comment varchar(255),
+      total_nep_count_g numeric(12,3),
+      total_nep_mean_size_um numeric(12,3),
+      fiber_nep_count_g numeric(12,3),
+      fiber_nep_mean_size_um numeric(12,3),
+      scnep_count_g numeric(12,3),
+      scnep_mean_size_um numeric(12,3),
+      l_w_mm numeric(12,3),
+      l_w_cv numeric(12,3),
+      sfc_w_percent numeric(12,3),
+      uql_w_mm numeric(12,3),
+      l_n_mm numeric(12,3),
+      l_n_cv_percent numeric(12,3),
+      sfc_n_percent numeric(12,3),
+      five_pct_l_n_mm numeric(12,3),
+      fineness_mtex numeric(12,3),
+      maturity_ratio_mat1 numeric(12,3),
+      ifc_percent numeric(12,3),
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
+      ON mixing.afis6_cotton_data_entry (entry_id)
+      WHERE entry_id IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS afis6_cotton_data_entry_inspection_date_idx
+      ON mixing.afis6_cotton_data_entry (inspection_date DESC);
+  `);
+
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION mixing.set_updated_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at = NOW();
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  await pool.query(`
+    DROP TRIGGER IF EXISTS trg_afis6_cotton_updated_at ON mixing.afis6_cotton_data_entry;
+  `);
+
+  await pool.query(`
+    CREATE TRIGGER trg_afis6_cotton_updated_at
+      BEFORE UPDATE ON mixing.afis6_cotton_data_entry
+      FOR EACH ROW
+      EXECUTE FUNCTION mixing.set_updated_at();
+  `);
+
+  // Self-heal any bigserial sequence that has fallen behind the actual MAX(id)
+  // in its table (e.g. from data imports/restores that insert explicit ids
+  // without advancing the sequence). Left uncorrected, this causes spurious
+  // "duplicate key"/"duplicate entry_id" errors on the very next insert.
+  try {
+    const sequences = await pool.query(`
+      SELECT n.nspname AS schema, t.relname AS table_name, a.attname AS col,
+             s.relname AS seq_name, ns.nspname AS seq_schema
+      FROM pg_class s
+      JOIN pg_depend d ON d.objid = s.oid AND d.deptype = 'a'
+      JOIN pg_class t ON t.oid = d.refobjid
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_namespace ns ON ns.oid = s.relnamespace
+      WHERE s.relkind = 'S'
+    `);
+
+    let resyncedCount = 0;
+    for (const row of sequences.rows) {
+      try {
+        const seqFull = `"${row.seq_schema}"."${row.seq_name}"`;
+        const tableFull = `"${row.schema}"."${row.table_name}"`;
+        const before = await pool.query(`SELECT last_value FROM ${seqFull}`);
+        const beforeVal = Number(before.rows[0].last_value);
+        const maxIdResult = await pool.query(`SELECT MAX("${row.col}") AS max_id FROM ${tableFull}`);
+        const maxId = Number(maxIdResult.rows[0].max_id) || 0;
+        if (maxId > beforeVal) {
+          await pool.query(`SELECT setval('${seqFull}', $1, true)`, [maxId]);
+          resyncedCount++;
+        }
+      } catch (_) {
+        // Skip sequences/tables we can't introspect (e.g. permissions, exotic types)
+      }
+    }
+    if (resyncedCount > 0) {
+      console.log(`[DB Init] Resynced ${resyncedCount} sequence(s) that had fallen behind MAX(id)`);
+    }
+  } catch (err) {
+    console.warn('[DB Init] Sequence resync sweep skipped:', err.message);
+  }
 })().catch(err => {
   console.error('[DB Init] Initialization warning (non-fatal):', err.message);
   // Don't throw - let queries attempt despite init failure

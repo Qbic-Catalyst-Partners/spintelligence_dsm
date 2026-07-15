@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/router";
+import { useSelector } from "react-redux";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { MdOutlineEditNote } from "react-icons/md";
@@ -23,7 +24,7 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { submitDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import { submitDrawFrameHeaderEntry, updateDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
@@ -352,6 +353,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   ref
 ) {
   const router = useRouter();
+  const user = useSelector((state) => state.auth?.user);
   const activeType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
   const activeConfig = TYPE_CONFIG[activeType];
 
@@ -585,7 +587,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
       const payload = {
         ...activeConfig.buildPayload(form, entryId),
-        id: selectedExistingEntry ? selectedExistingEntry.id : undefined,
         entry_id: paramId,
         param_id: paramId,
         // drawframe_qc_header now has its own "operator" column (see backend) — persist it
@@ -593,7 +594,9 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         // has proven fragile for this screen (some entries never got recorded).
         user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
       };
-      const response = await submitDrawFrameHeaderEntry(payload);
+      const response = selectedExistingEntry
+        ? await updateDrawFrameHeaderEntry(selectedExistingEntry.id, payload)
+        : await submitDrawFrameHeaderEntry(payload);
       const savedEntry = response?.data || response;
 
       registerProcessParameterId(savedEntry, activeType, form.countName);

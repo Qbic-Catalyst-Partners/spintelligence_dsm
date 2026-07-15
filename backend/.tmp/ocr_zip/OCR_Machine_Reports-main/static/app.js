@@ -1,0 +1,563 @@
+/**
+ * app.js — HVI OCR frontend logic
+ *
+ * Flow:
+ *  1. User selects file → preview shown
+ *  2. "Run OCR" → POST /api/ocr via EventSource (SSE)
+ *  3. Each SSE event updates progress panel in real-time
+ *  4. Final event (step 99) populates: raw text, extracted table, JSON, form
+ *  5. User edits form → "Save Record" → POST /api/save
+ */
+
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = {
+  file: null,
+  ocrResult: null,
+  fieldNames: [],
+  savedId: null,
+};
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+
+const docTypeSelect   = $('docTypeSelect');
+const fileInput       = $('fileInput');
+const uploadArea      = $('uploadArea');
+const uploadPlaceholder = $('uploadPlaceholder');
+const uploadPreview   = $('uploadPreview');
+const browseBtn       = $('browseBtn');
+const previewName     = $('previewName');
+const previewSize     = $('previewSize');
+const runOcrBtn       = $('runOcrBtn');
+const clearFileBtn    = $('clearFileBtn');
+
+const sectionProgress = $('sectionProgress');
+const progressSteps   = $('progressSteps');
+const logPanel        = $('logPanel');
+const progressSpinner = $('progressSpinner');
+
+const sectionResults  = $('sectionResults');
+const rawOcrText      = $('rawOcrText');
+const ocrRegionCount  = $('ocrRegionCount');
+const tableWrapper    = $('tableWrapper');
+const tableBadge      = $('tableBadge');
+const jsonOutput      = $('jsonOutput');
+const copyJsonBtn     = $('copyJsonBtn');
+
+const sectionForm     = $('sectionForm');
+const formGrid        = $('formGrid');
+const formAlert       = $('formAlert');
+const hviForm         = $('hviForm');
+const saveBtn         = $('saveBtn');
+const clearFormBtn    = $('clearFormBtn');
+const newEntryBtn     = $('newEntryBtn');
+const saveSuccess     = $('saveSuccess');
+const saveError       = $('saveError');
+const saveRecordId    = $('saveRecordId');
+const saveErrorMsg    = $('saveErrorMsg');
+
+
+// ── Step bar management ───────────────────────────────────────────────────────
+function setStepState(stepId, stateClass) {
+  const el = $(stepId);
+  if (!el) return;
+  el.classList.remove('active', 'done');
+  if (stateClass) el.classList.add(stateClass);
+}
+function setLineState(lineId, done) {
+  const el = $(lineId);
+  if (!el) return;
+  el.classList.toggle('done', done);
+}
+
+// ── Progress helpers ──────────────────────────────────────────────────────────
+const STEP_LABELS = {
+  1: 'File received',
+  2: 'OCR engine ready',
+  3: 'OCR inference',
+  4: 'Raw text',
+  5: 'Header detection',
+  6: 'Row selection',
+  7: 'Field mapping',
+  8: 'JSON output',
+  9: 'Complete',
+};
+
+function addProgressStep(step, msg, type = 'done') {
+  const div = document.createElement('div');
+  div.className = `progress-step ${type}`;
+  const icon = type === 'done' ? '✅' : type === 'error' ? '❌' : '⏳';
+  div.innerHTML = `<span class="progress-step-icon">${icon}</span><span>${msg}</span>`;
+  progressSteps.appendChild(div);
+  progressSteps.scrollTop = progressSteps.scrollHeight;
+}
+
+function addLog(msg) {
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  logPanel.textContent += `[${ts}] ${msg}\n`;
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+// ── Upload handling ───────────────────────────────────────────────────────────
+browseBtn.addEventListener('click', () => fileInput.click());
+uploadPlaceholder.addEventListener('click', (e) => {
+  if (e.target !== browseBtn) fileInput.click();
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+
+// Drag-and-drop
+uploadArea.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadPlaceholder.classList.add('drag-over');
+});
+uploadArea.addEventListener('dragleave', () => uploadPlaceholder.classList.remove('drag-over'));
+uploadArea.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadPlaceholder.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+function handleFile(file) {
+  const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
+  if (!allowed.includes(file.type)) {
+    alert('Please upload a JPG, PNG, or PDF file.');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    alert('File too large (max 20 MB).');
+    return;
+  }
+  state.file = file;
+  previewName.textContent = file.name;
+  previewSize.textContent = formatBytes(file.size);
+  uploadPlaceholder.classList.add('hidden');
+  uploadPreview.classList.remove('hidden');
+
+  // Reset downstream sections
+  resetResults();
+}
+
+docTypeSelect.addEventListener('change', () => {
+  // Clear the current file if user changes doc type, because it invalidates the pipeline
+  state.file = null;
+  fileInput.value = '';
+  uploadPlaceholder.classList.remove('hidden');
+  uploadPreview.classList.add('hidden');
+  resetResults();
+  setStepState('step-upload', 'active');
+  setStepState('step-extract', '');
+  setStepState('step-review', '');
+  setStepState('step-save', '');
+  
+  // Refresh fields for the new doc type
+  state.fieldNames = [];
+  fetchFields();
+});
+
+clearFileBtn.addEventListener('click', () => {
+  state.file = null;
+  fileInput.value = '';
+  uploadPlaceholder.classList.remove('hidden');
+  uploadPreview.classList.add('hidden');
+  resetResults();
+  setStepState('step-upload', 'active');
+  setStepState('step-extract', '');
+  setStepState('step-review', '');
+  setStepState('step-save', '');
+});
+
+function resetResults() {
+  sectionProgress.classList.add('hidden');
+  sectionResults.classList.add('hidden');
+  sectionForm.classList.add('hidden');
+  progressSteps.innerHTML = '';
+  logPanel.textContent = '';
+  rawOcrText.value = '';
+  tableWrapper.innerHTML = '';
+  jsonOutput.textContent = '';
+  formGrid.innerHTML = '';
+  saveSuccess.classList.add('hidden');
+  saveError.classList.add('hidden');
+  formAlert.style.display = 'none';
+  state.ocrResult = null;
+  state.savedId = null;
+}
+
+// ── OCR trigger ───────────────────────────────────────────────────────────────
+runOcrBtn.addEventListener('click', runOCR);
+
+async function runOCR() {
+  if (!state.file) return;
+
+  resetResults();
+  sectionProgress.classList.remove('hidden');
+  progressSpinner.classList.remove('hidden');
+  runOcrBtn.disabled = true;
+
+  setStepState('step-upload', 'done');
+  setStepState('step-extract', 'active');
+  setLineState('line-1-2', true);
+
+  addLog(`Starting OCR pipeline for: ${state.file.name}`);
+
+  const formData = new FormData();
+  formData.append('file', state.file);
+  formData.append('doc_type', docTypeSelect.value);
+
+  // Use fetch for SSE — EventSource doesn't support POST
+  // We stream via fetch + ReadableStream
+  try {
+    const response = await fetch('/api/ocr', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are separated by double newlines
+      const events = buffer.split('\n\n');
+      buffer = events.pop(); // Keep incomplete event in buffer
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+        const line = event.replace(/^data:\s*/, '');
+        if (!line) continue;
+
+        try {
+          const payload = JSON.parse(line);
+          handleSSEEvent(payload);
+        } catch (e) {
+          addLog(`[parse error] ${line}`);
+        }
+      }
+    }
+  } catch (err) {
+    addProgressStep(0, `Error: ${err.message}`, 'error');
+    addLog(`ERROR: ${err.message}`);
+    progressSpinner.classList.add('hidden');
+    runOcrBtn.disabled = false;
+  }
+}
+
+function handleSSEEvent(payload) {
+  const { step, msg, error, result } = payload;
+
+  if (error) {
+    addProgressStep(step, msg, 'error');
+    addLog(`❌ ${msg}`);
+    progressSpinner.classList.add('hidden');
+    runOcrBtn.disabled = false;
+    return;
+  }
+
+  // Step 99 = final result
+  if (step === 99) {
+    progressSpinner.classList.add('hidden');
+    runOcrBtn.disabled = false;
+    if (result) populateResults(result);
+    return;
+  }
+
+  addProgressStep(step, msg, 'done');
+  addLog(`[Step ${step}] ${msg}`);
+}
+
+// ── Populate results ──────────────────────────────────────────────────────────
+function populateResults(result) {
+  state.ocrResult = result;
+
+  // Step indicators
+  setStepState('step-extract', 'done');
+  setStepState('step-review', 'active');
+  setLineState('line-2-3', true);
+
+  // 3a: Raw OCR text
+  rawOcrText.value = result.raw_text || '';
+  const regionCount = (result.raw_text || '').split('\n').filter(Boolean).length;
+  ocrRegionCount.textContent = `${regionCount} regions`;
+
+  // 3b: Extracted table
+  buildTable(result.json_output || {});
+
+  // 3c: JSON output
+  jsonOutput.textContent = JSON.stringify(result.json_output || {}, null, 2);
+
+  // Show results section
+  sectionResults.classList.remove('hidden');
+
+  // 3d: Build form
+  buildForm(result.json_output || {});
+  sectionForm.classList.remove('hidden');
+
+  // Scroll to results
+  setTimeout(() => sectionResults.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+}
+
+// ── Table builder ─────────────────────────────────────────────────────────────
+function buildTable(jsonOutputArray) {
+  if (!Array.isArray(jsonOutputArray)) jsonOutputArray = [jsonOutputArray];
+
+  if (jsonOutputArray.length === 0 || Object.keys(jsonOutputArray[0] || {}).length === 0) {
+    tableWrapper.innerHTML = '<p style="color:#94a3b8;font-size:0.85rem;padding:0.5rem 0">No fields extracted — check image quality.</p>';
+    tableBadge.textContent = '0 fields';
+    return;
+  }
+
+  const fields = Object.keys(jsonOutputArray[0]);
+  tableBadge.textContent = `${jsonOutputArray.length} rows`;
+  tableBadge.className = 'badge badge-green';
+
+  const table = document.createElement('table');
+  table.className = 'hvi-table';
+
+  // Header row
+  const thead = table.createTHead();
+  const headerRow = thead.insertRow();
+  fields.forEach(f => {
+    const th = document.createElement('th');
+    th.textContent = f;
+    headerRow.appendChild(th);
+  });
+
+  // Value rows
+  const tbody = table.createTBody();
+  jsonOutputArray.forEach(rowJson => {
+    const valueRow = tbody.insertRow();
+    fields.forEach(f => {
+      const td = valueRow.insertCell();
+      const val = rowJson[f];
+      if (val !== undefined && val !== null && val !== '') {
+        td.textContent = val;
+      } else {
+        td.textContent = '—';
+        td.className = 'missing';
+      }
+    });
+  });
+
+  tableWrapper.innerHTML = '';
+  tableWrapper.appendChild(table);
+}
+
+// ── Form builder ──────────────────────────────────────────────────────────────
+function buildForm(jsonOutputArray) {
+  if (!Array.isArray(jsonOutputArray)) jsonOutputArray = [jsonOutputArray];
+
+  if (state.fieldNames.length === 0) {
+    fetch(`/api/fields?doc_type=${docTypeSelect.value}`)
+      .then(r => r.json())
+      .then(({ fields }) => {
+        state.fieldNames = fields;
+        renderFormFields(jsonOutputArray);
+      })
+      .catch(() => {
+        state.fieldNames = Object.keys(jsonOutputArray[0] || {});
+        renderFormFields(jsonOutputArray);
+      });
+  } else {
+    renderFormFields(jsonOutputArray);
+  }
+}
+
+function renderFormFields(jsonOutputArray) {
+  formGrid.innerHTML = '';
+  let missingCount = 0;
+
+  const allFields = state.fieldNames.length > 0
+    ? state.fieldNames
+    : Object.keys(jsonOutputArray[0] || {});
+
+  jsonOutputArray.forEach((rowJson, rowIndex) => {
+    const rowTitle = document.createElement('div');
+    rowTitle.className = 'form-row-title';
+    rowTitle.textContent = `Data Row ${rowIndex + 1}`;
+    rowTitle.style.gridColumn = '1 / -1';
+    rowTitle.style.fontWeight = '700';
+    rowTitle.style.color = '#1e4d9e';
+    rowTitle.style.marginTop = rowIndex > 0 ? '1.5rem' : '0.5rem';
+    rowTitle.style.borderBottom = '2px solid #e2e8f0';
+    rowTitle.style.paddingBottom = '0.4rem';
+    formGrid.appendChild(rowTitle);
+
+    allFields.forEach(name => {
+      const val = rowJson[name] || '';
+      const isFilled = val !== '';
+      if (!isFilled) missingCount++;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-field';
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `field_${rowIndex}_${name}`);
+      label.textContent = name;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.id = `field_${rowIndex}_${name}`;
+      input.name = name;
+      input.dataset.row = rowIndex;
+      input.value = val;
+      input.placeholder = `Enter ${name}`;
+      input.className = isFilled ? 'ocr-filled' : 'ocr-missing';
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(input);
+      formGrid.appendChild(wrapper);
+    });
+  });
+
+  if (missingCount > 0) {
+    formAlert.style.display = 'block';
+    formAlert.textContent = `⚠️ ${missingCount} field(s) could not be extracted — please fill them in manually.`;
+  } else {
+    formAlert.style.display = 'none';
+  }
+
+  saveBtn.disabled = false;
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+hviForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await saveRecord();
+});
+
+async function saveRecord() {
+  saveBtn.disabled = true;
+  saveSuccess.classList.add('hidden');
+  saveError.classList.add('hidden');
+
+  // Collect form values
+  const manualJson = [];
+  let currentRow = -1;
+  let currentObj = {};
+
+  formGrid.querySelectorAll('input').forEach(input => {
+    const rowIdx = parseInt(input.dataset.row, 10);
+    if (rowIdx !== currentRow) {
+      if (currentRow !== -1) {
+        manualJson.push(currentObj);
+      }
+      currentRow = rowIdx;
+      currentObj = {};
+    }
+    if (input.name && input.value.trim()) {
+      currentObj[input.name] = input.value.trim();
+    }
+  });
+  if (currentRow !== -1) {
+    manualJson.push(currentObj);
+  }
+
+  if (manualJson.length === 0 || manualJson.every(row => Object.keys(row).length === 0)) {
+    saveErrorMsg.textContent = 'All fields are empty — nothing to save.';
+    saveError.classList.remove('hidden');
+    saveBtn.disabled = false;
+    return;
+  }
+
+  const payload = {
+    filename: state.file?.name || '',
+    ocr_json: state.ocrResult?.json_output || {},
+    manual_json: manualJson,
+    doc_type: docTypeSelect.value,
+  };
+
+  try {
+    const resp = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.detail || `Server error ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    state.savedId = data.id;
+    saveRecordId.textContent = `Record ID: #${data.id}`;
+    saveSuccess.classList.remove('hidden');
+    saveBtn.disabled = true;
+
+    setStepState('step-review', 'done');
+    setStepState('step-save', 'done');
+    setLineState('line-3-4', true);
+
+    saveSuccess.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    saveErrorMsg.textContent = `Save failed: ${err.message}`;
+    saveError.classList.remove('hidden');
+    saveBtn.disabled = false;
+  }
+}
+
+// ── Form controls ─────────────────────────────────────────────────────────────
+clearFormBtn.addEventListener('click', () => {
+  formGrid.querySelectorAll('input').forEach(i => {
+    i.value = '';
+    i.className = 'ocr-missing';
+  });
+  saveSuccess.classList.add('hidden');
+  saveError.classList.add('hidden');
+  saveBtn.disabled = false;
+});
+
+newEntryBtn.addEventListener('click', () => {
+  // Full reset
+  state = { file: null, ocrResult: null, fieldNames: state.fieldNames, savedId: null };
+  fileInput.value = '';
+  uploadPlaceholder.classList.remove('hidden');
+  uploadPreview.classList.add('hidden');
+  resetResults();
+  ['step-upload','step-extract','step-review','step-save'].forEach(id => setStepState(id, ''));
+  setStepState('step-upload', 'active');
+  ['line-1-2','line-2-3','line-3-4'].forEach(id => setLineState(id, false));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// ── JSON copy ─────────────────────────────────────────────────────────────────
+copyJsonBtn.addEventListener('click', () => {
+  const text = jsonOutput.textContent;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    copyJsonBtn.textContent = 'Copied!';
+    setTimeout(() => { copyJsonBtn.textContent = 'Copy'; }, 2000);
+  });
+});
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function fetchFields() {
+  fetch(`/api/fields?doc_type=${docTypeSelect.value}`)
+    .then(r => r.json())
+    .then(({ fields }) => { state.fieldNames = fields; })
+    .catch(() => {});
+}
+
+// Pre-fetch field names on page load
+fetchFields();

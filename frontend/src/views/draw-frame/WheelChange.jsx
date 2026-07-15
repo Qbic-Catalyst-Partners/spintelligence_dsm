@@ -2044,7 +2044,6 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     { label: "Machine No.", value: machineNo || "-" },
     { label: "Wheel Change Type", value: wheelChangeType || "-" },
     { label: "Entry ID", value: entryId || "#DWC-001" },
-    { label: "Date", value: date || "-" },
     ...activeRows.flatMap((row) => [
       { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
       { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
@@ -2268,19 +2267,6 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
           <div className={styles.field}>
             <label>Entry ID</label>
             <input type="text" className={styles.topInput} value={entryId || "#DWC-001"} readOnly disabled />
-          </div>
-
-          <div className={styles.field}>
-            <label>Date</label>
-            <input
-              type="date"
-              className={`${styles.topInput} ${errors.date ? styles.errorInput : ""}`}
-              value={date}
-              onChange={(event) => {
-                setDate(event.target.value);
-                clearFieldError("date");
-              }}
-            />
           </div>
 
           <div className={styles.field}>

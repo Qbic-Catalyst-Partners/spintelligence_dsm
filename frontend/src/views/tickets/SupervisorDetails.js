@@ -11,18 +11,23 @@ import {
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
 import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
+import TatCountdown from "../../components/TatCountdown";
+import { getProcessParameterTickets } from "../../apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  calculateTicketDeviation,
   getTicketKind,
   getTicketParameterNames,
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
+  isPpBatchCompletionTicketRecord,
   isSubmissionFrequencyParameterName,
   isSubmissionTicketRecord,
   TICKET_KIND,
   transformTicketWithDescription,
+  buildTicketActivityTimelineSteps,
 } from "../../utils/ticketTransformer";
 import {
   applyStoredTicketStatus,
@@ -106,6 +111,7 @@ export default function SupervisorDetails() {
   const [l2Preview, setL2Preview] = useState(null);
   const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [directFetchTicket, setDirectFetchTicket] = useState(null);
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
@@ -120,6 +126,9 @@ export default function SupervisorDetails() {
     ) || null;
   }, [requestedTicketId, tickets]);
 
+  const directFetchTicketMatches =
+    directFetchTicket && normalizeTicketId(directFetchTicket?.ticket_id) === normalizedRequestedTicketId;
+
   const ticket = useMemo(() => {
     const previewSource = buildPreviewTicket(l2Preview);
     const previewMatches =
@@ -127,23 +136,53 @@ export default function SupervisorDetails() {
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = previewMatches ? previewSource : detailMatches ? detailSource : dashboardTicket;
+    const source = previewMatches
+      ? previewSource
+      : detailMatches
+      ? detailSource
+      : dashboardTicket || (directFetchTicketMatches ? directFetchTicket : null);
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, directFetchTicket, directFetchTicketMatches, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
     if (!l2PreviewLoaded) return;
 
+    if (dashboardTicket || directFetchTicketMatches) return;
+
+    // Process-parameter tickets live in a separate backend table
+    // (/operator-tickets/process-parameter-ticketing) that the supervisor
+    // threshold/submission list endpoint doesn't cover, so fetch it directly —
+    // mirroring what the dashboard's process-parameter tab already does.
+    if (ticketType === "process_parameter") {
+      let mounted = true;
+      (async () => {
+        try {
+          const response = await getProcessParameterTickets({ page: 1, limit: 500, _ts: Date.now() });
+          const list = Array.isArray(response)
+            ? response
+            : response?.data?.tickets || response?.data?.rows || response?.data || [];
+          const match = (Array.isArray(list) ? list : []).find(
+            (item) => normalizeTicketId(item?.ticket_id || item?.id) === normalizedRequestedTicketId
+          );
+          if (mounted) setDirectFetchTicket(match || null);
+        } catch {
+          if (mounted) setDirectFetchTicket(null);
+        }
+      })();
+      return () => {
+        mounted = false;
+      };
+    }
+
     if (
       !l2Preview &&
-      !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dashboardTicket, directFetchTicketMatches, dispatch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id, ticketType]);
 
   useEffect(() => {
     let mounted = true;
@@ -299,10 +338,18 @@ export default function SupervisorDetails() {
   // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,
   // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
   // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
-  const isSubmissionTicket = ticketType
+  const isProcessParameterTicket = ticketType
+    ? ticketType === "process_parameter"
+    : isPpBatchCompletionTicketRecord(ticket);
+  const isSubmissionTicket = !isProcessParameterTicket && (ticketType
     ? ticketType === "submission"
     : isSubmissionTicketRecord(ticket) ||
-      String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+      String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY");
+  const entryId = ticket?.entry_id || ticket?.entryId || "-";
+  const completionThresholdHours =
+    ticket?.completion_time_provided_hours ?? ticket?.completionTimeProvidedHours ?? "-";
+  const entryCreatedAt = ticket?.entry_created_at || ticket?.entryCreatedAt || "-";
+  const timeLaggedHours = ticket?.time_lagged_hours ?? ticket?.timeLaggedHours ?? "-";
   const rawParameterNames = getTicketParameterNames(ticket);
   const submissionParameterNames = rawParameterNames.filter(
     (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)
@@ -407,6 +454,21 @@ export default function SupervisorDetails() {
     return baseTimeline;
   })();
 
+  // Fallback multi-step timeline built from the ticket record itself, used whenever the
+  // dedicated timeline endpoint returns nothing — which today is always the case for
+  // Submission and Process Parameter tickets (that endpoint only knows the Threshold table).
+  const fallbackTimelineItems = buildTicketActivityTimelineSteps(ticket).map((step) => {
+    const iconMeta = buildTimelineIcon(step.title);
+    return {
+      time: formatDateTime(step.at),
+      title: step.title,
+      description: step.description,
+      icon: iconMeta.icon,
+      alt: iconMeta.alt,
+    };
+  });
+  const displayedTimeline = timelineItems.length ? timelineWithL2Comment : fallbackTimelineItems;
+
   return (
     <div>
       <div className={styles.page}>
@@ -440,6 +502,7 @@ export default function SupervisorDetails() {
                 <span className={styles.severity}>
                   Severity: {ticket.severity}
                 </span>
+                <TatCountdown ticket={ticket} />
               </div>
 
               <p className={styles.desc}>
@@ -506,42 +569,72 @@ export default function SupervisorDetails() {
           </div>
 
           <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>NOTEBOOK TYPE</th>
-                <th>PARAMETER</th>
-                <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
-                <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
-                <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
-                <th>CREATED AT</th>
-              </tr>
-            </thead>
+            {isProcessParameterTicket ? (
+              <>
+                <thead>
+                  <tr>
+                    <th>NOTEBOOK</th>
+                    <th>ENTRY ID</th>
+                    <th>COMPLETION THRESHOLD (HRS)</th>
+                    <th>ENTRY CREATED AT</th>
+                    <th>TIME LAGGED (HRS)</th>
+                    <th>CREATED AT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{ticket.notebook || ticket.machine_name || "-"}</td>
+                    <td>{entryId}</td>
+                    <td>{completionThresholdHours}</td>
+                    <td>{entryCreatedAt === "-" ? "-" : formatDateTime(entryCreatedAt)}</td>
+                    <td>{timeLaggedHours}</td>
+                    <td>{formatDateTime(ticket.created_at)}</td>
+                  </tr>
+                </tbody>
+              </>
+            ) : (
+              <>
+                <thead>
+                  <tr>
+                    <th>NOTEBOOK TYPE</th>
+                    <th>PARAMETER</th>
+                    <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
+                    <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
+                    <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
+                    {!isSubmissionTicket && <th>DEVIATION</th>}
+                    <th>CREATED AT</th>
+                  </tr>
+                </thead>
 
-            <tbody>
-              {visibleParameterNames.map((key, i) => (
-                <tr key={i}>
-                  <td>{ticket.notebook || ticket.machine_name || "-"}</td>
-                  <td>{key.toUpperCase()}</td>
-                  <td style={{ color: "#CA0000" }}>
-                    {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
-                  </td>
-                  <td>
-                    {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
-                      getTicketValueForParameter(ticket?.threshold_value, key)
-                    )}
-                  </td>
-                  <td>
-                    {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
-                      getTicketValueForParameter(ticket?.threshold_value, key)
-                    )}
-                  </td>
-                  <td>{formatDateTime(ticket.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
+                <tbody>
+                  {visibleParameterNames.map((key, i) => {
+                    const actual = getTicketValueForParameter(ticket?.actual_value, key);
+                    const thresholdSource = getTicketValueForParameter(ticket?.threshold_value, key);
+                    const standard = formatStandardValue(thresholdSource);
+                    return (
+                      <tr key={i}>
+                        <td>{ticket.notebook || ticket.machine_name || "-"}</td>
+                        <td>{key.toUpperCase()}</td>
+                        <td style={{ color: "#CA0000" }}>
+                          {isSubmissionTicket ? submissionFrequency : actual}
+                        </td>
+                        <td>{isSubmissionTicket ? submissionOccurrences : standard}</td>
+                        <td>
+                          {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(thresholdSource)}
+                        </td>
+                        {!isSubmissionTicket && (
+                          <td>{calculateTicketDeviation(actual, standard, thresholdSource)}</td>
+                        )}
+                        <td>{formatDateTime(ticket.created_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </>
+            )}
           </table>
 
-          {parameterNames.length > 1 && (
+          {!isProcessParameterTicket && parameterNames.length > 1 && (
             <button
               type="button"
               className={styles.dots}
@@ -603,13 +696,7 @@ export default function SupervisorDetails() {
               <h3>Activity Timeline</h3>
             </div>
 
-            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
-              time: formatDateTime(ticket.created_at),
-              title: "Created",
-              description: `Ticket created for ${ticket.user_name || "Operator"}`,
-              icon: "/created.png",
-              alt: "Created",
-            }]).map((item, index) => (
+            {displayedTimeline.map((item, index) => (
               <div className={styles.item} key={item.title}>
                 <span className={styles.itemTime}>{item.time}</span>
                 <div className={styles.itemContent}>
@@ -695,33 +782,62 @@ export default function SupervisorDetails() {
             </div>
           </div>
 
-          <div className={styles.tableHeader}>
-            <span>PARAMETER</span>
-            <span>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL"}</span>
-            <span>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD"}</span>
-            <span>{isSubmissionTicket ? "STATUS" : "THRESHOLD"}</span>
-          </div>
+          {isProcessParameterTicket ? (
+            <>
+              <div className={styles.tableHeader}>
+                <span>ENTRY ID</span>
+                <span>COMPLETION THRESHOLD (HRS)</span>
+                <span>ENTRY CREATED AT</span>
+                <span>TIME LAGGED (HRS)</span>
+              </div>
+              <div className={styles.tableRow}>
+                <span>{entryId}</span>
+                <span className={styles.actual}>{completionThresholdHours}</span>
+                <span>{entryCreatedAt === "-" ? "-" : formatDateTime(entryCreatedAt)}</span>
+                <span>{timeLaggedHours}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                className={styles.tableHeader}
+                style={isSubmissionTicket ? undefined : { gridTemplateColumns: "minmax(0, 1.25fr) repeat(4, minmax(58px, 0.75fr))" }}
+              >
+                <span>PARAMETER</span>
+                <span>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL"}</span>
+                <span>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD"}</span>
+                <span>{isSubmissionTicket ? "STATUS" : "THRESHOLD"}</span>
+                {!isSubmissionTicket && <span>DEVIATION</span>}
+              </div>
 
-          {visibleParameterNames.map((key, i) => (
-            <div className={styles.tableRow} key={i}>
-              <span>{key.replace("_", " ")}</span>
-              <span className={styles.actual}>
-                {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket.actual_value, key)}
-              </span>
-              <span>
-                {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
-                  getTicketValueForParameter(ticket.threshold_value, key)
-                )}
-              </span>
-              <span>
-                {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
-                  getTicketValueForParameter(ticket.threshold_value, key)
-                )}
-              </span>
-            </div>
-          ))}
+              {visibleParameterNames.map((key, i) => {
+                const actual = getTicketValueForParameter(ticket.actual_value, key);
+                const thresholdSource = getTicketValueForParameter(ticket.threshold_value, key);
+                const standard = formatStandardValue(thresholdSource);
+                return (
+                  <div
+                    className={styles.tableRow}
+                    key={i}
+                    style={isSubmissionTicket ? undefined : { gridTemplateColumns: "minmax(0, 1.25fr) repeat(4, minmax(58px, 0.75fr))" }}
+                  >
+                    <span>{key.replace("_", " ")}</span>
+                    <span className={styles.actual}>
+                      {isSubmissionTicket ? submissionFrequency : actual}
+                    </span>
+                    <span>{isSubmissionTicket ? submissionOccurrences : standard}</span>
+                    <span>
+                      {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(thresholdSource)}
+                    </span>
+                    {!isSubmissionTicket && (
+                      <span>{calculateTicketDeviation(actual, standard, thresholdSource)}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
 
-          {parameterNames.length > 1 && (
+          {!isProcessParameterTicket && parameterNames.length > 1 && (
             <button
               type="button"
               className={styles.dots}
@@ -741,13 +857,7 @@ export default function SupervisorDetails() {
           </div>
 
           <div className={styles.timelineWrap}>
-            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
-              time: formatDateTime(ticket.created_at),
-              title: "Created",
-              description: `Ticket created for ${ticket.user_name || "Operator"}`,
-              icon: "/created.png",
-              alt: "Created",
-            }]).map((item) => (
+            {displayedTimeline.map((item) => (
               <div className={styles.timelineItem} key={item.title}>
                 <span className={styles.time}>{item.time}</span>
                 <div className={styles.iconCol}>

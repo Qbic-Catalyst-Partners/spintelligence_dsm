@@ -175,7 +175,7 @@ const isVersionComplete = (version) =>
   );
 
 const buildPayload = (form, entryId = "") => ({
-  entry_id: (form.paramId || entryId) || undefined,
+  entry_id: (entryId || form.paramId) || undefined,
   count_name: form.countName,
   consignee_name: form.consigneeName,
   creation_date: form.creationDate,
@@ -246,7 +246,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       setVersions([]);
       setForm({ ...createDefaultForm(safeSelectedType), paramId: entryId || "" });
       setExpandedVersionId(null);
-      setSavedProcessParameterId(entryId || "");
       return;
     }
     const rows = Array.isArray(response?.data) ? response.data : [];
@@ -286,7 +285,8 @@ const ProcessParameter = forwardRef(function ProcessParameter(
 
   useEffect(() => {
     loadVersions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entryId]);
 
   useEffect(() => {
     if (entryId) return;
@@ -311,11 +311,9 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   }, [safeSelectedType]);
 
   useEffect(() => {
-    if (!entryId) return;
-    setForm((current) => ({
-      ...current,
-      paramId: entryId,
-    }));
+    setForm((current) =>
+      current.paramId === entryId ? current : { ...current, paramId: entryId || "" }
+    );
   }, [entryId]);
 
   useEffect(() => {
@@ -443,13 +441,14 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       const response = form.versionId
         ? await updateAutoconerProcessParameter(form.versionId, payload)
         : await submitAutoconerProcessParameter(payload);
+      const savedEntry = response?.data || response;
 
-      const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
+      const nextParamId = resolveProcessParameterDisplayId(savedEntry, form.paramId || entryId);
       setForm((current) => ({
         ...current,
         paramId: nextParamId,
       }));
-      registerProcessParameterId(response, "Autoconer", form.countName);
+      registerProcessParameterId(savedEntry, "Autoconer", form.countName);
 
       await loadVersions();
       return true;

@@ -262,7 +262,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const buildPayload = () => ({
     entry_id: entryId || undefined,
     inspection_date: date,
-    br_line: brLine || "",
+    br_line_no: brLine || "",
     actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
     entries: stages.flatMap((stage) =>

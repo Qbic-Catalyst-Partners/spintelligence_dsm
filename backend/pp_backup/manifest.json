@@ -1,0 +1,332 @@
+[
+  {
+    "table": "autoconer.autoconer_process_parameter",
+    "rowCount": 2,
+    "file": "autoconer__autoconer_process_parameter.json"
+  },
+  {
+    "table": "autoconer.autoconer_q2_inspection",
+    "rowCount": 3,
+    "file": "autoconer__autoconer_q2_inspection.json"
+  },
+  {
+    "table": "autoconer.autoconer_q3_inspection",
+    "rowCount": 3,
+    "file": "autoconer__autoconer_q3_inspection.json"
+  },
+  {
+    "table": "autoconer.cone_density_notebook",
+    "rowCount": 1,
+    "file": "autoconer__cone_density_notebook.json"
+  },
+  {
+    "table": "autoconer.inspection_data_entry",
+    "rowCount": 4,
+    "file": "autoconer__inspection_data_entry.json"
+  },
+  {
+    "table": "blowroom.blow_room_sync",
+    "rowCount": 13,
+    "file": "blowroom__blow_room_sync.json"
+  },
+  {
+    "table": "blowroom.blowroom_header",
+    "rowCount": 6,
+    "file": "blowroom__blowroom_header.json"
+  },
+  {
+    "table": "blowroom.br_waste_study",
+    "rowCount": 11,
+    "file": "blowroom__br_waste_study.json"
+  },
+  {
+    "table": "blowroom.drop_test",
+    "rowCount": 22,
+    "file": "blowroom__drop_test.json"
+  },
+  {
+    "table": "carding.card_dfk_pressure_checking",
+    "rowCount": 53,
+    "file": "carding__card_dfk_pressure_checking.json"
+  },
+  {
+    "table": "carding.card_thick_place_header",
+    "rowCount": 3,
+    "file": "carding__card_thick_place_header.json"
+  },
+  {
+    "table": "carding.card_waste_study",
+    "rowCount": 4,
+    "file": "carding__card_waste_study.json"
+  },
+  {
+    "table": "carding.carding_change_request",
+    "rowCount": 4,
+    "file": "carding__carding_change_request.json"
+  },
+  {
+    "table": "carding.carding_qc_header",
+    "rowCount": 5,
+    "file": "carding__carding_qc_header.json"
+  },
+  {
+    "table": "carding.nati_data_entry",
+    "rowCount": 5,
+    "file": "carding__nati_data_entry.json"
+  },
+  {
+    "table": "carding.u_data_entry",
+    "rowCount": 9,
+    "file": "carding__u_data_entry.json"
+  },
+  {
+    "table": "comber.nati_data_entry",
+    "rowCount": 1,
+    "file": "comber__nati_data_entry.json"
+  },
+  {
+    "table": "comber.ribbon_lap_cv_qc",
+    "rowCount": 13,
+    "file": "comber__ribbon_lap_cv_qc.json"
+  },
+  {
+    "table": "comber.u_data_entry",
+    "rowCount": 4,
+    "file": "comber__u_data_entry.json"
+  },
+  {
+    "table": "drawframe.cots_breaker_data",
+    "rowCount": 36,
+    "file": "drawframe__cots_breaker_data.json"
+  },
+  {
+    "table": "drawframe.cots_data_entry",
+    "rowCount": 8,
+    "file": "drawframe__cots_data_entry.json"
+  },
+  {
+    "table": "drawframe.cots_finisher_data",
+    "rowCount": 52,
+    "file": "drawframe__cots_finisher_data.json"
+  },
+  {
+    "table": "drawframe.drawframe_qc_header",
+    "rowCount": 0,
+    "file": "drawframe__drawframe_qc_header.json"
+  },
+  {
+    "table": "drawframe.finisher_drawing_inspection",
+    "rowCount": 2,
+    "file": "drawframe__finisher_drawing_inspection.json"
+  },
+  {
+    "table": "drawframe.u_data_entry",
+    "rowCount": 3,
+    "file": "drawframe__u_data_entry.json"
+  },
+  {
+    "table": "drawframe.wheel_change",
+    "rowCount": 2,
+    "file": "drawframe__wheel_change.json"
+  },
+  {
+    "table": "drawframe.yarn_cv_percent",
+    "rowCount": 7,
+    "file": "drawframe__yarn_cv_percent.json"
+  },
+  {
+    "table": "mixing.afis6_cotton_data_entry",
+    "rowCount": 2,
+    "file": "mixing__afis6_cotton_data_entry.json"
+  },
+  {
+    "table": "mixing.afis6_mmf_data_entry",
+    "rowCount": 2,
+    "file": "mixing__afis6_mmf_data_entry.json"
+  },
+  {
+    "table": "mixing.afis_data_entry",
+    "rowCount": 4,
+    "file": "mixing__afis_data_entry.json"
+  },
+  {
+    "table": "mixing.cotton_hvi_data_entry",
+    "rowCount": 14,
+    "file": "mixing__cotton_hvi_data_entry.json"
+  },
+  {
+    "table": "mixing.fibre_data_entry",
+    "rowCount": 10,
+    "file": "mixing__fibre_data_entry.json"
+  },
+  {
+    "table": "mixing.mixing_qc_header",
+    "rowCount": 3,
+    "file": "mixing__mixing_qc_header.json"
+  },
+  {
+    "table": "mixing.moisture_data_entry",
+    "rowCount": 5,
+    "file": "mixing__moisture_data_entry.json"
+  },
+  {
+    "table": "mixing.openness_inspection",
+    "rowCount": 5,
+    "file": "mixing__openness_inspection.json"
+  },
+  {
+    "table": "process_parameters.entry_id_sequences",
+    "rowCount": 1,
+    "file": "process_parameters__entry_id_sequences.json"
+  },
+  {
+    "table": "process_parameters.master_entries",
+    "rowCount": 1,
+    "file": "process_parameters__master_entries.json"
+  },
+  {
+    "table": "process_parameters.parameter_entries",
+    "rowCount": 10,
+    "file": "process_parameters__parameter_entries.json"
+  },
+  {
+    "table": "simplex.simplex_inspections",
+    "rowCount": 11,
+    "file": "simplex__simplex_inspections.json"
+  },
+  {
+    "table": "simplex.simplex_notebook",
+    "rowCount": 4,
+    "file": "simplex__simplex_notebook.json"
+  },
+  {
+    "table": "simplex.simplex_process_parameter",
+    "rowCount": 1,
+    "file": "simplex__simplex_process_parameter.json"
+  },
+  {
+    "table": "simplex.smx_breaks_study_header",
+    "rowCount": 4,
+    "file": "simplex__smx_breaks_study_header.json"
+  },
+  {
+    "table": "simplex.u_data_entry",
+    "rowCount": 5,
+    "file": "simplex__u_data_entry.json"
+  },
+  {
+    "table": "simplex.wheel_change",
+    "rowCount": 3,
+    "file": "simplex__wheel_change.json"
+  },
+  {
+    "table": "spinning.bottom_apron_checking",
+    "rowCount": 2,
+    "file": "spinning__bottom_apron_checking.json"
+  },
+  {
+    "table": "spinning.cots_checking",
+    "rowCount": 11,
+    "file": "spinning__cots_checking.json"
+  },
+  {
+    "table": "spinning.count_change_inspections",
+    "rowCount": 3,
+    "file": "spinning__count_change_inspections.json"
+  },
+  {
+    "table": "spinning.lycra_centering",
+    "rowCount": 3,
+    "file": "spinning__lycra_centering.json"
+  },
+  {
+    "table": "spinning.lycra_missing",
+    "rowCount": 0,
+    "file": "spinning__lycra_missing.json"
+  },
+  {
+    "table": "spinning.ring_frame_inspections",
+    "rowCount": 1,
+    "file": "spinning__ring_frame_inspections.json"
+  },
+  {
+    "table": "spinning.rsm_and_lycrasensor_cheking_offline",
+    "rowCount": 3,
+    "file": "spinning__rsm_and_lycrasensor_cheking_offline.json"
+  },
+  {
+    "table": "spinning.rsm_and_lycrasensor_cheking_online",
+    "rowCount": 2,
+    "file": "spinning__rsm_and_lycrasensor_cheking_online.json"
+  },
+  {
+    "table": "spinning.speed_checking",
+    "rowCount": 3,
+    "file": "spinning__speed_checking.json"
+  },
+  {
+    "table": "spinning.spinning_qc_header",
+    "rowCount": 0,
+    "file": "spinning__spinning_qc_header.json"
+  },
+  {
+    "table": "spinning.wheel_change",
+    "rowCount": 1,
+    "file": "spinning__wheel_change.json"
+  },
+  {
+    "table": "spinning.wheel_change_inspection",
+    "rowCount": 3,
+    "file": "spinning__wheel_change_inspection.json"
+  },
+  {
+    "table": "spinning.wheel_change_type4",
+    "rowCount": 0,
+    "file": "spinning__wheel_change_type4.json"
+  },
+  {
+    "table": "spinning.wheel_change_v2",
+    "rowCount": 1,
+    "file": "spinning__wheel_change_v2.json"
+  },
+  {
+    "table": "ticketing_system.frontend_entry_registry",
+    "rowCount": 447,
+    "file": "ticketing_system__frontend_entry_registry.json"
+  },
+  {
+    "table": "ticketing_system.submitted_notebooks",
+    "rowCount": 231,
+    "file": "ticketing_system__submitted_notebooks.json"
+  },
+  {
+    "table": "wrapping.a_percent",
+    "rowCount": 10,
+    "file": "wrapping__a_percent.json"
+  },
+  {
+    "table": "wrapping.carding_notebook",
+    "rowCount": 21,
+    "file": "wrapping__carding_notebook.json"
+  },
+  {
+    "table": "wrapping.comber_noil_percent",
+    "rowCount": 4,
+    "file": "wrapping__comber_noil_percent.json"
+  },
+  {
+    "table": "wrapping.drawframe_notebook",
+    "rowCount": 58,
+    "file": "wrapping__drawframe_notebook.json"
+  },
+  {
+    "table": "wrapping.simplex_notebook",
+    "rowCount": 11,
+    "file": "wrapping__simplex_notebook.json"
+  },
+  {
+    "table": "wrapping.stretch_percent",
+    "rowCount": 5,
+    "file": "wrapping__stretch_percent.json"
+  }
+]

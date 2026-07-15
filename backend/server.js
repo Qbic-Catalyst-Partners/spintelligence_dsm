@@ -82,7 +82,13 @@ const normalizeEntryRoutePath = (value) => {
   const text = String(value || '').trim();
   if (!text) return '';
   const path = text.startsWith('/') ? text : `/${text}`;
-  return path.startsWith('/api/') ? path.slice(4) : path;
+  const withoutApi = path.startsWith('/api/') ? path.slice(4) : path;
+  return withoutApi.split(/[?#]/)[0];
+};
+
+const getRequestRoutePath = (req) => {
+  const combinedPath = `${String(req?.baseUrl || '')}${String(req?.path || '')}`;
+  return normalizeEntryRoutePath(combinedPath || req?.originalUrl || req?.path || '');
 };
 
 const getEntryModuleName = (routePath) =>
@@ -90,11 +96,31 @@ const getEntryModuleName = (routePath) =>
 
 const formatNextEntryId = (value) => String(value).padStart(4, '0');
 
+const normalizePoolKey = (value) => {
+  const text = String(value || '').trim();
+  return text || '';
+};
+
+const getEntryPoolName = (source, routePath) =>
+  normalizePoolKey(
+    source.pool_id ||
+    source.pool_key ||
+    source.scope ||
+    source.screen_key ||
+    source.screen_type ||
+    source.screen_name ||
+    source.process_type ||
+    source.route_name ||
+    source.module_name ||
+    source.module ||
+    source.moduleName ||
+    getEntryModuleName(routePath)
+  );
+
 const ENTRY_ID_ROUTE_TABLES = {
+  '/autoconer/q2': 'autoconer.autoconer_q2_inspection',
+  '/autoconer/q3': 'autoconer.autoconer_q3_inspection',
   '/mixing/cotton-hvi': 'mixing.cotton_hvi_data_entry',
-  '/blowroom/header': 'blowroom.blowroom_header',
-  '/blowroom/process-parameter': 'blowroom.blowroom_header',
-  '/blowroom/process_parameter': 'blowroom.blowroom_header',
   '/spinning/cots-checking': 'spinning.cots_checking',
   '/drawframe/wheel-change': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
@@ -105,13 +131,80 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/drawframe/stretch-percentage': 'wrapping.stretch_percent',
   '/drawframe/comber-noil-percent': 'wrapping.comber_noil_percent',
   '/drawframe/noil-percent': 'wrapping.comber_noil_percent',
-  '/drawframe/noils-percent': 'wrapping.comber_noil_percent'
+  '/drawframe/noils-percent': 'wrapping.comber_noil_percent',
+  '/carding/nre': 'carding.nre'
+};
+
+// Routes whose entry_id is generated straight off their own table's MAX(entry_id) (see
+// getRouteTableName below) rather than the shared ticketing_system registry — these always get
+// a freshly generated id, even if the frontend already sent one.
+const DIRECT_TABLE_ENTRY_ID_ROUTES = new Set(Object.keys(ENTRY_ID_ROUTE_TABLES));
+
+const getRouteTableName = (routePath, source = {}) => {
+  if (routePath === '/autoconer') {
+    const scope = normalizePoolKey(
+      source.scope ||
+      source.entry_scope ||
+      source.pool_id ||
+      source.pool_key
+    );
+    if (scope === 'q2' || scope === 'pp-q2' || scope === 'ppautoconerq2' || scope === 'pp-autoconer-q2') {
+      return 'autoconer.autoconer_q2_inspection';
+    }
+    if (scope === 'q3' || scope === 'pp-q3' || scope === 'ppautoconerq3' || scope === 'pp-autoconer-q3') {
+      return 'autoconer.autoconer_q3_inspection';
+    }
+  }
+
+  return ENTRY_ID_ROUTE_TABLES[routePath] || null;
 };
 
 const ENTRY_ID_ROUTE_PREFIXES = {
-  '/blowroom/header': { prefix: 'PP', width: 4, separator: '-' },
-  '/blowroom/process-parameter': { prefix: 'PP', width: 4, separator: '-' },
-  '/blowroom/process_parameter': { prefix: 'PP', width: 4, separator: '-' }
+  '/autoconer/q2': { prefix: 'PP', width: 4, separator: '-' },
+  '/autoconer/q3': { prefix: 'PP', width: 4, separator: '-' },
+  '/carding/nre': { prefix: 'CNRE', width: 4, separator: '-' }
+};
+
+// The 9 backend tables that share ONE canonical PP-000n id across departments (the
+// "Process Parameter" screens). If the frontend ever submits one of these routes without
+// an entry_id, the fallback below must generate the next PP-000n id from the combined max
+// across ALL of these tables — never a bare unprefixed number scoped to just one table,
+// which is what caused ids like "0012"/"0007" to leak into the shared PP-000n scheme.
+const PP_SHARED_TABLES = [
+  'mixing.mixing_qc_header',
+  'blowroom.blowroom_header',
+  'carding.carding_qc_header',
+  'drawframe.drawframe_qc_header',
+  'simplex.simplex_process_parameter',
+  'spinning.spinning_qc_header',
+  'autoconer.autoconer_process_parameter',
+  'autoconer.autoconer_q2_inspection',
+  'autoconer.autoconer_q3_inspection'
+];
+
+const PP_SHARED_ROUTES = new Set([
+  '/mixing/qc',
+  '/blowroom/header',
+  '/blowroom/process-parameter',
+  '/blowroom/process_parameter',
+  '/carding/qc-header',
+  '/drawframe/header',
+  '/simplex/process_parameter',
+  '/spinning/qc',
+  '/autoconer/process',
+  '/autoconer/q2',
+  '/autoconer/q3'
+]);
+
+const PP_SHARED_PREFIX = { prefix: 'PP', width: 4, separator: '-' };
+
+const getCombinedPpEntryIdMax = async () => {
+  let max = 0;
+  for (const tableName of PP_SHARED_TABLES) {
+    const tableMax = await getTableEntryIdMax(tableName);
+    if (tableMax > max) max = tableMax;
+  }
+  return max;
 };
 
 const getRegisteredEntryIdMaxSql = `
@@ -121,6 +214,7 @@ const getRegisteredEntryIdMaxSql = `
   ) AS max_number
   FROM ticketing_system.frontend_entry_registry
   WHERE route_path = $1
+    AND module_name = $2
 `;
 
 const getTableEntryIdMax = async (tableName) => {
@@ -157,10 +251,24 @@ const extractFrontendEntryId = (body) => {
 };
 
 const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
+  if (PP_SHARED_ROUTES.has(routePath)) {
+    const combinedMax = await getCombinedPpEntryIdMax();
+    const nextNumber = combinedMax + 1;
+    const entryId = `${PP_SHARED_PREFIX.prefix}${PP_SHARED_PREFIX.separator}${String(nextNumber).padStart(PP_SHARED_PREFIX.width, '0')}`;
+    return {
+      source: 'postgres',
+      module_name: moduleName,
+      route_path: routePath,
+      next_number: nextNumber,
+      entry_id: entryId,
+      value: entryId
+    };
+  }
+
   const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
-  const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath]);
+  const tableMax = mappedTable ? await getTableEntryIdMax(mappedTable) : 0;
+  const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath, moduleName]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
-  const tableMax = await getTableEntryIdMax(mappedTable);
   const nextNumber = (mappedTable ? tableMax : Math.max(registryMax, tableMax)) + 1;
   const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
   const entryId = routePrefix
@@ -181,7 +289,7 @@ const sendNextEntryId = async (req, res, next) => {
   try {
     const source = req.method === 'GET' ? req.query : { ...(req.query || {}), ...(req.body || {}) };
     const routePath = normalizeEntryRoutePath(source.route_path || source.path || source.screen_path || source.routePath);
-    const moduleName = String(source.module_name || source.module || source.moduleName || getEntryModuleName(routePath)).trim();
+    const moduleName = getEntryPoolName(source, routePath);
 
     if (!routePath) {
       return res.status(400).json({ message: 'route_path is required' });
@@ -200,24 +308,44 @@ app.use(async (req, res, next) => {
   try {
     if (req.method !== 'POST') return next();
 
-    const routePath = String(req.path || '');
+    const routePath = getRequestRoutePath(req);
     const isDepartmentRoute = DEPARTMENT_ROUTE_PREFIXES.some((prefix) => routePath.startsWith(prefix));
     if (!isDepartmentRoute) return next();
 
-    const moduleName = getEntryModuleName(routePath);
+    const moduleName = getEntryPoolName(req.body || {}, routePath);
+    const isDirectTableRoute = DIRECT_TABLE_ENTRY_ID_ROUTES.has(routePath);
     let entryId = extractFrontendEntryId(req.body);
-    if (!entryId) {
+    const forceGeneratedEntryId = isDirectTableRoute;
+    if (forceGeneratedEntryId || !entryId) {
       const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName });
       entryId = nextEntry.entry_id;
       req.body.entry_id = entryId;
     }
 
-    await db.query(
-      `INSERT INTO ticketing_system.frontend_entry_registry
-       (entry_id, module_name, route_path, method, status)
-       VALUES ($1, $2, $3, $4, 'reserved')`,
-      [entryId, moduleName, routePath, req.method]
-    );
+    if (isDirectTableRoute) {
+      req.frontendEntryId = entryId;
+      return next();
+    }
+
+    let reserved = false;
+    for (let attempt = 0; attempt < 3 && !reserved; attempt += 1) {
+      try {
+        await db.query(
+          `INSERT INTO ticketing_system.frontend_entry_registry
+           (entry_id, module_name, route_path, method, status)
+           VALUES ($1, $2, $3, $4, 'reserved')`,
+          [entryId, moduleName, routePath, req.method]
+        );
+        reserved = true;
+      } catch (error) {
+        if (!error || error.code !== '23505' || attempt === 2) {
+          throw error;
+        }
+        const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName });
+        entryId = nextEntry.entry_id;
+        req.body.entry_id = entryId;
+      }
+    }
 
     req.frontendEntryId = entryId;
 
@@ -256,8 +384,9 @@ app.use(async (req, res, next) => {
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-const operatorTicketRoutes = require('./routes/operatorTickets.routes');
+const { router: operatorTicketRoutes, checkSubmissionFrequencyTickets } = require('./routes/operatorTickets.routes');
 const supervisorTicketRoutes = require('./routes/supervisorTickets.routes');
+const processParametersRouter = require('./routes/processParameters');
 const userRouter = require('./routes/user.routes');
 const emailVerificationRouter = require('./routes/emailVerification');
 const { router: emailLogsRouter } = require('./routes/emailVerificationLogs');
@@ -270,7 +399,8 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets } = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, generatePpNotebookBatchIncompleteTickets } = require('./routes/submittedNotebooks.routes');
+const { router: ppThresholdRouter } = require('./routes/ppThreshold.routes');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
 const ocrMachineRouter = require('./routes/ocrMachine.routes');
 
@@ -369,6 +499,7 @@ app.use('/notifications', inAppNotificationsRouter);
 app.use('/help', helpContentRouter);
 app.use('/submitted-notebooks', submittedNotebooksRouter);
 app.use('/l2/submitted-notebooks', submittedNotebooksRouter);
+app.use('/pp-threshold', ppThresholdRouter);
 app.use('/glossary', (req, res, next) => {
   req.url = `/glossary${req.url === '/' ? '' : req.url}`;
   return helpContentRouter(req, res, next);
@@ -386,7 +517,12 @@ app.use('/supervisor-assignments', supervisorAssignmentsRouter);
 app.use('/reportSchedules', reportSchedulesRouter);
 app.use('/reports', reportSchedulesRouter);
 // app.use('/admin', require('./routes/admin'));
-app.use('/spinning', require('./routes/spinning'));
+const spinningRouter = require('./routes/spinning');
+app.use('/spinning', spinningRouter);
+// The wheel change approvals page calls these without the /spinning prefix.
+app.get('/wheel-change/approvals', spinningRouter.getWheelChangeApprovals);
+app.post('/wheel-change/approvals/:id/approve', spinningRouter.approveWheelChangeEntry);
+app.post('/wheel-change/approvals/:id/reject', spinningRouter.rejectWheelChangeEntry);
 app.use('/mixing', require('./routes/mixing'));
 app.use('/roles', require('./routes/roles.routes'));
 app.use('/comber', require('./routes/comber')); 
@@ -395,6 +531,7 @@ app.use('/api/carding', require('./routes/carding'));
 app.use('/departments', require('./routes/department.routes'));
 app.use('/screens', require('./routes/screens.routes'));
 app.use('/trials', require('./routes/trials'));
+app.use('/carding/trials', require('./routes/trials'));
 app.use('/blowroom', require('./routes/blowroom'));
 app.use('/drawframe', require('./routes/drawframe'));
 app.use('/simplex', require('./routes/simplex'));
@@ -414,7 +551,9 @@ app.use((err, req, res, next) => {
 
   console.error(err);
   return res.status(err.statusCode || 500).json({
-    message: err.statusCode ? err.message : 'Server error'
+    message: err.statusCode ? err.message : (err.message || 'Server error'),
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.detail ? { detail: err.detail } : {})
   });
 });
 
@@ -444,5 +583,27 @@ const startSubmittedNotebookAckWorker = () => {
 };
 
 startSubmittedNotebookAckWorker();
+
+// PP tickets are driven solely by the PP-Threshold screen (ticketing_system.pp_threshold_master)
+// via generatePpNotebookBatchIncompleteTickets — the older pp_batch_config-driven
+// runPpBatchCompletionCheck is intentionally no longer run automatically here.
+const startPpThresholdWorker = () => {
+  const intervalMs = Number(process.env.PP_BATCH_COMPLETION_WORKER_INTERVAL_MS || 15 * 60 * 1000);
+  const run = async () => {
+    try {
+      const result = await generatePpNotebookBatchIncompleteTickets();
+      if (result.created.length) {
+        console.log(`[pp-threshold] created ${result.created.length} ticket(s)`);
+      }
+    } catch (error) {
+      console.warn('[pp-threshold] worker skipped:', error.message);
+    }
+  };
+
+  setTimeout(run, 10000);
+  setInterval(run, intervalMs);
+};
+
+startPpThresholdWorker();
 
 

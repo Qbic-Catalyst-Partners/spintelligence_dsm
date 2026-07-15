@@ -134,9 +134,6 @@ const canApproveOrRejectTicket = (req, ticket) => {
 const getPrivilegedSupervisorAccess = async (req) => {
   if (isAdminUser(req)) return true;
 
-  const tokenEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-  if (tokenEmployeeId === 'ADMIN001') return true;
-
   const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
 
@@ -148,8 +145,7 @@ const getPrivilegedSupervisorAccess = async (req) => {
   );
   const row = result.rows[0] || {};
   const role = String(row.role || '').trim().toLowerCase();
-  const employeeId = String(row.employee_id || '').trim().toUpperCase();
-  return role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+  return role === 'admin' || role === 'super admin' || role === 'superadmin';
 };
 
 const getRequesterEmployeeId = async (req) => {
@@ -348,7 +344,7 @@ router.get('/tickets', async (req, res, next) => {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const reviewerLevel = await getReviewerLevel(req);
     const requesterEmployeeId = await getRequesterEmployeeId(req);
-    const isAdmin001 = requesterEmployeeId === 'ADMIN001';
+    const isAdmin = isAdminUser(req);
     const requestedStage = String(req.query.stage || req.query.level || '').trim().toUpperCase();
     const stageFilter = requestedStage === 'L1' || requestedStage === 'L2' || requestedStage === 'L3'
       ? requestedStage
@@ -372,8 +368,8 @@ router.get('/tickets', async (req, res, next) => {
         : nonAcknowledgementTicketWhere);
     }
 
-    // ADMIN001/admin users should see every L1/L2/L3 ticket irrespective of stage or assignee.
-    const applyStageFilter = !canViewAll && !isAdmin001 && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3');
+    // Admin users should see every L1/L2/L3 ticket irrespective of stage or assignee.
+    const applyStageFilter = !canViewAll && !isAdmin && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3');
     if (applyStageFilter && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3')) {
       values.push(stageFilter);
       where.push(stageFilter === 'L2' || stageFilter === 'L3'
@@ -623,7 +619,7 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
     const canViewAll = await getPrivilegedSupervisorAccess(req);
     const reviewerLevel = await getReviewerLevel(req);
     const requesterEmployeeId = await getRequesterEmployeeId(req);
-    const isAdmin001 = requesterEmployeeId === 'ADMIN001';
+    const isAdmin = isAdminUser(req);
     const requestedStage = String(req.query.stage || req.query.level || '').trim().toUpperCase();
     const stageFilter = requestedStage === 'L1' || requestedStage === 'L2' || requestedStage === 'L3'
       ? requestedStage
@@ -639,7 +635,7 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
       where.push(nonAcknowledgementTicketWhere);
     }
 
-    const applyStageFilter = !canViewAll && !isAdmin001 && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3');
+    const applyStageFilter = !canViewAll && !isAdmin && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3');
     if (applyStageFilter) {
       values.push(stageFilter);
       where.push(stageFilter === 'L2' || stageFilter === 'L3'

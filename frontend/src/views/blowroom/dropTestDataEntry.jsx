@@ -58,6 +58,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                     tuft_variety: tufts[i].tuftVariety,
                     display_weight: Number(tufts[i].displayWt) || 0,
                     actual_weight: Number(tufts[i].actWt) || 0,
+                    average_weight: Number(tufts[i].actDisplay) || 0,
                     difference: Number(tufts[i].diff) || 0,
                     ratio_percent: Number(tufts[i].ratio) || 0,
                 })).unwrap();

@@ -106,9 +106,14 @@ def extract_pdf_word_results(file_bytes, pdf_page='first'):
         try:
             if len(doc) == 0:
                 return []
-            page_index = len(doc) - 1 if pdf_page == 'last' else 0
-            page = doc.load_page(page_index)
-            words = page.get_text('words') or []
+            if pdf_page == 'all':
+                words = []
+                for page in doc:
+                    words.extend(page.get_text('words') or [])
+            else:
+                page_index = len(doc) - 1 if pdf_page == 'last' else 0
+                page = doc.load_page(page_index)
+                words = page.get_text('words') or []
         finally:
             doc.close()
     except Exception:
@@ -132,16 +137,65 @@ def extract_pdf_word_results(file_bytes, pdf_page='first'):
     return results
 
 
+def extract_pdf_plain_text(file_bytes, pdf_page='first'):
+    try:
+        import fitz
+    except ImportError:
+        return ""
+
+    try:
+        doc = fitz.open(stream=file_bytes, filetype='pdf')
+        try:
+            if len(doc) == 0:
+                return ""
+            if pdf_page == 'all':
+                return "\n".join(page.get_text("text") or "" for page in doc)
+            page_index = len(doc) - 1 if pdf_page == 'last' else 0
+            return doc.load_page(page_index).get_text("text") or ""
+        finally:
+            doc.close()
+    except Exception:
+        return ""
+
+
 def reconstruct_with_pdf_text_if_needed(file_path, file_bytes, parser, extracted_tables, doc_type='hvi'):
     if extracted_tables or file_path.suffix.lower() != '.pdf':
         return extracted_tables
 
-    pdf_results = extract_pdf_word_results(file_bytes, pdf_page='last' if doc_type == 'fibre' else 'first')
+    pdf_results = extract_pdf_word_results(
+        file_bytes,
+        pdf_page='last' if doc_type == 'fibre' else 'all' if doc_type == 'noils' else 'first',
+    )
     if not pdf_results:
         return extracted_tables
 
     pdf_tables = parser.reconstruct_table(pdf_results)
     return pdf_tables or extracted_tables
+
+
+def maybe_reconstruct_noils_with_pdf_text(file_path, file_bytes, parser, extracted_tables, doc_type='hvi'):
+    if file_path.suffix.lower() != '.pdf' or doc_type != 'noils':
+        return extracted_tables
+
+    pdf_results = extract_pdf_word_results(file_bytes, pdf_page='all')
+    if not pdf_results:
+        return extracted_tables
+
+    combined_results = []
+    combined_results.extend(pdf_results)
+    pdf_tables = parser.reconstruct_table(combined_results)
+    if not pdf_tables:
+        return extracted_tables
+
+    current_meta = extracted_tables[0] if extracted_tables and extracted_tables[0].get('Row Type') == 'Meta' else {}
+    pdf_meta = pdf_tables[0] if pdf_tables and pdf_tables[0].get('Row Type') == 'Meta' else {}
+
+    current_score = sum(1 for key in ('Test ID', 'Machine ID') if current_meta.get(key))
+    pdf_score = sum(1 for key in ('Test ID', 'Machine ID') if pdf_meta.get(key))
+    if pdf_score > current_score:
+        return pdf_tables
+
+    return extracted_tables
 
 
 def run_machine_pipeline(file_path, file_bytes, doc_type):
@@ -194,8 +248,19 @@ def main():
         )
         raw_text = "\n".join(r.text for r in results)
         effective_doc_type = detect_doc_type(raw_text, requested_doc_type)
+        if file_path.suffix.lower() == '.pdf' and effective_doc_type in {'apct', 'strech'}:
+            pdf_text = extract_pdf_plain_text(file_bytes, pdf_page='all')
+            if pdf_text and pdf_text.strip() not in raw_text:
+                raw_text = f"{raw_text}\n{pdf_text}".strip()
         parser, mapper = get_parser_and_mapper(effective_doc_type)
         extracted_tables = parser.reconstruct_table(results)
+        extracted_tables = maybe_reconstruct_noils_with_pdf_text(
+            file_path,
+            file_bytes,
+            parser,
+            extracted_tables,
+            effective_doc_type,
+        )
         extracted_tables = reconstruct_with_pdf_text_if_needed(
             file_path,
             file_bytes,

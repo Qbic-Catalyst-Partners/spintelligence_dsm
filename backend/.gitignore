@@ -1,8 +1,86 @@
 logs/
 *.log
- 
+
 logs/backend.log
- 
+
 .env
- 
+
 /node_modules
+logs/
+*.log
+
+logs/backend.log
+
+.env
+
+/node_modules
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+frontend-dev.*.log
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# local large/back-end artifacts
+backend_bundle.zip
+_backend_tmp/
+.tmp/
+.tmp_*/
+pp_backup/
+uploads/
+*.dump
+~$*.docx
+~$*.xlsx
+
+# python virtualenv
+.venv/
+__pycache__/
+*.pyc
+
+# excel files
+*.xlsx
+*.xls
+*.xlsm
+

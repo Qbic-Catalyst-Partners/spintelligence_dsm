@@ -14,8 +14,10 @@ const NUMERIC_FIELDS = [
   { key: "five_pct_l_n_mm", label: "5% L(n) mm" },
   { key: "fineness_den", label: "Fineness den" },
   { key: "fineness_cv_percent", label: "Fineness CV %" },
-  { key: "long_fiber_gt_46_80_percent", label: "Long Fiber >46.80 mm %" },
-  { key: "long_fiber_count_gt_46_80", label: "Long Fiber Count > 46.80 mm" },
+  { key: "long_fiber_gt_45_60_percent", label: "Long Fiber >45.60mm" },
+  { key: "long_fiber_count_gt_45_60", label: "Long Fiber Count >45.60mm" },
+  { key: "sc_nep_count_g", label: "SCN/gm" },
+  { key: "crimp_percent", label: "Crimp %" },
 ];
 
 const EMPTY_FORM = NUMERIC_FIELDS.reduce(
@@ -65,8 +67,10 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
     five_pct_l_n_mm: Number(formData.five_pct_l_n_mm) || 0,
     fineness_den: Number(formData.fineness_den) || 0,
     fineness_cv_percent: Number(formData.fineness_cv_percent) || 0,
-    long_fiber_gt_46_80_percent: Number(formData.long_fiber_gt_46_80_percent) || 0,
-    long_fiber_count_gt_46_80: Number(formData.long_fiber_count_gt_46_80) || 0,
+    long_fiber_gt_45_60_percent: Number(formData.long_fiber_gt_45_60_percent) || 0,
+    long_fiber_count_gt_45_60: Number(formData.long_fiber_count_gt_45_60) || 0,
+    sc_nep_count_g: Number(formData.sc_nep_count_g) || 0,
+    crimp_percent: Number(formData.crimp_percent) || 0,
     machine_name: String(formData.machine || "").trim() || "AFIS-6",
     department: "Mixing",
     sub_department: "Quality Control",
@@ -200,6 +204,11 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
       <div className={styles["mixx-row"]}>
         {renderField(NUMERIC_FIELDS[8])}
         {renderField(NUMERIC_FIELDS[9])}
+        {renderField(NUMERIC_FIELDS[10])}
+      </div>
+
+      <div className={styles["mixx-row"]}>
+        {renderField(NUMERIC_FIELDS[11])}
       </div>
     </div>
   );

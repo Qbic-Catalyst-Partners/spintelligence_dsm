@@ -2,11 +2,25 @@ const { dedupeVarieties } = require('../utils/variety');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 
 const UQC_SHIFTS = [
-  { value: 'General', label: 'General' },
-  { value: 'Day', label: 'Day' },
-  { value: 'Halfnight', label: 'Halfnight' },
-  { value: 'Fullnight', label: 'Fullnight' }
+  { value: 'Shift-1', label: 'Shift-1' },
+  { value: 'Shift-2', label: 'Shift-2' },
+  { value: 'Shift-3', label: 'Shift-3' }
 ];
+const UQC_SHIFT_VALUES = new Set(UQC_SHIFTS.map((shift) => shift.value));
+
+const normalizeUqcShift = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const compact = raw.replace(/[\s-]+/g, '').toLowerCase();
+  const match = compact.match(/^shift(\d)$/);
+  if (match) return `Shift-${match[1]}`;
+
+  const canonical = UQC_SHIFTS.find((shift) => shift.value.toLowerCase() === raw.toLowerCase());
+  return canonical ? canonical.value : raw;
+};
+
+const isCdgMachine = (value) => /^CDG[-\s]?\d+/i.test(String(value || '').trim());
 
 const toOption = (text, value = text) => ({ text, label: text, value });
 
@@ -90,11 +104,14 @@ const getUqcMasterData = async (sqlServer, query = {}, options = {}) => {
     dept_code: String(r.dept_code || '').trim(),
     dept_name: String(r.dept_name || '').trim()
   })).filter((r) => r.mc_no || r.mc_name);
+  const filteredMcNos = options.mcNoFilter === 'cdg'
+    ? mcNos.filter((m) => isCdgMachine(m.mc_name || m.mc_no))
+    : mcNos;
 
   const shiftOptions = [toOption('-- Select Shift --', ''), ...UQC_SHIFTS.map((s) => toOption(s.label, s.value))];
   const varietyOptions = [toOption('-- Select Variety --', ''), ...varieties.map((v) => toOption(v.variety_name))];
   const departmentOptions = [toOption('-- Select Department --', ''), ...departments.map((d) => toOption(d.dept_name))];
-  const mcNoOptions = [toOption('-- Select MC No. --', ''), ...mcNos.map((m) => toOption(m.mc_name || m.mc_no))];
+  const mcNoOptions = [toOption('-- Select MC No. --', ''), ...filteredMcNos.map((m) => toOption(m.mc_name || m.mc_no))];
 
   return {
     source: options.varietySqlServer ? 'sqlserver:dsmprojects+erp' : 'sqlserver',
@@ -105,8 +122,8 @@ const getUqcMasterData = async (sqlServer, query = {}, options = {}) => {
     variety_names: varieties.map((r) => r.variety_name),
     departments,
     department_names: departments.map((r) => r.dept_name),
-    mc_nos: mcNos,
-    mc_no_values: mcNos.map((r) => r.mc_no),
+    mc_nos: filteredMcNos,
+    mc_no_values: filteredMcNos.map((r) => r.mc_no),
     options: {
       shift: shiftOptions,
       variety: varietyOptions,
@@ -176,6 +193,9 @@ const sendUqcMasterData = async (req, res, next, sqlServer, options = {}) => {
 };
 
 module.exports = {
+  UQC_SHIFTS,
+  UQC_SHIFT_VALUES,
+  normalizeUqcShift,
   getUqcMasterData,
   sendUqcMasterData
 };

@@ -113,11 +113,50 @@ const getCountMasterDropdown = async (req, res, next) => {
 
 const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trials');
 
+const ensureTrialsColumns = async () => {
+  await client.query(`
+    ALTER TABLE trials.trials
+      ADD COLUMN IF NOT EXISTS entry_time TIME,
+      ADD COLUMN IF NOT EXISTS mc_no VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS product VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS trial_type VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS raw_material_mixing VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS yarn_remarks TEXT,
+      ADD COLUMN IF NOT EXISTS jm DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS cvb DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS fl_cut DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS fd_cut DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS df_drg_mc_no VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS df_finish_u_percent DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS df_cvim DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS df_cvb DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS smx_no VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS spl_no VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS roving_percent DECIMAL(6,2),
+      ADD COLUMN IF NOT EXISTS smx_cvim DECIMAL(6,2);
+  `);
+  await client.query(`
+    ALTER TABLE trials.trials
+      ALTER COLUMN trial_id_name DROP NOT NULL;
+  `);
+  await client.query(`
+    ALTER TABLE trials.trials
+      ALTER COLUMN count_name TYPE VARCHAR(255),
+      ALTER COLUMN user_id TYPE VARCHAR(255),
+      ALTER COLUMN trial_id_name TYPE VARCHAR(255),
+      ALTER COLUMN type TYPE VARCHAR(255),
+      ALTER COLUMN nature TYPE VARCHAR(255),
+      ALTER COLUMN spinning_machine TYPE VARCHAR(255),
+      ALTER COLUMN unit_no TYPE VARCHAR(255),
+      ALTER COLUMN autoconer_machine TYPE VARCHAR(255);
+  `);
+};
+
 /**
  * @swagger
  * tags:
- *   name: Trials
- *   description: Trials Department APIs
+ *   name: Individual Card performance Data
+ *   description: Individual Card performance Data (Carding Trials) APIs
  */
 
 
@@ -125,8 +164,8 @@ const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trial
  * @swagger
  * /trials:
  *   post:
- *     summary: Create a new Trial entry
- *     tags: [Trials]
+ *     summary: Create a new Individual Card performance Data entry
+ *     tags: [Individual Card performance Data]
  *     requestBody:
  *       required: true
  *       content:
@@ -137,22 +176,39 @@ const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trial
  *               - date
  *               - spinning_machine
  *               - count_name
- *               - trial_id_name
  *             properties:
  *               date:
  *                 type: string
  *                 format: date
+ *               entry_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Alias for date
+ *               time:
+ *                 type: string
+ *               entry_time:
+ *                 type: string
+ *                 description: Alias for time
+ *               mc_no:
+ *                 type: string
  *               spinning_machine:
  *                 type: string
  *               autoconer_machine:
  *                 type: string
  *               count_name:
  *                 type: string
+ *               product:
+ *                 type: string
  *               purpose:
  *                 type: string
  *               trial_id_name:
  *                 type: string
  *               type:
+ *                 type: string
+ *               entry_type:
+ *                 type: string
+ *                 description: Alias for type
+ *               trial_type:
  *                 type: string
  *               nature:
  *                 type: string
@@ -162,9 +218,37 @@ const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trial
  *                 type: string
  *               mixing:
  *                 type: string
+ *               raw_material_mixing:
+ *                 type: string
+ *               yarn_remarks:
+ *                 type: string
+ *               cvb:
+ *                 type: number
+ *               fl_cut:
+ *                 type: number
+ *               fd_cut:
+ *                 type: number
+ *               jm:
+ *                 type: number
+ *               df_drg_mc_no:
+ *                 type: string
+ *               df_finish_u_percent:
+ *                 type: number
+ *               df_cvim:
+ *                 type: number
+ *               df_cvb:
+ *                 type: number
+ *               smx_no:
+ *                 type: string
+ *               spl_no:
+ *                 type: string
+ *               roving_percent:
+ *                 type: number
+ *               smx_cvim:
+ *                 type: number
  *     responses:
  *       201:
- *         description: Trial created successfully
+ *         description: Individual Card performance Data entry created successfully
  *       500:
  *         description: Server error
  */
@@ -191,9 +275,21 @@ router.post('/', async (req, res) => {
 
     try {
 
+<<<<<<< HEAD
         await ensureTrialsEntryIdColumn();
 
         const data = req.body;
+=======
+        await ensureTrialsColumns();
+
+        const raw = req.body;
+        const data = Object.fromEntries(
+            Object.entries(raw).map(([key, value]) => [key, value === '' ? null : value])
+        );
+        const entryDate = data.date ?? data.entry_date;
+        const entryTime = data.time ?? data.entry_time;
+        const entryType = data.type ?? data.entry_type;
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
         if (!data.entry_id) {
             return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -203,15 +299,31 @@ router.post('/', async (req, res) => {
             `INSERT INTO trials.trials(
                 entry_id,
                 date,
+<<<<<<< HEAD
+=======
+                entry_time,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 mc_no,
                 spinning_machine,
                 autoconer_machine,
                 count_name,
                 product,
+<<<<<<< HEAD
                 trial_type,
+=======
+                purpose,
+                trial_id_name,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 type,
+                trial_type,
                 nature,
+<<<<<<< HEAD
                 entry_time,
+=======
+                unit_no,
+                raw_material,
+                mixing,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 raw_material_mixing,
                 yarn_results,
                 yarn_remarks,
@@ -269,6 +381,27 @@ router.post('/', async (req, res) => {
                 cvb,
                 fl_cut,
                 fd_cut,
+<<<<<<< HEAD
+=======
+                user_id,
+                u_percent,
+                cvm,
+                cvm_cv_percent,
+                cvm_10mtr,
+                dr_1_5m,
+                thin_minus_50,
+                thick_plus_50,
+                neps_plus_200,
+                total_regular,
+                thin_minus_40,
+                thick_plus_35,
+                neps_plus_140,
+                total_hs,
+                thin_minus_30,
+                yarn_count,
+                csp,
+                yarn_remarks,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 df_drg_mc_no,
                 df_finish_u_percent,
                 df_cvim,
@@ -286,17 +419,27 @@ router.post('/', async (req, res) => {
                 $41,$42,$43,$44,$45,$46,$47,$48,$49,$50,
                 $51,$52,$53,$54,$55,$56,$57,$58,$59,$60,
                 $61,$62,$63,$64,$65,$66,$67,$68,$69,$70,
+<<<<<<< HEAD
                 $71,$72,$73,$74,$75,$76
             )
             RETURNING *`,
             [
                 data.entry_id,
                 data.date,
+=======
+                $71,$72,$73,$74,$75,$76,$77,$78,$79,$80
+            )
+            RETURNING *`,
+            [
+                entryDate,
+                entryTime,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 data.mc_no,
                 data.spinning_machine,
                 data.autoconer_machine,
                 data.count_name,
                 data.product,
+<<<<<<< HEAD
                 data.trial_type,
                 data.type,
                 data.nature,
@@ -366,6 +509,81 @@ router.post('/', async (req, res) => {
                 data.spl_no,
                 toNumberOrNull(data.roving_percent),
                 toNumberOrNull(data.smx_cvim)
+=======
+                data.purpose,
+                data.trial_id_name,
+                entryType,
+                data.trial_type,
+                data.nature,
+                data.unit_no,
+                data.raw_material,
+                data.mixing,
+                data.raw_material_mixing,
+                data.yarn_results,
+                data.total_cuts,
+                data.neps_cuts,
+                data.shorts_cuts,
+                data.long_cuts,
+                data.thin_cuts,
+                data.cp,
+                data.cm,
+                data.ccp,
+                data.ccm,
+                data.jp,
+                data.jm,
+                data.a1,
+                data.a2,
+                data.a3,
+                data.a4,
+                data.b1,
+                data.b2,
+                data.b3,
+                data.b4,
+                data.c1,
+                data.c2,
+                data.c3,
+                data.c4,
+                data.d1,
+                data.d2,
+                data.d3,
+                data.d4,
+                data.e,
+                data.f,
+                data.g,
+                data.h1,
+                data.h2,
+                data.l1 ?? data.i1,
+                data.l2 ?? data.i2,
+                data.cvb ?? data.cvp,
+                data.fl_cut,
+                data.fd_cut,
+                data.user_id,
+                data.u_percent,
+                data.cvm,
+                data.cvm_cv_percent,
+                data.cvm_10mtr,
+                data.dr_1_5m,
+                data.thin_minus_50,
+                data.thick_plus_50,
+                data.neps_plus_200,
+                data.total_regular,
+                data.thin_minus_40,
+                data.thick_plus_35,
+                data.neps_plus_140,
+                data.total_hs,
+                data.thin_minus_30,
+                data.yarn_count,
+                data.csp,
+                data.yarn_remarks,
+                data.df_drg_mc_no,
+                data.df_finish_u_percent,
+                data.df_cvim,
+                data.df_cvb,
+                data.smx_no,
+                data.spl_no,
+                data.roving_percent,
+                data.smx_cvim
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
             ]
         );
 
@@ -388,8 +606,8 @@ router.post('/', async (req, res) => {
  * @swagger
  * /trials:
  *   get:
- *     summary: Get Trials with pagination
- *     tags: [Trials]
+ *     summary: Get Individual Card performance Data with pagination
+ *     tags: [Individual Card performance Data]
  *     parameters:
  *       - in: query
  *         name: page
@@ -403,7 +621,7 @@ router.post('/', async (req, res) => {
  *           default: 10
  *     responses:
  *       200:
- *         description: Trials retrieved successfully
+ *         description: Individual Card performance Data retrieved successfully
  *       500:
  *         description: Server error
  */
@@ -441,7 +659,7 @@ router.get('/', async (req, res) => {
  * /trials/master/spinning-machines:
  *   get:
  *     summary: Get spinning machine names for Trials form
- *     tags: [Trials]
+ *     tags: [Individual Card performance Data]
  *     parameters:
  *       - in: query
  *         name: prefix
@@ -513,7 +731,7 @@ router.get('/master/spinning-machines', async (req, res) => {
  * /trials/master/autoconer-machines:
  *   get:
  *     summary: Get autoconer machine names for Trials form
- *     tags: [Trials]
+ *     tags: [Individual Card performance Data]
  *     parameters:
  *       - in: query
  *         name: prefix
@@ -580,7 +798,7 @@ router.get('/master/autoconer-machines', async (req, res) => {
  * /trials/master/varieties:
  *   get:
  *     summary: Get variety names for Trials/Nati Data Entry form
- *     tags: [Trials]
+ *     tags: [Individual Card performance Data]
  *     parameters:
  *       - in: query
  *         name: prefix

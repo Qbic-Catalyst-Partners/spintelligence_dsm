@@ -49,10 +49,12 @@ const jsonOutput      = $('jsonOutput');
 const copyJsonBtn     = $('copyJsonBtn');
 
 const sectionForm     = $('sectionForm');
+const metaGrid        = $('metaGrid');
 const formGrid        = $('formGrid');
 const machineNameInput = $('machineNameInput');
 const inspectionTypeInput = $('inspectionTypeInput');
 const inspectionDateInput = $('inspectionDateInput');
+const testIdInput     = $('testIdInput');
 const useAsInputBtn    = $('useAsInputBtn');
 const formAlert       = $('formAlert');
 const hviForm         = $('hviForm');
@@ -63,6 +65,7 @@ const saveSuccess     = $('saveSuccess');
 const saveError       = $('saveError');
 const saveRecordId    = $('saveRecordId');
 const saveErrorMsg    = $('saveErrorMsg');
+const inputIdBadge    = $('inputIdBadge');
 let isSaving = false;
 
 const DEFAULT_FILE_ACCEPT = '.jpg,.jpeg,.png,.pdf';
@@ -238,6 +241,7 @@ function resetResults() {
   state.ocrResult = null;
   state.effectiveDocType = null;
   state.savedId = null;
+  if (metaGrid) metaGrid.classList.add('hidden');
 }
 
 function collectManualJsonFromForm() {
@@ -397,6 +401,16 @@ function populateResults(result) {
   // 3d: Build form
   buildForm(result.json_output || {});
   sectionForm.classList.remove('hidden');
+
+  if (state.effectiveDocType === 'bwc') {
+    metaGrid.classList.remove('hidden');
+    const meta = result.metadata || {};
+    if (inspectionTypeInput) inspectionTypeInput.value = meta.inspection_type || (String(result.raw_text || '').toLowerCase().includes('between') ? 'Between' : 'Within');
+    if (inspectionDateInput) inspectionDateInput.value = meta.inspection_date || '';
+    if (testIdInput) testIdInput.value = meta.test_id || '';
+  } else {
+    metaGrid.classList.add('hidden');
+  }
 
   // Scroll to results
   setTimeout(() => sectionResults.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
@@ -561,6 +575,10 @@ async function saveRecord() {
     manual_json: manualJson,
     doc_type: state.effectiveDocType || docTypeSelect.value,
     mc_name: machineNameInput?.value?.trim() || '',
+    inspection_type: inspectionTypeInput?.value?.trim() || 'Within',
+    inspection_date: inspectionDateInput?.value?.trim() || '',
+    test_id: testIdInput?.value?.trim() || '',
+    type_category: 'Between & Within Card Data Entry',
   };
 
   try {
@@ -656,6 +674,13 @@ updateFileAccept();
 fetchFields();
 
 useAsInputBtn?.addEventListener('click', () => {
+  prepareInputPayloadForChild().catch((err) => {
+    saveErrorMsg.textContent = `Could not prepare input payload: ${err.message}`;
+    saveError.classList.remove('hidden');
+  });
+});
+
+async function prepareInputPayloadForChild() {
   const manualJson = collectManualJsonFromForm();
   const inspectionDate = (inspectionDateInput?.value || '').trim();
   const effectiveDocType = state.effectiveDocType || docTypeSelect.value;
@@ -666,6 +691,7 @@ useAsInputBtn?.addEventListener('click', () => {
     mc_name: machineNameInput?.value?.trim() || '',
     inspection_type: inspectionTypeInput?.value?.trim() || 'Within',
     inspection_date: inspectionDate,
+    test_id: testIdInput?.value?.trim() || '',
     type_category: isApct ? 'A%' : 'Between & Within Card Data Entry',
     num_entries: isApct ? countApctSamples(manualJson) : countBwcEntries(manualJson[0] || {}),
     values: manualJson,
@@ -674,6 +700,5 @@ useAsInputBtn?.addEventListener('click', () => {
   localStorage.setItem('ocr_input_payload', JSON.stringify(payload));
   window.dispatchEvent(new CustomEvent('ocr:use-as-input', { detail: payload }));
   saveSuccess.classList.remove('hidden');
-  saveRecordId.textContent = 'Values sent to input screen';
-});
-
+  saveRecordId.textContent = 'Prepared input payload for the input screen.';
+}

@@ -15,6 +15,9 @@ DASH_PLACEHOLDERS = {"â€”", "â€“"}
 FIELD_ORDER = [
     "Row Type",
     "Label",
+    "Tester",
+    "Test ID",
+    "Machine ID",
     "Sample No",
     "Sliver Wt",
     "Noils Wt",
@@ -27,6 +30,9 @@ FIELD_ORDER = [
 FIELD_MAP: Dict[str, str] = {
     "Row Type": "Row Type",
     "Label": "Label",
+    "Tester": "Tester",
+    "Test ID": "Test ID",
+    "Machine ID": "Machine ID",
     "Sample No": "Sample No",
     "Sliver Wt": "Sliver Wt",
     "Noils Wt": "Noils Wt",

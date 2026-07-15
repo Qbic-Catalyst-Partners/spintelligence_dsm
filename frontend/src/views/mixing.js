@@ -155,6 +155,7 @@ function Mixing() {
     const [headerErrors, setHeaderErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [previewItems, setPreviewItems] = useState([]);
+    const [pendingConfirmAction, setPendingConfirmAction] = useState(null);
     const [showSuccess, setShowSuccess] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
     const [ocrBusy] = useState(false);
@@ -423,6 +424,7 @@ function Mixing() {
 
     const confirmSubmit = async () => {
         setShowPreview(false);
+<<<<<<< HEAD
         // Captured synchronously, before reserveEntryId()/showSuccessOnce() run any state updates
         // that could re-render/detach the child form ahead of the recordSubmittedNotebook call
         // below. recordSubmittedNotebook is never passed childRef here (only this snapshot, with
@@ -431,6 +433,20 @@ function Mixing() {
         // notebook rows ever recorded, while AFIS-6 Cotton's separate submit handler (which never
         // touches childRef, just its own locally-built data) has always worked.
         let capturedPayload = null;
+=======
+
+        if (pendingConfirmAction) {
+            const action = pendingConfirmAction;
+            setPendingConfirmAction(null);
+            try {
+                await action();
+            } catch (error) {
+                console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
+            }
+            return;
+        }
+
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         try {
             capturedPayload = childRef.current?.getPayload?.() || null;
             const ok = await childRef.current?.submit?.();
@@ -639,6 +655,32 @@ function Mixing() {
         showSuccessOnce();
     };
 
+    const openAfis6Preview = () => {
+        const numericKeys = afis6FieldDefs.map((field) => field.key);
+        const nextErrors = numericKeys.reduce((acc, key) => {
+            const trimmed = String(afis6Form[key] ?? "").trim();
+            const parsed = trimmed === "" ? "" : Number(trimmed);
+            if (Number.isNaN(parsed)) acc[key] = "Must be a number";
+            return acc;
+        }, {});
+        setAfis6Errors(nextErrors);
+        if (Object.keys(nextErrors).length > 0) {
+            setValidationMessage("Please correct the numeric fields before saving.");
+            return;
+        }
+        setValidationMessage("");
+
+        const items = [
+            { label: "Type", value: selectedTypeName },
+            { label: "Entry ID", value: entryId },
+            ...afis6TextFieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+            ...afis6FieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+        ];
+        setPreviewItems(items);
+        setPendingConfirmAction(() => handleAfis6Submit);
+        setShowPreview(true);
+    };
+
     const afis6MmfTextFieldDefs = [
         { key: "lot_no", label: "Lot No." },
         { key: "variety", label: "Variety" },
@@ -840,6 +882,32 @@ function Mixing() {
         }
         handleAfis6MmfClear();
         showSuccessOnce();
+    };
+
+    const openAfis6MmfPreview = () => {
+        const numericKeys = afis6MmfFieldDefs.map((field) => field.key);
+        const nextErrors = numericKeys.reduce((acc, key) => {
+            const trimmed = String(afis6MmfForm[key] ?? "").trim();
+            const parsed = trimmed === "" ? "" : Number(trimmed);
+            if (Number.isNaN(parsed)) acc[key] = "Must be a number";
+            return acc;
+        }, {});
+        setAfis6MmfErrors(nextErrors);
+        if (Object.keys(nextErrors).length > 0) {
+            setValidationMessage("Please correct the numeric fields before saving.");
+            return;
+        }
+        setValidationMessage("");
+
+        const items = [
+            { label: "Type", value: selectedTypeName },
+            { label: "Entry ID", value: entryId },
+            ...afis6MmfTextFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+            ...afis6MmfFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+        ];
+        setPreviewItems(items);
+        setPendingConfirmAction(() => handleAfis6MmfSubmit);
+        setShowPreview(true);
     };
 
     const handleProcessParameterSubmitSuccess = (response) => {
@@ -1275,7 +1343,7 @@ function Mixing() {
                                     : handleOpennessSubmitSuccess
                             }
                             standaloneSection
-                            savedVersionsTargetId="mixing-process-parameter-saved-versions"
+                            savedVersionsTargetId=""
                         />
                     ) : (
                         <div className="p-5">
@@ -1296,15 +1364,11 @@ function Mixing() {
                     <Footer
                         onBack={() => router.push("/departments/quality-control")}
                         onClear={isAfis6Cotton ? handleAfis6Clear : isAfis6Mmf ? handleAfis6MmfClear : handleClear}
-                        onSave={isAfis6Cotton ? handleAfis6Submit : isAfis6Mmf ? handleAfis6MmfSubmit : openPreview}
+                        onSave={isAfis6Cotton ? openAfis6Preview : isAfis6Mmf ? openAfis6MmfPreview : openPreview}
                         saveLabel={actionLoading ? "Submitting..." : "Save Record"}
                         disabled={actionLoading || entryIdLoading}
                     />
                 </div>
-
-                {isProcessParameter && SelectedComponent ? (
-                    <div id="mixing-process-parameter-saved-versions" className="mt-5" />
-                ) : null}
             </div>
 
             <PreviewModal

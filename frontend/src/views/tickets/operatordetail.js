@@ -6,16 +6,25 @@ import {
   fetchOperatorTicketById,
   submitTicketFix,
 } from "@/store/slices/operatorSlice";
-import { getOperatorTicketTimeline } from "@/apis/operatorApi";
+import {
+  getOperatorTicketTimeline,
+  getSubmissionTickets,
+  getProcessParameterTickets,
+} from "@/apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  calculateTicketDeviation,
   getTicketParameterNames,
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
+  isPpBatchCompletionTicketRecord,
   isSubmissionFrequencyParameterName,
   isSubmissionTicketRecord,
+  transformTicketWithDescription,
+  buildTicketActivityTimelineSteps,
+  getTicketL1ApproverNames,
 } from "@/utils/ticketTransformer";
 import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketStatus";
 
@@ -25,6 +34,7 @@ import { BsThreeDots, BsThreeDotsVertical } from "react-icons/bs";
 import { HiBars3, HiChevronLeft } from "react-icons/hi2";
 
 import styles from "../../styles/operatordetails.module.css";
+import TatCountdown from "../../components/TatCountdown";
 
 const logoSrc = "/logo.png";
 const spintelSrc = "/spintel.svg";
@@ -48,6 +58,8 @@ export default function TicketDetails() {
   const [expanded, setExpanded] = useState(false);
   const [timelineItems, setTimelineItems] = useState([]);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [directFetchTicket, setDirectFetchTicket] = useState(null);
+  const [directFetchLoading, setDirectFetchLoading] = useState(false);
   const commentLimit = 500;
 
   const normalizeTicketId = (value) => String(value || "").replace(/^#/, "");
@@ -65,19 +77,58 @@ export default function TicketDetails() {
     ) || null;
   }, [ticketId, tickets]);
 
+  const directFetchTicketMatches =
+    directFetchTicket && normalizeTicketId(directFetchTicket.ticket_id) === normalizedRequestedTicketId;
+
   const resolvedTicket = applyStoredTicketStatus(
-    dashboardTicket || (ticketDetailMatches ? ticket : null)
+    dashboardTicket ||
+      (directFetchTicketMatches ? directFetchTicket : null) ||
+      (ticketDetailMatches ? ticket : null)
   );
 
+  // Submission and process-parameter tickets live in separate backend tables
+  // (/operator-tickets/submission-ticketing, /operator-tickets/process-parameter-ticketing) —
+  // the same lists the dashboard tabs pull from. The generic single-ticket endpoint
+  // (/operator-tickets/:id) only knows about threshold tickets, so it 404s or returns
+  // incomplete data for those two kinds. Fetch from the matching list endpoint instead,
+  // mirroring what the dashboard already does, and find the ticket by id client-side.
   useEffect(() => {
-    if (
-      ticketId &&
-      !dashboardTicket &&
-      !ticketDetailMatches
-    ) {
+    if (!ticketId || dashboardTicket) return undefined;
+
+    let mounted = true;
+
+    const loadFromListEndpoint = async (fetchList) => {
+      setDirectFetchLoading(true);
+      try {
+        const response = await fetchList({ page: 1, limit: 500, _ts: Date.now() });
+        const list = Array.isArray(response)
+          ? response
+          : response?.data?.tickets || response?.data?.rows || response?.data || [];
+        const match = (Array.isArray(list) ? list : []).find(
+          (item) => normalizeTicketId(item?.ticket_id || item?.id) === normalizedRequestedTicketId
+        );
+        if (mounted) {
+          setDirectFetchTicket(match ? transformTicketWithDescription(match) : null);
+        }
+      } catch {
+        if (mounted) setDirectFetchTicket(null);
+      } finally {
+        if (mounted) setDirectFetchLoading(false);
+      }
+    };
+
+    if (ticketType === "submission") {
+      loadFromListEndpoint(getSubmissionTickets);
+    } else if (ticketType === "process_parameter") {
+      loadFromListEndpoint(getProcessParameterTickets);
+    } else if (!ticketDetailMatches) {
       dispatch(fetchOperatorTicketById(ticketId));
     }
-  }, [dashboardTicket, dispatch, ticketDetailMatches, ticketId]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [dashboardTicket, dispatch, ticketDetailMatches, ticketId, ticketType]);
 
   const handleSubmit = async () => {
     if (!comment.trim()) return alert("Enter comment");
@@ -131,10 +182,18 @@ export default function TicketDetails() {
   // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,
   // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
   // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
-  const isSubmissionTicket = ticketType
+  const isProcessParameterTicket = ticketType
+    ? ticketType === "process_parameter"
+    : isPpBatchCompletionTicketRecord(resolvedTicket);
+  const isSubmissionTicket = !isProcessParameterTicket && (ticketType
     ? ticketType === "submission"
     : isSubmissionTicketRecord(resolvedTicket) ||
-      String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+      String(resolvedTicket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY");
+  const entryId = resolvedTicket?.entry_id || resolvedTicket?.entryId || "-";
+  const completionThresholdHours =
+    resolvedTicket?.completion_time_provided_hours ?? resolvedTicket?.completionTimeProvidedHours ?? "-";
+  const entryCreatedAt = resolvedTicket?.entry_created_at || resolvedTicket?.entryCreatedAt || "-";
+  const timeLaggedHours = resolvedTicket?.time_lagged_hours ?? resolvedTicket?.timeLaggedHours ?? "-";
   const submissionParameterNames = rawParameterNames.filter(
     (param) => isSubmissionFrequencyParameterName(param) || isNotebookAcknowledgementParameterName(param)
   );
@@ -143,16 +202,18 @@ export default function TicketDetails() {
     : rawParameterNames;
 
   const parameterMap =
-    displayParameterNames.map((param) => ({
-      name: param,
-      actual: getTicketValueForParameter(resolvedTicket?.actual_value, param),
-      standard: formatStandardValue(
-        getTicketValueForParameter(resolvedTicket?.threshold_value, param)
-      ),
-      threshold: formatThresholdValue(
-        getTicketValueForParameter(resolvedTicket?.threshold_value, param)
-      ),
-    })).filter((item) => {
+    displayParameterNames.map((param) => {
+      const actual = getTicketValueForParameter(resolvedTicket?.actual_value, param);
+      const thresholdSource = getTicketValueForParameter(resolvedTicket?.threshold_value, param);
+      const standard = formatStandardValue(thresholdSource);
+      return {
+        name: param,
+        actual,
+        standard,
+        threshold: formatThresholdValue(thresholdSource),
+        deviation: calculateTicketDeviation(actual, standard, thresholdSource),
+      };
+    }).filter((item) => {
       if (!/^\d+$/.test(String(item.name || "").trim())) return true;
 
       return [item.actual, item.standard, item.threshold].some(
@@ -189,9 +250,36 @@ export default function TicketDetails() {
     const normalized = String(title || "").toLowerCase();
     if (normalized.includes("created")) return { icon: createdImgSrc, iconType: null };
     if (normalized.includes("assign")) return { icon: maintenanceImgSrc, iconType: null };
-    if (normalized.includes("comment")) return { icon: null, iconType: "comment" };
+    if (normalized.includes("comment") || normalized.includes("submitted")) return { icon: null, iconType: "comment" };
+    if (normalized.includes("reject")) return { icon: maintenanceImgSrc, iconType: null };
+    if (normalized.includes("approved") || normalized.includes("closed") || normalized.includes("acknowledged")) {
+      return { icon: fixImgSrc, iconType: null };
+    }
     return { icon: createdImgSrc, iconType: null };
   };
+
+  // Fallback multi-step timeline built from the ticket record itself, used whenever the
+  // dedicated timeline endpoint returns nothing — which today is always the case for
+  // Submission and Process Parameter tickets (that endpoint only knows the Threshold table).
+  const l1ApproverNames = resolvedTicket ? getTicketL1ApproverNames(resolvedTicket) : [];
+
+  const fallbackTimelineItems = resolvedTicket
+    ? buildTicketActivityTimelineSteps(resolvedTicket)
+        .filter((step) => !String(step?.title || "").toLowerCase().includes("l1 comment"))
+        .map((step) => {
+          const iconMeta = getTimelineIcon(step.title);
+          const isAssignment = String(step?.title || "").toLowerCase().includes("assign");
+          return {
+            time: formatCompactDateTime(step.at),
+            title: isAssignment ? "Ticket Assigned To" : step.title,
+            description: isAssignment
+              ? l1ApproverNames.join(", ") || step.description
+              : step.description,
+            icon: iconMeta.icon,
+            iconType: iconMeta.iconType,
+          };
+        })
+    : [];
 
   useEffect(() => {
     let mounted = true;
@@ -200,12 +288,18 @@ export default function TicketDetails() {
       try {
         const response = await getOperatorTicketTimeline(ticketId);
         const events = Array.isArray(response?.timeline) ? response.timeline : [];
-        const mapped = events.map((event) => {
-          const iconMeta = getTimelineIcon(event?.title || event?.action);
+        const mapped = events
+          .filter((event) => !String(event?.title || event?.action || "").toLowerCase().includes("l1 comment"))
+          .map((event) => {
+          const rawTitle = event?.title || event?.action || "";
+          const iconMeta = getTimelineIcon(rawTitle);
+          const isAssignment = String(rawTitle).toLowerCase().includes("assign");
           return {
             time: formatCompactDateTime(event?.at),
-            title: event?.title || "Updated",
-            description: event?.detail || event?.action || "-",
+            title: isAssignment ? "Ticket Assigned To" : event?.title || "Updated",
+            description: isAssignment
+              ? l1ApproverNames.join(", ") || event?.detail || "-"
+              : event?.detail || event?.action || "-",
             icon: iconMeta.icon,
             iconType: iconMeta.iconType,
           };
@@ -264,7 +358,7 @@ export default function TicketDetails() {
     setShowMoreMenu(false);
   };
 
-  if (loading && !resolvedTicket) return <p>Loading...</p>;
+  if ((loading || directFetchLoading) && !resolvedTicket) return <p>Loading...</p>;
   if (!resolvedTicket) return <p>No ticket found</p>;
 
   return (
@@ -326,6 +420,7 @@ export default function TicketDetails() {
             <span className={`${styles["severity-badge"]} ${severityClassName}`}>
               Severity: {resolvedTicket.severity}
             </span>
+            <TatCountdown ticket={resolvedTicket} />
           </div>
 
           <div className={styles["mobile-status-row"]}>
@@ -351,25 +446,55 @@ export default function TicketDetails() {
           </div>
 
           <div className={styles["mobile-parameter-table"]}>
-            <div className={styles["mobile-parameter-head"]}>
-              <span>Parameter</span>
-              <span>{isSubmissionTicket ? "Frequency" : "Actual"}</span>
-              <span>{isSubmissionTicket ? "Occurrences" : "Standard"}</span>
-              <span>{isSubmissionTicket ? "Status" : "Threshold"}</span>
-            </div>
+            {isProcessParameterTicket ? (
+              <>
+                <div className={styles["mobile-parameter-head"]}>
+                  <span>Entry ID</span>
+                  <span>Completion Threshold (Hrs)</span>
+                  <span>Entry Created At</span>
+                  <span>Time Lagged (Hrs)</span>
+                </div>
+                <div className={styles["mobile-parameter-row"]}>
+                  <span className={styles["mobile-parameter-name"]}>{entryId}</span>
+                  <span className={styles["mobile-parameter-value"]}>{completionThresholdHours}</span>
+                  <span className={styles["mobile-parameter-value"]}>{entryCreatedAt === "-" ? "-" : formatCompactDateTime(entryCreatedAt)}</span>
+                  <span className={styles["mobile-parameter-value"]}>{timeLaggedHours}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={styles["mobile-parameter-head"]}
+                  style={isSubmissionTicket ? undefined : { gridTemplateColumns: "minmax(0, 1.25fr) repeat(4, minmax(58px, 0.75fr))" }}
+                >
+                  <span>Parameter</span>
+                  <span>{isSubmissionTicket ? "Frequency" : "Actual"}</span>
+                  <span>{isSubmissionTicket ? "Occurrences" : "Standard"}</span>
+                  <span>{isSubmissionTicket ? "Status" : "Threshold"}</span>
+                  {!isSubmissionTicket && <span>Deviation</span>}
+                </div>
 
-            {mobileParameterRows.map((item, index) => (
-              <div className={styles["mobile-parameter-row"]} key={`mobile-${item.name}-${index}`}>
-                <span className={styles["mobile-parameter-name"]}>{item.name}</span>
-                <span className={`${styles["mobile-parameter-value"]} ${styles.danger}`}>
-                  {isSubmissionTicket ? submissionFrequency : item.actual}
-                </span>
-                <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
-                <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
-              </div>
-            ))}
+                {mobileParameterRows.map((item, index) => (
+                  <div
+                    className={styles["mobile-parameter-row"]}
+                    key={`mobile-${item.name}-${index}`}
+                    style={isSubmissionTicket ? undefined : { gridTemplateColumns: "minmax(0, 1.25fr) repeat(4, minmax(58px, 0.75fr))" }}
+                  >
+                    <span className={styles["mobile-parameter-name"]}>{item.name}</span>
+                    <span className={`${styles["mobile-parameter-value"]} ${styles.danger}`}>
+                      {isSubmissionTicket ? submissionFrequency : item.actual}
+                    </span>
+                    <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
+                    <span className={styles["mobile-parameter-value"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
+                    {!isSubmissionTicket && (
+                      <span className={styles["mobile-parameter-value"]}>{item.deviation}</span>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
 
-            {parameterMap.length > 3 && (
+            {!isProcessParameterTicket && parameterMap.length > 3 && (
               <button
                 type="button"
                 className={styles["expand-dots"]}
@@ -394,6 +519,7 @@ export default function TicketDetails() {
                 <span className={`${styles["severity-badge"]} ${severityClassName}`}>
                   {resolvedTicket.severity}
                 </span>
+                <TatCountdown ticket={resolvedTicket} />
               </div>
               <p className={styles.subtitle}>
                 {machineDetailText}
@@ -432,29 +558,65 @@ export default function TicketDetails() {
           </div>
 
           <div className={styles["table-shell"]}>
-            <div className={styles["table-head"]}>
-              <span>Notebook Type</span>
-              <span>Parameter</span>
-              <span>{isSubmissionTicket ? "Frequency" : "Actual Value"}</span>
-              <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
-              <span>{isSubmissionTicket ? "Status" : "Threshold Value"}</span>
-              <span>Created At</span>
-            </div>
+            {isProcessParameterTicket ? (
+              <>
+                <div className={styles["table-head"]}>
+                  <span>Notebook</span>
+                  <span>Entry ID</span>
+                  <span>Completion Threshold (Hrs)</span>
+                  <span>Entry Created At</span>
+                  <span>Time Lagged (Hrs)</span>
+                  <span>Created At</span>
+                </div>
+                <div className={styles["table-row"]}>
+                  <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
+                  <span className={styles["value-strong"]}>{entryId}</span>
+                  <span className={styles["value-strong"]}>{completionThresholdHours}</span>
+                  <span className={styles["value-strong"]}>{entryCreatedAt === "-" ? "-" : formatCompactDateTime(entryCreatedAt)}</span>
+                  <span className={styles["value-strong"]}>{timeLaggedHours}</span>
+                  <span className={styles["value-strong"]}>
+                    {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={styles["table-head"]}
+                  style={isSubmissionTicket ? undefined : { gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+                >
+                  <span>Notebook Type</span>
+                  <span>Parameter</span>
+                  <span>{isSubmissionTicket ? "Frequency" : "Actual Value"}</span>
+                  <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
+                  <span>{isSubmissionTicket ? "Status" : "Threshold Value"}</span>
+                  {!isSubmissionTicket && <span>Deviation</span>}
+                  <span>Created At</span>
+                </div>
 
-            {visibleRows.map((item, index) => (
-              <div className={styles["table-row"]} key={`${item.name}-${index}`}>
-                <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
-                <span className={styles["value-strong"]}>{item.name}</span>
-                <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
-                <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
-                <span className={styles["value-strong"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
-                <span className={styles["value-strong"]}>
-                  {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
-                </span>
-              </div>
-            ))}
+                {visibleRows.map((item, index) => (
+                  <div
+                    className={styles["table-row"]}
+                    key={`${item.name}-${index}`}
+                    style={isSubmissionTicket ? undefined : { gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+                  >
+                    <span className={styles["value-strong"]}>{resolvedTicket.machine_name || resolvedTicket.notebook || "-"}</span>
+                    <span className={styles["value-strong"]}>{item.name}</span>
+                    <span className={`${styles["value-strong"]} ${styles.danger}`}>{isSubmissionTicket ? submissionFrequency : item.actual}</span>
+                    <span className={styles["value-strong"]}>{isSubmissionTicket ? submissionOccurrences : item.standard}</span>
+                    <span className={styles["value-strong"]}>{isSubmissionTicket ? getOperatorStatusLabel(resolvedTicket.status) : item.threshold}</span>
+                    {!isSubmissionTicket && (
+                      <span className={styles["value-strong"]}>{item.deviation}</span>
+                    )}
+                    <span className={styles["value-strong"]}>
+                      {formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt)}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
 
-            {parameterMap.length > 1 && (
+            {!isProcessParameterTicket && parameterMap.length > 1 && (
               <button
                 type="button"
                 className={styles["expand-dots"]}
@@ -474,35 +636,33 @@ export default function TicketDetails() {
           </h3>
 
           <div className={styles["timeline-list"]}>
-            {(timelineItems.length ? timelineItems : [{
-              time: formatCompactDateTime(resolvedTicket.created_at || resolvedTicket.rawCreatedAt),
-              title: "Ticket Created",
-              icon: createdImgSrc,
-              description: `Automated system alert triggered by ${resolvedTicket.machine_name || "system"}`,
-            }]).map((item, index) => (
-              <div className={styles["timeline-item"]} key={`${item.time}-${item.title}`}>
-                <div className={styles["timeline-time"]}>{item.time}</div>
-                <div className={styles["timeline-rail"]}>
-                  {item.iconType === "comment" ? (
-                    <FaRegCommentAlt className={styles["timeline-comment-icon"]} />
-                  ) : (
-                    <img
-                      src={item.icon}
-                      alt=""
-                      aria-hidden="true"
-                      className={styles["timeline-icon"]}
-                    />
-                  )}
-                  {index !== timelineItems.length - 1 && (
-                    <span className={styles["timeline-line"]} />
-                  )}
+            {(() => {
+              const displayedTimeline = timelineItems.length ? timelineItems : fallbackTimelineItems;
+              return displayedTimeline.map((item, index) => (
+                <div className={styles["timeline-item"]} key={`${item.time}-${item.title}`}>
+                  <div className={styles["timeline-time"]}>{item.time}</div>
+                  <div className={styles["timeline-rail"]}>
+                    {item.iconType === "comment" ? (
+                      <FaRegCommentAlt className={styles["timeline-comment-icon"]} />
+                    ) : (
+                      <img
+                        src={item.icon}
+                        alt=""
+                        aria-hidden="true"
+                        className={styles["timeline-icon"]}
+                      />
+                    )}
+                    {index !== displayedTimeline.length - 1 && (
+                      <span className={styles["timeline-line"]} />
+                    )}
+                  </div>
+                  <div className={styles["timeline-content"]}>
+                    <h4>{item.title}</h4>
+                    <p>{item.description}</p>
+                  </div>
                 </div>
-                <div className={styles["timeline-content"]}>
-                  <h4>{item.title}</h4>
-                  <p>{item.description}</p>
-                </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         </section>
       </main>

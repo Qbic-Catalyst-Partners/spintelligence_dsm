@@ -27,8 +27,7 @@ const parseBool = (value, fallback = false) => {
 
 const isAdminUser = (req) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
-  const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-  return role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+  return role === 'admin' || role === 'super admin' || role === 'superadmin';
 };
 
 const resolveRequestedUserId = (req) => {
