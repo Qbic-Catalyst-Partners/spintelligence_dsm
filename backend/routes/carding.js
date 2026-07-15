@@ -51,6 +51,10 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   return entry_id ? { ...record, entry_id } : { ...record };
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
+<<<<<<< HEAD
+const ALLOWED_SHIFT_TYPES = new Set(['Shift 1', 'Shift 2', 'Shift 3']);
+=======
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 const CDG_MACHINE_REGEX = /^CDG[-\s]?\d+/i;
 let cardWasteTypeMasterReady = false;
 let cardingEntryIdMigrationReady = false;
@@ -617,10 +621,23 @@ const upsertCardWasteType = async (wasteType) => {
   const wasteTypeKey = normalizedWasteType.toLowerCase();
 
   const result = await client.query(
+<<<<<<< HEAD
+    `INSERT INTO carding.card_waste_type_master (waste_type, waste_type_key, sort_order)
+     VALUES (
+       $1,
+       $2,
+       COALESCE((SELECT MAX(sort_order) FROM carding.card_waste_type_master), 0) + 1
+     )
+     ON CONFLICT (waste_type_key)
+     DO UPDATE SET waste_type = EXCLUDED.waste_type
+     RETURNING id, waste_type, waste_type_key, created_at`,
+    [normalizedWasteType, wasteTypeKey]
+=======
     `SELECT id, waste_type, waste_type_key, created_at
      FROM carding.card_waste_type_master
      WHERE waste_type_key = $1`,
     [wasteTypeKey]
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   );
 
   return result.rows[0] || null;
@@ -2528,6 +2545,27 @@ router.post('/nati-data-entry', async (req, res) => {
                 await client.query('LOCK TABLE carding.nati_data_entry IN SHARE ROW EXCLUSIVE MODE');
                 entry_id = await createNatiDataEntryId();
 
+<<<<<<< HEAD
+        await client.query(
+            `INSERT INTO carding.neps_details
+            (qc_id, mc_no, ratio_size_1, ratio_size_07, ratio_size_05)
+            SELECT
+                $1, mc_no, r1, r07, r05
+            FROM unnest(
+                $2::varchar[],
+                $3::numeric[],
+                $4::numeric[],
+                $5::numeric[]
+            ) AS t(mc_no, r1, r07, r05)`,
+            [
+                qc_id,
+                entries.map(e => (e.mc_no === null || e.mc_no === undefined ? null : String(e.mc_no))),
+                entries.map(e => e.ratio_size_1),
+                entries.map(e => e.ratio_size_07),
+                entries.map(e => e.ratio_size_05)
+            ]
+        );
+=======
                 const main = await client.query(
                     `INSERT INTO carding.nati_data_entry
                     (entry_id, type, entry_date, variety)
@@ -2535,6 +2573,7 @@ router.post('/nati-data-entry', async (req, res) => {
                     RETURNING id`,
                     [entry_id, type, entry_date, variety]
                 );
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
                 qc_id = main.rows[0].id;
 
@@ -2765,6 +2804,15 @@ router.post('/uqc', async (req, res) => {
             });
         }
 
+<<<<<<< HEAD
+        if (shift && !ALLOWED_SHIFT_TYPES.has(String(shift).trim())) {
+            return res.status(400).json({
+                message: "shift must be one of: Shift 1, Shift 2, Shift 3"
+            });
+        }
+
+=======
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         // ✅ Handle numeric safely
         const toNumber = (val) =>
             val === "" || val === undefined ? null : val;
@@ -2774,6 +2822,8 @@ router.post('/uqc', async (req, res) => {
             (entry_id, entry_type, entry_date, shift, variety, mc_no,
              u_percent, cvm, cvm_1m, cvm_3m, remarks)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+<<<<<<< HEAD
+=======
             ON CONFLICT (entry_id) DO UPDATE SET
               entry_type = EXCLUDED.entry_type,
               entry_date = EXCLUDED.entry_date,
@@ -2785,6 +2835,7 @@ router.post('/uqc', async (req, res) => {
               cvm_1m = EXCLUDED.cvm_1m,
               cvm_3m = EXCLUDED.cvm_3m,
               remarks = EXCLUDED.remarks
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
             RETURNING *`,
             [
                 entry_id,
@@ -3750,7 +3801,10 @@ router.post('/change-control', async (req, res, next) => {
       rr_rk_beater_speed_proposed,
       remarks,
       operator,
+<<<<<<< HEAD
+=======
       approval_status: requestedApprovalStatus,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     } = req.body;
 
     if (!entry_id) {
@@ -3795,7 +3849,11 @@ router.post('/change-control', async (req, res, next) => {
          web_speed_draft_mw_v4_existing, web_speed_draft_mw_v4_proposed,
          lc_wing_setting_existing, lc_wing_setting_proposed,
          rr_rk_beater_speed_existing, rr_rk_beater_speed_proposed,
+<<<<<<< HEAD
+         remarks, operator
+=======
          remarks, operator, approval_status
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
        )
        VALUES (
          $1, $2, $3, $4, $5, $6,
@@ -3816,7 +3874,11 @@ router.post('/change-control', async (req, res, next) => {
          $35, $36,
          $37, $38,
          $39, $40,
+<<<<<<< HEAD
+         $41, $42
+=======
          $41, $42, $43
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
        )
        RETURNING *`,
       [
@@ -3830,6 +3892,40 @@ router.post('/change-control', async (req, res, next) => {
         mixing_proposed ?? null,
         blend_percent_existing ?? null,
         blend_percent_proposed ?? null,
+<<<<<<< HEAD
+        del_hank_existing ?? null,
+        del_hank_proposed ?? null,
+        feed_weight_existing ?? null,
+        feed_weight_proposed ?? null,
+        speed_existing ?? null,
+        speed_proposed ?? null,
+        licker_in_speed_1_existing ?? null,
+        licker_in_speed_1_proposed ?? null,
+        licker_in_speed_2_existing ?? null,
+        licker_in_speed_2_proposed ?? null,
+        cylinder_speed_existing ?? null,
+        cylinder_speed_proposed ?? null,
+        flats_speed_mm_min_existing ?? null,
+        flats_speed_mm_min_proposed ?? null,
+        feed_plate_to_licker_in_existing ?? null,
+        feed_plate_to_licker_in_proposed ?? null,
+        sfl_existing ?? null,
+        sfl_proposed ?? null,
+        sfd_existing ?? null,
+        sfd_proposed ?? null,
+        cylinder_to_flats_existing ?? null,
+        cylinder_to_flats_proposed ?? null,
+        cylinder_in_doffer_existing ?? null,
+        cylinder_in_doffer_proposed ?? null,
+        web_speed_draft_mw_v4_existing ?? null,
+        web_speed_draft_mw_v4_proposed ?? null,
+        lc_wing_setting_existing ?? null,
+        lc_wing_setting_proposed ?? null,
+        rr_rk_beater_speed_existing ?? null,
+        rr_rk_beater_speed_proposed ?? null,
+        remarks ?? null,
+        operator ?? null
+=======
         toNullableNumber(del_hank_existing),
         toNullableNumber(del_hank_proposed),
         toNullableNumber(feed_weight_existing),
@@ -3863,6 +3959,7 @@ router.post('/change-control', async (req, res, next) => {
         remarks ?? null,
         operator ?? null,
         approval_status
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       ]
     );
 
@@ -4380,6 +4477,14 @@ router.get('/card-waste-study', async (req, res, next) => {
   }
 });
 
+<<<<<<< HEAD
+// "Carding NRE%" — the frontend (cardingNreDataEntry.jsx) has always posted to /carding/nre and
+// carding.nre already exists live with real submitted rows (entry_id CNRE-0001..0003), but no
+// route handling this path exists anywhere in this file — every submission attempt has been
+// silently failing (404) and Custom Report's "Carding NRE%" type has never had anything to fetch.
+router.post('/nre', async (req, res, next) => {
+  try {
+=======
 ///////////////////////////////////////////////////////////
 ///////////////////// NRE% DATA ENTRY API ///////////////////
 ///////////////////////////////////////////////////////////
@@ -4460,6 +4565,7 @@ router.post('/nre', async (req, res, next) => {
   try {
     await ensureCardingNreTable();
 
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const {
       entry_id,
       machine_model,
@@ -4483,6 +4589,13 @@ router.post('/nre', async (req, res, next) => {
       carding_nre_percent
     } = req.body;
 
+<<<<<<< HEAD
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+
+=======
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const result = await client.query(
       `INSERT INTO carding.nre (
         entry_id, machine_model, mc_name,
@@ -4496,6 +4609,28 @@ router.post('/nre', async (req, res, next) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       RETURNING *`,
       [
+<<<<<<< HEAD
+        entry_id,
+        machine_model || null,
+        mc_name || null,
+        cylinder_specs || null,
+        cylinder_tonnage_1 || null,
+        cylinder_tonnage_2 || null,
+        doffer_specs || null,
+        doffer_tonnage_1 || null,
+        doffer_tonnage_2 || null,
+        flat_specs || null,
+        flat_tonnage_1 || null,
+        flat_tonnage_2 || null,
+        lickerin_specs || null,
+        lickerin_tonnage_1 || null,
+        lickerin_tonnage_2 || null,
+        silver_hank || null,
+        delivery_mtr_min || null,
+        fibre_nep_gms_card_mat || null,
+        fibre_nep_gms_silver || null,
+        carding_nre_percent || null
+=======
         entry_id || null,
         machine_model,
         mc_name,
@@ -4516,10 +4651,37 @@ router.post('/nre', async (req, res, next) => {
         toNumberOrNull(fibre_nep_gms_card_mat),
         toNumberOrNull(fibre_nep_gms_silver),
         toNumberOrNull(carding_nre_percent)
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       ]
     );
 
     res.status(201).json({
+<<<<<<< HEAD
+      message: 'Carding NRE% data created successfully',
+      data: withScreenEntryId('nre', result.rows[0])
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error('Error inserting Carding NRE% data:', err);
+    next(err);
+  }
+});
+
+router.get('/nre', async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const result = await client.query(
+      `SELECT *
+       FROM carding.nre
+       ORDER BY created_at DESC, id DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+=======
       message: 'Carding NRE% entry created successfully',
       data: result.rows[0]
     });
@@ -4567,11 +4729,22 @@ router.get('/nre', async (req, res, next) => {
        ORDER BY id DESC
        OFFSET $1 LIMIT $2`,
       [offset, limit]
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     );
 
     const totalResult = await client.query(`SELECT COUNT(*) FROM carding.nre`);
 
     res.status(200).json({
+<<<<<<< HEAD
+      page,
+      limit,
+      total: parseInt(totalResult.rows[0].count, 10),
+      data: result.rows.map((row) => withScreenEntryId('nre', row))
+    });
+  } catch (err) {
+    console.error('Error fetching Carding NRE% data:', err);
+    next(err);
+=======
       data: result.rows,
       total: parseInt(totalResult.rows[0].count),
       page,
@@ -4579,6 +4752,7 @@ router.get('/nre', async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   }
 });
 

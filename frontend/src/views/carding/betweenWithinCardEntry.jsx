@@ -8,6 +8,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingMasterMachines } from "@/apis/carding";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const MAX_ENTRY_COUNT = 100;
 const defaultMachineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -124,7 +125,7 @@ const calculateHankStats = (values) => {
     };
 };
 
-function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectionTypeChange, showForm, hideTypeField = false, entryId = "" }) {
+function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectionTypeChange, showForm, hideTypeField = false, entryId = "", reserveEntryId, user }) {
     const router = useRouter();
     const dispatch = useDispatch();
     const { isLoading, data, error } = useSelector((state) => state.carding ?? {
@@ -376,9 +377,24 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             setFormMessage(nextEntryId ? `Data submitted. Entry ID: ${nextEntryId}` : "");
             setIsError(false);
             setShowSuccess(true);
+
+            try {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    notebookName: selectedType,
+                    entryId: nextEntryId || entryId,
+                    previewItems,
+                    user,
+                });
+            } catch (recordError) {
+                console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+            await reserveEntryId?.();
         } catch (submitError) {
             setFormMessage(submitError || "Save failed");
             setIsError(true);
+            await reserveEntryId?.();
         }
     };
 

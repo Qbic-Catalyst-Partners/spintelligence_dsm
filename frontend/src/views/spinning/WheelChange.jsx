@@ -377,7 +377,10 @@ const WHEEL_CHANGE_FIELD_MAP = {
       f: "d",
       c: "c",
       tpiTm: "tpi_tpm",
-      windingLengthMeters: "winding_length_meters",
+      // Backend's spinning.wheel_change_v2 table stores this under winding_kf_existing/proposed
+      // (not winding_length_meters) — the mismatch meant every "Winding length in meters" entry
+      // was silently dropped on submit and never actually reached the database.
+      windingLengthMeters: "winding_kf",
       rollerMoved: "ratchet_wheel",
       traveller: "travelers_no",
       taper: "spacer",
@@ -414,6 +417,10 @@ const WHEEL_CHANGE_FIELD_MAP = {
       speedInitial: "speed_initial",
       speedMax: "speed_max",
       emptiesColour: "empties_colour",
+      // Was missing entirely — TYPE_3_PARAMETER_ROWS has a "Total Draft" row, but with no
+      // mapping here getPayload's `if (!fieldBase) return;` guard skipped it silently, so every
+      // Type 3 submission's Total Draft was dropped and never reached total_draft_existing/proposed.
+      totalDraft: "total_draft",
     },
   },
 };
@@ -453,7 +460,7 @@ const WHEEL_CHANGE_NUMERIC_FIELDS = {
     "a",
     "c",
     "tpi_tpm",
-    "winding_length_meters",
+    "winding_kf",
     "speed_spindle",
     "speed_main",
     "total_draft",

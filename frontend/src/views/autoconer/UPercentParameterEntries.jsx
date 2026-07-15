@@ -359,6 +359,7 @@ function UPercentParameterEntries({
     if (!validate()) return false;
     const payload = {
       id: selectedEntryId || undefined,
+      entry_id: entryId || undefined,
       inspection_type: selectedType || "U% Parameter Entries",
       entry_date: entryDate,
       count_name: countName,

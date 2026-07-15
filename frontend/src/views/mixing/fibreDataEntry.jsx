@@ -24,6 +24,7 @@ const NUMERIC_FIELDS = new Set([
 const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
+    const user = useSelector((state) => state.auth?.user);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
@@ -82,6 +83,7 @@ const FibreDataEntry = forwardRef(function FibreDataEntry({ date, entryId, lotNo
         crimp:             Number(formData.crimp)           || 0,
         whiteness_index:   Number(formData.whitenessIndex)  || 0,
         spin_finish:       Number(formData.spinFinish)      || 0,
+        user_name:         user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
     const handleSubmit = async () => {

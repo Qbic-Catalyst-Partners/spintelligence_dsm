@@ -646,7 +646,59 @@ const sendAutoconerMachineDropdown = async (req, res, next) => {
   }
 };
 
+// These tables store their submission timestamp as `timestamp WITHOUT time zone` with a bare
+// default — on this DB, that silently writes a different offset than what gets displayed back,
+// shifting "Created At" by several hours (sometimes onto the wrong calendar day) in Custom Report.
+// Same root cause and same fix as every other department's equivalent tables: convert to
+// timestamptz so new rows store an unambiguous absolute instant. (rewinding_study's own CREATE
+// TABLE statement already declares TIMESTAMPTZ, but that only applies to a fresh table — this
+// one was created earlier under the old plain-timestamp definition, so it still needs the same
+// ALTER here.)
+const ensureAutoconerTimestampColumnsHaveTimezone = async () => {
+  const tablesAndColumn = [
+    ['autoconer.autoconer_process_parameter', 'created_at'],
+    ['autoconer.autoconer_process_parameter', 'updated_at'],
+    ['autoconer.autoconer_q2_inspection', 'created_at'],
+    ['autoconer.autoconer_q2_inspection', 'updated_at'],
+    ['autoconer.autoconer_q3_inspection', 'created_at'],
+    ['autoconer.autoconer_q3_inspection', 'updated_at'],
+    ['autoconer.cone_density', 'created_at'],
+    ['autoconer.cone_density_notebook', 'created_at'],
+    ['autoconer.cone_density_notebook', 'updated_at'],
+    ['autoconer.cone_density_notebook_drums', 'created_at'],
+    ['autoconer.cone_packing_audit', 'created_at'],
+    ['autoconer.count_wise_cuts', 'created_at'],
+    ['autoconer.drum_readings', 'created_at'],
+    ['autoconer.drum_wise', 'created_at'],
+    ['autoconer.inspection_data_entry', 'created_at'],
+    ['autoconer.inspections', 'created_at'],
+    ['autoconer.lycra_checking_inspections', 'created_at'],
+    ['autoconer.parameter_entries', 'created_at'],
+    ['autoconer.parameter_entries', 'updated_at'],
+    ['autoconer.rewinding_study', 'created_at']
+  ];
+  for (const [tableName, column] of tablesAndColumn) {
+    const [schemaName, relationName] = tableName.split('.');
+    await client.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = '${schemaName}' AND table_name = '${relationName}' AND column_name = '${column}'
+            AND data_type = 'timestamp without time zone'
+        ) THEN
+          ALTER TABLE ${tableName}
+            ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
+          ALTER TABLE ${tableName}
+            ALTER COLUMN ${column} SET DEFAULT now();
+        END IF;
+      END $$;
+    `);
+  }
+};
+
 const ensureAutoconerEntryIdColumns = async () => {
+  await ensureAutoconerTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE autoconer.autoconer_process_parameter
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -674,6 +726,106 @@ const ensureAutoconerEntryIdColumns = async () => {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q3_inspection_entry_id_uq
     ON autoconer.autoconer_q3_inspection (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.lycra_checking_inspections
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS lycra_checking_inspections_entry_id_uq
+    ON autoconer.lycra_checking_inspections (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  // Neither table was ever given a real PRIMARY KEY (just a plain `id` column) — harmless until
+  // GET /lycra-checking's GROUP BY i.id, s.id runs, since without a declared primary key Postgres
+  // can't apply the functional-dependency rule that normally lets `i.*`/`s.*` be selected once
+  // grouped by their own id, and instead rejects the whole query with "column ... must appear in
+  // the GROUP BY clause" — meaning this route has been failing outright on every fetch.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.lycra_checking_inspections'::regclass AND contype = 'p'
+      ) THEN
+        ALTER TABLE autoconer.lycra_checking_inspections ADD PRIMARY KEY (id);
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.lycra_checking_summary'::regclass AND contype = 'p'
+      ) THEN
+        ALTER TABLE autoconer.lycra_checking_summary ADD PRIMARY KEY (id);
+      END IF;
+    END $$;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.drum_wise
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS drum_wise_entry_id_uq
+    ON autoconer.drum_wise (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.inspections
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_inspections_entry_id_uq
+    ON autoconer.inspections (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.cone_density
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cone_density_entry_id_uq
+    ON autoconer.cone_density (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.cone_packing_audit
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cone_packing_audit_entry_id_uq
+    ON autoconer.cone_packing_audit (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.parameter_entries
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS parameter_entries_entry_id_uq
+    ON autoconer.parameter_entries (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  await client.query(`
+    ALTER TABLE autoconer.count_wise_cuts
+      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS count_wise_cuts_entry_id_uq
+    ON autoconer.count_wise_cuts (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  // cone_density_notebook already has an entry_id column (it's the table the Cone Density screen
+  // actually reads/writes via /cone-density-notebook, unlike the older, effectively unused
+  // /cone-density + autoconer.cone_density pairing above) but never had a uniqueness guard.
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS cone_density_notebook_entry_id_uq
+    ON autoconer.cone_density_notebook (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
 };
@@ -1040,7 +1192,9 @@ router.get('/thresholds', async (req, res, next) => {
  */
 router.post('/lycra-checking', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       inspection_type,
       test_no,
       entry_date,
@@ -1064,12 +1218,13 @@ router.post('/lycra-checking', async (req, res) => {
     // ✅ 1. Insert Header
     const header = await client.query(`
             INSERT INTO autoconer.lycra_checking_inspections
-            (inspection_type, test_no, entry_date, lycra_draft,
+            (entry_id, inspection_type, test_no, entry_date, lycra_draft,
              count_name, no_of_readings,
              lycra_weight, fabric_weight, total_weight, lycra_percent)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             RETURNING id
         `, [
+      entry_id || null,
       inspection_type,
       test_no,
       entry_date,
@@ -1149,14 +1304,32 @@ router.post('/lycra-checking', async (req, res) => {
  */
 router.get('/lycra-checking', async (req, res) => {
   try {
+<<<<<<< HEAD
+    await ensureAutoconerEntryIdColumns();
+=======
     const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     const result = await client.query(`
             SELECT
                 i.*,
 
-                -- Readings
+                -- Readings (ordered by insertion order — DISTINCT alone sorts by the aggregated
+                -- value, not insertion order, so "Reading 1" could silently show a different row
+                -- than the first one actually entered)
                 COALESCE(
+<<<<<<< HEAD
+                    json_agg(
+                        jsonb_build_object(
+                            'reading_no', r.reading_no,
+                            'length_mm', r.length_mm,
+                            'lycra_weight', r.lycra_weight,
+                            'fabric_weight', r.fabric_weight,
+                            'total_weight', r.total_weight,
+                            'lycra_percent', r.lycra_percent
+                        ) ORDER BY r.id
+                    ) FILTER (WHERE r.id IS NOT NULL), '[]'
+=======
                     (
                       SELECT json_agg(
                           jsonb_build_object(
@@ -1171,6 +1344,7 @@ router.get('/lycra-checking', async (req, res) => {
                       FROM autoconer.lycra_checking_readings r
                       WHERE r.inspection_id = i.id
                     ), '[]'
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 ) AS readings,
 
                 -- Summary
@@ -1245,12 +1419,17 @@ const COUNT_WISE_CUTS_COLUMNS = [
 
 router.post('/count-wise-cuts', async (req, res) => {
   try {
+<<<<<<< HEAD
+    await ensureAutoconerEntryIdColumns();
+    const { drum_from, drum_to, ...data } = req.body;
+=======
     const data = {};
     for (const key of COUNT_WISE_CUTS_COLUMNS) {
       if (req.body[key] !== undefined) {
         data[key] = req.body[key];
       }
     }
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     const columns = Object.keys(data);
     const values = Object.values(data);
@@ -1384,12 +1563,17 @@ router.get('/count-wise-cuts', async (req, res) => {
  */
 router.post('/drum-wise', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       test_no,
       entry_date,
       type,
+<<<<<<< HEAD
+=======
       machine_id,
       count_id,
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       machine_code,
       count_name,
       drum_from,
@@ -1404,12 +1588,25 @@ router.post('/drum-wise', async (req, res) => {
 
     await client.query('BEGIN');
 
+    // The form only ever has the machine/count CODE strings available (not the internal
+    // autoconer.machine/count_master serial ids), so it also sends machine_code/count_name as
+    // plain text — but this insert only ever wrote machine_id/count_id (which the form can't
+    // correctly populate anyway, since Number("AC03") is NaN), leaving both permanently null and
+    // "Auto Coner No."/"Count Name" always blank in Custom Report. Persist the plain-text columns
+    // that drum_wise already has for exactly this purpose.
     const drumWiseResult = await client.query(
       `INSERT INTO autoconer.drum_wise
+<<<<<<< HEAD
+            (entry_id, test_no, entry_date, type, machine_code, count_name, drum_from, drum_to, remarks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id`,
+      [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, drum_from, drum_to, remarks]
+=======
             (test_no, entry_date, type, machine_id, count_id, machine_code, count_name, drum_from, drum_to, remarks)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id`,
       [test_no, entry_date, type, machine_id ?? null, count_id ?? null, machine_code ?? null, count_name ?? null, drum_from, drum_to, remarks]
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     );
 
     const drum_wise_id = drumWiseResult.rows[0].id;
@@ -1515,13 +1712,18 @@ router.post('/drum-wise', async (req, res) => {
  */
 router.get('/drum-wise', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    // dw.machine_code/dw.count_name are the plain-text values the form actually sends and are now
+    // actually persisted (see POST above) — prefer them, falling back to the machine_id/count_id
+    // join only in case that ever gets populated by some other means.
     const dataQuery = `
             SELECT
                 dw.id,
+                dw.entry_id,
                 dw.test_no,
                 dw.entry_date,
                 dw.type,
@@ -1538,7 +1740,7 @@ router.get('/drum-wise', async (req, res) => {
                             'appearance_ok', di.appearance_ok,
                             'appearance_ok_count', vds.appearance_ok,
                             'appearance_not_ok_count', vds.appearance_not_ok
-                        )
+                        ) ORDER BY di.id
                     ) FILTER (WHERE di.id IS NOT NULL),
                     '[]'
                 ) AS drum_inspections
@@ -1680,7 +1882,9 @@ module.exports = router;
  */
 router.post('/splice-strength', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       type,
       test_no,
       inspection_date,
@@ -1702,10 +1906,10 @@ router.post('/splice-strength', async (req, res) => {
 
     const inspectionResult = await client.query(
       `INSERT INTO autoconer.inspections
-            (type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (entry_id, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id`,
-      [type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
+      [entry_id || null, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
     );
 
     const inspection_id = inspectionResult.rows[0].id;
@@ -1825,12 +2029,13 @@ router.post('/splice-strength', async (req, res) => {
  */
 router.get('/splice-strength', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
     const dataQuery = `
-            SELECT 
+            SELECT
                 i.*,
                 s.avg_splice_strength,
                 s.avg_parent_yarn,
@@ -1840,6 +2045,15 @@ router.get('/splice-strength', async (req, res) => {
                     (
                       SELECT json_agg(
                         json_build_object(
+<<<<<<< HEAD
+                            'drum_no', d.drum_no,
+                            'reading_number', d.reading_number,
+                            'splice_strength', d.splice_strength,
+                            'parent_yarn', d.parent_yarn,
+                            'percent_yarn', d.percent_yarn
+                        ) ORDER BY d.id
+                    ) FILTER (WHERE d.id IS NOT NULL),
+=======
                           'drum_no', d.drum_no,
                           'reading_number', d.reading_number,
                           'splice_strength', d.splice_strength,
@@ -1850,6 +2064,7 @@ router.get('/splice-strength', async (req, res) => {
                       FROM autoconer.drum_readings d
                       WHERE d.inspection_id = i.id
                     ),
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                     '[]'
                 ) AS drum_readings
             FROM autoconer.inspections i
@@ -2127,9 +2342,12 @@ router.post('/inspection-data-entry', async (req, res) => {
       );
     }
     await client.query('COMMIT');
-    res.status(201).json({ message: 'Inspection data entry created successfully', inspection_data_entry_id });
+    res.status(201).json({ message: 'Inspection data entry created successfully', inspection_data_entry_id, entry_id });
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     console.error('Error creating inspection data entry:', err);
     res.status(500).json({ message: 'Server error' });
   }
@@ -2144,7 +2362,12 @@ router.post('/inspection-data-entry', async (req, res) => {
  */
 router.get('/inspection-data-entry', async (req, res) => {
   try {
+<<<<<<< HEAD
+    await ensureRewindingStudyTables();
+    await ensureAutoconerEntryIdColumns();
+=======
     await ensureInspectionDataEntryTables();
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -2154,6 +2377,19 @@ router.get('/inspection-data-entry', async (req, res) => {
       SELECT
         ide.*,
         COALESCE(
+<<<<<<< HEAD
+          json_agg(
+            json_build_object(
+              'drum_no', r.drum_no,
+              'no_of_cones', r.no_of_cones,
+              'fault_name', r.fault_name,
+              'no_of_faults', r.no_of_faults,
+              'percent_fault', r.percent_fault,
+              'weight', r.weight,
+              'length_meters', r.length_meters
+            ) ORDER BY r.id
+          ) FILTER (WHERE r.id IS NOT NULL),
+=======
           (
             SELECT json_agg(
               json_build_object(
@@ -2169,6 +2405,7 @@ router.get('/inspection-data-entry', async (req, res) => {
             FROM autoconer.inspection_data_entry_readings r
             WHERE r.inspection_data_entry_id = ide.id
           ),
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
           '[]'
         ) AS readings
       FROM autoconer.inspection_data_entry ide
@@ -2363,7 +2600,9 @@ router.get('/rewinding-study/:id', async (req, res) => {
  */
 router.post('/cone-density', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       test_no,
       entry_date,
       type,
@@ -2388,10 +2627,10 @@ router.post('/cone-density', async (req, res) => {
 
     const coneDensityResult = await client.query(
       `INSERT INTO autoconer.cone_density
-            (test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            (entry_id, test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
             RETURNING id`,
-      [test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks]
+      [entry_id || null, test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks]
     );
 
     const cone_density_id = coneDensityResult.rows[0].id;
@@ -2528,6 +2767,7 @@ router.post('/cone-density', async (req, res) => {
  */
 router.get('/cone-density', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -2540,6 +2780,19 @@ router.get('/cone-density', async (req, res) => {
                     (
                       SELECT json_agg(
                         json_build_object(
+<<<<<<< HEAD
+                            'drum_no', cdr.drum_no,
+                            'base_dia_e', cdr.base_dia_e,
+                            'nose_dia_e', cdr.nose_dia_e,
+                            'base_dia', cdr.base_dia,
+                            'nose_dia', cdr.nose_dia,
+                            'cone_weight', cdr.cone_weight,
+                            'cone_traverse', cdr.cone_traverse,
+                            'density', cdr.density,
+                            'hardness', cdr.hardness
+                        ) ORDER BY cdr.id
+                    ) FILTER (WHERE cdr.id IS NOT NULL),
+=======
                           'drum_no', cdr.drum_no,
                           'base_dia_e', cdr.base_dia_e,
                           'nose_dia_e', cdr.nose_dia_e,
@@ -2554,6 +2807,7 @@ router.get('/cone-density', async (req, res) => {
                       FROM autoconer.cone_density_readings cdr
                       WHERE cdr.cone_density_id = cd.id
                     ),
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                     '[]'
                 ) AS readings
             FROM autoconer.cone_density cd
@@ -2712,6 +2966,175 @@ const fetchAutoconerMasterData = async (query = {}) => {
   };
 };
 
+<<<<<<< HEAD
+router.get('/cone-density/master-data', async (req, res) => {
+  try {
+    const payload = await fetchAutoconerMasterData(req.query);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error fetching cone density master data:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Legacy alias for clients that use "conedensity" as one word.
+router.get('/conedensity/master-data', async (req, res) => {
+  try {
+    const payload = await fetchAutoconerMasterData(req.query);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error fetching cone density master data:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Cone Density's actual notebook screen (frontend/src/views/autoconer/ConeDensity.jsx) submits to
+// and fetches from /cone-density-notebook — not /cone-density above, which is a separate, older
+// table (autoconer.cone_density/cone_density_readings) with almost no real data. This route never
+// existed at all, so every Cone Density submission from the real form has been failing outright,
+// and Custom Report's fetch for this screen returned nothing. autoconer.cone_density_notebook and
+// cone_density_notebook_drums already exist with the right columns (created for this purpose
+// earlier) — just needed the routes wired up.
+router.post('/cone-density-notebook', async (req, res) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const {
+      entry_id,
+      entry_date,
+      type,
+      count_name,
+      cntcode,
+      auto_coner_no,
+      drum_from,
+      drum_to,
+      cone_tip,
+      remarks,
+      drums
+    } = req.body;
+
+    if (!entry_id) {
+      return res.status(400).json({ message: 'entry_id is required and must be unique' });
+    }
+    if (!drums || !drums.length) {
+      return res.status(400).json({ message: 'Drum readings required' });
+    }
+
+    await client.query('BEGIN');
+
+    const headerResult = await client.query(
+      `INSERT INTO autoconer.cone_density_notebook
+        (entry_id, entry_date, type, count_name, cntcode, auto_coner_no, drum_from, drum_to, cone_tip, remarks)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        RETURNING id`,
+      [entry_id, entry_date, type || 'Cone Density', count_name, cntcode || null, auto_coner_no, drum_from, drum_to, cone_tip, remarks || null]
+    );
+    const notebook_id = headerResult.rows[0].id;
+
+    for (const drum of drums) {
+      await client.query(
+        `INSERT INTO autoconer.cone_density_notebook_drums
+          (notebook_id, drum_no, base_dia_e_d1, nose_dia_e_d2, base_dia_i_d3, nose_dia_i_d4,
+           slant_height_b1, vertical_height_b2, cone_weight_gms, volume_cm3, density_gms_cm3,
+           gms_litre, winding_speed_m_min, cn_tension, tensioner_rpm, tensioner_force,
+           n_cradle_pressure, remarks)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+        [
+          notebook_id,
+          drum.drum_no,
+          drum.base_dia_e_d1,
+          drum.nose_dia_e_d2,
+          drum.base_dia_i_d3,
+          drum.nose_dia_i_d4,
+          drum.slant_height_b1,
+          drum.vertical_height_b2,
+          drum.cone_weight_gms,
+          drum.volume_cm3,
+          drum.density_gms_cm3,
+          drum.gms_litre,
+          drum.winding_speed_m_min,
+          drum.cn_tension,
+          drum.tensioner_rpm,
+          drum.tensioner_force,
+          drum.n_cradle_pressure,
+          drum.remarks || null
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ message: 'Cone density record created successfully', notebook_id, entry_id });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error('Error creating cone density notebook record:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+router.get('/cone-density-notebook', async (req, res) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const dataQueryBase = `
+      SELECT
+        cdn.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'drum_no', cdnd.drum_no,
+              'base_dia_e_d1', cdnd.base_dia_e_d1,
+              'nose_dia_e_d2', cdnd.nose_dia_e_d2,
+              'base_dia_i_d3', cdnd.base_dia_i_d3,
+              'nose_dia_i_d4', cdnd.nose_dia_i_d4,
+              'slant_height_b1', cdnd.slant_height_b1,
+              'vertical_height_b2', cdnd.vertical_height_b2,
+              'cone_weight_gms', cdnd.cone_weight_gms,
+              'volume_cm3', cdnd.volume_cm3,
+              'density_gms_cm3', cdnd.density_gms_cm3,
+              'gms_litre', cdnd.gms_litre,
+              'winding_speed_m_min', cdnd.winding_speed_m_min,
+              'cn_tension', cdnd.cn_tension,
+              'tensioner_rpm', cdnd.tensioner_rpm,
+              'tensioner_force', cdnd.tensioner_force,
+              'n_cradle_pressure', cdnd.n_cradle_pressure,
+              'remarks', cdnd.remarks
+            ) ORDER BY cdnd.id
+          ) FILTER (WHERE cdnd.id IS NOT NULL),
+          '[]'
+        ) AS drums
+      FROM autoconer.cone_density_notebook cdn
+      LEFT JOIN autoconer.cone_density_notebook_drums cdnd ON cdn.id = cdnd.notebook_id
+      GROUP BY cdn.id
+      ORDER BY cdn.entry_date DESC, cdn.created_at DESC
+    `;
+    const dataQuery = fetchAll ? dataQueryBase : `${dataQueryBase} LIMIT $1 OFFSET $2`;
+    const countQuery = `SELECT COUNT(*) FROM autoconer.cone_density_notebook`;
+
+    const dataResult = fetchAll ? await client.query(dataQuery) : await client.query(dataQuery, [limit, offset]);
+    const countResult = await client.query(countQuery);
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      page: fetchAll ? 1 : page,
+      limit: fetchAll ? total : limit,
+      total,
+      totalPages: fetchAll ? 1 : Math.ceil(total / limit),
+      data: dataResult.rows
+    });
+  } catch (err) {
+    console.error('Error fetching cone density notebook records:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+=======
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 // Shared master-data endpoint for screens needing Count Name + Autoconer No.
 router.get('/master-data', async (req, res) => {
   try {
@@ -2987,7 +3410,9 @@ router.get('/q3/master/consignee-dropdown', sendAutoconerConsigneeDropdown);
  */
 router.post('/cone-packing-audit', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const {
+      entry_id,
       inspection_date,
       packed_date,
       count_name,
@@ -3019,13 +3444,14 @@ router.post('/cone-packing-audit', async (req, res) => {
 
     const auditResult = await client.query(
       `INSERT INTO autoconer.cone_packing_audit
-            (inspection_date, packed_date, count_name, gross_weight_std, gross_weight_actual,
+            (entry_id, inspection_date, packed_date, count_name, gross_weight_std, gross_weight_actual,
              box_colour, cone_colour, gum_tape_colour, count_label, cone_damage,
              cover_missing, cone_hardness, stap_cone, disk, barcode, center_pad,
              net_weight, tare_weight, strap_colour)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
             RETURNING id`,
       [
+        entry_id || null,
         inspection_date,
         packed_date,
         count_name,
@@ -3077,8 +3503,11 @@ router.post('/cone-packing-audit', async (req, res) => {
 
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     console.error('Error creating cone packing audit:', err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
@@ -3190,13 +3619,42 @@ router.post('/cone-packing-audit', async (req, res) => {
  */
 router.get('/cone-packing-audit', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    // Two separate one-to-many child tables (drum_entries, yarn_readings) joined straight onto the
+    // same parent row would fan out into a cross product (2 drum entries x 2 yarn readings = 4
+    // rows before grouping), which is why the old query needed `json_agg(DISTINCT ...)` to collapse
+    // the duplicates back down — but DISTINCT sorts by the aggregated value itself, not insertion
+    // order, so "Reading 1"/"Drum 1" could silently show the wrong row. Aggregate each child table
+    // independently in its own LATERAL subquery first, so there's no fan-out and no need for
+    // DISTINCT, and order each list by its own row id.
     const dataQuery = `
             SELECT
                 cpa.*,
+<<<<<<< HEAD
+                COALESCE(de_agg.drum_entries, '[]') AS drum_entries,
+                COALESCE(yr_agg.yarn_readings, '[]') AS yarn_readings
+            FROM autoconer.cone_packing_audit cpa
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                jsonb_build_object('drum_no', de.drum_no, 'gross_weight', de.gross_weight, 'average', de.average)
+                ORDER BY de.id
+              ) AS drum_entries
+              FROM autoconer.drum_entries de
+              WHERE de.audit_id = cpa.id
+            ) de_agg ON true
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                jsonb_build_object('reading_number', yr.reading_number, 'percent_yarn', yr.percent_yarn)
+                ORDER BY yr.id
+              ) AS yarn_readings
+              FROM autoconer.yarn_readings yr
+              WHERE yr.audit_id = cpa.id
+            ) yr_agg ON true
+=======
                 COALESCE(
                     (
                       SELECT json_agg(
@@ -3227,6 +3685,7 @@ router.get('/cone-packing-audit', async (req, res) => {
                     '[]'
                 ) AS yarn_readings
             FROM autoconer.cone_packing_audit cpa
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
             ORDER BY cpa.created_at DESC
             LIMIT $1 OFFSET $2
         `;
@@ -3282,6 +3741,7 @@ router.get('/cone-packing-audit', async (req, res) => {
  */
 router.post('/parameter-entries', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const data = req.body;
 
     let phase = 'pending';
@@ -3295,6 +3755,7 @@ router.post('/parameter-entries', async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO autoconer.parameter_entries (
+        entry_id,
         inspection_type,
         entry_date,
         count_name,
@@ -3334,16 +3795,18 @@ router.post('/parameter-entries', async (req, res) => {
       )
       VALUES (
         $1,$2,$3,
-        $4,$5,$6,$7,$8,
-        $9,$10,$11,
-        $12,$13,$14,$15,$16,
-        $17,$18,$19,$20,
-        $21,$22,$23,$24,$25,
-        $26,$27,
-        $28,$29
+        $4,
+        $5,$6,$7,$8,$9,
+        $10,$11,$12,
+        $13,$14,$15,$16,$17,
+        $18,$19,$20,$21,
+        $22,$23,$24,$25,$26,
+        $27,$28,
+        $29,$30
       )
       RETURNING *`,
       [
+        data.entry_id || null,
         data.inspection_type,
         data.entry_date,
         data.count_name,
@@ -3530,6 +3993,7 @@ router.put('/parameter-entries/:id', async (req, res) => {
  */
 router.get('/parameter-entries', async (req, res) => {
   try {
+    await ensureAutoconerEntryIdColumns();
     const result = await client.query(
       `SELECT * FROM autoconer.parameter_entries ORDER BY id DESC`
     );

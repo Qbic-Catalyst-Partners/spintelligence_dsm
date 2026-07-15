@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import CustomInput from "@/components/CustomInput";
 import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/opennessDataEntry.module.css";
@@ -94,6 +95,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   { date, target, onTargetChange, targetError, brLine, onSubmitSuccess, entryId = "" },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const [form, setForm] = useState(initialForm);
   const [stages, setStages] = useState([]);
   const [overallOpen, setOverallOpen] = useState("");
@@ -275,6 +277,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         actual_op_value: Number(row.aov),
       }))
     ),
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const handleSubmit = async () => {

@@ -27,7 +27,11 @@ const initialForm = () => ({
   remarks: "",
 });
 
+<<<<<<< HEAD
+const SHIFT_OPTIONS = STATIC_SHIFT_OPTIONS.map((item) => item.value);
+=======
 const SHIFT_OPTIONS = ["Shift-1", "Shift-2", "Shift-3"];
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 const DEPARTMENT_OPTIONS = ["Comber", "Drawing", "Preparatory"];
 const MC_NO_OPTIONS = ["MC-01", "MC-02", "MC-03", "CB-01", "CB-02", "CB-03", "CB-04"];
 const VARIETY_FALLBACK_OPTIONS = ["Cotton", "WPSF 0.90", "WPSF 1.20", "PSF Blend"];
@@ -155,7 +159,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     { label: "U%", value: form.u_percent },
     { label: "CVM", value: form.cvm },
     { label: "1mCV", value: form.im_cvm },
+<<<<<<< HEAD
+    { label: "3 mCV", value: form.m3_cvm },
+=======
     { label: "3mCV", value: form.m3_cvm },
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     { label: "Remarks", value: form.remarks },
   ];
 
@@ -291,7 +299,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
 
         <div>
+<<<<<<< HEAD
+          <label>3 mCV</label>
+=======
           <label>3mCV</label>
+>>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
           <input
             value={form.m3_cvm}
             onChange={(e) => handleChange("m3_cvm", e.target.value)}

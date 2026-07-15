@@ -7,11 +7,12 @@ import SuccessModal from "@/components/SuccessModal";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@/apis/carding";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 export const STATIC_SHIFT_OPTIONS = [
-  { value: "Shift -1", label: "Shift -1" },
-  { value: "Shift -2", label: "Shift -2" },
-  { value: "Shift -3", label: "Shift -3" },
+  { value: "Shift 1", label: "Shift 1" },
+  { value: "Shift 2", label: "Shift 2" },
+  { value: "Shift 3", label: "Shift 3" },
 ];
 
 export const STATIC_MC_NO_OPTIONS = [
@@ -34,7 +35,7 @@ const normalizeCardingUqcMachineOptions = (rows = []) =>
     .filter((mcNo) => mcNo.toUpperCase().startsWith("CDG"))
     .map((mc_no) => ({ mc_no }));
 
-function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) {
+function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", reserveEntryId, user }) {
   const dispatch = useDispatch();
   const { isLoading, uqc, error } = useSelector((state) => state.carding ?? {});
   const [form, setForm] = useState({
@@ -140,6 +141,30 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
 
   useEffect(() => {
     if (uqc?.message) {
+      const nextEntryId = uqc?.data?.entry_id || entryId;
+      const previewItems = [
+        { label: "Type", value: selectedType },
+        { label: "Entry ID", value: entryId || "-" },
+        { label: "Shift", value: form.shift },
+        { label: "Variety", value: form.variety },
+        { label: "MC No.", value: form.mc_no },
+        { label: "U%", value: form.u_percent },
+        { label: "CVM", value: form.cvm },
+        { label: "1mCV", value: form.im_cvm },
+        { label: "3 mCV", value: form.m3_cvm },
+        { label: "Remarks", value: form.remarks },
+      ];
+      recordSubmittedNotebook({
+        department: "Quality Control",
+        subDepartment: "Carding",
+        notebookName: selectedType,
+        entryId: nextEntryId,
+        previewItems,
+        user,
+      }).catch((recordError) => {
+        console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      });
+      reserveEntryId?.();
       resetForm();
       setIsError(false);
       setShowSuccess(true);
@@ -181,6 +206,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "" }) 
 
     dispatch(
       submitCardingUqc({
+        entry_id: entryId || "",
         entry_type: selectedType,
         entry_date: form.date,
         shift: form.shift,

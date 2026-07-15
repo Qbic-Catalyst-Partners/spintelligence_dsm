@@ -184,7 +184,9 @@ const manualTicketInputScreenEndpoints = {
       "Wheel Change": "/carding/change-control",
     },
     "individual-card-performance": {
-      "Individual Card performance Data": "/carding/trials",
+      // Mounted at plain /trials (backend/server.js), not under /carding — trials.js is its own
+      // router, never actually registered under carding.js.
+      "Individual Card performance Data": "/trials",
     },
     comber: {
       "Ribbon Lap CV1M Data Entry": "/comber/lap-cv",
