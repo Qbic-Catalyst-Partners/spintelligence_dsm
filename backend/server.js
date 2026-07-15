@@ -170,6 +170,8 @@ const getTableEntryIdMax = async (tableName) => {
   return Number(result.rows[0]?.max_number || 0);
 };
 
+const getRequestRoutePath = (req) => normalizeEntryRoutePath(req.path || req.originalUrl || req.url);
+
 const extractFrontendEntryId = (body) => {
   if (!body || typeof body !== 'object') return '';
   for (const key of FRONTEND_ENTRY_ID_KEYS) {
