@@ -497,7 +497,6 @@ export const thresholdFieldCatalog = {
         "Hank Calculations - SD",
         "Hank Calculations - CV",
     ],
-<<<<<<< HEAD
     "Between & Within Data Entry - Between": [
         "Test ID",
         "MC Name",
@@ -515,13 +514,12 @@ export const thresholdFieldCatalog = {
         "Hank Calculations - Range",
         "Hank Calculations - SD",
         "Hank Calculations - CV",
-=======
+    ],
     "Thick place & CV": [
         "Entry ID",
         "Machine",
         "Card Thick Place Value",
         "5m CV",
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     ],
     // Kept non-empty (even though "Entry ID" is auto-appended anyway and gets deduped) so this
     // screen's available fields don't fall back to inferring raw, ugly-titleCased column names
@@ -764,11 +762,6 @@ export const thresholdFieldCatalog = {
         "Count Name (From)",
         "Count Name (To)",
         "No. of Readings",
-<<<<<<< HEAD
-    ],
-    "Ring Frame Log Book": [
-        "Entry ID",
-=======
         "Reading No.",
         "Reading Value",
         "Count",
@@ -778,8 +771,7 @@ export const thresholdFieldCatalog = {
         "CSP",
     ],
     "Ring Frame Log Book": [
-        "Entry Date",
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+        "Entry ID",
         "Shift",
         "Checker Name",
         "Out of Center AC",
@@ -1227,10 +1219,7 @@ export const thresholdFieldCatalog = {
         "Lap Weight (KGs)",
         "Lap Length (Mts)",
         "Grams / Meter",
-<<<<<<< HEAD
-=======
         "Sample 1",
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         "Average",
         "Minimum",
         "Maximum",
@@ -1737,11 +1726,8 @@ export const thresholdFieldCatalog = {
         "Lap Weight (KGs)",
         "Lap Length (Mts)",
         "Grams / Meter",
-<<<<<<< HEAD
         "No. of Samples",
-=======
         "Sample 1",
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         "Average",
         "Minimum",
         "Maximum",
@@ -1754,11 +1740,8 @@ export const thresholdFieldCatalog = {
         "Lap Weight (KGs)",
         "Lap Length (Mts)",
         "Grams / Meter",
-<<<<<<< HEAD
         "No. of Samples",
-=======
         "Sample 1",
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         "Average",
         "Minimum",
         "Maximum",
@@ -1856,11 +1839,8 @@ export const thresholdFieldCatalog = {
         "Total Spindles",
         "Running Spindles",
         "Idle Spindles",
-<<<<<<< HEAD
         "Break Category",
-=======
         "Sider Name",
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         ...[
             "0-200", "201-400", "401-600", "601-800", "801-1000", "1001-1200", "1201-1400",
             "1401-1600", "1601-1800", "1801-2000", "2001-2200", "2201-2400", "2401-2600",
@@ -1907,7 +1887,6 @@ export const thresholdFieldCatalog = {
         "SD (1/2Y)",
         "CV% (1/2Y)",
     ],
-<<<<<<< HEAD
     "Draw Frame Cots Data Entry - Breaker": [
         "Entry ID",
         "Shift",
@@ -1915,9 +1894,6 @@ export const thresholdFieldCatalog = {
     ],
     "Draw Frame Cots Data Entry - Finisher": [
         "Entry ID",
-=======
-    "Draw Frame Cots Data Entry": [
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         "Shift",
         "Process Type",
     ],

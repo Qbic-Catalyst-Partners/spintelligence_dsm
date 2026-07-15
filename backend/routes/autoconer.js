@@ -1304,11 +1304,8 @@ router.post('/lycra-checking', async (req, res) => {
  */
 router.get('/lycra-checking', async (req, res) => {
   try {
-<<<<<<< HEAD
     await ensureAutoconerEntryIdColumns();
-=======
     const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     const result = await client.query(`
             SELECT
@@ -1318,18 +1315,6 @@ router.get('/lycra-checking', async (req, res) => {
                 -- value, not insertion order, so "Reading 1" could silently show a different row
                 -- than the first one actually entered)
                 COALESCE(
-<<<<<<< HEAD
-                    json_agg(
-                        jsonb_build_object(
-                            'reading_no', r.reading_no,
-                            'length_mm', r.length_mm,
-                            'lycra_weight', r.lycra_weight,
-                            'fabric_weight', r.fabric_weight,
-                            'total_weight', r.total_weight,
-                            'lycra_percent', r.lycra_percent
-                        ) ORDER BY r.id
-                    ) FILTER (WHERE r.id IS NOT NULL), '[]'
-=======
                     (
                       SELECT json_agg(
                           jsonb_build_object(
@@ -1344,7 +1329,6 @@ router.get('/lycra-checking', async (req, res) => {
                       FROM autoconer.lycra_checking_readings r
                       WHERE r.inspection_id = i.id
                     ), '[]'
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                 ) AS readings,
 
                 -- Summary
@@ -1419,17 +1403,12 @@ const COUNT_WISE_CUTS_COLUMNS = [
 
 router.post('/count-wise-cuts', async (req, res) => {
   try {
-<<<<<<< HEAD
-    await ensureAutoconerEntryIdColumns();
-    const { drum_from, drum_to, ...data } = req.body;
-=======
     const data = {};
     for (const key of COUNT_WISE_CUTS_COLUMNS) {
       if (req.body[key] !== undefined) {
         data[key] = req.body[key];
       }
     }
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     const columns = Object.keys(data);
     const values = Object.values(data);
@@ -1569,11 +1548,8 @@ router.post('/drum-wise', async (req, res) => {
       test_no,
       entry_date,
       type,
-<<<<<<< HEAD
-=======
       machine_id,
       count_id,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       machine_code,
       count_name,
       drum_from,
@@ -1596,17 +1572,10 @@ router.post('/drum-wise', async (req, res) => {
     // that drum_wise already has for exactly this purpose.
     const drumWiseResult = await client.query(
       `INSERT INTO autoconer.drum_wise
-<<<<<<< HEAD
             (entry_id, test_no, entry_date, type, machine_code, count_name, drum_from, drum_to, remarks)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id`,
       [entry_id || null, test_no, entry_date, type, machine_code || null, count_name || null, drum_from, drum_to, remarks]
-=======
-            (test_no, entry_date, type, machine_id, count_id, machine_code, count_name, drum_from, drum_to, remarks)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id`,
-      [test_no, entry_date, type, machine_id ?? null, count_id ?? null, machine_code ?? null, count_name ?? null, drum_from, drum_to, remarks]
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     );
 
     const drum_wise_id = drumWiseResult.rows[0].id;
@@ -2045,15 +2014,6 @@ router.get('/splice-strength', async (req, res) => {
                     (
                       SELECT json_agg(
                         json_build_object(
-<<<<<<< HEAD
-                            'drum_no', d.drum_no,
-                            'reading_number', d.reading_number,
-                            'splice_strength', d.splice_strength,
-                            'parent_yarn', d.parent_yarn,
-                            'percent_yarn', d.percent_yarn
-                        ) ORDER BY d.id
-                    ) FILTER (WHERE d.id IS NOT NULL),
-=======
                           'drum_no', d.drum_no,
                           'reading_number', d.reading_number,
                           'splice_strength', d.splice_strength,
@@ -2064,7 +2024,6 @@ router.get('/splice-strength', async (req, res) => {
                       FROM autoconer.drum_readings d
                       WHERE d.inspection_id = i.id
                     ),
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                     '[]'
                 ) AS drum_readings
             FROM autoconer.inspections i
@@ -2362,12 +2321,7 @@ router.post('/inspection-data-entry', async (req, res) => {
  */
 router.get('/inspection-data-entry', async (req, res) => {
   try {
-<<<<<<< HEAD
-    await ensureRewindingStudyTables();
-    await ensureAutoconerEntryIdColumns();
-=======
     await ensureInspectionDataEntryTables();
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -2377,19 +2331,6 @@ router.get('/inspection-data-entry', async (req, res) => {
       SELECT
         ide.*,
         COALESCE(
-<<<<<<< HEAD
-          json_agg(
-            json_build_object(
-              'drum_no', r.drum_no,
-              'no_of_cones', r.no_of_cones,
-              'fault_name', r.fault_name,
-              'no_of_faults', r.no_of_faults,
-              'percent_fault', r.percent_fault,
-              'weight', r.weight,
-              'length_meters', r.length_meters
-            ) ORDER BY r.id
-          ) FILTER (WHERE r.id IS NOT NULL),
-=======
           (
             SELECT json_agg(
               json_build_object(
@@ -2405,7 +2346,6 @@ router.get('/inspection-data-entry', async (req, res) => {
             FROM autoconer.inspection_data_entry_readings r
             WHERE r.inspection_data_entry_id = ide.id
           ),
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
           '[]'
         ) AS readings
       FROM autoconer.inspection_data_entry ide
@@ -2780,19 +2720,6 @@ router.get('/cone-density', async (req, res) => {
                     (
                       SELECT json_agg(
                         json_build_object(
-<<<<<<< HEAD
-                            'drum_no', cdr.drum_no,
-                            'base_dia_e', cdr.base_dia_e,
-                            'nose_dia_e', cdr.nose_dia_e,
-                            'base_dia', cdr.base_dia,
-                            'nose_dia', cdr.nose_dia,
-                            'cone_weight', cdr.cone_weight,
-                            'cone_traverse', cdr.cone_traverse,
-                            'density', cdr.density,
-                            'hardness', cdr.hardness
-                        ) ORDER BY cdr.id
-                    ) FILTER (WHERE cdr.id IS NOT NULL),
-=======
                           'drum_no', cdr.drum_no,
                           'base_dia_e', cdr.base_dia_e,
                           'nose_dia_e', cdr.nose_dia_e,
@@ -2807,7 +2734,6 @@ router.get('/cone-density', async (req, res) => {
                       FROM autoconer.cone_density_readings cdr
                       WHERE cdr.cone_density_id = cd.id
                     ),
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                     '[]'
                 ) AS readings
             FROM autoconer.cone_density cd
@@ -2966,7 +2892,6 @@ const fetchAutoconerMasterData = async (query = {}) => {
   };
 };
 
-<<<<<<< HEAD
 router.get('/cone-density/master-data', async (req, res) => {
   try {
     const payload = await fetchAutoconerMasterData(req.query);
@@ -3133,8 +3058,6 @@ router.get('/cone-density-notebook', async (req, res) => {
   }
 });
 
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 // Shared master-data endpoint for screens needing Count Name + Autoconer No.
 router.get('/master-data', async (req, res) => {
   try {
@@ -3634,7 +3557,6 @@ router.get('/cone-packing-audit', async (req, res) => {
     const dataQuery = `
             SELECT
                 cpa.*,
-<<<<<<< HEAD
                 COALESCE(de_agg.drum_entries, '[]') AS drum_entries,
                 COALESCE(yr_agg.yarn_readings, '[]') AS yarn_readings
             FROM autoconer.cone_packing_audit cpa
@@ -3654,38 +3576,6 @@ router.get('/cone-packing-audit', async (req, res) => {
               FROM autoconer.yarn_readings yr
               WHERE yr.audit_id = cpa.id
             ) yr_agg ON true
-=======
-                COALESCE(
-                    (
-                      SELECT json_agg(
-                        jsonb_build_object(
-                          'drum_no', de.drum_no,
-                          'gross_weight', de.gross_weight,
-                          'average', de.average
-                        )
-                        ORDER BY de.drum_no ASC, de.id ASC
-                      )
-                      FROM autoconer.drum_entries de
-                      WHERE de.audit_id = cpa.id
-                    ),
-                    '[]'
-                ) AS drum_entries,
-                COALESCE(
-                    (
-                      SELECT json_agg(
-                        jsonb_build_object(
-                          'reading_number', yr.reading_number,
-                          'percent_yarn', yr.percent_yarn
-                        )
-                        ORDER BY yr.reading_number ASC, yr.id ASC
-                      )
-                      FROM autoconer.yarn_readings yr
-                      WHERE yr.audit_id = cpa.id
-                    ),
-                    '[]'
-                ) AS yarn_readings
-            FROM autoconer.cone_packing_audit cpa
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
             ORDER BY cpa.created_at DESC
             LIMIT $1 OFFSET $2
         `;

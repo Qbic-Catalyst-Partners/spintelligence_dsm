@@ -2,9 +2,13 @@
 - Local:         http://localhost:3000
 - Network:       http://192.168.1.15:3000
 - Environments: .env
-✓ Ready in 1760ms
+✓ Ready in 1447ms
 
- GET /process-parameter 304 in 7.1s (next.js: 6.8s, application-code: 244ms)
- GET / 200 in 342ms (next.js: 310ms, application-code: 32ms)
- GET /process-parameter 200 in 149ms (next.js: 92ms, application-code: 57ms)
-✓ Compiled in 8.9s
+○ Compiling /reports/general ...
+ GET /reports/general 304 in 7.3s (next.js: 7.0s, application-code: 300ms)
+ GET / 200 in 1026ms (next.js: 936ms, application-code: 90ms)
+ GET /process-parameter 200 in 314ms (next.js: 277ms, application-code: 36ms)
+ GET /reports/general 304 in 75ms (next.js: 14ms, application-code: 60ms)
+ GET /reports/general 304 in 110ms (next.js: 28ms, application-code: 82ms)
+ GET /reports/general 304 in 81ms (next.js: 21ms, application-code: 59ms)
+ GET /reports/general 200 in 127ms (next.js: 27ms, application-code: 100ms)

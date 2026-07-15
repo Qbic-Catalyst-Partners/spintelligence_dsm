@@ -139,13 +139,10 @@ const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2R
         study_type: formData.studyType,
         carding_production_kg: Number(formData.cardingProduction) || null,
         type_entries: selectedTypeRows.length,
-<<<<<<< HEAD
         // Not a real waste type (like the per-row breakdown in waste_rows below) — this study
         // header has no single waste type of its own, so leave it unset rather than sending a
         // placeholder value that fails the waste-type validation on the actual waste types.
         waste_type: null,
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         waste_kg: totalWasteKg || null,
         waste_percent: averageWastePercent || null,
         overall_percent: Number(overallWaste || getTotalWastePercent(wasteKgRows)) || null,

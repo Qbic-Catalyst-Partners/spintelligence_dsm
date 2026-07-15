@@ -8,17 +8,10 @@ const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { UQC_SHIFTS, UQC_SHIFT_VALUES, normalizeUqcShift } = require('./uqcMasterData');
 const SCREEN_ID_PREFIXES = {
   lap_cv: 'CL',
-<<<<<<< HEAD
-  nati_data_entry: 'CN',
-  uqc: 'CU',
-  nre_data_entry: 'CNR',
-  efficiency_data_entry: 'CEF'
-=======
   nati_data_entry: 'NAT',
   uqc: 'CU',
   nre: 'CNRE',
   efficiency: 'CEFF'
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 };
 
 // Screens whose entry_id is the plain "PREFIX-0001" value (no leading '#')
@@ -40,7 +33,6 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
 
-<<<<<<< HEAD
 // `id` on these tables was never given a PRIMARY KEY, so the GET routes' `GROUP BY qc.id`
 // (selecting other qc.* columns via functional dependency) fail with "must appear in the GROUP
 // BY clause" on every request. Add the missing PK (id is a NOT NULL serial with no duplicates)
@@ -96,10 +88,6 @@ const ensureComberTimestampColumnsHaveTimezone = async () => {
   }
 };
 
-const ensureComberEntryIdColumns = async () => {
-  await ensureComberPrimaryKeys();
-  await ensureComberTimestampColumnsHaveTimezone();
-=======
 const createNatiDataEntryId = async () => {
   const result = await client.query(`
     SELECT COALESCE(
@@ -116,7 +104,8 @@ const createNatiDataEntryId = async () => {
 let comberEntryIdColumnsReady = false;
 const ensureComberEntryIdColumns = async () => {
   if (comberEntryIdColumnsReady) return;
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+  await ensureComberPrimaryKeys();
+  await ensureComberTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE comber.ribbon_lap_cv_qc
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -480,15 +469,7 @@ router.get('/uqc/master/dropdown', async (req, res, next) => {
       dept_name: String(r.dept_name || '').trim()
     })).filter((r) => r.mc_no);
 
-<<<<<<< HEAD
-    const shifts = [
-      { value: 'Shift 1', label: 'Shift 1' },
-      { value: 'Shift 2', label: 'Shift 2' },
-      { value: 'Shift 3', label: 'Shift 3' }
-    ];
-=======
     const shifts = UQC_SHIFTS;
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     const shiftOptions = [{ text: '-- Select Shift --', value: '' }, ...shifts.map((s) => ({ text: s.label, value: s.value }))];
     const varietyOptions = [{ text: '-- Select Variety --', value: '' }, ...varieties.map((v) => ({ text: v.variety_name, value: v.variety_name }))];
@@ -787,13 +768,8 @@ router.post('/lap-cv', async (req, res) => {
                     variety,
                     type,
                     lap_weight,
-<<<<<<< HEAD
-                    lap_length,
-                    grams_per_meter,
-=======
                     lap_length ?? null,
                     grams_per_meter ?? null,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
                     average,
                     minimum,
                     maximum,
@@ -1017,21 +993,11 @@ router.post('/nati-data-entry', async (req, res) => {
         let entry_id = '';
         let qc_id = null;
 
-<<<<<<< HEAD
-            const main = await client.query(
-                `INSERT INTO comber.nati_data_entry
-                (entry_id, type, entry_date, variety)
-                VALUES ($1,$2,$3,$4)
-                RETURNING id`,
-                [entry_id, type, entry_date, variety]
-            );
-=======
         for (let attempt = 1; attempt <= 3; attempt += 1) {
             try {
                 qc_id = await withTransaction(async () => {
                     await client.query('LOCK TABLE comber.nati_data_entry IN SHARE ROW EXCLUSIVE MODE');
                     entry_id = await createNatiDataEntryId();
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
                     const main = await client.query(
                         `INSERT INTO comber.nati_data_entry

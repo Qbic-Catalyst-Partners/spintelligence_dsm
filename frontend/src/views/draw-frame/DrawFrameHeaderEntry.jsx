@@ -356,7 +356,7 @@ function getEntrySortValue(entry) {
 }
 
 const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
-  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess, lockedCountName = "", user },
+  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess, lockedCountName = "" },
   ref
 ) {
   const router = useRouter();

@@ -313,7 +313,7 @@ const ensureWrappingComberNoilPercentTable = async () => {
   `);
 };
 
-<<<<<<< HEAD
+
 // These Draw Frame tables store created_at/updated_at as `timestamp WITHOUT time zone` with a
 // bare CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what
 // gets displayed back, shifting "Created At" by several hours (sometimes onto the wrong calendar
@@ -350,9 +350,7 @@ const ensureDrawframeTimestampColumnsHaveTimezone = async () => {
   }
 };
 
-=======
 let drawframeEntryIdColumnsReady = false;
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 const ensureDrawframeEntryIdColumns = async () => {
   if (drawframeEntryIdColumnsReady) return;
   await client.query(`CREATE SCHEMA IF NOT EXISTS drawframe`);
@@ -1702,17 +1700,10 @@ router.post('/yarn-cv', async (req, res) => {
 
         const qc = await client.query(
             `INSERT INTO drawframe.yarn_cv_percent
-<<<<<<< HEAD
-            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings, operator)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
             RETURNING id`,
-            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {})]
-=======
-            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, operator)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-            RETURNING id`,
-            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, operator]
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {}), operator]
         );
 
         const qc_id = qc.rows[0].id;
@@ -1784,21 +1775,8 @@ router.get('/yarn-cv', async (req, res) => {
         const offset = (page - 1) * limit;
 
         const result = await client.query(
-<<<<<<< HEAD
-            `SELECT 
-                qc.*,
-=======
             `SELECT
-                qc.id,
-                qc.type,
-                qc.s_no,
-                qc.entry_date,
-                qc.machine_number,
-                qc.num_readings,
-                qc.remarks,
-                qc.entry_id,
-                qc.operator,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+                qc.*,
 
                 r.avg_1yd,
                 r.hank_1yd,
@@ -1983,7 +1961,6 @@ router.get('/cots', async (req, res) => {
         // Area) was silently absent from every response. LATERAL-join both (only one is ever
         // populated per row, per sub_type) so nothing is lost.
         const result = await client.query(
-<<<<<<< HEAD
             `SELECT qc.*,
                 COALESCE(qcb.machines, '[]'::json) AS breaker_machines,
                 COALESCE(qcf.machines, '[]'::json) AS finisher_machines
@@ -2014,15 +1991,6 @@ router.get('/cots', async (req, res) => {
                 WHERE f.entry_id = qc.id
              ) qcf ON true
              ORDER BY qc.entry_date DESC
-=======
-            `SELECT h.*,
-                COALESCE(
-                    (SELECT json_agg(b.* ORDER BY b.id) FROM drawframe.cots_breaker_data b WHERE b.entry_id = h.id),
-                    (SELECT json_agg(f.* ORDER BY f.id) FROM drawframe.cots_finisher_data f WHERE f.entry_id = h.id)
-                ) AS machines
-             FROM drawframe.cots_data_entry h
-             ORDER BY h.entry_date DESC, h.id DESC
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
              LIMIT $1 OFFSET $2`,
             [limit, offset]
         );
@@ -2305,10 +2273,6 @@ router.post('/header', async (req, res, next) => {
     await ensureDrawframeEntryIdColumns();
     const {
       entry_id,
-<<<<<<< HEAD
-=======
-      entry_scope,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       type,
       entry_scope,
       count_name,
@@ -2319,14 +2283,10 @@ router.post('/header', async (req, res, next) => {
       bottom_roll_setting,
       breaker_draft,
       break_draft,
-      break_draft,
       total_draft,
       hank,
       web_tension_draft,
       trumpet_size,
-      insert_size,
-      web_funnel_size,
-      delivery_hank,
       insert_size,
       web_funnel_size,
       delivery_hank,
@@ -2359,11 +2319,7 @@ router.post('/header', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO drawframe.drawframe_qc_header (
-<<<<<<< HEAD
-        entry_id, type, entry_scope, count_name, consignee_name, creation_date,
-=======
         entry_id, entry_scope, type, count_name, consignee_name, creation_date,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         make, no_of_ends, bottom_roll_setting,
         breaker_draft, total_draft, hank,
         web_tension_draft, trumpet_size, delivery_speed, pressure_bar,
@@ -2380,9 +2336,7 @@ router.post('/header', async (req, res, next) => {
       [
         resolvedEntryId,
         entry_scope || null,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         type,
-        entry_scope || null,
         count_name,
         consignee_name,
         creation_date,
@@ -2394,9 +2348,6 @@ router.post('/header', async (req, res, next) => {
         hank,
         web_tension_draft,
         trumpet_size,
-        insert_size,
-        web_funnel_size,
-        delivery_hank,
         delivery_speed,
         pressure_bar,
         insert_size,
@@ -2508,9 +2459,6 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
     const machine_no = String(payload.machine_no ?? payload.machineNo ?? '').trim() || null;
     const submitted_by = req.user?.employee_id || null;
     const entry_date = parseNotebookDate(payload.entry_date ?? payload.entryDate ?? payload.date);
-    const machine_no = String(payload.machine_no ?? payload.machineNo ?? '').trim() || null;
-    const operator = String(payload.operator ?? '').trim() || null;
-    const remarks = String(payload.remarks ?? '').trim() || null;
     const parameters = normalizeWheelChangeParameters(payload);
     const rows = normalizeWheelChangeRows(payload, parameters);
 
@@ -2530,15 +2478,9 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
     const result = await client.query(
       `INSERT INTO drawframe.wheel_change (
          entry_id, type, line_type, wheel_change_type, wheel_change_type_label, entry_date, parameters, rows,
-<<<<<<< HEAD
-         machine_no, operator, remarks
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)
-=======
          machine_no, approval_status, submitted_by
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, 'pending', $10)
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
        RETURNING *`,
       [
         entry_id,
@@ -2550,12 +2492,7 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
         JSON.stringify(parameters),
         JSON.stringify(rows),
         machine_no,
-<<<<<<< HEAD
-        operator,
-        remarks
-=======
         submitted_by
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       ]
     );
 
@@ -3000,15 +2937,6 @@ router.put('/header/:ins_id', async (req, res, next) => {
            hank = $11,
            web_tension_draft = $12,
            trumpet_size = $13,
-<<<<<<< HEAD
-           insert_size = $14,
-           web_funnel_size = $15,
-           delivery_hank = $16,
-           delivery_speed = $17,
-           pressure_bar = $18,
-           scanning_rolls_size = $19
-       WHERE ins_id = $20
-=======
            delivery_speed = $14,
            pressure_bar = $15,
            insert_size = $16,
@@ -3031,9 +2959,6 @@ router.put('/header/:ins_id', async (req, res, next) => {
         hank,
         web_tension_draft,
         trumpet_size,
-        insert_size,
-        web_funnel_size,
-        delivery_hank,
         delivery_speed,
         pressure_bar,
         insert_size,
@@ -3101,11 +3026,7 @@ router.post('/finisher', async (req, res, next) => {
       )
       RETURNING *`,
       [
-<<<<<<< HEAD
-        data.entry_id || null,
-=======
         entry_id,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         data.count_name,
         data.consignee_name,
         data.creation_date,

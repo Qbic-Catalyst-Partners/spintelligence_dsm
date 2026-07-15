@@ -48,8 +48,6 @@ const SCREEN_NAMES = {
   openness: 'Openness Data Entry'
 };
 
-<<<<<<< HEAD
-=======
 const SCREEN_ID_PREFIXES = {
   cotton_hvi: 'CH',
   fibre: 'FB',
@@ -63,7 +61,6 @@ const SCREEN_ID_PREFIXES = {
   // id collides with the shared Process Parameter scheme.
 };
 
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 const MIXING_NOTEBOOK_SLUGS = [
   'cotton-hvi',
   'fibre',
@@ -657,11 +654,8 @@ const ensureMixingEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE mixing.openness_inspection
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
-<<<<<<< HEAD
-      ADD COLUMN IF NOT EXISTS br_line TEXT;
-=======
+      ADD COLUMN IF NOT EXISTS br_line TEXT,
       ADD COLUMN IF NOT EXISTS br_line_no VARCHAR(100);
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS openness_inspection_entry_id_uq
@@ -677,7 +671,6 @@ const ensureMixingEntryIdColumns = async () => {
     ON mixing.mixing_qc_header (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
-<<<<<<< HEAD
 
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_cotton_data_entry_entry_id_uq
@@ -688,7 +681,7 @@ const ensureMixingEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS afis6_mmf_data_entry_entry_id_uq
     ON mixing.afis6_mmf_data_entry (entry_id)
     WHERE entry_id IS NOT NULL;
-=======
+  `);
   await client.query(`
     ALTER TABLE mixing.openness_entries
       ADD COLUMN IF NOT EXISTS beater_type VARCHAR(100),
@@ -743,7 +736,6 @@ const ensureMixingEntryIdColumns = async () => {
       h.param_id
     FROM mixing.mixing_qc_header h
     LEFT JOIN mixing.mixing_qc_blends b ON b.qc_id = h.qc_id;
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   `);
 };
 
@@ -2716,12 +2708,8 @@ router.post('/openness', async (req, res, next) => {
     const {
       entry_id,
       inspection_date,
-<<<<<<< HEAD
       mixing,
       br_line,
-=======
-      br_line_no,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       actual_specific_volume_target,
       no_of_entries,
       entries,
@@ -2743,24 +2731,14 @@ router.post('/openness', async (req, res, next) => {
     // Custom Report's Operator resolution (which checks the row's own operator column first) works.
     const inspectionResult = await client.query(
       `INSERT INTO mixing.openness_inspection
-<<<<<<< HEAD
       (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING id, entry_id`,
-=======
-      (inspection_date, br_line_no, actual_specific_volume_target, no_of_entries)
-      VALUES ($1,$2,$3,$4)
-      RETURNING *`,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       [
         entry_id,
         inspection_date,
-<<<<<<< HEAD
         mixing,
         br_line || null,
-=======
-        br_line_no || null,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         actual_specific_volume_target,
         no_of_entries,
         user_name || null
@@ -2831,12 +2809,7 @@ router.post('/openness', async (req, res, next) => {
     res.status(201).json({
       message: "Openness created successfully",
       inspection_id: inspectionId,
-<<<<<<< HEAD
       entry_id: savedEntryId,
-=======
-      entry_id: persistedInspection.entry_id || formatScreenEntryId('openness', inspectionId),
-      br_line_no: persistedInspection.br_line_no,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       ticket
     });
 
@@ -2940,7 +2913,6 @@ router.post('/qc', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
-      entry_id,
       consignee_name,
       count_name,
       creation_date,
@@ -2948,13 +2920,6 @@ router.post('/qc', async (req, res, next) => {
       blends
     } = req.body;
 
-<<<<<<< HEAD
-    if (!entry_id) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
-    }
-
-    // 1?????? Insert Header
-=======
     let entry_id;
     try {
       entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
@@ -2970,18 +2935,12 @@ router.post('/qc', async (req, res, next) => {
       return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
     }
 
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const headerResult = await client.query(
       `INSERT INTO mixing.mixing_qc_header
       (entry_id, consignee_name, count_name, creation_date, status)
       VALUES ($1, $2, $3, $4, $5)
-<<<<<<< HEAD
       RETURNING qc_id, param_id, entry_id`,
       [entry_id, consignee_name, count_name, creation_date, status]
-=======
-      RETURNING qc_id, entry_id`,
-      [entry_id || null, consignee_name, count_name, creation_date, status]
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     );
 
     const qc_id = headerResult.rows[0].qc_id;
@@ -3019,12 +2978,8 @@ router.post('/qc', async (req, res, next) => {
     res.status(201).json({
       message: 'Mixing QC created successfully',
       qc_id,
-<<<<<<< HEAD
       entry_id: headerResult.rows[0].entry_id,
       param_id: headerResult.rows[0].param_id
-=======
-      entry_id: headerResult.rows[0].entry_id
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     });
 
   } catch (error) {
@@ -3046,10 +3001,7 @@ router.get('/qc', async (req, res, next) => {
     const result = await client.query(
       `SELECT
         h.qc_id,
-<<<<<<< HEAD
         h.param_id,
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         h.entry_id,
         h.consignee_name,
         h.count_name,

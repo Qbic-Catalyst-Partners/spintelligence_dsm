@@ -277,9 +277,7 @@ const ensureSpinningTimestampColumnsHaveTimezone = async () => {
 };
 
 const ensureSpinningEntryIdColumns = async () => {
-<<<<<<< HEAD
   await ensureSpinningTimestampColumnsHaveTimezone();
-=======
   await client.query(`
     CREATE TABLE IF NOT EXISTS spinning.wheel_change_type4 (
       id BIGSERIAL PRIMARY KEY,
@@ -351,7 +349,6 @@ const ensureSpinningEntryIdColumns = async () => {
     );
   `);
 
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
   const tables = [
     'spinning.speed_checking',
     'spinning.cots_checking',
@@ -1586,7 +1583,6 @@ router.get('/speed-checking', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-<<<<<<< HEAD
         entry_id AS id,
         entry_id,
         InspectionDate,
@@ -1614,58 +1610,6 @@ router.get('/speed-checking', async (req, res, next) => {
   }
 });
 
-/**
- * @swagger
- * /spinning/speed-checking:
- *   get:
- *     summary: Get all speed-checking records
- *     tags:
- *       - Spinning
- *     responses:
- *       200:
- *         description: List of records
- *       500:
- *         description: Internal server error
- */
-
-router.get('/speed-checking', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const result = await client.query(`
-      SELECT
-        entry_id AS id,
-        entry_id,
-        InspectionDate,
-        MachineNo,
-        EmployeeName,
-=======
-        entry_id,
-        InspectionDate,
-        MachineNo,
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
-        Display_Speed,
-        Spindle_Speed,
-        LHS_Value,
-        RHS_Value,
-        Difference,
-        LHS_TextRemarks,
-        encode(LHS_Audio, 'base64') as LHS_Audio,
-        RHS_TextRemarks,
-        encode(RHS_Audio, 'base64') as RHS_Audio,
-        CreatedAt
-      FROM spinning.speed_checking
-      ORDER BY CreatedAt DESC;
-    `);
-
-    res.json({
-      count: result.rowCount,
-      data: result.rows.map((row) => withScreenEntryId('speed_checking', row))
-    });
-
-  } catch (err) {
-    next(err);
-  }
-});
 
 /**
  * @swagger
@@ -1938,12 +1882,8 @@ router.get('/lycra-missing', async (req, res, next) => {
   try {
     const filterDate = req.query.date || new Date().toISOString().slice(0, 10);
     const result = await client.query(`
-<<<<<<< HEAD
-      SELECT 
-        entry_id AS id,
-=======
       SELECT
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2084,12 +2024,8 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
-<<<<<<< HEAD
-      SELECT 
-        entry_id AS id,
-=======
       SELECT
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+        entry_id AS id,
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2231,10 +2167,7 @@ router.get('/lycra-centering', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-<<<<<<< HEAD
         entry_id AS id,
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2376,10 +2309,7 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-<<<<<<< HEAD
         entry_id AS id,
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         entry_id,
         InspectionDate,
         MachineNo,
@@ -2521,10 +2451,7 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-<<<<<<< HEAD
         entry_id AS id,
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
         entry_id,
         InspectionDate,
         MachineNo,
@@ -3438,12 +3365,8 @@ router.post('/qc', async (req, res, next) => {
 
 router.get('/qc', async (req, res, next) => {
   try {
-<<<<<<< HEAD
     await ensureSpinningEntryIdColumns();
-    const { page = 1, limit = 10 } = req.query;
-=======
     const { page = 1, limit = 10, consignee_name, count_name, date_from, date_to } = req.query;
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
@@ -4204,11 +4127,8 @@ router.get('/wheel-change', async (req, res, next) => {
  */
 router.get('/wheel-change/type1', async (req, res, next) => {
   try {
-<<<<<<< HEAD
     await ensureSpinningEntryIdColumns();
-=======
     await ensureWheelChangeApprovalColumns();
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const approvalStatus = requestedApprovalStatus(req.query);
     const result = await client.query(
@@ -4421,11 +4341,8 @@ router.post('/wheel-change/type2', async (req, res, next) => {
  */
 router.get('/wheel-change/type2', async (req, res, next) => {
   try {
-<<<<<<< HEAD
     await ensureSpinningEntryIdColumns();
-=======
     await ensureWheelChangeApprovalColumns();
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const approvalStatus = requestedApprovalStatus(req.query);
     const result = await client.query(
@@ -4638,11 +4555,8 @@ router.post('/wheel-change/type3', async (req, res, next) => {
  */
 router.get('/wheel-change/type3', async (req, res, next) => {
   try {
-<<<<<<< HEAD
     await ensureSpinningEntryIdColumns();
-=======
     await ensureWheelChangeApprovalColumns();
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
     const approvalStatus = requestedApprovalStatus(req.query);
     const result = await client.query(
@@ -4700,18 +4614,6 @@ router.get('/wheel-change/type3', async (req, res, next) => {
   }
 });
 
-<<<<<<< HEAD
-// Spinning Wheel Change has 4 types in the frontend (WheelChange.jsx's WHEEL_CHANGE_TYPES), each
-// posting to its own /spinning/wheel-change/type{N} endpoint — but only type1/type2/type3 ever had
-// a backend route. Type 4 already has its own dedicated table (spinning.wheel_change_type4,
-// created earlier for this purpose) and its own field map (WHEEL_CHANGE_FIELD_MAP["Type 4"] in
-// WheelChange.jsx), so every Type 4 submission has been failing outright with a 404 until now.
-router.post('/wheel-change/type4', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const d = withWheelChangeRfNumber(req.body, 'fm_no');
-    const type4Fields = [
-=======
 const normalizeWheelChangeType4Payload = (payload) => withFieldAliases(payload, {
   test_no: ['testNo', 'testno', 'txttestno'],
   date: ['entry_date', 'entryDate', 'txtEntryDate'],
@@ -4860,18 +4762,12 @@ const normalizeWheelChangeType4Payload = (payload) => withFieldAliases(payload, 
  *         description: Required fields missing
  */
 const WHEEL_CHANGE_TYPE4_FIELDS = [
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       'entry_id',
       'type',
       'wheel_change_type',
       'test_no',
       'date',
       'fm_no',
-<<<<<<< HEAD
-      'count_from_existing',
-      'count_from_proposed',
-=======
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
       'lycra_type_existing',
       'lycra_type_proposed',
       'lycra_draft_existing',
@@ -4924,11 +4820,6 @@ const WHEEL_CHANGE_TYPE4_FIELDS = [
       'bdw_proposed',
       'bd_existing',
       'bd_proposed',
-<<<<<<< HEAD
-      'winding_length_existing',
-      'winding_length_proposed'
-    ];
-=======
       'winding_e_existing',
       'winding_e_proposed',
       'winding_f_existing',
@@ -4942,7 +4833,6 @@ router.post('/wheel-change/type4', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const d = withWheelChangeApprovalFields(normalizeWheelChangeType4Payload(withWheelChangeRfNumber(req.body, 'fm_no')));
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 
     if (!d.entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -4952,12 +4842,6 @@ router.post('/wheel-change/type4', async (req, res, next) => {
       return res.status(400).json({ message: 'Required fields missing' });
     }
 
-<<<<<<< HEAD
-    const result = await insertWheelChangeEntry(
-      'spinning.wheel_change_type4',
-      type4Fields,
-      d
-=======
     const latestRecord = await fetchLatestWheelChangeByMachine('spinning.wheel_change_type4', 'fm_no', d.fm_no);
     const finalPayload = withCarriedForwardExisting(WHEEL_CHANGE_TYPE4_FIELDS, d, latestRecord);
     await supersedePendingWheelChangeEntry('spinning.wheel_change_type4', 'fm_no', d.fm_no);
@@ -4966,7 +4850,6 @@ router.post('/wheel-change/type4', async (req, res, next) => {
       'spinning.wheel_change_type4',
       WHEEL_CHANGE_TYPE4_FIELDS,
       finalPayload
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     );
 
     res.status(201).json({
@@ -4994,25 +4877,7 @@ router.post('/wheel-change/type4', async (req, res, next) => {
  */
 router.get('/wheel-change/type4', async (req, res, next) => {
   try {
-<<<<<<< HEAD
     await ensureSpinningEntryIdColumns();
-    const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
-    const result = await client.query(
-      `SELECT *
-       FROM spinning.wheel_change_type4
-       WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
-         OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
-       ORDER BY created_at DESC`,
-      [variety]
-    );
-    const latestRecord = variety
-      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_type4', variety, ['count_from_existing', 'count_from_proposed'])
-      : null;
-
-    res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', row, 'fm_no'), 'fm_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', latestRecord, 'fm_no'), 'fm_no') : null
-=======
     await ensureWheelChangeApprovalColumns();
     const approvalStatus = requestedApprovalStatus(req.query);
     // Type 4 has no "Count From"/variety field (manual entry only), so unlike
@@ -5033,7 +4898,6 @@ router.get('/wheel-change/type4', async (req, res, next) => {
     res.json({
       data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', withoutCheckingType(row), 'fm_no'), 'fm_no')),
       latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', withoutCheckingType(latestRecord), 'fm_no'), 'fm_no') : null
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
     });
 
   } catch (err) {
@@ -5041,8 +4905,6 @@ router.get('/wheel-change/type4', async (req, res, next) => {
   }
 });
 
-<<<<<<< HEAD
-=======
 const WHEEL_CHANGE_APPROVAL_TABLES = {
   type1: {
     table: 'spinning.wheel_change_inspection',
@@ -5736,7 +5598,6 @@ router.put('/qc/:qc_id', async (req, res, next) => {
   }
 });
 
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
 module.exports = router;
 
 

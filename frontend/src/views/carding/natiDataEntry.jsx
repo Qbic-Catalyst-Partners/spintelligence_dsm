@@ -7,12 +7,8 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
-<<<<<<< HEAD
-import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
-import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
-=======
 import { fetchCardingMasterMachineOptions, fetchCardingMasterVarieties } from "@/apis/carding";
->>>>>>> b1d24e10695c71395ee88867c7bef650d3242cfa
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
