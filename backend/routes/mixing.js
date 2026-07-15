@@ -544,31 +544,16 @@ const ensureMixingEntryIdColumns = () => {
   return ensureMixingEntryIdColumnsPromise;
 };
 
-const ensureMixingEntryIdColumnsImpl = async () => {
-  await client.query(`
-    ALTER TABLE mixing.cotton_hvi_data_entry
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cotton_hvi_data_entry_entry_id_uq
-    ON mixing.cotton_hvi_data_entry (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-  await client.query(`
-    WITH numbered AS (
-      SELECT
-        ctid,
-        ROW_NUMBER() OVER (ORDER BY inspection_date, invoice_date, lot_no, invoice_no, ctid) AS rn
-      FROM mixing.cotton_hvi_data_entry
-      WHERE entry_id IS NULL OR BTRIM(entry_id) = ''
-    )
-    UPDATE mixing.cotton_hvi_data_entry t
-    SET entry_id = LPAD(numbered.rn::text, 4, '0')
-    FROM numbered
-    WHERE t.ctid = numbered.ctid;
-  `);
+const runMixingSchemaStep = async (label, fn) => {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`Mixing schema step "${label}" failed:`, err);
+    throw err;
+  }
+};
 
-const ensureMixingEntryIdColumns = async () => {
+const ensureMixingEntryIdColumnsImpl = async () => {
   await runMixingSchemaStep('timestamp columns', () => ensureMixingTimestampColumnsHaveTimezone());
 
   await runMixingSchemaStep('cotton_hvi_data_entry columns', async () => {

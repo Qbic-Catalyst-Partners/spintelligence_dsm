@@ -2429,7 +2429,6 @@ router.put('/header/:ins_id', async (req, res, next) => {
 
     const {
       type,
-      entry_scope,
       count_name,
       consignee_name,
       creation_date,
