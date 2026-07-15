@@ -67,7 +67,9 @@ const screenEndpoints = {
       "Card DFK Data": "/carding/dfk-pressure",
     },
     "Individual Card Performance": {
-      "Individual Card performance Data": "/carding/trials",
+      // Mounted at plain /trials (backend/server.js) — trials.js is its own router, never
+      // actually registered under carding.js.
+      "Individual Card performance Data": "/trials",
     },
     Comber: {
       "Ribbon Lap CV1M Data Entry": "/comber/lap-cv",

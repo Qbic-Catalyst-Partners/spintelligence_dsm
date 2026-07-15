@@ -29,6 +29,7 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
 ) {
   const dispatch = useDispatch();
   const { actionSuccess } = useSelector((state) => state.mixing);
+  const user = useSelector((state) => state.auth?.user);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
 
@@ -69,7 +70,7 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
     machine_name: String(formData.machine || "").trim() || "AFIS-6",
     department: "Mixing",
     sub_department: "Quality Control",
-    user_name: "Sneha",
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const handleSubmit = async () => {

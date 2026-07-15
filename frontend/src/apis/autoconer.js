@@ -410,6 +410,7 @@ export const fetchAutoconerQualityParameterEntriesForReport = async () =>
   filterAutoconerParameterEntriesByType("U% Parameter Entries");
 
 const buildParameterEntryPayload = (payload) => ({
+  entry_id: payload?.entry_id,
   inspection_type: payload?.inspection_type,
   entry_date: payload?.entry_date,
   count_name: payload?.count_name,

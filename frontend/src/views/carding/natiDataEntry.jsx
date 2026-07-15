@@ -8,6 +8,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
 import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -24,7 +25,7 @@ const createEmptyEntries = (count) =>
         ratio_size_05: "",
     }));
 
-function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = "" }) {
+function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = "", reserveEntryId, user }) {
     const router = useRouter();
     const dispatch = useDispatch();
     const { isLoading, nati, error } = useSelector((state) => state.carding ?? emptyCardingState);
@@ -144,13 +145,17 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     };
 
     const buildPayload = () => ({
+        entry_id: entryId || "",
         type: selectedType,
         entry_date: entryDate,
         variety,
+        // mc_no is a machine name like "CDG-05" (from the master machine dropdown), not a plain
+        // number — sending it through Number() turned every dropdown selection into NaN (stored
+        // as null), which is why "MC No" was showing blank in Custom Report for most entries.
         entries: entries
             .filter((entry) => entry.mc_no !== "")
             .map((entry) => ({
-                mc_no: Number(entry.mc_no),
+                mc_no: entry.mc_no,
                 ratio_size_1: entry.ratio_size_1 === "" ? null : Number(entry.ratio_size_1),
                 ratio_size_07: entry.ratio_size_07 === "" ? null : Number(entry.ratio_size_07),
                 ratio_size_05: entry.ratio_size_05 === "" ? null : Number(entry.ratio_size_05),
@@ -185,12 +190,28 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
 
     const handleSubmit = async () => {
         try {
-            await dispatch(submitCardingNati(buildPayload())).unwrap();
+            const saved = await dispatch(submitCardingNati(buildPayload())).unwrap();
             setShowPreview(false);
             setFormMessage("");
             setShowSuccess(true);
+
+            const nextEntryId = saved?.entry_id || saved?.data?.entry_id || entryId;
+            try {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    notebookName: selectedType,
+                    entryId: nextEntryId,
+                    previewItems,
+                    user,
+                });
+            } catch (recordError) {
+                console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+            await reserveEntryId?.();
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save nati data.");
+            await reserveEntryId?.();
         }
     };
 

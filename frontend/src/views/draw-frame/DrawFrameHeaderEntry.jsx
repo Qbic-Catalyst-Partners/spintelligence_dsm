@@ -348,7 +348,7 @@ function getEntrySortValue(entry) {
 }
 
 const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
-  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess, lockedCountName = "" },
+  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess, lockedCountName = "", user },
   ref
 ) {
   const router = useRouter();
@@ -588,6 +588,10 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         id: selectedExistingEntry ? selectedExistingEntry.id : undefined,
         entry_id: paramId,
         param_id: paramId,
+        // drawframe_qc_header now has its own "operator" column (see backend) — persist it
+        // directly rather than relying solely on the submitted-notebook recording below, which
+        // has proven fragile for this screen (some entries never got recorded).
+        user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
       };
       const response = await submitDrawFrameHeaderEntry(payload);
       const savedEntry = response?.data || response;

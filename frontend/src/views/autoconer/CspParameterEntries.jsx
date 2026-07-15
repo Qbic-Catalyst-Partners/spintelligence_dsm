@@ -361,6 +361,7 @@ function CspParameterEntries({
     if (!validate()) return false;
     const payload = {
       id: selectedEntryId || undefined,
+      entry_id: entryId || undefined,
       inspection_type: selectedType || "CSP Parameter Entries",
       entry_date: entryDate,
       count_name: countName,

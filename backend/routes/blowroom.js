@@ -210,6 +210,7 @@ const fetchBlowroomWasteTypes = async (prefix = '') => {
 let syncStatsReady = false;
 let brWasteStudyReady = false;
 let brWasteTypeMasterReady = false;
+let lapCvTablesReady = false;
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
@@ -333,7 +334,8 @@ const getBlowroomWasteTypeDropdown = async (req, res, next) => {
 const ensureBlowroomEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE blowroom.blow_room_sync
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80);
+      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS blow_room_sync_entry_id_uq
@@ -343,7 +345,8 @@ const ensureBlowroomEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE blowroom.drop_test
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80);
+      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS drop_test_entry_id_uq
@@ -353,7 +356,8 @@ const ensureBlowroomEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE blowroom.blowroom_header
-      ADD COLUMN IF NOT EXISTS entry_id varchar(80);
+      ADD COLUMN IF NOT EXISTS entry_id varchar(80),
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS blowroom_header_entry_id_uq
@@ -511,6 +515,57 @@ const ensureBrWasteStudyTables = async () => {
   `);
 
   brWasteStudyReady = true;
+};
+
+// "B/R CV1M Data Entry Within Lap" and "B/R Between Lap CV%" both submit the same shape
+// (machine_name, variety, lap_weight, lap_length, up to 5 samples, and computed average/min/max/
+// std_deviation/cv_percent) — kept as two separate tables (rather than one shared table with a
+// `type` discriminator) to match this file's one-table-per-screen convention.
+const ensureLapCvTables = async () => {
+  if (lapCvTablesReady) return;
+
+  await client.query(`CREATE SCHEMA IF NOT EXISTS blowroom;`);
+
+  for (const tableName of ['within_lap_cv', 'between_lap_cv']) {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS blowroom.${tableName} (
+        id bigserial PRIMARY KEY,
+        entry_id varchar(80),
+        record_date date,
+        machine_name varchar(120),
+        variety varchar(120),
+        type varchar(40),
+        lap_weight numeric(12,4),
+        lap_length numeric(12,4),
+        grams_per_meter numeric(12,4),
+        sample_1 numeric(12,4),
+        sample_2 numeric(12,4),
+        sample_3 numeric(12,4),
+        sample_4 numeric(12,4),
+        sample_5 numeric(12,4),
+        average numeric(12,4),
+        minimum numeric(12,4),
+        maximum numeric(12,4),
+        std_deviation numeric(12,4),
+        cv_percent numeric(12,4),
+        created_at timestamptz NOT NULL DEFAULT NOW()
+      );
+    `);
+    // "Number of Sample Entries" on this form is user-editable, not fixed at 5 — the sample_1..5
+    // columns above silently dropped anything past the 5th reading. Store the full submitted array
+    // here instead so a study with e.g. 8 samples doesn't lose samples 6-8.
+    await client.query(`
+      ALTER TABLE blowroom.${tableName}
+        ADD COLUMN IF NOT EXISTS samples jsonb;
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS ${tableName}_entry_id_uq
+      ON blowroom.${tableName} (entry_id)
+      WHERE entry_id IS NOT NULL;
+    `);
+  }
+
+  lapCvTablesReady = true;
 };
 
 router.get('/thresholds', async (req, res, next) => {
@@ -948,7 +1003,9 @@ router.get('/drop-test', async (req, res, next) => {
     );
 
     res.status(200).json({
-      data: result.rows.map((row) => withoutDropId(withScreenEntryId('drop_test', row))),
+      // Keep drop_id here (unlike the create response) — Custom Report groups each tuft's row
+      // back into one row per submission via this shared parent id.
+      data: result.rows.map((row) => withScreenEntryId('drop_test', row)),
       total: parseInt(totalResult.rows[0].count),
       page: pageNum,
       limit: limitNum
@@ -1720,5 +1777,118 @@ router.put('/header/:br_id', async (req, res, next) => {
     next(error);
   }
 });
+
+const createLapCvRoutes = (tableName, routePath, screenLabel) => {
+  router.post(routePath, async (req, res, next) => {
+    try {
+      await ensureLapCvTables();
+
+      const {
+        entry_id,
+        record_date,
+        machine_name,
+        variety,
+        type,
+        lap_weight,
+        lap_length,
+        grams_per_meter,
+        samples,
+        average,
+        minimum,
+        maximum,
+        std_deviation,
+        cv_percent
+      } = req.body;
+
+      if (!entry_id) {
+        return res.status(400).json({ message: 'entry_id is required and must be unique' });
+      }
+
+      const normalizedSamples = (Array.isArray(samples) ? samples : [])
+        .map((value) => toNumberOrNull(value))
+        .filter((value) => value !== null);
+
+      const result = await client.query(
+        `INSERT INTO blowroom.${tableName} (
+          entry_id, record_date, machine_name, variety, type,
+          lap_weight, lap_length, grams_per_meter,
+          sample_1, sample_2, sample_3, sample_4, sample_5,
+          samples,
+          average, minimum, maximum, std_deviation, cv_percent
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        RETURNING *`,
+        [
+          entry_id,
+          record_date,
+          machine_name,
+          variety,
+          type,
+          toNumberOrNull(lap_weight),
+          toNumberOrNull(lap_length),
+          toNumberOrNull(grams_per_meter),
+          normalizedSamples[0] ?? null,
+          normalizedSamples[1] ?? null,
+          normalizedSamples[2] ?? null,
+          normalizedSamples[3] ?? null,
+          normalizedSamples[4] ?? null,
+          JSON.stringify(normalizedSamples),
+          toNumberOrNull(average),
+          toNumberOrNull(minimum),
+          toNumberOrNull(maximum),
+          toNumberOrNull(std_deviation),
+          toNumberOrNull(cv_percent)
+        ]
+      );
+
+      res.status(201).json({
+        message: `${screenLabel} created successfully`,
+        data: result.rows[0]
+      });
+
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+      }
+      next(error);
+    }
+  });
+
+  router.get(routePath, async (req, res, next) => {
+    try {
+      await ensureLapCvTables();
+
+      const { page = 1, limit = 10 } = req.query;
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.max(1, parseInt(limit) || 10);
+      const offset = (pageNum - 1) * limitNum;
+
+      const result = await client.query(
+        `SELECT *
+         FROM blowroom.${tableName}
+         ORDER BY record_date DESC, id DESC
+         OFFSET $1 LIMIT $2`,
+        [offset, limitNum]
+      );
+
+      const totalResult = await client.query(
+        `SELECT COUNT(*) FROM blowroom.${tableName}`
+      );
+
+      res.status(200).json({
+        data: result.rows,
+        total: parseInt(totalResult.rows[0].count),
+        page: pageNum,
+        limit: limitNum
+      });
+
+    } catch (error) {
+      next(error);
+    }
+  });
+};
+
+createLapCvRoutes('within_lap_cv', '/within-lap-cv', 'Within Lap CV entry');
+createLapCvRoutes('between_lap_cv', '/between-lap-cv', 'Between Lap CV entry');
 
 module.exports = router;

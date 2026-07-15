@@ -71,7 +71,10 @@ function Carding() {
     );
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
-    const currentDateLabel = new Date().toLocaleDateString("en-IN");
+    const [currentDateLabel, setCurrentDateLabel] = useState("");
+    useEffect(() => {
+        setCurrentDateLabel(new Date().toLocaleDateString("en-IN"));
+    }, []);
     const requestedType = typeof router.query.type === "string" ? router.query.type : "";
     const isProcessParameterRequest = normalizeTypeName(requestedType) === "process parameter";
     const fullTypeOptions = filterOptionsByDepartmentAccess(
@@ -316,6 +319,7 @@ function Carding() {
                             <BrWasteStudyEntry
                                 ref={childRef}
                                 date={new Date().toISOString().split("T")[0]}
+                                entryId={entryId}
                                 lotNo={lotNo}
                                 onLotNoChange={setLotNo}
                                 saveEntryApi={submitCardWasteStudyEntry}
@@ -341,6 +345,8 @@ function Carding() {
                             onInspectionTypeChange={setBwcInspectionType}
                             showForm
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
+                            user={user}
                         />
                     )}
 
@@ -351,6 +357,8 @@ function Carding() {
                             onTypeChange={handleTypeChange}
                             showForm
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
+                            user={user}
                         />
                     )}
 
@@ -362,6 +370,7 @@ function Carding() {
                             showForm
                             entryId={entryId}
                             reserveEntryId={reserveEntryId}
+                            user={user}
                         />
                     )}
 
@@ -373,6 +382,7 @@ function Carding() {
       showForm={selectedType === "Thick place & CV"}
                             entryId={entryId}
                             reserveEntryId={reserveEntryId}
+                            user={user}
                         />
                     ) : null}
 
@@ -382,6 +392,8 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
+                            user={user}
                         />
                     )}
 
@@ -391,6 +403,8 @@ function Carding() {
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
+                            user={user}
                         />
                     )}
 
@@ -403,6 +417,7 @@ function Carding() {
                     {isWheelChange && SelectedComponent ? (
                         <SelectedComponent
                             entryId={entryId}
+                            reserveEntryId={reserveEntryId}
                             types={typeOptions}
                             selectedType={selectedType}
                             onTypeChange={handleTypeChange}

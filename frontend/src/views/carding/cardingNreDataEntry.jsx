@@ -8,6 +8,7 @@ import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import { clearCardingState, submitCardingNre } from "@/store/slices/carding";
 import { fetchCardingMasterMachines } from "@/apis/carding";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "./cardThickPlaceEntry.module.css";
 
 const MACHINE_MODEL_OPTIONS = ["DK803", "DK903", "TC03", "DK800", "TC05", "TC06", "TC10", "TC26I"];
@@ -41,7 +42,7 @@ const requiredFields = [
     "cardingNrePercent",
 ];
 
-function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", reserveEntryId }) {
+function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", reserveEntryId, user }) {
     const router = useRouter();
     const dispatch = useDispatch();
     const { isLoading, nre, error } = useSelector((state) => state.carding ?? {
@@ -163,11 +164,26 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
 
     const handleSubmit = async () => {
         try {
-            await dispatch(submitCardingNre(buildPayload())).unwrap();
+            const saved = await dispatch(submitCardingNre(buildPayload())).unwrap();
             setFormMessage("");
             setIsError(false);
             setShowPreview(false);
             setShowSuccess(true);
+
+            const nextEntryId = saved?.entry_id || saved?.data?.entry_id || entryId;
+            try {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    notebookName: selectedType,
+                    entryId: nextEntryId,
+                    previewItems,
+                    user,
+                });
+            } catch (recordError) {
+                console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+            await reserveEntryId?.();
             resetForm();
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");

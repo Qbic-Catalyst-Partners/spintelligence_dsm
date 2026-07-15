@@ -169,26 +169,69 @@ const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trial
  *         description: Server error
  */
 
+const toNumberOrNull = (value) =>
+    value === '' || value === null || typeof value === 'undefined' ? null : value;
+
+let trialsEntryIdColumnReady = false;
+const ensureTrialsEntryIdColumn = async () => {
+    if (trialsEntryIdColumnReady) return;
+    await client.query(`
+        ALTER TABLE trials.trials
+            ADD COLUMN IF NOT EXISTS entry_id TEXT;
+    `);
+    await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS trials_trials_entry_id_uq
+        ON trials.trials (entry_id)
+        WHERE entry_id IS NOT NULL;
+    `);
+    trialsEntryIdColumnReady = true;
+};
+
 router.post('/', async (req, res) => {
 
     try {
 
+        await ensureTrialsEntryIdColumn();
+
         const data = req.body;
+
+        if (!data.entry_id) {
+            return res.status(400).json({ message: 'entry_id is required and must be unique' });
+        }
 
         const result = await client.query(
             `INSERT INTO trials.trials(
+                entry_id,
                 date,
+                mc_no,
                 spinning_machine,
                 autoconer_machine,
                 count_name,
-                purpose,
-                trial_id_name,
+                product,
+                trial_type,
                 type,
                 nature,
-                unit_no,
-                raw_material,
-                mixing,
+                entry_time,
+                raw_material_mixing,
                 yarn_results,
+                yarn_remarks,
+                user_id,
+                u_percent,
+                cvm,
+                cvm_cv_percent,
+                cvm_10mtr,
+                dr_1_5m,
+                thin_minus_50,
+                thick_plus_50,
+                neps_plus_200,
+                total_regular,
+                thin_minus_40,
+                thick_plus_35,
+                neps_plus_140,
+                total_hs,
+                thin_minus_30,
+                yarn_count,
+                csp,
                 total_cuts,
                 neps_cuts,
                 shorts_cuts,
@@ -199,6 +242,7 @@ router.post('/', async (req, res) => {
                 ccp,
                 ccm,
                 jp,
+                jm,
                 a1,
                 a2,
                 a3,
@@ -222,24 +266,17 @@ router.post('/', async (req, res) => {
                 h2,
                 l1,
                 l2,
-                cvp,
-                user_id,
-                u_percent,
-                cvm,
-                cvm_cv_percent,
-                cvm_10mtr,
-                dr_1_5m,
-                thin_minus_50,
-                thick_plus_50,
-                neps_plus_200,
-                total_regular,
-                thin_minus_40,
-                thick_plus_35,
-                neps_plus_140,
-                total_hs,
-                thin_minus_30,
-                yarn_count,
-                csp
+                cvb,
+                fl_cut,
+                fd_cut,
+                df_drg_mc_no,
+                df_finish_u_percent,
+                df_cvim,
+                df_cvb,
+                smx_no,
+                spl_no,
+                roving_percent,
+                smx_cvim
             )
             VALUES(
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -248,73 +285,87 @@ router.post('/', async (req, res) => {
                 $31,$32,$33,$34,$35,$36,$37,$38,$39,$40,
                 $41,$42,$43,$44,$45,$46,$47,$48,$49,$50,
                 $51,$52,$53,$54,$55,$56,$57,$58,$59,$60,
-                $61,$62,$63,$64
+                $61,$62,$63,$64,$65,$66,$67,$68,$69,$70,
+                $71,$72,$73,$74,$75,$76
             )
             RETURNING *`,
             [
+                data.entry_id,
                 data.date,
+                data.mc_no,
                 data.spinning_machine,
                 data.autoconer_machine,
                 data.count_name,
-                data.purpose,
-                data.trial_id_name,
+                data.product,
+                data.trial_type,
                 data.type,
                 data.nature,
-                data.unit_no,
-                data.raw_material,
-                data.mixing,
+                data.entry_time || null,
+                data.raw_material_mixing,
                 data.yarn_results,
-                data.total_cuts,
-                data.neps_cuts,
-                data.shorts_cuts,
-                data.long_cuts,
-                data.thin_cuts,
-                data.cp,
-                data.cm,
-                data.ccp,
-                data.ccm,
-                data.jp,
-                data.a1,
-                data.a2,
-                data.a3,
-                data.a4,
-                data.b1,
-                data.b2,
-                data.b3,
-                data.b4,
-                data.c1,
-                data.c2,
-                data.c3,
-                data.c4,
-                data.d1,
-                data.d2,
-                data.d3,
-                data.d4,
-                data.e,
-                data.f,
-                data.g,
-                data.h1,
-                data.h2,
-                data.l1,
-                data.l2,
-                data.cvp,
+                data.yarn_remarks,
                 data.user_id,
-                data.u_percent,
-                data.cvm,
-                data.cvm_cv_percent,
-                data.cvm_10mtr,
-                data.dr_1_5m,
-                data.thin_minus_50,
-                data.thick_plus_50,
-                data.neps_plus_200,
-                data.total_regular,
-                data.thin_minus_40,
-                data.thick_plus_35,
-                data.neps_plus_140,
-                data.total_hs,
-                data.thin_minus_30,
-                data.yarn_count,
-                data.csp
+                toNumberOrNull(data.u_percent),
+                toNumberOrNull(data.cvm),
+                toNumberOrNull(data.cvm_cv_percent),
+                toNumberOrNull(data.cvm_10mtr),
+                toNumberOrNull(data.dr_1_5m),
+                toNumberOrNull(data.thin_minus_50),
+                toNumberOrNull(data.thick_plus_50),
+                toNumberOrNull(data.neps_plus_200),
+                toNumberOrNull(data.total_regular),
+                toNumberOrNull(data.thin_minus_40),
+                toNumberOrNull(data.thick_plus_35),
+                toNumberOrNull(data.neps_plus_140),
+                toNumberOrNull(data.total_hs),
+                toNumberOrNull(data.thin_minus_30),
+                toNumberOrNull(data.yarn_count),
+                toNumberOrNull(data.csp),
+                toNumberOrNull(data.total_cuts),
+                toNumberOrNull(data.neps_cuts),
+                toNumberOrNull(data.shorts_cuts),
+                toNumberOrNull(data.long_cuts),
+                toNumberOrNull(data.thin_cuts),
+                toNumberOrNull(data.cp),
+                toNumberOrNull(data.cm),
+                toNumberOrNull(data.ccp),
+                toNumberOrNull(data.ccm),
+                toNumberOrNull(data.jp),
+                toNumberOrNull(data.jm),
+                toNumberOrNull(data.a1),
+                toNumberOrNull(data.a2),
+                toNumberOrNull(data.a3),
+                toNumberOrNull(data.a4),
+                toNumberOrNull(data.b1),
+                toNumberOrNull(data.b2),
+                toNumberOrNull(data.b3),
+                toNumberOrNull(data.b4),
+                toNumberOrNull(data.c1),
+                toNumberOrNull(data.c2),
+                toNumberOrNull(data.c3),
+                toNumberOrNull(data.c4),
+                toNumberOrNull(data.d1),
+                toNumberOrNull(data.d2),
+                toNumberOrNull(data.d3),
+                toNumberOrNull(data.d4),
+                toNumberOrNull(data.e),
+                toNumberOrNull(data.f),
+                toNumberOrNull(data.g),
+                toNumberOrNull(data.h1),
+                toNumberOrNull(data.h2),
+                toNumberOrNull(data.l1),
+                toNumberOrNull(data.l2),
+                toNumberOrNull(data.cvb),
+                toNumberOrNull(data.fl_cut),
+                toNumberOrNull(data.fd_cut),
+                data.df_drg_mc_no,
+                toNumberOrNull(data.df_finish_u_percent),
+                toNumberOrNull(data.df_cvim),
+                toNumberOrNull(data.df_cvb),
+                data.smx_no,
+                data.spl_no,
+                toNumberOrNull(data.roving_percent),
+                toNumberOrNull(data.smx_cvim)
             ]
         );
 
@@ -322,6 +373,9 @@ router.post('/', async (req, res) => {
 
     } catch (err) {
 
+        if (err && err.code === '23505') {
+            return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+        }
         console.error('Error inserting trial data:', err);
         res.status(500).json({ message: 'Server error' });
 
@@ -357,6 +411,8 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
 
     try {
+
+        await ensureTrialsEntryIdColumn();
 
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;

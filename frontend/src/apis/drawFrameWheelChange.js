@@ -64,6 +64,25 @@ export const fetchDrawFrameWheelChangeEntries = async ({
   }
 };
 
+// Custom Report shows each Wheel Change sub-type as its own selectable report type (Breaker Type
+// 1-3, Finisher Type 1-4) rather than one combined "Wheel Change" type, since each sub-type's form
+// has a completely different field set — these thin wrappers each point at that sub-type's own
+// already-dedicated backend endpoint (see WHEEL_CHANGE_ENDPOINTS above).
+export const fetchDrawFrameWheelChangeBreakerType1Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "type1" });
+export const fetchDrawFrameWheelChangeBreakerType2Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "type2" });
+export const fetchDrawFrameWheelChangeBreakerType3Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "type3" });
+export const fetchDrawFrameWheelChangeFinisherType1Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "finisher_type1_lrsb" });
+export const fetchDrawFrameWheelChangeFinisherType2Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "type2_d40" });
+export const fetchDrawFrameWheelChangeFinisherType3Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "type3_d50_d55" });
+export const fetchDrawFrameWheelChangeFinisherType4Entries = (params) =>
+  fetchDrawFrameWheelChangeEntries({ ...params, wheelChangeType: "type4_ldf3s" });
+
 /*
  * Draw Frame wheel-change approval workflow — its own dedicated endpoint
  * family, NOT aliased under the shared /wheel-change/approvals root that

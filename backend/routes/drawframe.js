@@ -271,8 +271,45 @@ const ensureWrappingComberNoilPercentTable = async () => {
   `);
 };
 
+// These Draw Frame tables store created_at/updated_at as `timestamp WITHOUT time zone` with a
+// bare CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what
+// gets displayed back, shifting "Created At" by several hours (sometimes onto the wrong calendar
+// day) in Custom Report. Same root cause and same fix as Comber's equivalent tables: convert to
+// timestamptz so new rows store an unambiguous absolute instant.
+const ensureDrawframeTimestampColumnsHaveTimezone = async () => {
+  const columnsByTable = {
+    yarn_cv_percent: ['created_at'],
+    yarn_cv_yard_results: ['created_at'],
+    drawframe_qc_header: ['created_at'],
+    cots_data_entry: ['created_at'],
+    cots_breaker_data: ['created_at'],
+    cots_finisher_data: ['created_at'],
+    u_data_entry: ['created_at']
+  };
+  for (const [table, columns] of Object.entries(columnsByTable)) {
+    for (const column of columns) {
+      await client.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'drawframe' AND table_name = '${table}' AND column_name = '${column}'
+              AND data_type = 'timestamp without time zone'
+          ) THEN
+            ALTER TABLE drawframe.${table}
+              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
+            ALTER TABLE drawframe.${table}
+              ALTER COLUMN ${column} SET DEFAULT now();
+          END IF;
+        END $$;
+      `);
+    }
+  }
+};
+
 const ensureDrawframeEntryIdColumns = async () => {
   await client.query(`CREATE SCHEMA IF NOT EXISTS drawframe`);
+  await ensureDrawframeTimestampColumnsHaveTimezone();
 
   await client.query(`
     ALTER TABLE drawframe.yarn_cv_percent
@@ -286,6 +323,13 @@ const ensureDrawframeEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS yarn_cv_percent_entry_id_uq
     ON drawframe.yarn_cv_percent (entry_id)
     WHERE entry_id IS NOT NULL;
+  `);
+  // The form collects however many individual 1 Yard/1/2 Yard readings the user enters (N, not
+  // fixed), used to compute the avg/hank/sd/cv summary stats — but only the summary was ever
+  // saved, so Custom Report could never show the individual readings themselves.
+  await client.query(`
+    ALTER TABLE drawframe.yarn_cv_percent
+      ADD COLUMN IF NOT EXISTS readings JSONB NOT NULL DEFAULT '{}'::jsonb;
   `);
 
   await client.query(`
@@ -324,6 +368,24 @@ const ensureDrawframeEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS drawframe_qc_header_entry_id_uq
     ON drawframe.drawframe_qc_header (entry_id)
     WHERE entry_id IS NOT NULL;
+  `);
+  // PP - Finisher Drawing shares this table with PP - Breaker Drawing (distinguished by
+  // entry_scope) but submits its own extra fields that Breaker doesn't have — add them so the
+  // Finisher form's data actually gets saved instead of being silently dropped.
+  await client.query(`
+    ALTER TABLE drawframe.drawframe_qc_header
+      ADD COLUMN IF NOT EXISTS insert_size NUMERIC,
+      ADD COLUMN IF NOT EXISTS web_funnel_size NUMERIC,
+      ADD COLUMN IF NOT EXISTS delivery_hank NUMERIC,
+      ADD COLUMN IF NOT EXISTS scanning_rolls_size VARCHAR(255);
+  `);
+  // drawframe_qc_header never had its own "operator" column at all — PP Breaker/Finisher
+  // Drawing's operator has always depended entirely on the separate submitted-notebook
+  // recording flow, which has proven fragile (some entries never got recorded, leaving Operator
+  // blank in Custom Report with no fallback). Persist it directly on the row too.
+  await client.query(`
+    ALTER TABLE drawframe.drawframe_qc_header
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 
   await client.query(`
@@ -1449,6 +1511,7 @@ router.post('/yarn-cv', async (req, res) => {
             machine_number,
             remarks,
             num_readings,
+            readings,
             results
         } = req.body;
 
@@ -1460,10 +1523,10 @@ router.post('/yarn-cv', async (req, res) => {
 
         const qc = await client.query(
             `INSERT INTO drawframe.yarn_cv_percent
-            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings)
-            VALUES ($1,$2,$3,$4,$5,$6,$7)
+            (entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, readings)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
             RETURNING id`,
-            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings]
+            [entry_id, type, s_no, entry_date, machine_number, remarks, num_readings, JSON.stringify(readings || {})]
         );
 
         const qc_id = qc.rows[0].id;
@@ -1529,18 +1592,14 @@ router.post('/yarn-cv', async (req, res) => {
  */
 router.get('/yarn-cv', async (req, res) => {
     try {
+        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
 
         const result = await client.query(
             `SELECT 
-                qc.id,
-                qc.type,
-                qc.s_no,
-                qc.entry_date,
-                qc.machine_number,
-                qc.num_readings,
+                qc.*,
 
                 r.avg_1yd,
                 r.hank_1yd,
@@ -1711,18 +1770,63 @@ router.post('/cots', async (req, res) => {
  */
 router.get('/cots', async (req, res) => {
     try {
+        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
 
+        // Each submission's per-machine readings live in a separate child table
+        // (cots_breaker_data / cots_finisher_data, keyed by this header row's own `id`), never
+        // joined here before — every field the user actually enters per machine (Fan Waste, Cot
+        // Change, Stripper Waste, Auto Leveller, Sliver Monitor, Mass Thick Place, Scanning Roller
+        // Area) was silently absent from every response. LATERAL-join both (only one is ever
+        // populated per row, per sub_type) so nothing is lost.
         const result = await client.query(
-            `SELECT * FROM drawframe.cots_data_entry
-             ORDER BY entry_date DESC
+            `SELECT qc.*,
+                COALESCE(qcb.machines, '[]'::json) AS breaker_machines,
+                COALESCE(qcf.machines, '[]'::json) AS finisher_machines
+             FROM drawframe.cots_data_entry qc
+             LEFT JOIN LATERAL (
+                SELECT json_agg(json_build_object(
+                    'mc_name', b.mc_name,
+                    'fan_waste', b.fan_waste,
+                    'cot_change', b.cot_change,
+                    'stripper_w', b.stripper_w,
+                    'thick_place', b.thick_place
+                )) AS machines
+                FROM drawframe.cots_breaker_data b
+                WHERE b.entry_id = qc.id
+             ) qcb ON true
+             LEFT JOIN LATERAL (
+                SELECT json_agg(json_build_object(
+                    'mc_name', f.mc_name,
+                    'fan_waste', f.fan_waste,
+                    'cot_change', f.cot_change,
+                    'stripper_w', f.stripper_w,
+                    'auto_level', f.auto_level,
+                    'silver_worn', f.silver_worn,
+                    'main_tin', f.main_tin,
+                    'scanning', f.scanning
+                )) AS machines
+                FROM drawframe.cots_finisher_data f
+                WHERE f.entry_id = qc.id
+             ) qcf ON true
+             ORDER BY qc.entry_date DESC
              LIMIT $1 OFFSET $2`,
             [limit, offset]
         );
 
-        res.json(result.rows.map((row) => withScreenEntryId('cots', row)));
+        const rows = result.rows.map((row) => {
+            const { breaker_machines, finisher_machines, ...header } = row;
+            const machines = header.sub_type === 'Breaker'
+                ? breaker_machines
+                : header.sub_type === 'Finisher'
+                    ? finisher_machines
+                    : [];
+            return withScreenEntryId('cots', { ...header, machines });
+        });
+
+        res.json(rows);
 
     } catch (err) {
         console.error(err);
@@ -1890,6 +1994,7 @@ router.post('/uqc', async (req, res) => {
  */
 router.get('/uqc', async (req, res) => {
     try {
+        await ensureDrawframeEntryIdColumns();
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
@@ -1984,8 +2089,11 @@ router.get('/uqc', async (req, res) => {
 
 router.post('/header', async (req, res, next) => {
   try {
+    await ensureDrawframeEntryIdColumns();
     const {
+      entry_id,
       type,
+      entry_scope,
       count_name,
       consignee_name,
       creation_date,
@@ -1993,12 +2101,18 @@ router.post('/header', async (req, res, next) => {
       no_of_ends,
       bottom_roll_setting,
       breaker_draft,
+      break_draft,
       total_draft,
       hank,
       web_tension_draft,
       trumpet_size,
+      insert_size,
+      web_funnel_size,
+      delivery_hank,
       delivery_speed,
-      pressure_bar
+      pressure_bar,
+      scanning_rolls_size,
+      user_name
     } = req.body;
 
     // ✅ Required validation
@@ -2010,33 +2124,42 @@ router.post('/header', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO drawframe.drawframe_qc_header (
-        type, count_name, consignee_name, creation_date,
+        entry_id, type, entry_scope, count_name, consignee_name, creation_date,
         make, no_of_ends, bottom_roll_setting,
         breaker_draft, total_draft, hank,
-        web_tension_draft, trumpet_size, delivery_speed, pressure_bar
+        web_tension_draft, trumpet_size, insert_size, web_funnel_size, delivery_hank,
+        delivery_speed, pressure_bar, scanning_rolls_size, operator
       )
       VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,
-        $8,$9,$10,
-        $11,$12,$13,$14
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,
+        $10,$11,$12,
+        $13,$14,$15,$16,$17,
+        $18,$19,$20,$21
       )
       RETURNING *`,
       [
+        entry_id || null,
         type,
+        entry_scope || null,
         count_name,
         consignee_name,
         creation_date,
         make,
         no_of_ends,
         bottom_roll_setting,
-        breaker_draft,
+        breaker_draft ?? break_draft ?? null,
         total_draft,
         hank,
         web_tension_draft,
         trumpet_size,
+        insert_size,
+        web_funnel_size,
+        delivery_hank,
         delivery_speed,
-        pressure_bar
+        pressure_bar,
+        scanning_rolls_size,
+        user_name || null
       ]
     );
 
@@ -2077,6 +2200,7 @@ router.post('/header', async (req, res, next) => {
 
 router.get('/header', async (req, res, next) => {
   try {
+    await ensureDrawframeEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -2084,7 +2208,7 @@ router.get('/header', async (req, res, next) => {
     const offset = (pageNum - 1) * limitNum;
 
     const result = await client.query(
-      `SELECT *
+      `SELECT *, breaker_draft AS break_draft
        FROM drawframe.drawframe_qc_header
        ORDER BY creation_date DESC
        OFFSET $1 LIMIT $2`,
@@ -2123,6 +2247,9 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
       payload.wheel_change_type_label ?? payload.wheelChangeTypeLabel ?? defaultWheelChangeTypeLabel ?? ''
     ).trim() || null;
     const entry_date = parseNotebookDate(payload.entry_date ?? payload.entryDate ?? payload.date);
+    const machine_no = String(payload.machine_no ?? payload.machineNo ?? '').trim() || null;
+    const operator = String(payload.operator ?? '').trim() || null;
+    const remarks = String(payload.remarks ?? '').trim() || null;
     const parameters = normalizeWheelChangeParameters(payload);
     const rows = normalizeWheelChangeRows(payload, parameters);
 
@@ -2132,9 +2259,10 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
 
     const result = await client.query(
       `INSERT INTO drawframe.wheel_change (
-         entry_id, type, line_type, wheel_change_type, wheel_change_type_label, entry_date, parameters, rows
+         entry_id, type, line_type, wheel_change_type, wheel_change_type_label, entry_date, parameters, rows,
+         machine_no, operator, remarks
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)
        RETURNING *`,
       [
         entry_id,
@@ -2144,7 +2272,10 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
         wheel_change_type_label,
         entry_date,
         JSON.stringify(parameters),
-        JSON.stringify(rows)
+        JSON.stringify(rows),
+        machine_no,
+        operator,
+        remarks
       ]
     );
 
@@ -2298,6 +2429,7 @@ router.put('/header/:ins_id', async (req, res, next) => {
 
     const {
       type,
+      entry_scope,
       count_name,
       consignee_name,
       creation_date,
@@ -2305,12 +2437,17 @@ router.put('/header/:ins_id', async (req, res, next) => {
       no_of_ends,
       bottom_roll_setting,
       breaker_draft,
+      break_draft,
       total_draft,
       hank,
       web_tension_draft,
       trumpet_size,
+      insert_size,
+      web_funnel_size,
+      delivery_hank,
       delivery_speed,
-      pressure_bar
+      pressure_bar,
+      scanning_rolls_size
     } = req.body;
 
     // ✅ Required validation
@@ -2323,36 +2460,46 @@ router.put('/header/:ins_id', async (req, res, next) => {
     const result = await client.query(
       `UPDATE drawframe.drawframe_qc_header
        SET type = $1,
-           count_name = $2,
-           consignee_name = $3,
-           creation_date = $4,
-           make = $5,
-           no_of_ends = $6,
-           bottom_roll_setting = $7,
-           breaker_draft = $8,
-           total_draft = $9,
-           hank = $10,
-           web_tension_draft = $11,
-           trumpet_size = $12,
-           delivery_speed = $13,
-           pressure_bar = $14
-       WHERE ins_id = $15
+           entry_scope = $2,
+           count_name = $3,
+           consignee_name = $4,
+           creation_date = $5,
+           make = $6,
+           no_of_ends = $7,
+           bottom_roll_setting = $8,
+           breaker_draft = $9,
+           total_draft = $10,
+           hank = $11,
+           web_tension_draft = $12,
+           trumpet_size = $13,
+           insert_size = $14,
+           web_funnel_size = $15,
+           delivery_hank = $16,
+           delivery_speed = $17,
+           pressure_bar = $18,
+           scanning_rolls_size = $19
+       WHERE ins_id = $20
        RETURNING *`,
       [
         type,
+        entry_scope || null,
         count_name,
         consignee_name,
         creation_date,
         make,
         no_of_ends,
         bottom_roll_setting,
-        breaker_draft,
+        breaker_draft ?? break_draft ?? null,
         total_draft,
         hank,
         web_tension_draft,
         trumpet_size,
+        insert_size,
+        web_funnel_size,
+        delivery_hank,
         delivery_speed,
         pressure_bar,
+        scanning_rolls_size,
         id
       ]
     );
@@ -2437,6 +2584,7 @@ router.put('/header/:ins_id', async (req, res, next) => {
 
 router.post('/finisher', async (req, res, next) => {
   try {
+    await ensureDrawframeEntryIdColumns();
     const data = req.body;
 
     if (!data.count_name || !data.consignee_name || !data.creation_date) {
@@ -2447,7 +2595,7 @@ router.post('/finisher', async (req, res, next) => {
 
     const result = await client.query(
       `INSERT INTO drawframe.finisher_drawing_inspection (
-        count_name, consignee_name, creation_date,
+        entry_id, count_name, consignee_name, creation_date,
         make, no_of_ends, bottom_roll_setting,
         break_draft, total_draft, web_tension_draft,
         trumpet_size, insert_size, web_funnel_size,
@@ -2455,15 +2603,16 @@ router.post('/finisher', async (req, res, next) => {
         pressure_bar, scanning_rolls_size
       )
       VALUES (
-        $1,$2,$3,
-        $4,$5,$6,
-        $7,$8,$9,
-        $10,$11,$12,
-        $13,$14,
-        $15,$16
+        $1,$2,$3,$4,
+        $5,$6,$7,
+        $8,$9,$10,
+        $11,$12,$13,
+        $14,$15,
+        $16,$17
       )
       RETURNING *`,
       [
+        data.entry_id || null,
         data.count_name,
         data.consignee_name,
         data.creation_date,

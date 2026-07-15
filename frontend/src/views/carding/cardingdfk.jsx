@@ -7,6 +7,7 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "./cardingdfk.module.css";
 
 const DFK_TYPE = "Card DFK Data";
@@ -44,7 +45,7 @@ const MACHINE_GROUPS = MACHINE_NAMES.reduce((groups, machineName, index) => {
   return groups;
 }, []);
 
-function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" }) {
+function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "", reserveEntryId, user }) {
   const router = useRouter();
   const dispatch = useDispatch();
   const { isLoading } = useSelector((state) => state.carding ?? {
@@ -122,7 +123,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" 
     });
 
     try {
-      await dispatch(
+      const saved = await dispatch(
         submitCardingDfkPressure({
           entry_id: entryId || "",
           inspection_type: DFK_TYPE,
@@ -130,6 +131,21 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" 
           data: entries,
         })
       ).unwrap();
+
+      const nextEntryId = saved?.entry_id || entryId;
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          notebookName: selectedType || DFK_TYPE,
+          entryId: nextEntryId,
+          previewItems,
+          user,
+        });
+      } catch (recordError) {
+        console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+      }
+      await reserveEntryId?.();
 
       handleClear();
       setShowPreview(false);
@@ -140,6 +156,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "" 
     } catch (submitError) {
       setFormMessage(submitError?.message || "Unable to save DFK pressure data.");
       setIsError(true);
+      await reserveEntryId?.();
     }
   };
 

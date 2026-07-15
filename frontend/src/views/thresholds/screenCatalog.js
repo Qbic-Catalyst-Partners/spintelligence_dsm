@@ -31,7 +31,8 @@ export const thresholdScreenCatalog = {
         ],
         "draw-frame": [
             "1 Yard / Half Yard CV Entry",
-            "Draw Frame Cots Data Entry",
+            "Draw Frame Cots Data Entry - Breaker",
+            "Draw Frame Cots Data Entry - Finisher",
             "U% Data Entry",
             "PP - Breaker Drawing",
             "PP - Finisher Drawing",

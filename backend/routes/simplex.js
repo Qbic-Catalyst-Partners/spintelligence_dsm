@@ -10,7 +10,8 @@ const SCREEN_ID_PREFIXES = {
   study: 'SS',
   uqc: 'SU',
   process_parameter: 'SP',
-  wrapping_simplex_notebook: 'WS'
+  wrapping_simplex_notebook: 'WS',
+  simplex_wheel_change: 'SWC'
 };
 
 const formatScreenEntryId = (screenKey, rawId) => {
@@ -27,6 +28,41 @@ const withScreenEntryId = (screenKey, record, idField = 'id') => {
   return entry_id ? { ...record, entry_id } : { ...record };
 };
 const isUniqueViolation = (err) => err && err.code === '23505';
+// These Simplex tables store created_at/updated_at as `timestamp WITHOUT time zone` with a bare
+// CURRENT_TIMESTAMP default — on this DB, that silently writes a different offset than what gets
+// displayed back, shifting "Created At" by several hours (sometimes onto the wrong calendar day)
+// in Custom Report. Same root cause and same fix as Comber's/Draw Frame's equivalent tables:
+// convert to timestamptz so new rows store an unambiguous absolute instant.
+let simplexTimestampColumnsReady = false;
+const ensureSimplexTimestampColumnsHaveTimezone = async () => {
+  if (simplexTimestampColumnsReady) return;
+  const columnsByTable = {
+    simplex_inspections: ['created_at'],
+    smx_breaks_study_header: ['created_at', 'updated_at'],
+    u_data_entry: ['created_at'],
+    simplex_process_parameter: ['created_at', 'updated_at']
+  };
+  for (const [table, columns] of Object.entries(columnsByTable)) {
+    for (const column of columns) {
+      await client.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'simplex' AND table_name = '${table}' AND column_name = '${column}'
+              AND data_type = 'timestamp without time zone'
+          ) THEN
+            ALTER TABLE simplex.${table}
+              ALTER COLUMN ${column} TYPE timestamptz USING ${column} AT TIME ZONE 'UTC';
+            ALTER TABLE simplex.${table}
+              ALTER COLUMN ${column} SET DEFAULT now();
+          END IF;
+        END $$;
+      `);
+    }
+  }
+  simplexTimestampColumnsReady = true;
+};
 const ALLOWED_SHIFT_TYPES = new Set(['General', 'Day', 'Half Night', 'Full Night']);
 const toWholeNumberOrNull = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -193,6 +229,7 @@ const ensureSimplexNotebookTable = async () => {
 };
 
 const ensureSimplexEntryIdColumns = async () => {
+  await ensureSimplexTimestampColumnsHaveTimezone();
   await client.query(`
     ALTER TABLE IF EXISTS simplex.simplex_inspections
       ADD COLUMN IF NOT EXISTS entry_id text;
@@ -252,6 +289,220 @@ const normalizeParameterRows = (value) => {
 
   return [];
 };
+
+// ---------------------------------------------------------------------------
+// Simplex Wheel Change — the frontend (WheelChange.jsx) and its API client
+// (fetchSimplexWheelChangeEntries/submitSimplexWheelChangeEntry/
+// approve|rejectSimplexWheelChangeApproval) were fully built assuming a
+// /simplex/wheel-change route family, but it was never implemented at all —
+// every submission 404'd. Same entry_id/parameters/rows shape already used
+// by Draw Frame's wheel_change table, plus the pending/approved/rejected
+// approval workflow the frontend UI already expects (Overwrite Warning
+// banners, Awaiting L2 / Rejected badges) — that workflow doesn't exist
+// anywhere else in the backend yet either, so it's built fresh here.
+const ensureSimplexWheelChangeTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS simplex.wheel_change (
+      id BIGSERIAL PRIMARY KEY,
+      entry_id TEXT,
+      type TEXT NOT NULL DEFAULT 'Wheel Change',
+      machine_no TEXT,
+      proposed_sap_no TEXT,
+      wheel_change_type TEXT,
+      wheel_change_type_label TEXT,
+      entry_date DATE,
+      parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+      rows JSONB NOT NULL DEFAULT '{}'::jsonb,
+      operator TEXT,
+      remarks TEXT,
+      approval_status TEXT NOT NULL DEFAULT 'approved',
+      review_remarks TEXT,
+      reviewed_by TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`
+    ALTER TABLE simplex.wheel_change
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'Wheel Change',
+      ADD COLUMN IF NOT EXISTS machine_no TEXT,
+      ADD COLUMN IF NOT EXISTS proposed_sap_no TEXT,
+      ADD COLUMN IF NOT EXISTS wheel_change_type TEXT,
+      ADD COLUMN IF NOT EXISTS wheel_change_type_label TEXT,
+      ADD COLUMN IF NOT EXISTS entry_date DATE,
+      ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+      ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
+      ADD COLUMN IF NOT EXISTS operator TEXT,
+      ADD COLUMN IF NOT EXISTS remarks TEXT,
+      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved',
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS simplex_wheel_change_entry_id_uq
+    ON simplex.wheel_change (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+};
+
+router.post('/wheel-change', async (req, res, next) => {
+  try {
+    await ensureSimplexWheelChangeTable();
+    const payload = req.body || {};
+    const entry_id = String(payload.entry_id ?? '').trim() || null;
+    const type = String(payload.type ?? payload.notebook_type ?? 'Wheel Change').trim() || 'Wheel Change';
+    const machine_no = String(payload.machine_no ?? payload.sap_no ?? '').trim() || null;
+    const proposed_sap_no = String(payload.proposed_sap_no ?? payload.smxNoProposed ?? '').trim() || null;
+    const wheel_change_type = String(payload.wheel_change_type ?? '').trim() || null;
+    const wheel_change_type_label = String(payload.wheel_change_type_label ?? '').trim() || null;
+    const entry_date = payload.entry_date ? String(payload.entry_date).slice(0, 10) : null;
+    const parameters = normalizeParameterRows(payload.parameters ?? payload.rows);
+    const rowsBlob = payload.rows && typeof payload.rows === 'object' ? payload.rows : {};
+    const operator = String(payload.operator ?? '').trim() || null;
+    const remarks = String(payload.remarks ?? '').trim() || null;
+    const approval_status = String(payload.approval_status ?? 'pending').trim() || 'pending';
+
+    if (!entry_date) {
+      return res.status(400).json({ message: 'entry_date is required' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO simplex.wheel_change (
+         entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label, entry_date,
+         parameters, rows, operator, remarks, approval_status
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12)
+       RETURNING *`,
+      [
+        entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label, entry_date,
+        JSON.stringify(parameters), JSON.stringify(rowsBlob), operator, remarks, approval_status
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Simplex wheel change entry created successfully',
+      data: withScreenEntryId('simplex_wheel_change', result.rows[0]),
+      entry_id: result.rows[0].entry_id
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    console.error('Simplex wheel change insert error:', error);
+    next(error);
+  }
+});
+
+router.get('/wheel-change', async (req, res, next) => {
+  try {
+    await ensureSimplexWheelChangeTable();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const offset = (page - 1) * limit;
+    const approvalStatus = String(req.query.approval_status ?? '').trim();
+    const whereClause = approvalStatus ? 'WHERE approval_status = $3' : '';
+    const queryParams = approvalStatus ? [limit, offset, approvalStatus] : [limit, offset];
+
+    const result = await client.query(
+      `SELECT * FROM simplex.wheel_change ${whereClause}
+       ORDER BY entry_date DESC NULLS LAST, id DESC
+       LIMIT $1 OFFSET $2`,
+      queryParams
+    );
+    const totalResult = await client.query(
+      `SELECT COUNT(*) FROM simplex.wheel_change ${approvalStatus ? 'WHERE approval_status = $1' : ''}`,
+      approvalStatus ? [approvalStatus] : []
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('simplex_wheel_change', row)),
+      total: parseInt(totalResult.rows[0].count, 10) || 0,
+      page,
+      limit
+    });
+  } catch (error) {
+    console.error('Simplex wheel change fetch error:', error);
+    next(error);
+  }
+});
+
+router.get('/wheel-change/approvals', async (req, res, next) => {
+  try {
+    await ensureSimplexWheelChangeTable();
+    const status = String(req.query.status ?? '').trim();
+    const whereClause = status ? 'WHERE approval_status = $1' : '';
+    const result = await client.query(
+      `SELECT * FROM simplex.wheel_change ${whereClause} ORDER BY created_at DESC, id DESC`,
+      status ? [status] : []
+    );
+    res.status(200).json({ data: result.rows.map((row) => withScreenEntryId('simplex_wheel_change', row)) });
+  } catch (error) {
+    console.error('Simplex wheel change approvals fetch error:', error);
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
+  try {
+    await ensureSimplexWheelChangeTable();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE simplex.wheel_change
+       SET approval_status = 'approved', reviewed_by = $1, reviewed_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [reviewedBy, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Simplex wheel change entry approved',
+      data: withScreenEntryId('simplex_wheel_change', result.rows[0])
+    });
+  } catch (error) {
+    console.error('Simplex wheel change approve error:', error);
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
+  try {
+    await ensureSimplexWheelChangeTable();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE simplex.wheel_change
+       SET approval_status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2
+       WHERE id = $3
+       RETURNING *`,
+      [reviewedBy, reason, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Simplex wheel change entry rejected',
+      data: withScreenEntryId('simplex_wheel_change', result.rows[0])
+    });
+  } catch (error) {
+    console.error('Simplex wheel change reject error:', error);
+    next(error);
+  }
+});
 
 const saveSimplexNotebook = async (req, res, next) => {
   try {
@@ -990,6 +1241,7 @@ router.post('/cots-change-data-entry', saveSimplexCotsChange);
  */
 const getSimplexCotsChange = async (req, res) => {
   try {
+    await ensureSimplexEntryIdColumns();
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -1001,11 +1253,24 @@ const getSimplexCotsChange = async (req, res) => {
 
     const total = parseInt(countResult.rows[0].count);
 
-    // ✅ Get data
+    // ✅ Get data — each submission's per-item damage checks live in a separate child table
+    // (simplex_inspection_details, keyed by this header row's own `id`), never joined here
+    // before, so every damage-check field (Front Cots Damage, Cradle Lifting, ...) was always
+    // absent and showed as "-" in Custom Report. LATERAL-join it back into an `items` array.
     const result = await client.query(
-      `SELECT *
-       FROM simplex.simplex_inspections
-       ORDER BY id DESC
+      `SELECT si.*,
+          COALESCE(items.items, '[]'::json) AS items
+       FROM simplex.simplex_inspections si
+       LEFT JOIN LATERAL (
+          SELECT json_agg(json_build_object(
+              'item_name', d.item_name,
+              'status_value', d.status_value,
+              'remarks', d.remarks
+          )) AS items
+          FROM simplex.simplex_inspection_details d
+          WHERE d.inspection_id = si.id
+       ) items ON true
+       ORDER BY si.id DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
     );
@@ -1214,13 +1479,17 @@ router.post('/study', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
-    // Validation
-    if (!s_no || !entry_date || !machine_name || !operator_name || !shift) {
+    // Validation — the SMX Breaks Study Report form has no Shift field at all (only s_no,
+    // entry_date, machine_name, operator_name are ever collected/sent), so requiring `shift`
+    // here made every submission fail with a misleading "missing fields" message that also
+    // named the 4 fields that actually were present. `shift`/`operator_name` are nullable in
+    // the DB, so only the 3 truly-required fields are checked now.
+    if (!s_no || !entry_date || !machine_name) {
       return res.status(400).json({
-        message: 'Missing required fields: s_no, entry_date, machine_name, operator_name, shift'
+        message: 'Missing required fields: s_no, entry_date, machine_name'
       });
     }
-    if (!ALLOWED_SHIFT_TYPES.has(String(shift).trim())) {
+    if (shift && !ALLOWED_SHIFT_TYPES.has(String(shift).trim())) {
       return res.status(400).json({
         message: 'shift must be one of: General, Day, Half Night, Full Night'
       });
@@ -1437,6 +1706,7 @@ router.post('/study', async (req, res, next) => {
  */
 router.get('/list', async (req, res, next) => {
   try {
+    await ensureSimplexEntryIdColumns();
     const result = await client.query(
       `SELECT * FROM simplex.smx_breaks_study_header ORDER BY entry_date DESC`
     );
@@ -1838,6 +2108,7 @@ router.post('/process_parameter', async (req, res, next) => {
 
 router.get('/process_parameter', async (req, res, next) => {
   try {
+    await ensureSimplexEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);

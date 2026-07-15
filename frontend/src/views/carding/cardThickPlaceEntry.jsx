@@ -7,6 +7,7 @@ import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import { clearCardingState, submitCardingCardThickPlace } from "@/store/slices/carding";
 import { fetchCardingMasterMachines } from "@/apis/carding";
+import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import styles from "./cardThickPlaceEntry.module.css";
 
 const defaultMachines = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -25,6 +26,7 @@ function CardThickPlaceEntry({
     reserveEntryId,
     showForm,
     hideTypeField = false,
+    user,
 }) {
     const router = useRouter();
     const dispatch = useDispatch();
@@ -188,7 +190,7 @@ function CardThickPlaceEntry({
             }));
 
         try {
-            await dispatch(
+            const saved = await dispatch(
                 submitCardingCardThickPlace({
                     entry_id: entryId || "",
                     entry_date: date,
@@ -201,6 +203,21 @@ function CardThickPlaceEntry({
             setIsError(false);
             setShowPreview(false);
             setShowSuccess(true);
+
+            const nextEntryId = saved?.entry_id || saved?.data?.entry_id || entryId;
+            try {
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Carding",
+                    notebookName: selectedType,
+                    entryId: nextEntryId,
+                    previewItems,
+                    user,
+                });
+            } catch (recordError) {
+                console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
+            }
+            await reserveEntryId?.();
             resetFormFields();
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");
@@ -214,7 +231,6 @@ function CardThickPlaceEntry({
     const previewItems = [
         { label: "Type", value: selectedType },
         { label: "Entry ID", value: entryId || "-" },
-        { label: "Time", value: time },
         ...machines.flatMap((machine) => ([
             { label: `${machine} (5m CV 1)`, value: machineValues[machine]?.cv1 || "-" },
             { label: `${machine} (5m CV 2)`, value: machineValues[machine]?.cv2 || "-" },
@@ -224,42 +240,38 @@ function CardThickPlaceEntry({
     return (
         <>
             <div className={styles["card-form"]}>
-                {!hideTypeField && (
+                {(!hideTypeField || showForm) && (
                     <div className={styles["card-row"]}>
-                        <div className={styles["card-form-group"]}>
-                            <label>Type</label>
-                            <select
-                                value={selectedType}
-                                onChange={(e) => handleTypeSelect(e.target.value)}
-                                onWheel={(e) => e.currentTarget.blur()}
-                                className={errors.selectedType ? styles["field-error"] : ""}
-                            >
-                                <option value="">Select Type</option>
-                                {types.map((item) => (
-                                    <option key={item.id} value={item.name}>
-                                        {item.displayName ?? item.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {!hideTypeField && (
+                            <div className={styles["card-form-group"]}>
+                                <label>Type</label>
+                                <select
+                                    value={selectedType}
+                                    onChange={(e) => handleTypeSelect(e.target.value)}
+                                    onWheel={(e) => e.currentTarget.blur()}
+                                    className={errors.selectedType ? styles["field-error"] : ""}
+                                >
+                                    <option value="">Select Type</option>
+                                    {types.map((item) => (
+                                        <option key={item.id} value={item.name}>
+                                            {item.displayName ?? item.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
+                        {showForm && (
+                            <div className={styles["card-form-group"]}>
+                                <label>Entry ID</label>
+                                <input type="text" value={entryId || ""} readOnly />
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {showForm && (
                     <>
-                        <div className={styles["card-row"]}>
-                            <div className={styles["card-form-group"]}>
-                                <label>Entry ID</label>
-                                <input type="text" value={entryId || ""} readOnly />
-                            </div>
-
-                            <div className={styles["card-form-group"]}>
-                                <label>Time</label>
-                                <input type="text" value={time} readOnly />
-                            </div>
-                        </div>
-
                         <div className={styles["card-machine-section"]}>
                             <div className={styles["card-machine-header"]}>
                                 <h4>Enter value for each machine</h4>
