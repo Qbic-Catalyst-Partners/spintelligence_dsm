@@ -570,6 +570,7 @@ const startSubmittedNotebookAckWorker = () => {
   const intervalMs = Number(process.env.NOTEBOOK_ACK_WORKER_INTERVAL_MS || 15 * 60 * 1000);
   const run = async () => {
     try {
+      await db.initPromise.catch(() => {});
       const created = await generateOverdueNotebookTickets();
       if (created.length) {
         console.log(`[submitted-notebooks] generated ${created.length} overdue acknowledgement ticket(s)`);
@@ -592,9 +593,10 @@ const startPpThresholdWorker = () => {
   const intervalMs = Number(process.env.PP_BATCH_COMPLETION_WORKER_INTERVAL_MS || 15 * 60 * 1000);
   const run = async () => {
     try {
-      const result = await generatePpNotebookBatchIncompleteTickets();
-      if (result.created.length) {
-        console.log(`[pp-threshold] created ${result.created.length} ticket(s)`);
+      await db.initPromise.catch(() => {});
+      const { created, expired } = await generatePpNotebookBatchIncompleteTickets();
+      if (created.length || expired.length) {
+        console.log(`[pp-notebooks] created ${created.length} incomplete-batch ticket(s), expired ${expired.length}`);
       }
     } catch (error) {
       console.warn('[pp-threshold] worker skipped:', error.message);
@@ -605,6 +607,26 @@ const startPpThresholdWorker = () => {
   setInterval(run, intervalMs);
 };
 
-startPpThresholdWorker();
+startPpNotebookBreachWorker();
+
+const startSubmissionFrequencyWorker = () => {
+  const intervalMs = Number(process.env.SUBMISSION_FREQUENCY_WORKER_INTERVAL_MS || 15 * 60 * 1000);
+  const run = async () => {
+    try {
+      await db.initPromise.catch(() => {});
+      const { created_count } = await checkSubmissionFrequencyTickets();
+      if (created_count) {
+        console.log(`[submission-frequency] created ${created_count} missed-submission ticket(s)`);
+      }
+    } catch (error) {
+      console.warn('[submission-frequency] check worker skipped:', error.message);
+    }
+  };
+
+  setTimeout(run, 15000);
+  setInterval(run, intervalMs);
+};
+
+startSubmissionFrequencyWorker();
 
 

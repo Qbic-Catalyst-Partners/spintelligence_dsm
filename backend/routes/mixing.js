@@ -714,11 +714,9 @@ const ensureMixingEntryIdColumns = async () => {
     FROM mixing.openness_inspection i
     JOIN mixing.openness_entries e ON e.inspection_id = i.id;
   `);
-  // CREATE OR REPLACE VIEW can only append columns at the end or keep existing ones in place —
-  // it can't rename/reorder a column already deployed. The live view already has entry_id as
-  // column 2, so param_id is appended at the end instead of being inserted before it.
+  await client.query(`DROP VIEW IF EXISTS mixing.mixing_qc_dashboard_entries;`);
   await client.query(`
-    CREATE OR REPLACE VIEW mixing.mixing_qc_dashboard_entries AS
+    CREATE VIEW mixing.mixing_qc_dashboard_entries AS
     SELECT
       h.qc_id,
       h.entry_id,
@@ -739,9 +737,12 @@ const ensureMixingEntryIdColumns = async () => {
   `);
 };
 
-ensureMixingEntryIdColumns().catch((err) => {
-  console.warn('[mixing.js] Startup schema/view sync failed (non-fatal):', err.message);
-});
+client.initPromise
+  .catch(() => {})
+  .then(() => ensureMixingEntryIdColumns())
+  .catch((err) => {
+    console.warn('[mixing.js] Startup schema/view sync failed (non-fatal):', err.message);
+  });
 
 const normalizeKey = (value) => String(value || '').toLowerCase().replace(/\s+/g, '_');
 const resolveFieldValue = (obj, fieldName) => {
