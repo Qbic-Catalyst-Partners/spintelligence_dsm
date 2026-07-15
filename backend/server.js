@@ -413,6 +413,8 @@ app.use('/supervisor-assignments', supervisorAssignmentsRouter);
 app.use('/reportSchedules', reportSchedulesRouter);
 app.use('/reports', reportSchedulesRouter);
 // app.use('/admin', require('./routes/admin'));
+app.use('/process-parameters', require('./routes/processParameters'));
+app.use('/pp-threshold', require('./routes/ppThreshold.routes'));
 app.use('/spinning', require('./routes/spinning'));
 app.use('/mixing', require('./routes/mixing'));
 app.use('/roles', require('./routes/roles.routes'));

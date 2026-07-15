@@ -1,6 +1,5 @@
 import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
 import { fetchNextProcessParameterId } from "@/apis/processParameter";
-import { fetchNextProcessParameterId } from "@/apis/processParameter";
 
 export const normalizeProcessParameterId = (value) => {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -52,12 +51,6 @@ const GLOBAL_PROCESS_PARAMETER_COUNTER_KEY = "pp-global-id-counter";
 // other departments/browsers have already claimed, so it's kept only as a
 // last-resort fallback if the backend call fails (e.g. offline), not as the
 // primary source of truth.
-export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
-  const serverNextId = await fetchNextProcessParameterId();
-  if (serverNextId) {
-    return normalizeProcessParameterId(serverNextId);
-  }
-
 export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
   const prefix = String(fallbackPrefix || "PP").trim().toUpperCase();
   const width = Number(fallbackWidth) || 4;

@@ -96,13 +96,6 @@ const BLEND_FIELD_PATTERN = /^blend-\d+$/i;
 // more than one blend per row. "Blend-1" (the % typed into the form) and "Blend No." (the
 // blend's sequence number) are simply two different flat columns already on that row.
 const BLEND_NO_FIELD_LABEL = "blend no.";
-const BLEND_FIELD_PATTERN = /^blend-\d+$/i;
-// By the time a row reaches here it has already been through normalizeDashboardRows, which
-// flattens each mixing_qc_blends row into its own report row with plain "blend_no"/
-// "percentage" keys — there is never a surviving nested "blends" array to look into, and never
-// more than one blend per row. "Blend-1" (the % typed into the form) and "Blend No." (the
-// blend's sequence number) are simply two different flat columns already on that row.
-const BLEND_NO_FIELD_LABEL = "blend no.";
 
 const getBlendFieldValue = (row, field) => {
   const label = String(field?.label || field?.key || "").trim();
