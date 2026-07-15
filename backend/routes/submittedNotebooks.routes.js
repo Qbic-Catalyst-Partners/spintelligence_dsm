@@ -417,6 +417,54 @@ const buildSubmissionId = ({ notebook, entryId, sourceTable, sourceRecordId }) =
   return `NB-${parts.filter(Boolean).join('-')}`.slice(0, 240);
 };
 
+// In-process counterpart to POST / for callers (e.g. department routes right
+// after they insert their own header row) that need to log a submission
+// against ticketing_system's completion tracking without an HTTP round trip.
+const recordPpNotebookSubmission = async ({
+  notebook,
+  department,
+  subDepartment,
+  entryId,
+  sourceSchema,
+  sourceTable,
+  sourceRecordId,
+  submittedByUserId,
+  submittedByName,
+  submittedPayload
+}) => {
+  await ensureSubmittedNotebookTables();
+  const notebookSubmissionId = buildSubmissionId({ notebook, entryId, sourceTable, sourceRecordId });
+
+  const result = await client.query(
+    `INSERT INTO ticketing_system.submitted_notebooks
+     (notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
+      source_schema, source_table, source_record_id, submitted_by_user_id, submitted_by_name,
+      submitted_payload, submitted_at, ack_due_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb, NOW(), NOW() + INTERVAL '24 hours')
+     ON CONFLICT (notebook_submission_id)
+     DO UPDATE SET
+       submitted_payload = EXCLUDED.submitted_payload,
+       updated_at = NOW()
+     RETURNING *`,
+    [
+      notebookSubmissionId,
+      department || null,
+      subDepartment || null,
+      notebook,
+      notebook,
+      entryId || null,
+      sourceSchema || null,
+      sourceTable || null,
+      sourceRecordId || null,
+      submittedByUserId || null,
+      submittedByName || null,
+      toJson(submittedPayload, {})
+    ]
+  );
+
+  return result.rows[0];
+};
+
 const canViewSubmission = (req, row) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
   const requesterId = parsePositiveInt(req.user?.id);
@@ -958,5 +1006,6 @@ module.exports = {
   router,
   ensureSubmittedNotebookTables,
   ensureAcknowledgementThresholdTable,
-  generateOverdueNotebookTickets
+  generateOverdueNotebookTickets,
+  recordPpNotebookSubmission
 };
