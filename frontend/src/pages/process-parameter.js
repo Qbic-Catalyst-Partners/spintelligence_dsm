@@ -39,6 +39,7 @@ import {
 } from "@/apis/autoconer";
 import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
 import { fetchSupervisorTicketsApi } from "@/apis/supervisorApi";
+import { fetchNextProcessParameterId } from "@/apis/processParameter";
 import { getColumnForNotebookKey } from "@/utils/ppNotebookKeys";
 import styles from "@/styles/processParameterPage.module.css";
 
@@ -603,13 +604,30 @@ export default function ProcessParameterPage() {
       .sort((a, b) => getPpSequence(b.id) - getPpSequence(a.id));
   }, [dynamicRows, remoteStatusMap]);
 
-  const nextAvailableId = useMemo(() => {
+  // Fallback only: purely local to this browser's matrix/registry view, blind to what other
+  // departments/browsers have already claimed on the backend (see PP-0022 incident — this
+  // local calc suggested an id another department had already taken with a different count
+  // name). The real source of truth is the backend's global sequence, fetched below.
+  const localNextAvailableId = useMemo(() => {
     const highestSequence = mergedRows.reduce(
       (max, row) => Math.max(max, getPpSequence(row.id)),
       0
     );
     return `PP-${String(highestSequence + 1).padStart(4, "0")}`;
   }, [mergedRows]);
+
+  const [backendNextAvailableId, setBackendNextAvailableId] = useState("");
+
+  const refreshNextAvailableId = async () => {
+    const backendId = await fetchNextProcessParameterId();
+    setBackendNextAvailableId(backendId || "");
+  };
+
+  useEffect(() => {
+    refreshNextAvailableId();
+  }, []);
+
+  const nextAvailableId = backendNextAvailableId || localNextAvailableId;
 
   const getRowCountName = (rowId) => getProcessParameterCountName(rowId) || remoteCountNameMap[rowId] || "";
   const getRowConsigneeNames = (rowId) => remoteConsigneeNameMap[rowId] || [];
@@ -860,6 +878,7 @@ export default function ProcessParameterPage() {
   const refreshRegistryRows = () => {
     setDynamicRows(loadRegistryRows());
     loadRemoteStatuses();
+    refreshNextAvailableId();
   };
 
   useEffect(() => {

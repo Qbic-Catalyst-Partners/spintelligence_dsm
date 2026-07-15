@@ -271,6 +271,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         weight: Number(row.weight),
         volume_1: Number(row.vol1),
         volume_2: Number(row.vol2),
+        average_volume: Number(row.avgVol),
         apparent_specific_volume: Number(row.asv),
         actual_op_value: Number(row.aov),
       }))

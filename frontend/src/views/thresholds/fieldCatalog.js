@@ -1,11 +1,10 @@
 export const thresholdFieldCatalog = {
     "Mixing::Process Parameter": [
-        "Process Parameter ID",
         "Created Date",
         "Count Name",
         "Consignee Name",
         "Lot No.",
-        "Blend-1",
+        "Blend No.",
         "Cut Length",
         "Tenacity",
         "Elongation",

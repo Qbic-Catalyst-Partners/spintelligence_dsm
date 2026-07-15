@@ -506,7 +506,24 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
 
 const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'mixing');
 
-const ensureMixingEntryIdColumns = async () => {
+// This is one-time idempotent schema setup (add-column-if-not-exists, drop+recreate a view),
+// not per-request work — it used to run on every single POST to a Mixing route, which under
+// concurrent requests raced on the view's DROP/CREATE and intermittently failed with
+// "duplicate key value violates unique constraint pg_type_typname_nsp_index". Memoizing to a
+// single shared promise means every caller awaits the same one-time run instead of each
+// kicking off its own.
+let ensureMixingEntryIdColumnsPromise = null;
+const ensureMixingEntryIdColumns = () => {
+  if (!ensureMixingEntryIdColumnsPromise) {
+    ensureMixingEntryIdColumnsPromise = ensureMixingEntryIdColumnsImpl().catch((err) => {
+      ensureMixingEntryIdColumnsPromise = null;
+      throw err;
+    });
+  }
+  return ensureMixingEntryIdColumnsPromise;
+};
+
+const ensureMixingEntryIdColumnsImpl = async () => {
   await client.query(`
     ALTER TABLE mixing.cotton_hvi_data_entry
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -2511,9 +2528,12 @@ router.post('/openness', async (req, res, next) => {
       const e = entries[i];
       const volume1 = Number(e.volume_1);
       const volume2 = Number(e.volume_2);
-      const averageVolume = Number.isFinite(volume1) && Number.isFinite(volume2)
-        ? (volume1 + volume2) / 2
-        : null;
+      const providedAverageVolume = Number(e.average_volume);
+      const averageVolume = Number.isFinite(providedAverageVolume)
+        ? providedAverageVolume
+        : Number.isFinite(volume1) && Number.isFinite(volume2)
+          ? (volume1 + volume2) / 2
+          : null;
 
       await client.query(
         `INSERT INTO mixing.openness_entries

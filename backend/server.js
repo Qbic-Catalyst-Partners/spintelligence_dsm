@@ -78,6 +78,29 @@ const FRONTEND_ENTRY_ID_KEYS = [
   'trial_id_name'
 ];
 
+// These 10 routes are the shared "Process Parameter" (PP-000n) screens — each one's own
+// handler already calls resolveOrCreateProcessParameterEntryId()/getCountNameConflict()
+// against the single global sequence (process_parameters.entry_id_sequences), which is the
+// only place that's actually coordinated across every department. The generic auto-entry-id
+// middleware below predates that system and computes ids per-table/per-registry instead, so
+// letting it touch these routes injects a stale, uncoordinated id before the real resolver
+// ever runs — silently overriding it (this is what caused Autoconer Q2/Q3 to mint ids that
+// collided with ones other departments had already claimed via the real sequence). Skip the
+// middleware entirely for these paths and let each route's own resolver be the sole authority.
+const PP_MANAGED_ROUTES = new Set([
+  '/mixing/qc',
+  '/blowroom/header',
+  '/carding/qc-header',
+  '/drawframe/header',
+  '/drawframe/finisher',
+  '/simplex/process_parameter',
+  '/spinning/qc',
+  '/autoconer/process',
+  '/autoconer/process_parameter',
+  '/autoconer/q2',
+  '/autoconer/q3'
+]);
+
 const normalizeEntryRoutePath = (value) => {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -253,6 +276,8 @@ app.use(async (req, res, next) => {
     if (req.method !== 'POST') return next();
 
     const routePath = getRequestRoutePath(req);
+    if (PP_MANAGED_ROUTES.has(routePath)) return next();
+
     const isDepartmentRoute = DEPARTMENT_ROUTE_PREFIXES.some((prefix) => routePath.startsWith(prefix));
     if (!isDepartmentRoute) return next();
 

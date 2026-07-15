@@ -402,6 +402,7 @@ function Mixing() {
         const errors = {};
         if (selectedType?.needsLotNo !== false && !lotNo) errors.lotNo = true;
         if (selectedTypeName === "Openness Data Entry" && !target) errors.target = true;
+        if (selectedTypeName === "Openness Data Entry" && !brLine) errors.brLine = true;
 
         setHeaderErrors(errors);
 

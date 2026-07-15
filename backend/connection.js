@@ -294,6 +294,16 @@ const initPromise = (async () => {
   `);
 
   await pool.query(`
+    ALTER TABLE IF EXISTS mixing.openness_inspection
+      ADD COLUMN IF NOT EXISTS br_line_no VARCHAR(100);
+  `);
+
+  await pool.query(`
+    ALTER TABLE IF EXISTS mixing.openness_entries
+      ADD COLUMN IF NOT EXISTS average_volume NUMERIC;
+  `);
+
+  await pool.query(`
     CREATE SEQUENCE IF NOT EXISTS ticketing_system.ticket_seq
       START WITH 1
       INCREMENT BY 1;

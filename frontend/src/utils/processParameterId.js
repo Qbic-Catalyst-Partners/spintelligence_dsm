@@ -1,4 +1,5 @@
 import { readProcessParameterRegistry } from "@/utils/processParameterRegistry";
+import { fetchNextProcessParameterId } from "@/apis/processParameter";
 
 export const normalizeProcessParameterId = (value) => {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -43,9 +44,21 @@ const extractSequence = (value) => {
 
 const GLOBAL_PROCESS_PARAMETER_COUNTER_KEY = "pp-global-id-counter";
 
+// The real, collision-free next PP id lives in the backend's global sequence
+// (process_parameters.entry_id_sequences, via GET /process-parameters/next-id)
+// — every department's save already reconciles against that same sequence
+// server-side. The local registry/localStorage counter below has no idea what
+// other departments/browsers have already claimed, so it's kept only as a
+// last-resort fallback if the backend call fails (e.g. offline), not as the
+// primary source of truth.
 export const reserveGlobalProcessParameterId = async (fallbackPrefix = "PP", fallbackWidth = 4) => {
   const prefix = String(fallbackPrefix || "PP").trim().toUpperCase();
   const width = Number(fallbackWidth) || 4;
+
+  if (prefix === "PP") {
+    const backendNextId = await fetchNextProcessParameterId();
+    if (backendNextId) return backendNextId;
+  }
 
   const registry = readProcessParameterRegistry();
   const highestSequence = registry.reduce((max, row) => {

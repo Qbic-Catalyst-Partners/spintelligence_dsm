@@ -2499,22 +2499,28 @@ router.post('/header', async (req, res, next) => {
       return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
     }
 
+    // The Process Parameter matrix's "DF Breaker"/"DF Finisher" status columns split on this
+    // column, not on `type` — without it every entry here is invisible to that "done" check
+    // no matter what `type` says, even though the row itself saved fine.
+    const entry_scope = String(type || '').toLowerCase().includes('finisher') ? 'finisher' : 'breaker';
+
     const result = await client.query(
       `INSERT INTO drawframe.drawframe_qc_header (
-        entry_id, type, count_name, consignee_name, creation_date,
+        entry_id, entry_scope, type, count_name, consignee_name, creation_date,
         make, no_of_ends, bottom_roll_setting,
         breaker_draft, total_draft, hank,
         web_tension_draft, trumpet_size, delivery_speed, pressure_bar
       )
       VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,
-        $9,$10,$11,
-        $12,$13,$14,$15
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,
+        $10,$11,$12,
+        $13,$14,$15,$16
       )
       RETURNING *`,
       [
         entry_id,
+        entry_scope,
         type,
         count_name,
         consignee_name,
@@ -2532,8 +2538,13 @@ router.post('/header', async (req, res, next) => {
       ]
     );
 
+    // PP_SUB_DEPARTMENTS (ticketing_system's completion tracking) expects Breaker and
+    // Finisher to be logged as two distinct notebooks — hardcoding 'Drawframe QC Header'
+    // for both meant a real Finisher submission was indistinguishable from a Breaker one,
+    // so the batch-completion checker could never see "Drawframe Finisher Drawing
+    // Inspection" as actually done.
     recordPpNotebookSubmission({
-      notebook: 'Drawframe QC Header',
+      notebook: entry_scope === 'finisher' ? 'Drawframe Finisher Drawing Inspection' : 'Drawframe QC Header',
       department: 'Drawframe',
       entryId: entry_id,
       sourceSchema: 'drawframe',
