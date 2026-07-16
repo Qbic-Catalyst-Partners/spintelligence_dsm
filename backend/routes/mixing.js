@@ -145,11 +145,9 @@ const fetchLotMasterDetails = async (prefix = '', exactLotNo = '') => {
        MAX(CAST(l.lotdate AS DATE)) AS lot_date,
        MAX(LTRIM(RTRIM(CAST(v.varname AS VARCHAR(255))))) AS variety,
        MAX(LTRIM(RTRIM(CAST(l.pinvno AS VARCHAR(100))))) AS invoice_no,
-       MAX(CAST(l.pidate AS DATE)) AS invoice_date,
-       MAX(LTRIM(RTRIM(CAST(lm.Party_Name AS VARCHAR(255))))) AS party_name
+       MAX(CAST(l.pidate AS DATE)) AS invoice_date
      FROM dbo.lotmaster l
      LEFT JOIN dbo.variety v ON l.varcode = v.varcode
-     LEFT JOIN dbo.ledger_master lm ON l.Ledger_Code = lm.Ledger_Code
      WHERE LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) <> ''
        AND (@exactLotNo = '' OR LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) = @exactLotNo)
        AND (@prefix = '' OR LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) LIKE @lotPrefix)
@@ -164,8 +162,7 @@ const fetchLotMasterDetails = async (prefix = '', exactLotNo = '') => {
     date: toDateOnly(row.lot_date),
     variety: row.variety || '',
     invoice_no: row.invoice_no || '',
-    invoice_date: toDateOnly(row.invoice_date),
-    party_name: row.party_name || ''
+    invoice_date: toDateOnly(row.invoice_date)
   }));
 };
 
@@ -282,8 +279,7 @@ const getLotMasterDropdown = async (req, res, next) => {
         date: lot.date,
         lot_date: lot.lot_date,
         invoice_no: lot.invoice_no,
-        invoice_date: lot.invoice_date,
-        party_name: lot.party_name
+        invoice_date: lot.invoice_date
       }))
     ];
 

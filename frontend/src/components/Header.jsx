@@ -569,11 +569,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     <Image
                         src={isDarkMode ? "/spintel-dark.png" : "/spintel.svg"}
                         alt="Spintelligence"
-                        width={isDarkMode ? 255 : 105}
-                        height={isDarkMode ? 110 : 60}
+                        width={105}
+                        height={60}
                         priority
                         className={styles["sidebar-logo-secondary"]}
-                        style={{ width: "auto", height: isDarkMode ? "110px" : "60px", objectFit: "contain" }}
+                        style={{ width: "auto", height: "60px", objectFit: "contain" }}
                     />
                 </div>
 
