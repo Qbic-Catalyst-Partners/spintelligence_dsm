@@ -253,6 +253,16 @@ const ensureCardingChangeTables = async () => {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  await client.query(`
+    ALTER TABLE carding.carding_change_request
+      ADD COLUMN IF NOT EXISTS operator TEXT,
+      ADD COLUMN IF NOT EXISTS department TEXT,
+      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
+  `);
 };
 
 const ensureCardWasteStudyTable = async () => {
@@ -3416,6 +3426,77 @@ router.get('/change-control', async (req, res, next) => {
       limit,
       total: parseInt(countResult.rows[0].count, 10),
       data
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/change-control/approvals', async (req, res, next) => {
+  try {
+    await ensureCardingChangeTables();
+    await ensureCardingEntryIdColumns();
+    const status = String(req.query.status ?? '').trim();
+    const whereClause = status ? 'WHERE approval_status = $1' : '';
+    const result = await client.query(
+      `SELECT * FROM carding.carding_change_request ${whereClause} ORDER BY created_at DESC, id DESC`,
+      status ? [status] : []
+    );
+    res.status(200).json({ data: result.rows.map((row) => withScreenEntryId('card_change_control', row)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
+  try {
+    await ensureCardingChangeTables();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE carding.carding_change_request
+       SET approval_status = 'approved', reviewed_by = $1, reviewed_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [reviewedBy, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Carding change control entry approved',
+      data: withScreenEntryId('card_change_control', result.rows[0])
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
+  try {
+    await ensureCardingChangeTables();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE carding.carding_change_request
+       SET approval_status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2
+       WHERE id = $3
+       RETURNING *`,
+      [reviewedBy, reason, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Carding change control entry rejected',
+      data: withScreenEntryId('card_change_control', result.rows[0])
     });
   } catch (error) {
     next(error);

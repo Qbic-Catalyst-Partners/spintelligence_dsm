@@ -331,6 +331,21 @@ const ensureSpinningEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS count_from_proposed VARCHAR(100);
   `);
 
+  for (const tableName of [
+    'spinning.wheel_change_inspection',
+    'spinning.wheel_change_v2',
+    'spinning.wheel_change',
+    'spinning.wheel_change_type4'
+  ]) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+        ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS review_remarks TEXT;
+    `);
+  }
+
   await client.query(`
     ALTER TABLE spinning.spinning_qc_header
       ADD COLUMN IF NOT EXISTS slub_partcy_code TEXT,
@@ -4343,6 +4358,101 @@ router.get('/wheel-change/type4', async (req, res, next) => {
 
   } catch (err) {
     next(err);
+  }
+});
+
+const WHEEL_CHANGE_APPROVAL_TABLES = {
+  type1: 'spinning.wheel_change_inspection',
+  type2: 'spinning.wheel_change_v2',
+  type3: 'spinning.wheel_change',
+  type4: 'spinning.wheel_change_type4'
+};
+
+router.get('/wheel-change/approvals', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const status = String(req.query.status ?? '').trim();
+    const whereClause = status ? 'WHERE approval_status = $1' : '';
+
+    const results = await Promise.all(
+      Object.entries(WHEEL_CHANGE_APPROVAL_TABLES).map(([type, tableName]) =>
+        client.query(
+          `SELECT * FROM ${tableName} ${whereClause} ORDER BY created_at DESC, id DESC`,
+          status ? [status] : []
+        ).then((result) => result.rows.map((row) => ({ ...row, id: `${type}:${row.id}`, wheel_change_type: type })))
+      )
+    );
+
+    const data = results.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.status(200).json({ data });
+  } catch (error) {
+    console.error('Spinning wheel change approvals fetch error:', error);
+    next(error);
+  }
+});
+
+const resolveWheelChangeApprovalTable = (compositeId) => {
+  const [type, rawId] = String(compositeId ?? '').split(':');
+  const tableName = WHEEL_CHANGE_APPROVAL_TABLES[type];
+  const id = parseInt(rawId, 10);
+  if (!tableName || !Number.isInteger(id) || id <= 0) return null;
+  return { tableName, id, type };
+};
+
+router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const resolved = resolveWheelChangeApprovalTable(req.params.id);
+    if (!resolved) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE ${resolved.tableName}
+       SET approval_status = 'approved', reviewed_by = $1, reviewed_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [reviewedBy, resolved.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Spinning wheel change entry approved',
+      data: { ...result.rows[0], id: `${resolved.type}:${result.rows[0].id}`, wheel_change_type: resolved.type }
+    });
+  } catch (error) {
+    console.error('Spinning wheel change approve error:', error);
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const resolved = resolveWheelChangeApprovalTable(req.params.id);
+    if (!resolved) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE ${resolved.tableName}
+       SET approval_status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2
+       WHERE id = $3
+       RETURNING *`,
+      [reviewedBy, reason, resolved.id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Spinning wheel change entry rejected',
+      data: { ...result.rows[0], id: `${resolved.type}:${result.rows[0].id}`, wheel_change_type: resolved.type }
+    });
+  } catch (error) {
+    console.error('Spinning wheel change reject error:', error);
+    next(error);
   }
 });
 

@@ -356,7 +356,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   };
 
   const buildPayload = () => ({
-    entry_id: (entryId || form.paramId || savedProcessParameterId) || undefined,
+    entry_id: (entryId || form.paramId || savedProcessParameterId || previewNextId) || undefined,
     count_name: form.countName,
     consignee_name: form.consigneeName,
     creation_date: form.creationDate,

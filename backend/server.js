@@ -421,6 +421,13 @@ app.use('/reports', reportSchedulesRouter);
 app.use('/process-parameters', require('./routes/processParameters'));
 app.use('/pp-threshold', require('./routes/ppThreshold.routes'));
 app.use('/spinning', require('./routes/spinning'));
+// Spinning's wheel-change approvals are surfaced at the bare /wheel-change root
+// (frontend's shared wheelChangeApprovals.js), not namespaced under /spinning
+// like every other department's approvals endpoints.
+app.use('/wheel-change', (req, res, next) => {
+  req.url = `/wheel-change${req.url === '/' ? '' : req.url}`;
+  return require('./routes/spinning')(req, res, next);
+});
 app.use('/mixing', require('./routes/mixing'));
 app.use('/roles', require('./routes/roles.routes'));
 app.use('/comber', require('./routes/comber')); 

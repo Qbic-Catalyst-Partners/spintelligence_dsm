@@ -439,7 +439,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     try {
       setIsSubmitting(true);
       setSubmitError("");
-      const payload = buildPayload(form, entryId);
+      const payload = { ...buildPayload(form, entryId), entry_id: form.paramId || entryId || previewNextId || undefined };
       const response = form.versionId
         ? await updateAutoconerProcessParameter(form.versionId, payload)
         : await submitAutoconerProcessParameter(payload);
