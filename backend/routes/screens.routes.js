@@ -66,7 +66,7 @@ const client = require("../connection");
  */
 router.post("/", async (req, res) => {
 
-  const { name, is_active = true } = req.body;
+  const { name, is_active = true, department_id = null } = req.body;
 
   if (!name) {
     return res.status(400).json({
@@ -77,8 +77,8 @@ router.post("/", async (req, res) => {
   try {
 
     const existing = await client.query(
-      `SELECT id FROM rbac.screens WHERE LOWER(name)=LOWER($1)`,
-      [name]
+      `SELECT id FROM rbac.screens WHERE LOWER(name)=LOWER($1) AND department_id IS NOT DISTINCT FROM $2`,
+      [name, department_id]
     );
 
     if (existing.rows.length > 0) {
@@ -88,10 +88,10 @@ router.post("/", async (req, res) => {
     }
 
     const result = await client.query(
-      `INSERT INTO rbac.screens (name, is_active)
-       VALUES ($1,$2)
-       RETURNING id,name,is_active,created_at`,
-      [name, is_active]
+      `INSERT INTO rbac.screens (name, is_active, department_id)
+       VALUES ($1,$2,$3)
+       RETURNING id,name,is_active,department_id,created_at`,
+      [name, is_active, department_id]
     );
 
     res.status(201).json({

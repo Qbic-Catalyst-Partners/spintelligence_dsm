@@ -57,4 +57,5 @@ _backend_tmp/
 *.xlsx
 *.xls
 *.xlsm
+!public/UM_BU_Template.xlsx
 

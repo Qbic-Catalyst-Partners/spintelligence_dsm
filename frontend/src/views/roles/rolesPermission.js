@@ -264,14 +264,18 @@ export default function RolesPermissions() {
                         </thead>
 
                         <tbody>
-                            {currentRoles.map((role, i) => (
+                            {currentRoles.map((role, i) => {
+                                const isAdmin = String(role.role_name || role.name || "").toLowerCase() === "admin";
+                                return (
                                 <tr key={i}>
                                     <td className={styles["role-name"]}>{role.role_name}</td>
 
                                     <td className={styles.desc}>{role.description || "-"}</td>
 
                                     <td>
-                                        <span className={styles["screen-pill"]}>{role.screen_count}</span>
+                                        <span className={styles["screen-pill"]}>
+                                            {isAdmin ? "All Screens Access" : role.screen_count}
+                                        </span>
                                     </td>
 
                                     {/* ✅ STATUS BADGE */}
@@ -294,6 +298,8 @@ export default function RolesPermissions() {
                                         <div className={styles["action-wrapper"]}>
                                             <span
                                                 className={styles["action-dot"]}
+                                                aria-disabled={isAdmin}
+                                                style={isAdmin ? { opacity: 0.4, cursor: "not-allowed", pointerEvents: "none" } : undefined}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setActiveRow(activeRow === i ? null : i);
@@ -302,7 +308,7 @@ export default function RolesPermissions() {
                                                 ⋮
                                             </span>
 
-                                            {activeRow === i && (
+                                            {!isAdmin && activeRow === i && (
                                                 <div className={styles["action-menu"]}>
                                                     <div
                                                         className={styles["menu-item"]}
@@ -339,7 +345,8 @@ export default function RolesPermissions() {
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                     <div className={styles["table-footer"]}>
