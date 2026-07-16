@@ -658,26 +658,34 @@ const resolveApproverUserId = async ({
   if (!approverUserId && approverLookupValue) {
     const approverByName = await getUserByFullName(approverLookupValue);
     if (!approverByName) {
-      throw new Error(`${levelLabel}_name not found in users.user_details`);
+      const err = new Error(`${levelLabel}_name not found in users.user_details`);
+      err.statusCode = 400;
+      throw err;
     }
     approverUserId = approverByName.id;
   }
 
   if (userIdValue !== undefined && userIdValue !== null && !approverUserId) {
-    throw new Error(`${levelLabel}_user_id must be a positive integer`);
+    const err = new Error(`${levelLabel}_user_id must be a positive integer`);
+    err.statusCode = 400;
+    throw err;
   }
 
   if (approverUserId) {
     const approver = await getUserById(approverUserId);
     if (!approver) {
-      throw new Error(`${levelLabel}_user_id not found in users.user_details`);
+      const err = new Error(`${levelLabel} contains a user that no longer exists — please re-select the approver and try again`);
+      err.statusCode = 400;
+      throw err;
     }
     if (
       expectedLevel &&
       String(approver.level || '').trim().toUpperCase() !== expectedLevel &&
       !isAdminApproverUser(approver)
     ) {
-      throw new Error(`${levelLabel} must reference a ${expectedLevel} user`);
+      const err = new Error(`${levelLabel} must reference a ${expectedLevel} user`);
+      err.statusCode = 400;
+      throw err;
     }
   }
 
@@ -744,7 +752,9 @@ const resolveApproverUserIds = async ({
       if (!userByIdentifier?.id) {
         const userByEmployeeId = await getUserByEmployeeId(candidateText);
         if (!userByEmployeeId?.id) {
-          throw new Error(`${levelLabel}_user_ids must contain positive user IDs, employee IDs, or user names`);
+          const notFoundError = new Error(`${levelLabel}_user_ids must contain positive user IDs, employee IDs, or user names`);
+          notFoundError.statusCode = 400;
+          throw notFoundError;
         }
         if (!seen.has(userByEmployeeId.id)) {
           seen.add(userByEmployeeId.id);
@@ -785,14 +795,19 @@ const resolveApproverUserIds = async ({
   for (const approverUserId of resolvedUserIds) {
     const approver = await getUserById(approverUserId);
     if (!approver) {
-      throw new Error(`${levelLabel} contains a user_id not found in users.user_details`);
+      console.error(`[resolveApproverUserIds] ${levelLabel} lookup failed for resolved id=${approverUserId}; rawUserIds=${JSON.stringify(rawUserIds)}; rawNames=${JSON.stringify(rawNames)}`);
+      const notFoundError = new Error(`${levelLabel} contains a user that no longer exists — please re-select the approver and try again`);
+      notFoundError.statusCode = 400;
+      throw notFoundError;
     }
     if (
       expectedLevel &&
       String(approver.level || '').trim().toUpperCase() !== expectedLevel &&
       !isAdminApproverUser(approver)
     ) {
-      throw new Error(`${levelLabel} must reference only ${expectedLevel} users`);
+      const levelMismatchError = new Error(`${levelLabel} must reference only ${expectedLevel} users`);
+      levelMismatchError.statusCode = 400;
+      throw levelMismatchError;
     }
   }
 
@@ -1482,7 +1497,9 @@ const upsertThresholdMaster = async ({
   await ensureThresholdMasterL3ApproverTable();
   const normalizedMachineName = machineName && String(machineName).trim() !== '' ? String(machineName).trim() : null;
   if (!normalizedMachineName) {
-    throw new Error('machine_name is required for threshold_master');
+    const err = new Error('machine_name is required for threshold_master');
+    err.statusCode = 400;
+    throw err;
   }
   const primaryApprovalL1UserId = approvalL1UserIds[0] ?? null;
   const primaryApprovalL2UserId = approvalL2UserIds[0] ?? null;
@@ -3159,7 +3176,9 @@ router.post('/thresholds/bulk', async (req, res, next) => {
       const machineNameValue = machine_name ?? machineName ?? rootMachineName ?? null;
 
       if (!departmentValue || !subDepartmentValue || !inputScreenValue || !machineNameValue || !inputFieldValue || plusThresholdFinal === undefined || minusThresholdFinal === undefined) {
-        throw new Error('Each threshold must include department, sub_department, input_screen, machine_name, input_field, plus_threshold, minus_threshold');
+        const err = new Error('Each threshold must include department, sub_department, input_screen, machine_name, input_field, plus_threshold, minus_threshold');
+        err.statusCode = 400;
+        throw err;
       }
 
       const savedRow = await upsertThresholdMaster({
