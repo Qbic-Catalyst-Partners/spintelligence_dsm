@@ -200,6 +200,7 @@ export default function UmAddUser() {
                   <option value="">Select level</option>
                   <option value="L1">L1</option>
                   <option value="L2">L2</option>
+                  <option value="L3">L3</option>
                 </select>
               </div>
             </div>
