@@ -973,7 +973,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                         >
                                             <span className={styles["notification-item-header"]}>
                                                 <span className={styles["notification-title"]}>{item?.title || "Notification"}</span>
-                                                <span className={styles["notification-source"]}>{item?.source === "ticket" ? "Ticket" : "Analysis"}</span>
+                                                <span className={styles["notification-source"]}>{item?.category || (item?.source === "ticket" ? "Tickets" : "Reports")}</span>
                                             </span>
                                             <span className={styles["notification-body"]}>{item?.body || "-"}</span>
                                         </button>

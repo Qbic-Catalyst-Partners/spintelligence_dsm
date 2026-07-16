@@ -139,6 +139,9 @@ router.post("/", async (req, res) => {
 
     await client.query("COMMIT");
 
+    res.locals.activityDescription = `Created role '${roleResult.rows[0].name}' with ${screen_ids.length} screen(s) across ${department_ids.length} department(s)`;
+    res.locals.activityMetadata = { role_id: roleId, role_name: roleResult.rows[0].name };
+
     res.status(201).json({
       message: "Role created successfully",
       role_id: roleId,
@@ -330,7 +333,7 @@ router.patch("/:id", async (req, res) => {
     await client.query("BEGIN");
 
     const existingRole = await client.query(
-      `SELECT id FROM rbac.role_details WHERE id = $1`,
+      `SELECT id, name FROM rbac.role_details WHERE id = $1`,
       [id]
     );
 
@@ -388,6 +391,15 @@ router.patch("/:id", async (req, res) => {
 
     await client.query("COMMIT");
 
+    const roleName = name || existingRole.rows[0].name;
+    const changeParts = [];
+    if (name) changeParts.push(`renamed to '${name}'`);
+    if (screen_ids) changeParts.push("screen access changed");
+    if (department_ids) changeParts.push("department access changed");
+    if (status !== null && status !== undefined) changeParts.push(`status set to ${status ? "Active" : "Inactive"}`);
+    res.locals.activityDescription = `Updated role '${roleName}'${changeParts.length ? ` — ${changeParts.join(", ")}` : ""}`;
+    res.locals.activityMetadata = { role_id: id, role_name: roleName };
+
     res.status(200).json({
       message: "Role updated successfully",
       role_id: id,
@@ -433,7 +445,7 @@ router.delete("/:id", async (req, res) => {
     await client.query("BEGIN");
 
     const existingRole = await client.query(
-      `SELECT id FROM rbac.role_details WHERE id = $1`,
+      `SELECT id, name FROM rbac.role_details WHERE id = $1`,
       [id]
     );
 
@@ -448,6 +460,9 @@ router.delete("/:id", async (req, res) => {
     await client.query(`DELETE FROM rbac.role_details WHERE id = $1`, [id]);
 
     await client.query("COMMIT");
+
+    res.locals.activityDescription = `Deleted role '${existingRole.rows[0].name}'`;
+    res.locals.activityMetadata = { role_id: id, role_name: existingRole.rows[0].name };
 
     res.status(200).json({
       message: "Role deleted successfully",

@@ -142,8 +142,8 @@ router.get('/', async (req, res, next) => {
           n.status,
           (n.status = 'UNREAD') AS is_unread,
           n.recipient_user_id AS user_id,
-          COALESCE(n.title, concat('Ticket ', n.ticket_id)) AS title,
-          COALESCE(n.body, concat(n.notification_type, ' notification for ticket ', n.ticket_id)) AS body,
+          COALESCE(n.title, concat(n.category, ': ', n.notification_type)) AS title,
+          COALESCE(n.body, concat(n.notification_type, ' update for ', COALESCE(n.ticket_id, 'this item'))) AS body,
           n.link_url,
           COALESCE(n.payload, '{}'::jsonb) || jsonb_build_object(
             'ticket_id', n.ticket_id,

@@ -989,6 +989,24 @@ const updateSupervisorTicketStatusHandler = async (req, res, next) => {
       ]
     );
 
+    const statusOwnerId = parsePositiveInt(updated.rows[0].user_id);
+    if (statusOwnerId) {
+      await createNotification({
+        recipientUserId: statusOwnerId,
+        ticketId,
+        type: 'TICKET_STATUS_UPDATED',
+        category: 'Tickets',
+        priority: 'Medium',
+        title: `${ticket.machine_name || 'Ticket'} status changed to ${status}`,
+        body: `${req.user?.full_name || 'A supervisor'} set ticket ${ticketId} (${ticket.machine_name || ''}) to ${status}.`,
+        linkUrl: `/operator-tickets/${ticketId}`,
+        payload: { ticket_id: ticketId, status }
+      });
+    }
+
+    res.locals.activityDescription = `${req.user?.full_name || 'Supervisor'} set ticket ${ticketId} to ${status}`;
+    res.locals.activityMetadata = { ticket_id: ticketId, status };
+
     return res.status(200).json({
       message: 'Ticket status updated successfully',
       ticket: updated.rows[0],
@@ -1037,6 +1055,24 @@ router.patch('/tickets/approve', async (req, res, next) => {
        VALUES ($1, 'Approved', $2, $3, CURRENT_TIMESTAMP)`,
       [ticketId, req.user?.full_name || req.user?.employee_id || 'Supervisor', req.user?.role || 'Supervisor']
     );
+
+    const approveOwnerId = parsePositiveInt(updated.rows[0].user_id);
+    if (approveOwnerId) {
+      await createNotification({
+        recipientUserId: approveOwnerId,
+        ticketId,
+        type: 'TICKET_APPROVED',
+        category: 'Tickets',
+        priority: 'Medium',
+        title: `${ticket.machine_name || 'Ticket'} ${ticketId} approved`,
+        body: `${req.user?.full_name || 'A supervisor'} approved ticket ${ticketId} for ${ticket.machine_name || 'the machine'}.`,
+        linkUrl: `/operator-tickets/${ticketId}`,
+        payload: { ticket_id: ticketId, status: 'Closed' }
+      });
+    }
+
+    res.locals.activityDescription = `Approved ticket ${ticketId} for ${ticket.machine_name || 'unknown machine'}`;
+    res.locals.activityMetadata = { ticket_id: ticketId };
 
     return res.status(200).json({
       message: 'Ticket approved successfully',
@@ -1093,12 +1129,15 @@ router.patch('/tickets/reject', async (req, res, next) => {
         type: 'TICKET_REOPENED',
         category: 'Tickets',
         priority: 'High',
-        title: `Ticket ${ticketId} reopened`,
-        body: 'Supervisor reopened this ticket. Please review and update it.',
+        title: `${ticket.machine_name || 'Ticket'} ${ticketId} rejected — reopened`,
+        body: `${req.user?.full_name || 'A supervisor'} rejected ticket ${ticketId} for ${ticket.machine_name || 'the machine'}. Please review and resubmit.`,
         linkUrl: `/operator-tickets/${ticketId}`,
         payload: { ticket_id: ticketId, status: 'Reopened' }
       });
     }
+
+    res.locals.activityDescription = `Rejected ticket ${ticketId} for ${ticket.machine_name || 'unknown machine'} — reopened for submitter`;
+    res.locals.activityMetadata = { ticket_id: ticketId };
 
     return res.status(200).json({
       message: 'Ticket rejected and reopened successfully',

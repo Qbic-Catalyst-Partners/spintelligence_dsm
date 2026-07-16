@@ -573,43 +573,77 @@ const getThresholdApproversFromMaster = async ({
   };
 };
 
-const createTicketNotificationsForApprovers = async (ticketId, approverIds = []) => {
-  if (!ticketId || !approverIds.length) return;
-  const unique = Array.from(new Set(approverIds.filter((id) => Number.isInteger(Number(id)) && Number(id) > 0).map(Number)));
-  await createNotificationsForUsers(unique, {
-    ticketId,
-    type: 'TICKET_ASSIGNED',
-    category: 'Tickets',
-    priority: 'High',
-    title: `Ticket ${ticketId} assigned`,
-    body: `A ticket has been assigned for your review or action.`,
-    linkUrl: `/operator-tickets/${ticketId}`,
-    payload: { ticket_id: ticketId }
-  });
+const uniquePositiveIds = (ids = []) =>
+  Array.from(new Set(ids.filter((id) => Number.isInteger(Number(id)) && Number(id) > 0).map(Number)));
+
+// Sends a distinct, level-specific notification to each approver level rather than
+// one flat blast — L1/L2/L3 submissions and approvals are mapped per-user, so their
+// notifications must reflect that same per-level relevance.
+const createTicketNotificationsForApprovers = async (ticketId, ticketContext = {}, levels = []) => {
+  if (!ticketId || !levels.length) return;
+  for (const { level, userIds } of levels) {
+    const unique = uniquePositiveIds(userIds);
+    if (!unique.length) continue;
+    await createNotificationsForUsers(unique, {
+      ticketId,
+      type: 'TICKET_ASSIGNED',
+      category: 'Tickets',
+      priority: 'High',
+      title: `${level} approval needed — ${ticketContext.machineName || 'Ticket'} ${ticketId}`,
+      body: `${ticketContext.parameterName || 'A parameter'} on ${ticketContext.machineName || 'the machine'} requires your ${level} review.`,
+      linkUrl: `/operator-tickets/${ticketId}`,
+      payload: { ticket_id: ticketId, level }
+    });
+  }
 };
 
-const createThresholdBreachNotifications = async (ticket, approverIds = [], violationDetails = {}) => {
-  if (!ticket?.ticket_id || !approverIds.length) return;
+const createThresholdBreachNotifications = async (ticket, levels = [], violationDetails = {}) => {
+  if (!ticket?.ticket_id || !levels.length) return;
   const breaches = Array.isArray(violationDetails?.threshold_breaches)
     ? violationDetails.threshold_breaches
     : [];
   if (!breaches.length) return;
 
-  await createNotificationsForUsers(approverIds, {
-    ticketId: ticket.ticket_id,
-    type: 'THRESHOLD_BREACH_DETECTED',
-    category: 'Thresholds',
-    priority: ticket.severity === 'Critical' ? 'Critical' : 'High',
-    title: `Threshold breach detected`,
-    body: `${ticket.machine_name || 'Machine/process'} has ${breaches.length} parameter breach(es).`,
-    linkUrl: `/operator-tickets/${ticket.ticket_id}`,
-    payload: {
-      ticket_id: ticket.ticket_id,
-      machine_name: ticket.machine_name,
-      severity: ticket.severity,
-      breaches
-    }
-  });
+  for (const { level, userIds } of levels) {
+    const unique = uniquePositiveIds(userIds);
+    if (!unique.length) continue;
+    await createNotificationsForUsers(unique, {
+      ticketId: ticket.ticket_id,
+      type: 'THRESHOLD_BREACH_DETECTED',
+      category: 'Thresholds',
+      priority: ticket.severity === 'Critical' ? 'Critical' : 'High',
+      title: `${level} threshold breach — ${ticket.machine_name || 'machine'}`,
+      body: `${ticket.machine_name || 'Machine/process'} has ${breaches.length} parameter breach(es) awaiting your ${level} review.`,
+      linkUrl: `/operator-tickets/${ticket.ticket_id}`,
+      payload: {
+        ticket_id: ticket.ticket_id,
+        machine_name: ticket.machine_name,
+        severity: ticket.severity,
+        level,
+        breaches
+      }
+    });
+  }
+};
+
+// Notifies the specific L1/L2/L3 approver(s) a new threshold is assigned to —
+// these approver ids ARE "who the threshold is for" since there is no separate owner field.
+const notifyThresholdApprovers = async ({ thresholdId, machineName, inputField, department, subDepartment, levels = [] }) => {
+  if (!thresholdId || !levels.length) return;
+  for (const { level, userIds } of levels) {
+    const unique = uniquePositiveIds(userIds);
+    if (!unique.length) continue;
+    await createNotificationsForUsers(unique, {
+      ticketId: null,
+      type: 'THRESHOLD_CREATED',
+      category: 'Thresholds',
+      priority: 'Medium',
+      title: `New threshold assigned — ${machineName || 'machine'} (${level})`,
+      body: `A new ${inputField || 'parameter'} threshold for ${machineName || 'this machine'} in ${subDepartment || department || 'your department'} was created and assigned to you for ${level} review.`,
+      linkUrl: `/thresholds/${thresholdId}`,
+      payload: { threshold_id: thresholdId, machine_name: machineName, input_field: inputField, level }
+    });
+  }
 };
 
 const resolveApproverUserId = async ({
@@ -2382,8 +2416,20 @@ router.post('/', async (req, res, next) => {
     ]);
 
     const ticket = result.rows[0];
-    await createTicketNotificationsForApprovers(ticket.ticket_id, [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds]);
-    await createThresholdBreachNotifications(ticket, [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds], violationDetails);
+    const approverLevels = [
+      { level: 'L1', userIds: approvalL1UserIds },
+      { level: 'L2', userIds: approvalL2UserIds },
+      { level: 'L3', userIds: approvalL3UserIds }
+    ];
+    await createTicketNotificationsForApprovers(
+      ticket.ticket_id,
+      { machineName: ticket.machine_name, parameterName: normalizedParameterNames?.join?.(', ') || normalizedParameterNames },
+      approverLevels
+    );
+    await createThresholdBreachNotifications(ticket, approverLevels, violationDetails);
+
+    res.locals.activityDescription = `Created ticket ${ticket.ticket_id} for ${machine_name} — ${ticketReason || 'threshold violation'}`;
+    res.locals.activityMetadata = { ticket_id: ticket.ticket_id, machine_name, severity };
 
     await sendEmail({
       to: ticket.supevisor_email || 'otpdemoin@gmail.com',
@@ -2533,12 +2579,24 @@ router.post('/generate', async (req, res, next) => {
         ]
       );
 
-      await createTicketNotificationsForApprovers(result.rows[0].ticket_id, [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds]);
-      await createThresholdBreachNotifications(result.rows[0], [...approvalL1UserIds, ...approvalL2UserIds, ...approvalL3UserIds], violationDetails);
+      const bulkApproverLevels = [
+        { level: 'L1', userIds: approvalL1UserIds },
+        { level: 'L2', userIds: approvalL2UserIds },
+        { level: 'L3', userIds: approvalL3UserIds }
+      ];
+      await createTicketNotificationsForApprovers(
+        result.rows[0].ticket_id,
+        { machineName: result.rows[0].machine_name, parameterName: normalizedParameterNames?.join?.(', ') || normalizedParameterNames },
+        bulkApproverLevels
+      );
+      await createThresholdBreachNotifications(result.rows[0], bulkApproverLevels, violationDetails);
       generated.push(result.rows[0]);
     }
 
     await client.query('COMMIT');
+
+    res.locals.activityDescription = `Generated ${generated.length} ticket(s) in bulk (${tickets.length - generated.length} skipped)`;
+    res.locals.activityMetadata = { generated_count: generated.length, skipped_count: tickets.length - generated.length };
 
     res.status(201).json({
       message: `${generated.length} tickets generated successfully`,
@@ -2958,6 +3016,22 @@ router.post('/thresholds', async (req, res, next) => {
       approvalL2UserIds,
       approvalL3UserIds
     });
+
+    await notifyThresholdApprovers({
+      thresholdId: result.id,
+      machineName: machine_name,
+      inputField: inputFieldValue,
+      department: departmentValue,
+      subDepartment: subDepartmentValue,
+      levels: [
+        { level: 'L1', userIds: approvalL1UserIds },
+        { level: 'L2', userIds: approvalL2UserIds },
+        { level: 'L3', userIds: approvalL3UserIds }
+      ]
+    });
+
+    res.locals.activityDescription = `Created threshold for ${machine_name} — ${inputFieldValue} (${departmentValue}/${subDepartmentValue})`;
+    res.locals.activityMetadata = { threshold_id: result.id, machine_name, input_field: inputFieldValue };
 
     res.status(201).json({
       message: 'Threshold saved successfully',
@@ -3553,6 +3627,9 @@ router.patch('/thresholds/:id/status', async (req, res, next) => {
       return res.status(404).json({ message: 'Threshold not found' });
     }
 
+    res.locals.activityDescription = `${is_active ? 'Activated' : 'Deactivated'} threshold for ${result.rows[0].machine_name} — ${result.rows[0].input_field}`;
+    res.locals.activityMetadata = { threshold_id: id, is_active };
+
     res.status(200).json({
       message: `Threshold ${is_active ? 'activated' : 'deactivated'} successfully`,
       threshold: result.rows[0]
@@ -3695,6 +3772,24 @@ router.patch('/thresholds/:id', async (req, res, next) => {
     }
     const threshold = await getThresholdByIdWithApprovers(id);
 
+    if (hasL1ApproverInput || hasL2ApproverInput || hasL3ApproverInput) {
+      await notifyThresholdApprovers({
+        thresholdId: id,
+        machineName: threshold.machine_name,
+        inputField: threshold.input_field,
+        department: threshold.department,
+        subDepartment: threshold.sub_department,
+        levels: [
+          ...(hasL1ApproverInput ? [{ level: 'L1', userIds: approvalL1UserIds || [] }] : []),
+          ...(hasL2ApproverInput ? [{ level: 'L2', userIds: approvalL2UserIds || [] }] : []),
+          ...(hasL3ApproverInput ? [{ level: 'L3', userIds: approvalL3UserIds || [] }] : [])
+        ]
+      });
+    }
+
+    res.locals.activityDescription = `Updated threshold #${id} (${threshold.machine_name} — ${threshold.input_field})`;
+    res.locals.activityMetadata = { threshold_id: id };
+
     res.status(200).json({
       message: 'Threshold updated successfully',
       threshold
@@ -3718,6 +3813,9 @@ router.delete('/thresholds/:id', async (req, res, next) => {
     if (!result.rowCount) {
       return res.status(404).json({ message: 'Threshold not found' });
     }
+
+    res.locals.activityDescription = `Deleted threshold for ${result.rows[0].machine_name} — ${result.rows[0].input_field}`;
+    res.locals.activityMetadata = { threshold_id: id };
 
     res.status(200).json({
       message: 'Threshold deleted successfully'

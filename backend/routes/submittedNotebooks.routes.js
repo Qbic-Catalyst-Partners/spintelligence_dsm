@@ -615,21 +615,26 @@ const generateOverdueNotebookTickets = async () => {
       [inserted.ticket_id]
     );
 
-    await createNotificationsForUsers([...l2ApproverIds, ...l3ApproverIds], {
-      ticketId: inserted.ticket_id,
-      type: 'NOTEBOOK_ACK_OVERDUE',
-      category: 'Tickets',
-      priority: 'High',
-      title: `Acknowledgement overdue: ${submission.input_screen || submission.notebook}`,
-      body: 'A submitted notebook is waiting for L2 acknowledgement.',
-      linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
-      payload: {
-        ticket_id: inserted.ticket_id,
-        submitted_notebook_id: submission.id,
-        notebook_submission_id: submission.notebook_submission_id,
-        action_type: 'ACKNOWLEDGE_ONLY'
-      }
-    });
+    const ackNotebookName = submission.input_screen || submission.notebook;
+    for (const { level, userIds } of [{ level: 'L2', userIds: l2ApproverIds }, { level: 'L3', userIds: l3ApproverIds }]) {
+      if (!Array.isArray(userIds) || !userIds.length) continue;
+      await createNotificationsForUsers(userIds, {
+        ticketId: inserted.ticket_id,
+        type: 'NOTEBOOK_ACK_OVERDUE',
+        category: 'Tickets',
+        priority: 'High',
+        title: `Acknowledgement overdue — ${ackNotebookName} (${level})`,
+        body: `${ackNotebookName} is waiting for your ${level} acknowledgement.`,
+        linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
+        payload: {
+          ticket_id: inserted.ticket_id,
+          submitted_notebook_id: submission.id,
+          notebook_submission_id: submission.notebook_submission_id,
+          action_type: 'ACKNOWLEDGE_ONLY',
+          level
+        }
+      });
+    }
 
     created.push(inserted);
   }

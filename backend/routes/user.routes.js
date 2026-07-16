@@ -271,6 +271,9 @@ router.post('/add-user', async (req, res, next) => {
 
     await client.query("COMMIT");
 
+    res.locals.activityDescription = `Created user ${email} (${full_name}) — role ${role_name}, dept ${department_name}`;
+    res.locals.activityMetadata = { target_user_id: result.rows[0].id, email };
+
     res.status(201).json({
       message: 'User created successfully',
       user: result.rows[0]
@@ -499,6 +502,13 @@ router.patch('/:id', async (req, res, next) => {
 
     await client.query("COMMIT");
 
+    const changeParts = [];
+    if (role_name) changeParts.push(`role → ${role_name}`);
+    if (department_name) changeParts.push(`department → ${department_name}`);
+    if (level) changeParts.push(`level → ${normalizeUserLevel(level)}`);
+    res.locals.activityDescription = `Updated user ${existingUser.rows[0].email}${changeParts.length ? ` — ${changeParts.join(", ")}` : ""}`;
+    res.locals.activityMetadata = { target_user_id: id, email: existingUser.rows[0].email };
+
     res.json({
       message: "User updated successfully",
       user: updated.rows[0]
@@ -540,13 +550,16 @@ router.delete('/:id', async (req, res, next) => {
     const result = await client.query(
       `DELETE FROM users.user_details
        WHERE id = $1
-       RETURNING id`,
+       RETURNING id, email, full_name`,
       [id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    res.locals.activityDescription = `Deleted user ${result.rows[0].email} (${result.rows[0].full_name})`;
+    res.locals.activityMetadata = { target_user_id: id, email: result.rows[0].email };
 
     res.status(200).json({ message: 'User deleted successfully' });
 
@@ -909,6 +922,10 @@ router.post("/bulk-upload", upload.single("file"), async (req, res, next) => {
     const usersData = await readBulkUploadRows(filePath, req.file.originalname);
 
     const result = await processUsers(usersData);
+
+    res.locals.activityDescription = `Bulk uploaded ${result.inserted || 0} user(s) from ${req.file.originalname} (${result.skipped || 0} skipped)`;
+    res.locals.activityMetadata = { file_name: req.file.originalname, ...result };
+
     res.json({ message: "Bulk upload completed", ...result });
   } catch (error) {
     if (error.statusCode) {
