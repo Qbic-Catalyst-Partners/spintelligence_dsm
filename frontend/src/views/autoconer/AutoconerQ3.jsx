@@ -564,8 +564,10 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
           creationDate: form.creationDate,
         })
       );
-    } catch {
-      // Sibling auto-submit is best-effort; ignore failures here.
+    } catch (error) {
+      // Sibling auto-submit is best-effort; don't block the Q3 save on it, but
+      // log so a silent failure here doesn't look identical to "nothing to do."
+      console.error("Sibling Q2 auto-submit failed:", error);
     }
   };
 
