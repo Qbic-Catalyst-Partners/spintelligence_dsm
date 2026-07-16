@@ -231,11 +231,19 @@ function Mixing() {
     const { lotOptions, lotOptionsError, loadingLotOptions } = useMixingLotOptions(
         shouldLoadLots ? selectedTypeName : ""
     );
+    // AFIS-6 Cotton borrows Cotton HVI's lot source (dbo.lotmaster); AFIS-6 MMF borrows
+    // Fibre's (dbo.PSF_Receipt) — these are genuinely different upstream tables, so each
+    // needs its own hook call rather than sharing one.
     const {
-        lotOptions: afis6LotOptions,
-        lotOptionsError: afis6LotOptionsError,
-        loadingLotOptions: loadingAfis6LotOptions,
-    } = useMixingLotOptions(isAfis6Cotton || isAfis6Mmf ? "AFIS Data Entry" : "");
+        lotOptions: afis6CottonLotOptions,
+        lotOptionsError: afis6CottonLotOptionsError,
+        loadingLotOptions: loadingAfis6CottonLotOptions,
+    } = useMixingLotOptions(isAfis6Cotton ? "AFIS Data Entry" : "");
+    const {
+        lotOptions: afis6MmfLotOptions,
+        lotOptionsError: afis6MmfLotOptionsError,
+        loadingLotOptions: loadingAfis6MmfLotOptions,
+    } = useMixingLotOptions(isAfis6Mmf ? "Fibre Data Entry" : "");
     const { entryId, reserveEntryId, loading: entryIdLoading } = useDatabaseEntryId({
         department: "Mixing",
         typeName: selectedTypeName,
@@ -515,7 +523,7 @@ function Mixing() {
             : value;
 
         if (key === "lot_no") {
-            const matchedLot = afis6LotOptions.find(
+            const matchedLot = afis6CottonLotOptions.find(
                 (lot) => lot.lot_no === nextValue || lot.value === nextValue
             );
             setAfis6Form((prev) => ({
@@ -686,7 +694,7 @@ function Mixing() {
             : value;
 
         if (key === "lot_no") {
-            const matchedLot = afis6LotOptions.find(
+            const matchedLot = afis6MmfLotOptions.find(
                 (lot) => lot.lot_no === nextValue || lot.value === nextValue
             );
             setAfis6MmfForm((prev) => ({
@@ -1079,11 +1087,11 @@ function Mixing() {
                                                 }`}
                                                 value={afis6Form.lot_no}
                                                 onChange={(value) => handleAfis6Change("lot_no", value)}
-                                                options={afis6LotOptions}
+                                                options={afis6CottonLotOptions}
                                                 placeholder={
-                                                    loadingAfis6LotOptions
+                                                    loadingAfis6CottonLotOptions
                                                         ? "Loading lots..."
-                                                        : afis6LotOptionsError
+                                                        : afis6CottonLotOptionsError
                                                             ? "Type lot number"
                                                             : "Select Lot Number"
                                                 }
@@ -1187,11 +1195,11 @@ function Mixing() {
                                                 }`}
                                                 value={afis6MmfForm.lot_no}
                                                 onChange={(value) => handleAfis6MmfChange("lot_no", value)}
-                                                options={afis6LotOptions}
+                                                options={afis6MmfLotOptions}
                                                 placeholder={
-                                                    loadingAfis6LotOptions
+                                                    loadingAfis6MmfLotOptions
                                                         ? "Loading lots..."
-                                                        : afis6LotOptionsError
+                                                        : afis6MmfLotOptionsError
                                                             ? "Type lot number"
                                                             : "Select Lot Number"
                                                 }

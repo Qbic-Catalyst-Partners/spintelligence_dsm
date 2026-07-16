@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { MdPrint, MdSearch } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import PreviewModal from "@/components/PreviewModal";
 import CombinedProcessParameterPreview from "@/components/CombinedProcessParameterPreview";
 import MixingProcessParameter from "@/views/mixing/processParameterDataEntry";
 import CardingProcessParameter from "@/views/carding/processParameterDataEntry";
@@ -17,8 +18,8 @@ import { hasSubDepartmentAccess, isFullAccessUser } from "@/utils/accessControl"
 import { normalizeProcessParameterId, resolveProcessParameterDisplayId } from "@/utils/processParameterId";
 import {
   getProcessParameterCountName,
+  getProcessParameterConsigneeName,
   readProcessParameterRegistry,
-  resetProcessParameterLocalState,
 } from "@/utils/processParameterRegistry";
 import { loadLocalEntries } from "@/utils/localProcessParameterStore";
 import { fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
@@ -357,6 +358,9 @@ export default function ProcessParameterPage() {
   const [printMode, setPrintMode] = useState(null); // null | "matrix" | "row"
   const [pendingPrintRowId, setPendingPrintRowId] = useState("");
   const [openEditTabs, setOpenEditTabs] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [preSubmitOpen, setPreSubmitOpen] = useState(false);
+  const [preSubmitItems, setPreSubmitItems] = useState([]);
 
   const visibleSubDepartments = useMemo(
     () => subDepartments.filter((item) => hasSubDepartmentAccess(accessByDepartment, item.value, user)),
@@ -581,6 +585,11 @@ export default function ProcessParameterPage() {
   const lockedCountName = selectedEntryId
     ? getProcessParameterCountName(selectedEntryId) ||
       remoteCountNameMap[normalizeProcessParameterId(selectedEntryId)] ||
+      ""
+    : "";
+  const lockedConsigneeName = selectedEntryId
+    ? getProcessParameterConsigneeName(selectedEntryId) ||
+      remoteConsigneeNameMap[normalizeProcessParameterId(selectedEntryId)]?.[0] ||
       ""
     : "";
   const isEditingViaTab = openEditTabs.some((tab) => tab.tabId === activeTab);
@@ -881,6 +890,44 @@ export default function ProcessParameterPage() {
     refreshNextAvailableId();
   };
 
+  const confirmSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const result = await componentRef.current?.submit?.();
+      refreshRegistryRows();
+      const batchDisplayId = resolveProcessParameterDisplayId(result, selectedEntryId);
+      if (batchDisplayId && !selectedEntryId) setSelectedEntryId(batchDisplayId);
+
+      const colIndex = getColumnIndexForDepartment();
+      const isSuccess = result !== false || batchDisplayId;
+      if (isSuccess && batchDisplayId && colIndex > 0) {
+        upsertRowStatus(batchDisplayId, colIndex - 1, true);
+      }
+
+      if (isSuccess) {
+        try {
+          await recordSubmittedNotebook({
+            department: "Quality Control",
+            subDepartment: selectedSubDepartment,
+            notebookName: selectedTypeName,
+            entryId: batchDisplayId || selectedEntryId,
+            previewItems: preSubmitItems,
+            user,
+          });
+        } catch (error) {
+          console.warn(
+            "Process parameter submitted notebook record failed:",
+            error?.response?.data || error?.message || error
+          );
+        }
+      }
+
+      if (isSuccess) setPreSubmitOpen(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -1018,29 +1065,6 @@ export default function ProcessParameterPage() {
                   title="Print this matrix"
                 >
                   <MdPrint /> Print Matrix
-                </button>
-              ) : null}
-              {isFullAccessUser(user) ? (
-                <button
-                  type="button"
-                  className={styles.printMatrixButton}
-                  title="Clears this browser's PP id counter and locally-stored Draw Frame/Spinning entries so new PPs start from PP-0001 again. Does not delete backend records (Mixing/Blow Room/Carding/Simplex/Autoconer/Q2/Q3) — those must be removed from the database separately."
-                  onClick={() => {
-                    const confirmed = window.confirm(
-                      "This clears the PP id counter and locally-stored Draw Frame/Spinning entries on this browser so new PPs start from PP-0001.\n\n" +
-                        "It does NOT delete backend records (Mixing, Blow Room, Carding, Simplex, Autoconer, AC-Q2, AC-Q3) — those must be deleted from the database first, otherwise their rows and PP ids will still appear.\n\n" +
-                        "Continue?"
-                    );
-                    if (!confirmed) return;
-                    resetProcessParameterLocalState();
-                    setDynamicRows(loadRegistryRows());
-                    loadRemoteStatuses();
-                    setSelectedEntryId("");
-                    setOpenEditTabs([]);
-                    setActiveTab("new");
-                  }}
-                >
-                  Reset Local PP Data
                 </button>
               ) : null}
               <div className={styles.currentDate}>Current Date : {currentDate}</div>
@@ -1197,6 +1221,14 @@ export default function ProcessParameterPage() {
                 </button>
               </div>
 
+              <div className={styles.printHeader}>
+                <div className={styles.printLogoSlot} aria-hidden="true" />
+                <div className={styles.printHeaderText}>
+                  <div className={styles.printTitle}>Process Parameter Matrix</div>
+                  <div className={styles.printMeta}>Printed on: {new Date().toLocaleString("en-IN")}</div>
+                </div>
+              </div>
+
               <div className={styles.matrixWrap}>
                 <table className={styles.matrixTable}>
                   <thead>
@@ -1291,6 +1323,10 @@ export default function ProcessParameterPage() {
                 </table>
               </div>
 
+              <div className={styles.printFooter}>
+                Downloaded by: {user?.name || user?.username || user?.email || "-"}
+              </div>
+
             </div>
           ) : (
             null
@@ -1313,6 +1349,7 @@ export default function ProcessParameterPage() {
                   entryId={selectedEntryId}
                   nextEntryIdPreview={nextAvailableId}
                   lockedCountName={lockedCountName}
+                  lockedConsigneeName={lockedConsigneeName}
                   {...getDepartmentFormProps(selectedSubDepartment, selectedTypeName, typeOptions)}
                   onTypeChange={
                     selectedSubDepartment === "Draw Frame"
@@ -1332,38 +1369,12 @@ export default function ProcessParameterPage() {
                   <Footer
                     onBack={() => { }}
                     onClear={() => componentRef.current?.clear?.()}
-                    onSave={async () => {
+                    onSave={() => {
                       const valid = componentRef.current?.validate?.();
                       if (valid === false) return;
-                      const previewItems = componentRef.current?.getPreviewData?.() || [];
-                      const result = await componentRef.current?.submit?.();
-                      refreshRegistryRows();
-                      const batchDisplayId = resolveProcessParameterDisplayId(result, selectedEntryId);
-                      if (batchDisplayId && !selectedEntryId) setSelectedEntryId(batchDisplayId);
-
-                      const colIndex = getColumnIndexForDepartment();
-                      const isSuccess = result !== false || batchDisplayId;
-                      if (isSuccess && batchDisplayId && colIndex > 0) {
-                        upsertRowStatus(batchDisplayId, colIndex - 1, true);
-                      }
-
-                      if (isSuccess) {
-                        try {
-                          await recordSubmittedNotebook({
-                            department: "Quality Control",
-                            subDepartment: selectedSubDepartment,
-                            notebookName: selectedTypeName,
-                            entryId: batchDisplayId || selectedEntryId,
-                            previewItems,
-                            user,
-                          });
-                        } catch (error) {
-                          console.warn(
-                            "Process parameter submitted notebook record failed:",
-                            error?.response?.data || error?.message || error
-                          );
-                        }
-                      }
+                      const items = componentRef.current?.getPreviewData?.() || [];
+                      setPreSubmitItems(items);
+                      setPreSubmitOpen(true);
                     }}
                     saveLabel="Save Record"
                   />
@@ -1375,6 +1386,16 @@ export default function ProcessParameterPage() {
           <div id="process-parameter-saved-versions" className={styles.savedVersionsSlot} />
         </div>
       </div>
+
+      <PreviewModal
+        open={preSubmitOpen}
+        title={`${selectedSubDepartment} Process Parameter Preview`}
+        subtitle={selectedTypeName}
+        items={preSubmitItems}
+        onCancel={() => !isSubmitting && setPreSubmitOpen(false)}
+        onConfirm={confirmSubmit}
+        confirmLabel={isSubmitting ? "Submitting..." : "Submit"}
+      />
 
       {previewPpId ? (
         <div

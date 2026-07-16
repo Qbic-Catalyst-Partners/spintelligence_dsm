@@ -54,8 +54,7 @@ const fetchSavedTrialCountMaster = async (prefix = '') => {
      WHERE count_name IS NOT NULL
        AND BTRIM(count_name) <> ''
        AND ($1::text = '' OR count_name ILIKE $2)
-     ORDER BY count_name
-     LIMIT 100`,
+     ORDER BY count_name`,
     [prefix, likeToken]
   );
 
@@ -80,7 +79,7 @@ const fetchSavedTrialMachines = async ({ prefix = '', department = '' } = {}) =>
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS count_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS count_name
      FROM dbo.Depot_CountMaster

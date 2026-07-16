@@ -11,7 +11,7 @@ import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
 
-const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
+const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const user = useSelector((state) => state.auth?.user);
@@ -55,24 +55,26 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
         }
     }, [actionSuccess, dispatch]);
 
+    // Variety/Party Name/PR No auto-fill from whatever lot is picked in the
+    // page's own Lot No dropdown (dbo.lotmaster joined to dbo.ledger_master).
+    // "Party Lot No" is a separate, independently-typed field on this form and
+    // must NOT be overwritten by that selection.
     useEffect(() => {
-        if (!selectedLotDetails && !lotNo) return;
+        if (!selectedLotDetails) return;
         setFormData((prev) => ({
             ...prev,
-            partyLotNo: selectedLotDetails?.lot_no || lotNo || prev.partyLotNo,
-            variety: selectedLotDetails?.variety || prev.variety,
-            partyName: selectedLotDetails?.party_name || prev.partyName,
-            prNo: selectedLotDetails?.invoice_no || prev.prNo,
+            variety: selectedLotDetails.variety || prev.variety,
+            partyName: selectedLotDetails.party_name || prev.partyName,
+            prNo: selectedLotDetails.invoice_no || prev.prNo,
         }));
         setErrors((prev) => {
             const next = { ...prev };
-            if (selectedLotDetails?.lot_no || lotNo) delete next.partyLotNo;
-            if (selectedLotDetails?.variety) delete next.variety;
-            if (selectedLotDetails?.party_name) delete next.partyName;
-            if (selectedLotDetails?.invoice_no) delete next.prNo;
+            if (selectedLotDetails.variety) delete next.variety;
+            if (selectedLotDetails.party_name) delete next.partyName;
+            if (selectedLotDetails.invoice_no) delete next.prNo;
             return next;
         });
-    }, [lotNo, selectedLotDetails]);
+    }, [selectedLotDetails]);
 
     const buildPayload = () => ({
         entry_id:        entryId || undefined,

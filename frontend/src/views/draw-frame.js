@@ -818,26 +818,31 @@ function DrawFrame() {
   useEffect(() => {
     let isMounted = true;
 
+    // Same machine source as U% Data Entry's MC No dropdown (dbo.MCMASTER scoped to
+    // Drawframe's Dept_Code 15/16), instead of the separate fetchDrawFrameMachineMaster path.
     const loadYarnCvMachineNames = async () => {
       try {
-        const machines = await fetchDrawFrameMachineMaster({
-          departmentCode: DRAW_FRAME_YARN_CV_DEPARTMENT_CODE,
-        });
+        const dropdown = await fetchDrawFrameUqcMasterDropdown();
         if (!isMounted) return;
+        const machines = Array.isArray(dropdown?.mcNos) ? dropdown.mcNos : [];
         const names = [];
         const nextMasterByName = {};
         machines.forEach((item) => {
           const machineName = normalizeMachineName(item);
-          const mcNo = String(item?.mc_no || item?.machine_no || item?.machineNo || item?.mcNo || "").trim();
+          const mcNo = String(item?.mc_no || item?.value || item?.machine_no || item?.machineNo || item?.mcNo || "").trim();
           if (!machineName) return;
           names.push(machineName);
           nextMasterByName[machineName] = { mcNo: mcNo || machineName };
         });
-        setYarnCvMachineOptions(mergeUniqueMachineNames(names, cvMachineOptions));
+        setYarnCvMachineOptions(
+          mergeUniqueMachineNames(names, [...cvMachineOptions, ...STATIC_BR_COTS_MACHINE_NAMES])
+        );
         setMachineMasterByName(nextMasterByName);
       } catch (_error) {
         if (isMounted) {
-          setYarnCvMachineOptions(mergeUniqueMachineNames([], cvMachineOptions));
+          setYarnCvMachineOptions(
+            mergeUniqueMachineNames([], [...cvMachineOptions, ...STATIC_BR_COTS_MACHINE_NAMES])
+          );
           setMachineMasterByName({});
         }
       }

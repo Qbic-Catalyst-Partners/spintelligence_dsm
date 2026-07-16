@@ -147,7 +147,7 @@ const displaySavedValue = (value) => {
 };
 
 const ProcessParameter = forwardRef(function ProcessParameter(
-  { entryId = "", nextEntryIdPreview = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "", lockedCountName = "" },
+  { entryId = "", nextEntryIdPreview = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "", lockedCountName = "", lockedConsigneeName = "" },
   ref
 ) {
   const [versions, setVersions] = useState([]);
@@ -262,6 +262,15 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       current.countName === lockedCountName ? current : { ...current, countName: lockedCountName }
     );
   }, [lockedCountName, versions]);
+
+  // Once a PP id has a locked consignee name (set by whichever sub-department entered it
+  // first), every other sub-department under that same PP id must reuse it.
+  useEffect(() => {
+    if (!lockedConsigneeName) return;
+    setForm((current) =>
+      current.consigneeName === lockedConsigneeName ? current : { ...current, consigneeName: lockedConsigneeName }
+    );
+  }, [lockedConsigneeName, versions]);
 
   const clearError = (field) => {
     setErrors((current) => {
@@ -417,7 +426,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
         : await saveBlowroomProcessParameterApi(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(response, "Blowroom", form.countName);
+      registerProcessParameterId(response, "Blowroom", form.countName, form.consigneeName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();
@@ -546,6 +555,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
               options={consigneeOptions}
               placeholder="Search or select consignee name"
               ariaLabel="Consignee Name"
+              disabled={Boolean(lockedConsigneeName)}
             />
           </div>
 

@@ -550,7 +550,7 @@ const getSpinningVarieties = async (req, res) => {
 
 const fetchCountChangeCountNames = async ({ prefix = '' } = {}) => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS var_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS variety_name
      FROM dbo.Depot_CountMaster
@@ -3405,7 +3405,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            thickness_min = $24,
            thickness_max = $25
        WHERE qc_id = $26
-       RETURNING qc_id, param_id`,
+       RETURNING *`,
       [
         count_name,
         consignee_name,

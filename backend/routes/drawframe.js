@@ -366,9 +366,14 @@ const ensureDrawframeEntryIdColumns = async () => {
     ALTER TABLE drawframe.drawframe_qc_header
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
   `);
+  // PP - Breaker and PP - Finisher share this table and the same PP id as entry_id (only
+  // entry_scope tells them apart), so entry_id alone can't be unique — a Finisher save under
+  // a PP id already used by that PP id's Breaker save would otherwise collide. Scope the
+  // uniqueness to (entry_id, entry_scope) instead.
+  await client.query(`DROP INDEX IF EXISTS drawframe.drawframe_qc_header_entry_id_uq;`);
   await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_qc_header_entry_id_uq
-    ON drawframe.drawframe_qc_header (entry_id)
+    CREATE UNIQUE INDEX IF NOT EXISTS drawframe_qc_header_entry_id_scope_uq
+    ON drawframe.drawframe_qc_header (entry_id, entry_scope)
     WHERE entry_id IS NOT NULL;
   `);
   // PP - Finisher Drawing shares this table with PP - Breaker Drawing (distinguished by
@@ -973,6 +978,7 @@ router.get('/master/machines', async (req, res, next) => {
        JOIN dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
          AND m.mcclose = '0'
+         AND m.DEPTCODE IN (15, 16)
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
        ORDER BY d.DEPTNAME, m.MCNAME`,
       { prefix, machinePrefix: likeToken }
@@ -1017,6 +1023,7 @@ const getDrawframeMachineNumbers = async (req, res, next) => {
        JOIN dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
          AND m.mcclose = '0'
+         AND m.DEPTCODE IN (15, 16)
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
          AND (
            @yarnCvPrefix = ''
@@ -1115,6 +1122,7 @@ const getDrawframeUqcMasterDropdown = async (req, res, next) => {
          JOIN dbo.dept_mai d ON m.DEPTCODE = d.DEPTCODE
          WHERE m.compcode = '1'
            AND m.mcclose = '0'
+           AND m.DEPTCODE IN (15, 16)
            AND (@prefix = '' OR CAST(m.MCCODE AS VARCHAR(50)) LIKE @mcNoPrefix)
            AND (@department = '' OR LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) LIKE @departmentLike)
            AND (@departmentCode = '' OR CAST(d.DEPTCODE AS VARCHAR(50)) = @departmentCode)
@@ -1338,6 +1346,7 @@ router.get('/cots/machine-numbers', async (req, res, next) => {
        JOIN dept_mai d ON m.DEPTCODE = d.DEPTCODE
        WHERE m.compcode = '1'
          AND m.mcclose = '0'
+         AND m.DEPTCODE IN (15, 16)
          AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @machinePrefix)
          AND (@deptCode = '' OR CAST(m.DEPTCODE AS VARCHAR(50)) = @deptCode)
          AND (@deptName = '' OR LTRIM(RTRIM(CAST(d.DEPTNAME AS VARCHAR(255)))) = @deptName)

@@ -503,8 +503,9 @@ function HomeDashboard() {
           })
           .filter((u) => u.id && u.name && (!u.role || allowed.has(u.role)));
 
-        const dedupedRoles = Array.from(new Set(roles));
         const dedupedUsers = users.filter((u, i, arr) => i === arr.findIndex((x) => x.id === u.id));
+        const rolesWithUsers = new Set(dedupedUsers.map((u) => u.role).filter(Boolean));
+        const dedupedRoles = Array.from(new Set(roles)).filter((role) => rolesWithUsers.has(role));
         setDashboardRoles(dedupedRoles);
         setDashboardUsers(dedupedUsers);
         setSelectedDashboardRole((cur) => (cur && dedupedRoles.includes(cur) ? cur : dedupedRoles[0] || ""));
@@ -523,8 +524,7 @@ function HomeDashboard() {
 
   const dashboardUsersForSelectedRole = useMemo(() => {
     if (!selectedDashboardRole) return dashboardUsers;
-    const roleMatchedUsers = dashboardUsers.filter((u) => u.role === selectedDashboardRole);
-    return roleMatchedUsers.length ? roleMatchedUsers : dashboardUsers;
+    return dashboardUsers.filter((u) => u.role === selectedDashboardRole);
   }, [dashboardUsers, selectedDashboardRole]);
 
   useEffect(() => {
