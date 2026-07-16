@@ -142,9 +142,15 @@ const ENTRY_ID_ROUTE_PREFIXES = {
   '/blowroom/process_parameter': { prefix: 'PP', width: 4, separator: '-' }
 };
 
+// Extract only the TRAILING run of digits (the actual sequence number), not
+// every digit in the string - regexp_replace(entry_id, '\D', '', 'g') used to
+// strip all non-digits globally, which silently concatenated any digit
+// baked into the prefix itself (e.g. "SW1-0002" -> "1" + "0002" = 10002
+// instead of 2) and corrupted the computed next-id for prefixes like
+// Spinning's SW1/SW2/SW3/SW4.
 const getRegisteredEntryIdMaxSql = `
   SELECT COALESCE(
-    MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
+    MAX(NULLIF(substring(entry_id from '(\\d+)$'), '')::bigint),
     0
   ) AS max_number
   FROM ticketing_system.frontend_entry_registry
@@ -167,7 +173,7 @@ const getTableEntryIdMax = async (tableName) => {
 
   const result = await db.query(
     `SELECT COALESCE(
-       MAX(NULLIF(regexp_replace(entry_id, '\\D', '', 'g'), '')::bigint),
+       MAX(NULLIF(substring(entry_id from '(\\d+)$'), '')::bigint),
        0
      ) AS max_number
      FROM ${tableName}`
@@ -244,12 +250,36 @@ app.use(async (req, res, next) => {
       req.body.entry_id = entryId;
     }
 
-    await db.query(
-      `INSERT INTO ticketing_system.frontend_entry_registry
-       (entry_id, module_name, route_path, method, status)
-       VALUES ($1, $2, $3, $4, 'reserved')`,
-      [entryId, moduleName, routePath, req.method]
-    );
+    // A resubmitted/stale reserved id (double-click, retry, a frontend
+    // reservation that lagged behind another tab's commit, etc.) would
+    // otherwise hard-fail the whole request with an opaque 409. Since this
+    // registry is purely an internal bookkeeping table (not the source of
+    // truth - the real uniqueness lives on each department table), silently
+    // minting a fresh id and retrying is safe and keeps genuine user
+    // submissions from being lost over a bookkeeping collision.
+    const MAX_ATTEMPTS = 3;
+    let lastError = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      try {
+        await db.query(
+          `INSERT INTO ticketing_system.frontend_entry_registry
+           (entry_id, module_name, route_path, method, status)
+           VALUES ($1, $2, $3, $4, 'reserved')`,
+          [entryId, moduleName, routePath, req.method]
+        );
+        lastError = null;
+        break;
+      } catch (insertError) {
+        if (insertError?.code !== '23505' || attempt === MAX_ATTEMPTS) {
+          lastError = insertError;
+          break;
+        }
+        const nextEntry = await getNextEntryIdForRoute({ routePath, moduleName });
+        entryId = nextEntry.entry_id;
+        req.body.entry_id = entryId;
+      }
+    }
+    if (lastError) throw lastError;
 
     req.frontendEntryId = entryId;
 
@@ -259,15 +289,15 @@ app.use(async (req, res, next) => {
         if (res.statusCode >= 400) {
           await db.query(
             `DELETE FROM ticketing_system.frontend_entry_registry
-             WHERE entry_id = $1 AND status = 'reserved'`,
-            [req.frontendEntryId]
+             WHERE entry_id = $1 AND route_path = $2 AND status = 'reserved'`,
+            [req.frontendEntryId, routePath]
           );
         } else {
           await db.query(
             `UPDATE ticketing_system.frontend_entry_registry
              SET status = 'committed', committed_at = NOW()
-             WHERE entry_id = $1`,
-            [req.frontendEntryId]
+             WHERE entry_id = $1 AND route_path = $2`,
+            [req.frontendEntryId, routePath]
           );
         }
       } catch (_) {

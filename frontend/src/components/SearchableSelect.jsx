@@ -114,8 +114,11 @@ function SearchableSelect({
         }}
         value={displayValue}
         onChange={(event) => {
+          // Typing here only filters the option list - it must not call the
+          // parent's onChange (which forms treat as "the user picked a
+          // value" and use to trigger fetches/side effects). Only an actual
+          // click on an option (handleSelect below) should do that.
           const nextValue = event.target.value;
-          onChange?.(nextValue);
           setSearchTerm(nextValue);
           setIsOpen(true);
         }}

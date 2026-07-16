@@ -19,6 +19,8 @@ function PreviewModal({
   onConfirm,
   onPrint,
   confirmLabel = "Submit",
+  confirmingLabel = "Submitting...",
+  confirming = false,
   typeLabel = "Type",
   typeValue,
 }) {
@@ -79,11 +81,24 @@ function PreviewModal({
         </div>
 
         <div className={styles.footer}>
-          <button type="button" className={styles.cancel} onClick={onCancel}>
+          <button type="button" className={styles.cancel} onClick={onCancel} disabled={confirming}>
             Cancel
           </button>
-          <button type="button" className={styles.confirm} onClick={onConfirm}>
-            {confirmLabel}
+          <button
+            type="button"
+            className={styles.confirm}
+            onClick={onConfirm}
+            disabled={confirming}
+            aria-busy={confirming}
+          >
+            {confirming ? (
+              <>
+                <span className={styles.spinner} aria-hidden="true" />
+                {confirmingLabel}
+              </>
+            ) : (
+              confirmLabel
+            )}
           </button>
         </div>
       </div>

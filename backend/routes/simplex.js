@@ -337,12 +337,18 @@ const ensureSimplexWheelChangeTable = async () => {
       ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS operator TEXT,
       ADD COLUMN IF NOT EXISTS remarks TEXT,
-      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved',
+      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
       ADD COLUMN IF NOT EXISTS review_remarks TEXT,
       ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
       ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+  `);
+  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
+  // so a prior deploy's wrong default ('approved') would otherwise persist
+  // forever. Force it explicitly on every startup.
+  await client.query(`
+    ALTER TABLE simplex.wheel_change ALTER COLUMN approval_status SET DEFAULT 'pending';
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS simplex_wheel_change_entry_id_uq

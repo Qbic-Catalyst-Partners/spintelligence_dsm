@@ -344,6 +344,12 @@ const ensureSpinningEntryIdColumns = async () => {
         ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS review_remarks TEXT;
     `);
+    // ADD COLUMN IF NOT EXISTS above is a no-op once the column already
+    // exists, so a stale/incorrect default from an older migration would
+    // otherwise persist forever. Force it explicitly on every startup.
+    await client.query(`
+      ALTER TABLE ${tableName} ALTER COLUMN approval_status SET DEFAULT 'pending';
+    `);
   }
 
   await client.query(`
@@ -887,7 +893,7 @@ const getWheelChangeMasterDropdown = async (req, res, next) => {
   }
 };
 
-const fetchLatestWheelChangeByVariety = async (tableName, variety, fields) => {
+const fetchLatestWheelChangeByVariety = async (tableName, variety, fields, approvalStatus = 'approved') => {
   const selectedVariety = String(variety || '').trim();
   if (!selectedVariety) return null;
 
@@ -898,10 +904,11 @@ const fetchLatestWheelChangeByVariety = async (tableName, variety, fields) => {
   const result = await client.query(
     `SELECT *
      FROM ${tableName}
-     WHERE ${fieldClauses}
+     WHERE (${fieldClauses})
+       AND approval_status = $2
      ORDER BY created_at DESC NULLS LAST, id DESC
      LIMIT 1`,
-    [selectedVariety]
+    [selectedVariety, approvalStatus]
   );
 
   return result.rows[0] || null;
@@ -3691,7 +3698,9 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       'empires_colour_existing',
       'empires_colour_proposed',
       'total_draft_existing',
-      'total_draft_proposed'
+      'total_draft_proposed',
+      'operator',
+      'remarks'
     ];
 
     if (!d.entry_id) {
@@ -3761,16 +3770,18 @@ router.get('/wheel-change/type1', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
        FROM spinning.wheel_change_inspection
        WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
+         AND ($2::text = '' OR approval_status = $2)
        ORDER BY created_at DESC`,
-      [variety]
+      [variety, approvalStatus]
     );
     const latestRecord = variety
-      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_inspection', variety, ['count_from_existing', 'count_from_proposed'])
+      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_inspection', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
       : null;
 
     res.json({
@@ -3922,7 +3933,9 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       'empires_colour_existing',
       'empires_colour_proposed',
       'total_draft_existing',
-      'total_draft_proposed'
+      'total_draft_proposed',
+      'operator',
+      'remarks'
     ];
 
     if (!d.entry_id) {
@@ -3966,16 +3979,18 @@ router.get('/wheel-change/type2', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
        FROM spinning.wheel_change_v2
        WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
+         AND ($2::text = '' OR approval_status = $2)
        ORDER BY created_at DESC`,
-      [variety]
+      [variety, approvalStatus]
     );
     const latestRecord = variety
-      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_v2', variety, ['count_from_existing', 'count_from_proposed'])
+      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_v2', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
       : null;
 
     res.json({
@@ -4127,7 +4142,9 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       'total_draft_existing',
       'total_draft_proposed',
       'empties_colour_existing',
-      'empties_colour_proposed'
+      'empties_colour_proposed',
+      'operator',
+      'remarks'
     ];
 
     if (!d.entry_id) {
@@ -4171,6 +4188,7 @@ router.get('/wheel-change/type3', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
        FROM spinning.wheel_change
@@ -4188,8 +4206,9 @@ router.get('/wheel-change/type3', async (req, res, next) => {
          OR LOWER(TRIM(COALESCE(tcw_proposed::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(tw_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(tw_proposed::text, ''))) = LOWER(TRIM($1)))
+         AND ($2::text = '' OR approval_status = $2)
        ORDER BY created_at DESC`,
-      [variety]
+      [variety, approvalStatus]
     );
     const latestRecord = variety
       ? await fetchLatestWheelChangeByVariety(
@@ -4210,7 +4229,8 @@ router.get('/wheel-change/type3', async (req, res, next) => {
           'tcw_proposed',
           'tw_existing',
           'tw_proposed'
-        ]
+        ],
+        approvalStatus || 'approved'
       )
       : null;
 
@@ -4295,7 +4315,9 @@ router.post('/wheel-change/type4', async (req, res, next) => {
       'bd_existing',
       'bd_proposed',
       'winding_length_existing',
-      'winding_length_proposed'
+      'winding_length_proposed',
+      'operator',
+      'remarks'
     ];
 
     if (!d.entry_id) {
@@ -4339,16 +4361,18 @@ router.get('/wheel-change/type4', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
        FROM spinning.wheel_change_type4
        WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
+         AND ($2::text = '' OR approval_status = $2)
        ORDER BY created_at DESC`,
-      [variety]
+      [variety, approvalStatus]
     );
     const latestRecord = variety
-      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_type4', variety, ['count_from_existing', 'count_from_proposed'])
+      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_type4', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
       : null;
 
     res.json({

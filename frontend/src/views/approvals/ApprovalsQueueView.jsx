@@ -18,6 +18,23 @@ const STATUS_BADGE_CLASS = {
 
 const trimValue = (value) => String(value ?? "").trim();
 
+const firstNonEmpty = (...values) => {
+  for (const value of values) {
+    const trimmed = trimValue(value);
+    if (trimmed) return trimmed;
+  }
+  return "";
+};
+
+// Raw type codes like "type1" (Spinning's four wheel-change tables set this
+// but have no wheel_change_type_label of their own, unlike Draw Frame) ->
+// "Type 1", so the list/detail title still shows which sub-type an entry
+// belongs to instead of falling all the way back to the generic pageTitle.
+const humanizeWheelChangeTypeCode = (value) => {
+  const match = String(value ?? "").trim().match(/^type_?(\d+)$/i);
+  return match ? `Type ${match[1]}` : "";
+};
+
 function StatusBadge({ status }) {
   const key = trimValue(status).toLowerCase() || "pending";
   return (
@@ -131,7 +148,19 @@ function ApprovalsQueueView({
       id: trimValue(item?.id ?? item?.approval_id ?? item?.entry_id ?? index),
       department: trimValue(item?.department ?? item?.department_name ?? ""),
       departmentLabel: resolveDepartmentLabel(item),
-      title: trimValue(item?.title ?? item?.wheel_change_type_label ?? item?.type ?? "") || pageTitle,
+      // A generic screen label like "Wheel Change" on item.type is truthy, so
+      // a ?? chain would always stop there before ever reaching the more
+      // specific wheel_change_type-derived title (e.g. Spinning's raw rows
+      // carry type: "Wheel Change" on every row regardless of sub-type) -
+      // pick the first value that's actually non-empty after trimming
+      // instead of the first merely-defined one.
+      title:
+        firstNonEmpty(
+          item?.title,
+          item?.wheel_change_type_label,
+          humanizeWheelChangeTypeCode(item?.wheel_change_type),
+          item?.type
+        ) || pageTitle,
       operator:
         trimValue(item?.operator ?? item?.operator_name ?? item?.user_name ?? item?.created_by ?? "") || "-",
       createdOn: item?.created_at ?? item?.created_on ?? item?.entry_date ?? "",

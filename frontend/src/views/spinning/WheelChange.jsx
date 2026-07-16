@@ -1383,6 +1383,7 @@ const WheelChange = forwardRef(function WheelChange(
         // /spinning/wheel-change/type4 endpoint — stripped before the POST body
         // is sent, since the backend expects `wheel_change_type` to hold the
         // "Wheel Change" label, not the type code.
+        entry_id: entryId,
         wheel_change_sub_type: typeCode,
         wheel_change_type: selectedTypeName || "Wheel Change",
         department: "Spinning",
@@ -1425,6 +1426,7 @@ const WheelChange = forwardRef(function WheelChange(
 
     if (!typeFieldConfig || !typeCode) {
       return {
+        entry_id: entryId,
         type: selectedTypeName,
         department: "Spinning",
         approval_status: "pending",
@@ -1436,6 +1438,7 @@ const WheelChange = forwardRef(function WheelChange(
     }
 
     const payload = {
+      entry_id: entryId,
       type: selectedTypeName,
       department: "Spinning",
       approval_status: "pending",

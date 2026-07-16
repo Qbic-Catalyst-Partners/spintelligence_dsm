@@ -172,6 +172,10 @@
   font-weight: 700;
   cursor: pointer;
   font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .cancel {
@@ -188,6 +192,27 @@
 
 .confirm:hover {
   background: #34488e;
+}
+
+.cancel:disabled,
+.confirm:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  animation: previewModalSpin 0.7s linear infinite;
+}
+
+@keyframes previewModalSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 :global(:root[data-theme="dark"]) .confirm,

@@ -511,6 +511,16 @@ const WheelChange = forwardRef(function WheelChange(
       ...current,
       entryId: String(referenceEntry.entry_id || referenceEntry.entryId || entryId || current.entryId || ""),
       date: String(referenceEntry.entry_date || referenceEntry.date || current.date || today).slice(0, 10),
+      // Existing carries forward from the last entry's Proposed value (same
+      // carry-forward pattern the parameter rows already use), so the
+      // operator only has to type a new Proposed SMX No. each time.
+      smxNo: String(
+        referenceEntry.proposed_sap_no ||
+          referenceEntry.proposedSapNo ||
+          referenceEntry.smx_no_proposed ||
+          current.smxNo ||
+          ""
+      ),
       smxNoProposed: String(
         referenceEntry.proposed_sap_no ||
           referenceEntry.proposedSapNo ||

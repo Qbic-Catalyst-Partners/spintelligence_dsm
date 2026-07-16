@@ -333,6 +333,7 @@ function SpinningDepartment() {
     const [isMobile, setIsMobile] = useState(false);
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [confirmedEntryId, setConfirmedEntryId] = useState("");
     // Which of Wheel Change's 4 sub-types (Type 1-4) is currently selected inside
@@ -1021,45 +1022,51 @@ function SpinningDepartment() {
     };
 
     const confirmSubmit = async () => {
-        if (isProcessParameter) {
+        if (submitting) return;
+        setSubmitting(true);
+        try {
+            if (isProcessParameter) {
+                const ok = await childRef.current?.submit?.();
+                setShowPreview(false);
+                if (ok === false) return;
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Spinning",
+                    notebookName: checkingType,
+                    entryId,
+                    childRef,
+                    previewItems,
+                    user,
+                });
+                return;
+            }
+            const payload = buildPayload();
+            const result = await dispatch(submitSpinningRecord({ type: checkingType, payload }));
             setShowPreview(false);
-            const ok = await childRef.current?.submit?.();
-            if (ok === false) return;
-            await recordSubmittedNotebook({
-                department: "Quality Control",
-                subDepartment: "Spinning",
-                notebookName: checkingType,
-                entryId,
-                childRef,
-                previewItems,
-                user,
-            });
-            return;
-        }
-        const payload = buildPayload();
-        setShowPreview(false);
-        const result = await dispatch(submitSpinningRecord({ type: checkingType, payload }));
-        if (submitSpinningRecord.fulfilled.match(result)) {
-            // The backend assigns its own entry_id for some screens (e.g. Wheel
-            // Change Type 4 — see SW4-NNNN in its create response) rather than
-            // using the locally-reserved placeholder, so prefer whatever the
-            // response actually returned.
-            const responseData = result.payload?.data ?? result.payload;
-            const realEntryId = String(
-                responseData?.entry_id ?? responseData?.entryId ?? entryId ?? ""
-            ).trim();
-            setConfirmedEntryId(realEntryId);
-            await recordSubmittedNotebook({
-                department: "Quality Control",
-                subDepartment: "Spinning",
-                notebookName: checkingType,
-                entryId: realEntryId || entryId,
-                previewItems,
-                user,
-                extra: {
-                    submitted_fields: payload,
-                },
-            });
+            if (submitSpinningRecord.fulfilled.match(result)) {
+                // The backend assigns its own entry_id for some screens (e.g. Wheel
+                // Change Type 4 — see SW4-NNNN in its create response) rather than
+                // using the locally-reserved placeholder, so prefer whatever the
+                // response actually returned.
+                const responseData = result.payload?.data ?? result.payload;
+                const realEntryId = String(
+                    responseData?.entry_id ?? responseData?.entryId ?? entryId ?? ""
+                ).trim();
+                setConfirmedEntryId(realEntryId);
+                await recordSubmittedNotebook({
+                    department: "Quality Control",
+                    subDepartment: "Spinning",
+                    notebookName: checkingType,
+                    entryId: realEntryId || entryId,
+                    previewItems,
+                    user,
+                    extra: {
+                        submitted_fields: payload,
+                    },
+                });
+            }
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -1719,6 +1726,8 @@ function SpinningDepartment() {
                 onCancel={() => setShowPreview(false)}
                 onConfirm={confirmSubmit}
                 confirmLabel="Submit"
+                confirming={submitting}
+                confirmingLabel="Submitting..."
             />
 
             <SuccessModal

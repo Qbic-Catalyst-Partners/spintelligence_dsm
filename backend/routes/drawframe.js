@@ -442,6 +442,12 @@ const ensureDrawframeWheelChangeTable = async () => {
       ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS review_remarks TEXT;
   `);
+  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
+  // so a stale/incorrect default from an older migration would otherwise
+  // persist forever. Force it explicitly on every startup.
+  await client.query(`
+    ALTER TABLE drawframe.wheel_change ALTER COLUMN approval_status SET DEFAULT 'pending';
+  `);
 
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS drawframe_wheel_change_entry_id_uq
@@ -2319,9 +2325,23 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const offset = (page - 1) * limit;
     const requestedType = String(req.query.wheel_change_type ?? req.query.wheelChangeType ?? defaultWheelChangeType ?? '').trim();
-    const whereClause = requestedType ? 'WHERE wheel_change_type = $3' : '';
-    const queryParams = requestedType ? [limit, offset, requestedType] : [limit, offset];
-    const countParams = requestedType ? [requestedType] : [];
+    const requestedStatus = String(req.query.approval_status ?? req.query.status ?? '').trim();
+
+    const conditions = [];
+    const filterParams = [];
+    if (requestedType) {
+      filterParams.push(requestedType);
+      conditions.push(`wheel_change_type = $${filterParams.length}`);
+    }
+    if (requestedStatus) {
+      filterParams.push(requestedStatus);
+      conditions.push(`approval_status = $${filterParams.length}`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const dataParams = [...filterParams, limit, offset];
+    const limitPlaceholder = `$${filterParams.length + 1}`;
+    const offsetPlaceholder = `$${filterParams.length + 2}`;
 
     const [dataResult, totalResult] = await Promise.all([
       client.query(
@@ -2329,12 +2349,12 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
          FROM drawframe.wheel_change
          ${whereClause}
          ORDER BY entry_date DESC NULLS LAST, id DESC
-         LIMIT $1 OFFSET $2`,
-        queryParams
+         LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
+        dataParams
       ),
       client.query(
-        `SELECT COUNT(*) FROM drawframe.wheel_change ${requestedType ? 'WHERE wheel_change_type = $1' : ''}`,
-        countParams
+        `SELECT COUNT(*) FROM drawframe.wheel_change ${whereClause}`,
+        filterParams
       )
     ]);
 

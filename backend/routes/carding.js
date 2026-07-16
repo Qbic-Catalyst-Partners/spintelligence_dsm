@@ -264,6 +264,12 @@ const ensureCardingChangeTables = async () => {
       ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS review_remarks TEXT;
   `);
+  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
+  // so a stale/incorrect default from an older migration would otherwise
+  // persist forever. Force it explicitly on every startup.
+  await client.query(`
+    ALTER TABLE carding.carding_change_request ALTER COLUMN approval_status SET DEFAULT 'pending';
+  `);
 };
 
 const ensureCardWasteStudyTable = async () => {
@@ -3248,6 +3254,11 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
  *       500:
  *         description: Server error
  */
+const toNumericOrNull = (value) => {
+  const trimmed = String(value ?? '').trim();
+  return trimmed === '' ? null : value;
+};
+
 router.post('/change-control', async (req, res, next) => {
   try {
     await ensureCardingChangeTables();
@@ -3363,38 +3374,38 @@ router.post('/change-control', async (req, res, next) => {
         cdg_no_proposed ?? null,
         mixing_existing ?? null,
         mixing_proposed ?? null,
-        blend_percent_existing ?? null,
-        blend_percent_proposed ?? null,
-        del_hank_existing ?? null,
-        del_hank_proposed ?? null,
-        feed_weight_existing ?? null,
-        feed_weight_proposed ?? null,
-        speed_existing ?? null,
-        speed_proposed ?? null,
-        licker_in_speed_1_existing ?? null,
-        licker_in_speed_1_proposed ?? null,
-        licker_in_speed_2_existing ?? null,
-        licker_in_speed_2_proposed ?? null,
-        cylinder_speed_existing ?? null,
-        cylinder_speed_proposed ?? null,
-        flats_speed_mm_min_existing ?? null,
-        flats_speed_mm_min_proposed ?? null,
-        feed_plate_to_licker_in_existing ?? null,
-        feed_plate_to_licker_in_proposed ?? null,
-        sfl_existing ?? null,
-        sfl_proposed ?? null,
-        sfd_existing ?? null,
-        sfd_proposed ?? null,
-        cylinder_to_flats_existing ?? null,
-        cylinder_to_flats_proposed ?? null,
-        cylinder_in_doffer_existing ?? null,
-        cylinder_in_doffer_proposed ?? null,
-        web_speed_draft_mw_v4_existing ?? null,
-        web_speed_draft_mw_v4_proposed ?? null,
-        lc_wing_setting_existing ?? null,
-        lc_wing_setting_proposed ?? null,
-        rr_rk_beater_speed_existing ?? null,
-        rr_rk_beater_speed_proposed ?? null,
+        toNumericOrNull(blend_percent_existing),
+        toNumericOrNull(blend_percent_proposed),
+        toNumericOrNull(del_hank_existing),
+        toNumericOrNull(del_hank_proposed),
+        toNumericOrNull(feed_weight_existing),
+        toNumericOrNull(feed_weight_proposed),
+        toNumericOrNull(speed_existing),
+        toNumericOrNull(speed_proposed),
+        toNumericOrNull(licker_in_speed_1_existing),
+        toNumericOrNull(licker_in_speed_1_proposed),
+        toNumericOrNull(licker_in_speed_2_existing),
+        toNumericOrNull(licker_in_speed_2_proposed),
+        toNumericOrNull(cylinder_speed_existing),
+        toNumericOrNull(cylinder_speed_proposed),
+        toNumericOrNull(flats_speed_mm_min_existing),
+        toNumericOrNull(flats_speed_mm_min_proposed),
+        toNumericOrNull(feed_plate_to_licker_in_existing),
+        toNumericOrNull(feed_plate_to_licker_in_proposed),
+        toNumericOrNull(sfl_existing),
+        toNumericOrNull(sfl_proposed),
+        toNumericOrNull(sfd_existing),
+        toNumericOrNull(sfd_proposed),
+        toNumericOrNull(cylinder_to_flats_existing),
+        toNumericOrNull(cylinder_to_flats_proposed),
+        toNumericOrNull(cylinder_in_doffer_existing),
+        toNumericOrNull(cylinder_in_doffer_proposed),
+        toNumericOrNull(web_speed_draft_mw_v4_existing),
+        toNumericOrNull(web_speed_draft_mw_v4_proposed),
+        toNumericOrNull(lc_wing_setting_existing),
+        toNumericOrNull(lc_wing_setting_proposed),
+        toNumericOrNull(rr_rk_beater_speed_existing),
+        toNumericOrNull(rr_rk_beater_speed_proposed),
         remarks ?? null,
         operator ?? null
       ]
@@ -3442,17 +3453,21 @@ router.get('/change-control', async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
     const offset = (page - 1) * limit;
+    const approvalStatus = String(req.query.approval_status ?? req.query.status ?? '').trim();
+    const whereClause = approvalStatus ? 'WHERE approval_status = $3' : '';
 
     const headerResult = await client.query(
       `SELECT *
        FROM carding.carding_change_request
+       ${whereClause}
        ORDER BY entry_date DESC, id DESC
        OFFSET $1 LIMIT $2`,
-      [offset, limit]
+      approvalStatus ? [offset, limit, approvalStatus] : [offset, limit]
     );
 
     const countResult = await client.query(
-      `SELECT COUNT(*) FROM carding.carding_change_request`
+      `SELECT COUNT(*) FROM carding.carding_change_request ${approvalStatus ? 'WHERE approval_status = $1' : ''}`,
+      approvalStatus ? [approvalStatus] : []
     );
 
     const data = headerResult.rows.map((row) => ({
