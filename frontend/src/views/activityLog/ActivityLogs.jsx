@@ -429,6 +429,7 @@ function ActivityLogs() {
                 <th>Sub Department</th>
                 <th>Notebook Type</th>
                 <th>User</th>
+                <th>Action Type</th>
                 <th>Activity</th>
                 <th>Date &amp; Time</th>
               </tr>
@@ -436,7 +437,7 @@ function ActivityLogs() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className={styles.stateCell}>
+                  <td colSpan={6} className={styles.stateCell}>
                     Loading activity logs...
                   </td>
                 </tr>
@@ -446,13 +447,14 @@ function ActivityLogs() {
                     <td>{formatSubDepartment(row)}</td>
                     <td>{row.notebook_type || "-"}</td>
                     <td>{formatUser(row)}</td>
-                    <td>{row.activity || row.description || row.action || "-"}</td>
+                    <td>{row.action || "-"}</td>
+                    <td>{row.activity || row.description || "-"}</td>
                     <td>{formatDateTime(row.date_time || row.created_at)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className={styles.stateCell}>
+                  <td colSpan={6} className={styles.stateCell}>
                     No activity logs found
                   </td>
                 </tr>

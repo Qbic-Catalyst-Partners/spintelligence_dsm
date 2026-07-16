@@ -346,7 +346,7 @@ app.use((req, res, next) => {
     if (res.statusCode >= 400) return;
 
     const moduleName = getActivityModuleName(path || req.path);
-    const actionName = getActivityActionName(req);
+    const actionName = res.locals.activityAction || getActivityActionName(req);
     const userId = Number.isInteger(Number(req.user?.id)) ? Number(req.user.id) : null;
     const metadata = {
       method,
@@ -356,7 +356,8 @@ app.use((req, res, next) => {
       query: req.query || {},
       status_code: res.statusCode,
       notebook_type: req.body?.notebook_type || req.body?.notebook || req.body?.input_screen || moduleName,
-      sub_department: req.body?.sub_department || req.body?.subDepartment || req.body?.management_field || req.body?.department || null
+      sub_department: req.body?.sub_department || req.body?.subDepartment || req.body?.management_field || req.body?.department || null,
+      ...(res.locals.activityMetadata || {})
     };
 
     createActivityLog({
@@ -365,7 +366,7 @@ app.use((req, res, next) => {
       employeeId: req.user?.employee_id || null,
       module: moduleName,
       action: actionName,
-      description: `${actionName} ${moduleName}`,
+      description: res.locals.activityDescription || `${actionName} ${moduleName}`,
       metadata,
       ipAddress: req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || null,
       userAgent: req.headers['user-agent'] || null
