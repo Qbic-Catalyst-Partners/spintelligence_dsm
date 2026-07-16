@@ -259,7 +259,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
         setCountDropdownOptions(unique);
         setForm((current) => ({
           ...current,
-          countName: unique.some((item) => item.label === current.countName) ? current.countName : unique[0].label,
+          countName: unique.some((item) => item.label === current.countName) ? current.countName : "",
         }));
       }
     };
@@ -319,6 +319,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const formFields = [
     { label: "Type", field: "type", type: "select", options: typeOptions, value: selectedTypeName || form.type, placeholder: "Enter type" },
     { label: "Entry ID", field: "date", type: "text", value: entryId, placeholder: "Entry ID" },
+    { label: "Count Name", field: "countName", type: "select", options: countDropdownOptions, placeholder: "Select count name" },
   ];
 
   const detailFields = [
@@ -430,16 +431,6 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       <div className="flex flex-col gap-10">
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-3 print:grid-cols-3">
           {formFields.map(renderField)}
-        </div>
-
-        <div className="grid grid-cols-1 gap-x-8 gap-y-5 xl:grid-cols-[184px_184px_184px] print:grid-cols-[184px_184px_184px]">
-          {renderField({
-            label: "Count Name",
-            field: "countName",
-            type: "select",
-            options: countDropdownOptions,
-            placeholder: "Enter count name",
-          })}
         </div>
 
         <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-4 print:grid-cols-4">

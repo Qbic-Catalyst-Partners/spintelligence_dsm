@@ -7,6 +7,7 @@ import {
   saveAutoconerRewindingStudy,
 } from "@/store/slices/autoconer";
 import { fetchAutoconerRewindingStudyMasterData } from "@/apis/autoconer";
+import SearchableSelect from "@/components/SearchableSelect";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -1116,7 +1117,16 @@ const RewindingStudy = forwardRef(function RewindingStudy(
                     );
                   })}
                 </select>
-              ) : type === "select" && (field === "countNameFrom" || field === "autoConerNo") ? (
+              ) : type === "select" && field === "countNameFrom" ? (
+                <SearchableSelect
+                  className={`${topFieldClass}${errorClass(errors[field])}`}
+                  value={fieldValue}
+                  onChange={(value) => handleFormChange(field, value)}
+                  options={options}
+                  placeholder={placeholder || "Select"}
+                  ariaLabel={label}
+                />
+              ) : type === "select" && field === "autoConerNo" ? (
                 <select
                   className={`${topFieldClass}${errorClass(errors[field])}`}
                   value={fieldValue}

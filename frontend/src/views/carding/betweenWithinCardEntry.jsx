@@ -137,7 +137,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const [inspectionDate, setInspectionDate] = useState("");
     const [inspectionTime, setInspectionTime] = useState("");
     const [testId, setTestId] = useState("");
-    const [mcName, setMcName] = useState("CDG-05");
+    const [mcName, setMcName] = useState("");
     const [machineOptions, setMachineOptions] = useState(defaultMachineOptions);
     const [inspectionType, setInspectionType] = useState("Within");
     const [entryCount, setEntryCount] = useState(5);
@@ -180,7 +180,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                 const options = await fetchCardingMasterMachines({ prefix: "CDG" });
                 if (options.length) {
                     setMachineOptions(options);
-                    setMcName((current) => (options.includes(current) ? current : options[0]));
+                    setMcName((current) => (options.includes(current) ? current : ""));
                 }
             } catch {
                 setMachineOptions(defaultMachineOptions);

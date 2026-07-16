@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
+import SearchableSelect from "@/components/SearchableSelect";
 
 import styles from "@/styles/uPercentParameterEntries.module.css";
 import { toNullableNumber } from "@/apis/autoconer";
@@ -219,7 +220,7 @@ function UPercentParameterEntries({
     pendingQualityParameterEntries = [],
   } = autoconerState;
   const [entryDate, setEntryDate] = useState(getTodayDate());
-  const [countName, setCountName] = useState(COUNT_NAME_OPTIONS[0]);
+  const [countName, setCountName] = useState("");
   const [values, setValues] = useState(createInitialValues);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
@@ -322,7 +323,7 @@ function UPercentParameterEntries({
   const clear = () => {
     setSelectedEntryId(null);
     setEntryDate(getTodayDate());
-    setCountName(countDropdownOptions[0] || COUNT_NAME_OPTIONS[0]);
+    setCountName("");
     setValues(createInitialValues());
     setErrors({});
   };
@@ -422,7 +423,7 @@ function UPercentParameterEntries({
       getEntryValue(selectedPendingEntry, ["entry_date", "date", "inspection_date"]) || getTodayDate()
     );
     setCountName(
-      getEntryValue(selectedPendingEntry, ["count_name", "countName"]) || countDropdownOptions[0] || COUNT_NAME_OPTIONS[0]
+      getEntryValue(selectedPendingEntry, ["count_name", "countName"]) || ""
     );
     setValues((current) => ({
       ...current,
@@ -608,17 +609,14 @@ function UPercentParameterEntries({
 
         <div className={`${styles.metricField} ${styles.countNameField}`}>
           <label>Count Name</label>
-          <select
+          <SearchableSelect
             value={countName}
-            onChange={(event) => setCountName(event.target.value)}
+            onChange={(value) => setCountName(value)}
+            options={countDropdownOptions}
             className={`${styles.input} ${styles.topControlInput} ${errors.countName ? styles.errorField : ""}`}
-          >
-            {countDropdownOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            ariaLabel="Count Name"
+            placeholder="Select count name"
+          />
         </div>
       </div>
 

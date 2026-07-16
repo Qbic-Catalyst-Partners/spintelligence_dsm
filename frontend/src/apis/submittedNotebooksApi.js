@@ -105,8 +105,8 @@ export const fetchSubmittedNotebookDetailApi = async (id) => {
     return response.data;
 };
 
-export const acknowledgeSubmittedNotebookApi = async (id) => {
-    const response = await apiConfig.patch(`/submitted-notebooks/${id}/acknowledge`, {}, {
+export const acknowledgeSubmittedNotebookApi = async (id, { note = "" } = {}) => {
+    const response = await apiConfig.patch(`/submitted-notebooks/${id}/acknowledge`, { note }, {
         skipGlobalSuccessModal: true,
     });
     return response.data;

@@ -20,7 +20,6 @@ const getTodayDate = () => {
 };
 
 const countOptions = [
-  { value: "", label: "Select Count Name" },
   { value: "10 COTTON POLY LINEN 60/20/20 400...", label: "10 COTTON POLY LINEN 60/20/20 400..." },
   { value: "20 WHITE POLY YARN CONES", label: "20 WHITE POLY YARN CONES" },
   { value: "30 BLACK POLY YARN CONES", label: "30 BLACK POLY YARN CONES" },
@@ -87,7 +86,7 @@ function DrumWiseAppearance({
   const { isLoading = false, isFetching = false, drumWise: savedEntries = [] } = autoconerState;
   const [entryDate, setEntryDate] = useState(todayDate);
   const [testNo, setTestNo] = useState("");
-  const [countName, setCountName] = useState(countOptions[0].value);
+  const [countName, setCountName] = useState("");
   const [countCode, setCountCode] = useState("");
   const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0].value);
   const [countDropdownOptions, setCountDropdownOptions] = useState(
@@ -139,8 +138,8 @@ function DrumWiseAppearance({
   const resetForm = () => {
     setEntryDate(todayDate);
     setTestNo("");
-    setCountName(countDropdownOptions[0]?.label || countOptions[0].value);
-    setCountCode(countDropdownOptions[0]?.code || "");
+    setCountName("");
+    setCountCode("");
     setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0].value);
     setDrumFrom("");
     setDrumTo("");
@@ -282,7 +281,7 @@ function DrumWiseAppearance({
       const nextAutos = dedupe([...autoOpts, ...legacyAuto]);
       if (nextCounts.length) {
         setCountDropdownOptions(nextCounts);
-        setCountName((current) => (nextCounts.some((item) => item.label === current) ? current : nextCounts[0].label));
+        setCountName((current) => (nextCounts.some((item) => item.label === current) ? current : ""));
       }
       if (nextAutos.length) {
         setAutoconerDropdownOptions(nextAutos);
@@ -438,6 +437,21 @@ function DrumWiseAppearance({
           </div>
 
           <div className={styles.field}>
+            <label>Count Name</label>
+            <SearchableSelect
+              value={countName}
+              onChange={(value) => {
+                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+                setCountName(selected?.label ?? value);
+                setCountCode(selected?.code ?? "");
+              }}
+              options={countDropdownOptions.map((option) => option.label)}
+              className={styles.select}
+              placeholder="Select count name"
+            />
+          </div>
+
+          <div className={styles.field}>
             <label>Test No</label>
             <input
               type="text"
@@ -453,20 +467,6 @@ function DrumWiseAppearance({
               }}
               style={errorStyle(errors.testNo)}
               placeholder="Enter Test No"
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label>Count Name</label>
-            <SearchableSelect
-              value={countName}
-              onChange={(value) => {
-                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
-                setCountName(selected?.label ?? value);
-                setCountCode(selected?.code ?? "");
-              }}
-              options={countDropdownOptions.map((option) => option.label)}
-              className={styles.select}
             />
           </div>
 

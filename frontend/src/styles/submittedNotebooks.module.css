@@ -171,6 +171,7 @@
     flex-direction: column;
     width: min(820px, 100%);
     max-height: min(76vh, 620px);
+    overflow-y: auto;
     border-radius: 8px;
     background: #ffffff;
     padding: 32px 42px 30px;
@@ -212,10 +213,7 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     align-items: start;
     gap: 14px 18px;
-    overflow-y: auto;
-    max-height: 360px;
-    margin: 0 -8px 26px 0;
-    padding-right: 8px;
+    margin: 0 0 26px;
 }
 
 .fieldCard {
@@ -237,6 +235,48 @@
     overflow-wrap: anywhere;
     word-break: break-word;
     white-space: normal;
+}
+
+.reviewSection {
+    margin: 0 0 16px;
+}
+
+.reviewLabel {
+    display: block;
+    margin-bottom: 6px;
+    color: #111827;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.reviewLabel .required {
+    margin-left: 4px;
+    color: #dc2626;
+}
+
+.reviewTextarea {
+    width: 100%;
+    min-height: 72px;
+    border: 1px solid #e4e8ef;
+    border-radius: 6px;
+    background: #f4f6f8;
+    padding: 10px 12px;
+    color: #111827;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.reviewTextarea.reviewError {
+    border-color: #dc2626;
+}
+
+.reviewErrorText {
+    margin: 6px 0 0;
+    color: #dc2626;
+    font-size: 11px;
+    font-weight: 700;
 }
 
 .ackButton {
@@ -357,6 +397,16 @@
     background: #1f2937;
 }
 
+:global(:root[data-theme="dark"]) .reviewLabel {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .reviewTextarea {
+    border-color: #334155;
+    background: #1f2937;
+    color: #f8fafc;
+}
+
 :global(:root[data-theme="dark"]) .filterField small {
     color: #94a3b8;
 }
@@ -425,7 +475,6 @@
     }
 
     .fieldGrid {
-        max-height: 420px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
@@ -444,7 +493,6 @@
     }
 
     .fieldGrid {
-        max-height: 52vh;
         grid-template-columns: 1fr;
     }
 }

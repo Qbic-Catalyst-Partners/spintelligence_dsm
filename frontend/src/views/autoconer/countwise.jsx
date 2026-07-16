@@ -19,7 +19,6 @@ const getTodayDate = () => {
 };
 
 const countOptions = [
-  "Select Count Name",
   "30S Cotton",
   "40S Poly Cotton",
   "40s Cotton",
@@ -123,7 +122,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const { isLoading = false } = autoconerState;
   const [date, setDate] = useState(todayDate);
   const [machineNo, setMachineNo] = useState(machineOptions[0]);
-  const [count, setCount] = useState(countOptions[0]);
+  const [count, setCount] = useState("");
   const [countCode, setCountCode] = useState("");
   const [machineDropdownOptions, setMachineDropdownOptions] = useState(
     machineOptions.map((option) => ({ value: option, label: option }))
@@ -161,8 +160,8 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const resetForm = () => {
     setDate(todayDate);
     setMachineNo(machineDropdownOptions[0]?.value || machineOptions[0]);
-    setCount(countDropdownOptions[0]?.label || countOptions[0]);
-    setCountCode(countDropdownOptions[0]?.code || "");
+    setCount("");
+    setCountCode("");
     setCraneTip("");
     setLotNo("");
     setFrameNo("");
@@ -175,7 +174,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     if (!String(selectedType || "").trim()) nextErrors.type = true;
     if (!String(date || "").trim()) nextErrors.date = true;
     if (!String(machineNo || "").trim() || machineNo === machineOptions[0]) nextErrors.machineNo = true;
-    if (!String(count || "").trim() || count === countOptions[0]) nextErrors.count = true;
+    if (!String(count || "").trim()) nextErrors.count = true;
     if (!String(craneTip || "").trim()) nextErrors.craneTip = true;
     if (!String(lotNo || "").trim()) nextErrors.lotNo = true;
     if (!String(frameNo || "").trim()) nextErrors.frameNo = true;
@@ -296,7 +295,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
       const nextMachines = dedupe([...machinesFromObjects, ...machinesFromLegacy]);
       if (nextCounts.length) {
         setCountDropdownOptions(nextCounts);
-        setCount((current) => (nextCounts.some((item) => item.label === current) ? current : nextCounts[0].label));
+        setCount((current) => (nextCounts.some((item) => item.label === current) ? current : ""));
       }
       if (nextMachines.length) {
         setMachineDropdownOptions(nextMachines);
@@ -365,16 +364,6 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
         </div>
 
         <div className={styles.field}>
-          <label>Machine No.</label>
-          <SearchableSelect
-            value={machineNo}
-            onChange={(value) => setMachineNo(value)}
-            options={machineDropdownOptions.map((option) => option.value)}
-            className={styles.select}
-          />
-        </div>
-
-        <div className={styles.field}>
           <label>Count</label>
           <SearchableSelect
             value={count}
@@ -384,6 +373,17 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
               setCountCode(selected?.code ?? "");
             }}
             options={countDropdownOptions.map((option) => option.label)}
+            className={styles.select}
+            placeholder="Select count name"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label>Machine No.</label>
+          <SearchableSelect
+            value={machineNo}
+            onChange={(value) => setMachineNo(value)}
+            options={machineDropdownOptions.map((option) => option.value)}
             className={styles.select}
           />
         </div>

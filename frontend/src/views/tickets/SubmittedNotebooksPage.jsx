@@ -439,6 +439,14 @@ const getCreatedDate = (notebook) =>
     notebook?.ack_due_at ||
     null;
 
+const getNotebookReviewNote = (notebook) =>
+    String(
+        notebook?.acknowledgement_note ??
+        notebook?.acknowledgementNote ??
+        notebook?.note ??
+        ""
+    ).trim();
+
 const formatTime = (value) => {
     if (!value) return "--";
     const date = new Date(value);
@@ -1104,6 +1112,8 @@ const SubmittedNotebooksPage = () => {
     const [error, setError] = useState("");
     const [acknowledgingId, setAcknowledgingId] = useState(null);
     const [showAcknowledgeConfirm, setShowAcknowledgeConfirm] = useState(false);
+    const [reviewNote, setReviewNote] = useState("");
+    const [reviewNoteError, setReviewNoteError] = useState(false);
     const [users, setUsers] = useState([]);
     const [filters, setFilters] = useState({
         department: "",
@@ -1187,6 +1197,7 @@ const SubmittedNotebooksPage = () => {
                     operator: getNotebookOperatorName(notebook, users),
                     supervisor: getNotebookSupervisorName(notebook, users),
                     createdAt: getCreatedDate(notebook),
+                    review: getNotebookReviewNote(notebook),
                 };
             }),
         [notebooks, users]
@@ -1246,6 +1257,8 @@ const SubmittedNotebooksPage = () => {
         const id = getNotebookId(notebook);
         setSelectedNotebook(notebook);
         setShowAcknowledgeConfirm(false);
+        setReviewNote("");
+        setReviewNoteError(false);
 
         setIsDetailLoading(true);
         try {
@@ -1279,12 +1292,14 @@ const SubmittedNotebooksPage = () => {
         if (!id) return;
         setAcknowledgingId(id);
         try {
-            await acknowledgeSubmittedNotebookApi(id);
+            await acknowledgeSubmittedNotebookApi(id, { note: reviewNote.trim() });
             setNotebooks((currentNotebooks) =>
                 currentNotebooks.filter((notebook) => getNotebookId(notebook) !== id)
             );
             setSelectedNotebook(null);
             setShowAcknowledgeConfirm(false);
+            setReviewNote("");
+            setReviewNoteError(false);
             await loadNotebooks();
         } finally {
             setAcknowledgingId(null);
@@ -1293,6 +1308,11 @@ const SubmittedNotebooksPage = () => {
 
     const requestAcknowledgeConfirmation = () => {
         if (!getNotebookId(selectedNotebook)) return;
+        if (!reviewNote.trim()) {
+            setReviewNoteError(true);
+            return;
+        }
+        setReviewNoteError(false);
         setShowAcknowledgeConfirm(true);
     };
 
@@ -1405,6 +1425,10 @@ const SubmittedNotebooksPage = () => {
                                         <small>Created At</small>
                                         <strong>{formatDateTime(item.createdAt)}</strong>
                                     </span>
+                                    <span>
+                                        <small>Review</small>
+                                        <strong>{item.review || "-"}</strong>
+                                    </span>
                                 </span>
                             </button>
                         );
@@ -1421,6 +1445,8 @@ const SubmittedNotebooksPage = () => {
                     onClick={() => {
                         setSelectedNotebook(null);
                         setShowAcknowledgeConfirm(false);
+                        setReviewNote("");
+                        setReviewNoteError(false);
                     }}
                 >
                     <div
@@ -1468,6 +1494,25 @@ const SubmittedNotebooksPage = () => {
                             ) : (
                                 <div className={styles.emptyState}>No submitted fields available.</div>
                             )}
+                        </div>
+
+                        <div className={styles.reviewSection}>
+                            <label className={styles.reviewLabel} htmlFor="submitted-notebook-review">
+                                Review<span className={styles.required}>*</span>
+                            </label>
+                            <textarea
+                                id="submitted-notebook-review"
+                                className={`${styles.reviewTextarea} ${reviewNoteError ? styles.reviewError : ""}`}
+                                value={reviewNote}
+                                onChange={(event) => {
+                                    setReviewNote(event.target.value);
+                                    if (reviewNoteError && event.target.value.trim()) setReviewNoteError(false);
+                                }}
+                                placeholder="Enter your review before acknowledging"
+                            />
+                            {reviewNoteError ? (
+                                <p className={styles.reviewErrorText}>Review is required before you can acknowledge.</p>
+                            ) : null}
                         </div>
 
                         <button

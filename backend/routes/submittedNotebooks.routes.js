@@ -1160,7 +1160,7 @@ router.get('/', async (req, res, next) => {
     const rows = await client.query(
       `SELECT id, notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
               submitted_by_user_id, submitted_by_name, l2_approver_user_ids, l3_approver_user_ids, status,
-              submitted_at, ack_due_at, acknowledged_at, acknowledged_by_name,
+              submitted_at, ack_due_at, acknowledged_at, acknowledged_by_name, acknowledgement_note,
               overdue_ticket_id, overdue_ticket_created_at, created_at, updated_at
        FROM ticketing_system.submitted_notebooks
        ${whereSql}

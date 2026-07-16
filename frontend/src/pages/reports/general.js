@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import { useRouter } from "next/router";
 import { FiFileText, FiChevronDown, FiCalendar } from "react-icons/fi";
 
 import styles from "@/styles/reports.module.css";
@@ -330,7 +329,6 @@ const getWorksheetName = (name, index, usedNames) => {
 };
 
 export default function GeneralReport() {
-  const router = useRouter();
   const [fromDate, setFromDate] = useState(toInputDate(today));
   const [toDate, setToDate] = useState(toInputDate(today));
   const fromDateInputRef = useRef(null);
@@ -842,7 +840,6 @@ export default function GeneralReport() {
           <p>Select filters and generate the report to view tables.</p>
 
           <div className={styles.exportActions}>
-            <button type="button" onClick={() => router.push("/reports")}>Schedule Report</button>
             <button type="button" onClick={handleExportCsv} disabled={!isReportGenerated}>Export CSV</button>
             <button type="button" onClick={handleExportExcel} disabled={!isReportGenerated}>Export Excel</button>
             <button type="button" className={styles.primaryExport} onClick={handleExportPdf} disabled={!isReportGenerated}>Export PDF</button>

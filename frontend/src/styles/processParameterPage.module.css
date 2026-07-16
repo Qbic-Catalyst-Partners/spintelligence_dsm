@@ -106,10 +106,21 @@
   color: #344153;
 }
 
-.subDeptField select,
 .fieldGroup input,
 .fieldGroup select {
   width: 160px;
+  height: 32px;
+  border-radius: 5px;
+  border: 1px solid #dce5f2;
+  background: #ffffff;
+  padding: 0 11px;
+  font-size: 13px;
+  color: #111827;
+  outline: none;
+}
+
+.subDeptField select {
+  width: 260px;
   height: 32px;
   border-radius: 5px;
   border: 1px solid #dce5f2;
@@ -197,6 +208,20 @@
   padding: 16px 18px 18px;
   background: transparent;
   min-height: 360px;
+}
+
+.messageBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 160px;
+  padding: 24px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #55648d;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .listToolbar {

@@ -82,7 +82,7 @@ function SpliceStrength({
   const { isLoading = false, isFetching = false, spliceStrength: savedEntries = [] } = autoconerState;
   const [date, setDate] = useState(todayDate);
   const [testNo, setTestNo] = useState("");
-  const [countName, setCountName] = useState(countOptions[0]);
+  const [countName, setCountName] = useState("");
   const [countCode, setCountCode] = useState("");
   const [autoconerNo, setAutoconerNo] = useState(autoconerOptions[0]);
   const [countDropdownOptions, setCountDropdownOptions] = useState(
@@ -164,8 +164,8 @@ function SpliceStrength({
   const resetForm = () => {
     setDate(todayDate);
     setTestNo("");
-    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
-    setCountCode(countDropdownOptions[0]?.code || "");
+    setCountName("");
+    setCountCode("");
     setAutoconerNo(autoconerDropdownOptions[0]?.value || autoconerOptions[0]);
     setDrumFrom("");
     setDrumTo("");
@@ -314,7 +314,7 @@ function SpliceStrength({
         setCountName((current) =>
           nextCountOptions.some((option) => option.label === current)
             ? current
-            : nextCountOptions[0].label
+            : ""
         );
       }
       if (nextAutoconerOptions.length) {
@@ -459,6 +459,21 @@ function SpliceStrength({
           </div>
 
           <div className={styles.field}>
+            <label>Count Name (From)</label>
+            <SearchableSelect
+              value={countName}
+              onChange={(value) => {
+                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
+                setCountName(selected?.label ?? value);
+                setCountCode(selected?.code ?? "");
+              }}
+              options={countDropdownOptions.map((option) => option.label)}
+              className={styles.select}
+              placeholder="Select count name"
+            />
+          </div>
+
+          <div className={styles.field}>
             <label>Test No</label>
             <input
               type="text"
@@ -474,20 +489,6 @@ function SpliceStrength({
               }}
               style={errorStyle(errors.testNo)}
               placeholder="Enter Test No"
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label>Count Name (From)</label>
-            <SearchableSelect
-              value={countName}
-              onChange={(value) => {
-                const selected = countDropdownOptions.find((option) => option.label === value || option.value === value);
-                setCountName(selected?.label ?? value);
-                setCountCode(selected?.code ?? "");
-              }}
-              options={countDropdownOptions.map((option) => option.label)}
-              className={styles.select}
             />
           </div>
 

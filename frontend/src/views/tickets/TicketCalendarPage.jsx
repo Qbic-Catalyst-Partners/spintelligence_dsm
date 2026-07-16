@@ -15,16 +15,24 @@ const EMPLOYEE_DEFAULT = "Employee";
 const getEmpId = (ticket) =>
   ticket?.employee_id || ticket?.emp_id || ticket?.employeeId || "";
 
-const isIdByMode = (value, mode) => {
-  const normalized = String(value || "").trim().toUpperCase();
-  if (mode === "L2") return normalized.startsWith("SUP");
-  return normalized.startsWith("EMP");
+const resolveTicketEmpId = (ticket, userIdByName) => {
+  const direct = String(getEmpId(ticket) || "").trim().toUpperCase();
+  if (direct) return direct;
+  const name = String(ticket?.user_name || "").trim().toLowerCase();
+  return String(userIdByName.get(name) || "").trim().toUpperCase();
 };
 
-const getEmployeeOptionValue = (ticket, mode) => {
+const isLevelByMode = (value, mode) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (mode === "L2") return normalized === "L2";
+  return normalized === "L1" || !normalized;
+};
+
+const getEmployeeOptionValue = (ticket, mode, levelByName) => {
   const name = String(ticket?.user_name || "").trim();
   const empId = String(getEmpId(ticket) || "").trim();
-  if (empId && !isIdByMode(empId, mode)) return "";
+  const level = levelByName.get(name.toLowerCase()) || "";
+  if (!isLevelByMode(level, mode)) return "";
   if (empId && name) return `${empId}-${name}`;
   if (empId) return empId;
   return "";
@@ -90,12 +98,6 @@ const weekStart = (date) => {
 const toPositiveInt = (value, fallback = 1) => {
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : fallback;
-};
-const resolveTicketEmpId = (ticket, userIdByName) => {
-  const direct = String(getEmpId(ticket) || "").trim().toUpperCase();
-  if (direct) return direct;
-  const name = String(ticket?.user_name || "").trim().toLowerCase();
-  return String(userIdByName.get(name) || "").trim().toUpperCase();
 };
 const normalizeNameList = (value) => {
   if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
@@ -166,6 +168,16 @@ export default function TicketCalendarPage({ mode = "L1" }) {
       ),
     [users]
   );
+  const levelByName = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(users) ? users : []).map((u) => [
+          String(u?.name || "").trim().toLowerCase(),
+          String(u?.level || "").trim().toUpperCase(),
+        ])
+      ),
+    [users]
+  );
   const thresholdTickets = useMemo(() => {
     const normalized = [];
 
@@ -215,13 +227,11 @@ export default function TicketCalendarPage({ mode = "L1" }) {
   const modeTickets = useMemo(
     () =>
       thresholdTickets.filter((t) => {
-        const resolvedEmpId = resolveTicketEmpId(t, userIdByName);
-        if (!resolvedEmpId) {
-          return true;
-        }
-        return isIdByMode(resolvedEmpId, mode);
+        const name = String(t?.user_name || "").trim().toLowerCase();
+        const level = levelByName.get(name) || "";
+        return isLevelByMode(level, mode);
       }),
-    [thresholdTickets, mode, userIdByName]
+    [thresholdTickets, mode, levelByName]
   );
 
   const employees = useMemo(() => {
@@ -229,7 +239,8 @@ export default function TicketCalendarPage({ mode = "L1" }) {
       .map((u) => {
         const empId = String(u?.employeeId || "").trim();
         const name = String(u?.name || "").trim();
-        if (!isIdByMode(empId, mode)) return "";
+        const level = String(u?.level || "").trim().toUpperCase();
+        if (!isLevelByMode(level, mode)) return "";
         if (empId && name) return `${empId}-${name}`;
         if (empId) return empId;
         return "";
@@ -239,12 +250,12 @@ export default function TicketCalendarPage({ mode = "L1" }) {
     const unique = Array.from(
       new Set(
         [...fromUsers, ...modeTickets]
-          .map((t) => (typeof t === "string" ? t : getEmployeeOptionValue(t, mode)))
+          .map((t) => (typeof t === "string" ? t : getEmployeeOptionValue(t, mode, levelByName)))
           .filter(Boolean)
       )
     ).sort();
     return [EMPLOYEE_DEFAULT, ...unique];
-  }, [modeTickets, mode, users]);
+  }, [modeTickets, mode, users, levelByName]);
 
   const filtered = useMemo(
     () => {

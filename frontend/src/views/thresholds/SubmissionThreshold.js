@@ -37,6 +37,8 @@ const frequencyOptions = [
   { label: "Weekly", value: "Weekly", days: 7 },
   { label: "Biweekly", value: "Biweekly", days: 14 },
   { label: "Monthly", value: "Monthly", days: 30 },
+  { label: "Quarterly", value: "Quarterly", days: 91 },
+  { label: "Half Yearly", value: "Half Yearly", days: 182 },
 ];
 
 const occurrenceOptions = Array.from({ length: 10 }, (_, index) => String(index + 1));

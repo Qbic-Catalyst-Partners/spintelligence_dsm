@@ -221,53 +221,14 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
         <div className={styles.field}>
           <label>MC No.</label>
-          <div
-            ref={(node) => {
-              dropdownRefs.current.mc_no = node;
-            }}
-            style={{ position: "relative" }}
-          >
-            <button
-              type="button"
-              className={errors.mc_no ? styles.errorField : ""}
-              style={errors.mc_no ? undefined : { ...dropdownButtonStyle, ...defaultFieldStyle }}
-              onClick={() => setOpenField((current) => (current === "mc_no" ? "" : "mc_no"))}
-            >
-              <span className={form.mc_no ? "text-slate-900" : "text-slate-500"}>
-                {form.mc_no || "-- Select MC No. --"}
-              </span>
-            </button>
-            {openField === "mc_no" ? (
-              <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[320px] overflow-y-auto border border-slate-300 bg-white shadow-lg">
-                <button
-                  type="button"
-                  className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
-                  onClick={() => {
-                    handleChange("mc_no", "");
-                    setOpenField("");
-                  }}
-                >
-                  -- Select MC No. --
-                </button>
-                {mcNoOptions.map((machine) => {
-                  const machineName = String(machine?.label || machine?.value || "").trim();
-                  return machineName ? (
-                    <button
-                      key={machineName}
-                      type="button"
-                      className="block w-full px-3 py-1.5 text-left text-[14px] hover:bg-[#3D539F] hover:text-white"
-                      onClick={() => {
-                        handleChange("mc_no", machineName);
-                        setOpenField("");
-                      }}
-                    >
-                      {machineName}
-                    </button>
-                  ) : null;
-                })}
-              </div>
-            ) : null}
-          </div>
+          <SearchableSelect
+            value={form.mc_no}
+            onChange={(value) => handleChange("mc_no", value)}
+            className={errors.mc_no ? styles.errorField : ""}
+            options={mcNoOptions}
+            placeholder="-- Select MC No. --"
+            ariaLabel="MC No."
+          />
         </div>
 
         <div className={styles.field}>

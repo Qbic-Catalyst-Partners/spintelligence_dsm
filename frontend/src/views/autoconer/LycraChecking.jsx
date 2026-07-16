@@ -38,7 +38,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const { isLoading = false } = autoconerState;
   const [entryDate, setEntryDate] = useState(todayDate);
   const [lycraDraft, setLycraDraft] = useState("");
-  const [countName, setCountName] = useState(countOptions[0]);
+  const [countName, setCountName] = useState("");
   const [countCode, setCountCode] = useState("");
   const [countDropdownOptions, setCountDropdownOptions] = useState(
     countOptions.map((option) => ({ value: option, label: option, code: "" }))
@@ -114,8 +114,8 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const resetForm = () => {
     setEntryDate(todayDate);
     setLycraDraft("");
-    setCountName(countDropdownOptions[0]?.label || countOptions[0]);
-    setCountCode(countDropdownOptions[0]?.code || "");
+    setCountName("");
+    setCountCode("");
     setReadingsCount("");
     setLycraWeight("");
     setFabricWeight("");
@@ -223,7 +223,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
       const unique = Array.from(new Map([...fromObjects, ...fromLegacy].map((item) => [item.value, item])).values());
       if (unique.length) {
         setCountDropdownOptions(unique);
-        setCountName((current) => (unique.some((item) => item.label === current) ? current : unique[0].label));
+        setCountName((current) => (unique.some((item) => item.label === current) ? current : ""));
       }
     };
     loadMasterData();
@@ -293,11 +293,6 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
         </div>
 
         <div className={styles.field}>
-          <label>Lycra Draft</label>
-          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraDraft)} />
-        </div>
-
-        <div className={styles.field}>
           <label>Count Name (From)</label>
           <SearchableSelect
             value={countName}
@@ -308,7 +303,13 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
             }}
             options={countDropdownOptions}
             className={styles.select}
+            placeholder="Select count name"
           />
+        </div>
+
+        <div className={styles.field}>
+          <label>Lycra Draft</label>
+          <input value={lycraDraft} onChange={(e) => setLycraDraft(sanitizeNumericInput(e.target.value, { precision: 10, scale: 2 }))} style={errorStyle(errors.lycraDraft)} />
         </div>
 
         <div className={styles.field}>
