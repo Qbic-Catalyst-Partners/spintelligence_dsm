@@ -11,11 +11,13 @@ import {
   formatTicketIdForDisplay,
   formatThresholdValue,
   formatStandardValue,
+  getTicketKind,
   getTicketParameterNames,
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
   isSubmissionFrequencyParameterName,
   isSubmissionTicketRecord,
+  TICKET_KIND,
 } from "@/utils/ticketTransformer";
 import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketStatus";
 
@@ -171,19 +173,29 @@ export default function TicketDetails() {
     (isSubmissionTicket
       ? `Submission alert for ${machineName}. Please complete and resubmit the required entry.`
       : `Alert generated for machine ${machineName}. Please review and complete the fix before resubmitting.`);
-  const submissionFrequency =
-    resolvedTicket?.frequency ||
-    resolvedTicket?.submission_frequency ||
-    resolvedTicket?.check_frequency ||
-    resolvedTicket?.threshold_value?.expected_frequency ||
-    "-";
-  const submissionOccurrences =
-    resolvedTicket?.occurrences ??
-    resolvedTicket?.occurrence_count ??
-    resolvedTicket?.count ??
-    resolvedTicket?.violation_details?.checks?.expected_occurrences ??
-    resolvedTicket?.violation_details?.checks?.actual_occurrences ??
-    "-";
+  // PP Batch tickets carry no frequency/occurrences field at all — derive
+  // "Frequency" as hours elapsed since creation and hardcode "Occurrences" to 1.
+  const isPpBatchTicket = getTicketKind(resolvedTicket) === TICKET_KIND.PP_BATCH;
+  const submissionFrequency = isPpBatchTicket
+    ? (() => {
+        const createdAt = new Date(resolvedTicket?.created_at);
+        if (Number.isNaN(createdAt.getTime())) return "-";
+        const hours = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60)));
+        return `${hours} hr${hours === 1 ? "" : "s"}`;
+      })()
+    : resolvedTicket?.frequency ||
+      resolvedTicket?.submission_frequency ||
+      resolvedTicket?.check_frequency ||
+      resolvedTicket?.threshold_value?.expected_frequency ||
+      "-";
+  const submissionOccurrences = isPpBatchTicket
+    ? 1
+    : resolvedTicket?.occurrences ??
+      resolvedTicket?.occurrence_count ??
+      resolvedTicket?.count ??
+      resolvedTicket?.violation_details?.checks?.expected_occurrences ??
+      resolvedTicket?.violation_details?.checks?.actual_occurrences ??
+      "-";
 
   const getTimelineIcon = (title) => {
     const normalized = String(title || "").toLowerCase();

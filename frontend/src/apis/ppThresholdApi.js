@@ -28,3 +28,8 @@ export const savePpThresholdAPI = async (payload) => {
   const response = await apiConfig.post("/pp-threshold", payload);
   return response?.data;
 };
+
+export const deletePpThresholdAPI = async (id) => {
+  const response = await apiConfig.delete(`/pp-threshold/${encodeURIComponent(id)}`);
+  return response?.data;
+};

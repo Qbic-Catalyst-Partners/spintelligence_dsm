@@ -506,7 +506,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
     try {
       setIsSubmitting(true);
       setSubmitError("");
-      const payload = buildPayload(form, entryId);
+      const payload = { ...buildPayload(form, entryId), entry_id: form.paramId || entryId || previewNextId || undefined };
       const targetIdForMatch = entryId || form.paramId;
       const existingVersion = targetIdForMatch
         ? versions.find(

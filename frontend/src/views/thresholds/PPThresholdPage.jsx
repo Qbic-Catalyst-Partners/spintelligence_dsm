@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { FiCheckCircle, FiClock, FiSlash, FiX } from "react-icons/fi";
 import { FaIdCard } from "react-icons/fa6";
 
-import { fetchPpThresholdsAPI, savePpThresholdAPI } from "@/apis/ppThresholdApi";
+import { fetchPpThresholdsAPI, savePpThresholdAPI, deletePpThresholdAPI } from "@/apis/ppThresholdApi";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import styles from "@/styles/SubmissionThreshold.module.css";
@@ -176,6 +176,8 @@ const mergeThresholdRow = (rows, row) => {
 
 const mergeThresholdRows = (rows, nextRows) => nextRows.reduce((mergedRows, row) => mergeThresholdRow(mergedRows, row), rows);
 
+const removePendingThresholdRow = (rows, row) => rows.filter((item) => !isSameThreshold(item, row));
+
 function MultiUserSelect({
   value = [],
   options = [],
@@ -274,6 +276,7 @@ export default function PPThresholdPage() {
   const [error, setError] = useState("");
   const [rule, setRule] = useState(createRule);
   const [existingFilters, setExistingFilters] = useState(buildExistingFilters);
+  const [deletingId, setDeletingId] = useState("");
 
   const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
   const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
@@ -403,6 +406,32 @@ export default function PPThresholdPage() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteThreshold = async (item) => {
+    const thresholdId = getThresholdId(item);
+    if (!thresholdId) {
+      setError("Unable to find the selected PP threshold.");
+      return;
+    }
+
+    setDeletingId(String(thresholdId));
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await deletePpThresholdAPI(thresholdId);
+      writePendingThresholdRows(removePendingThresholdRow(readPendingThresholdRows(), item));
+      setThresholds((current) => current.filter((row) => !isSameThreshold(row, item)));
+      setMessage(response?.message || "PP threshold deleted successfully.");
+      await loadThresholds();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || err?.response?.data?.error || err?.message || "Failed to delete PP threshold."
+      );
+    } finally {
+      setDeletingId("");
     }
   };
 
@@ -596,20 +625,23 @@ export default function PPThresholdPage() {
                       <th>L2</th>
                       <th>Status</th>
                       <th>Created At</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={6}>Loading...</td>
+                        <td colSpan={7}>Loading...</td>
                       </tr>
                     ) : filteredThresholds.length === 0 ? (
                       <tr>
-                        <td colSpan={6}>No PP thresholds found.</td>
+                        <td colSpan={7}>No PP thresholds found.</td>
                       </tr>
                     ) : (
                       filteredThresholds.map((item, index) => {
                         const rowKey = getThresholdId(item) || `${getThresholdNotebookName(item)}-${index}`;
+                        const thresholdId = getThresholdId(item);
+                        const isDeleting = deletingId && String(deletingId) === String(thresholdId);
                         return (
                           <tr key={rowKey}>
                             <td>{getThresholdNotebookName(item) || "-"}</td>
@@ -626,6 +658,18 @@ export default function PPThresholdPage() {
                               </span>
                             </td>
                             <td>{formatTimestamp(item.created_at || item.createdAt || item.created_on || item.createdOn)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.deleteIconButton}
+                                style={{ width: "auto", padding: "0 10px" }}
+                                onClick={() => deleteThreshold(item)}
+                                disabled={!thresholdId || isDeleting}
+                                aria-label="Delete PP threshold row"
+                              >
+                                {isDeleting ? "Deleting..." : "Delete"}
+                              </button>
+                            </td>
                           </tr>
                         );
                       })

@@ -124,6 +124,29 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+router.delete('/:id', async (req, res, next) => {
+  try {
+    await ensurePpThresholdTable();
+
+    const { id } = req.params;
+
+    const result = await client.query(
+      `DELETE FROM ticketing_system.pp_thresholds
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'PP threshold not found' });
+    }
+
+    return res.status(200).json({ message: 'PP threshold deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
 module.exports.ensurePpThresholdTable = ensurePpThresholdTable;
 module.exports.getActivePpThresholdsMap = getActivePpThresholdsMap;

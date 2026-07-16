@@ -431,7 +431,11 @@ const ensureDrawframeWheelChangeTable = async () => {
       ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
       ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
   `);
 
   await client.query(`
@@ -2353,6 +2357,77 @@ router.post('/wheel-change/type3-d50-d55', (req, res, next) => createDrawframeWh
 router.get('/wheel-change/type3-d50-d55', (req, res, next) => getDrawframeWheelChangeEntries(req, res, next, 'type3_d50_d55'));
 router.post('/wheel-change/type4-ldf3s', (req, res, next) => createDrawframeWheelChangeEntry(req, res, next, 'type4_ldf3s', 'Type 4 (LDF3S)'));
 router.get('/wheel-change/type4-ldf3s', (req, res, next) => getDrawframeWheelChangeEntries(req, res, next, 'type4_ldf3s'));
+
+router.get('/wheel-change/approvals', async (req, res, next) => {
+  try {
+    await ensureDrawframeWheelChangeTable();
+    const status = String(req.query.status ?? '').trim();
+    const whereClause = status ? 'WHERE approval_status = $1' : '';
+    const result = await client.query(
+      `SELECT * FROM drawframe.wheel_change ${whereClause} ORDER BY created_at DESC, id DESC`,
+      status ? [status] : []
+    );
+    res.status(200).json({ data: result.rows.map((row) => withScreenEntryId('wheel_change', hydrateWheelChangeRow(row))) });
+  } catch (error) {
+    console.error('Drawframe wheel change approvals fetch error:', error);
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
+  try {
+    await ensureDrawframeWheelChangeTable();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const result = await client.query(
+      `UPDATE drawframe.wheel_change
+       SET approval_status = 'approved', reviewed_at = NOW(), updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Draw frame wheel change entry approved',
+      data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
+    });
+  } catch (error) {
+    console.error('Drawframe wheel change approve error:', error);
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
+  try {
+    await ensureDrawframeWheelChangeTable();
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE drawframe.wheel_change
+       SET approval_status = 'rejected', reviewed_at = NOW(), review_remarks = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [reason, id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+    res.status(200).json({
+      message: 'Draw frame wheel change entry rejected',
+      data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
+    });
+  } catch (error) {
+    console.error('Drawframe wheel change reject error:', error);
+    next(error);
+  }
+});
 
 /**
  * @swagger

@@ -324,19 +324,29 @@ export default function SupervisorDetails() {
   const visibleParameterNames = expanded ? parameterNames : parameterNames.slice(0, 1);
   const displayTicketId = formatTicketIdForDisplay(ticket.ticket_id || requestedTicketId);
   const statusClassName = styles[toClassKey(ticket.status)] || "";
-  const submissionFrequency =
-    ticket?.frequency ||
-    ticket?.submission_frequency ||
-    ticket?.check_frequency ||
-    ticket?.threshold_value?.expected_frequency ||
-    "-";
-  const submissionOccurrences =
-    ticket?.occurrences ??
-    ticket?.occurrence_count ??
-    ticket?.count ??
-    ticket?.violation_details?.checks?.expected_occurrences ??
-    ticket?.violation_details?.checks?.actual_occurrences ??
-    "-";
+  // PP Batch tickets carry no frequency/occurrences field at all — derive
+  // "Frequency" as hours elapsed since creation and hardcode "Occurrences" to 1.
+  const isPpBatchTicket = getTicketKind(ticket) === TICKET_KIND.PP_BATCH;
+  const submissionFrequency = isPpBatchTicket
+    ? (() => {
+        const createdAt = new Date(ticket?.created_at);
+        if (Number.isNaN(createdAt.getTime())) return "-";
+        const hours = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60)));
+        return `${hours} hr${hours === 1 ? "" : "s"}`;
+      })()
+    : ticket?.frequency ||
+      ticket?.submission_frequency ||
+      ticket?.check_frequency ||
+      ticket?.threshold_value?.expected_frequency ||
+      "-";
+  const submissionOccurrences = isPpBatchTicket
+    ? 1
+    : ticket?.occurrences ??
+      ticket?.occurrence_count ??
+      ticket?.count ??
+      ticket?.violation_details?.checks?.expected_occurrences ??
+      ticket?.violation_details?.checks?.actual_occurrences ??
+      "-";
   const isClosedTicket = getSupervisorStatusLabel(ticket.status) === "Closed";
   const isAcknowledgeTicket = isAcknowledgeActionTicket(ticket);
   const machineName = ticket.notebook || ticket.machine_name || "Unknown machine";
