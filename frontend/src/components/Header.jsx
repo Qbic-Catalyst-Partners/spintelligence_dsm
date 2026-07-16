@@ -553,15 +553,27 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
     return (
         <>
+            <div className={styles["top-logo-center"]}>
+                <Image
+                    src={isDarkMode ? "/dsm-logo-dark.png" : "/logo.png"}
+                    alt="DSM"
+                    width={140}
+                    height={100}
+                    priority
+                    style={{ width: "128px", height: "auto" }}
+                />
+            </div>
+
             <aside className={`${styles.sidebar} ${isSidebarCollapsed ? styles["sidebar-collapsed"] : ""}`}>
                 <div className={styles["sidebar-logo"]}>
                     <Image
-                        src="/logo.png"
-                        alt="DSM"
-                        width={140}
-                        height={100}
+                        src={isDarkMode ? "/spintel-dark.png" : "/spintel.svg"}
+                        alt="Spintelligence"
+                        width={isDarkMode ? 255 : 105}
+                        height={isDarkMode ? 110 : 60}
                         priority
-                        style={{ width: "var(--sidebar-logo-width, 120px)", height: "auto" }}
+                        className={styles["sidebar-logo-secondary"]}
+                        style={{ width: "auto", height: isDarkMode ? "110px" : "60px", objectFit: "contain" }}
                     />
                 </div>
 
