@@ -10,6 +10,15 @@ const parsePositiveInt = (value) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 
+const parsePositiveIntList = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = Array.isArray(value) ? value : String(value).split(',');
+  const ids = raw
+    .map((item) => Number(String(item).trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  return ids.length ? Array.from(new Set(ids)) : null;
+};
+
 const isoOrNull = (value) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
@@ -197,7 +206,7 @@ router.get('/l1', async (req, res, next) => {
     });
     if (!bounds) return res.status(400).json({ message: 'Valid start_date and end_date are required for custom period' });
 
-    const targetUserId = parsePositiveInt(req.query.user_id) || parsePositiveInt(req.user?.id);
+    const targetUserIds = parsePositiveIntList(req.query.user_id) || parsePositiveIntList(req.user?.id);
     const { department, subDepartment, notebook } = getAnalyticsFilters(req.query);
 
     const result = await client.query(
@@ -239,15 +248,15 @@ router.get('/l1', async (req, res, next) => {
       )
       SELECT
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR j.user_id = $3::int)
+          WHERE ($3::int[] IS NULL OR j.user_id = ANY($3::int[]))
         )::int AS allocated_submissions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR j.user_id = $3::int)
+          WHERE ($3::int[] IS NULL OR j.user_id = ANY($3::int[]))
             AND j.first_submission_at IS NOT NULL
             AND (j.l1_tat_due_at IS NULL OR j.first_submission_at <= j.l1_tat_due_at)
         )::int AS on_time_submissions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR j.user_id = $3::int)
+          WHERE ($3::int[] IS NULL OR j.user_id = ANY($3::int[]))
             AND (
               (j.first_submission_at IS NOT NULL AND j.l1_tat_due_at IS NOT NULL AND j.first_submission_at > j.l1_tat_due_at)
               OR
@@ -255,19 +264,19 @@ router.get('/l1', async (req, res, next) => {
             )
         )::int AS delayed_submissions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR j.user_id = $3::int)
+          WHERE ($3::int[] IS NULL OR j.user_id = ANY($3::int[]))
             AND (j.resubmitted_count > 0 OR UPPER(COALESCE(j.status, '')) = 'REOPENED')
         )::int AS reworked_submissions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l1_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l1_user_ids, ARRAY[]::int[]) && $3::int[])
         )::int AS allocated_tickets,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l1_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l1_user_ids, ARRAY[]::int[]) && $3::int[])
             AND j.first_resolution_at IS NOT NULL
             AND (j.l1_tat_due_at IS NULL OR j.first_resolution_at <= j.l1_tat_due_at)
         )::int AS on_time_resolutions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l1_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l1_user_ids, ARRAY[]::int[]) && $3::int[])
             AND (
               (j.first_resolution_at IS NOT NULL AND j.l1_tat_due_at IS NOT NULL AND j.first_resolution_at > j.l1_tat_due_at)
               OR
@@ -275,17 +284,17 @@ router.get('/l1', async (req, res, next) => {
             )
         )::int AS delayed_resolutions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l1_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l1_user_ids, ARRAY[]::int[]) && $3::int[])
             AND (j.rejected_count > 0 OR UPPER(COALESCE(j.status, '')) = 'REOPENED')
         )::int AS reworked_resolutions,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l1_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l1_user_ids, ARRAY[]::int[]) && $3::int[])
             AND j.rejected_count = 0
             AND UPPER(COALESCE(j.status, '')) = 'CLOSED'
         )::int AS first_time_approved
       FROM j
       `,
-      [bounds.start, bounds.end, targetUserId, department, subDepartment, notebook]
+      [bounds.start, bounds.end, targetUserIds, department, subDepartment, notebook]
     );
 
     const m = result.rows[0] || {};
@@ -369,7 +378,7 @@ router.get('/l1', async (req, res, next) => {
         average_efficiency: Number(((submission + resolution) / 2).toFixed(4))
       };
     }).sort((a, b) => b.average_efficiency - a.average_efficiency);
-    const myRankRow = rankingRows.find((r) => r.user_id === targetUserId);
+    const myRankRow = rankingRows.find((r) => (targetUserIds || []).includes(r.user_id));
     const rankingScore = myRankRow ? myRankRow.average_efficiency : 0;
 
     return res.status(200).json({
@@ -412,7 +421,7 @@ router.get('/l2', async (req, res, next) => {
     });
     if (!bounds) return res.status(400).json({ message: 'Valid start_date and end_date are required for custom period' });
 
-    const targetUserId = parsePositiveInt(req.query.user_id) || parsePositiveInt(req.user?.id);
+    const targetUserIds = parsePositiveIntList(req.query.user_id) || parsePositiveIntList(req.user?.id);
     const { department, subDepartment, notebook } = getAnalyticsFilters(req.query);
 
     const result = await client.query(
@@ -445,15 +454,15 @@ router.get('/l2', async (req, res, next) => {
       )
       SELECT
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l2_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l2_user_ids, ARRAY[]::int[]) && $3::int[])
         )::int AS allocated_tickets,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l2_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l2_user_ids, ARRAY[]::int[]) && $3::int[])
             AND j.first_approval_at IS NOT NULL
             AND (j.l2_tat_due_at IS NULL OR j.first_approval_at <= j.l2_tat_due_at)
         )::int AS on_time_approvals,
         COUNT(*) FILTER (
-          WHERE ($3::int IS NULL OR $3::int = ANY(COALESCE(j.approval_l2_user_ids, ARRAY[]::int[])))
+          WHERE ($3::int[] IS NULL OR COALESCE(j.approval_l2_user_ids, ARRAY[]::int[]) && $3::int[])
             AND (
               (j.first_approval_at IS NOT NULL AND j.l2_tat_due_at IS NOT NULL AND j.first_approval_at > j.l2_tat_due_at)
               OR
@@ -462,7 +471,7 @@ router.get('/l2', async (req, res, next) => {
         )::int AS delayed_approvals
       FROM j
       `,
-      [bounds.start, bounds.end, targetUserId, department, subDepartment, notebook]
+      [bounds.start, bounds.end, targetUserIds, department, subDepartment, notebook]
     );
 
     const m = result.rows[0] || {};
@@ -499,9 +508,10 @@ router.get(['/team-performance', '/team-performance-analysis', '/team-performanc
     if (!bounds) return res.status(400).json({ message: 'Valid start_date and end_date are required for custom period' });
 
     const { department, subDepartment, notebook } = getAnalyticsFilters(req.query);
-    const queryParams = [bounds.start, bounds.end, department, subDepartment, notebook];
+    const targetUserIds = parsePositiveIntList(req.query.user_id);
+    const queryParams = [bounds.start, bounds.end, department, subDepartment, notebook, targetUserIds];
 
-    const [l1Result, l2Result, memberResult] = await Promise.all([
+    const [l1Result, l2Result, memberResult, l2MemberResult] = await Promise.all([
       client.query(
         `
         WITH base AS (
@@ -518,6 +528,7 @@ router.get(['/team-performance', '/team-performance-analysis', '/team-performanc
             AND ($3::text IS NULL OR LOWER(TRIM(COALESCE(ot.management_field, ''))) = LOWER(TRIM($3::text)))
             AND ($4::text IS NULL OR LOWER(TRIM(COALESCE(ot.erp_product_code, ''))) = LOWER(TRIM($4::text)))
             AND ($5::text IS NULL OR LOWER(TRIM(COALESCE(ot.machine_name, ''))) = LOWER(TRIM($5::text)))
+            AND ($6::int[] IS NULL OR ot.user_id = ANY($6::int[]) OR COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]) && $6::int[])
         ),
         actions AS (
           SELECT
@@ -590,6 +601,7 @@ router.get(['/team-performance', '/team-performance-analysis', '/team-performanc
             AND ($3::text IS NULL OR LOWER(TRIM(COALESCE(ot.management_field, ''))) = LOWER(TRIM($3::text)))
             AND ($4::text IS NULL OR LOWER(TRIM(COALESCE(ot.erp_product_code, ''))) = LOWER(TRIM($4::text)))
             AND ($5::text IS NULL OR LOWER(TRIM(COALESCE(ot.machine_name, ''))) = LOWER(TRIM($5::text)))
+            AND ($6::int[] IS NULL OR COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[]) && $6::int[])
         ),
         actions AS (
           SELECT
@@ -662,6 +674,55 @@ router.get(['/team-performance', '/team-performance-analysis', '/team-performanc
           ON st.user_id = u.id OR u.id = ANY(COALESCE(st.approval_l1_user_ids, ARRAY[]::int[]))
         LEFT JOIN actions a ON a.ticket_id = st.ticket_id
         WHERE UPPER(COALESCE(u.level, '')) = 'L1'
+          AND ($6::int[] IS NULL OR u.id = ANY($6::int[]))
+        GROUP BY u.id, u.full_name
+        ORDER BY completed DESC, total_tasks DESC, name ASC
+        LIMIT 25
+        `,
+        queryParams
+      ),
+      client.query(
+        `
+        WITH actions AS (
+          SELECT
+            tl.ticket_id,
+            MIN(tl.created_at) FILTER (WHERE UPPER(tl.action) LIKE '%APPROVED%' OR UPPER(tl.action) LIKE '%REJECTED%') AS first_approval_at,
+            COUNT(*) FILTER (WHERE UPPER(tl.action) LIKE '%REJECTED%') AS rejected_count
+          FROM ticketing_system.ticket_logs tl
+          GROUP BY tl.ticket_id
+        ),
+        scoped_tickets AS (
+          SELECT ot.*
+          FROM ticketing_system.operator_tickets ot
+          WHERE ot.created_at >= $1::timestamptz
+            AND ot.created_at <= $2::timestamptz
+            AND ($3::text IS NULL OR LOWER(TRIM(COALESCE(ot.management_field, ''))) = LOWER(TRIM($3::text)))
+            AND ($4::text IS NULL OR LOWER(TRIM(COALESCE(ot.erp_product_code, ''))) = LOWER(TRIM($4::text)))
+            AND ($5::text IS NULL OR LOWER(TRIM(COALESCE(ot.machine_name, ''))) = LOWER(TRIM($5::text)))
+        )
+        SELECT
+          u.id AS user_id,
+          COALESCE(NULLIF(TRIM(u.full_name), ''), 'User ' || u.id::text) AS name,
+          COUNT(st.ticket_id) FILTER (
+            WHERE u.id = ANY(COALESCE(st.approval_l2_user_ids, ARRAY[]::int[]))
+          )::int AS total_tasks,
+          COUNT(st.ticket_id) FILTER (
+            WHERE u.id = ANY(COALESCE(st.approval_l2_user_ids, ARRAY[]::int[]))
+              AND (
+                UPPER(COALESCE(st.status, '')) = 'CLOSED'
+                OR (a.first_approval_at IS NOT NULL AND COALESCE(a.rejected_count, 0) = 0)
+              )
+          )::int AS completed,
+          COUNT(st.ticket_id) FILTER (
+            WHERE u.id = ANY(COALESCE(st.approval_l2_user_ids, ARRAY[]::int[]))
+              AND UPPER(COALESCE(st.status, '')) NOT IN ('CLOSED', 'RESOLVED', 'APPROVED')
+          )::int AS pending
+        FROM users.user_details u
+        LEFT JOIN scoped_tickets st
+          ON u.id = ANY(COALESCE(st.approval_l2_user_ids, ARRAY[]::int[]))
+        LEFT JOIN actions a ON a.ticket_id = st.ticket_id
+        WHERE UPPER(COALESCE(u.level, '')) = 'L2'
+          AND ($6::int[] IS NULL OR u.id = ANY($6::int[]))
         GROUP BY u.id, u.full_name
         ORDER BY completed DESC, total_tasks DESC, name ASC
         LIMIT 25
@@ -719,6 +780,15 @@ router.get(['/team-performance', '/team-performance-analysis', '/team-performanc
         }
       },
       team_members_performance: memberResult.rows.map((row, index) => ({
+        rank: index + 1,
+        user_id: Number(row.user_id),
+        name: row.name,
+        total_tasks: Number(row.total_tasks || 0),
+        completed: Number(row.completed || 0),
+        pending: Number(row.pending || 0),
+        completion_rate: pct(row.completed, row.total_tasks)
+      })),
+      l2_team_members_performance: l2MemberResult.rows.map((row, index) => ({
         rank: index + 1,
         user_id: Number(row.user_id),
         name: row.name,

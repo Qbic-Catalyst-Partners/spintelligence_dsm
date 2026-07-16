@@ -6,8 +6,10 @@ import {
   FiAward,
   FiAlertTriangle,
   FiCalendar,
+  FiChevronDown,
   FiCheckCircle,
   FiClock,
+  FiPrinter,
   FiTarget,
   FiTrendingUp,
   FiUsers,
@@ -68,7 +70,7 @@ const addDays = (date, days) => {
   next.setDate(next.getDate() + days);
   return next;
 };
-const clampPercent = (value) => Math.max(12, Math.min(96, Math.round(value)));
+const clampPercent = (value) => Math.max(0, Math.min(100, Math.round(value)));
 const parseTicketDate = (ticket) => {
   const value =
     ticket?.created_at ||
@@ -119,7 +121,7 @@ const standardDeviation = (values) => {
 };
 const getScaledPoints = (values) => {
   const max = Math.max(1, ...values);
-  return values.map((value) => clampPercent((value / max) * 84 + 12));
+  return values.map((value) => clampPercent((value / max) * 100));
 };
 const detectValueKind = (fieldName) => {
   const value = String(fieldName || "").toLowerCase();
@@ -320,7 +322,7 @@ function MiniAreaChart({ title, values, labels, valueKind }) {
   const maxValue = Math.max(1, ...values.map((value) => Number(value || 0)));
   const points = scaledValues.map((value, index) => ({
     x: values.length === 1 ? 180 : 28 + (index / Math.max(1, values.length - 1)) * 314,
-    y: 118 - value,
+    y: 132 - value,
   }));
   const linePath = points
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
@@ -354,6 +356,69 @@ function MiniAreaChart({ title, values, labels, valueKind }) {
   );
 }
 
+function MultiSelectField({ label, options, selectedValues, onChange, placeholder = "All Users" }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const fieldRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (!fieldRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [isOpen]);
+
+  const toggleValue = (value) => {
+    if (selectedValues.includes(value)) {
+      onChange(selectedValues.filter((item) => item !== value));
+    } else {
+      onChange([...selectedValues, value]);
+    }
+  };
+
+  const summary =
+    selectedValues.length === 0
+      ? placeholder
+      : selectedValues.length === 1
+        ? options.find((option) => option.value === selectedValues[0])?.label || selectedValues[0]
+        : `${selectedValues.length} users selected`;
+
+  return (
+    <div className={styles.performanceSelectField} ref={fieldRef}>
+      <span>{label}</span>
+      <div className={styles.multiSelectWrap}>
+        <button
+          type="button"
+          className={styles.multiSelectTrigger}
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <span className={styles.multiSelectValue}>{summary}</span>
+          <FiChevronDown />
+        </button>
+        {isOpen && (
+          <div className={styles.multiSelectPanel}>
+            <label className={styles.multiSelectOption}>
+              <input type="checkbox" checked={selectedValues.length === 0} onChange={() => onChange([])} />
+              <span>{placeholder}</span>
+            </label>
+            {options.map((option) => (
+              <label key={option.value} className={styles.multiSelectOption}>
+                <input
+                  type="checkbox"
+                  checked={selectedValues.includes(option.value)}
+                  onChange={() => toggleValue(option.value)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TeamPerformanceFilter({
   activePeriod,
   setActivePeriod,
@@ -368,8 +433,8 @@ function TeamPerformanceFilter({
   selectedSubDepartmentSlug,
   setSelectedSubDepartmentSlug,
   users,
-  selectedUserId,
-  setSelectedUserId,
+  selectedUserIds,
+  setSelectedUserIds,
   options = {},
   showUserFilter = true,
 }) {
@@ -422,20 +487,16 @@ function TeamPerformanceFilter({
           </select>
         </label>
         {showUserFilter && (
-          <label className={styles.performanceSelectField}>
-            <span>User</span>
-            <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
-              <option value="">All Users</option>
-              {(Array.isArray(users) ? users : []).map((user) => {
-                const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
-                return (
-                  <option key={`${userId}-${user?.name || userId}`} value={userId}>
-                    {user?.name || userId}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
+          <MultiSelectField
+            label="User"
+            placeholder="All Users"
+            selectedValues={selectedUserIds}
+            onChange={setSelectedUserIds}
+            options={(Array.isArray(users) ? users : []).map((user) => {
+              const userId = String(user?.employeeId || user?.employee_id || user?.id || "").trim();
+              return { value: userId, label: user?.name || userId };
+            })}
+          />
         )}
       </div>
 
@@ -455,8 +516,8 @@ function TeamPerformanceFilter({
 
         {filterMode === "custom" ? (
           <div className={styles.performanceCustomDates}>
-            <DatePickerField label="Custom From" value={fromDate} onChange={setFromDate} />
-            <DatePickerField label="Custom To" value={toDate} onChange={setToDate} />
+            <DatePickerField label="From" value={fromDate} onChange={setFromDate} />
+            <DatePickerField label="To" value={toDate} onChange={setToDate} />
           </div>
         ) : (
           <div className={styles.performanceCurrentFilters}>
@@ -594,8 +655,8 @@ function StatisticsAnalysisFilter({
 
       {filterMode === "custom" ? (
         <div className={styles.statisticsCustomDates}>
-          <DatePickerField label="Custom From" value={fromDate} onChange={setFromDate} />
-          <DatePickerField label="Custom To" value={toDate} onChange={setToDate} />
+          <DatePickerField label="From" value={fromDate} onChange={setFromDate} />
+          <DatePickerField label="To" value={toDate} onChange={setToDate} />
         </div>
       ) : (
         <div className={styles.performanceCurrentFilters}>
@@ -641,13 +702,13 @@ function MetricCard({ label, value }) {
   const toneClass = metricTones.find((item) => normalizedLabel.includes(item.match))?.className;
   return (
     <article className={`${styles.performanceMetricCard} ${toneClass ? styles[toneClass] : ""}`}>
-      <div className={styles.performanceMetricHead}>
-        <span>{label}</span>
-        <span className={styles.performanceMetricIcon}>
-          <Icon />
-        </span>
+      <span className={styles.performanceMetricIcon}>
+        <Icon />
+      </span>
+      <div className={styles.performanceMetricBody}>
+        <span className={styles.performanceMetricLabel}>{label}</span>
+        <strong>{value}</strong>
       </div>
-      <strong>{value}</strong>
     </article>
   );
 }
@@ -781,7 +842,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   const [toDate, setToDate] = useState(toInputDate(new Date()));
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
   const [selectedSubDepartmentSlug, setSelectedSubDepartmentSlug] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [notebook, setNotebook] = useState("");
   const [inputField, setInputField] = useState("");
   const [submissionTickets, setSubmissionTickets] = useState([]);
@@ -855,7 +916,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     }
 
     if (userIdParam) {
-      setSelectedUserId(userIdParam);
+      setSelectedUserIds([userIdParam]);
     }
     if (notebookParam) {
       setNotebook(notebookParam);
@@ -945,24 +1006,25 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   }, [mode]);
 
   useEffect(() => {
-    if (mode !== "L2") return undefined;
+    if (mode !== "L1" && mode !== "L2") return undefined;
 
     let isMounted = true;
     const isCustomPeriod = performanceFilterMode === "custom";
     const period = isCustomPeriod ? "custom" : periodToBackendPeriod[activePeriod] || "month";
-    const selectedUserRecord = (Array.isArray(users) ? users : []).find((user) => {
-      const candidates = [
-        user?.id,
-        user?.user_id,
-        user?.userId,
-        user?.employeeId,
-        user?.employee_id,
-        user?.emp_id,
-      ];
-      return candidates.some((value) => normalizeLookup(value) === normalizeLookup(selectedUserId));
+    const selectedUserApiIds = selectedUserIds.map((selectedUserId) => {
+      const selectedUserRecord = (Array.isArray(users) ? users : []).find((user) => {
+        const candidates = [
+          user?.id,
+          user?.user_id,
+          user?.userId,
+          user?.employeeId,
+          user?.employee_id,
+          user?.emp_id,
+        ];
+        return candidates.some((value) => normalizeLookup(value) === normalizeLookup(selectedUserId));
+      });
+      return selectedUserRecord?.id || selectedUserRecord?.user_id || selectedUserRecord?.userId || selectedUserId;
     });
-    const selectedUserApiId =
-      selectedUserRecord?.id || selectedUserRecord?.user_id || selectedUserRecord?.userId || selectedUserId;
     const params = {
       period,
       ...(isCustomPeriod ? { start_date: fromDate, end_date: toDate } : {}),
@@ -970,7 +1032,9 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       ...(selectedSubDepartment
         ? { sub_department: selectedSubDepartment.name, sub_department_slug: selectedSubDepartment.slug }
         : {}),
-      ...(selectedUserId ? { user_id: selectedUserApiId, employee_id: selectedUserId } : {}),
+      ...(selectedUserIds.length
+        ? { user_id: selectedUserApiIds.join(","), employee_id: selectedUserIds.join(",") }
+        : {}),
       ...(notebook ? { input_screen: notebook } : {}),
       ...(inputField ? { input_field: inputField } : {}),
     };
@@ -994,7 +1058,11 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
         l1: response?.l1 || null,
         l2: response?.l2 || null,
         ranking: Array.isArray(response?.ranking) ? response.ranking : [],
-        teamMembers: Array.isArray(response?.team_members_performance) ? response.team_members_performance : [],
+        teamMembers: Array.isArray(
+          mode === "L2" ? response?.l2_team_members_performance : response?.team_members_performance
+        )
+          ? (mode === "L2" ? response.l2_team_members_performance : response.team_members_performance)
+          : [],
       }))
       .catch((error) => {
         if (error?.response?.status === 404) {
@@ -1025,7 +1093,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     return () => {
       isMounted = false;
     };
-  }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, selectedUserId, notebook, inputField, toDate, users]);
+  }, [activePeriod, fromDate, mode, performanceFilterMode, selectedDepartment, selectedSubDepartment, selectedUserIds, notebook, inputField, toDate, users]);
 
   useEffect(() => {
     if (mode !== "Stats") return undefined;
@@ -1034,7 +1102,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   const subDepartment = selectedSubDepartment?.name || String(
       router.query?.sub_department || process.env.NEXT_PUBLIC_STATS_SUB_DEPARTMENT || ""
     ).trim();
-    const userId = selectedUserId || String(router.query?.user_id || "").trim();
+    const userId = selectedUserIds.join(",") || String(router.query?.user_id || "").trim();
     const isCustomPeriod = performanceFilterMode === "custom";
     const period = isCustomPeriod ? "custom" : periodToBackendPeriod[activePeriod] || "month";
     const canFetchFromApi = department && subDepartment;
@@ -1098,7 +1166,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     router.query?.user_id,
     selectedDepartment,
     selectedSubDepartment,
-    selectedUserId,
+    selectedUserIds,
     fromDate,
     performanceFilterMode,
     toDate,
@@ -1142,7 +1210,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   }, [users]);
   const matchesDepartmentFilters = useMemo(
     () => (ticket) => {
-      if (!selectedDepartment && !selectedSubDepartment && !selectedUserId) return true;
+      if (!selectedDepartment && !selectedSubDepartment && !selectedUserIds.length) return true;
       const employeeId = resolveTicketEmpId(ticket, userIdByName);
       const user = userById.get(employeeId);
       const ticketDepartment =
@@ -1169,14 +1237,15 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
       ) {
         return false;
       }
-      if (selectedUserId) {
-        if (!employeeId || normalizeLookup(employeeId) !== normalizeLookup(selectedUserId)) {
+      if (selectedUserIds.length) {
+        const normalizedEmployeeId = normalizeLookup(employeeId);
+        if (!employeeId || !selectedUserIds.some((userId) => normalizeLookup(userId) === normalizedEmployeeId)) {
           return false;
         }
       }
       return true;
     },
-    [selectedDepartment, selectedSubDepartment, selectedUserId, userById, userIdByName]
+    [selectedDepartment, selectedSubDepartment, selectedUserIds, userById, userIdByName]
   );
   const modeTickets = useMemo(() => {
     const filteredTickets = combinedTickets.filter((t) =>
@@ -1487,7 +1556,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
     userIdByName,
   ]);
   const visibleRows = useMemo(() => {
-    if (mode === "L1" && performanceApiData.teamMembers.length) {
+    if ((mode === "L1" || mode === "L2") && performanceApiData.teamMembers.length) {
       return performanceApiData.teamMembers;
     }
     if (mode !== "L1") return analytics.rows;
@@ -1504,7 +1573,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   if (isStatsMode) {
     return (
       <section className={`${styles.page} ${styles.statisticsPage}`}>
-        <h1 className={styles.statisticsTitle}>Statistic Analytics</h1>
+        <h1 className={styles.statisticsTitle}>Statistical Analysis</h1>
         <StatisticsAnalysisFilter
           activePeriod={activePeriod}
           setActivePeriod={handlePeriodChange}
@@ -1543,7 +1612,12 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   if (mode === "L1") {
     return (
       <section className={`${styles.page} ${styles.performancePage}`}>
-        <h1 className={styles.performanceTitle}>L1 Team Performance Analysis</h1>
+        <div className={styles.performanceTitleRow}>
+          <h1 className={styles.performanceTitle}>L1 Team Performance Analysis</h1>
+          <button type="button" className={styles.printButton} onClick={() => window.print()}>
+            <FiPrinter /> Print
+          </button>
+        </div>
         <TeamPerformanceFilter
           activePeriod={activePeriod}
           setActivePeriod={handlePeriodChange}
@@ -1558,8 +1632,8 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
           users={users}
-          selectedUserId={selectedUserId}
-          setSelectedUserId={setSelectedUserId}
+          selectedUserIds={selectedUserIds}
+          setSelectedUserIds={setSelectedUserIds}
           options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
@@ -1588,7 +1662,12 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
   if (mode === "L2") {
     return (
       <section className={`${styles.page} ${styles.performancePage}`}>
-        <h1 className={styles.performanceTitle}>L2 - Team Performance Analysis</h1>
+        <div className={styles.performanceTitleRow}>
+          <h1 className={styles.performanceTitle}>L2 - Team Performance Analysis</h1>
+          <button type="button" className={styles.printButton} onClick={() => window.print()}>
+            <FiPrinter /> Print
+          </button>
+        </div>
         <TeamPerformanceFilter
           activePeriod={activePeriod}
           setActivePeriod={handlePeriodChange}
@@ -1603,8 +1682,8 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
           selectedSubDepartmentSlug={selectedSubDepartmentSlug}
           setSelectedSubDepartmentSlug={setSelectedSubDepartmentSlug}
           users={users}
-          selectedUserId={selectedUserId}
-          setSelectedUserId={setSelectedUserId}
+          selectedUserIds={selectedUserIds}
+          setSelectedUserIds={setSelectedUserIds}
           options={teamOptions}
         />
         {performanceApiData.loading && <p className={styles.statisticsError}>Fetching team performance data...</p>}
@@ -1616,6 +1695,7 @@ export default function TicketAnalysisPage({ mode = "L1" }) {
             ))}
           </div>
         </section>
+        <TeamMembersPerformanceTable rows={visibleRows} />
       </section>
     );
   }
