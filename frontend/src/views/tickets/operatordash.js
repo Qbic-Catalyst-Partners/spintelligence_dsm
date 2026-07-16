@@ -600,7 +600,7 @@ export default function operatorboard() {
                                         </>
                                     ) : (
                                         <>
-                                            <th>ACTUAL</th>
+                                            <th>IDLE</th>
                                             <th>STANDARD</th>
                                             <th>THRESHOLD</th>
                                             <th>DEVIATION</th>

@@ -736,7 +736,8 @@ const resolveApproverUserIds = async ({
   const resolvedUserIds = [];
   const seen = new Set();
 
-  for (const rawId of rawUserIds) {
+  for (let index = 0; index < rawUserIds.length; index += 1) {
+    const rawId = rawUserIds[index];
     const candidate =
       typeof rawId === 'object' && rawId !== null
         ? rawId.id ?? rawId.user_id ?? rawId.value
@@ -746,32 +747,37 @@ const resolveApproverUserIds = async ({
     if (isPlaceholderValue(candidateText)) continue; // Ignore dropdown placeholder labels.
 
     const parsedId = parsePositiveInt(candidateText);
+    // The name at the same position is the fallback identity if the id turns out stale/deleted.
+    const fallbackName = pickDropdownValue(toArray(nameValue)[index]);
 
-    if (!parsedId) {
-      const userByIdentifier = await getUserByFullName(candidateText);
-      if (!userByIdentifier?.id) {
-        const userByEmployeeId = await getUserByEmployeeId(candidateText);
-        if (!userByEmployeeId?.id) {
-          const notFoundError = new Error(`${levelLabel}_user_ids must contain positive user IDs, employee IDs, or user names`);
-          notFoundError.statusCode = 400;
-          throw notFoundError;
-        }
-        if (!seen.has(userByEmployeeId.id)) {
-          seen.add(userByEmployeeId.id);
-          resolvedUserIds.push(userByEmployeeId.id);
-        }
-        continue;
-      }
-      if (!seen.has(userByIdentifier.id)) {
-        seen.add(userByIdentifier.id);
-        resolvedUserIds.push(userByIdentifier.id);
-      }
-      continue;
+    let resolvedUser = null;
+    if (parsedId) {
+      resolvedUser = await getUserById(parsedId);
+    }
+    if (!resolvedUser && fallbackName && !isPlaceholderValue(fallbackName)) {
+      resolvedUser = await getUserByFullName(fallbackName);
+    }
+    if (!resolvedUser && !parsedId) {
+      resolvedUser = await getUserByFullName(candidateText);
+    }
+    if (!resolvedUser) {
+      resolvedUser = await getUserByEmployeeId(candidateText) || (fallbackName ? await getUserByEmployeeId(fallbackName) : null);
     }
 
-    if (!seen.has(parsedId)) {
-      seen.add(parsedId);
-      resolvedUserIds.push(parsedId);
+    if (!resolvedUser) {
+      if (parsedId) {
+        const notFoundError = new Error(`${levelLabel} contains a user that no longer exists — please re-select the approver and try again`);
+        notFoundError.statusCode = 400;
+        throw notFoundError;
+      }
+      const notFoundError = new Error(`${levelLabel}_user_ids must contain positive user IDs, employee IDs, or user names`);
+      notFoundError.statusCode = 400;
+      throw notFoundError;
+    }
+
+    if (!seen.has(resolvedUser.id)) {
+      seen.add(resolvedUser.id);
+      resolvedUserIds.push(resolvedUser.id);
     }
   }
 

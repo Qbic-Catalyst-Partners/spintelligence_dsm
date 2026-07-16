@@ -509,7 +509,7 @@ export default function OperatorCreateTicket({ onClose, onCreated }) {
                   />
                 </Field>
 
-                <Field label="Actual Value" required error={errors.actualValue}>
+                <Field label="Idle Value" required error={errors.actualValue}>
                   <input
                     value={form.actualValue}
                     onChange={(event) => updateField("actualValue", event.target.value)}

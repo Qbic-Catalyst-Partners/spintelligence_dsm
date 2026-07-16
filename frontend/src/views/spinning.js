@@ -681,8 +681,6 @@ function SpinningDepartment() {
     const spindleSpeedValue = parseNumericInput(spindleSpeed);
     const calculatedDifferenceValue = displaySpeedValue !== null && spindleSpeedValue !== null ? Number((displaySpeedValue - spindleSpeedValue).toFixed(2)) : null;
     const calculatedDifference = calculatedDifferenceValue !== null ? calculatedDifferenceValue.toFixed(2) : "";
-    const isCountMode = countChangeMode === "Count";
-    const isCspMode = countChangeMode === "CSP";
     const countChangeReadingValues = countChangeRows
         .map((row) => parseNumericInput(row.reading_value))
         .filter((value) => value !== null);
@@ -863,10 +861,6 @@ function SpinningDepartment() {
             if (!countReadingCount.trim() || Number(countReadingCount) <= 0) {
                 nextErrors.countReadingCount = true;
                 missingFields.push("No. of Readings");
-            }
-            if (!countChangeMode) {
-                nextErrors.countChangeMode = true;
-                missingFields.push("Count Change Type");
             }
         } else if (isRingFrame) {
             if (!checkerName.trim()) {
@@ -1181,7 +1175,6 @@ function SpinningDepartment() {
             ];
         const bodyItems = isCountChange
             ? [
-                { label: "Count Change Type", value: countChangeMode || "-" },
                 { label: "Count Name (From)", value: countNameFrom || "-" },
                 { label: "Count Name (To)", value: countNameTo || "-" },
                 { label: "No. of Readings", value: countReadingCount || "-" },
@@ -1304,16 +1297,6 @@ function SpinningDepartment() {
                                         <label>Lycra Draft</label>
                                         <input type="text" inputMode="decimal" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={handleCustomDecimalInputChange(setLycraDraft, "lycraDraft", DECIMAL_5_2_CONFIG)} />
                                     </div>
-                                    <div className={styles["sp-form-group"]}>
-                                        <label className={styles.countTypeSpacer}>&nbsp;</label>
-                                        <div className={`${styles.segmentedControl} ${styles.countChangeSegmented} ${errors.countChangeMode ? styles["segmented-error"] : ""}`} role="group" aria-label="Count change type">
-                                            {["Count", "CSP"].map((mode) => (
-                                                <button key={mode} type="button" className={`${styles.segmentButton} ${countChangeMode === mode ? styles.segmentButtonActive : ""}`} onClick={() => { setCountChangeMode(mode); clearFieldError("countChangeMode"); }}>
-                                                    {mode}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
                                 </div>
 
                                 <div className={styles.row}>
@@ -1373,39 +1356,31 @@ function SpinningDepartment() {
                                                 <tr key={row.reading_no}>
                                                     <td className={styles.countChangeReadingNoCell}>{row.reading_no}</td>
                                                     <td>
-                                                        {isCountMode ? (
-                                                            countChangeEditingRow === rowIndex || !row.reading_value ? (
-                                                                <input
-                                                                    type="text"
-                                                                    inputMode="decimal"
-                                                                    value={String(row.reading_value ?? "")}
-                                                                    onFocus={() => handleCountChangeRowFocus(rowIndex)}
-                                                                    onBlur={handleCountChangeRowBlur}
-                                                                    onChange={(event) => handleCountChangeRowChange(rowIndex, "reading_value", event.target.value)}
-                                                                    className={styles.countChangeInput}
-                                                                />
-                                                            ) : (
-                                                                <span className={styles.countChangeCellText}>{String(row.reading_value ?? "")}</span>
-                                                            )
+                                                        {countChangeEditingRow === rowIndex || !row.reading_value ? (
+                                                            <input
+                                                                type="text"
+                                                                inputMode="decimal"
+                                                                value={String(row.reading_value ?? "")}
+                                                                onFocus={() => handleCountChangeRowFocus(rowIndex)}
+                                                                onBlur={handleCountChangeRowBlur}
+                                                                onChange={(event) => handleCountChangeRowChange(rowIndex, "reading_value", event.target.value)}
+                                                                className={styles.countChangeInput}
+                                                            />
                                                         ) : (
-                                                            <span className={styles.countChangeCellText}>{renderCountChangeCell(row.reading_value, "")}</span>
+                                                            <span className={styles.countChangeCellText}>{String(row.reading_value ?? "")}</span>
                                                         )}
                                                     </td>
                                                     <td>
                                                         <span className={styles.countChangeCellText}>{renderCountChangeCell(row.count, "")}</span>
                                                     </td>
                                                     <td>
-                                                        {isCspMode ? (
-                                                            <input
-                                                                type="text"
-                                                                inputMode="decimal"
-                                                                value={String(row.strength ?? "")}
-                                                                onChange={(event) => handleCountChangeRowChange(rowIndex, "strength", event.target.value)}
-                                                                className={styles.countChangeInput}
-                                                            />
-                                                        ) : (
-                                                            <span className={styles.countChangeCellText}>{renderCountChangeCell(row.strength, "")}</span>
-                                                        )}
+                                                        <input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            value={String(row.strength ?? "")}
+                                                            onChange={(event) => handleCountChangeRowChange(rowIndex, "strength", event.target.value)}
+                                                            className={styles.countChangeInput}
+                                                        />
                                                     </td>
                                                     <td>
                                                         <span className={styles.countChangeCellText}>{renderCountChangeCell(row.csp, "")}</span>

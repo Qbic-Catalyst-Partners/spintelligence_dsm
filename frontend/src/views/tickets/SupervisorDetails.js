@@ -707,7 +707,7 @@ export default function SupervisorDetails() {
 
           <div className={styles.tableHeader}>
             <span>PARAMETER</span>
-            <span>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL"}</span>
+            <span>{isSubmissionTicket ? "FREQUENCY" : "IDLE"}</span>
             <span>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD"}</span>
             <span>{isSubmissionTicket ? "STATUS" : "THRESHOLD"}</span>
           </div>

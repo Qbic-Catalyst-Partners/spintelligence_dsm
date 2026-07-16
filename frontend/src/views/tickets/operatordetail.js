@@ -447,7 +447,7 @@ export default function TicketDetails() {
             <div className={styles["table-head"]}>
               <span>Notebook Type</span>
               <span>Parameter</span>
-              <span>{isSubmissionTicket ? "Frequency" : "Actual Value"}</span>
+              <span>{isSubmissionTicket ? "Frequency" : "Idle Value"}</span>
               <span>{isSubmissionTicket ? "Occurrences" : "Standard Value"}</span>
               <span>{isSubmissionTicket ? "Status" : "Threshold Value"}</span>
               <span>Created At</span>

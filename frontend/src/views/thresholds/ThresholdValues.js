@@ -946,13 +946,22 @@ export default function ThresholdValues() {
             const primaryApprovalL1Id = approvalL1Ids[0] || "";
             const primaryApprovalL2Id = approvalL2Ids[0] || "";
 
+            const staleApprovalL1Names = approvalL1Names.filter(
+                (name) => !resolveSelectedUsers(users, [name]).length
+            );
+            const staleApprovalL2Names = approvalL2Names.filter(
+                (name) => !resolveSelectedUsers(users, [name]).length
+            );
+
             if (
                 !fieldName ||
                 !rawActualValue ||
                 (!rawPositiveTolerance && !rawNegativeTolerance) ||
                 !criticality ||
                 !approvalL1Names.length ||
-                !approvalL2Names.length
+                !approvalL2Names.length ||
+                staleApprovalL1Names.length ||
+                staleApprovalL2Names.length
             ) {
                 const missingFields = [];
 
@@ -974,10 +983,18 @@ export default function ThresholdValues() {
 
                 if (!approvalL1Names.length) {
                     missingFields.push("approval_l1");
+                } else if (staleApprovalL1Names.length) {
+                    missingFields.push(
+                        `approval_l1 (${staleApprovalL1Names.join(", ")} no longer exists — please re-select)`
+                    );
                 }
 
                 if (!approvalL2Names.length) {
                     missingFields.push("approval_l2");
+                } else if (staleApprovalL2Names.length) {
+                    missingFields.push(
+                        `approval_l2 (${staleApprovalL2Names.join(", ")} no longer exists — please re-select)`
+                    );
                 }
 
                 setFormError(`${missingFields.join(", ")} are required.`);
@@ -1356,7 +1373,7 @@ export default function ThresholdValues() {
 
                                                     <div className={styles.ruleBottomGrid}>
                                                         <label className={styles.field}>
-                                                            <span>Actual Value</span>
+                                                            <span>Idle Value</span>
                                                             <span className={styles.actualValueRow}>
                                                                 <input
                                                                     className={styles.actualValueInput}
@@ -1364,7 +1381,7 @@ export default function ThresholdValues() {
                                                                     onChange={(event) =>
                                                                         handleRuleChange(rule.id, "actualValue", event.target.value)
                                                                     }
-                                                                    placeholder="Enter Actual value"
+                                                                    placeholder="Enter Idle value"
                                                                 />
                                                                 <span className={styles.valueModeGroup} role="radiogroup" aria-label="Value type">
                                                                     <label className={styles.valueModeOption}>
@@ -1614,7 +1631,7 @@ export default function ThresholdValues() {
                                                 <th>L1</th>
                                                 <th>L2</th>
                                                 <th>Criticality</th>
-                                                <th>Actual Value</th>
+                                                <th>Idle Value</th>
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
                                                 <th>Status</th>

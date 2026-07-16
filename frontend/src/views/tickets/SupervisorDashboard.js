@@ -711,7 +711,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                     <th>OPERATOR</th>
                     <th>NOTEBOOK TYPE</th>
                     <th>PARAMETER</th>
-                    <th>ACTUAL</th>
+                    <th>IDLE</th>
                     <th>STANDARD</th>
                     <th>THRESHOLD</th>
                     <th>SEVERITY</th>
