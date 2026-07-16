@@ -384,6 +384,11 @@
   background: #eef4ff;
 }
 
+.printHeader,
+.printFooter {
+  display: none;
+}
+
 .clearFiltersButton {
   display: inline-flex;
   align-items: center;
@@ -726,6 +731,7 @@
   .printMatrixMode .subHeaderRow,
   .printMatrixMode .tabBar,
   .printMatrixMode .listToolbar,
+  .printMatrixMode .filterRow,
   .printMatrixMode .formCard,
   .printMatrixMode .matrixActionCell,
   .printMatrixMode .savedVersionsSlot {
@@ -762,6 +768,46 @@
 
   .printMatrixMode .matrixStatusCell {
     width: auto;
+  }
+
+  .printMatrixMode .printHeader {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 0 12px;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #0f172a;
+  }
+
+  .printMatrixMode .printLogoSlot {
+    width: 90px;
+    height: 60px;
+    flex: 0 0 auto;
+  }
+
+  .printMatrixMode .printHeaderText {
+    flex: 1 1 auto;
+  }
+
+  .printMatrixMode .printTitle {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .printMatrixMode .printMeta {
+    font-size: 11px;
+    color: #475569;
+    margin-top: 2px;
+  }
+
+  .printMatrixMode .printFooter {
+    display: block;
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top: 1px solid #cbd5e1;
+    font-size: 11px;
+    color: #334155;
   }
 
   .printRowMode .shell {

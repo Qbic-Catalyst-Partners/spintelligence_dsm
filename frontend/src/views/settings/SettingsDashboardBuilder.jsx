@@ -188,8 +188,7 @@ function SettingsDashboardBuilder() {
 
   const filteredUsers = useMemo(() => {
     if (!selectedRole) return builderUsers;
-    const roleMatchedUsers = builderUsers.filter((u) => u.role === selectedRole);
-    return roleMatchedUsers.length ? roleMatchedUsers : builderUsers;
+    return builderUsers.filter((u) => u.role === selectedRole);
   }, [builderUsers, selectedRole]);
   const ownBuilderUser = useMemo(
     () => builderUsers.find((u) => Number(u.id) === dashboardOwnerUserId),

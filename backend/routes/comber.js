@@ -165,7 +165,7 @@ const getMasterVarieties = sendPrepVarietyDropdown(sqlServerPrep, 'comber');
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS count_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS count_name
      FROM dbo.Depot_CountMaster

@@ -348,7 +348,7 @@ function getEntrySortValue(entry) {
 }
 
 const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
-  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess, lockedCountName = "", user },
+  { entryId = "", nextEntryIdPreview = "", typeOptions, selectedType, onTypeChange, onSubmitSuccess, lockedCountName = "", lockedConsigneeName = "", user },
   ref
 ) {
   const router = useRouter();
@@ -419,6 +419,15 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       current.countName === lockedCountName ? current : { ...current, countName: lockedCountName }
     );
   }, [lockedCountName, recentEntries]);
+
+  // Once a PP id has a locked consignee name (set by whichever sub-department entered it
+  // first), every other sub-department under that same PP id must reuse it.
+  useEffect(() => {
+    if (!lockedConsigneeName) return;
+    setForm((current) =>
+      current.consigneeName === lockedConsigneeName ? current : { ...current, consigneeName: lockedConsigneeName }
+    );
+  }, [lockedConsigneeName, recentEntries]);
 
   useEffect(() => {
     if (!recentEntries.length) {
@@ -596,7 +605,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       const response = await submitDrawFrameHeaderEntry(payload);
       const savedEntry = response?.data || response;
 
-      registerProcessParameterId(savedEntry, activeType, form.countName);
+      registerProcessParameterId(savedEntry, activeType, form.countName, form.consigneeName);
       setForm((current) => ({
         ...current,
         paramId,
@@ -709,6 +718,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
             options={consigneeOptions}
             placeholder={field.placeholder}
             ariaLabel={field.label}
+            disabled={Boolean(lockedConsigneeName)}
           />
         </div>
       );

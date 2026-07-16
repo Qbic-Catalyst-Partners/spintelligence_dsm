@@ -6,6 +6,7 @@ const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, sendPrepVarietyDropdown } = require('../utils/prepVariety');
 const { sendUqcMasterData } = require('./uqcMasterData');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const MSSQL_THRESHOLD_TABLE = String(process.env.MSSQL_THRESHOLD_TABLE || 'dbo.threshold_master').trim();
 const SCREEN_ID_PREFIXES = {
   card_thick_place: 'CT',
@@ -607,7 +608,7 @@ router.get('/master/varieties', getMasterVarieties);
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS count_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS count_name
      FROM dbo.Depot_CountMaster
@@ -2818,6 +2819,17 @@ router.post('/qc-header', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO carding.carding_qc_header (
         entry_id, type, count_name, consignee_name, creation_date,
@@ -2837,7 +2849,7 @@ router.post('/qc-header', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        entry_id, type, count_name, consignee_name, creation_date,
+        resolvedEntryId, type, count_name, consignee_name, creation_date,
         machine_no, lickerin_speed, cylinder_speed, flats_speed,
         delivery_speed, draft_speed, tension_draft, delivery_hank,
         setting, feed_roll_to_lickerin, lickerin_to_cylinder,

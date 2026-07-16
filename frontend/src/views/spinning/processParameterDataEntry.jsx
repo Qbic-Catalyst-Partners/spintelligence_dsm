@@ -17,7 +17,11 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { loadLocalEntries, saveLocalEntry } from "@/utils/localProcessParameterStore";
+import {
+  spinningProcessParameterDataEntry,
+  updateSpinningProcessParameterEntry,
+  getSpinningProcessParameterEntries,
+} from "@/apis/spinning";
 import styles from "@/styles/spinning.module.css";
 
 const createDefaultForm = () => ({
@@ -48,10 +52,6 @@ const createDefaultForm = () => ({
   thicknessMax: "",
   ramp: "",
   offset: "",
-  lickerin: "",
-  cylinder: "",
-  doffer: "",
-  flats: "",
   lycraDraft: "",
   lycraPercent: "",
 });
@@ -104,25 +104,21 @@ const isVersionComplete = (version) =>
     "thicknessMax",
     "ramp",
     "offset",
-    "lickerin",
-    "cylinder",
-    "doffer",
-    "flats",
     "lycraDraft",
     "lycraPercent",
   ].every((field) => String(version?.data?.[field] || "").trim());
 
 const mapApiEntryToVersion = (entry) => {
   const normalizedDate = String(entry?.creation_date || "").split("T")[0];
-  const paramId = coerceProcessParameterId(entry?.param_id || "");
+  const paramId = coerceProcessParameterId(entry?.entry_id || entry?.param_id || "");
 
   return {
-    id: String(entry?.qc_id ?? entry?.param_id ?? Date.now()),
+    id: String(entry?.qc_id ?? entry?.entry_id ?? entry?.param_id ?? Date.now()),
     status: entry?.status || "DONE",
     label: formatDisplayDate(normalizedDate),
     date: normalizedDate,
     data: {
-      versionId: String(entry?.qc_id ?? entry?.param_id ?? ""),
+      versionId: String(entry?.qc_id ?? entry?.entry_id ?? entry?.param_id ?? ""),
       paramId,
       countName: entry?.count_name || "",
       consigneeName: entry?.consignee_name || "",
@@ -451,11 +447,12 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     selectedTypeName,
     typeOptions = [],
     onTypeChange,
-    entryId = "#SPN-001",
+    entryId = "",
     nextEntryIdPreview = "",
     standaloneSection = false,
     savedVersionsTargetId = "",
     lockedCountName = "",
+    lockedConsigneeName = "",
   },
   ref
 ) {
@@ -482,8 +479,20 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     form.countName
   );
 
-  const loadVersions = () => {
-    const nextVersions = loadLocalEntries("spinning").map(mapApiEntryToVersion);
+  const loadVersions = async () => {
+    let response;
+    try {
+      response = await getSpinningProcessParameterEntries({ page: 1, limit: 200 });
+    } catch {
+      setVersions([]);
+      setForm({ ...createDefaultForm(), paramId: entryId || "" });
+      setExpandedVersionId(null);
+      setSavedProcessParameterId(entryId || "");
+      return;
+    }
+
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const nextVersions = rows.map(mapApiEntryToVersion);
 
     setVersions(nextVersions);
 
@@ -531,6 +540,15 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       current.countName === lockedCountName ? current : { ...current, countName: lockedCountName }
     );
   }, [lockedCountName, versions]);
+
+  // Once a PP id has a locked consignee name (set by whichever sub-department entered it
+  // first), every other sub-department under that same PP id must reuse it.
+  useEffect(() => {
+    if (!lockedConsigneeName) return;
+    setForm((current) =>
+      current.consigneeName === lockedConsigneeName ? current : { ...current, consigneeName: lockedConsigneeName }
+    );
+  }, [lockedConsigneeName, versions]);
 
   useEffect(() => {
     if (!standaloneSection || !savedVersionsTargetId) {
@@ -631,6 +649,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const buildPayload = () => ({
     entry_id: String(form.paramId || savedProcessParameterId || entryId || "").trim() || undefined,
     count_name: form.countName,
+    consignee_name: form.consigneeName,
     creation_date: form.creationDate,
     machine_no: parseNumberValue(form.machineNo),
     bottom_roll_setting: form.bottomRollSetting,
@@ -659,21 +678,21 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const submit = async () => {
     if (!validate()) return false;
 
-    const versionId = form.versionId || String(Date.now());
     const paramId = form.versionId
       ? form.paramId || savedProcessParameterId
-      : savedProcessParameterId || entryId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
-    const payload = buildPayload();
-    const savedEntry = saveLocalEntry("spinning", {
-      ...payload,
-      qc_id: versionId,
-      param_id: paramId,
-    });
-    setSavedProcessParameterId(resolveProcessParameterDisplayId(savedEntry, paramId));
-    registerProcessParameterId(savedEntry, "Spinning", form.countName);
+      : savedProcessParameterId || entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
+    const payload = { ...buildPayload(), entry_id: paramId };
 
-    loadVersions();
-    onSubmitSuccess?.();
+    const response = form.versionId
+      ? await updateSpinningProcessParameterEntry(form.versionId, payload)
+      : await spinningProcessParameterDataEntry(payload);
+
+    const nextParamId = resolveProcessParameterDisplayId(response, paramId);
+    setSavedProcessParameterId(nextParamId);
+    registerProcessParameterId(response, "Spinning", form.countName, form.consigneeName);
+
+    await loadVersions();
+    onSubmitSuccess?.(response);
     return true;
   };
 
@@ -742,6 +761,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
             options={consigneeOptions}
             placeholder="Search or select consignee name"
             ariaLabel="Consignee Name"
+            disabled={Boolean(lockedConsigneeName)}
           />
         </div>
 

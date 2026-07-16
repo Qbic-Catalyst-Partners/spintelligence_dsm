@@ -5,6 +5,7 @@ const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
 const { sendPrepVarietyDropdown } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const SCREEN_ID_PREFIXES = {
   sync: 'BS',
   drop_test: 'BD',
@@ -246,7 +247,7 @@ let lapCvTablesReady = false;
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS count_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS count_name
      FROM dbo.Depot_CountMaster
@@ -399,7 +400,11 @@ const ensureBlowroomEntryIdColumns = async () => {
 };
 
 const ensureSyncStatsView = async () => {
-  if (syncStatsReady) return;
+  if (syncStatsReady) {
+    const exists = await client.query(`SELECT to_regclass('blowroom.sync_stats') AS reg`);
+    if (exists.rows[0]?.reg) return;
+    syncStatsReady = false;
+  }
 
   // Recreate view to avoid CREATE OR REPLACE column-rename errors
   // when a previous version exists with different column names.
@@ -1439,6 +1444,17 @@ router.post('/header', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO blowroom.blowroom_header (
         entry_id, count_name, consignee_name, creation_date,
@@ -1460,7 +1476,7 @@ router.post('/header', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        entry_id, count_name, consignee_name, creation_date,
+        resolvedEntryId, count_name, consignee_name, creation_date,
         line_numbers, rotary_beater_speed, depth,
         mpm_delivery_speed, mpm_delivery_pascals,
         condensor_speed, rk_feed_roll_beater, rk_beater_speed,

@@ -3,6 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const SCREEN_ID_PREFIXES = {
   process: 'AP',
   q2: 'A2',
@@ -56,7 +57,7 @@ const isUniqueViolation = (err) => err && err.code === '23505';
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS cntcode,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS cntname
      FROM dbo.Depot_CountMaster
@@ -75,14 +76,25 @@ const fetchCountMaster = async (prefix = '') => {
     .filter((row) => row.cntcode && row.cntname);
 };
 
+const fetchPostgresCountMaster = async () => {
+  const result = await client.query(
+    `SELECT count_name
+     FROM autoconer.count_master
+     WHERE count_name IS NOT NULL AND BTRIM(count_name) <> ''
+     ORDER BY count_name`
+  );
+  return result.rows
+    .map((row) => (row.count_name ? String(row.count_name).trim() : null))
+    .filter(Boolean)
+    .map((cntname) => ({ cntcode: cntname, cntname }));
+};
+
 const getCountMasterDropdown = async (req, res, next) => {
   try {
-    if (!sqlServer.hasSqlServerEnv()) {
-      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
-    }
-
     const prefix = String(req.query.count_prefix || req.query.prefix || '').trim();
-    const countOptions = await fetchCountMaster(prefix);
+    const countOptions = sqlServer.hasSqlServerEnv()
+      ? await fetchCountMaster(prefix)
+      : await fetchPostgresCountMaster();
     const options = [
       { text: '-- Select Count Name --', value: '' },
       ...countOptions.map((count) => ({
@@ -97,8 +109,8 @@ const getCountMasterDropdown = async (req, res, next) => {
     ];
 
     return res.status(200).json({
-      source: 'sqlserver',
-      table: 'Depot_CountMaster',
+      source: sqlServer.hasSqlServerEnv() ? 'sqlserver' : 'postgres',
+      table: sqlServer.hasSqlServerEnv() ? 'Depot_CountMaster' : 'autoconer.count_master',
       count_options: countOptions,
       count_names: countOptions.map((row) => row.cntname),
       names: countOptions.map((row) => row.cntname),
@@ -2180,16 +2192,9 @@ const fetchAutoconerMasterData = async (query = {}) => {
   }
 
   const countNameQuery = `
-    SELECT DISTINCT count_name
-    FROM (
-      SELECT count_name
-      FROM autoconer.autoconer_process_parameter
-      WHERE count_name IS NOT NULL AND BTRIM(count_name) <> ''
-      UNION
-      SELECT count_name
-      FROM autoconer.cone_density
-      WHERE count_name IS NOT NULL AND BTRIM(count_name) <> ''
-    ) t
+    SELECT count_name
+    FROM autoconer.count_master
+    WHERE count_name IS NOT NULL AND BTRIM(count_name) <> ''
     ORDER BY count_name
   `;
 
@@ -3517,6 +3522,17 @@ router.post('/process', async (req, res, next) => {
       });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_process_parameter (
         entry_id,
@@ -3539,7 +3555,7 @@ router.post('/process', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        data.entry_id || null,
+        resolvedEntryId,
         data.count_name,
         data.consignee_name,
         data.creation_date,
@@ -4036,6 +4052,17 @@ router.post('/q2', async (req, res, next) => {
       });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_q2_inspection (
         entry_id,
@@ -4062,7 +4089,7 @@ router.post('/q2', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        data.entry_id || null,
+        resolvedEntryId,
         data.count_name, data.consignee_name, data.creation_date,
         data.n_value, data.s_value, data.l_value,
         data.lh1, data.lh2, data.lh3, data.lh4, data.lh5, data.lh6,
@@ -4530,6 +4557,17 @@ router.post('/q3', async (req, res, next) => {
       });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO autoconer.autoconer_q3_inspection (
         entry_id,
@@ -4558,7 +4596,7 @@ router.post('/q3', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        data.entry_id || null,
+        resolvedEntryId,
         data.count_name, data.consignee_name, data.creation_date,
         data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
         data.t1, data.t2, data.t3, data.t4, data.t5,

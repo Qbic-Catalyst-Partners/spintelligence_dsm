@@ -5,6 +5,7 @@ const sqlServer = require('../config/sqlserver');
 const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const SCREEN_ID_PREFIXES = {
   smx_cots_change: 'SX',
   study: 'SS',
@@ -976,7 +977,7 @@ const getSimplexUqcMasterDropdown = async (req, res, next) => {
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS count_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS count_name
      FROM dbo.Depot_CountMaster
@@ -2017,6 +2018,17 @@ router.post('/process_parameter', async (req, res, next) => {
       });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     const result = await client.query(
       `INSERT INTO simplex.simplex_process_parameter (
         entry_id, type, count_name, consignee_name, creation_date,
@@ -2040,7 +2052,7 @@ router.post('/process_parameter', async (req, res, next) => {
       )
       RETURNING *`,
       [
-        data.entry_id,
+        resolvedEntryId,
         data.type || 'Process Parameter',
         data.count_name,
         data.consignee_name,

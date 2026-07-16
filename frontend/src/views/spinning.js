@@ -58,24 +58,6 @@ const SPINNING_CHECKING_OPTIONS = [
     { id: 10, name: "Wheel Change", aliases: ["Wheel Change", "WHEEL CHANGE"], component: WheelChange },
 ];
 
-const COUNT_CHANGE_RF_NO_OPTIONS = [
-    "1",
-    "2",
-    "3",
-    "8",
-    "9",
-    "10",
-    "11",
-    "12",
-    "13",
-    "14",
-    "15",
-    "16",
-    "17",
-    "20",
-    "24",
-];
-
 export const SPINNING_INPUT_SCREEN_COUNT = SPINNING_CHECKING_OPTIONS.length;
 const DECIMAL_10_2_CONFIG = { precision: 10, scale: 2 };
 const DECIMAL_5_2_CONFIG = { precision: 5, scale: 2 };
@@ -532,25 +514,20 @@ function SpinningDepartment() {
     useEffect(() => {
         if (!isCountChange) return;
 
+        // Same machine source as Cots Checking's Machine No dropdown — the RF-prefixed
+        // Spinning ring-frame machines — instead of the generic, unscoped /spinning/master/mc-nos.
         let isMounted = true;
         Promise.allSettled([
-            fetchSpinningMachineNumberOptions({ screen: "master", department: "Spinning" }),
+            fetchSpinningCountChangeRfNos(),
             fetchSpinningCountChangeDropdown(),
         ]).then(([rfResult, countNameResult]) => {
             if (!isMounted) return;
 
             if (rfResult.status === "fulfilled") {
-                const normalized = normalizeMachineOptions(rfResult.value);
-                const fallbackOptions = COUNT_CHANGE_RF_NO_OPTIONS.map((value) => ({ value, label: value }));
-                setCountChangeRfOptions(
-                    Array.from(
-                        new Map(
-                            [...normalized, ...fallbackOptions].map((option) => [option.value, option])
-                        ).values()
-                    )
-                );
+                // Only the real, fetched R/F machines — no static placeholder numbers mixed in.
+                setCountChangeRfOptions(normalizeMachineOptions(rfResult.value));
             } else {
-                setCountChangeRfOptions(COUNT_CHANGE_RF_NO_OPTIONS.map((value) => ({ value, label: value })));
+                setCountChangeRfOptions([]);
             }
 
             if (countNameResult.status === "fulfilled") {

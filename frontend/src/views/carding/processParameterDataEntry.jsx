@@ -351,6 +351,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     onTypeChange,
     savedVersionsTargetId = "",
     lockedCountName = "",
+    lockedConsigneeName = "",
   },
   ref
 ) {
@@ -452,6 +453,15 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
       current.countName === lockedCountName ? current : { ...current, countName: lockedCountName }
     );
   }, [lockedCountName, versions]);
+
+  // Once a PP id has a locked consignee name (set by whichever sub-department entered it
+  // first), every other sub-department under that same PP id must reuse it.
+  useEffect(() => {
+    if (!lockedConsigneeName) return;
+    setForm((current) =>
+      current.consigneeName === lockedConsigneeName ? current : { ...current, consigneeName: lockedConsigneeName }
+    );
+  }, [lockedConsigneeName, versions]);
 
   useEffect(() => {
     if (entryId) return;
@@ -632,7 +642,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
         : await submitCardingProcessParameterEntry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(response, "Carding", form.countName);
+      registerProcessParameterId(response, "Carding", form.countName, form.consigneeName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();
@@ -708,6 +718,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
                 options={consigneeOptions}
                 placeholder="Search or select consignee name"
                 ariaLabel="Consignee Name"
+                disabled={Boolean(lockedConsigneeName)}
               />
             </div>
 

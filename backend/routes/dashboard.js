@@ -68,7 +68,7 @@ const isAdmin001DashboardManager = (req) => {
   const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
   return employeeId === 'ADMIN001';
 };
-const canManageDashboards = (req) => isAdmin001DashboardManager(req);
+const canManageDashboards = (req) => isAdminUser(req) || isAdmin001DashboardManager(req);
 
 const summarizeWidgetForLog = (widget = {}) => ({
   id: widget.id || null,
@@ -1014,6 +1014,27 @@ const fetchWidgetData = async ({ widget, period = '1W', userId = null, userLevel
   };
 };
 
+const getDashboardRolesAndUsers = async () => {
+  const [roleRes, userRes] = await Promise.all([
+    client.query(`
+      SELECT DISTINCT COALESCE(NULLIF(trim(r.name), ''), NULLIF(trim(u.role), '')) AS role
+      FROM users.user_details u
+      LEFT JOIN rbac.role_details r ON r.id = u.role_id
+      WHERE COALESCE(NULLIF(trim(r.name), ''), NULLIF(trim(u.role), '')) IS NOT NULL
+      ORDER BY 1
+    `),
+    client.query(`
+      SELECT u.id AS user_id, u.employee_id, u.full_name AS user_name,
+        COALESCE(NULLIF(trim(r.name), ''), NULLIF(trim(u.role), '')) AS role
+      FROM users.user_details u
+      LEFT JOIN rbac.role_details r ON r.id = u.role_id
+      WHERE u.full_name IS NOT NULL AND trim(u.full_name) <> ''
+      ORDER BY u.full_name
+    `)
+  ]);
+  return { roleRes, userRes };
+};
+
 const handleOptions = async (req, res, next) => {
   try {
     const selectedDepartment = String(req.query.department || '').trim();
@@ -1044,18 +1065,7 @@ const handleOptions = async (req, res, next) => {
         WHERE is_active = true
         ORDER BY name
       `);
-    const roleRes = await client.query(`
-      SELECT DISTINCT role
-      FROM users.user_details
-      WHERE role IS NOT NULL AND trim(role) <> ''
-      ORDER BY role
-    `);
-    const userRes = await client.query(`
-      SELECT id AS user_id, employee_id, full_name AS user_name, role
-      FROM users.user_details
-      WHERE full_name IS NOT NULL AND trim(full_name) <> ''
-      ORDER BY full_name
-    `);
+    const { roleRes, userRes } = await getDashboardRolesAndUsers();
     const subDeptRes = selectedDepartment
       ? await client.query(
         `
@@ -1132,7 +1142,7 @@ const handleOptionsV2 = async (req, res, next) => {
       where.push(`trim(input_screen) = $${params.length}`);
     }
 
-    const [rowsRes, roleRes, userRes, rbacScreenRes] = await Promise.all([
+    const [rowsRes, { roleRes, userRes }, rbacScreenRes] = await Promise.all([
       client.query(
         `
         SELECT DISTINCT
@@ -1146,18 +1156,7 @@ const handleOptionsV2 = async (req, res, next) => {
         `,
         params
       ),
-      client.query(`
-        SELECT DISTINCT role
-        FROM users.user_details
-        WHERE role IS NOT NULL AND trim(role) <> ''
-        ORDER BY role
-      `),
-      client.query(`
-        SELECT id AS user_id, employee_id, full_name AS user_name, role
-        FROM users.user_details
-        WHERE full_name IS NOT NULL AND trim(full_name) <> ''
-        ORDER BY full_name
-      `),
+      getDashboardRolesAndUsers(),
       client.query(`
         SELECT id AS screen_id, name AS screen_name, is_active
         FROM rbac.screens
@@ -1391,20 +1390,7 @@ const handleOptionsMatch = async (req, res, next) => {
     const inputScreen = String(req.query.input_screen || req.query.notebook || '').trim();
     const subDepartment = String(req.query.sub_department || '').trim();
 
-    const [userRes, roleRes] = await Promise.all([
-      client.query(`
-        SELECT id AS user_id, employee_id, full_name AS user_name, role
-        FROM users.user_details
-        WHERE full_name IS NOT NULL AND trim(full_name) <> ''
-        ORDER BY full_name
-      `),
-      client.query(`
-        SELECT DISTINCT role
-        FROM users.user_details
-        WHERE role IS NOT NULL AND trim(role) <> ''
-        ORDER BY role
-      `)
-    ]);
+    const { roleRes, userRes } = await getDashboardRolesAndUsers();
 
     if (!department) {
       const rbacDeptRes = await client.query(`

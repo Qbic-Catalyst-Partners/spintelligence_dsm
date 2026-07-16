@@ -286,7 +286,7 @@ const SavedVersionsSection = ({
 );
 
 const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParameterDataEntry(
-  { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], entryId = "", nextEntryIdPreview = "", tablePortalTargetId = "", lockedCountName = "" },
+  { selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], entryId = "", nextEntryIdPreview = "", tablePortalTargetId = "", lockedCountName = "", lockedConsigneeName = "" },
   ref
 ) {
   const [versions, setVersions] = useState([]);
@@ -380,6 +380,15 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
       current.countName === lockedCountName ? current : { ...current, countName: lockedCountName }
     );
   }, [lockedCountName, versions]);
+
+  // Once a PP id has a locked consignee name (set by whichever sub-department entered it
+  // first), every other sub-department under that same PP id must reuse it.
+  useEffect(() => {
+    if (!lockedConsigneeName) return;
+    setForm((current) =>
+      current.consigneeName === lockedConsigneeName ? current : { ...current, consigneeName: lockedConsigneeName }
+    );
+  }, [lockedConsigneeName, versions]);
 
   useEffect(() => {
     if (entryId) return;
@@ -550,7 +559,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
         : await submitSimplexProcessParameterEntry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-      registerProcessParameterId(response, "Simplex", form.countName);
+      registerProcessParameterId(response, "Simplex", form.countName, form.consigneeName);
       setSavedProcessParameterId(nextParamId);
 
       await loadVersions();
@@ -623,6 +632,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
               options={consigneeOptions}
               placeholder="Search or select consignee name"
               ariaLabel="Consignee Name"
+              disabled={Boolean(lockedConsigneeName)}
             />
           </div>
 

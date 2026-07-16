@@ -1,6 +1,8 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useDispatch } from "react-redux";
+import SearchableSelect from "@/components/SearchableSelect";
 import { submitComberEfficiency } from "@/store/slices/comber";
+import { fetchComberRibbonLapMasterMcNos } from "@/apis/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
@@ -29,6 +31,31 @@ const ComberEfficiencyDataEntry = forwardRef(function ComberEfficiencyDataEntry(
     const [form, setForm] = useState(initialForm());
     const [errors, setErrors] = useState({});
     const [formMessage, setFormMessage] = useState("");
+    const [mcNameOptions, setMcNameOptions] = useState([]);
+
+    // Same machine source (dbo.MCMASTER scoped to the Comber department) every
+    // other Comber screen's MC No./Mc Name dropdown uses.
+    useEffect(() => {
+        let active = true;
+        fetchComberRibbonLapMasterMcNos({ screen: "master" })
+            .then((machines) => {
+                if (!active) return;
+                setMcNameOptions(
+                    (machines || [])
+                        .map((row) => ({
+                            value: String(row?.mc_name || row?.mc_no || "").trim(),
+                            label: String(row?.mc_name || row?.mc_no || "").trim(),
+                        }))
+                        .filter((row) => row.value)
+                );
+            })
+            .catch((error) => {
+                console.warn("Unable to fetch Comber machine options:", error?.message || error);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
 
     const handleChange = (field, value) => {
         const nextValue = NUMERIC_FIELDS.includes(field)
@@ -120,10 +147,13 @@ const ComberEfficiencyDataEntry = forwardRef(function ComberEfficiencyDataEntry(
 
                     <div className={styles["cb-form-group"]}>
                         <label>Mc Name</label>
-                        <input
+                        <SearchableSelect
                             className={errors.mc_name ? styles["input-error"] : ""}
                             value={form.mc_name}
-                            onChange={(e) => handleChange("mc_name", e.target.value)}
+                            onChange={(value) => handleChange("mc_name", value)}
+                            options={mcNameOptions}
+                            placeholder="Select Mc Name"
+                            ariaLabel="Mc Name"
                         />
                     </div>
                 </div>

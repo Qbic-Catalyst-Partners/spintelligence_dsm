@@ -4,6 +4,7 @@ const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 
 const COTTON_HVI_PARAMETERS = [
   'sci',
@@ -83,7 +84,7 @@ const fetchMasterVarieties = async (prefix = '') => {
 
 const fetchCountMaster = async (prefix = '') => {
   const result = await sqlServer.query(
-    `SELECT TOP 100
+    `SELECT
        MIN(LTRIM(RTRIM(CAST(cntcode AS VARCHAR(50))))) AS count_code,
        LTRIM(RTRIM(REPLACE(REPLACE(CAST(cntname AS VARCHAR(255)), CHAR(13), ''), CHAR(10), ''))) AS count_name
      FROM dbo.Depot_CountMaster
@@ -145,9 +146,11 @@ const fetchLotMasterDetails = async (prefix = '', exactLotNo = '') => {
        MAX(CAST(l.lotdate AS DATE)) AS lot_date,
        MAX(LTRIM(RTRIM(CAST(v.varname AS VARCHAR(255))))) AS variety,
        MAX(LTRIM(RTRIM(CAST(l.pinvno AS VARCHAR(100))))) AS invoice_no,
-       MAX(CAST(l.pidate AS DATE)) AS invoice_date
+       MAX(CAST(l.pidate AS DATE)) AS invoice_date,
+       MAX(LTRIM(RTRIM(CAST(lm.Ledger_Name AS VARCHAR(255))))) AS party_name
      FROM dbo.lotmaster l
      LEFT JOIN dbo.variety v ON l.varcode = v.varcode
+     LEFT JOIN dbo.ledger_master lm ON l.LEDGERCODE = lm.Ledger_Code
      WHERE LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) <> ''
        AND (@exactLotNo = '' OR LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) = @exactLotNo)
        AND (@prefix = '' OR LTRIM(RTRIM(CAST(l.lotno AS VARCHAR(100)))) LIKE @lotPrefix)
@@ -162,7 +165,8 @@ const fetchLotMasterDetails = async (prefix = '', exactLotNo = '') => {
     date: toDateOnly(row.lot_date),
     variety: row.variety || '',
     invoice_no: row.invoice_no || '',
-    invoice_date: toDateOnly(row.invoice_date)
+    invoice_date: toDateOnly(row.invoice_date),
+    party_name: row.party_name || ''
   }));
 };
 
@@ -338,7 +342,10 @@ const getPsfReceiptDropdown = async (req, res, next) => {
   }
 };
 
-const getCottonHviLotDropdown = getPsfReceiptDropdown;
+// Cotton HVI (and AFIS/AFIS-6 Cotton, which reuse this same endpoint — see
+// MIXING_LOT_ENDPOINTS_BY_SCREEN in frontend/src/apis/mixing.js) source their Lot No.
+// options from dbo.lotmaster, not dbo.PSF_Receipt — that's Fibre/AFIS-6 MMF's table.
+const getCottonHviLotDropdown = getLotMasterDropdown;
 
 const getPsfReceiptMasterDropdown = async (req, res, next) => {
   try {
@@ -409,7 +416,7 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     const exactLotNo = String(req.query.lot_no || '').trim();
     const [varietiesResult, lotsResult] = await Promise.allSettled([
       fetchMasterVarieties(varietyPrefix || prefix),
-      fetchPsfReceiptDetails(lotPrefix || prefix, exactLotNo)
+      fetchLotMasterDetails(lotPrefix || prefix, exactLotNo)
     ]);
 
     if (varietiesResult.status === 'rejected') {
@@ -417,7 +424,7 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     }
 
     if (lotsResult.status === 'rejected') {
-      console.warn('Cotton HVI PSF receipt lots unavailable; returning variety dropdown only:', lotsResult.reason?.message || lotsResult.reason);
+      console.warn('Cotton HVI lotmaster lots unavailable; returning variety dropdown only:', lotsResult.reason?.message || lotsResult.reason);
     }
 
     const varieties = varietiesResult.value || [];
@@ -444,7 +451,7 @@ const getCottonHviMasterDropdown = async (req, res, next) => {
     return res.status(200).json({
       source: lotsResult.status === 'fulfilled' ? 'sqlserver' : 'sqlserver-partial',
       warnings: lotsResult.status === 'rejected'
-        ? [{ field: 'lot_no', message: 'Cotton HVI PSF receipt lots are unavailable; varieties were loaded' }]
+        ? [{ field: 'lot_no', message: 'Cotton HVI lotmaster lots are unavailable; varieties were loaded' }]
         : [],
       data: lots,
       lots,
@@ -2333,13 +2340,24 @@ router.post('/qc', async (req, res, next) => {
       return res.status(400).json({ error: 'Entries required' });
     }
 
+    // Reconciles the client-previewed entry_id against the backend's global PP
+    // sequence (advancing it if this is the first save to claim it), instead of
+    // trusting it verbatim - otherwise the sequence never moves and every
+    // department keeps previewing/claiming the same "next" PP id.
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
     // 1?????? Insert Header
     const headerResult = await client.query(
       `INSERT INTO mixing.mixing_qc_header
       (entry_id, consignee_name, count_name, creation_date, status, operator)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING qc_id, param_id, entry_id`,
-      [entry_id, consignee_name, count_name, creation_date, status, user_name || null]
+      [resolvedEntryId, consignee_name, count_name, creation_date, status, user_name || null]
     );
 
     const qc_id = headerResult.rows[0].qc_id;

@@ -331,6 +331,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     standaloneSection = false,
     savedVersionsTargetId = "",
     lockedCountName = "",
+    lockedConsigneeName = "",
   },
   ref
 ) {
@@ -424,6 +425,15 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       current.countName === lockedCountName ? current : { ...current, countName: lockedCountName }
     );
   }, [lockedCountName, versions]);
+
+  // Once a PP id has a locked consignee name (set by whichever sub-department entered it
+  // first), every other sub-department under that same PP id must reuse it.
+  useEffect(() => {
+    if (!lockedConsigneeName) return;
+    setForm((current) =>
+      current.consigneeName === lockedConsigneeName ? current : { ...current, consigneeName: lockedConsigneeName }
+    );
+  }, [lockedConsigneeName, versions]);
 
   useEffect(() => {
     if (entryId) return;
@@ -594,7 +604,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
       : await mixingProcessParameterDataEntry(payload);
 
     const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
-    registerProcessParameterId(response, "Mixing", form.countName);
+    registerProcessParameterId(response, "Mixing", form.countName, form.consigneeName);
     setSavedProcessParameterId(nextParamId);
     await loadVersions();
     dispatch(clearMixingState());
@@ -670,6 +680,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
             options={consigneeOptions}
             placeholder="Search or select consignee name"
             ariaLabel="Consignee Name"
+            disabled={Boolean(lockedConsigneeName)}
           />
         </div>
 

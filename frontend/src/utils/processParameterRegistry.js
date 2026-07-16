@@ -29,6 +29,7 @@ const normalizeRow = (row) => ({
   displayId: String(row?.displayId || row?.entryId || row?.id || "").trim(),
   statuses: Array.isArray(row?.statuses) ? row.statuses.slice(0, 10) : [],
   countName: String(row?.countName || "").trim(),
+  consigneeName: String(row?.consigneeName || "").trim(),
 });
 
 export const readProcessParameterRegistry = () => safeRead().map(normalizeRow).filter((row) => row.displayId);
@@ -41,19 +42,21 @@ export const writeProcessParameterRegistry = (rows = []) => {
   return normalized;
 };
 
-// A PP id's count name is fixed by whichever sub-department entry set it first — every
-// other sub-department under the same PP id must reuse it (consignee name stays independent).
-export const registerProcessParameterId = (response, _department = "", countName = "") => {
+// A PP id's count name and consignee name are fixed by whichever sub-department entry set
+// them first — every other sub-department under the same PP id must reuse both.
+export const registerProcessParameterId = (response, _department = "", countName = "", consigneeName = "") => {
   const displayId = resolveProcessParameterDisplayId(response);
   if (!displayId) return "";
 
   const current = readProcessParameterRegistry();
   const existingIndex = current.findIndex((row) => row.displayId === displayId);
   const existingCountName = current[existingIndex]?.countName || "";
+  const existingConsigneeName = current[existingIndex]?.consigneeName || "";
   const nextRow = {
     displayId,
     statuses: current[existingIndex]?.statuses || [],
     countName: existingCountName || String(countName || "").trim(),
+    consigneeName: existingConsigneeName || String(consigneeName || "").trim(),
   };
   if (existingIndex >= 0) current[existingIndex] = nextRow;
   else current.unshift(nextRow);
@@ -66,6 +69,13 @@ export const getProcessParameterCountName = (displayId) => {
   if (!normalized) return "";
   const row = readProcessParameterRegistry().find((item) => item.displayId === normalized);
   return row?.countName || "";
+};
+
+export const getProcessParameterConsigneeName = (displayId) => {
+  const normalized = String(displayId || "").trim();
+  if (!normalized) return "";
+  const row = readProcessParameterRegistry().find((item) => item.displayId === normalized);
+  return row?.consigneeName || "";
 };
 
 export const removeProcessParameterId = (displayId) => {
