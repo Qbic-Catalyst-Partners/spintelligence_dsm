@@ -1,6 +1,6 @@
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://187.127.135.236:4000").trim();
 const getBrowserToken = () =>
   typeof window !== "undefined"
     ? window.sessionStorage.getItem("token") || window.localStorage.getItem("token") || ""
