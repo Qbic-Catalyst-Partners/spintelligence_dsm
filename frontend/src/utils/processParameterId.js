@@ -25,6 +25,10 @@ export const normalizeProcessParameterId = (value) => {
 
 export const coerceProcessParameterId = normalizeProcessParameterId;
 
+// Most department save routes put entry_id at the top level of the response
+// body, but Autoconer's (/process, /q2, /q3) nest the saved row under `data`
+// (e.g. { message, data: { entry_id, ... } }) — check both shapes so callers
+// don't have to know which backend convention they're talking to.
 export const resolveProcessParameterDisplayId = (entry = {}, fallback = "") =>
   normalizeProcessParameterId(
     entry?.entry_id ??
@@ -32,6 +36,11 @@ export const resolveProcessParameterDisplayId = (entry = {}, fallback = "") =>
     entry?.process_parameter_id ??
     entry?.param_id ??
     entry?.id ??
+    entry?.data?.entry_id ??
+    entry?.data?.entryId ??
+    entry?.data?.process_parameter_id ??
+    entry?.data?.param_id ??
+    entry?.data?.id ??
     fallback
   );
 

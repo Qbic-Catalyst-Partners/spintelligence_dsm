@@ -517,6 +517,21 @@ const ensureAutoconerEntryIdColumns = async () => {
     WHERE entry_id IS NOT NULL;
   `);
 
+  // cone_density was never given a real PRIMARY KEY either (same root cause as
+  // lycra_checking above) — GET /cone-density's `GROUP BY cd.id` with `cd.*` selected
+  // fails with "column cd.test_no must appear in the GROUP BY clause" without it,
+  // so the Cone Density screen 500s on every fetch.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.cone_density'::regclass AND contype = 'p'
+      ) THEN
+        ALTER TABLE autoconer.cone_density ADD PRIMARY KEY (id);
+      END IF;
+    END $$;
+  `);
+
   await client.query(`
     ALTER TABLE autoconer.inspections
       ADD COLUMN IF NOT EXISTS entry_id TEXT;

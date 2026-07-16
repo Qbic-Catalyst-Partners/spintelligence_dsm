@@ -35,7 +35,7 @@ export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
 const SIMPLEX_ENTRY_ID_CONFIG = {
   "Process Parameter": { prefix: "SPP", width: 4, routePath: "/simplex/process_parameter" },
   "SMXCots Change Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
-  "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/study" },
+  "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/list" },
   "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
   "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change", fetchPath: "/simplex/notebook" },
   "Stretch %": { prefix: "STP", width: 4, routePath: "/simplex/stretch-percent" },

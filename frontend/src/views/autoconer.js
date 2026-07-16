@@ -50,7 +50,7 @@ const AUTOCONER_ENTRY_ID_CONFIG = {
   "Process Parameter": {
     prefix: "PP",
     width: 4,
-    fetchPath: "/autoconer/process-parameter",
+    fetchPath: "/autoconer/process",
     pagePath: "/autoconer?type=Process%20Parameter",
     scope: "pp-global",
   },

@@ -42,7 +42,7 @@ const screenEndpoints = {
   "Quality Control": {
     Mixing: {
       "Process Parameter": "/mixing/qc",
-      "AFIS-6 Cotton Data Entry": "/mixing/afis-6-cotton",
+      "AFIS-6 Cotton Data Entry": "/mixing/afis6-cotton",
       "Cotton HVI Data Entry": "/mixing/cotton-hvi",
       "Fibre Data Entry": "/mixing/fibre",
       "AFIS Data Entry": "/mixing/afis",
@@ -58,11 +58,11 @@ const screenEndpoints = {
       "B/R Between Lap CV%": "/blowroom/between-lap-cv",
     },
     Carding: {
-      "Process Parameter": "/carding/process-parameters",
+      "Process Parameter": "/carding/qc-header",
       "Between & Within Card Data Entry": "/carding/between-within-card",
     "Thick place & CV": "/carding/card-thick-place",
       "Carding NRE%": "/carding/nre",
-      "Nati Data Entry": "/carding/nati-data",
+      "Nati Data Entry": "/carding/nati-data-entry",
       "U% Data Entry": "/carding/uqc",
       "Card DFK Data": "/carding/dfk-pressure",
     },
@@ -84,7 +84,7 @@ const screenEndpoints = {
       "PP - Finisher Drawing": "/draw-frame?type=PP%20-%20Finisher%20Drawing",
     },
     Simplex: {
-      "Process Parameter": "/simplex/process-parameters",
+      "Process Parameter": "/simplex/process_parameter",
       "SMXCots Change Data Entry": "/simplex/cots-change",
       "SMX Breaks Study Report": "/simplex/list",
       "U% Data Entry": "/simplex/uqc",
@@ -112,7 +112,7 @@ const screenEndpoints = {
       "Lycra % Checking": "/autoconer/lycra-checking",
       "Count Wise Cuts Record": "/autoconer/count-wise-cuts",
       "Splice Strength": "/autoconer/splice-strength",
-      "Drum wise Appearance": "/autoconer/drum-wise-appearance",
+      "Drum wise Appearance": "/autoconer/drum-wise",
       "CSP Parameter Entries": "/autoconer/parameter-entries/pending-csp",
       "U% Parameter Entries": "/autoconer/parameter-entries/pending-quality",
     },

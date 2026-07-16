@@ -33,7 +33,7 @@ const isUniqueViolation = (err) => err && err.code === '23505';
 // BY clause" on every request. Add the missing PK (id is a NOT NULL serial with no duplicates)
 // so those report queries can actually run.
 const ensureComberPrimaryKeys = async () => {
-  const tables = ['ribbon_lap_cv_qc', 'nati_data_entry'];
+  const tables = ['ribbon_lap_cv_qc'];
   for (const table of tables) {
     await client.query(`
       DO $$
@@ -100,10 +100,6 @@ const ensureComberEntryIdColumns = async () => {
     ALTER TABLE comber.nati_data_entry
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
       ADD COLUMN IF NOT EXISTS operator TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE comber.nati_data_entry
-      ALTER COLUMN nati_id DROP NOT NULL;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS comber_nati_data_entry_entry_id_uq
@@ -959,9 +955,6 @@ router.post('/nati-data-entry', async (req, res) => {
  *                   type:
  *                     type: string
  *                     example: Daily
- *                   nati_id:
- *                     type: integer
- *                     example: 101
  *                   entry_date:
  *                     type: string
  *                     format: date
