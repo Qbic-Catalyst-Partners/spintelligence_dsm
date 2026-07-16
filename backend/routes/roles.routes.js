@@ -527,10 +527,11 @@ router.get('/departments', async (req, res, next) => {
 router.get('/screens', async (req, res, next) => {
   try {
     const result = await client.query(
-      `SELECT id, name, is_active
-       FROM rbac.screens
-       WHERE is_active = true
-       ORDER BY id`
+      `SELECT s.id, s.name, s.is_active, s.department_id, d.name AS department_name
+       FROM rbac.screens s
+       LEFT JOIN rbac.departments d ON d.id = s.department_id
+       WHERE s.is_active = true
+       ORDER BY s.id`
     );
 
     res.status(200).json(result.rows);
@@ -554,7 +555,7 @@ const getRoleDetailsById = async (id) => {
     LEFT JOIN users.user_details u
       ON r.id = u.role_id
     WHERE r.id = $1
-    GROUP BY r.id
+    GROUP BY r.id, r.name, r.description, r.status, r.updated_at
     `,
     [id]
   );

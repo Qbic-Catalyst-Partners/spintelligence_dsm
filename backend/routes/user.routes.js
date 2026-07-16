@@ -7,6 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const csv = require("csv-parser");
 const { Parser } = require("json2csv");
+const XLSX = require("xlsx");
 const saltRounds = 10;
 const dayjs = require("dayjs");
 const normalizeUserLevel = (value) => {
@@ -638,11 +639,14 @@ const storage = multer.diskStorage({
   },
 });
 
+const ALLOWED_BULK_UPLOAD_EXTENSIONS = [".csv", ".xlsx", ".xls"];
+
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype === "text/csv" || path.extname(file.originalname).toLowerCase() === ".csv") {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ALLOWED_BULK_UPLOAD_EXTENSIONS.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error("Only CSV files allowed"), false);
+    cb(new Error("Only CSV or Excel (.xlsx/.xls) files allowed"), false);
   }
 };
 
@@ -699,6 +703,33 @@ const splitFullName = (fullNameRaw = "") => {
     first_name: parts[0],
     last_name: parts.slice(1).join(" ")
   };
+};
+
+const EMPLOYEE_ID_SPECIAL_CHARS = "@#$";
+const EMPLOYEE_ID_MAX_LENGTH = 8;
+
+const generateEmployeeId = async (fullName) => {
+  const lettersFromName = String(fullName || "")
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 4) || "EMP";
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const digitCount = Math.max(2, EMPLOYEE_ID_MAX_LENGTH - lettersFromName.length - 1);
+    const digits = String(Math.floor(Math.random() * 10 ** digitCount)).padStart(digitCount, "0");
+    const specialChar = EMPLOYEE_ID_SPECIAL_CHARS[Math.floor(Math.random() * EMPLOYEE_ID_SPECIAL_CHARS.length)];
+    const candidate = `${lettersFromName}${digits}${specialChar}`.slice(0, EMPLOYEE_ID_MAX_LENGTH);
+
+    const existing = await client.query(
+      `SELECT id FROM users.user_details WHERE employee_id = $1`,
+      [candidate]
+    );
+    if (!existing.rows.length) {
+      return candidate;
+    }
+  }
+
+  throw new Error("Unable to generate a unique employee ID, please retry");
 };
 
 const resolveRoleForBulk = async ({ roleIdRaw, roleNameRaw, rowNumber }) => {
@@ -793,25 +824,45 @@ const readCsvRows = (filePath) =>
       .on("error", reject);
   });
 
+const readExcelRows = (filePath) => {
+  const workbook = XLSX.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+};
+
+const readBulkUploadRows = (filePath, originalName) => {
+  const ext = path.extname(originalName || filePath).toLowerCase();
+  if (ext === ".xlsx" || ext === ".xls") {
+    return readExcelRows(filePath);
+  }
+  return readCsvRows(filePath);
+};
+
 /**
  * @swagger
  * /users/bulk-upload:
  *   post:
- *     summary: Bulk upload users via CSV
+ *     summary: Bulk upload users via CSV or Excel
  *     tags: [User Management]
  *     description: |
- *       Upload users in bulk using CSV.
+ *       Upload users in bulk using CSV or Excel (.xlsx/.xls), matching the UM_BU Template.
  *       Supports DB-aware mapping for role/department using either IDs or names.
  *
- *       Accepted columns:
- *       - Required (effective): `email`, `phone`, `employee_id`, `first_name` (or `full_name`), `role` (or `role_id`), `department` (or `department_id`)
- *       - Optional: `last_name`, `designation`, `level`, `dob`, `account_status`
+ *       Accepted columns (aliases in parentheses):
+ *       - Required (effective): `first_name` (First Name, or Full Name), `email` (Email Address), `phone` (Mobile Number),
+ *         `role` (Role Selection), `department` or `sub_department` (Sub Department)
+ *       - Optional: `last_name` (Last Name), `employee_id` (auto-generated from the name if omitted), `employee_type`
+ *         (Employee Type), `department` (Department, stored as top_department when `sub_department` is also present),
+ *         `designation`, `level` (Level), `dob`, `account_status`, `password` (Password)
  *
  *       Notes:
  *       - If `full_name` is provided and `first_name` is missing, name is split automatically.
+ *       - `sub_department` (when present) is matched against rbac.departments; plain `department` is stored as top_department.
+ *       - `employee_id` is auto-generated (name-derived letters + digits + special char, max 8 chars) when not supplied.
  *       - `level` is normalized to `L1` or `L2` (default `L1`).
  *       - `account_status` is normalized to `Active` / `Inactive` (default `Active`).
- *       - Default password for created users is `Password@123`.
+ *       - Per-row `password` is used if provided, otherwise defaults to `Password@123`.
  *       - Duplicate emails are skipped (`ON CONFLICT (email) DO NOTHING`).
  *     requestBody:
  *       required: true
@@ -855,9 +906,7 @@ router.post("/bulk-upload", upload.single("file"), async (req, res, next) => {
     }
 
     const filePath = req.file.path;
-    let usersData = [];
-
-    usersData = await readCsvRows(filePath);
+    const usersData = await readBulkUploadRows(filePath, req.file.originalname);
 
     const result = await processUsers(usersData);
     res.json({ message: "Bulk upload completed", ...result });
@@ -887,16 +936,21 @@ async function processUsers(data) {
       let first_name = getBulkValue(row, ["first_name", "first name", "firstname"]);
       let last_name = getBulkValue(row, ["last_name", "last name", "lastname"]);
       const email = getBulkValue(row, ["email", "email_address", "email address"]);
-      const phone = getBulkValue(row, ["phone", "phone_number", "phone number", "mobile"]);
+      const phone = getBulkValue(row, ["phone", "phone_number", "phone number", "mobile", "mobile_number", "mobile number"]);
       const employee_id = getBulkValue(row, ["employee_id", "employee id", "employeeid"]);
-      const role = getBulkValue(row, ["role", "role_name", "role name"]);
+      const role = getBulkValue(row, ["role", "role_name", "role name", "role_selection", "role selection"]);
       const role_id_raw = getBulkValue(row, ["role_id", "role id"]);
-      const department = getBulkValue(row, ["department", "department_name", "department name"]);
+      const sub_department = getBulkValue(row, ["sub_department", "sub department"]);
+      const departmentRaw = getBulkValue(row, ["department", "department_name", "department name"]);
+      const department = sub_department || departmentRaw;
       const department_id_raw = getBulkValue(row, ["department_id", "department id"]);
+      const top_department = sub_department ? departmentRaw : "";
+      const employee_type = getBulkValue(row, ["employee_type", "employee type"]);
       const designation = getBulkValue(row, ["designation"]);
       const level = getBulkValue(row, ["level", "user_level"]);
       const dob = getBulkValue(row, ["dob", "date_of_birth", "date of birth"]);
       const account_status = getBulkValue(row, ["account_status", "account status", "status"]);
+      const rowPassword = getBulkValue(row, ["password"]);
 
       if ((!first_name || !String(first_name).trim()) && fullNameRaw) {
         const split = splitFullName(fullNameRaw);
@@ -908,7 +962,6 @@ async function processUsers(data) {
         first_name,
         email,
         phone,
-        employee_id,
         role: role || role_id_raw,
         department: department || department_id_raw
       };
@@ -924,7 +977,8 @@ async function processUsers(data) {
       }
 
       const full_name = `${String(first_name || "").trim()} ${String(last_name || "").trim()}`.trim();
-      const password_hash = await bcrypt.hash("Password@123", saltRounds);
+      const resolved_employee_id = employee_id || await generateEmployeeId(full_name);
+      const password_hash = await bcrypt.hash(rowPassword || "Password@123", saltRounds);
       const roleResolved = await resolveRoleForBulk({
         roleIdRaw: role_id_raw,
         roleNameRaw: role,
@@ -945,9 +999,9 @@ async function processUsers(data) {
         `INSERT INTO users.user_details
         (full_name, first_name, last_name, email, phone, password_hash,
         employee_id, role_id, role,
-        department_id, department,
+        department_id, department, top_department, employee_type,
         designation, level, dob, account_status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         ON CONFLICT (email) DO NOTHING
         RETURNING id`,
         [
@@ -957,11 +1011,13 @@ async function processUsers(data) {
           email,
           phone,
           password_hash,
-          employee_id,
+          resolved_employee_id,
           role_id,
           role_name,
           department_id,
           department_name,
+          top_department || null,
+          employee_type || null,
           designation || null,
           normalizeUserLevel(level),
           dob || null,
