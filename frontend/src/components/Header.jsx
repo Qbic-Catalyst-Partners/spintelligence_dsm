@@ -92,7 +92,6 @@ const ticketingLinks = [
 ];
 const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },
-    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
     { href: "/activity-log", label: "Activity Log" },
     {
         label: "WC Approvals",
@@ -119,6 +118,7 @@ const thresholdLinks = [
     { href: "/threshold-values", label: "Values Threshold" },
     { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/pp-batch-threshold", label: "PP Threshold" },
+    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
 ];
 const reportLinks = [
     { href: "/reports/general", label: "General Report" },
@@ -523,7 +523,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         );
         setIsManagementHubOpen(
             currentPath === "/submitted-notebooks" ||
-            currentPath === "/submitted-notebook-threshold" ||
             currentPath === "/activity-log" ||
             currentPath === "/wheel-change-approvals" ||
             currentPath === "/drawframe-wheel-change-approvals" ||
@@ -545,7 +544,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/submission-threshold" ||
             currentPath.startsWith("/submission-threshold/") ||
             currentPath === "/pp-batch-threshold" ||
-            currentPath.startsWith("/pp-batch-threshold/")
+            currentPath.startsWith("/pp-batch-threshold/") ||
+            currentPath === "/submitted-notebook-threshold" ||
+            currentPath.startsWith("/submitted-notebook-threshold/")
         );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
         setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
@@ -618,7 +619,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/submission-threshold" ||
                             currentPath.startsWith("/submission-threshold/") ||
                             currentPath === "/pp-batch-threshold" ||
-                            currentPath.startsWith("/pp-batch-threshold/")
+                            currentPath.startsWith("/pp-batch-threshold/") ||
+                            currentPath === "/submitted-notebook-threshold" ||
+                            currentPath.startsWith("/submitted-notebook-threshold/")
                         );
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
@@ -633,7 +636,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                         const isManagementGroupActive = isManagementGroup && (
                             currentPath === "/submitted-notebooks" ||
-                            currentPath === "/submitted-notebook-threshold" ||
                             currentPath === "/activity-log" ||
                             currentPath === "/wheel-change-approvals" ||
                             currentPath === "/drawframe-wheel-change-approvals" ||

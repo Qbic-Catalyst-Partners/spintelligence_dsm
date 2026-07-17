@@ -196,6 +196,35 @@ const normalizeKey = (value) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "");
 
+// Average Value Card and Performance Trends widgets both average/plot the field via toNumber()
+// below, so text/date/identifier fields silently render as 0 — filter them out of the picker.
+const NON_METRIC_FIELD_PATTERNS = [
+  /\bid\b/i,
+  /\bno\.?\b/i,
+  /\bdate\b/i,
+  /\bname\b/i,
+  /\bremarks?\b/i,
+  /\bcomments?\b/i,
+  /\bcolou?r\b/i,
+  /\btype\b/i,
+  /\bvariety\b/i,
+  /\bshift\b/i,
+  /\bchecker\b/i,
+  /\btester\b/i,
+  /\bstatus\b/i,
+  /\bcode\b/i,
+  /\bclass\b/i,
+];
+
+export const isMetricFieldName = (fieldName) => {
+  const label = String(fieldName || "").trim();
+  if (!label) return false;
+  return !NON_METRIC_FIELD_PATTERNS.some((pattern) => pattern.test(label));
+};
+
+export const filterMetricFieldNames = (fieldNames) =>
+  (Array.isArray(fieldNames) ? fieldNames : []).filter(isMetricFieldName);
+
 export const getDashboardFieldValue = (row, fieldName) => {
   if (!row || !fieldName) return null;
   if (row[fieldName] !== undefined) return row[fieldName];

@@ -11,6 +11,7 @@ import { departmentDirectory } from "@/views/departments/data";
 const DASHBOARD_BUILDER_SELECTION_STORAGE_KEY = "spintelligenceDashboardBuilderSelection";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
+import { filterMetricFieldNames } from "@/utils/dashboardWidgets";
 import styles from "@/styles/departmentDirectory.module.css";
 
 const BUILDER_SECTIONS = { average: "average", performance: "performance", ticketing: "ticketing" };
@@ -130,7 +131,10 @@ function SettingsDashboardBuilder() {
     () => getThresholdScreensForSubDepartment(selectedDepartmentSlug, selectedSubDepartmentSlug),
     [selectedDepartmentSlug, selectedSubDepartmentSlug]
   );
-  const availableFields = useMemo(() => getThresholdFieldsForScreen(selectedScreenName), [selectedScreenName]);
+  const availableFields = useMemo(
+    () => filterMetricFieldNames(getThresholdFieldsForScreen(selectedScreenName)),
+    [selectedScreenName]
+  );
 
   useEffect(() => {
     if (!departmentDirectory.length) return;
