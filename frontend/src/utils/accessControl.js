@@ -64,10 +64,10 @@ export const getDefaultTicketingLabel = (user) =>
 
 export const routeDepartmentMap = {
   "/mixing": "Mixing",
-  "/blowroom": "Blowroom",
+  "/blowroom": "Blow Room",
   "/carding": "Carding",
   "/comber": "Comber",
-  "/draw-frame": "Drawframe",
+  "/draw-frame": "Draw Frame",
   "/simplex": "Simplex",
   "/spinning": "Spinning",
   "/autoconer": "Autoconer",

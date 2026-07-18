@@ -1373,7 +1373,7 @@ export default function ThresholdValues() {
 
                                                     <div className={styles.ruleBottomGrid}>
                                                         <label className={styles.field}>
-                                                            <span>Idle Value</span>
+                                                            <span> Idle Value or Typical Value</span>
                                                             <span className={styles.actualValueRow}>
                                                                 <input
                                                                     className={styles.actualValueInput}
@@ -1381,7 +1381,7 @@ export default function ThresholdValues() {
                                                                     onChange={(event) =>
                                                                         handleRuleChange(rule.id, "actualValue", event.target.value)
                                                                     }
-                                                                    placeholder="Enter Idle value"
+                                                                    placeholder="Enter value"
                                                                 />
                                                                 <span className={styles.valueModeGroup} role="radiogroup" aria-label="Value type">
                                                                     <label className={styles.valueModeOption}>
