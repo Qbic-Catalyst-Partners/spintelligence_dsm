@@ -190,6 +190,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const [wasteTypeSaveStatus, setWasteTypeSaveStatus] = useState({});
     const wasteTypeAttemptRef = useRef({});
 
+    const [type1CountInput, setType1CountInput] = useState("1");
     const [type2CountInput, setType2CountInput] = useState("1");
     const [type3CountInput, setType3CountInput] = useState('3');
     const [wasteKgCountInput, setWasteKgCountInput] = useState('1');
@@ -244,6 +245,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     }))
                     : [emptyType1Row()]
             );
+            setType1CountInput(String(typeRows.length || 1));
         }
 
         if (studyType === "Type 2") {
@@ -410,6 +412,15 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         setType2Rows((prev) => {
             const arr = [...prev];
             while (arr.length < n) arr.push(emptyType2Row());
+            return arr.slice(0, n);
+        });
+    };
+
+    const applyType1Count = () => {
+        const n = Math.max(1, parseInt(type1CountInput) || 1);
+        setType1Rows((prev) => {
+            const arr = [...prev];
+            while (arr.length < n) arr.push(emptyType1Row());
             return arr.slice(0, n);
         });
     };
@@ -708,6 +719,25 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             {studyType === 'Type 1' && (
                 <>
                     <div className={styles['section-title']}>Type 1 Study Details</div>
+                    <div className={`${styles['mixx-row']} ${styles['waste-apply-row']}`}>
+                        <div className={styles['mixx-group']}>
+                            <label>Number of Type 1 Entries</label>
+                            <input
+                                type="number"
+                                className={styles['mixx-input']}
+                                value={type1CountInput}
+                                min={1}
+                                onChange={e => setType1CountInput(sanitizeIntegerInput(e.target.value, 4))}
+                                onWheel={e => e.target.blur()}
+                            />
+                        </div>
+                        <div className={styles['mixx-group']}>
+                            <button className={styles['mixx-btn-primary']} onClick={applyType1Count}>
+                                Apply Type 1 Entries
+                            </button>
+                        </div>
+                    </div>
+
                     <div className={`${styles['type1-table']} ${styles['desktop-view']}`}>
                         <div className={styles['type1-header']}>
                             <span>#</span>

@@ -575,11 +575,6 @@ const ensureLapCvTables = async () => {
         lap_weight numeric(12,4),
         lap_length numeric(12,4),
         grams_per_meter numeric(12,4),
-        sample_1 numeric(12,4),
-        sample_2 numeric(12,4),
-        sample_3 numeric(12,4),
-        sample_4 numeric(12,4),
-        sample_5 numeric(12,4),
         average numeric(12,4),
         minimum numeric(12,4),
         maximum numeric(12,4),
@@ -1180,7 +1175,7 @@ router.post('/br-waste-study', async (req, res, next) => {
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
       )
       RETURNING *`,
       [
@@ -1860,11 +1855,10 @@ const createLapCvRoutes = (tableName, routePath, screenLabel) => {
         `INSERT INTO blowroom.${tableName} (
           entry_id, record_date, machine_name, variety, type,
           lap_weight, lap_length, grams_per_meter,
-          sample_1, sample_2, sample_3, sample_4, sample_5,
           samples,
           average, minimum, maximum, std_deviation, cv_percent
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING *`,
         [
           entry_id,
@@ -1875,11 +1869,6 @@ const createLapCvRoutes = (tableName, routePath, screenLabel) => {
           toNumberOrNull(lap_weight),
           toNumberOrNull(lap_length),
           toNumberOrNull(grams_per_meter),
-          normalizedSamples[0] ?? null,
-          normalizedSamples[1] ?? null,
-          normalizedSamples[2] ?? null,
-          normalizedSamples[3] ?? null,
-          normalizedSamples[4] ?? null,
           JSON.stringify(normalizedSamples),
           toNumberOrNull(average),
           toNumberOrNull(minimum),

@@ -5,7 +5,7 @@ import { saveBlowroomWithinLapCv } from "@/store/slices/blowroomSlice";
 import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import useBlowroomMasterVarieties from "@/hooks/useBlowroomMasterVarieties";
-import { fetchBlowroomLapCvMasterMcNos } from "@/apis/blowroom";
+import { fetchOpennessMachineOptions } from "@/apis/mixing";
 import styles from "./lapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -45,7 +45,7 @@ const WithinLapCVDataEntry = forwardRef(function WithinLapCVDataEntry(
         let active = true;
         (async () => {
             try {
-                const machines = await fetchBlowroomLapCvMasterMcNos({ prefix: "BR", screen: "within-lap-cv" });
+                const machines = await fetchOpennessMachineOptions();
                 if (active) setMachineOptions(machines);
             } catch (_error) {
                 if (active) setMachineOptions([]);

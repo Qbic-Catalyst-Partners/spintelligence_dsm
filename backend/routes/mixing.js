@@ -347,6 +347,66 @@ const getPsfReceiptDropdown = async (req, res, next) => {
 // options from dbo.lotmaster, not dbo.PSF_Receipt — that's Fibre/AFIS-6 MMF's table.
 const getCottonHviLotDropdown = getLotMasterDropdown;
 
+// Openness Data Entry's "B/R Line No" field — mirrors the DEPTCODE='13'/compcode='1'
+// MCMASTER lookup used by the ERP's own Openness Tester MC Name dropdown, rather than
+// the hardcoded static machine list the frontend previously reused from Blow Room.
+const MIXING_DEPT_CODE = '13';
+
+const fetchOpennessMcMaster = async (prefix = '') => {
+  const result = await sqlServer.query(
+    `SELECT
+       CAST(m.MCCODE AS VARCHAR(50)) AS mc_no,
+       LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) AS mc_name
+     FROM dbo.MCMASTER m
+     WHERE m.DEPTCODE = @deptCode
+       AND m.compcode = '1'
+       AND LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) <> ''
+       AND (@prefix = '' OR LTRIM(RTRIM(CAST(m.MCNAME AS VARCHAR(255)))) LIKE @mcPrefix)
+     ORDER BY m.MCNAME`,
+    { deptCode: MIXING_DEPT_CODE, prefix, mcPrefix: `%${prefix}%` }
+  );
+
+  return (result.recordset || [])
+    .map((row) => ({
+      mc_no: String(row.mc_no || '').trim(),
+      mc_name: String(row.mc_name || '').trim()
+    }))
+    .filter((row) => row.mc_no || row.mc_name);
+};
+
+const getOpennessMcDropdown = async (req, res, next) => {
+  try {
+    if (!sqlServer.hasSqlServerEnv()) {
+      return res.status(503).json({ message: 'SQL Server is not configured on backend' });
+    }
+
+    const prefix = String(req.query.mc_no_prefix || req.query.prefix || '').trim();
+    const data = await fetchOpennessMcMaster(prefix);
+    const options = [
+      { text: '-- Select MC Name --', value: '' },
+      ...data.map((row) => ({
+        text: row.mc_name || row.mc_no,
+        label: row.mc_name || row.mc_no,
+        value: row.mc_name || row.mc_no,
+        mc_no: row.mc_no,
+        mc_name: row.mc_name
+      }))
+    ];
+
+    return res.status(200).json({
+      source: 'sqlserver',
+      table: 'MCMASTER',
+      data,
+      mc_names: data.map((r) => r.mc_name),
+      values: data.map((r) => r.mc_name || r.mc_no),
+      options
+    });
+  } catch (error) {
+    console.error('Error fetching Openness MC Master from SQL Server:', error);
+    next(error);
+  }
+};
+
 const getPsfReceiptMasterDropdown = async (req, res, next) => {
   try {
     if (!sqlServer.hasSqlServerEnv()) {
@@ -973,6 +1033,9 @@ router.get('/mmf-hvi/lots', getPsfReceiptDropdown);
 router.get('/moisture/master/lots', getLotMasterDropdown);
 router.get('/moisture/master/lot-dropdown', getLotMasterDropdown);
 router.get('/moisture/lots', getLotMasterDropdown);
+router.get('/openness/master/mc-nos', getOpennessMcDropdown);
+router.get('/openness/master/machine-nos', getOpennessMcDropdown);
+router.get('/openness/master/mc-names', getOpennessMcDropdown);
 router.get('/qc/master/dropdown', getMixingQcMasterDropdown);
 router.get('/qc/master/counts', getCountMasterDropdown);
 router.get('/qc/master/count-dropdown', getCountMasterDropdown);

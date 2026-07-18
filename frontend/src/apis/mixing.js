@@ -218,6 +218,43 @@ export const fetchMixingLotDetails = async ({ screenName = "", lotNo = "" } = {}
     }
 };
 
+const normalizeOpennessMachineRows = (payload) => {
+    const optionRows = Array.isArray(payload?.options)
+        ? payload.options.filter((option) => !String(option?.value ?? option).includes("-- Select"))
+        : [];
+    const rows = [
+        ...(Array.isArray(payload?.data) ? payload.data : []),
+        ...optionRows,
+    ];
+
+    const seen = new Set();
+    return rows
+        .map((row) => {
+            const value = String(
+                (row && typeof row === "object" ? row.mc_name || row.mc_no || row.value || row.label : row) || ""
+            ).trim();
+            return value ? { value, label: value } : null;
+        })
+        .filter((option) => {
+            if (!option || seen.has(option.value)) return false;
+            seen.add(option.value);
+            return true;
+        });
+};
+
+export const fetchOpennessMachineOptions = async ({ prefix = "" } = {}) => {
+    try {
+        const response = await apiConfig.get(
+            "/mixing/openness/master/mc-nos",
+            { prefix, mc_no_prefix: prefix },
+            { skipGlobalErrorModal: true }
+        );
+        return normalizeOpennessMachineRows(response?.data);
+    } catch (error) {
+        throw new Error(extractMixingApiError(error, "Unable to fetch B/R Line options."));
+    }
+};
+
 const normalizeCountRows = (payload) => {
     const optionRows = Array.isArray(payload?.options?.count_name)
         ? payload.options.count_name

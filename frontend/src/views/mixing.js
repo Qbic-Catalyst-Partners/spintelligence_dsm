@@ -19,9 +19,8 @@ import { clearMixingState } from "@/store/slices/mixing";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
-import { fetchBlowroomMachineMaster } from "@/apis/blowroom";
 import useMixingLotOptions from "@/hooks/useMixingLotOptions";
-import { fetchMixingLotDetails } from "@/apis/mixing";
+import { fetchMixingLotDetails, fetchOpennessMachineOptions } from "@/apis/mixing";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { submitAfis6Cotton, submitAfis6Mmf } from "@/store/slices/mixing";
 
@@ -310,7 +309,7 @@ function Mixing() {
     useEffect(() => {
         if (selectedTypeName !== "Openness Data Entry") return;
         let active = true;
-        fetchBlowroomMachineMaster()
+        fetchOpennessMachineOptions()
             .then((options) => {
                 if (active) setBrLineOptions(Array.isArray(options) ? options : []);
             })

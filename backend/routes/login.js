@@ -241,6 +241,7 @@ router.get('/accessible-screens/:roleId', async (req, res, next) => {
           ON rs.role_id = rd.role_id
         LEFT JOIN rbac.screens s
           ON s.id = rs.screen_id
+         AND s.department_id = d.id
          AND s.is_active = true
         WHERE rd.role_id = $1
           AND d.is_active = true

@@ -5,6 +5,7 @@ import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidat
 import SearchableSelect from "@/components/SearchableSelect";
 import useBlowroomMasterVarieties from "@/hooks/useBlowroomMasterVarieties";
 import useEmployeeOptions from "@/hooks/useEmployeeOptions";
+import { fetchOpennessMachineOptions } from "@/apis/mixing";
 import {
   saveBlowroomData,
   fetchBlowroomData,
@@ -44,6 +45,9 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const rowAInputRefs = useRef([]);
   const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
   const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("blowroom-checked-by");
+  const [lineNoOptions, setLineNoOptions] = useState([]);
+  const [lineNoOptionsError, setLineNoOptionsError] = useState(false);
+  const [loadingLineNoOptions, setLoadingLineNoOptions] = useState(false);
   const [form, setForm] = useState({
     type: "Blow Room Sync",
     entryDate: date || todayValue,
@@ -63,6 +67,24 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   useEffect(() => {
     dispatch(fetchBlowroomData());
   }, [dispatch]);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingLineNoOptions(true);
+    fetchOpennessMachineOptions()
+      .then((options) => {
+        if (active) setLineNoOptions(options);
+      })
+      .catch(() => {
+        if (active) setLineNoOptionsError(true);
+      })
+      .finally(() => {
+        if (active) setLoadingLineNoOptions(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     setForm((prev) => ({
@@ -267,10 +289,19 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
 
         <div className={styles.group}>
           <label>Line No.</label>
-          <input
+          <SearchableSelect
             value={form.lineNo}
-            onChange={(e) => handleFormChange("lineNo", e.target.value)}
+            onChange={(value) => handleFormChange("lineNo", value)}
             className={errors.lineNo ? styles.errorField : undefined}
+            options={lineNoOptions}
+            placeholder={
+              loadingLineNoOptions
+                ? "Loading line numbers..."
+                : lineNoOptionsError
+                  ? "Type line no."
+                  : "Select Line No."
+            }
+            ariaLabel="Line No."
           />
         </div>
 
