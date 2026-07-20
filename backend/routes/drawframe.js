@@ -2326,6 +2326,11 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
     const offset = (page - 1) * limit;
     const requestedType = String(req.query.wheel_change_type ?? req.query.wheelChangeType ?? defaultWheelChangeType ?? '').trim();
     const requestedStatus = String(req.query.approval_status ?? req.query.status ?? '').trim();
+    // Machine No. is optional and, when the caller hasn't picked a Mixing
+    // value yet, is the only scoping key available — mirrors Spinning's
+    // fetchLatestWheelChangeByMachine, letting the Existing column carry
+    // forward as soon as Type + Machine No. are picked.
+    const requestedMachineNo = String(req.query.machine_no ?? req.query.machineNo ?? '').trim();
 
     const conditions = [];
     const filterParams = [];
@@ -2336,6 +2341,10 @@ const getDrawframeWheelChangeEntries = async (req, res, next, defaultWheelChange
     if (requestedStatus) {
       filterParams.push(requestedStatus);
       conditions.push(`approval_status = $${filterParams.length}`);
+    }
+    if (requestedMachineNo) {
+      filterParams.push(requestedMachineNo);
+      conditions.push(`LOWER(TRIM(COALESCE(machine_no::text, ''))) = LOWER(TRIM($${filterParams.length}))`);
     }
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 

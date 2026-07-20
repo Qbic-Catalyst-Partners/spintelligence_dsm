@@ -795,6 +795,14 @@
     width: auto;
   }
 
+  .printMatrixMode .statusDone,
+  .printMatrixMode .statusPending,
+  .printMatrixMode .statusOverdue {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+
   .printMatrixMode .printHeader {
     display: flex;
     align-items: center;

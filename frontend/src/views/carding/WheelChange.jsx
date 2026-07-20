@@ -179,6 +179,17 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   const [loadingVarietyOptions, setLoadingVarietyOptions] = useState(false);
   const [varietyOptionsError, setVarietyOptionsError] = useState("");
   const lastLoadedMixingRef = useRef("");
+  // Tracks the last CDG No. (Existing) we've auto-fetched for while no
+  // mixing has been picked yet — lets the Existing column carry forward as
+  // soon as a machine is chosen, without waiting for the mixing/variety.
+  const lastLoadedMachineOnlyRef = useRef("");
+  // Tracks whether the user has actually picked a Mixing value (vs. it merely
+  // being auto-filled for display by the machine-only lookup below) — using
+  // this instead of "is mixing's text non-empty" as the machine-only effect's
+  // guard, since auto-filling Mixing for display would otherwise make it
+  // look user-picked and permanently block that effect from ever re-running
+  // on a later CDG No. switch.
+  const [mixingUserPicked, setMixingUserPicked] = useState(false);
   const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
   // The most recent *unapproved* submission for this mixing, if any — either
   // still awaiting L2 review or previously rejected. It's the row still sitting
@@ -186,13 +197,18 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   // silently overwritten on the next submit).
   const [unapprovedEntry, setUnapprovedEntry] = useState(null);
 
-  const loadLatestSaved = async (mixingValue = "") => {
+  const loadLatestSaved = async (mixingValue = "", machineValue = "") => {
     const baseParams = { page: 1, limit: 1 };
     const trimmedMixing = String(mixingValue || "").trim();
+    const trimmedMachine = String(machineValue || "").trim();
     if (trimmedMixing) {
       baseParams.variety = trimmedMixing;
       baseParams.variety_name = trimmedMixing;
       baseParams.mixing = trimmedMixing;
+    } else if (trimmedMachine) {
+      baseParams.cdo_no = trimmedMachine;
+      baseParams.machine_no = trimmedMachine;
+      baseParams.mc_no = trimmedMachine;
     }
 
     const [approvedResult, pendingResult, rejectedResult] = await Promise.allSettled([
@@ -205,7 +221,16 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     const pending = pendingResult.status === "fulfilled" ? extractLatestEntry(pendingResult.value) : null;
     const rejected = rejectedResult.status === "fulfilled" ? extractLatestEntry(rejectedResult.value) : null;
     const unapproved = pending || rejected;
-    if (!approved && !unapproved) return null;
+    if (!approved && !unapproved) {
+      // No saved data for this mixing/machine — clear whatever a previously
+      // selected mixing or machine had populated instead of leaving it showing.
+      setUnapprovedEntry(null);
+      setProposedCdgNos([]);
+      setValues(createValues());
+      setRemarks("");
+      setErrors({});
+      return null;
+    }
 
     setUnapprovedEntry(
       unapproved
@@ -275,6 +300,34 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isCdgProposedOpen]);
+
+  // Fires as soon as CDG No. (Existing) is picked, before mixing/Count From
+  // is chosen. Once the user actually picks a mixing, the more-specific
+  // effect below takes over and this one backs off (guarded by
+  // `mixingUserPicked` rather than `selectedMixing`, since `selectedMixing`
+  // is derived from the same values that this effect's own fetch populates
+  // for display — using it as the guard would self-lock this effect
+  // permanently the first time it ever ran).
+  useEffect(() => {
+    const trimmedMachine = String(cdoNo || "").trim();
+    if (!trimmedMachine || mixingUserPicked) {
+      lastLoadedMachineOnlyRef.current = "";
+      return;
+    }
+
+    if (lastLoadedMachineOnlyRef.current === trimmedMachine) return;
+
+    let cancelled = false;
+    loadLatestSaved("", trimmedMachine)
+      .then(() => {
+        if (!cancelled) lastLoadedMachineOnlyRef.current = trimmedMachine;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cdoNo, mixingUserPicked]);
 
   useEffect(() => {
     if (!selectedMixing) {
@@ -353,6 +406,9 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
 
   const handleValueChange = (rowKey, column) => (event) => {
     const nextValue = typeof event === "string" ? event : event?.target?.value ?? "";
+    if (rowKey === "mixing" && column === "proposed") {
+      setMixingUserPicked(hasValue(nextValue));
+    }
     setValues((current) => ({
       ...current,
       [rowKey]: {
@@ -431,7 +487,9 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setMessage("");
     setShowPreview(false);
     setUnapprovedEntry(null);
+    setMixingUserPicked(false);
     lastLoadedMixingRef.current = "";
+    lastLoadedMachineOnlyRef.current = "";
   };
 
   const handlePreview = () => {
@@ -460,7 +518,12 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     const value = values[row.key]?.[column] || "";
     const className = `${styles.input} ${errors.values?.[row.key]?.[column] ? styles.errorInput : ""}`;
 
+    const isReadOnlyExisting = column === "existing";
+
     if (row.key === "mixing") {
+      // Mixing (Existing) is only ever auto-filled for display by the
+      // machine-only/mixing lookups above — it should never be manually
+      // picked, same as every other row's Existing cell.
       return (
         <SearchableSelect
           className={className}
@@ -469,12 +532,10 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
           options={mixingOptions}
           placeholder={loadingVarietyOptions ? "Loading..." : varietyOptionsError ? "Select Mixing" : "Select"}
           ariaLabel="Mixing"
-          disabled={loadingVarietyOptions && !mixingOptions.length}
+          disabled={isReadOnlyExisting || (loadingVarietyOptions && !mixingOptions.length)}
         />
       );
     }
-
-    const isReadOnlyExisting = column === "existing";
 
     if (row.inputType === "select") {
       return (

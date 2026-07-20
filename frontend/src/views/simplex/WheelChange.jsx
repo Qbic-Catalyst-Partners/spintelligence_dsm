@@ -348,6 +348,15 @@ const WheelChange = forwardRef(function WheelChange(
   const [unapprovedEntry, setUnapprovedEntry] = useState(null);
   const skipAutoLoadRef = useRef(false);
   const lastLoadedMixingRef = useRef("");
+  const lastLoadedMachineOnlyRef = useRef("");
+  // Tracks whether the user has actually picked a Mixing / Process value (vs.
+  // it merely being auto-filled for display by the machine-only lookup
+  // below) — using this instead of "is the mixing text non-empty" as the
+  // machine-only effect's guard, since auto-filling Mixing's Existing cell
+  // for display would otherwise make selectedMixing look user-picked and
+  // permanently block that effect from ever re-running on a later machine
+  // switch.
+  const [mixingUserPicked, setMixingUserPicked] = useState(false);
   // selectedMixing is a derived string, so re-picking the *same* mixing (or
   // it already being selected) never changes the value and the lookup
   // effect below never re-fires — it just keeps showing whatever was
@@ -460,6 +469,19 @@ const WheelChange = forwardRef(function WheelChange(
     return pickLatestEntry(candidates);
   };
 
+  // Machine No. (SMX No.) has its own column on the backend (unlike Mixing,
+  // which lives inside the parameters JSONB blob), so it's matched directly
+  // against the entry's own machine_no/sap_no field.
+  const getEntryMachineValue = (entry) =>
+    String(entry?.machine_no ?? entry?.machineNo ?? entry?.sap_no ?? entry?.smxNo ?? "").trim().toLowerCase();
+
+  const extractLatestNotebookEntryForMachine = (payload, machine) => {
+    const candidates = extractNotebookEntryCandidates(payload).filter(
+      (candidate) => getEntryMachineValue(candidate) === machine.trim().toLowerCase()
+    );
+    return pickLatestEntry(candidates);
+  };
+
   // Fetches approved/pending/rejected for the selected Mixing/Process in
   // parallel — Existing always comes from the approved record only;
   // Proposed is prefilled from whichever unapproved (pending/rejected)
@@ -545,6 +567,103 @@ const WheelChange = forwardRef(function WheelChange(
     return referenceEntry;
   };
 
+  // Before Mixing / Process is picked, carry forward the last approved entry
+  // for this SMX No. alone so Existing isn't blank while the operator is
+  // still filling in the rest of the form. Once Mixing is chosen, the
+  // mixing-scoped lookup below takes over and is the more specific match.
+  const loadLatestForMachine = async (machineValue) => {
+    const machine = String(machineValue || "").trim();
+    if (!machine) return null;
+
+    // limit must be large enough to actually receive every matching row —
+    // the backend doesn't sort by recency before truncating to the page
+    // size, so a limit of 1 can hand back the *oldest* entry instead of the
+    // latest.
+    const baseParams = { page: 1, limit: 200, machine_no: machine };
+
+    const [approvedResult, pendingResult, rejectedResult] = await Promise.allSettled([
+      fetchSimplexWheelChangeEntries({ ...baseParams, approval_status: "approved" }),
+      fetchSimplexWheelChangeEntries({ ...baseParams, approval_status: "pending" }),
+      fetchSimplexWheelChangeEntries({ ...baseParams, approval_status: "rejected" }),
+    ]);
+
+    const approved = approvedResult.status === "fulfilled" ? extractLatestNotebookEntryForMachine(approvedResult.value, machine) : null;
+    const pending = pendingResult.status === "fulfilled" ? extractLatestNotebookEntryForMachine(pendingResult.value, machine) : null;
+    const rejected = rejectedResult.status === "fulfilled" ? extractLatestNotebookEntryForMachine(rejectedResult.value, machine) : null;
+    const unapproved = pending || rejected;
+
+    if (!approved && !unapproved) {
+      // No saved data for this machine — clear whatever a previously
+      // selected machine had populated instead of leaving it showing.
+      setUnapprovedEntry(null);
+      setRows(createEmptyRows());
+      return null;
+    }
+
+    const referenceEntry = approved || unapproved;
+    setUnapprovedEntry(
+      unapproved
+        ? {
+            status: pending ? "pending" : "rejected",
+            remarks: String(unapproved?.review_remarks ?? unapproved?.reviewRemarks ?? "").trim(),
+            reviewedBy: String(unapproved?.reviewed_by ?? unapproved?.reviewedBy ?? "").trim(),
+            reviewedAt: unapproved?.reviewed_at ?? unapproved?.reviewedAt ?? "",
+          }
+        : null
+    );
+
+    setForm((current) => ({
+      ...current,
+      entryId: String(referenceEntry.entry_id || referenceEntry.entryId || entryId || current.entryId || ""),
+      date: String(referenceEntry.entry_date || referenceEntry.date || current.date || today).slice(0, 10),
+      smxNo: String(
+        referenceEntry.proposed_sap_no ||
+          referenceEntry.proposedSapNo ||
+          referenceEntry.smx_no_proposed ||
+          current.smxNo ||
+          ""
+      ),
+      smxNoProposed: String(
+        referenceEntry.proposed_sap_no ||
+          referenceEntry.proposedSapNo ||
+          referenceEntry.smx_no_proposed ||
+          current.smxNoProposed ||
+          ""
+      ),
+    }));
+
+    const baseline = normalizeRows(extractRowsBlob(approved));
+    const nextRows = unapproved ? applyUnapprovedProposedRows(baseline, unapproved) : baseline;
+    setRows(nextRows);
+    return referenceEntry;
+  };
+
+  useEffect(() => {
+    if (skipAutoLoadRef.current) return undefined;
+
+    const trimmedMachine = form.smxNo.trim();
+    if (!trimmedMachine || mixingUserPicked) {
+      lastLoadedMachineOnlyRef.current = "";
+      return undefined;
+    }
+
+    const selectionKey = trimmedMachine;
+    if (lastLoadedMachineOnlyRef.current === selectionKey) return undefined;
+
+    let cancelled = false;
+    loadLatestForMachine(trimmedMachine)
+      .then(() => {
+        if (!cancelled) lastLoadedMachineOnlyRef.current = selectionKey;
+      })
+      .catch(() => {
+        // Keep the current rows when history isn't available for this machine.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.smxNo, mixingUserPicked]);
+
   // Runs whenever the selected mixing changes, or the dropdown is focused
   // again (mixingRefreshTick) — mixingRefreshTick is folded into the cache
   // key so reopening/reselecting the same mixing always forces a fresh
@@ -581,7 +700,9 @@ const WheelChange = forwardRef(function WheelChange(
     setRows(createEmptyRows());
     setSubmitError("");
     setUnapprovedEntry(null);
+    setMixingUserPicked(false);
     lastLoadedMixingRef.current = "";
+    lastLoadedMachineOnlyRef.current = "";
   };
 
   const validate = () => Boolean(selectedTypeName && form.smxNo && form.smxNoProposed);
@@ -767,15 +888,24 @@ const WheelChange = forwardRef(function WheelChange(
           <SearchableSelect
             className={className}
             value={value}
-            onChange={(nextValue) =>
+            onChange={(nextValue) => {
+              // Mixing / Process is the one driving control: picking its
+              // Proposed cell looks up the latest approved entry and fills
+              // in every row's Existing baseline, including its own — so
+              // only a real user pick on the Proposed cell should count as
+              // "Mixing has been picked" for the machine-only lookup guard
+              // above.
+              if (valueKey === "proposed") {
+                setMixingUserPicked(Boolean(String(nextValue ?? "").trim()));
+              }
               setRows((current) =>
                 current.map((item) => (item.key === row.key ? { ...item, [valueKey]: nextValue } : item))
-              )
-            }
+              );
+            }}
             options={options}
             placeholder="Select"
             ariaLabel={row.label}
-            disabled={row.readOnly === true}
+            disabled={row.readOnly === true || valueKey === "existing"}
             onFocus={refreshSelectedMixing}
           />
         );

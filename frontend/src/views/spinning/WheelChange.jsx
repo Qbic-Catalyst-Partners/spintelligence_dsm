@@ -3,27 +3,32 @@ import { useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import {
-  fetchSpinningCountChangeRfNos,
-  fetchSpinningMachineNumberOptions,
   fetchSpinningWheelChangeDropdown,
   fetchSpinningWheelChangeLatestRecord,
 } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/spinningWheelChange.module.css";
 
-const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3", "Type 4"];
+const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
 const WHEEL_CHANGE_API_TYPES = {
   "Type 1": "type1",
   "Type 2": "type2",
   "Type 3": "type3",
-  "Type 4": "type4",
 };
 // Bumped to _v2 to invalidate any stale cached drafts from before the
 // pending/rejected approval workflow existed — old-keyed drafts are simply
 // never read and get swept away below.
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY = "spinning_wheel_change_last_values_v2";
 const WHEEL_CHANGE_DRAFT_STORAGE_KEY_LEGACY = "spinning_wheel_change_last_values";
-const STATIC_RF_NO_OPTIONS = ["1", "2", "3", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "20", "24"];
+// Per "Wheel change Spinning" master data: each R/F No. belongs to exactly
+// one wheel change type — Wheel Change Type is picked first, and the
+// Machine No. dropdown is scoped to that type's R/F Nos. (see
+// MACHINE_OPTIONS_BY_WHEEL_CHANGE_TYPE below).
+const RF_NUMBERS_BY_WHEEL_CHANGE_TYPE = {
+  "Type 1": [1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 20, 24],
+  "Type 2": [4, 5, 6, 7, 18, 19, 25],
+  "Type 3": [21, 22, 23],
+};
 const STATIC_TYPE_1_DROPDOWN_OPTIONS = {
   rh: ["40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67", "68"],
   bd: ["1.92", "1.87", "1.83", "1.79", "1.75", "1.71", "1.67", "1.63", "1.60", "1.57", "1.54", "1.51", "1.48", "1.45", "1.42", "1.40", "1.37", "1.35", "1.32", "1.30", "1.28", "1.26", "1.24", "1.22", "1.20", "1.18", "1.16", "1.15", "1.13"],
@@ -37,36 +42,43 @@ const STATIC_TYPE_1_DROPDOWN_OPTIONS = {
     "26.11", "26.3", "26.49", "26.5", "26.69", "26.7", "26.89", "27.08", "27.09", "27.28", "27.48", "27.49", "27.69", "27.9", "28.11", "28.32", "28.33", "28.54", "28.75", "28.77", "28.99", "29.2", "29.23", "29.45", "29.67", "29.7", "29.92", "30.15", "30.19", "30.41", "30.64", "30.69", "30.92", "31.15", "31.21", "31.44", "31.68", "31.75", "31.99", "32.22", "32.3", "32.55", "32.79", "32.88", "33.13", "33.38", "33.48", "33.73", "33.98", "34.1", "34.35", "34.61", "34.74", "35", "35.26", "35.41", "35.68", "35.94", "36.1", "36.38", "36.65", "36.83", "37.1", "37.38", "37.58", "37.86", "38.14", "38.36", "38.65", "38.94", "39.18", "39.47", "39.77", "40.03", "40.92", "41.23", "41.53", "41.85", "42.16", "42.48", "42.82", "43.14", "43.47", "43.84", "44.17", "44.5", "44.91", "45.25", "45.59", "46.03", "46.38", "46.73", "47.21", "47.57", "47.92", "48.46", "48.82", "49.18", "49.77", "50.14", "50.51", "51.15", "51.53", "51.92", "52.61", "53", "53.4", "54.16", "54.56", "54.97", "55.8", "56.22", "56.64", "57.54", "57.97", "58.41", "59.4", "59.84", "60.29", "61.38", "61.84", "62.3",
   ],
 };
+// Type 1 and Type 2 have independent BDW->BD conversion tables even though
+// their BDW ranges overlap (both run 40-68) — Type 1 keeps its original
+// values here, distinct from Type 2's own TYPE_2_BDW_TO_BD below.
+const TYPE_1_BDW_TO_BD = STATIC_TYPE_1_DROPDOWN_OPTIONS.rh.reduce((map, bdw, index) => {
+  map[bdw] = STATIC_TYPE_1_DROPDOWN_OPTIONS.bd[index];
+  return map;
+}, {});
 const TYPE_2_BDW_TO_BD = {
-  "40": "1.92",
-  "41": "1.87",
-  "42": "1.83",
-  "43": "1.79",
-  "44": "1.75",
-  "45": "1.71",
-  "46": "1.67",
-  "47": "1.63",
-  "48": "1.6",
-  "49": "1.57",
-  "50": "1.54",
-  "51": "1.51",
-  "52": "1.48",
-  "53": "1.45",
-  "54": "1.42",
-  "55": "1.4",
-  "56": "1.37",
-  "57": "1.35",
-  "58": "1.32",
-  "59": "1.3",
-  "60": "1.28",
-  "61": "1.26",
-  "62": "1.24",
-  "63": "1.22",
-  "64": "1.2",
-  "65": "1.18",
-  "66": "1.16",
-  "67": "1.15",
-  "68": "1.13",
+  "40": "1.68",
+  "41": "1.64",
+  "42": "1.60",
+  "43": "1.56",
+  "44": "1.52",
+  "45": "1.49",
+  "46": "1.46",
+  "47": "1.43",
+  "48": "1.40",
+  "49": "1.37",
+  "50": "1.34",
+  "51": "1.31",
+  "52": "1.29",
+  "53": "1.27",
+  "54": "1.24",
+  "55": "1.22",
+  "56": "1.20",
+  "57": "1.18",
+  "58": "1.16",
+  "59": "1.14",
+  "60": "1.12",
+  "61": "1.10",
+  "62": "1.08",
+  "63": "1.06",
+  "64": "1.05",
+  "65": "1.03",
+  "66": "1.02",
+  "67": "1.00",
+  "68": "0.99",
 };
 const TYPE_2_B_TO_A = {
   "76": "89",
@@ -134,7 +146,7 @@ const isType1FrameNumberThree = (machineNumber) => {
 const getType1MachineSpecificOptions = (rowKey, machineNumber = "") => {
   if (rowKey === "tdv") return TYPE_1_TCW_OPTIONS;
   if (rowKey === "tm") return TYPE_1_TW_OPTIONS;
-  if (rowKey === "tciTm") return TYPE_1_TPI_OPTIONS[isType1FrameNumberThree(machineNumber) ? "default" : "3"] || TYPE_1_TPI_OPTIONS.default;
+  if (rowKey === "tciTm") return TYPE_1_TPI_OPTIONS[isType1FrameNumberThree(machineNumber) ? "3" : "default"] || TYPE_1_TPI_OPTIONS.default;
   return [];
 };
 const getType1TpiTm = ({ tcw, tw, machineNumber }) => {
@@ -143,7 +155,7 @@ const getType1TpiTm = ({ tcw, tw, machineNumber }) => {
   if (tcwIndex === -1 || !Number.isFinite(twValue)) return "";
   const twIndex = Math.round(twValue) - 30;
   if (twIndex < 0 || twIndex >= TYPE_1_TW_OPTIONS.length) return "";
-  const group = TYPE_1_TPI_OPTIONS[isType1FrameNumberThree(machineNumber) ? "default" : "3"] || TYPE_1_TPI_OPTIONS.default;
+  const group = TYPE_1_TPI_OPTIONS[isType1FrameNumberThree(machineNumber) ? "3" : "default"] || TYPE_1_TPI_OPTIONS.default;
   return group[tcwIndex * TYPE_1_TW_OPTIONS.length + twIndex] || "";
 };
 const TYPE_1_TOTAL_DRAFT_CONSTANT = 4.6875;
@@ -250,47 +262,10 @@ const TYPE_3_PARAMETER_ROWS = [
   { key: "totalDraft", label: "Total Draft", darkInput: true },
 ];
 
-// Type 4 has its own dedicated backend fields (POST /spinning/wheel-change/type4) —
-// unlike Type 1/2/3 it has no derived/computed fields, so every row besides
-// Count From is a plain input; `numeric` marks which ones the backend stores
-// as numbers. Count From uses the shared "countForm" key (same as Type 1) so
-// it plugs into the existing variety dropdown and approved-record lookup.
-const TYPE_4_PARAMETER_ROWS = [
-  { key: "countForm", label: "Count From", inputType: "select" },
-  { key: "type4LycraType", label: "Lycra Type" },
-  { key: "type4LycraDraft", label: "Lycra Draft", numeric: true },
-  { key: "type4SlubCode", label: "Slub Code" },
-  { key: "type4Range", label: "Range" },
-  { key: "type4Offset", label: "Offset On/Off" },
-  { key: "type4CoreCondition", label: "Core Condition" },
-  { key: "type4Production", label: "Production (Kgs)", numeric: true },
-  { key: "type4RovingHank", label: "Roving Hank", numeric: true },
-  { key: "type4Eow", label: "EOW" },
-  { key: "type4Epi", label: "EPI", numeric: true },
-  { key: "type4Dca", label: "DCA" },
-  { key: "type4Dcb", label: "DCB", numeric: true },
-  { key: "type4Dfc", label: "DFC" },
-  { key: "type4Dc", label: "DC" },
-  { key: "type4Tcw", label: "TCW" },
-  { key: "type4Tw", label: "TW" },
-  { key: "type4Tpm", label: "TPM", numeric: true },
-  { key: "type4TravelersNo", label: "Travellers No." },
-  { key: "type4Spacer", label: "Spacer" },
-  { key: "type4CopWeight", label: "Cop Weight", numeric: true },
-  { key: "type4SpeedFront", label: "Speed Front (RPM)", numeric: true },
-  { key: "type4SpeedRpm", label: "Speed (RPM)", numeric: true },
-  { key: "type4EmpiresColour", label: "Empties Colour" },
-  { key: "type4TotalDraft", label: "Total Draft", numeric: true },
-  { key: "type4Bdw", label: "BDW" },
-  { key: "type4Bd", label: "BD", numeric: true },
-  { key: "type4WindingLength", label: "Winding length in meters", numeric: true },
-];
-
 const WHEEL_CHANGE_PARAMETER_ROWS_BY_TYPE = {
   "Type 1": TYPE_1_PARAMETER_ROWS,
   "Type 2": TYPE_2_PARAMETER_ROWS,
   "Type 3": TYPE_3_PARAMETER_ROWS,
-  "Type 4": TYPE_4_PARAMETER_ROWS,
 };
 
 const WHEEL_CHANGE_FIELD_MAP = {
@@ -322,39 +297,6 @@ const WHEEL_CHANGE_FIELD_MAP = {
       empaleeColour: "speed_rpm",
       traveller: "empires_colour",
       totalDraft: "total_draft",
-    },
-  },
-  "Type 4": {
-    referenceField: "fm_no",
-    rows: {
-      countForm: "count_from",
-      type4LycraType: "lycra_type",
-      type4LycraDraft: "lycra_draft",
-      type4SlubCode: "slub_code",
-      type4Range: "range",
-      type4Offset: "offset",
-      type4CoreCondition: "core_condition",
-      type4Production: "production",
-      type4RovingHank: "roving_hank",
-      type4Eow: "eow",
-      type4Epi: "epi",
-      type4Dca: "dca",
-      type4Dcb: "dcb",
-      type4Dfc: "dfc",
-      type4Dc: "dc",
-      type4Tcw: "tcw",
-      type4Tw: "tw",
-      type4Tpm: "tpm",
-      type4TravelersNo: "travelers_no",
-      type4Spacer: "spacer",
-      type4CopWeight: "cop_weight",
-      type4SpeedFront: "speed_front",
-      type4SpeedRpm: "speed_rpm",
-      type4EmpiresColour: "empires_colour",
-      type4TotalDraft: "total_draft",
-      type4Bdw: "bdw",
-      type4Bd: "bd",
-      type4WindingLength: "winding_length",
     },
   },
   "Type 2": {
@@ -439,20 +381,6 @@ const WHEEL_CHANGE_NUMERIC_FIELDS = {
     "speed_rpm",
     "total_draft",
   ]),
-  "Type 4": new Set([
-    "lycra_draft",
-    "production",
-    "roving_hank",
-    "epi",
-    "dcb",
-    "tpm",
-    "cop_weight",
-    "speed_front",
-    "speed_rpm",
-    "total_draft",
-    "bd",
-    "winding_length",
-  ]),
   "Type 2": new Set([
     "lycra_draft",
     "production",
@@ -528,14 +456,18 @@ const normalizeLabel = (value) =>
 
 const getParameterInputType = (row) => {
   const label = normalizeLabel(row.label);
-  if (label === "lycratype" || label === "emptiescolor") return "text";
+  if (
+    label === "lycratype" ||
+    label === "emptiescolor" ||
+    label === "spacer" ||
+    label === "travellersno"
+  )
+    return "text";
   if (label === "offsetonoff") return "onOff";
   if (label === "coporconecondition") return "copCone";
   return "number";
 };
 
-// Type 4 rows declare `numeric` explicitly (its text fields, e.g. Slub Code or
-// DCA, don't follow the label-based guess above), so prefer that when present.
 const isNumericParameterRow = (row) =>
   typeof row.numeric === "boolean" ? row.numeric : getParameterInputType(row) === "number";
 
@@ -591,73 +523,30 @@ const cleanRfLabel = (value) => {
     .replace(/^\d+\s*\/\s*/g, "")
     .trim();
 };
-const normalizeMachineOptions = (payload) => {
-  const rows = Array.isArray(payload)
-    ? payload
-    : Array.isArray(payload?.data)
-      ? payload.data
-      : Array.isArray(payload?.machines)
-        ? payload.machines
-        : Array.isArray(payload?.machineOptions)
-          ? payload.machineOptions
-          : Array.isArray(payload?.options)
-            ? payload.options
-            : Array.isArray(payload?.values)
-              ? payload.values
-              : Array.isArray(payload?.machine_numbers)
-                ? payload.machine_numbers
-                : Array.isArray(payload?.mc_nos)
-                  ? payload.mc_nos
-                  : [];
-
-  const seen = new Set();
-
-  return rows
-    .map((row) => {
-      const machineName = getOptionText(
-        row?.rf_name ??
-          row?.rf_no ??
-          row?.rf_number ??
-          row?.mc_name ??
-          row?.machine_name ??
-          row?.name ??
-          row?.label ??
-          row?.text ??
-          row?.value ??
-          row?.mc_no ??
-          row?.machine_no ??
-          row?.machine_number ??
-          row?.code ??
-          row
-      );
-      const deptCode = getOptionText(
-        row?.dept_code ??
-          row?.department_code ??
-          row?.dept ??
-          row?.department ??
-          ""
-      );
-      const rawValue = getOptionText(row?.mc_no ?? row?.machine_no ?? row?.machine_number ?? row?.value ?? row?.code ?? row);
-      const visibleLabel = cleanRfLabel(machineName || rawValue);
-      const value = rawValue || visibleLabel;
-
-      return value
-        ? {
-            value,
-            label: deptCode ? `${visibleLabel || value} - Dept ${deptCode}` : (visibleLabel || value),
-            machineName: visibleLabel || value,
-            deptCode,
-          }
-        : null;
-    })
-    .filter((option) => {
-      if (!option || seen.has(option.value)) return false;
-      if (option.deptCode === "48") return false;
-      seen.add(option.value);
-      return true;
-    });
-};
-const getWheelChangeMachineOptions = (payload) => normalizeMachineOptions(payload);
+// The full Machine No. dropdown: every R/F No. across the Type 1/2/3 mapping
+// (RF_NUMBERS_BY_WHEEL_CHANGE_TYPE), sorted numerically.
+const ALL_RF_MACHINE_OPTIONS = Object.values(RF_NUMBERS_BY_WHEEL_CHANGE_TYPE)
+  .flat()
+  .sort((a, b) => a - b)
+  .map((rfNumber) => {
+    const label = cleanRfLabel(`R/F NO ${rfNumber}`);
+    return { value: label, label, machineName: label };
+  });
+// Machine No. options scoped to the selected Wheel Change Type — Type is
+// picked first, then this narrows the dropdown to just that type's R/F Nos.
+const MACHINE_OPTIONS_BY_WHEEL_CHANGE_TYPE = Object.entries(RF_NUMBERS_BY_WHEEL_CHANGE_TYPE).reduce(
+  (map, [type, rfNumbers]) => {
+    map[type] = rfNumbers
+      .slice()
+      .sort((a, b) => a - b)
+      .map((rfNumber) => {
+        const label = cleanRfLabel(`R/F NO ${rfNumber}`);
+        return { value: label, label, machineName: label };
+      });
+    return map;
+  },
+  {}
+);
 const normalizeLookupOptions = (payload) => {
   const rows = Array.isArray(payload)
     ? payload
@@ -866,8 +755,8 @@ const buildType1DerivedValues = (values = {}, machineNumber = "") => {
   const existingBdw = getTextValue(nextValues.rh?.existing);
   const proposedBdw = getTextValue(nextValues.rh?.proposed);
   nextValues.bd = {
-    existing: TYPE_2_BDW_TO_BD[existingBdw] || getTextValue(nextValues.bd?.existing),
-    proposed: TYPE_2_BDW_TO_BD[proposedBdw] || getTextValue(nextValues.bd?.proposed),
+    existing: TYPE_1_BDW_TO_BD[existingBdw] || getTextValue(nextValues.bd?.existing),
+    proposed: TYPE_1_BDW_TO_BD[proposedBdw] || getTextValue(nextValues.bd?.proposed),
   };
 
   const existingDca = getTextValue(nextValues.dca?.existing);
@@ -950,13 +839,21 @@ const WheelChange = forwardRef(function WheelChange(
   const [machineOptions, setMachineOptions] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
+  // Tracks whether the user has actually picked a Count From value (vs. it
+  // merely being auto-filled for display by the machine-only lookup below) —
+  // using this instead of "is countForm's text non-empty" as the machine-only
+  // effect's guard, since auto-filling Count From for display would otherwise
+  // make it look user-picked and permanently block that effect from ever
+  // re-running on a later machine switch.
+  const [countFromUserPicked, setCountFromUserPicked] = useState(false);
   // The most recent *unapproved* submission for the selected variety, if any
   // — either still awaiting L2 review or previously rejected. Either way it
   // is still the row sitting in the temp table, so its Proposed values are
   // shown (and will be silently overwritten on the next submit).
   const [unapprovedEntry, setUnapprovedEntry] = useState(null);
   const lastLoadedVarietyRef = useRef("");
-  const lastLoadedMachineRef = useRef("");
+  const lastLoadedMachineOnlyRef = useRef("");
+  const previousWheelChangeTypeRef = useRef(null);
   // selectedVariety is a derived string, so re-picking the *same* mixing (or
   // it already being selected on revisit) never changes the value and the
   // lookup effect below never re-fires - it just keeps showing whatever was
@@ -992,10 +889,12 @@ const WheelChange = forwardRef(function WheelChange(
         setMachineNumber(typeof stored.machineNumber === "string" ? stored.machineNumber : "");
         setTestNo(typeof stored.testNo === "string" ? stored.testNo : "");
         setDate(typeof stored.date === "string" && stored.date ? stored.date : getTodayDate());
-        setValues({
+        const restoredValues = {
           ...createWheelChangeValues(),
           ...(stored.values && typeof stored.values === "object" ? stored.values : {}),
-        });
+        };
+        setValues(restoredValues);
+        setCountFromUserPicked(Boolean(String(restoredValues.countForm?.proposed ?? "").trim()));
       }
     } catch {
       // Ignore invalid stored drafts.
@@ -1003,6 +902,29 @@ const WheelChange = forwardRef(function WheelChange(
       setDraftLoaded(true);
     }
   }, []);
+
+  // Several parameter rows share the same key across types (e.g. Type 1 and
+  // Type 3 both use "dca"/"dcb"/"dc"/"tdv"/"tm" for BDW/DCA/DC/TCW/TW), so
+  // switching type without clearing values left a prior type's fetched data
+  // showing through under those shared keys whenever the new type had no
+  // matching record to overwrite them with. Reset on every real type change
+  // (skip the very first render/draft-restore, tracked via the ref) so each
+  // type always starts from a clean slate.
+  useEffect(() => {
+    if (!draftLoaded) return;
+    if (previousWheelChangeTypeRef.current === null) {
+      previousWheelChangeTypeRef.current = wheelChangeType;
+      return;
+    }
+    if (previousWheelChangeTypeRef.current === wheelChangeType) return;
+    previousWheelChangeTypeRef.current = wheelChangeType;
+
+    setValues(createWheelChangeValues());
+    setUnapprovedEntry(null);
+    setCountFromUserPicked(false);
+    lastLoadedVarietyRef.current = "";
+    lastLoadedMachineOnlyRef.current = "";
+  }, [wheelChangeType, draftLoaded]);
 
   useEffect(() => {
     if (!draftLoaded || typeof window === "undefined") return;
@@ -1050,6 +972,9 @@ const WheelChange = forwardRef(function WheelChange(
   };
 
   const setWheelChangeValue = (rowKey, column, nextValue) => {
+    if (rowKey === "countForm" && column === "proposed") {
+      setCountFromUserPicked(Boolean(String(nextValue ?? "").trim()));
+    }
     setValues((current) => {
       const nextValues = {
         ...current,
@@ -1096,63 +1021,137 @@ const WheelChange = forwardRef(function WheelChange(
     clearValueError(rowKey, column);
   };
 
+  // Machine No. options are generated entirely from the Type 1/2/3 R/F
+  // mapping instead of the live COTS/master APIs — those endpoints could
+  // surface machines outside this mapping. Wheel Change Type is picked
+  // first, so the Machine No. dropdown is scoped to just that type's R/F
+  // Nos. (MACHINE_OPTIONS_BY_WHEEL_CHANGE_TYPE); with no type selected yet
+  // it shows the full R/F 1-25 list.
   useEffect(() => {
+    setMachineOptions(
+      wheelChangeType ? MACHINE_OPTIONS_BY_WHEEL_CHANGE_TYPE[wheelChangeType] || [] : ALL_RF_MACHINE_OPTIONS
+    );
+  }, [wheelChangeType]);
+
+  // If the previously selected Machine No. doesn't belong to the newly
+  // picked Wheel Change Type, drop it so a stale, out-of-scope machine can't
+  // be submitted alongside the new type.
+  useEffect(() => {
+    if (!wheelChangeType || !machineNumber.trim()) return;
+    const validOptions = MACHINE_OPTIONS_BY_WHEEL_CHANGE_TYPE[wheelChangeType] || [];
+    if (!validOptions.some((option) => option.value === machineNumber)) {
+      setMachineNumber("");
+      clearFieldError("machineNumber");
+    }
+  }, [wheelChangeType]);
+
+  // Type-specific dropdown option lists, refetched only when wheelChangeType
+  // (now auto-derived from the Machine No.) actually changes.
+  useEffect(() => {
+    if (!wheelChangeType) {
+      setDropdownOptions({});
+      return;
+    }
+
     let isMounted = true;
 
-    Promise.allSettled([
-      // Same live R/F No. source as COTS Checking's Machine No. dropdown
-      // (fetchSpinningCountChangeRfNos), so both screens show identical,
-      // up-to-date machine numbers instead of Wheel Change's own stale list.
-      fetchSpinningCountChangeRfNos(),
-      fetchSpinningMachineNumberOptions({
-        screen: "rsm-lycra-online",
-        ...machineLookupParams,
-      }),
-      fetchSpinningWheelChangeDropdown(wheelChangeType, machineLookupParams),
-    ]).then(([cotsRfResult, machineResult, dropdownResult]) => {
-      if (!isMounted) return;
-
-      const machineOptionSources = [];
-
-      machineOptionSources.push(
-        STATIC_RF_NO_OPTIONS.map((value) => {
-          const label = cleanRfLabel(`R/F NO ${value}`);
-          return { value: label, label };
-        })
-      );
-
-      if (cotsRfResult.status === "fulfilled") {
-        machineOptionSources.push(getWheelChangeMachineOptions(cotsRfResult.value));
+    fetchSpinningWheelChangeDropdown(wheelChangeType, machineLookupParams).then(
+      (dropdownValue) => {
+        if (!isMounted) return;
+        setDropdownOptions(dropdownValue || {});
+      },
+      () => {
+        if (isMounted) setDropdownOptions({});
       }
-
-      if (machineResult.status === "fulfilled") {
-        machineOptionSources.push(getWheelChangeMachineOptions(machineResult.value));
-      }
-
-      if (dropdownResult.status === "fulfilled") {
-        const dropdownValue = dropdownResult.value || {};
-        setDropdownOptions(dropdownValue);
-        machineOptionSources.push(getWheelChangeMachineOptions(dropdownValue));
-      } else {
-        setDropdownOptions({});
-      }
-
-      setMachineOptions(
-        Array.from(
-          new Map(
-            machineOptionSources
-              .flat()
-              .filter((option) => option?.value)
-              .map((option) => [option.value, option])
-          ).values()
-        )
-      );
-    });
+    );
 
     return () => {
       isMounted = false;
     };
-  }, [machineLookupParams, wheelChangeType]);
+  }, [wheelChangeType, machineLookupParams]);
+
+  // Before Count From is picked, carry forward the last approved entry for
+  // this Machine No. alone (scoped to the current type's table) so Existing
+  // isn't blank while the operator is still filling in the rest of the form.
+  // Once Count From is actually picked by the user, the variety-scoped
+  // lookup below takes over and is the more specific match.
+  useEffect(() => {
+    if (!wheelChangeType || !machineNumber.trim() || countFromUserPicked) {
+      lastLoadedMachineOnlyRef.current = "";
+      return;
+    }
+
+    const trimmedMachine = machineNumber.trim();
+    const selectionKey = `${wheelChangeType}::${trimmedMachine}`;
+    if (lastLoadedMachineOnlyRef.current === selectionKey) return;
+
+    // Reset immediately so a machine with no saved data shows a blank form
+    // instead of leaving whatever the previously selected machine (or type)
+    // had populated. If a record is found below, it overwrites this.
+    lastLoadedMachineOnlyRef.current = selectionKey;
+    setUnapprovedEntry(null);
+    setValues(createWheelChangeValues());
+
+    let cancelled = false;
+
+    Promise.allSettled([
+      fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+        fm_no: trimmedMachine,
+        fr_no: trimmedMachine,
+        machine_no: trimmedMachine,
+        approval_status: "approved",
+        status: "approved",
+      }),
+      fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+        fm_no: trimmedMachine,
+        fr_no: trimmedMachine,
+        machine_no: trimmedMachine,
+        approval_status: "pending",
+        status: "pending",
+      }),
+      fetchSpinningWheelChangeLatestRecord(wheelChangeType, {
+        fm_no: trimmedMachine,
+        fr_no: trimmedMachine,
+        machine_no: trimmedMachine,
+        approval_status: "rejected",
+        status: "rejected",
+      }),
+    ]).then(([approvedResult, pendingResult, rejectedResult]) => {
+      if (cancelled) return;
+
+      const approvedRecord = approvedResult.status === "fulfilled" ? approvedResult.value : null;
+      const pendingRecord = pendingResult.status === "fulfilled" ? pendingResult.value : null;
+      const rejectedRecord = rejectedResult.status === "fulfilled" ? rejectedResult.value : null;
+      const unapprovedRecord = pendingRecord || rejectedRecord;
+      if (!approvedRecord && !unapprovedRecord) return;
+
+      setUnapprovedEntry(
+        unapprovedRecord
+          ? {
+              status: pendingRecord ? "pending" : "rejected",
+              remarks: getTextValue(
+                unapprovedRecord?.review_remarks ?? unapprovedRecord?.reviewRemarks ?? ""
+              ),
+              reviewedBy: getTextValue(
+                unapprovedRecord?.reviewed_by ?? unapprovedRecord?.reviewedBy ?? ""
+              ),
+              reviewedAt: unapprovedRecord?.reviewed_at ?? unapprovedRecord?.reviewedAt ?? "",
+            }
+          : null
+      );
+      setValues(() => {
+        let nextValues = buildWheelChangeValuesFromRecord(approvedRecord || {}, wheelChangeType, trimmedMachine);
+        if (unapprovedRecord) {
+          nextValues = buildWheelChangeProposedValuesFromRecord(unapprovedRecord, wheelChangeType, trimmedMachine, nextValues);
+        }
+        return nextValues;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [wheelChangeType, machineNumber, countFromUserPicked]);
 
   useEffect(() => {
     if (!wheelChangeType || !selectedVariety) {
@@ -1248,78 +1247,6 @@ const WheelChange = forwardRef(function WheelChange(
     };
   }, [selectedVariety, wheelChangeType, varietyRefreshTick]);
 
-  // Type 4 has no "Count From"/variety row — it's keyed by machine number
-  // (fm_no) instead, matching the backend's fetchLatestWheelChangeByMachine
-  // carry-forward lookup.
-  useEffect(() => {
-    if (wheelChangeType !== "Type 4" || !machineNumber.trim()) {
-      if (wheelChangeType === "Type 4") lastLoadedMachineRef.current = "";
-      return;
-    }
-
-    const trimmedMachine = machineNumber.trim();
-    const selectionKey = `Type 4::${trimmedMachine}`;
-    if (lastLoadedMachineRef.current === selectionKey) return;
-
-    let cancelled = false;
-
-    Promise.allSettled([
-      fetchSpinningWheelChangeLatestRecord("Type 4", {
-        fm_no: trimmedMachine,
-        machine_no: trimmedMachine,
-        approval_status: "approved",
-        status: "approved",
-      }),
-      fetchSpinningWheelChangeLatestRecord("Type 4", {
-        fm_no: trimmedMachine,
-        machine_no: trimmedMachine,
-        approval_status: "pending",
-        status: "pending",
-      }),
-      fetchSpinningWheelChangeLatestRecord("Type 4", {
-        fm_no: trimmedMachine,
-        machine_no: trimmedMachine,
-        approval_status: "rejected",
-        status: "rejected",
-      }),
-    ]).then(([approvedResult, pendingResult, rejectedResult]) => {
-      if (cancelled) return;
-
-      const approvedRecord = approvedResult.status === "fulfilled" ? approvedResult.value : null;
-      const pendingRecord = pendingResult.status === "fulfilled" ? pendingResult.value : null;
-      const rejectedRecord = rejectedResult.status === "fulfilled" ? rejectedResult.value : null;
-      const unapprovedRecord = pendingRecord || rejectedRecord;
-      if (!approvedRecord && !unapprovedRecord) return;
-
-      lastLoadedMachineRef.current = selectionKey;
-      setUnapprovedEntry(
-        unapprovedRecord
-          ? {
-              status: pendingRecord ? "pending" : "rejected",
-              remarks: getTextValue(
-                unapprovedRecord?.review_remarks ?? unapprovedRecord?.reviewRemarks ?? ""
-              ),
-              reviewedBy: getTextValue(
-                unapprovedRecord?.reviewed_by ?? unapprovedRecord?.reviewedBy ?? ""
-              ),
-              reviewedAt: unapprovedRecord?.reviewed_at ?? unapprovedRecord?.reviewedAt ?? "",
-            }
-          : null
-      );
-      setValues(() => {
-        let nextValues = buildWheelChangeValuesFromRecord(approvedRecord || {}, "Type 4", trimmedMachine);
-        if (unapprovedRecord) {
-          nextValues = buildWheelChangeProposedValuesFromRecord(unapprovedRecord, "Type 4", trimmedMachine, nextValues);
-        }
-        return nextValues;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [machineNumber, wheelChangeType]);
-
   const clear = () => {
     setWheelChangeType("");
     setMachineNumber("");
@@ -1328,8 +1255,9 @@ const WheelChange = forwardRef(function WheelChange(
     setValues(createWheelChangeValues());
     setErrors({});
     setUnapprovedEntry(null);
+    setCountFromUserPicked(false);
     lastLoadedVarietyRef.current = "";
-    lastLoadedMachineRef.current = "";
+    lastLoadedMachineOnlyRef.current = "";
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(WHEEL_CHANGE_DRAFT_STORAGE_KEY);
     }
@@ -1375,43 +1303,6 @@ const WheelChange = forwardRef(function WheelChange(
   const getPayload = () => {
     const typeFieldConfig = WHEEL_CHANGE_FIELD_MAP[wheelChangeType];
     const typeCode = WHEEL_CHANGE_API_TYPES[wheelChangeType];
-
-    if (wheelChangeType === "Type 4") {
-      const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS["Type 4"] || new Set();
-      const payload = {
-        // Routing hint only, read by apis/spinning.js to pick the
-        // /spinning/wheel-change/type4 endpoint — stripped before the POST body
-        // is sent, since the backend expects `wheel_change_type` to hold the
-        // "Wheel Change" label, not the type code.
-        entry_id: entryId,
-        wheel_change_sub_type: typeCode,
-        wheel_change_type: selectedTypeName || "Wheel Change",
-        department: "Spinning",
-        approval_status: "pending",
-        operator: operatorName,
-        date: date || getTodayDate(),
-        test_no: getTextValue(testNo),
-        fm_no: getTextValue(machineNumber),
-      };
-
-      activeRows.forEach((row) => {
-        const fieldBase = typeFieldConfig?.rows?.[row.key];
-        if (!fieldBase) return;
-        const existingValue = getTextValue(values[row.key]?.existing);
-        const proposedValue = getTextValue(values[row.key]?.proposed);
-        const isNumeric = numericFields.has(fieldBase);
-
-        // Omit a blank *_existing entirely (rather than sending "" or null) so
-        // the backend carries it forward from the machine's last saved value.
-        if (existingValue) {
-          payload[`${fieldBase}_existing`] = isNumeric ? parseNumericValue(existingValue) : existingValue;
-        }
-
-        payload[`${fieldBase}_proposed`] = isNumeric ? parseNumericValue(proposedValue) : proposedValue;
-      });
-
-      return payload;
-    }
 
     const numericFields = WHEEL_CHANGE_NUMERIC_FIELDS[wheelChangeType] || new Set();
     const aliases = WHEEL_CHANGE_PAYLOAD_ALIASES[wheelChangeType] || {};
@@ -1507,14 +1398,18 @@ const WheelChange = forwardRef(function WheelChange(
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
+    // TCW ("tdv") and TW ("tm") have a fixed option list regardless of
+    // machine — only TPI/TM ("tciTm") actually needs the Machine No. picked
+    // first, since its value set differs for Frame No. 3 vs every other
+    // frame (see isType1FrameNumberThree).
     const shouldUseSelect =
       row.inputType === "select" &&
-      (wheelChangeType !== "Type 1" || !["tdv", "tm", "tciTm"].includes(row.key) || Boolean(machineNumber));
-    // Count From (Mixing) is the one driving control: picking it looks up the
-    // latest approved entry and fills in every other row's Existing baseline.
-    // Only its Existing cell stays editable — every other row's Existing cell
-    // is read-only, matching Carding/Draw Frame.
-    const isReadOnlyExisting = column === "existing" && row.key !== "countForm";
+      (wheelChangeType !== "Type 1" || row.key !== "tciTm" || Boolean(machineNumber));
+    // Count From (Mixing) is the one driving control: picking its Proposed
+    // cell looks up the latest approved entry and fills in every row's
+    // Existing baseline, including its own — so its Existing cell is
+    // read-only too, same as every other row.
+    const isReadOnlyExisting = column === "existing";
 
     if (shouldUseSelect) {
       const optionKeys = WHEEL_CHANGE_DROPDOWN_KEYS[row.key] || [];
@@ -1608,6 +1503,7 @@ const WheelChange = forwardRef(function WheelChange(
             <select
               className={`${styles.topInput} ${errors.wheelChangeType ? styles.errorInput : ""}`}
               value={wheelChangeType}
+              title="Pick the type first — Machine No. below will be scoped to it."
               onChange={(event) => {
                 setWheelChangeType(event.target.value);
                 clearFieldError("wheelChangeType");
@@ -1645,8 +1541,9 @@ const WheelChange = forwardRef(function WheelChange(
                 clearFieldError("machineNumber");
               }}
               options={machineOptions}
-              placeholder={`Select ${referenceLabel}`}
+              placeholder={wheelChangeType ? `Select ${referenceLabel}` : "Select wheel change type first"}
               ariaLabel={referenceLabel}
+              disabled={!wheelChangeType}
             />
           </div>
 

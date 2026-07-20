@@ -2,7 +2,10 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { useSelector } from "react-redux";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
-import { fetchDrawFrameMachineMaster, fetchDrawFrameUqcMasterDropdown } from "@/apis/draw-frame";
+import {
+  fetchDrawFrameCotsMachineMaster,
+  fetchDrawFrameUqcMasterDropdown,
+} from "@/apis/draw-frame";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeBlendPercentInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import styles from "@/styles/drawFrameWheelChange.module.css";
@@ -1379,7 +1382,22 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   // row still sitting in the pending table, so its Proposed values are shown
   // (and will be silently overwritten on the next submit).
   const [unapprovedEntry, setUnapprovedEntry] = useState(null);
+  // Tracks whether the user has actually picked a Mixing value (vs. it merely
+  // being auto-filled for display by the machine-only lookup below) — using
+  // this instead of "is the mixing row's text non-empty" as the machine-only
+  // effect's guard, since auto-filling Mixing for display would otherwise
+  // make it look user-picked and permanently block that effect from ever
+  // re-running on a later machine switch. Mirrors Spinning's
+  // countFromUserPicked fix.
+  const [mixingUserPicked, setMixingUserPicked] = useState(false);
   const lastLoadedMixingRef = useRef("");
+  // Before Mixing is picked, carry forward the last approved entry for this
+  // Machine No. alone (scoped to the current sub-type's shared table) so
+  // Existing isn't blank while the operator is still filling in the rest of
+  // the form. Once Mixing is chosen, the mixing-scoped lookup above takes
+  // over and is the more specific match. Mirrors Spinning's
+  // fetchLatestWheelChangeByMachine pattern.
+  const lastLoadedMachineOnlyRef = useRef("");
 
   // Type 1-4 (SB20/TD7/TD9/LRSB/D40/D50-D55/LDF3S) each post to their own
   // backend table; report the current selection up so the parent can reserve
@@ -1392,6 +1410,15 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     () => (wheelChangeType ? ROWS_BY_TYPE[wheelChangeType] || [] : []),
     [wheelChangeType]
   );
+  // Shared with the draft-restore effect below, which needs the mixing row's
+  // key before `activeRows`/`wheelChangeType` state has actually updated.
+  const findMixingRowKey = (type) => {
+    const rows = type ? ROWS_BY_TYPE[type] || [] : [];
+    const found = rows.find(
+      (row) => row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
+    );
+    return found?.key || null;
+  };
   const selectedMixingRow = activeRows.find(
     (row) => row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing")
   );
@@ -1413,10 +1440,17 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
         setLineType(typeof stored.lineType === "string" ? stored.lineType : "");
         setMachineNo(typeof stored.machineNo === "string" ? stored.machineNo : "");
         setDate(typeof stored.date === "string" && stored.date ? stored.date : getTodayDate());
-        setValues({
+        const restoredValues = {
           ...createValues(),
           ...(stored.values && typeof stored.values === "object" ? stored.values : {}),
-        });
+        };
+        setValues(restoredValues);
+        const restoredMixingKey = findMixingRowKey(
+          typeof stored.wheelChangeType === "string" ? stored.wheelChangeType : ""
+        );
+        setMixingUserPicked(
+          Boolean(String(restoredValues[restoredMixingKey]?.proposed ?? "").trim())
+        );
       }
     } catch {
       // Ignore invalid saved drafts.
@@ -1455,8 +1489,12 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     let active = true;
 
     const loadMachines = async () => {
+      if (!lineType) {
+        setMachineOptions([]);
+        return;
+      }
       try {
-        const machines = await fetchDrawFrameMachineMaster();
+        const machines = await fetchDrawFrameCotsMachineMaster({ subType: lineType });
         if (!active) return;
         const names = Array.from(
           new Set(
@@ -1476,7 +1514,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     return () => {
       active = false;
     };
-  }, []);
+  }, [lineType]);
 
   useEffect(() => {
     if (!draftLoaded || typeof window === "undefined") return;
@@ -1492,7 +1530,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     );
   }, [date, draftLoaded, lineType, machineNo, values, wheelChangeType]);
 
-  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType, mixingValue = "") => {
+  const loadLatestSaved = async (requestedWheelChangeType = wheelChangeType, mixingValue = "", machineNoValue = "") => {
     const apiWheelChangeType = getApiWheelChangeType(requestedWheelChangeType);
     // limit must be large enough to actually receive every matching row —
     // the backend doesn't sort by recency before truncating to the page
@@ -1508,6 +1546,14 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       baseParams.variety = trimmedMixing;
       baseParams.variety_name = trimmedMixing;
       baseParams.mixing = trimmedMixing;
+    } else {
+      // No Mixing picked yet — fall back to scoping purely by Machine No. so
+      // the Existing column can carry forward as soon as Type + Machine No.
+      // are picked, mirroring Spinning's machine-only early lookup.
+      const trimmedMachine = String(machineNoValue || "").trim();
+      if (trimmedMachine) {
+        baseParams.machine_no = trimmedMachine;
+      }
     }
 
     const [approvedResult, pendingResult, rejectedResult] = await Promise.allSettled([
@@ -1520,7 +1566,14 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     const pending = pendingResult.status === "fulfilled" ? extractLatestEntry(pendingResult.value) : null;
     const rejected = rejectedResult.status === "fulfilled" ? extractLatestEntry(rejectedResult.value) : null;
     const unapproved = pending || rejected;
-    if (!approved && !unapproved) return null;
+    if (!approved && !unapproved) {
+      // No saved data for this mixing/machine — clear whatever a previously
+      // selected mixing or machine had populated instead of leaving it showing.
+      setUnapprovedEntry(null);
+      setValues(createValues());
+      setErrors({});
+      return null;
+    }
 
     const referenceEntry = approved || unapproved;
     const savedWheelChangeType =
@@ -1553,6 +1606,31 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     setErrors({});
     return referenceEntry;
   };
+
+  // Before Mixing is picked, carry forward the last approved entry for this
+  // Machine No. alone. Once Mixing is chosen, the effect below (scoped by
+  // Mixing) takes over as the more specific match.
+  useEffect(() => {
+    if (!draftLoaded || !wheelChangeType || !machineNo.trim() || mixingUserPicked) {
+      lastLoadedMachineOnlyRef.current = "";
+      return;
+    }
+
+    const trimmedMachine = machineNo.trim();
+    const selectionKey = `${wheelChangeType}::${trimmedMachine}`;
+    if (lastLoadedMachineOnlyRef.current === selectionKey) return;
+
+    let cancelled = false;
+    loadLatestSaved(wheelChangeType, "", trimmedMachine)
+      .then(() => {
+        if (!cancelled) lastLoadedMachineOnlyRef.current = selectionKey;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draftLoaded, machineNo, mixingUserPicked, wheelChangeType]);
 
   useEffect(() => {
     if (!draftLoaded || !wheelChangeType || !selectedMixingExisting) {
@@ -1936,7 +2014,9 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     setValues(createValues());
     setErrors({});
     setUnapprovedEntry(null);
+    setMixingUserPicked(false);
     lastLoadedMixingRef.current = "";
+    lastLoadedMachineOnlyRef.current = "";
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(DRAFT_STORAGE_KEY);
     }
@@ -2065,17 +2145,22 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
       errors.values?.[row.key]?.[column] ? styles.errorInput : ""
     }`;
     const isMixingRow = row.inputType === "select" && (row.key.toLowerCase().includes("mixing") || row.label.toLowerCase().includes("mixing"));
+    const isReadOnlyExisting = column === "existing";
 
     if (isMixingRow) {
-      // The Mixing dropdown is the one driving control: selecting it looks
-      // up the latest approved entry for that mixing and fills in every
-      // other row's Existing baseline below. Only this row's Existing cell
-      // stays editable — every other row's Existing cell is read-only.
+      // The Mixing dropdown is the one driving control: picking its Proposed
+      // cell looks up the latest approved entry for that mixing and fills in
+      // every row's Existing baseline, including its own — so its Existing
+      // cell is read-only too, same as every other row (mirrors Spinning's
+      // Count From fix).
       return (
         <SearchableSelect
           className={className}
           value={value}
           onChange={(nextValue) => {
+            if (column === "proposed") {
+              setMixingUserPicked(Boolean(String(nextValue ?? "").trim()));
+            }
             setValues((current) => {
               const updatedValues = applyFinisherType1LrsbComputedValues(applyType1Sb20ComputedValues({
                 ...current,
@@ -2091,12 +2176,10 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
           options={mixingOptions}
           placeholder={loadingVarietyOptions ? "Loading..." : varietyOptionsError ? "Select Mixing" : "Select"}
           ariaLabel="Mixing"
-          disabled={loadingVarietyOptions && !mixingOptions.length}
+          disabled={(loadingVarietyOptions && !mixingOptions.length) || isReadOnlyExisting}
         />
       );
     }
-
-    const isReadOnlyExisting = column === "existing";
 
     if (row.inputType === "select") {
       const options = getSelectOptions(row.key, wheelChangeType);
@@ -2226,6 +2309,9 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
                 if (!WHEEL_CHANGE_TYPES_BY_LINE[nextLineType]?.includes(wheelChangeType)) {
                   setWheelChangeType("");
                 }
+                if (nextLineType !== lineType) {
+                  setMachineNo("");
+                }
                 clearFieldError("lineType");
               }}
             >
@@ -2249,6 +2335,9 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
                 if (nextWheelChangeType !== wheelChangeType) {
                   setValues(createValues());
                   setErrors({});
+                  setMixingUserPicked(false);
+                  lastLoadedMixingRef.current = "";
+                  lastLoadedMachineOnlyRef.current = "";
                 }
                 setWheelChangeType(nextWheelChangeType);
                 clearFieldError("wheelChangeType");
