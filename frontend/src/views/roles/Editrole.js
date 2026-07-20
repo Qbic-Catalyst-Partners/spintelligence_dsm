@@ -10,7 +10,6 @@ import ScreenAccessPanel, { isUnregisteredScreenId } from "@/components/ScreenAc
 
 import {
     fetchRoleById,
-    fetchRoles,
     fetchScreens,
     updateRole
 } from "../../store/slices/rolesSlice";
@@ -20,14 +19,13 @@ export default function EditRole() {
     const dispatch = useDispatch();
     const { id } = router.query;
 
-    const { currentRole, screens, roles } = useSelector((state) => state.roles);
+    const { currentRole, screens } = useSelector((state) => state.roles);
 
     const [usersCount, setUsersCount] = useState(0);
     const [roleName, setRoleName] = useState("");
     const [description, setDescription] = useState("");
     const [selectedScreens, setSelectedScreens] = useState([]);
     const [roleUpdatedAt, setRoleUpdatedAt] = useState("");
-    const [draftRole, setDraftRole] = useState(null);
     const [roleAccess, setRoleAccess] = useState(null);
 
     const normalizeLookup = (value) =>
@@ -36,69 +34,31 @@ export default function EditRole() {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "");
 
-    const collectScreenRefs = (value) => {
-        if (!value) return [];
-        if (Array.isArray(value)) return value.flatMap(collectScreenRefs);
-
-        if (typeof value === "string" || typeof value === "number") {
-            return [{ id: value, name: value }];
-        }
-
-        if (typeof value !== "object") return [];
-
-        const mapRefs = Object.entries(value)
-            .filter(([, entryValue]) => entryValue === true || entryValue === "true" || entryValue === 1 || Array.isArray(entryValue))
-            .flatMap(([entryKey, entryValue]) =>
-                Array.isArray(entryValue) ? collectScreenRefs(entryValue) : [{ name: entryKey }]
-            );
-
-        const directRef = {
-            id: value.id ?? value.screen_id ?? value.screenId ?? value.screen?.id ?? value.screen?.screen_id,
-            name:
-                value.name ??
-                value.screen_name ??
-                value.screenName ??
-                value.screen?.name ??
-                value.screen?.screen_name,
-        };
-
-        return [
-            directRef,
-            ...mapRefs,
-            ...collectScreenRefs(value.screens),
-            ...collectScreenRefs(value.accessibleScreens),
-            ...collectScreenRefs(value.accessible_screens),
-            ...collectScreenRefs(value.screen_names),
-            ...collectScreenRefs(value.screenNames),
-            ...collectScreenRefs(value.permissions),
-            ...collectScreenRefs(value.screen_access),
-            ...collectScreenRefs(value.access),
-        ];
-    };
-
-    const resolveScreenIds = (role, availableScreens = []) => {
-        const source =
-            role?.screen_ids ||
-            role?.screenIds ||
-            role?.screens ||
-            role?.screen_names ||
-            role?.screenNames ||
-            role?.permissions ||
-            role?.screen_access ||
-            role?.access ||
-            [];
-
-        const refs = collectScreenRefs(source);
+    // The ONLY source for which screens are checked: the role's actual saved
+    // access, as returned by the backend's accessible-screens endpoint
+    // (shape: { access: [{ department_id, department_name, screens: [{id,name}] }] }).
+    // Previously this also merged in the roles LIST row and a sessionStorage
+    // "editRoleDraft" — neither carries real per-role screen data, so on any
+    // role missing/late data from either source, whatever they DID contain
+    // (e.g. leftover from a differently-edited role) could end up ticked
+    // instead. Resolving from roleAccess alone means the panel only ever
+    // shows exactly what was actually submitted for THIS role.
+    const resolveScreenIds = (access, availableScreens = []) => {
         const available = Array.isArray(availableScreens) ? availableScreens : [];
+        const departments = Array.isArray(access) ? access : [];
+
+        const refs = departments.flatMap((department) =>
+            Array.isArray(department?.screens) ? department.screens : []
+        );
 
         return refs
             .map((screen) => {
-                const explicitId = screen.id;
+                const explicitId = screen?.id;
                 if (explicitId !== null && explicitId !== undefined && available.some((item) => String(item.id) === String(explicitId))) {
                     return explicitId;
                 }
 
-                const screenKey = normalizeLookup(screen.name || explicitId);
+                const screenKey = normalizeLookup(screen?.name ?? explicitId);
                 const matched = available.find(
                     (item) => normalizeLookup(item.name) === screenKey || normalizeLookup(item.screen_name) === screenKey
                 );
@@ -114,40 +74,6 @@ export default function EditRole() {
         return payload?.role || payload?.data?.role || payload?.data || payload;
     };
 
-    const getRoleId = (role) => role?.id ?? role?.role_id ?? role?.roleId;
-
-    const findLoadedRole = () =>
-        (Array.isArray(roles) ? roles : []).find((role) => String(getRoleId(role)) === String(id)) || null;
-
-    const hasScreenAccess = (role) =>
-        Boolean(
-            role?.screen_ids?.length ||
-            role?.screenIds?.length ||
-            role?.screens?.length ||
-            role?.accessibleScreens?.length ||
-            role?.accessible_screens?.length ||
-            role?.screen_names?.length ||
-            role?.screenNames?.length ||
-            role?.permissions?.length ||
-            role?.screen_access?.length ||
-            role?.access?.length ||
-            (role?.permissions && typeof role.permissions === "object" && Object.keys(role.permissions).length) ||
-            (role?.screen_access && typeof role.screen_access === "object" && Object.keys(role.screen_access).length) ||
-            (role?.access && typeof role.access === "object" && Object.keys(role.access).length)
-        );
-
-    useEffect(() => {
-        if (!id || typeof window === "undefined") return;
-        try {
-            const stored = JSON.parse(window.sessionStorage.getItem("editRoleDraft") || "null");
-            if (stored && String(getRoleId(stored)) === String(id)) {
-                setDraftRole(stored);
-            }
-        } catch {
-            setDraftRole(null);
-        }
-    }, [id]);
-
     const toApiScreenId = (screenId) => {
         const numericId = Number(screenId);
         return Number.isNaN(numericId) ? screenId : numericId;
@@ -155,34 +81,50 @@ export default function EditRole() {
 
     useEffect(() => {
         if (!id) return;
+        // Reset immediately (not just on the eventual response) so this role's
+        // panel never briefly — or, on a slow/out-of-order response, permanently
+        // — shows a previously-edited role's screen selections.
+        let cancelled = false;
+        setRoleAccess(null);
+        setSelectedScreens([]);
+
         dispatch(fetchRoleById(id));
-        dispatch(fetchRoles({ page: 1, limit: 100 }));
         dispatch(fetchScreens());
 
         getAccessibleScreensByRole(id)
-            .then((payload) => setRoleAccess(payload))
-            .catch(() => setRoleAccess(null));
+            .then((payload) => {
+                if (!cancelled) setRoleAccess(payload);
+            })
+            .catch(() => {
+                if (!cancelled) setRoleAccess(null);
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, [id, dispatch]);
+
+    // Split from the role-detail effect below on purpose: this is the ONLY
+    // thing that drives the checkbox panel, and it must never be gated on
+    // fetchRoleById (a separate, auth-token-gated request) succeeding. If
+    // that request is merely slow — or fails outright — the accessible-
+    // screens data (which loaded fine) must still populate the panel instead
+    // of silently leaving it stuck on the empty reset from the effect above.
+    useEffect(() => {
+        const access = roleAccess?.access || roleAccess?.data?.access || null;
+        if (!access) return;
+        setSelectedScreens(resolveScreenIds(access, screens));
+    }, [roleAccess, screens]);
 
     useEffect(() => {
         const detailRole = getRoleRecord(currentRole);
-        const listRole = findLoadedRole();
-        const role = detailRole || listRole || draftRole;
-        const accessRole = roleAccess
-            ? {
-                access: roleAccess?.access || roleAccess?.data?.access || roleAccess,
-                accessibleScreens: roleAccess?.accessibleScreens || roleAccess?.accessible_screens || roleAccess?.data?.accessibleScreens || roleAccess?.data?.accessible_screens,
-            }
-            : null;
-        const screenRole = [accessRole, detailRole, listRole, draftRole].find(hasScreenAccess) || role;
-        if (role) {
-            setRoleName(detailRole?.role_name || detailRole?.name || listRole?.role_name || listRole?.name || draftRole?.role_name || draftRole?.name || "");
-            setDescription(detailRole?.description ?? listRole?.description ?? draftRole?.description ?? "");
-            setSelectedScreens(resolveScreenIds(screenRole, screens));
-            setRoleUpdatedAt(detailRole?.updated_at || detailRole?.updatedAt || listRole?.updated_at || listRole?.updatedAt || draftRole?.updated_at || draftRole?.updatedAt || "");
-            setUsersCount(detailRole?.users_count ?? detailRole?.usersCount ?? detailRole?.users ?? listRole?.users_count ?? listRole?.usersCount ?? listRole?.users ?? draftRole?.users_count ?? draftRole?.usersCount ?? draftRole?.users ?? 0);
-        }
-    }, [currentRole, screens, roles, id, draftRole, roleAccess]);
+        if (!detailRole) return;
+
+        setRoleName(detailRole?.role_name || detailRole?.name || "");
+        setDescription(detailRole?.description ?? "");
+        setRoleUpdatedAt(detailRole?.updated_at || detailRole?.updatedAt || "");
+        setUsersCount(detailRole?.users_count ?? detailRole?.usersCount ?? detailRole?.users ?? 0);
+    }, [currentRole, id]);
 
     const handleUpdateRole = async () => {
         try {

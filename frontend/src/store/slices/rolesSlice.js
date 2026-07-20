@@ -67,9 +67,24 @@ const rolesSlice = createSlice({
       state.roles = action.payload.roles || action.payload;
     });
 
-    createReducerHelpers(builder, fetchRoleById, (state, action) => {
-      state.currentRole = action.payload;
-    });
+    // Not using createReducerHelpers here: editing role A then switching to
+    // edit role B before A's fetch settles must not leave A's stale
+    // currentRole/screen selections visible under B's id, so currentRole is
+    // cleared the moment a new fetch starts (pending), not just on success.
+    builder
+      .addCase(fetchRoleById.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.currentRole = null;
+      })
+      .addCase(fetchRoleById.fulfilled, (state, action) => {
+        state.loading = false;
+        state.currentRole = action.payload;
+      })
+      .addCase(fetchRoleById.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      });
 
     createReducerHelpers(builder, createRole, (state, action) => {
       state.roles.push(action.payload);
