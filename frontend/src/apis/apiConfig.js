@@ -17,8 +17,24 @@ const getStoredAuthToken = () => {
     );
 };
 
+
+const API_HOST = '187.127.135.236:4000';
+const API_HTTPS_PATH = 'https://api.spintelligence-dsm.cloud'
+const HTTP_BASE_URL = `http://${API_HOST}`;
+const HTTPS_BASE_URL = `https://${API_HTTPS_PATH}`;
+
+// No SSL termination exists on the backend yet, but once it does, matching the page's own
+// protocol avoids the browser blocking API calls as mixed content on an https-served frontend —
+// this works automatically with no env var needed. NEXT_PUBLIC_API_URL, if set, still overrides.
+const detectDefaultBaseUrl = () => {
+    if (typeof window !== 'undefined' && window.location?.protocol === 'https:') {
+        return HTTPS_BASE_URL;
+    }
+    return HTTP_BASE_URL;
+};
+
 const resolvedBaseUrl = (
-    process.env.NEXT_PUBLIC_API_URL || 'http://187.127.135.236:4000'
+    process.env.NEXT_PUBLIC_API_URL || detectDefaultBaseUrl()
 ).trim();
 
 export { resolvedBaseUrl };
