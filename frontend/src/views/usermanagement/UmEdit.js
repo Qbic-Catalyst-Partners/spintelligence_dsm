@@ -8,6 +8,7 @@ import { BsBuildingsFill } from "react-icons/bs";
 import { FaLock, FaEye, FaEyeSlash, FaCheckCircle } from "react-icons/fa";
 import { HiPencil } from "react-icons/hi";
 import { FiCircle } from "react-icons/fi";
+import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 
 // REDUX
 import { useDispatch, useSelector } from "react-redux";
@@ -119,6 +120,24 @@ export default function EditUser() {
     ) {
       setLocalError("All fields are required");
       return;
+    }
+
+    // New Password is optional here (blank keeps the existing password) — only enforce the
+    // requirements when the admin actually typed a replacement.
+    if (password) {
+      const missingRequirements = [
+        !validations.length && "at least 8 characters long",
+        !validations.number && "at least one number (0-9)",
+        !validations.special && "a special character (@#$)",
+        !(validations.uppercase && validations.lowercase) && "both uppercase & lowercase letters",
+      ].filter(Boolean);
+
+      if (missingRequirements.length) {
+        emitGlobalFailureModal({
+          message: `Password must include: ${missingRequirements.join(", ")}.`,
+        });
+        return;
+      }
     }
 
     try {
