@@ -19,7 +19,7 @@ const getStoredAuthToken = () => {
 
 
 const API_HOST = '187.127.135.236:4000';
-const API_HTTPS_PATH = 'https://api.spintelligence-dsm.cloud'
+const API_HTTPS_PATH = 'api.spintelligence-dsm.cloud'
 const HTTP_BASE_URL = `http://${API_HOST}`;
 const HTTPS_BASE_URL = `https://${API_HTTPS_PATH}`;
 
