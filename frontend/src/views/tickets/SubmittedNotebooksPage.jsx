@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { FiCalendar } from "react-icons/fi";
 import {
     acknowledgeSubmittedNotebookApi,
     fetchSubmittedNotebookDetailApi,
@@ -7,8 +8,70 @@ import {
 } from "@/apis/submittedNotebooksApi";
 import apiConfig from "@/apis/apiConfig";
 import { fetchUsersAPI } from "@/apis/userApi";
-import { isFullAccessUser } from "@/utils/accessControl";
+import { isFullAccessUser, isSupervisorNavUser } from "@/utils/accessControl";
 import styles from "@/styles/submittedNotebooks.module.css";
+
+const getFirstName = (fullName) => String(fullName || "").trim().split(/\s+/)[0] || fullName || "";
+
+const DATE_RANGE_PRESETS = [
+    { key: "today", label: "Today" },
+    { key: "yesterday", label: "Yesterday" },
+    { key: "dayBeforeYesterday", label: "Day Before Yesterday" },
+    { key: "weekly", label: "Weekly" },
+    { key: "biweekly", label: "Biweekly" },
+    { key: "monthly", label: "Monthly" },
+    { key: "bimonthly", label: "Bimonthly" },
+    { key: "quarterly", label: "Quarterly" },
+    { key: "yearly", label: "Yearly" },
+];
+
+const toInputDateString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+// Presets are computed as [from, today] windows, not single days (aside from Today/Yesterday/
+// Day Before Yesterday themselves) — "Weekly" means "the last 7 days," matching how every other
+// date-range preset in this app behaves, not an ISO calendar week.
+const getDateRangeForPreset = (presetKey) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const daysAgo = (days) => {
+        const date = new Date(today);
+        date.setDate(date.getDate() - days);
+        return date;
+    };
+
+    switch (presetKey) {
+        case "today":
+            return { from: today, to: today };
+        case "yesterday": {
+            const yesterday = daysAgo(1);
+            return { from: yesterday, to: yesterday };
+        }
+        case "dayBeforeYesterday": {
+            const dayBefore = daysAgo(2);
+            return { from: dayBefore, to: dayBefore };
+        }
+        case "weekly":
+            return { from: daysAgo(6), to: today };
+        case "biweekly":
+            return { from: daysAgo(13), to: today };
+        case "monthly":
+            return { from: daysAgo(29), to: today };
+        case "bimonthly":
+            return { from: daysAgo(59), to: today };
+        case "quarterly":
+            return { from: daysAgo(89), to: today };
+        case "yearly":
+            return { from: daysAgo(364), to: today };
+        default:
+            return null;
+    }
+};
 
 const FIELD_LABELS = {
     date: "Date",
@@ -687,7 +750,23 @@ const resolveDisplayValues = (users, candidates) => {
     return [];
 };
 
+const getUsersDisplayNames = (userList) =>
+    (Array.isArray(userList) ? userList : [])
+        .map((user) => getUserDisplayName(user))
+        .filter(Boolean);
+
 const getNotebookSupervisorName = (notebook, users = []) => {
+    // The backend actually resolves the L2 approver(s) into notebook.assigned_l2_users — full
+    // {id, employee_id, full_name, level, role} objects, not any of the flat approval_l2_name /
+    // supervisor_name / l2_approver_name style fields below (those were never populated on a
+    // submitted_notebooks row; they only ever existed on a separate submission-threshold config
+    // table). Check the real field first before falling back to the legacy guesses.
+    const assignedL2Names = getUsersDisplayNames(notebook?.assigned_l2_users);
+    if (assignedL2Names.length) return assignedL2Names.join(", ");
+
+    const assignedL3Names = getUsersDisplayNames(notebook?.assigned_l3_users);
+    if (assignedL3Names.length) return assignedL3Names.join(", ");
+
     const names = resolveDisplayValues(users, [
         ...normalizeNameList(notebook?.approval_l2_name),
         ...normalizeNameList(notebook?.approval_l2_names),
@@ -1112,6 +1191,7 @@ const SubmittedNotebooksPage = () => {
     const [error, setError] = useState("");
     const [acknowledgingId, setAcknowledgingId] = useState(null);
     const [showAcknowledgeConfirm, setShowAcknowledgeConfirm] = useState(false);
+    const [showAcknowledgeSuccess, setShowAcknowledgeSuccess] = useState(false);
     const [reviewNote, setReviewNote] = useState("");
     const [reviewNoteError, setReviewNoteError] = useState(false);
     const [users, setUsers] = useState([]);
@@ -1121,7 +1201,13 @@ const SubmittedNotebooksPage = () => {
         notebookType: "",
         operator: "",
         supervisor: "",
+        datePreset: "",
+        dateFrom: "",
+        dateTo: "",
     });
+    const isSupervisor = isSupervisorNavUser(user) && !isFullAccessUser(user);
+    const isAdminUser = isFullAccessUser(user);
+    const [activeTab, setActiveTab] = useState("pending");
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
 
@@ -1150,7 +1236,7 @@ const SubmittedNotebooksPage = () => {
             }
 
             const userRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
-            setNotebooks(userRows.filter(isNotebookPendingAcknowledgement));
+            setNotebooks(userRows);
             lastLoadKeyRef.current = loadKey;
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || "Unable to load submitted notebooks.");
@@ -1186,21 +1272,33 @@ const SubmittedNotebooksPage = () => {
 
     const enrichedNotebooks = useMemo(
         () =>
-            notebooks.map((notebook) => {
-                const { department, subDepartment } = resolveNotebookDepartment(notebook);
-                return {
-                    notebook,
-                    id: getNotebookId(notebook),
-                    department,
-                    subDepartment,
-                    title: getNotebookTitle(notebook),
-                    operator: getNotebookOperatorName(notebook, users),
-                    supervisor: getNotebookSupervisorName(notebook, users),
-                    createdAt: getCreatedDate(notebook),
-                    review: getNotebookReviewNote(notebook),
-                };
-            }),
-        [notebooks, users]
+            notebooks
+                .filter((notebook) =>
+                    activeTab === "pending"
+                        ? isNotebookPendingAcknowledgement(notebook)
+                        : !isNotebookPendingAcknowledgement(notebook)
+                )
+                .map((notebook) => {
+                    const { department, subDepartment } = resolveNotebookDepartment(notebook);
+                    return {
+                        notebook,
+                        id: getNotebookId(notebook),
+                        department,
+                        subDepartment,
+                        title: getNotebookTitle(notebook),
+                        operator: getNotebookOperatorName(notebook, users),
+                        // Who acknowledged a Closed notebook is only shown to admins — everyone
+                        // else (including the supervisor who acknowledged it themselves) sees
+                        // "--" on this tab so one supervisor's activity isn't visible to another.
+                        supervisor:
+                            activeTab === "closed" && !isAdminUser
+                                ? "--"
+                                : getNotebookSupervisorName(notebook, users),
+                        createdAt: getCreatedDate(notebook),
+                        review: getNotebookReviewNote(notebook),
+                    };
+                }),
+        [notebooks, users, activeTab, isAdminUser]
     );
 
     const uniqueValues = (values) => Array.from(new Set(values.filter((value) => value && value !== "--")));
@@ -1237,7 +1335,9 @@ const SubmittedNotebooksPage = () => {
                         (!filters.subDepartment || item.subDepartment === filters.subDepartment) &&
                         (!filters.notebookType || item.title === filters.notebookType) &&
                         (!filters.operator || item.operator === filters.operator) &&
-                        (!filters.supervisor || item.supervisor === filters.supervisor)
+                        (!filters.supervisor || item.supervisor === filters.supervisor) &&
+                        (!filters.dateFrom || new Date(item.createdAt || 0) >= new Date(`${filters.dateFrom}T00:00:00`)) &&
+                        (!filters.dateTo || new Date(item.createdAt || 0) <= new Date(`${filters.dateTo}T23:59:59.999`))
                 )
                 .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0)),
         [enrichedNotebooks, filters]
@@ -1251,6 +1351,23 @@ const SubmittedNotebooksPage = () => {
             });
             return next;
         });
+    };
+
+    // Preset and Custom From/To are exclusive — picking a preset overwrites From/To outright,
+    // and editing From/To directly clears whatever preset was selected (so the two controls
+    // never silently disagree about which one is actually in effect).
+    const handleDatePresetChange = (presetKey) => {
+        const range = getDateRangeForPreset(presetKey);
+        setFilters((current) => ({
+            ...current,
+            datePreset: presetKey,
+            dateFrom: range ? toInputDateString(range.from) : "",
+            dateTo: range ? toInputDateString(range.to) : "",
+        }));
+    };
+
+    const handleCustomDateChange = (field, value) => {
+        setFilters((current) => ({ ...current, datePreset: "", [field]: value }));
     };
 
     const openNotebook = async (notebook) => {
@@ -1293,14 +1410,18 @@ const SubmittedNotebooksPage = () => {
         setAcknowledgingId(id);
         try {
             await acknowledgeSubmittedNotebookApi(id, { note: reviewNote.trim() });
-            setNotebooks((currentNotebooks) =>
-                currentNotebooks.filter((notebook) => getNotebookId(notebook) !== id)
-            );
-            setSelectedNotebook(null);
             setShowAcknowledgeConfirm(false);
             setReviewNote("");
             setReviewNoteError(false);
             await loadNotebooks();
+            // Show "Thanks for Acknowledging" over the detail view for 2s, then close it —
+            // closing selectedNotebook immediately (as this used to do) skipped straight past
+            // any success feedback, so the reviewer had no confirmation the click registered.
+            setShowAcknowledgeSuccess(true);
+            setTimeout(() => {
+                setShowAcknowledgeSuccess(false);
+                setSelectedNotebook(null);
+            }, 2000);
         } finally {
             setAcknowledgingId(null);
         }
@@ -1323,32 +1444,56 @@ const SubmittedNotebooksPage = () => {
         <section className={styles.page}>
             <div className={styles.titleBar}>
                 <h1 className={styles.title}>Submitted Notebooks</h1>
+                <div className={styles.tabSwitch}>
+                    <button
+                        type="button"
+                        className={`${styles.tabButton} ${activeTab === "pending" ? styles.tabButtonActive : ""}`}
+                        onClick={() => setActiveTab("pending")}
+                    >
+                        Pending
+                    </button>
+                    <button
+                        type="button"
+                        className={`${styles.tabButton} ${activeTab === "closed" ? styles.tabButtonActive : ""}`}
+                        onClick={() => setActiveTab("closed")}
+                    >
+                        Closed
+                    </button>
+                </div>
                 <div className={styles.filterBar}>
                     <label className={styles.filterField}>
                         <small>Department</small>
-                        <select
-                            className={styles.filterSelect}
-                            value={filters.department}
-                            onChange={(event) => handleFilterChange("department", event.target.value)}
-                        >
-                            <option value="">All</option>
-                            {filterOptions.departments.map((value) => (
-                                <option key={value} value={value}>{value}</option>
-                            ))}
-                        </select>
+                        {isSupervisor ? (
+                            <span className={styles.filterLocked}>Can&apos;t access</span>
+                        ) : (
+                            <select
+                                className={styles.filterSelect}
+                                value={filters.department}
+                                onChange={(event) => handleFilterChange("department", event.target.value)}
+                            >
+                                <option value="">All</option>
+                                {filterOptions.departments.map((value) => (
+                                    <option key={value} value={value}>{value}</option>
+                                ))}
+                            </select>
+                        )}
                     </label>
                     <label className={styles.filterField}>
                         <small>Sub Department</small>
-                        <select
-                            className={styles.filterSelect}
-                            value={filters.subDepartment}
-                            onChange={(event) => handleFilterChange("subDepartment", event.target.value)}
-                        >
-                            <option value="">All</option>
-                            {filterOptions.subDepartments.map((value) => (
-                                <option key={value} value={value}>{value}</option>
-                            ))}
-                        </select>
+                        {isSupervisor ? (
+                            <span className={styles.filterLocked}>Can&apos;t access</span>
+                        ) : (
+                            <select
+                                className={styles.filterSelect}
+                                value={filters.subDepartment}
+                                onChange={(event) => handleFilterChange("subDepartment", event.target.value)}
+                            >
+                                <option value="">All</option>
+                                {filterOptions.subDepartments.map((value) => (
+                                    <option key={value} value={value}>{value}</option>
+                                ))}
+                            </select>
+                        )}
                     </label>
                     <label className={styles.filterField}>
                         <small>Notebook Type</small>
@@ -1364,7 +1509,7 @@ const SubmittedNotebooksPage = () => {
                         </select>
                     </label>
                     <label className={styles.filterField}>
-                        <small>Operator</small>
+                        <small>Submitted by</small>
                         <select
                             className={styles.filterSelect}
                             value={filters.operator}
@@ -1372,22 +1517,63 @@ const SubmittedNotebooksPage = () => {
                         >
                             <option value="">All</option>
                             {filterOptions.operators.map((value) => (
-                                <option key={value} value={value}>{value}</option>
+                                <option key={value} value={value}>{getFirstName(value)}</option>
                             ))}
                         </select>
                     </label>
                     <label className={styles.filterField}>
-                        <small>Supervisor</small>
+                        <small>Checked by</small>
+                        {isSupervisor ? (
+                            <span className={styles.filterLocked}>{getFirstName(user?.full_name || user?.fullName || user?.name) || "You"}</span>
+                        ) : (
+                            <select
+                                className={styles.filterSelect}
+                                value={filters.supervisor}
+                                onChange={(event) => handleFilterChange("supervisor", event.target.value)}
+                            >
+                                <option value="">All</option>
+                                {filterOptions.supervisors.map((value) => (
+                                    <option key={value} value={value}>{getFirstName(value)}</option>
+                                ))}
+                            </select>
+                        )}
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>Date Range</small>
                         <select
                             className={styles.filterSelect}
-                            value={filters.supervisor}
-                            onChange={(event) => handleFilterChange("supervisor", event.target.value)}
+                            value={filters.datePreset}
+                            onChange={(event) => handleDatePresetChange(event.target.value)}
                         >
-                            <option value="">All</option>
-                            {filterOptions.supervisors.map((value) => (
-                                <option key={value} value={value}>{value}</option>
+                            <option value="">Custom</option>
+                            {DATE_RANGE_PRESETS.map((preset) => (
+                                <option key={preset.key} value={preset.key}>{preset.label}</option>
                             ))}
                         </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>From</small>
+                        <span className={styles.dateInputWrap}>
+                            <input
+                                type="date"
+                                className={styles.filterSelect}
+                                value={filters.dateFrom}
+                                onChange={(event) => handleCustomDateChange("dateFrom", event.target.value)}
+                            />
+                            <FiCalendar className={styles.dateInputIcon} aria-hidden="true" />
+                        </span>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>To</small>
+                        <span className={styles.dateInputWrap}>
+                            <input
+                                type="date"
+                                className={styles.filterSelect}
+                                value={filters.dateTo}
+                                onChange={(event) => handleCustomDateChange("dateTo", event.target.value)}
+                            />
+                            <FiCalendar className={styles.dateInputIcon} aria-hidden="true" />
+                        </span>
                     </label>
                 </div>
             </div>
@@ -1413,21 +1599,17 @@ const SubmittedNotebooksPage = () => {
                                     <span>{item.department} &gt; {item.subDepartment}</span>
                                 </span>
                                 <span className={styles.rowMeta}>
-                                    <span>
-                                        <small>Supervisor</small>
-                                        <strong>{item.supervisor}</strong>
+                                    <span className={styles.rowMetaItem}>
+                                        <small>Checked by</small>
+                                        <strong>{getFirstName(item.supervisor)}</strong>
                                     </span>
-                                    <span>
-                                        <small>Operator</small>
-                                        <strong>{item.operator}</strong>
+                                    <span className={styles.rowMetaItem}>
+                                        <small>Submitted by</small>
+                                        <strong>{getFirstName(item.operator)}</strong>
                                     </span>
-                                    <span>
+                                    <span className={styles.rowMetaItem}>
                                         <small>Created At</small>
                                         <strong>{formatDateTime(item.createdAt)}</strong>
-                                    </span>
-                                    <span>
-                                        <small>Review</small>
-                                        <strong>{item.review || "-"}</strong>
                                     </span>
                                 </span>
                             </button>
@@ -1438,13 +1620,32 @@ const SubmittedNotebooksPage = () => {
                 <div className={styles.emptyState}>No submitted notebooks found.</div>
             )}
 
-            {selectedNotebook && (
+            {selectedNotebook && showAcknowledgeSuccess && (
+                // Thanks-for-acknowledging replaces the whole detail card outright, instead of
+                // layering on top of it — the pending notebook's fields/review textarea stayed
+                // visible underneath the fixed overlay otherwise, which read as a stacked popup
+                // rather than a clean confirmation.
+                <div className={styles.successOverlay} role="presentation">
+                    <div
+                        className={styles.successDialog}
+                        role="alertdialog"
+                        aria-modal="true"
+                        aria-labelledby="acknowledge-success-title"
+                    >
+                        <div className={styles.successIcon} aria-hidden="true">{"✓"}</div>
+                        <h3 id="acknowledge-success-title">Thanks for Acknowledging</h3>
+                    </div>
+                </div>
+            )}
+
+            {selectedNotebook && !showAcknowledgeSuccess && (
                 <div
                     className={styles.overlay}
                     role="presentation"
                     onClick={() => {
                         setSelectedNotebook(null);
                         setShowAcknowledgeConfirm(false);
+                        setShowAcknowledgeSuccess(false);
                         setReviewNote("");
                         setReviewNoteError(false);
                     }}
@@ -1496,33 +1697,37 @@ const SubmittedNotebooksPage = () => {
                             )}
                         </div>
 
-                        <div className={styles.reviewSection}>
-                            <label className={styles.reviewLabel} htmlFor="submitted-notebook-review">
-                                Review<span className={styles.required}>*</span>
-                            </label>
-                            <textarea
-                                id="submitted-notebook-review"
-                                className={`${styles.reviewTextarea} ${reviewNoteError ? styles.reviewError : ""}`}
-                                value={reviewNote}
-                                onChange={(event) => {
-                                    setReviewNote(event.target.value);
-                                    if (reviewNoteError && event.target.value.trim()) setReviewNoteError(false);
-                                }}
-                                placeholder="Enter your review before acknowledging"
-                            />
-                            {reviewNoteError ? (
-                                <p className={styles.reviewErrorText}>Review is required before you can acknowledge.</p>
-                            ) : null}
-                        </div>
+                        {activeTab === "closed" ? null : (
+                            <>
+                                <div className={styles.reviewSection}>
+                                    <label className={styles.reviewLabel} htmlFor="submitted-notebook-review">
+                                        Review<span className={styles.required}>*</span>
+                                    </label>
+                                    <textarea
+                                        id="submitted-notebook-review"
+                                        className={`${styles.reviewTextarea} ${reviewNoteError ? styles.reviewError : ""}`}
+                                        value={reviewNote}
+                                        onChange={(event) => {
+                                            setReviewNote(event.target.value);
+                                            if (reviewNoteError && event.target.value.trim()) setReviewNoteError(false);
+                                        }}
+                                        placeholder="Enter your review before acknowledging"
+                                    />
+                                    {reviewNoteError ? (
+                                        <p className={styles.reviewErrorText}>Review is required before you can acknowledge.</p>
+                                    ) : null}
+                                </div>
 
-                        <button
-                            type="button"
-                            className={styles.ackButton}
-                            disabled={Boolean(acknowledgingId)}
-                            onClick={requestAcknowledgeConfirmation}
-                        >
-                            {acknowledgingId ? "Acknowledging..." : "Acknowledge"}
-                        </button>
+                                <button
+                                    type="button"
+                                    className={styles.ackButton}
+                                    disabled={Boolean(acknowledgingId)}
+                                    onClick={requestAcknowledgeConfirmation}
+                                >
+                                    {acknowledgingId ? "Acknowledging..." : "Acknowledge"}
+                                </button>
+                            </>
+                        )}
 
                         {showAcknowledgeConfirm ? (
                             <div className={styles.confirmOverlay} role="presentation">

@@ -295,6 +295,114 @@ const ensureSpinningEntryIdColumns = async () => {
     `);
   }
 
+  // EmployeeName is dropped outright below on every Spinning checking table that has it —
+  // no route in this codebase (frontend or backend) has ever collected or read this field, and
+  // Ring Frame Log Book was asked to be the only Spinning screen that keeps a person's name
+  // (via its own separate Checker Name field on ring_frame_inspections, untouched here).
+  for (const tableName of [
+    'spinning.speed_checking',
+    'spinning.lycra_missing',
+    'spinning.bottom_apron_checking',
+    'spinning.lycra_centering',
+    'spinning.RSM_and_lycrasensor_cheking_online',
+    'spinning.RSM_and_lycrasensor_cheking_offline',
+    'spinning.cots_checking'
+  ]) {
+    await client.query(`
+      DO $$
+      DECLARE
+        col_name text;
+      BEGIN
+        SELECT column_name INTO col_name
+        FROM information_schema.columns
+        WHERE table_schema = lower(split_part('${tableName}', '.', 1))
+          AND table_name = lower(split_part('${tableName}', '.', 2))
+          AND column_name ILIKE 'employeename';
+        IF col_name IS NOT NULL THEN
+          EXECUTE format('ALTER TABLE %s DROP COLUMN %I', '${tableName}', col_name);
+        END IF;
+      END $$;
+    `);
+  }
+
+  // LHS_Value/RHS_Value were originally required scalar columns on all six
+  // checking screens; LHS/RHS is now always submitted as a free-form
+  // comma-separated spindle list (lhs_values/rhs_values below), so the old
+  // scalar columns are dropped outright rather than just relaxed to nullable.
+  for (const tableName of [
+    'spinning.speed_checking',
+    'spinning.cots_checking',
+    'spinning.bottom_apron_checking',
+    'spinning.lycra_centering',
+    'spinning.RSM_and_lycrasensor_cheking_online',
+    'spinning.RSM_and_lycrasensor_cheking_offline'
+  ]) {
+    await client.query(`
+      DO $$
+      DECLARE
+        col_name text;
+      BEGIN
+        SELECT column_name INTO col_name
+        FROM information_schema.columns
+        WHERE table_schema = lower(split_part('${tableName}', '.', 1))
+          AND table_name = lower(split_part('${tableName}', '.', 2))
+          AND column_name ILIKE 'lhs_value';
+        IF col_name IS NOT NULL THEN
+          EXECUTE format('ALTER TABLE %s DROP COLUMN %I', '${tableName}', col_name);
+        END IF;
+
+        SELECT column_name INTO col_name
+        FROM information_schema.columns
+        WHERE table_schema = lower(split_part('${tableName}', '.', 1))
+          AND table_name = lower(split_part('${tableName}', '.', 2))
+          AND column_name ILIKE 'rhs_value';
+        IF col_name IS NOT NULL THEN
+          EXECUTE format('ALTER TABLE %s DROP COLUMN %I', '${tableName}', col_name);
+        END IF;
+      END $$;
+    `);
+  }
+
+  // LHS/RHS moved from a single scalar value to a free-form list of spindle
+  // readings on these six checking screens. Each row stays a single
+  // submission (JSONB list + a denormalized count column) so Custom Report
+  // stays a flat, one-row-per-submission table — a normalized child table
+  // (spindle_readings, tried first) required a join that multiplied each
+  // submission into one row per reading and made reports collapse/duplicate
+  // visually, which is worse for this use case than the simpler JSONB blob.
+  const lhsRhsArrayTables = [
+    'spinning.speed_checking',
+    'spinning.cots_checking',
+    'spinning.bottom_apron_checking',
+    'spinning.lycra_centering',
+    'spinning.RSM_and_lycrasensor_cheking_online',
+    'spinning.RSM_and_lycrasensor_cheking_offline'
+  ];
+  for (const tableName of lhsRhsArrayTables) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS lhs_values JSONB,
+        ADD COLUMN IF NOT EXISTS rhs_values JSONB,
+        ADD COLUMN IF NOT EXISTS lhs_spindle_count INTEGER,
+        ADD COLUMN IF NOT EXISTS rhs_spindle_count INTEGER;
+    `);
+  }
+
+  await client.query(`DROP TABLE IF EXISTS spinning.spindle_readings`);
+
+  // "Type 2" is a fault-subtype dropdown added only to the four apron/lycra/RSM
+  // screens, not COTS or Speed Checking — kept in its own table (rather than a
+  // column on each of those four tables) since it's conceptually a separate
+  // fault classification, not part of the core measurement row.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS spinning.type2_faults (
+      id BIGSERIAL PRIMARY KEY,
+      checking_type TEXT NOT NULL,
+      entry_id TEXT NOT NULL,
+      type2 TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
   await client.query(`
     DO $$
     BEGIN
@@ -361,9 +469,26 @@ const ensureSpinningEntryIdColumns = async () => {
     `);
   }
 
+  // "Slub Partcy Code" was a typo of "Slub Party Code" — rename the existing column (preserving
+  // its data) rather than adding a new one, guarded so it only runs once per environment.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'spinning' AND table_name = 'spinning_qc_header' AND column_name = 'slub_partcy_code'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'spinning' AND table_name = 'spinning_qc_header' AND column_name = 'slub_party_code'
+      ) THEN
+        ALTER TABLE spinning.spinning_qc_header RENAME COLUMN slub_partcy_code TO slub_party_code;
+      END IF;
+    END $$;
+  `);
+
   await client.query(`
     ALTER TABLE spinning.spinning_qc_header
-      ADD COLUMN IF NOT EXISTS slub_partcy_code TEXT,
+      ADD COLUMN IF NOT EXISTS slub_party_code TEXT,
       ADD COLUMN IF NOT EXISTS slub_mtr NUMERIC,
       ADD COLUMN IF NOT EXISTS pause_min NUMERIC,
       ADD COLUMN IF NOT EXISTS pause_max NUMERIC,
@@ -372,6 +497,23 @@ const ensureSpinningEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS thickness_min NUMERIC,
       ADD COLUMN IF NOT EXISTS thickness_max NUMERIC;
   `);
+};
+
+// Writes the Type-2 fault-subtype value into its own table for a given
+// checking screen + submission, replacing any prior value for that
+// (checking_type, entry_id) — used on every save so edits to an existing
+// entry_id don't leave a stale row behind. Caller is expected to be inside a
+// transaction alongside the parent row insert.
+const replaceType2Fault = async (checkingType, entryId, type2Value) => {
+  await client.query(
+    `DELETE FROM spinning.type2_faults WHERE checking_type = $1 AND entry_id = $2`,
+    [checkingType, entryId]
+  );
+  if (!type2Value) return;
+  await client.query(
+    `INSERT INTO spinning.type2_faults (checking_type, entry_id, type2) VALUES ($1,$2,$3)`,
+    [checkingType, entryId, type2Value]
+  );
 };
 
 router.get('/thresholds', async (req, res, next) => {
@@ -1422,11 +1564,11 @@ router.post('/speed-checking', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
       display_speed,
       spindle_speed,
-      lhs_value,
-      rhs_value,
+      lhs_values,
+      rhs_values,
+      difference: payloadDifference,
       lhs_textremarks,
       lhs_audio,
       rhs_textremarks,
@@ -1437,33 +1579,42 @@ router.post('/speed-checking', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
-    // ✅ Auto calculate difference
-    const difference = parseFloat(lhs_value) - parseFloat(rhs_value);
+    const hasLhsValues = Array.isArray(lhs_values);
+    const hasRhsValues = Array.isArray(rhs_values);
+    // Difference is computed on the frontend from Display/Spindle Speed
+    // (LHS/RHS is a free-form spindle list, not a pair of numbers to subtract).
+    const difference = payloadDifference ?? null;
+
+    await client.query('BEGIN');
 
     const result = await client.query(`
       INSERT INTO spinning.speed_checking
-      (entry_id, InspectionDate, MachineNo, EmployeeName,
+      (entry_id, InspectionDate, MachineNo,
        Display_Speed, Spindle_Speed,
-       LHS_Value, RHS_Value, Difference,
+       Difference,
+       lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
       display_speed,
       spindle_speed,
-      lhs_value,
-      rhs_value,
       difference,
+      hasLhsValues ? JSON.stringify(lhs_values) : null,
+      hasRhsValues ? JSON.stringify(rhs_values) : null,
+      hasLhsValues ? lhs_values.length : null,
+      hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'Record created successfully',
@@ -1471,6 +1622,7 @@ router.post('/speed-checking', async (req, res, next) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -1515,11 +1667,12 @@ router.get('/speed-checking', async (req, res, next) => {
         entry_id,
         InspectionDate,
         MachineNo,
-        EmployeeName,
         Display_Speed,
         Spindle_Speed,
-        LHS_Value,
-        RHS_Value,
+        lhs_values,
+        rhs_values,
+        lhs_spindle_count,
+        rhs_spindle_count,
         Difference,
         LHS_TextRemarks,
         encode(LHS_Audio, 'base64') AS LHS_Audio,
@@ -1595,8 +1748,8 @@ router.post('/cots-checking', async (req, res, next) =>{
       entry_id,
       inspectiondate,
       machineno,
-      lhs_value,
-      rhs_value,
+      lhs_values,
+      rhs_values,
       lhs_textremarks,
       lhs_audio,
       rhs_textremarks,
@@ -1607,9 +1760,26 @@ router.post('/cots-checking', async (req, res, next) =>{
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
-    const lhsMeasurement = parseWholeNumberInRange(lhs_value, { fieldName: 'lhs_value' });
-    const rhsMeasurement = parseWholeNumberInRange(rhs_value, { fieldName: 'rhs_value' });
-    const measurementErrors = [lhsMeasurement.error, rhsMeasurement.error].filter(Boolean);
+    const hasLhsValues = Array.isArray(lhs_values);
+    const hasRhsValues = Array.isArray(rhs_values);
+
+    // Each spindle reading in the comma-separated list is range-checked individually.
+    const measurementErrors = [];
+
+    if (hasLhsValues) {
+      for (const item of lhs_values) {
+        const parsed = parseWholeNumberInRange(item, { fieldName: 'lhs_value' });
+        if (parsed.error) measurementErrors.push(parsed.error);
+      }
+    }
+
+    if (hasRhsValues) {
+      for (const item of rhs_values) {
+        const parsed = parseWholeNumberInRange(item, { fieldName: 'rhs_value' });
+        if (parsed.error) measurementErrors.push(parsed.error);
+      }
+    }
+
     if (measurementErrors.length) {
       return res.status(400).json({
         message: 'Side measurements must be whole numbers between 0 and 650',
@@ -1617,25 +1787,31 @@ router.post('/cots-checking', async (req, res, next) =>{
       });
     }
 
+    await client.query('BEGIN');
+
     const result = await client.query(`
       INSERT INTO spinning.cots_checking
       (entry_id, InspectionDate, MachineNo,
-       LHS_Value, RHS_Value,
+       lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      lhsMeasurement.value,
-      rhsMeasurement.value,
+      hasLhsValues ? JSON.stringify(lhs_values) : null,
+      hasRhsValues ? JSON.stringify(rhs_values) : null,
+      hasLhsValues ? lhs_values.length : null,
+      hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'Record created successfully',
@@ -1643,6 +1819,7 @@ router.post('/cots-checking', async (req, res, next) =>{
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -1673,8 +1850,10 @@ router.get('/cots-checking', async (req, res, next) => {
         entry_id,
         InspectionDate,
         MachineNo,
-        LHS_Value,
-        RHS_Value,
+        lhs_values,
+        rhs_values,
+        lhs_spindle_count,
+        rhs_spindle_count,
         LHS_TextRemarks,
         encode(LHS_Audio, 'base64') as LHS_Audio,
         RHS_TextRemarks,
@@ -1748,7 +1927,6 @@ router.post('/lycra-missing', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
       lhs_value,
       rhs_value,
       lhs_textremarks,
@@ -1763,17 +1941,16 @@ router.post('/lycra-missing', async (req, res, next) => {
 
     const result = await client.query(`
       INSERT INTO spinning.lycra_missing
-      (entry_id, InspectionDate, MachineNo, EmployeeName,
+      (entry_id, InspectionDate, MachineNo,
        LHS_Value, RHS_Value,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
       lhs_value,
       rhs_value,
       lhs_textremarks || null,
@@ -1817,7 +1994,6 @@ router.get('/lycra-missing', async (req, res, next) => {
         entry_id,
         InspectionDate,
         MachineNo,
-        EmployeeName,
         LHS_Value,
         RHS_Value,
         LHS_TextRemarks,
@@ -1893,9 +2069,9 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      lhs_values,
+      rhs_values,
+      type2,
       lhs_textremarks,
       lhs_audio,
       rhs_textremarks,
@@ -1906,26 +2082,36 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    const hasLhsValues = Array.isArray(lhs_values);
+    const hasRhsValues = Array.isArray(rhs_values);
+
+    await client.query('BEGIN');
+
     const result = await client.query(`
       INSERT INTO spinning.bottom_apron_checking
-      (entry_id, InspectionDate, MachineNo, EmployeeName,
-       LHS_Value, RHS_Value,
+      (entry_id, InspectionDate, MachineNo,
+       lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      hasLhsValues ? JSON.stringify(lhs_values) : null,
+      hasRhsValues ? JSON.stringify(rhs_values) : null,
+      hasLhsValues ? lhs_values.length : null,
+      hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
+
+    await replaceType2Fault('bottom_apron_checking', entry_id, type2);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'Record created successfully',
@@ -1933,6 +2119,7 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -1958,21 +2145,24 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
-      SELECT 
-        entry_id AS id,
-        entry_id,
-        InspectionDate,
-        MachineNo,
-        EmployeeName,
-        LHS_Value,
-        RHS_Value,
-        LHS_TextRemarks,
-        encode(LHS_Audio, 'base64') as LHS_Audio,
-        RHS_TextRemarks,
-        encode(RHS_Audio, 'base64') as RHS_Audio,
-        CreatedAt
-      FROM spinning.bottom_apron_checking
-      ORDER BY CreatedAt DESC;
+      SELECT
+        h.entry_id AS id,
+        h.entry_id,
+        h.InspectionDate,
+        h.MachineNo,
+        h.lhs_values,
+        h.rhs_values,
+        h.lhs_spindle_count,
+        h.rhs_spindle_count,
+        t2.type2,
+        h.LHS_TextRemarks,
+        encode(h.LHS_Audio, 'base64') as LHS_Audio,
+        h.RHS_TextRemarks,
+        encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.CreatedAt
+      FROM spinning.bottom_apron_checking h
+      LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'bottom_apron_checking' AND t2.entry_id = h.entry_id
+      ORDER BY h.CreatedAt DESC;
     `);
 
     res.json({
@@ -2039,9 +2229,9 @@ router.post('/lycra-centering', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      lhs_values,
+      rhs_values,
+      type2,
       lhs_textremarks,
       lhs_audio,
       rhs_textremarks,
@@ -2052,26 +2242,36 @@ router.post('/lycra-centering', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    const hasLhsValues = Array.isArray(lhs_values);
+    const hasRhsValues = Array.isArray(rhs_values);
+
+    await client.query('BEGIN');
+
     const result = await client.query(`
       INSERT INTO spinning.lycra_centering
-      (entry_id, InspectionDate, MachineNo, EmployeeName,
-       LHS_Value, RHS_Value,
+      (entry_id, InspectionDate, MachineNo,
+       lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      hasLhsValues ? JSON.stringify(lhs_values) : null,
+      hasRhsValues ? JSON.stringify(rhs_values) : null,
+      hasLhsValues ? lhs_values.length : null,
+      hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
+
+    await replaceType2Fault('lycra_centering', entry_id, type2);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'Record created successfully',
@@ -2079,6 +2279,7 @@ router.post('/lycra-centering', async (req, res, next) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -2105,20 +2306,23 @@ router.get('/lycra-centering', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        entry_id AS id,
-        entry_id,
-        InspectionDate,
-        MachineNo,
-        EmployeeName,
-        LHS_Value,
-        RHS_Value,
-        LHS_TextRemarks,
-        encode(LHS_Audio, 'base64') as LHS_Audio,
-        RHS_TextRemarks,
-        encode(RHS_Audio, 'base64') as RHS_Audio,
-        CreatedAt
-      FROM spinning.lycra_centering
-      ORDER BY CreatedAt DESC;
+        h.entry_id AS id,
+        h.entry_id,
+        h.InspectionDate,
+        h.MachineNo,
+        h.lhs_values,
+        h.rhs_values,
+        h.lhs_spindle_count,
+        h.rhs_spindle_count,
+        t2.type2,
+        h.LHS_TextRemarks,
+        encode(h.LHS_Audio, 'base64') as LHS_Audio,
+        h.RHS_TextRemarks,
+        encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.CreatedAt
+      FROM spinning.lycra_centering h
+      LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'lycra_centering' AND t2.entry_id = h.entry_id
+      ORDER BY h.CreatedAt DESC;
     `);
 
     res.json({
@@ -2185,9 +2389,9 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      lhs_values,
+      rhs_values,
+      type2,
       lhs_textremarks,
       lhs_audio,
       rhs_textremarks,
@@ -2198,26 +2402,36 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    const hasLhsValues = Array.isArray(lhs_values);
+    const hasRhsValues = Array.isArray(rhs_values);
+
+    await client.query('BEGIN');
+
     const result = await client.query(`
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_online
-      (entry_id, InspectionDate, MachineNo, EmployeeName,
-       LHS_Value, RHS_Value,
+      (entry_id, InspectionDate, MachineNo,
+       lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      hasLhsValues ? JSON.stringify(lhs_values) : null,
+      hasRhsValues ? JSON.stringify(rhs_values) : null,
+      hasLhsValues ? lhs_values.length : null,
+      hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
+
+    await replaceType2Fault('rsm_lycra_online', entry_id, type2);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'Record created successfully',
@@ -2225,6 +2439,7 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -2251,20 +2466,23 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        entry_id AS id,
-        entry_id,
-        InspectionDate,
-        MachineNo,
-        EmployeeName,
-        LHS_Value,
-        RHS_Value,
-        LHS_TextRemarks,
-        encode(LHS_Audio, 'base64') as LHS_Audio,
-        RHS_TextRemarks,
-        encode(RHS_Audio, 'base64') as RHS_Audio,
-        CreatedAt
-      FROM spinning.RSM_and_lycrasensor_cheking_online
-      ORDER BY CreatedAt DESC;
+        h.entry_id AS id,
+        h.entry_id,
+        h.InspectionDate,
+        h.MachineNo,
+        h.lhs_values,
+        h.rhs_values,
+        h.lhs_spindle_count,
+        h.rhs_spindle_count,
+        t2.type2,
+        h.LHS_TextRemarks,
+        encode(h.LHS_Audio, 'base64') as LHS_Audio,
+        h.RHS_TextRemarks,
+        encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.CreatedAt
+      FROM spinning.RSM_and_lycrasensor_cheking_online h
+      LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'rsm_lycra_online' AND t2.entry_id = h.entry_id
+      ORDER BY h.CreatedAt DESC;
     `);
 
     res.json({
@@ -2331,9 +2549,9 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      lhs_values,
+      rhs_values,
+      type2,
       lhs_textremarks,
       lhs_audio,
       rhs_textremarks,
@@ -2344,26 +2562,36 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    const hasLhsValues = Array.isArray(lhs_values);
+    const hasRhsValues = Array.isArray(rhs_values);
+
+    await client.query('BEGIN');
+
     const result = await client.query(`
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_offline
-      (entry_id, InspectionDate, MachineNo, EmployeeName,
-       LHS_Value, RHS_Value,
+      (entry_id, InspectionDate, MachineNo,
+       lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
-      employeename,
-      lhs_value,
-      rhs_value,
+      hasLhsValues ? JSON.stringify(lhs_values) : null,
+      hasRhsValues ? JSON.stringify(rhs_values) : null,
+      hasLhsValues ? lhs_values.length : null,
+      hasRhsValues ? rhs_values.length : null,
       lhs_textremarks || null,
       lhs_audio ? Buffer.from(lhs_audio, 'base64') : null,
       rhs_textremarks || null,
       rhs_audio ? Buffer.from(rhs_audio, 'base64') : null
     ]);
+
+    await replaceType2Fault('rsm_lycra_offline', entry_id, type2);
+
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: 'Record created successfully',
@@ -2371,6 +2599,7 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -2397,20 +2626,23 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
     await ensureSpinningEntryIdColumns();
     const result = await client.query(`
       SELECT
-        entry_id AS id,
-        entry_id,
-        InspectionDate,
-        MachineNo,
-        EmployeeName,
-        LHS_Value,
-        RHS_Value,
-        LHS_TextRemarks,
-        encode(LHS_Audio, 'base64') as LHS_Audio,
-        RHS_TextRemarks,
-        encode(RHS_Audio, 'base64') as RHS_Audio,
-        CreatedAt
-      FROM spinning.RSM_and_lycrasensor_cheking_offline
-      ORDER BY CreatedAt DESC;
+        h.entry_id AS id,
+        h.entry_id,
+        h.InspectionDate,
+        h.MachineNo,
+        h.lhs_values,
+        h.rhs_values,
+        h.lhs_spindle_count,
+        h.rhs_spindle_count,
+        t2.type2,
+        h.LHS_TextRemarks,
+        encode(h.LHS_Audio, 'base64') as LHS_Audio,
+        h.RHS_TextRemarks,
+        encode(h.RHS_Audio, 'base64') as RHS_Audio,
+        h.CreatedAt
+      FROM spinning.RSM_and_lycrasensor_cheking_offline h
+      LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = 'rsm_lycra_offline' AND t2.entry_id = h.entry_id
+      ORDER BY h.CreatedAt DESC;
     `);
 
     res.json({
@@ -3099,7 +3331,7 @@ router.get('/count-change', async (req, res) => {
  *                 type: number
  *               lycra_percent:
  *                 type: number
- *               slub_partcy_code:
+ *               slub_party_code:
  *                 type: string
  *               slub_mtr:
  *                 type: number
@@ -3144,7 +3376,7 @@ router.post('/qc', async (req, res, next) => {
       merge_no,
       lycra_draft,
       lycra_percent,
-      slub_partcy_code,
+      slub_party_code,
       slub_mtr,
       pause_min,
       pause_max,
@@ -3178,7 +3410,7 @@ router.post('/qc', async (req, res, next) => {
         merge_no,
         lycra_draft,
         lycra_percent,
-        slub_partcy_code,
+        slub_party_code,
         slub_mtr,
         pause_min,
         pause_max,
@@ -3212,7 +3444,7 @@ router.post('/qc', async (req, res, next) => {
         merge_no,
         lycra_draft,
         lycra_percent,
-        slub_partcy_code,
+        slub_party_code,
         slub_mtr,
         pause_min,
         pause_max,
@@ -3351,7 +3583,7 @@ router.get('/qc', async (req, res, next) => {
  *                 type: number
  *               lycra_percent:
  *                 type: number
- *               slub_partcy_code:
+ *               slub_party_code:
  *                 type: string
  *               slub_mtr:
  *                 type: number
@@ -3403,7 +3635,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       merge_no,
       lycra_draft,
       lycra_percent,
-      slub_partcy_code,
+      slub_party_code,
       slub_mtr,
       pause_min,
       pause_max,
@@ -3432,7 +3664,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            merge_no = $15,
            lycra_draft = $16,
            lycra_percent = $17,
-           slub_partcy_code = $18,
+           slub_party_code = $18,
            slub_mtr = $19,
            pause_min = $20,
            pause_max = $21,
@@ -3460,7 +3692,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         merge_no,
         lycra_draft,
         lycra_percent,
-        slub_partcy_code,
+        slub_party_code,
         slub_mtr,
         pause_min,
         pause_max,

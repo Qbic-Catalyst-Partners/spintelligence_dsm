@@ -102,7 +102,12 @@
   margin-top: 24px;
   border-top: 1px solid #f1f5f9;
   background: transparent;
-  padding: 16px 0 0;
+  padding: 16px 28px 0;
+}
+
+.footerWrap {
+  margin-top: 20px;
+  padding: 0 28px;
 }
 
 .postFooterSlot {
@@ -163,7 +168,11 @@
   }
 
   .processFooterWrap {
-    padding: 16px 0 0;
+    padding: 16px 16px 0;
+  }
+
+  .footerWrap {
+    padding: 0 16px;
   }
 }
 

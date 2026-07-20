@@ -8,6 +8,7 @@ import {
   FaCheckCircle,
 } from "react-icons/fa";
 import { FiCircle } from "react-icons/fi";
+import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -34,6 +35,7 @@ export default function UmChangePassword() {
     showConfirmPassword,
     setShowConfirmPassword,
   ] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const validations = {
     length: password.length >= 8,
@@ -51,8 +53,38 @@ export default function UmChangePassword() {
     Object.values(validations).filter(Boolean).length;
 
   const handleSubmit = () => {
+    const missingFields = {};
+    if (!password) missingFields.password = true;
+    if (!confirmPassword) missingFields.confirmPassword = true;
+    setFieldErrors(missingFields);
+
+    if (!password || !confirmPassword) {
+      const missingLabels = [
+        !password && "New Password",
+        !confirmPassword && "Confirm Password",
+      ].filter(Boolean);
+      emitGlobalFailureModal({
+        message: `This field is missing: ${missingLabels.join(", ")}.`,
+      });
+      return;
+    }
+
+    const missingRequirements = [
+      !validations.length && "at least 8 characters long",
+      !validations.number && "at least one number (0-9)",
+      !validations.special && "a special character (@#$)",
+      !validations.upperLower && "both uppercase & lowercase letters",
+    ].filter(Boolean);
+
+    if (missingRequirements.length) {
+      emitGlobalFailureModal({
+        message: `Password must include: ${missingRequirements.join(", ")}.`,
+      });
+      return;
+    }
+
     if (!validations.match) {
-      alert("Passwords do not match");
+      emitGlobalFailureModal({ message: "Passwords do not match" });
       return;
     }
 
@@ -116,11 +148,13 @@ export default function UmChangePassword() {
                       : "password"
                   }
                   value={password}
-                  onChange={(e) =>
-                    setPassword(
-                      e.target.value
-                    )
-                  }
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) {
+                      setFieldErrors((prev) => ({ ...prev, password: false }));
+                    }
+                  }}
+                  className={fieldErrors.password ? styles.inputError : ""}
                 />
 
                 {showPassword ? (
@@ -159,11 +193,13 @@ export default function UmChangePassword() {
                   value={
                     confirmPassword
                   }
-                  onChange={(e) =>
-                    setConfirmPassword(
-                      e.target.value
-                    )
-                  }
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (fieldErrors.confirmPassword) {
+                      setFieldErrors((prev) => ({ ...prev, confirmPassword: false }));
+                    }
+                  }}
+                  className={fieldErrors.confirmPassword ? styles.inputError : ""}
                 />
 
                 {showConfirmPassword ? (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import styles from "../../styles/UmAddUser.module.css";
 import { useRouter } from "next/router";
+import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 
 // ICONS
 import { IoPersonSharp } from "react-icons/io5";
@@ -26,6 +27,7 @@ export default function UmAddUser() {
     useSelector((state) => state.users);
 
   const [localError, setLocalError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -69,6 +71,24 @@ export default function UmAddUser() {
 
     if (localError) setLocalError("");
     if (error) dispatch(clearActionState());
+    if (fieldErrors[e.target.name]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[e.target.name];
+        return next;
+      });
+    }
+  };
+
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    if (fieldErrors.password) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.password;
+        return next;
+      });
+    }
   };
 
   // PASSWORD VALIDATION
@@ -80,22 +100,54 @@ export default function UmAddUser() {
     special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
   };
 
+  const isPasswordValid =
+    validations.length && validations.uppercase && validations.lowercase && validations.number && validations.special;
+
+  const REQUIRED_FIELD_LABELS = {
+    first_name: "First Name",
+    last_name: "Last Name",
+    email: "Email Address",
+    phone: "Mobile Number",
+    employee_id: "Employee ID",
+    role: "Role Selection",
+    department: "Department",
+    level: "Level",
+  };
+
   // SUBMIT
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (
-      !formData.first_name ||
-      !formData.last_name ||
-      !formData.email ||
-      !formData.phone ||
-      !formData.employee_id ||
-      !formData.role ||
-      !formData.department ||
-      !formData.level ||
-      !password
-    ) {
-      setLocalError("All fields are required");
+    const missingFieldNames = Object.keys(REQUIRED_FIELD_LABELS).filter((field) => !formData[field]);
+    const missingFields = {};
+    missingFieldNames.forEach((field) => {
+      missingFields[field] = true;
+    });
+    if (!password) missingFields.password = true;
+    setFieldErrors(missingFields);
+
+    if (missingFieldNames.length || !password) {
+      const missingLabels = [
+        ...missingFieldNames.map((field) => REQUIRED_FIELD_LABELS[field]),
+        !password && "Password",
+      ].filter(Boolean);
+      emitGlobalFailureModal({
+        message: `This field is missing: ${missingLabels.join(", ")}.`,
+      });
+      return;
+    }
+
+    const missingRequirements = [
+      !validations.length && "at least 8 characters long",
+      !validations.number && "at least one number (0-9)",
+      !validations.special && "a special character (@#$)",
+      !(validations.uppercase && validations.lowercase) && "both uppercase & lowercase letters",
+    ].filter(Boolean);
+
+    if (missingRequirements.length) {
+      emitGlobalFailureModal({
+        message: `Password must include: ${missingRequirements.join(", ")}.`,
+      });
       return;
     }
 
@@ -138,26 +190,47 @@ export default function UmAddUser() {
                   name="first_name"
                   placeholder="Enter first name"
                   onChange={handleChange}
+                  className={fieldErrors.first_name ? styles.inputError : ""}
                 />
               </div>
 
               <div className={styles.formGroup}>
                 <label>Last Name <span>*</span></label>
-                <input name="last_name" placeholder="Enter last name" onChange={handleChange} />
+                <input
+                  name="last_name"
+                  placeholder="Enter last name"
+                  onChange={handleChange}
+                  className={fieldErrors.last_name ? styles.inputError : ""}
+                />
               </div>
               <div className={styles.formGroup}>
                 <label>Email Address <span>*</span></label>
-                <input name="email" placeholder="Enter email address" onChange={handleChange} />
+                <input
+                  name="email"
+                  placeholder="Enter email address"
+                  onChange={handleChange}
+                  className={fieldErrors.email ? styles.inputError : ""}
+                />
               </div>
 
               <div className={styles.formGroup}>
                 <label>Mobile Number <span>*</span></label>
-                <input name="phone" placeholder="Enter mobile number" onChange={handleChange} />
+                <input
+                  name="phone"
+                  placeholder="Enter mobile number"
+                  onChange={handleChange}
+                  className={fieldErrors.phone ? styles.inputError : ""}
+                />
               </div>
 
               <div className={`${styles.formGroup} ${styles.full}`}>
                 <label>Employee ID <span>*</span></label>
-                <input name="employee_id" placeholder="Enter Employee ID" onChange={handleChange} />
+                <input
+                  name="employee_id"
+                  placeholder="Enter Employee ID"
+                  onChange={handleChange}
+                  className={fieldErrors.employee_id ? styles.inputError : ""}
+                />
               </div>
             </div>
           </div>
@@ -172,7 +245,12 @@ export default function UmAddUser() {
             <div className={styles.grid}>
               <div className={styles.formGroup}>
                 <label>Role Selection <span>*</span></label>
-                <select name="role" value={formData.role} onChange={handleChange}>
+                <select
+                  name="role"
+                  value={formData.role}
+                  onChange={handleChange}
+                  className={fieldErrors.role ? styles.inputError : ""}
+                >
                   <option value="">Select user role</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.role_name || r.name || ""}>
@@ -184,7 +262,12 @@ export default function UmAddUser() {
 
               <div className={styles.formGroup}>
                 <label>Department <span>*</span></label>
-                <select name="department" value={formData.department} onChange={handleChange}>
+                <select
+                  name="department"
+                  value={formData.department}
+                  onChange={handleChange}
+                  className={fieldErrors.department ? styles.inputError : ""}
+                >
                   <option value="">Select department</option>
                   {departments.map((department) => (
                     <option key={department.id} value={department.name}>
@@ -196,7 +279,12 @@ export default function UmAddUser() {
 
               <div className={styles.formGroup}>
                 <label>Level <span>*</span></label>
-                <select name="level" value={formData.level} onChange={handleChange}>
+                <select
+                  name="level"
+                  value={formData.level}
+                  onChange={handleChange}
+                  className={fieldErrors.level ? styles.inputError : ""}
+                >
                   <option value="">Select level</option>
                   <option value="L1">L1</option>
                   <option value="L2">L2</option>
@@ -218,7 +306,8 @@ export default function UmAddUser() {
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Password"
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
+                  className={fieldErrors.password ? styles.inputError : ""}
                 />
 
                 {showPassword ? (

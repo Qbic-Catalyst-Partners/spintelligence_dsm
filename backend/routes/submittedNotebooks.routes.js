@@ -1023,28 +1023,7 @@ router.post('/', async (req, res, next) => {
 
     const submittedByUserId = parsePositiveInt(req.body?.submitted_by_user_id) || parsePositiveInt(req.user?.id);
     const submittedByName = cleanText(req.body?.submitted_by_name) || await getUserDisplayName(submittedByUserId) || cleanText(req.user?.employee_id);
-    const l2ApproverUserIds = await getL2ApproverIds(
-      req.body?.l2_approver_user_ids ||
-      req.body?.approval_l2_user_ids ||
-      req.body?.l2_approver_employee_ids ||
-      req.body?.approval_l2_employee_ids ||
-      req.body?.l2_approver_employee_id ||
-      req.body?.approval_l2_employee_id ||
-      req.body?.assigned_l2 ||
-      [],
-      { useDefault: false }
-    );
-    const l3ApproverUserIds = await getL3ApproverIds(
-      req.body?.l3_approver_user_ids ||
-      req.body?.approval_l3_user_ids ||
-      req.body?.l3_approver_employee_ids ||
-      req.body?.approval_l3_employee_ids ||
-      req.body?.l3_approver_employee_id ||
-      req.body?.approval_l3_employee_id ||
-      req.body?.assigned_l3 ||
-      [],
-      { useDefault: false }
-    );
+
     const entryId = cleanText(req.body?.entry_id);
     const sourceTable = cleanText(req.body?.source_table);
     const sourceRecordId = cleanText(req.body?.source_record_id || req.body?.record_id);
@@ -1059,18 +1038,50 @@ router.post('/', async (req, res, next) => {
     let ackDueAt = cleanText(req.body?.ack_due_at);
     const payload = req.body?.submitted_payload || req.body?.fields || req.body?.payload || {};
 
+    // Always resolve the per-screen Submission Threshold config (previously only fetched to
+    // compute ack_due_at, and only when the caller hadn't already supplied one) — its
+    // approval_l2/approval_l3 columns are the actual "Checked by" assignment configured on the
+    // Submission Threshold page, and were never being read into l2_approver_user_ids at all, so
+    // every submission's L2 approver stayed an empty array unless the caller happened to pass
+    // one explicitly in the request body.
+    const { hours: acknowledgementHours, acknowledgementThreshold } = await resolveAcknowledgementDeadlineHours({
+      input_screen: cleanText(req.body?.input_screen) || notebook,
+      notebook,
+      department: cleanText(req.body?.department),
+      sub_department: cleanText(req.body?.sub_department || req.body?.subDepartment)
+    });
+
     if (!ackDueAt) {
-      const { hours: acknowledgementHours } = await resolveAcknowledgementDeadlineHours({
-        input_screen: cleanText(req.body?.input_screen) || notebook,
-        notebook,
-        department: cleanText(req.body?.department),
-        sub_department: cleanText(req.body?.sub_department || req.body?.subDepartment)
-      });
       const baseSubmittedAt = submittedAt ? new Date(submittedAt) : new Date();
       if (!Number.isNaN(baseSubmittedAt.getTime())) {
         ackDueAt = new Date(baseSubmittedAt.getTime() + acknowledgementHours * 60 * 60 * 1000).toISOString();
       }
     }
+
+    const l2ApproverUserIds = await getL2ApproverIds(
+      req.body?.l2_approver_user_ids ||
+      req.body?.approval_l2_user_ids ||
+      req.body?.l2_approver_employee_ids ||
+      req.body?.approval_l2_employee_ids ||
+      req.body?.l2_approver_employee_id ||
+      req.body?.approval_l2_employee_id ||
+      req.body?.assigned_l2 ||
+      (acknowledgementThreshold?.approval_l2 ? acknowledgementThreshold.approval_l2.split(',').map((value) => value.trim()).filter(Boolean) : []) ||
+      [],
+      { useDefault: false }
+    );
+    const l3ApproverUserIds = await getL3ApproverIds(
+      req.body?.l3_approver_user_ids ||
+      req.body?.approval_l3_user_ids ||
+      req.body?.l3_approver_employee_ids ||
+      req.body?.approval_l3_employee_ids ||
+      req.body?.l3_approver_employee_id ||
+      req.body?.approval_l3_employee_id ||
+      req.body?.assigned_l3 ||
+      (acknowledgementThreshold?.approval_l3 ? acknowledgementThreshold.approval_l3.split(',').map((value) => value.trim()).filter(Boolean) : []) ||
+      [],
+      { useDefault: false }
+    );
 
     const result = await client.query(
       `INSERT INTO ticketing_system.submitted_notebooks

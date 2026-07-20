@@ -42,7 +42,7 @@ const createDefaultForm = () => ({
   make: "",
   denier: "",
   mergeNo: "",
-  slubPartcyCode: "",
+  slubPartyCode: "",
   slubMtr: "",
   pauseMin: "",
   pauseMax: "",
@@ -94,7 +94,7 @@ const isVersionComplete = (version) =>
     "make",
     "denier",
     "mergeNo",
-    "slubPartcyCode",
+    "slubPartyCode",
     "slubMtr",
     "pauseMin",
     "pauseMax",
@@ -150,7 +150,7 @@ const mapApiEntryToVersion = (entry) => {
           ? ""
           : String(entry.denier),
       mergeNo: entry?.merge_no || "",
-      slubPartcyCode: entry?.slub_partcy_code || "",
+      slubPartyCode: entry?.slub_party_code || "",
       slubMtr: entry?.slub_mtr || "",
       pauseMin: entry?.pause_min === null || typeof entry?.pause_min === "undefined" ? "" : String(entry.pause_min),
       pauseMax: entry?.pause_max === null || typeof entry?.pause_max === "undefined" ? "" : String(entry.pause_max),
@@ -237,7 +237,7 @@ const fieldDefs = [
   { key: "make", label: "Make" },
   { key: "denier", label: "Denier" },
   { key: "mergeNo", label: "Mergen Number" },
-  { key: "slubPartcyCode", label: "Slub Partcy Code" },
+  { key: "slubPartyCode", label: "Slub Party Code" },
   { key: "slubMtr", label: "Slub / Mtr" },
   { key: "pauseMin", label: "Pause Min" },
   { key: "pauseMax", label: "Pause Max" },
@@ -252,7 +252,7 @@ const fieldDefs = [
 ];
 
 const slubFieldKeys = new Set([
-  "slubPartcyCode",
+  "slubPartyCode",
   "slubMtr",
   "pauseMin",
   "pauseMax",
@@ -663,7 +663,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     make: form.make,
     denier: parseNumberValue(form.denier),
     merge_no: form.mergeNo,
-    slub_partcy_code: form.slubPartcyCode,
+    slub_party_code: form.slubPartyCode,
     slub_mtr: form.slubMtr,
     pause_min: parseNumberValue(form.pauseMin),
     pause_max: parseNumberValue(form.pauseMax),

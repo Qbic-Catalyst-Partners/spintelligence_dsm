@@ -2,11 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/router";
 import Image from "next/image";
-import { FiCalendar, FiPlus } from "react-icons/fi";
+import { FiCalendar } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
 import { useSelector } from "react-redux";
 import { getOperatorTickets, getSubmissionTickets, getProcessParameterTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
-import OperatorCreateTicket from "./OperatorCreateTicket";
 import {
     applyOneTimeThresholdTicketReset,
     isPpBatchCompletionTicketRecord,
@@ -36,7 +35,6 @@ export default function operatorboard() {
     const [submissionError, setSubmissionError] = useState("");
     const [processParameterError, setProcessParameterError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
-    const [showManualTicket, setShowManualTicket] = useState(false);
     const [statusUpdatingId, setStatusUpdatingId] = useState("");
 
     const [status, setStatus] = useState("All");
@@ -435,14 +433,6 @@ export default function operatorboard() {
                 <h1 className={styles.title}>L1 Ticketing Dashboard</h1>
                 <div className={styles["title-actions"]}>
                     <button
-                        type="button"
-                        className={styles["manual-ticket-btn"]}
-                        onClick={() => setShowManualTicket(true)}
-                    >
-                        <FiPlus aria-hidden="true" />
-                        <span>Manual Ticket</span>
-                    </button>
-                    <button
                         className={styles["mobile-filter-btn"]}
                         onClick={() => setShowMobileFilter(true)}
                     >
@@ -798,13 +788,6 @@ export default function operatorboard() {
                     </div>
                 ))}
             </div>
-
-            {showManualTicket && (
-                <OperatorCreateTicket
-                    onClose={() => setShowManualTicket(false)}
-                    onCreated={fetchTickets}
-                />
-            )}
         </div >
     );
 }

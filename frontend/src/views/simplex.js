@@ -303,15 +303,18 @@ function Simplex() {
             </div>
           ) : null}
 
-          <Footer
-            onBack={() => router.push("/departments/quality-control")}
-            onClear={() => {
-              setValidationMessage("");
-              childRef.current?.clear();
-            }}
-            onSave={openPreview}
-            saveLabel="Save Record"
-          />
+          <div className="mt-5 px-7">
+            <Footer
+              variant="tall"
+              onBack={() => router.push("/departments/quality-control")}
+              onClear={() => {
+                setValidationMessage("");
+                childRef.current?.clear();
+              }}
+              onSave={openPreview}
+              saveLabel="Save Record"
+            />
+          </div>
         </div>
 
         <div id="simplex-report-table-slot" className="mt-8" />

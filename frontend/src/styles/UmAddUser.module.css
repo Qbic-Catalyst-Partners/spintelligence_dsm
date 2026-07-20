@@ -276,6 +276,11 @@
   gap: 6px;
 }
 
+.inputError {
+  border-color: #ef4444 !important;
+  background-color: #fff1f2;
+}
+
 /* ================= RESPONSIVE ================= */
 @media (max-width: 768px) {
   .grid {

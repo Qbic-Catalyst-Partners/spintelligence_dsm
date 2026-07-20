@@ -177,7 +177,7 @@ const formatFaultPercent = (faultCount = 0, totalFaultCount = 0) => {
   const faults = Number(faultCount);
   const total = Number(totalFaultCount);
   if (!Number.isFinite(faults) || !Number.isFinite(total) || total <= 0) return "0.00";
-  return (faults / total).toFixed(2);
+  return ((faults / total) * 100).toFixed(2);
 };
 
 const isPreviewPlaceholder = (value) => {
