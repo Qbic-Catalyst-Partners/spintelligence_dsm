@@ -1170,7 +1170,6 @@ function SpinningDepartment() {
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
                 { label: "RF No.", value: rfNo || "-" },
-                { label: "Lycra Draft", value: lycraDraft || "-" },
             ]
             : [
                 { label: "Checking Type", value: checkingType || "-" },
@@ -1181,6 +1180,7 @@ function SpinningDepartment() {
             ? [
                 { label: "Count Name (From)", value: countNameFrom || "-" },
                 { label: "Count Name (To)", value: countNameTo || "-" },
+                { label: "Lycra Draft", value: lycraDraft || "-" },
                 { label: "No. of Readings", value: countReadingCount || "-" },
                 { label: "Generated Rows", value: countChangeRows.length },
             ]
@@ -1311,13 +1311,6 @@ function SpinningDepartment() {
 
                                 <div className={styles.row}>
                                     <div className={styles["sp-form-group"]}>
-                                        <label>Lycra Draft</label>
-                                        <input type="text" inputMode="decimal" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={handleCustomDecimalInputChange(setLycraDraft, "lycraDraft", DECIMAL_5_2_CONFIG)} />
-                                    </div>
-                                </div>
-
-                                <div className={styles.row}>
-                                    <div className={styles["sp-form-group"]}>
                                         <label>Count Name (From)</label>
                                         <SearchableSelect
                                             className={`${styles["highlight-input"]} ${errors.countNameFrom ? styles["input-error"] : ""}`}
@@ -1344,6 +1337,10 @@ function SpinningDepartment() {
                                             placeholder="Select count name"
                                             ariaLabel="Count Name To"
                                         />
+                                    </div>
+                                    <div className={styles["sp-form-group"]}>
+                                        <label>Lycra Draft</label>
+                                        <input type="text" inputMode="decimal" placeholder="Enter lycra draft" className={`${styles["highlight-input"]} ${errors.lycraDraft ? styles["input-error"] : ""}`} value={lycraDraft} onChange={handleCustomDecimalInputChange(setLycraDraft, "lycraDraft", DECIMAL_5_2_CONFIG)} />
                                     </div>
                                 </div>
 

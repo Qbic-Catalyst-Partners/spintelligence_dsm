@@ -1399,7 +1399,7 @@ export const thresholdFieldCatalog = {
         "FD",
         "JP",
         "JM",
-        "CVT",
+        "CVP",
         "A1",
         "A2",
         "A3",

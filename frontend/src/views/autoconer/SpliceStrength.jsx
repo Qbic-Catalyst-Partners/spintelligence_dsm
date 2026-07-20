@@ -9,6 +9,7 @@ import { fetchAutoconerSpliceStrengthMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import styles from "@/styles/spliceStrength.module.css";
 import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 
 
 const getTodayDate = () => {
@@ -74,8 +75,17 @@ function SpliceStrength({
   onTypeChange,
   onRegisterActions,
   postFooterPortalTargetId,
-  entryId = "",
 }) {
+  // Splice Strength owns its Entry ID reservation independently (own hook, own hardcoded ASS
+  // prefix, own route) instead of sharing the parent screen's single hook across every Autoconer
+  // sub-type — that shared hook could momentarily hand this form a stale id reserved for whatever
+  // type was previously selected (e.g. Rewinding Study's ARW-), since switching Type re-reserves
+  // asynchronously. Owning it here means Splice Strength only ever sees its own ASS-prefixed ids.
+  const { entryId, reserveEntryId } = useDatabaseEntryId({
+    department: "Autoconer",
+    typeName: "Splice Strength",
+    config: { prefix: "ASS", width: 4, routePath: "/autoconer/splice-strength" },
+  });
   const todayDate = getTodayDate();
   const dispatch = useDispatch();
   const autoconerState = useSelector((state) => state.autoconer) || {};
@@ -144,19 +154,35 @@ function SpliceStrength({
   }, [cspValue]);
 
   const handleGenerate = () => {
-    const count = Math.max(1, Number(readingCount) || 1);
-    setGeneratedRows(
-      Array.from({ length: count }, (_, index) => ({
-        drumNo: drumFrom || "",
-        readingNumber: String(index + 1),
-        spliceStrength: "",
-        parentYarn: "",
-      }))
-    );
+    const start = Number(drumFrom);
+    const end = Number(drumTo);
+    const perDrum = Math.max(1, Number(readingCount) || 1);
+
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+      setGeneratedRows([]);
+      setErrors((current) => ({ ...current, drumFrom: true, drumTo: true }));
+      return;
+    }
+
+    const rows = [];
+    for (let drum = start; drum <= end; drum += 1) {
+      for (let reading = 1; reading <= perDrum; reading += 1) {
+        rows.push({
+          drumNo: String(drum),
+          readingNumber: String(reading),
+          spliceStrength: "",
+          parentYarn: "",
+        });
+      }
+    }
+
+    setGeneratedRows(rows);
     setErrors((current) => {
       const next = { ...current };
       delete next.readingCount;
       delete next.generatedRows;
+      delete next.drumFrom;
+      delete next.drumTo;
       return next;
     });
   };
@@ -179,6 +205,7 @@ function SpliceStrength({
   const validate = () => {
     const nextErrors = {};
     if (!String(selectedType || "").trim()) nextErrors.type = true;
+    if (!String(entryId || "").trim()) nextErrors.entryId = true;
     if (!String(date || "").trim()) nextErrors.date = true;
     if (!String(testNo || "").trim()) nextErrors.testNo = true;
     if (!String(countName || "").trim()) nextErrors.countName = true;
@@ -241,6 +268,7 @@ function SpliceStrength({
 
       await dispatch(saveAutoconerSpliceStrength(payload)).unwrap();
       dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 }));
+      await reserveEntryId();
       return true;
     } catch {
       return false;
@@ -352,6 +380,7 @@ function SpliceStrength({
     onRegisterActions,
     dispatch,
     isLoading,
+    entryId,
     date,
     testNo,
     countName,
@@ -455,7 +484,14 @@ function SpliceStrength({
 
           <div className={styles.field}>
             <label>Entry ID</label>
-            <input type="text" value={entryId} readOnly disabled />
+            <input
+              type="text"
+              value={entryId}
+              readOnly
+              disabled
+              placeholder="Generating ID..."
+              style={errorStyle(errors.entryId)}
+            />
           </div>
 
           <div className={styles.field}>
@@ -477,9 +513,10 @@ function SpliceStrength({
             <label>Test No</label>
             <input
               type="text"
+              inputMode="numeric"
               value={testNo}
               onChange={(e) => {
-                setTestNo(e.target.value);
+                setTestNo(sanitizeIntegerInput(e.target.value, 10));
                 setErrors((current) => {
                   if (!current.testNo) return current;
                   const next = { ...current };
@@ -502,37 +539,6 @@ function SpliceStrength({
             />
           </div>
 
-          <div className={styles.doubleField}>
-            <div className={styles.field}>
-              <label>Drum From/To</label>
-              <input
-                type="text"
-                type="number"
-                min="1"
-                max="100"
-                step="1"
-                inputMode="numeric"
-                value={drumFrom}
-                onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
-                style={errorStyle(errors.drumFrom || errors.generatedRows)}
-              />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.hiddenLabel}>To</label>
-              <input
-                type="text"
-                type="number"
-                min="1"
-                max="100"
-                step="1"
-                inputMode="numeric"
-                value={drumTo}
-                onChange={(e) => setDrumTo(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
-                style={errorStyle(errors.drumTo || errors.generatedRows)}
-              />
-            </div>
-          </div>
-
           <div className={styles.field}>
             <label>Cone Tip</label>
             <input value={coneTip} onChange={(e) => setConeTip(e.target.value)} style={errorStyle(errors.coneTip)} />
@@ -547,34 +553,41 @@ function SpliceStrength({
             <label>Average</label>
             <input value={cspAverage} readOnly />
           </div>
+
+          <div className={styles.doubleField}>
+            <div className={styles.field}>
+              <label>Drum From/To</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={drumFrom}
+                onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
+                style={errorStyle(errors.drumFrom || errors.generatedRows)}
+              />
+            </div>
+            <div className={styles.field}>
+              <label className={styles.hiddenLabel}>To</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={drumTo}
+                onChange={(e) => setDrumTo(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
+                style={errorStyle(errors.drumTo || errors.generatedRows)}
+              />
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <label>No. of Readings</label>
+            <div className={styles.generateBar}>
+              <input value={readingCount} onChange={(e) => setReadingCount(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.readingCount || errors.generatedRows)} />
+              <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
+                Generate
+              </button>
+            </div>
+          </div>
         </div>
 
-      </div>
-
-      <div className={styles.generateBar}>
-        <div className={styles.generateField}>
-          <label>Drum No</label>
-          <input
-            type="text"
-            type="number"
-            min="1"
-            max="100"
-            step="1"
-            inputMode="numeric"
-            value={drumFrom}
-            onChange={(e) => setDrumFrom(sanitizeDrumRangeInput(e.target.value, { min: 1, max: 100, maxDigits: 3 }))}
-            style={errorStyle(errors.drumFrom || errors.generatedRows)}
-          />
-        </div>
-
-        <div className={styles.generateField}>
-          <label>No. of Readings.</label>
-          <input value={readingCount} onChange={(e) => setReadingCount(sanitizeIntegerInput(e.target.value, 10))} style={errorStyle(errors.readingCount || errors.generatedRows)} />
-        </div>
-
-        <button type="button" className={styles.generateBtn} onClick={handleGenerate}>
-          Generate
-        </button>
       </div>
 
       <div className={styles.tableSection}>

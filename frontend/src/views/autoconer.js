@@ -176,7 +176,6 @@ function Autoconer() {
       selectedType === "Cone Packing Audit" ||
       selectedType === "Lycra % Checking" ||
       selectedType === "Count Wise Cuts Record" ||
-      selectedType === "Splice Strength" ||
       selectedType === "Drum wise Appearance" ||
       selectedType === "CSP Parameter Entries" ||
       selectedType === "U% Parameter Entries";

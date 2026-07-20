@@ -157,7 +157,16 @@ const ENTRY_ID_ROUTE_TABLES = {
 const ENTRY_ID_ROUTE_PREFIXES = {
   '/blowroom/header': { prefix: 'PP', width: 4, separator: '-' },
   '/blowroom/process-parameter': { prefix: 'PP', width: 4, separator: '-' },
-  '/blowroom/process_parameter': { prefix: 'PP', width: 4, separator: '-' }
+  '/blowroom/process_parameter': { prefix: 'PP', width: 4, separator: '-' },
+  '/autoconer/inspection-data-entry': { prefix: 'ARW', width: 4, separator: '-' },
+  '/autoconer/cone-density': { prefix: 'ACD', width: 4, separator: '-' },
+  '/autoconer/cone-packing-audit': { prefix: 'ACP', width: 4, separator: '-' },
+  '/autoconer/lycra-checking': { prefix: 'ALC', width: 4, separator: '-' },
+  '/autoconer/count-wise-cuts': { prefix: 'ACW', width: 4, separator: '-' },
+  '/autoconer/splice-strength': { prefix: 'ASS', width: 4, separator: '-' },
+  '/autoconer/drum-wise': { prefix: 'ADA', width: 4, separator: '-' },
+  '/autoconer/parameter-entries/pending-csp': { prefix: 'ACS', width: 4, separator: '-' },
+  '/autoconer/parameter-entries/pending-quality': { prefix: 'AUP', width: 4, separator: '-' }
 };
 
 // Extract only the TRAILING run of digits (the actual sequence number), not
