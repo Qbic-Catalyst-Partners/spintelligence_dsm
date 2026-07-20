@@ -404,8 +404,17 @@ const ensureSpinningEntryIdColumns = async () => {
     )
   `);
   await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS type2_faults_uq
-    ON spinning.type2_faults (checking_type, entry_id)
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'spinning'
+          AND table_name = 'cots_checking'
+          AND column_name = 'employeename'
+      ) THEN
+        ALTER TABLE spinning.cots_checking ALTER COLUMN EmployeeName DROP NOT NULL;
+      END IF;
+    END $$;
   `);
 
   await client.query(`
@@ -1051,6 +1060,26 @@ const fetchLatestWheelChangeByVariety = async (tableName, variety, fields, appro
      ORDER BY created_at DESC NULLS LAST, id DESC
      LIMIT 1`,
     [selectedVariety, approvalStatus]
+  );
+
+  return result.rows[0] || null;
+};
+
+// Mirrors fetchLatestWheelChangeByVariety, but scoped to a Machine No. (R/F
+// No.) instead of a variety — used so the Existing column can carry forward
+// as soon as Type + Machine No. are picked, without waiting for Count From.
+const fetchLatestWheelChangeByMachine = async (tableName, machineField, machineNumber, approvalStatus = 'approved') => {
+  const selectedMachine = String(machineNumber || '').trim();
+  if (!selectedMachine) return null;
+
+  const result = await client.query(
+    `SELECT *
+     FROM ${tableName}
+     WHERE LOWER(TRIM(COALESCE(${machineField}::text, ''))) = LOWER(TRIM($1))
+       AND approval_status = $2
+     ORDER BY created_at DESC NULLS LAST, id DESC
+     LIMIT 1`,
+    [selectedMachine, approvalStatus]
   );
 
   return result.rows[0] || null;
@@ -4002,6 +4031,7 @@ router.get('/wheel-change/type1', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const machineNo = String(req.query.fm_no || req.query.machine_no || req.query.mc_no || '').trim();
     const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
@@ -4009,12 +4039,15 @@ router.get('/wheel-change/type1', async (req, res, next) => {
        WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
          AND ($2::text = '' OR approval_status = $2)
+         AND ($3::text = '' OR LOWER(TRIM(COALESCE(fm_no::text, ''))) = LOWER(TRIM($3)))
        ORDER BY created_at DESC`,
-      [variety, approvalStatus]
+      [variety, approvalStatus, variety ? '' : machineNo]
     );
     const latestRecord = variety
       ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_inspection', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
-      : null;
+      : machineNo
+        ? await fetchLatestWheelChangeByMachine('spinning.wheel_change_inspection', 'fm_no', machineNo, approvalStatus || 'approved')
+        : null;
 
     res.json({
       data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type1', row, 'fm_no'), 'fm_no')),
@@ -4211,6 +4244,7 @@ router.get('/wheel-change/type2', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const machineNo = String(req.query.fm_no || req.query.machine_no || req.query.mc_no || '').trim();
     const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
@@ -4218,12 +4252,15 @@ router.get('/wheel-change/type2', async (req, res, next) => {
        WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
          AND ($2::text = '' OR approval_status = $2)
+         AND ($3::text = '' OR LOWER(TRIM(COALESCE(fm_no::text, ''))) = LOWER(TRIM($3)))
        ORDER BY created_at DESC`,
-      [variety, approvalStatus]
+      [variety, approvalStatus, variety ? '' : machineNo]
     );
     const latestRecord = variety
       ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_v2', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
-      : null;
+      : machineNo
+        ? await fetchLatestWheelChangeByMachine('spinning.wheel_change_v2', 'fm_no', machineNo, approvalStatus || 'approved')
+        : null;
 
     res.json({
       data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type2', row, 'fm_no'), 'fm_no')),
@@ -4420,6 +4457,7 @@ router.get('/wheel-change/type3', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const machineNo = String(req.query.fr_no || req.query.fm_no || req.query.machine_no || req.query.mc_no || '').trim();
     const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
     const result = await client.query(
       `SELECT *
@@ -4439,8 +4477,9 @@ router.get('/wheel-change/type3', async (req, res, next) => {
          OR LOWER(TRIM(COALESCE(tw_existing::text, ''))) = LOWER(TRIM($1))
          OR LOWER(TRIM(COALESCE(tw_proposed::text, ''))) = LOWER(TRIM($1)))
          AND ($2::text = '' OR approval_status = $2)
+         AND ($3::text = '' OR LOWER(TRIM(COALESCE(fr_no::text, ''))) = LOWER(TRIM($3)))
        ORDER BY created_at DESC`,
-      [variety, approvalStatus]
+      [variety, approvalStatus, variety ? '' : machineNo]
     );
     const latestRecord = variety
       ? await fetchLatestWheelChangeByVariety(
@@ -4464,7 +4503,9 @@ router.get('/wheel-change/type3', async (req, res, next) => {
         ],
         approvalStatus || 'approved'
       )
-      : null;
+      : machineNo
+        ? await fetchLatestWheelChangeByMachine('spinning.wheel_change', 'fr_no', machineNo, approvalStatus || 'approved')
+        : null;
 
     res.json({
       data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeType3Aliases(row), 'fr_no')),

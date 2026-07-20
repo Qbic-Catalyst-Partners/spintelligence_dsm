@@ -3454,20 +3454,42 @@ router.get('/change-control', async (req, res, next) => {
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
     const offset = (page - 1) * limit;
     const approvalStatus = String(req.query.approval_status ?? req.query.status ?? '').trim();
-    const whereClause = approvalStatus ? 'WHERE approval_status = $3' : '';
+    // Mixing (variety) is the primary scope for the Wheel Change "Existing"
+    // auto-fetch; CDG No. (machine) is a fallback scope used before a mixing
+    // has been picked, mirroring Spinning's machine-then-variety lookup order.
+    const mixingParam = String(req.query.mixing ?? req.query.variety ?? req.query.variety_name ?? '').trim();
+    const machineParam = String(req.query.cdo_no ?? req.query.machine_no ?? req.query.mc_no ?? '').trim();
+
+    const conditions = [];
+    const params = [];
+    if (approvalStatus) {
+      params.push(approvalStatus);
+      conditions.push(`approval_status = $${params.length}`);
+    }
+    if (mixingParam) {
+      params.push(mixingParam);
+      conditions.push(
+        `(LOWER(TRIM(COALESCE(mixing_existing::text, ''))) = LOWER(TRIM($${params.length}))
+          OR LOWER(TRIM(COALESCE(mixing_proposed::text, ''))) = LOWER(TRIM($${params.length})))`
+      );
+    } else if (machineParam) {
+      params.push(machineParam);
+      conditions.push(`LOWER(TRIM(COALESCE(cdo_no::text, ''))) = LOWER(TRIM($${params.length}))`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const headerResult = await client.query(
       `SELECT *
        FROM carding.carding_change_request
        ${whereClause}
        ORDER BY entry_date DESC, id DESC
-       OFFSET $1 LIMIT $2`,
-      approvalStatus ? [offset, limit, approvalStatus] : [offset, limit]
+       OFFSET $${params.length + 1} LIMIT $${params.length + 2}`,
+      [...params, offset, limit]
     );
 
     const countResult = await client.query(
-      `SELECT COUNT(*) FROM carding.carding_change_request ${approvalStatus ? 'WHERE approval_status = $1' : ''}`,
-      approvalStatus ? [approvalStatus] : []
+      `SELECT COUNT(*) FROM carding.carding_change_request ${whereClause}`,
+      params
     );
 
     const data = headerResult.rows.map((row) => ({

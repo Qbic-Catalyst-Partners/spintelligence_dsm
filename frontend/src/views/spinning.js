@@ -85,19 +85,17 @@ const SPINNING_ENTRY_ID_CONFIG = {
     "Wheel Change": { prefix: "SWC", width: 4, routePath: "/spinning/wheel-change" },
 };
 
-// Wheel Change has 4 independently-tabled sub-types (Type 1-4, see
+// Wheel Change has 3 independently-tabled sub-types (Type 1-3, see
 // WheelChange.jsx's `wheelChangeType` state and its `/spinning/wheel-change/type{N}`
 // endpoints). The generic "Wheel Change" config above points at the shared
-// aggregate route, which only ever reflects Type 1-3's table — Type 4 posts
-// to its own dedicated table (its create response returns ids like
-// "SW4-0007"), so reserving/guessing the next id from the aggregate route
-// produces the wrong sequence (and even the wrong prefix) once a sub-type is
-// selected. Scope the reservation to the actual sub-type's table instead.
+// aggregate route, which only ever reflects Type 1-3's table, so reserving/
+// guessing the next id from the aggregate route produces the wrong sequence
+// (and even the wrong prefix) once a sub-type is selected. Scope the
+// reservation to the actual sub-type's table instead.
 const WHEEL_CHANGE_ENTRY_ID_BY_SUBTYPE = {
     "Type 1": { prefix: "SW1", width: 4, routePath: "/spinning/wheel-change/type1" },
     "Type 2": { prefix: "SW2", width: 4, routePath: "/spinning/wheel-change/type2" },
     "Type 3": { prefix: "SW3", width: 4, routePath: "/spinning/wheel-change/type3" },
-    "Type 4": { prefix: "SW4", width: 4, routePath: "/spinning/wheel-change/type4" },
 };
 
 const getSpinningEntryConfig = (typeName, wheelChangeSubType) => {

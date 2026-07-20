@@ -163,6 +163,17 @@ function ApprovalsQueueView({
         ) || pageTitle,
       operator:
         trimValue(item?.operator ?? item?.operator_name ?? item?.user_name ?? item?.created_by ?? "") || "-",
+      machineNumber:
+        firstNonEmpty(
+          item?.machine_no,
+          item?.machine_number,
+          item?.mc_no,
+          item?.fm_no,
+          item?.fr_no,
+          item?.frame_no,
+          item?.card_no,
+          item?.spdl_no
+        ) || "-",
       createdOn: item?.created_at ?? item?.created_on ?? item?.entry_date ?? "",
       remarks: trimValue(item?.remarks ?? item?.comment ?? ""),
       status: trimValue(item?.approval_status ?? item?.status ?? "pending").toLowerCase() || "pending",
@@ -312,6 +323,10 @@ function ApprovalsQueueView({
                             <strong>{item.operator}</strong>
                           </span>
                           <span>
+                            <small>Machine No.</small>
+                            <strong>{item.machineNumber}</strong>
+                          </span>
+                          <span>
                             <small>Created On</small>
                             <strong>{formatCreatedOn(item.createdOn)}</strong>
                           </span>
@@ -357,6 +372,10 @@ function ApprovalsQueueView({
                 <span>
                   <small>Operator</small>
                   <strong>{selected.operator}</strong>
+                </span>
+                <span>
+                  <small>Machine No.</small>
+                  <strong>{selected.machineNumber}</strong>
                 </span>
                 <span>
                   <small>Created On</small>

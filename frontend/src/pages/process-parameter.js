@@ -21,7 +21,6 @@ import {
   getProcessParameterConsigneeName,
   readProcessParameterRegistry,
 } from "@/utils/processParameterRegistry";
-import { loadLocalEntries } from "@/utils/localProcessParameterStore";
 import { fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
 import {
   buildProcessParameterOptions,
@@ -32,6 +31,7 @@ import { getMixingProcessParameterEntries, fetchMixingCountOptions } from "@/api
 import { fetchBlowroomProcessParametersApi } from "@/apis/blowroom";
 import { getCardingProcessParameterEntries } from "@/apis/carding";
 import { fetchSimplexProcessParameterEntries } from "@/apis/simplex";
+import { getSpinningProcessParameterEntries } from "@/apis/spinning";
 import {
   fetchAutoconerProcessParameters,
   fetchAutoconerQ2Entries,
@@ -120,11 +120,8 @@ const buildFilterParams = (filters) => ({
 
 // Each source's `getId` mirrors the entry_id extraction used by that department's own
 // ProcessParameterDataEntry view, so remote completion state lines up with what those pages show.
-// Spinning doesn't hit the backend yet — it saves to the browser's local store (see
-// localProcessParameterStore), so its source reads from there too (filter query params are
-// meaningless for it since there's no server round-trip). Draw Frame Breaker/Finisher now save
-// via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries (/drawframe/header), distinguished
-// by the entry_scope field.
+// Draw Frame Breaker/Finisher now save via submitDrawFrameHeaderEntry/fetchDrawFrameHeaderEntries
+// (/drawframe/header), distinguished by the entry_scope field.
 const REMOTE_STATUS_SOURCES = [
   {
     index: 0,
@@ -180,9 +177,9 @@ const REMOTE_STATUS_SOURCES = [
   },
   {
     index: 6,
-    fetch: () => Promise.resolve({ data: loadLocalEntries("spinning") }),
-    getId: (entry) => entry?.param_id ?? entry?.entry_id,
-    isDone: (entry) => (entry?.status || "DONE") === "DONE",
+    fetch: (filters) => getSpinningProcessParameterEntries({ page: 1, limit: 200, ...buildFilterParams(filters) }),
+    getId: (entry) => entry?.entry_id ?? entry?.param_id ?? entry?.qc_id,
+    isDone: () => true,
     getDetails: getEntryDetails,
   },
   {

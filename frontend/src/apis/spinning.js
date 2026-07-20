@@ -16,18 +16,14 @@ const endpoints = {
 };
 
 const resolveWheelChangeEndpoint = (endpoint, payload) => {
-  // `wheel_change_sub_type` is an internal routing hint (Type 4 sends the
-  // canonical "type4" here while `wheel_change_type` itself holds the
-  // backend's expected "Wheel Change" label) — Type 1/2/3 don't set it, so
-  // this falls back to reading `wheel_change_type` as before.
   const wheelType = String(payload?.wheel_change_sub_type || payload?.wheel_change_type || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const allowedTypes = new Set(["type1", "type2", "type3", "type4"]);
+  const allowedTypes = new Set(["type1", "type2", "type3"]);
 
   if (!allowedTypes.has(wheelType)) {
-    throw new Error("Invalid wheel change type. Use Type 1, Type 2, Type 3, or Type 4.");
+    throw new Error("Invalid wheel change type. Use Type 1, Type 2, or Type 3.");
   }
 
   return `${endpoint}/${wheelType}`;
@@ -667,7 +663,7 @@ export const fetchSpinningWheelChangeDropdown = async (wheelType = "", params = 
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const typeEndpoint = ["type1", "type2", "type3", "type4"].includes(normalizedType)
+  const typeEndpoint = ["type1", "type2", "type3"].includes(normalizedType)
     ? `/spinning/wheel-change/${normalizedType}/master/dropdown`
     : null;
   const endpoints = [
@@ -801,7 +797,7 @@ export const fetchSpinningWheelChangeLatestRecord = async (wheelType = "", param
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
-  const endpoints = ["type1", "type2", "type3", "type4"].includes(normalizedType)
+  const endpoints = ["type1", "type2", "type3"].includes(normalizedType)
     ? [`/spinning/wheel-change/${normalizedType}`]
     : [
         "/spinning/wheel-change/type1",

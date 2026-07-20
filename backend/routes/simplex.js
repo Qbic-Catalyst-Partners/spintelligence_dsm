@@ -357,6 +357,29 @@ const ensureSimplexWheelChangeTable = async () => {
   `);
 };
 
+// Mirrors spinning.js's fetchLatestWheelChangeByMachine — scoped to the
+// machine_no column so the Existing column can carry forward for Simplex as
+// soon as SMX No. is picked, even before Mixing / Process is chosen. Once
+// Mixing is selected, the mixing-scoped lookup (client-side, see
+// WheelChange.jsx's loadLatestForMixing) takes over as the more specific
+// match.
+const fetchSimplexLatestWheelChangeByMachine = async (machineNumber, approvalStatus = 'approved') => {
+  const selectedMachine = String(machineNumber || '').trim();
+  if (!selectedMachine) return null;
+
+  const result = await client.query(
+    `SELECT *
+     FROM simplex.wheel_change
+     WHERE LOWER(TRIM(COALESCE(machine_no::text, ''))) = LOWER(TRIM($1))
+       AND approval_status = $2
+     ORDER BY created_at DESC NULLS LAST, id DESC
+     LIMIT 1`,
+    [selectedMachine, approvalStatus]
+  );
+
+  return result.rows[0] || null;
+};
+
 router.post('/wheel-change', async (req, res, next) => {
   try {
     await ensureSimplexWheelChangeTable();
@@ -412,6 +435,8 @@ router.get('/wheel-change', async (req, res, next) => {
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 10));
     const offset = (page - 1) * limit;
     const approvalStatus = String(req.query.approval_status ?? '').trim();
+    const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
+    const machineNo = String(req.query.machine_no || req.query.sap_no || req.query.smx_no || '').trim();
     const whereClause = approvalStatus ? 'WHERE approval_status = $3' : '';
     const queryParams = approvalStatus ? [limit, offset, approvalStatus] : [limit, offset];
 
@@ -426,8 +451,21 @@ router.get('/wheel-change', async (req, res, next) => {
       approvalStatus ? [approvalStatus] : []
     );
 
+    // Mixing/variety is stored inside the parameters JSONB blob rather than
+    // its own column, so it's matched client-side (see WheelChange.jsx's
+    // extractLatestNotebookEntryForMixing). Machine No. does have its own
+    // column, so it can carry forward server-side as soon as SMX No. is
+    // picked, before Mixing / Process is chosen — mirrors spinning.js's
+    // fetchLatestWheelChangeByMachine fallback.
+    const latestRecord = variety
+      ? null
+      : machineNo
+        ? await fetchSimplexLatestWheelChangeByMachine(machineNo, approvalStatus || 'approved')
+        : null;
+
     res.status(200).json({
       data: result.rows.map((row) => withScreenEntryId('simplex_wheel_change', row)),
+      latest_record: latestRecord ? withScreenEntryId('simplex_wheel_change', latestRecord) : null,
       total: parseInt(totalResult.rows[0].count, 10) || 0,
       page,
       limit
