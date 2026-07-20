@@ -1355,6 +1355,11 @@ router.post('/splice-strength', async (req, res) => {
       return res.status(400).json({ message: 'Drum readings required' });
     }
 
+    const parsedTestNo = Number(test_no);
+    if (test_no === undefined || test_no === null || test_no === '' || !Number.isFinite(parsedTestNo)) {
+      return res.status(400).json({ message: 'Test No must be a number' });
+    }
+
     await client.query('BEGIN');
 
     const inspectionResult = await client.query(
@@ -1362,7 +1367,7 @@ router.post('/splice-strength', async (req, res) => {
             (entry_id, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id`,
-      [entry_id || null, type, test_no, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
+      [entry_id || null, type, parsedTestNo, inspection_date, count_name, auto_coner_no, drum_from, drum_to, cone_tip, csp_value, average]
     );
 
     const inspection_id = inspectionResult.rows[0].id;
@@ -1385,8 +1390,11 @@ router.post('/splice-strength', async (req, res) => {
 
   } catch (err) {
     await client.query('ROLLBACK');
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     console.error('Error creating inspection:', err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 

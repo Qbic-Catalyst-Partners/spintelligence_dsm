@@ -57,16 +57,14 @@ const mapDrumWiseEntryToRows = (entry = {}) => {
   if (inspections.length > 0) {
     return inspections.map((row) => ({
       drumNo: String(row.drum_no ?? row.drumNo ?? entry.drum_from ?? "-"),
-      ok: Number(row.appearance_ok_count ?? (row.appearance_ok ? 1 : 0) ?? row.ok ?? 0),
-      notOk: Number(row.appearance_not_ok_count ?? row.notOk ?? 0),
+      appearance: (row.appearance_ok_count ?? (row.appearance_ok ? 1 : 0) ?? row.ok ?? 0) ? "Yes" : "No",
     }));
   }
 
   return [
     {
       drumNo: String(entry.drum_no ?? entry.drum_from ?? "-"),
-      ok: Number(entry.appearance_ok_count ?? entry.ok ?? 0),
-      notOk: Number(entry.appearance_not_ok_count ?? entry.notOk ?? 0),
+      appearance: (entry.appearance_ok_count ?? entry.ok ?? 0) ? "Yes" : "No",
     },
   ];
 };
@@ -307,6 +305,7 @@ function DrumWiseAppearance({
   }, [
     onRegisterActions,
     selectedType,
+    entryId,
     entryDate,
     testNo,
     countName,
@@ -381,21 +380,19 @@ function DrumWiseAppearance({
         <thead>
           <tr>
             <th>DRUM NO.</th>
-            <th>APPEARANCE OK</th>
-            <th>APPEARANCE NOT OK</th>
+            <th>APPEARANCE</th>
           </tr>
         </thead>
         <tbody>
           {savedRows.map((row, index) => (
             <tr key={`summary-${row.drumNo}-${index}`}>
               <td>{row.drumNo}</td>
-              <td>{row.ok}</td>
-              <td>{row.notOk}</td>
+              <td>{row.appearance}</td>
             </tr>
           ))}
           {!savedRows.length ? (
             <tr>
-              <td colSpan={3}>
+              <td colSpan={2}>
                 {isFetching ? "Loading last 10 drum wise entries..." : "No drum wise entries available."}
               </td>
             </tr>

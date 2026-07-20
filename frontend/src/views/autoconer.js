@@ -176,7 +176,6 @@ function Autoconer() {
       selectedType === "Cone Packing Audit" ||
       selectedType === "Lycra % Checking" ||
       selectedType === "Count Wise Cuts Record" ||
-      selectedType === "Splice Strength" ||
       selectedType === "Drum wise Appearance" ||
       selectedType === "CSP Parameter Entries" ||
       selectedType === "U% Parameter Entries";
@@ -345,6 +344,7 @@ function Autoconer() {
           {isFooterHistoryType ? (
             <div className={styles.processFooterWrap}>
               <Footer
+                variant="tall"
                 onBack={() => router.push("/departments/quality-control")}
                 onClear={() => {
                   setValidationMessage("");
@@ -357,17 +357,20 @@ function Autoconer() {
               />
             </div>
           ) : (
-            <Footer
-              onBack={() => router.push("/departments/quality-control")}
-              onClear={() => {
-                setValidationMessage("");
-                childRef.current?.clear?.();
-                registeredActions.onClear?.();
-              }}
-              onSave={openPreview}
-              saveLabel={registeredActions.saveLabel || "Save Record"}
-              disabled={registeredActions.disabled}
-            />
+            <div className={styles.footerWrap}>
+              <Footer
+                variant="tall"
+                onBack={() => router.push("/departments/quality-control")}
+                onClear={() => {
+                  setValidationMessage("");
+                  childRef.current?.clear?.();
+                  registeredActions.onClear?.();
+                }}
+                onSave={openPreview}
+                saveLabel={registeredActions.saveLabel || "Save Record"}
+                disabled={registeredActions.disabled}
+              />
+            </div>
           )}
         </div>
 
