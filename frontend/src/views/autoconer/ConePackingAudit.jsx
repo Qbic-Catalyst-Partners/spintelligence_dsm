@@ -50,49 +50,34 @@ const formFieldSanitizers = {
   tareWeight: (value) => sanitizeNumericInput(value, { precision: 6, scale: 2 }),
 };
 
-const mapConePackingEntryToRows = (entry = {}) => {
-  const drumEntries = Array.isArray(entry.drum_entries) ? entry.drum_entries : [];
-  const yarnReadings = Array.isArray(entry.yarn_readings)
-    ? entry.yarn_readings
-    : [];
-  const coneReadings = Array.isArray(entry.cone_readings) ? entry.cone_readings : [];
-  const readingRows = yarnReadings.length >= coneReadings.length ? yarnReadings : coneReadings;
-
-  if (drumEntries.length > 0 || readingRows.length > 0) {
-    const rowCount = Math.max(drumEntries.length, readingRows.length);
-
-    return Array.from({ length: rowCount }, (_, index) => {
-      const drumRow = drumEntries[index] ?? {};
-      const readingRow = readingRows[index] ?? {};
-
-      return {
-        readingNumber: String(readingRow.reading_number ?? readingRow.readingNumber ?? index + 1),
-        precentYarn: String(readingRow.percent_yarn ?? readingRow.precentYarn ?? readingRow.percentYarn ?? "-"),
-        grossWeight: String(
-          drumRow.gross_weight ?? entry.gross_weight_actual ?? entry.grossWtAct ?? "-"
-        ),
-        average: String(drumRow.average ?? entry.net_weight ?? entry.netWeight ?? "-"),
-        drumNo: String(drumRow.drum_no ?? drumRow.drumNo ?? index + 1),
-        grossWeightRaw: drumRow.gross_weight ?? null,
-        averageRaw: drumRow.average ?? null,
-        label: index,
-      };
-    });
-  }
-
-  return [
-    {
-      readingNumber: String(entry.reading_number ?? "1"),
-      precentYarn: String(entry.percent_yarn ?? "-"),
-      grossWeight: String(entry.gross_weight_actual ?? entry.grossWtAct ?? "-"),
-      average: String(entry.net_weight ?? entry.netWeight ?? "-"),
-      drumNo: String(entry.drum_no ?? "1"),
-      grossWeightRaw: entry.gross_weight ?? null,
-      averageRaw: entry.average ?? null,
-      label: 0,
-    },
-  ];
+const yesNo = (value) => {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "true" || normalized === "yes") return "Yes";
+  if (normalized === "false" || normalized === "no") return "No";
+  return value || "-";
 };
+
+const mapConePackingEntryToRow = (entry = {}) => ({
+  entryId: String(entry.entry_id ?? entry.entryId ?? "-"),
+  countName: String(entry.count_name ?? entry.countName ?? "-"),
+  grossWtStd: String(entry.gross_weight_std ?? entry.grossWtStd ?? "-"),
+  grossWtAct: String(entry.gross_weight_actual ?? entry.grossWtAct ?? "-"),
+  boxColour: String(entry.box_colour ?? entry.boxColour ?? "-"),
+  coneColour: String(entry.cone_colour ?? entry.coneColour ?? "-"),
+  gumTapeColour: String(entry.gum_tape_colour ?? entry.gumTapeColour ?? "-"),
+  countLabel: yesNo(entry.count_label ?? entry.countLabel),
+  coneDamage: yesNo(entry.cone_damage ?? entry.coneDamage),
+  coverMissing: yesNo(entry.cover_missing ?? entry.coverMissing),
+  coneHardness: yesNo(entry.cone_hardness ?? entry.coneHardness),
+  stapCone: yesNo(entry.stap_cone ?? entry.stapCone),
+  disk: yesNo(entry.disk),
+  barcode: yesNo(entry.barcode),
+  centerPad: String(entry.center_pad ?? entry.centerPad ?? "-"),
+  netWeight: String(entry.net_weight ?? entry.netWeight ?? "-"),
+  tareWeight: String(entry.tare_weight ?? entry.tareWeight ?? "-"),
+  strapColour: String(entry.strap_colour ?? entry.strapColour ?? "-"),
+});
 
 const errorClass = (flag) =>
   flag
@@ -174,10 +159,6 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
         label: label === "date" ? "Entry ID" : label,
         value: label === "date" ? entryId || "-" : value || "-",
       })),
-    ...auditRows.map((row, index) => ({
-      label: `Reading ${index + 1}`,
-      value: `${row.readingNumber} | ${row.percentYarn ?? "-"}`,
-    })),
   ];
 
   const buildPayload = () => ({
@@ -269,8 +250,8 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     };
   }, []);
 
-  const allDrumEntries = useMemo(
-    () => conePackingAudit.flatMap((entry) => mapConePackingEntryToRows(entry)).slice(0, 10),
+  const lastEntries = useMemo(
+    () => conePackingAudit.map((entry) => mapConePackingEntryToRow(entry)).slice(0, 10),
     [conePackingAudit]
   );
 
@@ -279,32 +260,68 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       ? document.getElementById(postFooterPortalTargetId)
       : null;
 
+  const lastEntriesHeaders = [
+    "Entry ID",
+    "Count Name",
+    "Gross Wt. (Std)",
+    "Gross Wt. (Act)",
+    "Box Colour",
+    "Cone Colour",
+    "Gum Tape Colour",
+    "Count Label",
+    "Cone Damage",
+    "Cover Missing",
+    "Cone Hardness",
+    "Stap Cone",
+    "Disk",
+    "Barcode",
+    "Center Pad",
+    "Net Weight",
+    "Tare Weight",
+    "Strap Colour",
+  ];
+
   const lowerSection = (
     <div className="pt-6 print:hidden">
       <div className="w-full rounded-[12px] border border-slate-200 bg-white px-6 pb-6 pt-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">All Drum Entries</h4>
+        <h4 className="mb-4 mt-0 text-[18px] font-bold text-slate-900">Last 10 Entries</h4>
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-[11px] text-slate-700">
+          <table className="min-w-max border-collapse whitespace-nowrap text-[11px] text-slate-700">
             <thead>
               <tr className="border-b border-slate-300 text-left uppercase text-slate-500">
-                <th className="px-4 py-3 font-semibold first:pl-0">Reading No.</th>
-                <th className="px-4 py-3 font-semibold">Percent Yarn</th>
-                <th className="px-4 py-3 font-semibold">Gross Weight</th>
-                <th className="px-4 py-3 font-semibold last:pr-0">Average</th>
+                {lastEntriesHeaders.map((header) => (
+                  <th key={header} className="px-4 py-3 font-semibold first:pl-0 last:pr-0">
+                    {header}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {allDrumEntries.map((entry, index) => (
-                <tr key={`${entry.readingNumber}-${index}`} className="border-b border-slate-200 last:border-b-0">
-                  <td className="px-4 py-4 first:pl-0">{entry.readingNumber}</td>
-                  <td className="px-4 py-4">{entry.precentYarn}</td>
-                  <td className="px-4 py-4">{entry.grossWeight}</td>
-                  <td className="px-4 py-4 last:pr-0">{entry.average}</td>
+              {lastEntries.map((entry, index) => (
+                <tr key={`${entry.entryId}-${index}`} className="border-b border-slate-200 last:border-b-0">
+                  <td className="px-4 py-4 first:pl-0">{entry.entryId}</td>
+                  <td className="px-4 py-4">{entry.countName}</td>
+                  <td className="px-4 py-4">{entry.grossWtStd}</td>
+                  <td className="px-4 py-4">{entry.grossWtAct}</td>
+                  <td className="px-4 py-4">{entry.boxColour}</td>
+                  <td className="px-4 py-4">{entry.coneColour}</td>
+                  <td className="px-4 py-4">{entry.gumTapeColour}</td>
+                  <td className="px-4 py-4">{entry.countLabel}</td>
+                  <td className="px-4 py-4">{entry.coneDamage}</td>
+                  <td className="px-4 py-4">{entry.coverMissing}</td>
+                  <td className="px-4 py-4">{entry.coneHardness}</td>
+                  <td className="px-4 py-4">{entry.stapCone}</td>
+                  <td className="px-4 py-4">{entry.disk}</td>
+                  <td className="px-4 py-4">{entry.barcode}</td>
+                  <td className="px-4 py-4">{entry.centerPad}</td>
+                  <td className="px-4 py-4">{entry.netWeight}</td>
+                  <td className="px-4 py-4">{entry.tareWeight}</td>
+                  <td className="px-4 py-4 last:pr-0">{entry.strapColour}</td>
                 </tr>
               ))}
-              {!allDrumEntries.length ? (
+              {!lastEntries.length ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-5 text-center text-[12px] text-slate-400">
+                  <td colSpan={lastEntriesHeaders.length} className="px-4 py-5 text-center text-[12px] text-slate-400">
                     {isFetching ? "Loading last 10 cone packing audit entries..." : "No cone packing audit entries available."}
                   </td>
                 </tr>
