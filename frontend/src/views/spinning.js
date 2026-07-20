@@ -19,7 +19,7 @@ import {
     fetchSpinningRingFrameShifts,
 } from "@/apis/spinning";
 import { fetchEmployeeOptions, normalizeEmployeeOptions } from "@/apis/employeeMaster";
-import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { sanitizeIntegerInput, sanitizeNumericInput, sanitizeSpindleListInput, sanitizeSpindleNumberInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
@@ -229,12 +229,6 @@ const normalizeMachineOptions = (payload) => {
         });
 };
 
-const normalizeCotsSideValue = (value) => {
-    const digits = sanitizeIntegerInput(value, 3);
-    if (digits === "") return "";
-    return String(Math.min(COTS_SIDE_MAX, Number(digits)));
-};
-
 const createRingFrameRows = () =>
     Array.from({ length: RING_FRAME_RF_TOTAL }, (_, index) => ({
         machine_no: String(index + 1),
@@ -328,6 +322,9 @@ function SpinningDepartment() {
     const [date, setDate] = useState("");
     const [lhsValue, setLhsValue] = useState("");
     const [lhsRemarks, setLhsRemarks] = useState("");
+    const [type2Value, setType2Value] = useState("");
+    const [lhsValuesText, setLhsValuesText] = useState("");
+    const [rhsValuesText, setRhsValuesText] = useState("");
     const [rhsValue, setRhsValue] = useState("");
     const [rhsRemarks, setRhsRemarks] = useState("");
     const [isMobile, setIsMobile] = useState(false);
@@ -368,6 +365,17 @@ function SpinningDepartment() {
     const isRsmChecking =
         checkingType === "RSM & Lycrasensor Checking Online" ||
         checkingType === "RSM & Lycrasensor Checking Offline";
+    const isBottomApronChecking = checkingType === "Bottom Apron Checking";
+    const isLycraOutOfCentering = checkingType === "Lycra Out of Centering";
+    const type2OptionsByType = {
+        "Bottom Apron Checking": ["Apron Damage", "Apron Position Not Center"],
+        "Lycra Out of Centering": ["Lycra out of center Running", "Lycra Out of Center"],
+        "RSM & Lycrasensor Checking Online": ["RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
+        "RSM & Lycrasensor Checking Offline": ["RSM Not Working", "RSM Working but Roving Run", "Cable Problem", "Lycrasensor Not Working"],
+    };
+    const showType2Field = isBottomApronChecking || isLycraOutOfCentering || isRsmChecking;
+    const useArrayLhsRhs = showType2Field || isCotsChecking || checkingType === "Speed Checking";
+    const type2Options = type2OptionsByType[checkingType] || [];
     const countHeadingValue = (() => {
         const selectedReadingsCount = Number.parseInt(countReadingCount, 10);
         if (!Number.isFinite(selectedReadingsCount) || selectedReadingsCount <= 0) return "";
@@ -420,6 +428,9 @@ function SpinningDepartment() {
         setLhsRemarks("");
         setRhsValue("");
         setRhsRemarks("");
+        setType2Value("");
+        setLhsValuesText("");
+        setRhsValuesText("");
         setDate("");
         setCheckerName("");
         setErrors({});
@@ -584,8 +595,13 @@ function SpinningDepartment() {
         if (error) {
             setValidationMessage(typeof error === "string" ? error : "Failed to save record. Please try again.");
             dispatch(resetSpinningState());
+            // A duplicate-entry_id rejection (stale reservation, another tab/session
+            // already took this id, etc.) would otherwise leave `entryId` pointed at
+            // the same already-used value, so every retry fails with the identical
+            // error forever — reserve a fresh id so the next Save attempt can succeed.
+            reserveEntryId();
         }
-    }, [success, error, dispatch, clearFormValues]);
+    }, [success, error, dispatch, clearFormValues, reserveEntryId]);
 
     const getTodayDate = () => new Date().toISOString().split("T")[0];
     const parseNumericInput = (value) => (value === "" ? null : Number.isNaN(Number.parseFloat(value)) ? null : Number.parseFloat(value));
@@ -628,8 +644,16 @@ function SpinningDepartment() {
         setter(sanitizeIntegerInput(event.target.value, maxDigits));
         clearFieldError(field);
     };
-    const handleCotsSideInputChange = (setter, field) => (event) => {
-        setter(normalizeCotsSideValue(event.target.value));
+    const parseArrayValues = (text) => String(text ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+    // LHS/RHS Spindle Number is always a physical spindle position — 0 isn't a valid spindle, so
+    // it must never be typable here (any other digit is fine, including numbers like 10/20/100
+    // that happen to contain a 0).
+    const handleArrayValuesTextChange = (setter, field) => (event) => {
+        setter(sanitizeSpindleListInput(event.target.value));
+        clearFieldError(field);
+    };
+    const handleSpindleValueChange = (setter, field) => (event) => {
+        setter(sanitizeSpindleNumberInput(event.target.value));
         clearFieldError(field);
     };
     const clearFieldError = (field) => {
@@ -890,22 +914,34 @@ function SpinningDepartment() {
                 nextErrors.selectedMachine = true;
                 missingFields.push(machineFieldLabel);
             }
-            if (!lhsValue.trim()) {
-                nextErrors.lhsValue = true;
-                missingFields.push("Spindle Number Value");
-            }
-            if (!rhsValue.trim()) {
-                nextErrors.rhsValue = true;
-                missingFields.push("Spindle Number Value");
-            }
-            if (isCotsChecking) {
-                const lhsNumber = Number(lhsValue);
-                const rhsNumber = Number(rhsValue);
-                if (!Number.isInteger(lhsNumber) || lhsNumber < 0 || lhsNumber > COTS_SIDE_MAX) {
+            if (useArrayLhsRhs) {
+                const lhsParsed = parseArrayValues(lhsValuesText);
+                const rhsParsed = parseArrayValues(rhsValuesText);
+                if (lhsParsed.length === 0 && rhsParsed.length === 0) {
                     nextErrors.lhsValue = true;
-                }
-                if (!Number.isInteger(rhsNumber) || rhsNumber < 0 || rhsNumber > COTS_SIDE_MAX) {
                     nextErrors.rhsValue = true;
+                    missingFields.push("LHS or RHS Value");
+                }
+                if (isCotsChecking) {
+                    const isValidCotsValue = (value) => {
+                        const num = Number(value);
+                        return Number.isInteger(num) && num >= 0 && num <= COTS_SIDE_MAX;
+                    };
+                    if (lhsParsed.length > 0 && !lhsParsed.every(isValidCotsValue)) {
+                        nextErrors.lhsValue = true;
+                    }
+                    if (rhsParsed.length > 0 && !rhsParsed.every(isValidCotsValue)) {
+                        nextErrors.rhsValue = true;
+                    }
+                }
+            } else {
+                if (!lhsValue.trim()) {
+                    nextErrors.lhsValue = true;
+                    missingFields.push("Spindle Number Value");
+                }
+                if (!rhsValue.trim()) {
+                    nextErrors.rhsValue = true;
+                    missingFields.push("Spindle Number Value");
                 }
             }
         }
@@ -997,8 +1033,10 @@ function SpinningDepartment() {
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
             machine_no: isCotsChecking ? selectedMachine : undefined,
-            lhs_value: isCotsChecking ? Number(lhsValue) : parseDecimalPayloadValue(lhsValue) ?? 0,
-            rhs_value: isCotsChecking ? Number(rhsValue) : parseDecimalPayloadValue(rhsValue) ?? 0,
+            lhs_value: useArrayLhsRhs ? undefined : parseDecimalPayloadValue(lhsValue) ?? 0,
+            rhs_value: useArrayLhsRhs ? undefined : parseDecimalPayloadValue(rhsValue) ?? 0,
+            lhs_values: useArrayLhsRhs ? parseArrayValues(lhsValuesText) : undefined,
+            rhs_values: useArrayLhsRhs ? parseArrayValues(rhsValuesText) : undefined,
             lhs_textremarks: lhsRemarks.trim(),
             rhs_textremarks: rhsRemarks.trim(),
             lhs_audio: "",
@@ -1011,6 +1049,9 @@ function SpinningDepartment() {
             payload.difference = calculatedDifferenceValue === null ? null : Number(calculatedDifferenceValue.toFixed(2));
             payload.displaySpeed = parseDecimalPayloadValue(displaySpeed);
             payload.spindleSpeed = parseDecimalPayloadValue(spindleSpeed);
+        }
+        if (showType2Field) {
+            payload.type2 = type2Value;
         }
         return payload;
     };
@@ -1194,6 +1235,15 @@ function SpinningDepartment() {
                         { label: `MC ${row.machine_no} - Total`, value: String(getRingFrameRowTotal(row)) || "0" },
                     ]))
                 ]
+            : useArrayLhsRhs
+            ? [
+                { label: "LHS (Spindle Number)", value: parseArrayValues(lhsValuesText).join(", ") || "-" },
+                { label: "Count of LHS Spindle", value: String(parseArrayValues(lhsValuesText).length) },
+                { label: "RHS (Spindle Number)", value: parseArrayValues(rhsValuesText).join(", ") || "-" },
+                { label: "Count of RHS Spindle", value: String(parseArrayValues(rhsValuesText).length) },
+                { label: "Remarks", value: lhsRemarks || "-" },
+                { label: "Remarks", value: rhsRemarks || "-" },
+            ]
             : [
                 { label: "LHS (Spindle Number)", value: lhsValue || "-" },
                 { label: "RHS (Spindle Number)", value: rhsValue || "-" },
@@ -1207,6 +1257,10 @@ function SpinningDepartment() {
                 { label: "Spindle Speed", value: spindleSpeed || "-" },
                 { label: "Difference", value: calculatedDifference || "-" }
             );
+        }
+
+        if (showType2Field) {
+            bodyItems.push({ label: "Type-2", value: type2Value || "-" });
         }
 
         setPreviewItems([...headerItems, ...bodyItems]);
@@ -1598,6 +1652,15 @@ function SpinningDepartment() {
                                             ariaLabel={machineFieldLabel}
                                         />
                                     </div>
+                                    {showType2Field && (
+                                        <div className={styles["sp-form-group"]}>
+                                            <label>Type-2</label>
+                                            <select className={`${styles["highlight-input"]} ${errors.type2Value ? styles["input-error"] : ""}`} value={type2Value} onChange={(e) => { setType2Value(e.target.value); clearFieldError("type2Value"); }}>
+                                                <option value="">Select type</option>
+                                                {type2Options.map((option) => <option key={option} value={option}>{option}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {checkingType === "Speed Checking" && (
@@ -1619,6 +1682,7 @@ function SpinningDepartment() {
                                     </div>
                                 )}
 
+                                {(!showType2Field || type2Value) && (
                                 <div className={styles["comparison-box"]}>
                                     <div className={styles["side-title-row"]}>
                                         <Image src="/SideMeasurement.png" alt="logo" width={15} height={30} priority />
@@ -1629,16 +1693,29 @@ function SpinningDepartment() {
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
                                                 <label>LHS (Spindle Number)</label>
-                                                <span className={styles.required}>REQUIRED</span>
+                                                <span className={styles.required}>MIN 1 REQUIRED</span>
                                             </div>
-                                            <input
-                                                type="text"
-                                                inputMode={isCotsChecking ? "numeric" : "decimal"}
-                                                placeholder={isCotsChecking ? "0-650" : "Enter value..."}
-                                                value={lhsValue}
-                                                onChange={isCotsChecking ? handleCotsSideInputChange(setLhsValue, "lhsValue") : handleDecimalInputChange(setLhsValue, "lhsValue")}
-                                                className={errors.lhsValue ? styles["input-error"] : ""}
-                                            />
+                                            {useArrayLhsRhs ? (
+                                                <>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. 1,22,33,44"
+                                                        value={lhsValuesText}
+                                                        onChange={handleArrayValuesTextChange(setLhsValuesText, "lhsValue")}
+                                                        className={errors.lhsValue ? styles["input-error"] : ""}
+                                                    />
+                                                    <div className={styles["char-count"]}>Count of LHS Spindle: {parseArrayValues(lhsValuesText).length}</div>
+                                                </>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Enter value..."
+                                                    value={lhsValue}
+                                                    onChange={handleSpindleValueChange(setLhsValue, "lhsValue")}
+                                                    className={errors.lhsValue ? styles["input-error"] : ""}
+                                                />
+                                            )}
                                             <div className={styles["remarks-header"]}>
                                                 <span>Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
@@ -1652,16 +1729,29 @@ function SpinningDepartment() {
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
                                                 <label>RHS (Spindle Number)</label>
-                                                <span className={styles.required}>REQUIRED</span>
+                                                <span className={styles.required}>MIN 1 REQUIRED</span>
                                             </div>
-                                            <input
-                                                type="text"
-                                                inputMode={isCotsChecking ? "numeric" : "decimal"}
-                                                placeholder={isCotsChecking ? "0-650" : "Enter value..."}
-                                                value={rhsValue}
-                                                onChange={isCotsChecking ? handleCotsSideInputChange(setRhsValue, "rhsValue") : handleDecimalInputChange(setRhsValue, "rhsValue")}
-                                                className={errors.rhsValue ? styles["input-error"] : ""}
-                                            />
+                                            {useArrayLhsRhs ? (
+                                                <>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="e.g. 1,22,33,44"
+                                                        value={rhsValuesText}
+                                                        onChange={handleArrayValuesTextChange(setRhsValuesText, "rhsValue")}
+                                                        className={errors.rhsValue ? styles["input-error"] : ""}
+                                                    />
+                                                    <div className={styles["char-count"]}>Count of RHS Spindle: {parseArrayValues(rhsValuesText).length}</div>
+                                                </>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    placeholder="Enter value..."
+                                                    value={rhsValue}
+                                                    onChange={handleSpindleValueChange(setRhsValue, "rhsValue")}
+                                                    className={errors.rhsValue ? styles["input-error"] : ""}
+                                                />
+                                            )}
                                             <div className={styles["remarks-header"]}>
                                                 <span>Remarks</span>
                                                 <div className={styles["mobile-micicon"]}>
@@ -1673,6 +1763,7 @@ function SpinningDepartment() {
                                         </div>
                                     </div>
                                 </div>
+                                )}
                             </>
                         )}
                     </div>
@@ -1707,7 +1798,7 @@ function SpinningDepartment() {
 
             <SuccessModal
                 open={showSuccess}
-                message={confirmedEntryId ? `Data Submitted (Entry ID: ${confirmedEntryId})` : undefined}
+                message="Data Submitted"
                 onClose={() => {
                     setShowSuccess(false);
                     setConfirmedEntryId("");
