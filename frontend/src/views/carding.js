@@ -146,7 +146,7 @@ function Carding() {
     const isProcessParameter = selectedType === "Process Parameter";
     const isWheelChange = selectedType === "WheelChange";
     const isCardWasteStudy = selectedType === "Individual Card Waste Study";
-    const showParentFooter = isProcessParameter || isCardWasteStudy;
+    const showParentFooter = isProcessParameter;
     const entryTableTheme = {
         surface: isDarkMode ? "#050505" : "#fff",
         header: isDarkMode ? "#3b3b3b" : "#f4f6f8",
@@ -333,6 +333,16 @@ function Carding() {
                                 variety={cardWasteVariety}
                                 onVarietyChange={setCardWasteVariety}
                                 hideVarietyField
+                            />
+                            <Footer
+                                onBack={() => router.push("/departments/quality-control")}
+                                onClear={() => {
+                                    setValidationMessage("");
+                                    setLotNo("");
+                                    childRef.current?.clear?.();
+                                }}
+                                onSave={openPreview}
+                                saveLabel="Save Record"
                             />
                         </>
                     ) : null}

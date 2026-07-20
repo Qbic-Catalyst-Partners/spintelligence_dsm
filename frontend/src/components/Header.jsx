@@ -568,13 +568,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             <aside className={`${styles.sidebar} ${isSidebarCollapsed ? styles["sidebar-collapsed"] : ""}`}>
                 <div className={styles["sidebar-logo"]}>
                     <Image
-                        src={isDarkMode ? "/spintel-dark.png" : "/spintel.svg"}
+                        src={isDarkMode ? "/spintel-dark.png" : "/spintelligence_light.png"}
                         alt="Spintelligence"
-                        width={105}
-                        height={60}
+                        width={isDarkMode ? 96 : 219}
+                        height={isDarkMode ? 55 : 125}
                         priority
                         className={styles["sidebar-logo-secondary"]}
-                        style={{ width: "auto", height: "60px", objectFit: "contain" }}
+                        style={{ width: "auto", height: isDarkMode ? "55px" : "125px", objectFit: "contain" }}
                     />
                 </div>
 

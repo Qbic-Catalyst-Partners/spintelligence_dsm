@@ -48,7 +48,7 @@ const Login = () => {
             <div className={styles['login-card']}>
                 <div className={styles['login-top']}>
                     <div className={styles['logo-overlay']}>
-                        <img src="/spintel.svg" alt="Company Logo" className={styles['logo-image']} />
+                        <img src="/spintelligence_light.png" alt="Company Logo" className={styles['logo-image']} />
                     </div>
 
                     <div className={styles['heading-container']}>
