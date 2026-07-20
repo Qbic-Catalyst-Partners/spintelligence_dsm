@@ -806,33 +806,12 @@ function SpinningDepartment() {
             setValidationMessage("");
             return;
         }
+        // Wipe the typed field values only — keep the same Checking Type selected and the same
+        // already-reserved Entry ID. Resetting checkingType (as this used to do) re-triggered
+        // useDatabaseEntryId's reservation effect and silently swapped in a brand new entry ID,
+        // and the router.push made it look like a whole new form/screen had opened.
         clearFormValues();
-        setCheckingType("");
-        setSelectedMachine("");
-        setDate("");
-        setDisplaySpeed("");
-        setSpindleSpeed("");
-        setCountChangeMode("");
-        setRfNo("");
-        setLycraDraft("");
-        setCountNameFrom("");
-        setCountNameTo("");
-        setCountReadingCount("");
-        setCountChangeRows([]);
-        setCheckerName("");
-        setShift("");
-        setRingFrameRows(createRingFrameRows());
-        setOutOfCenterAc("");
-        setComments("");
-        setFaultCopsAc("");
-        setFaultCopsRf("");
-        setLhsValue("");
-        setLhsRemarks("");
-        setRhsValue("");
-        setRhsRemarks("");
-        setErrors({});
-        setValidationMessage("");
-        router.push("/spinning", undefined, { shallow: true });
+        setDate(getTodayDate());
     };
 
     const validate = () => {
