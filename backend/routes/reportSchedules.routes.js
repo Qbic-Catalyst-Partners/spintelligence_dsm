@@ -566,20 +566,103 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
 const GENERAL_REPORT_CUSTOM_SOURCES = {
   spinning: {
     // COTS Checking form — spinning.cots_checking has no "checking type" column;
-    // report only the fields the form actually collects.
+    // report only the fields the form actually collects. LHS/RHS is a free-form
+    // spindle list — kept as JSONB on this same row (not a per-reading child
+    // table) so Custom Report stays one row per submission and doesn't visually
+    // collapse/duplicate rows the way a joined child table did.
     cotschecking: {
       fromClause: 'spinning.cots_checking',
       selectColumns: [
         'entry_id',
         'inspectiondate',
         'machineno',
-        'lhs_value',
-        'rhs_value',
+        'lhs_values',
+        'rhs_values',
+        'lhs_spindle_count',
+        'rhs_spindle_count',
         'lhs_textremarks',
         'rhs_textremarks',
         'createdat'
       ],
       dateColumn: 'inspectiondate'
+    },
+    // Bottom Apron Checking, Lycra Out of Centering, RSM & Lycrasensor Checking
+    // Online/Offline — same LHS/RHS spindle-list shape as COTS above, plus a Type-2
+    // fault-subtype value that lives in its own one-row-per-submission table
+    // (spinning.type2_faults) rather than a column on each of these four tables.
+    bottomapronchecking: {
+      fromClause: 'spinning.bottom_apron_checking h '
+        + 'LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = \'bottom_apron_checking\' AND t2.entry_id = h.entry_id',
+      selectColumns: [
+        'h.entry_id',
+        'h.inspectiondate',
+        'h.machineno',
+        't2.type2',
+        'h.lhs_values',
+        'h.rhs_values',
+        'h.lhs_spindle_count',
+        'h.rhs_spindle_count',
+        'h.lhs_textremarks',
+        'h.rhs_textremarks',
+        'h.createdat'
+      ],
+      dateColumn: 'h.inspectiondate'
+    },
+    // Frontend label is "Lycra Out of Centering", which normalizes to
+    // "lycraoutofcentering" — alias it onto the same source as lycracentering.
+    lycracentering: {
+      fromClause: 'spinning.lycra_centering h '
+        + 'LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = \'lycra_centering\' AND t2.entry_id = h.entry_id',
+      selectColumns: [
+        'h.entry_id',
+        'h.inspectiondate',
+        'h.machineno',
+        't2.type2',
+        'h.lhs_values',
+        'h.rhs_values',
+        'h.lhs_spindle_count',
+        'h.rhs_spindle_count',
+        'h.lhs_textremarks',
+        'h.rhs_textremarks',
+        'h.createdat'
+      ],
+      dateColumn: 'h.inspectiondate'
+    },
+    rsmlycrasensorcheckingonline: {
+      fromClause: 'spinning.rsm_and_lycrasensor_cheking_online h '
+        + 'LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = \'rsm_lycra_online\' AND t2.entry_id = h.entry_id',
+      selectColumns: [
+        'h.entry_id',
+        'h.inspectiondate',
+        'h.machineno',
+        't2.type2',
+        'h.lhs_values',
+        'h.rhs_values',
+        'h.lhs_spindle_count',
+        'h.rhs_spindle_count',
+        'h.lhs_textremarks',
+        'h.rhs_textremarks',
+        'h.createdat'
+      ],
+      dateColumn: 'h.inspectiondate'
+    },
+    rsmlycrasensorcheckingoffline: {
+      fromClause: 'spinning.rsm_and_lycrasensor_cheking_offline h '
+        + 'LEFT JOIN spinning.type2_faults t2 ON t2.checking_type = \'rsm_lycra_offline\' AND t2.entry_id = h.entry_id',
+      selectColumns: [
+        'h.entry_id',
+        'h.inspectiondate',
+        'h.machineno',
+        't2.type2',
+        'h.lhs_values',
+        'h.rhs_values',
+        'h.lhs_spindle_count',
+        'h.rhs_spindle_count',
+        'h.lhs_textremarks',
+        'h.rhs_textremarks',
+        'h.createdat'
+      ],
+      dateColumn: 'h.inspectiondate'
     },
     // Count Change form — header table + per-reading child table. Drop count_change_type
     // and the per-reading average/rollup columns (reading_avg, count_avg, strength_avg,
@@ -1214,6 +1297,10 @@ GENERAL_REPORT_CUSTOM_SOURCES.blowroom.withinlapcvdataentry = GENERAL_REPORT_CUS
 GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcvdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcv;
 GENERAL_REPORT_CUSTOM_SOURCES.blowroom.betweenlapcv = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcv;
 GENERAL_REPORT_CUSTOM_SOURCES.blowroom.betweenlapcvdataentry = GENERAL_REPORT_CUSTOM_SOURCES.blowroom.brbetweenlapcv;
+
+// Frontend label is "Lycra Out of Centering", which normalizes to
+// "lycraoutofcentering" — alias it onto the same joined source as lycracentering.
+GENERAL_REPORT_CUSTOM_SOURCES.spinning.lycraoutofcentering = GENERAL_REPORT_CUSTOM_SOURCES.spinning.lycracentering;
 
 GENERAL_REPORT_CUSTOM_SOURCES.drawframe = {
   // Draw Frame Cots Data Entry form (POST /drawframe/cots) — header table (sub_type =

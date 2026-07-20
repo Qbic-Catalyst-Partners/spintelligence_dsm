@@ -159,7 +159,16 @@ const flattenRecord = (record, prefix = "") => {
 
   return Object.entries(record).reduce((flat, [key, value]) => {
     const flatKey = prefix ? `${prefix}_${key}` : key;
-    if (Array.isArray(value)) return flat;
+    if (Array.isArray(value)) {
+      // Arrays of nested objects are handled by normalizeDashboardRows' own row-expansion pass
+      // below and dropped here to avoid duplicating them — but a plain array of primitives (e.g.
+      // Spinning's lhs_values/rhs_values spindle lists: ["1","2"]) has no such expansion path and
+      // was previously discarded entirely, silently blanking the LHS/RHS columns on every row.
+      if (!value.some((item) => isRecordObject(item))) {
+        flat[flatKey] = value.length ? value.join(", ") : "";
+      }
+      return flat;
+    }
     if (isRecordObject(value)) return { ...flat, ...flattenRecord(value, flatKey) };
     flat[flatKey] = value;
     return flat;

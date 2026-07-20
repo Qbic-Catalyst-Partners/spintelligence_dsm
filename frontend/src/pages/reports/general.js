@@ -256,7 +256,57 @@ const getReportFieldValue = (row, field) => {
   return null;
 };
 
-const getCellValue = (row, field) => {
+// Spinning's COTS/Speed Checking and the four Type-2 screens (Bottom Apron Checking, Lycra Out
+// of Centering, RSM & Lycrasensor Checking Online/Offline) use one of Spinning's RF-prefixed
+// ring-frame machines for "Machine No." — stored as a bare number (e.g. 14). Mirror the same
+// R/F-<n> display used on Custom Report (frontend/src/views/reports/ReportsPage.jsx) so both
+// report pages show the machine the same way operators refer to it on the floor.
+const SPINNING_MACHINE_FIELD_REPORT_TYPES = new Set([
+  "COTS Checking",
+  "Speed Checking",
+  "Bottom Apron Checking",
+  "Lycra Out of Centering",
+  "RSM & Lycrasensor Checking Online",
+  "RSM & Lycrasensor Checking Offline",
+]);
+
+// getDashboardFieldValue only matches a field's normalized label against a normalized row key
+// exactly (no fuzzy/substring matching) — "LHS (Spindle Number)" normalizes to
+// "lhsspindlenumber", which never matches the real row column "lhs_values", so these labels
+// would otherwise always resolve to null and show "-" even after flattenRecord above stopped
+// dropping the array. Resolve them directly against their real column names instead.
+const SPINNING_DIRECT_FIELD_KEY_BY_LABEL = {
+  "Count of LHS Spindle": "lhs_spindle_count",
+  "Count of RHS Spindle": "rhs_spindle_count",
+};
+
+const getCellValue = (row, field, context = {}) => {
+  const label = field?.label || field?.key;
+  const isSpinningSpindleScreen =
+    context.subDepartment === "Spinning" && SPINNING_MACHINE_FIELD_REPORT_TYPES.has(context.reportType);
+
+  if (isSpinningSpindleScreen && (label === "Machine No." || label === "Machine")) {
+    const machineValue = row?.machineno;
+    return machineValue !== null && typeof machineValue !== "undefined" && String(machineValue).trim() !== ""
+      ? `R/F-${String(machineValue).trim()}`
+      : "-";
+  }
+
+  if (isSpinningSpindleScreen && (label === "LHS (Spindle Number)" || label === "RHS (Spindle Number)")) {
+    const isLhs = label === "LHS (Spindle Number)";
+    const joinedValue = row?.[isLhs ? "lhs_values" : "rhs_values"];
+    return joinedValue !== null && typeof joinedValue !== "undefined" && String(joinedValue).trim() !== ""
+      ? String(joinedValue)
+      : "-";
+  }
+
+  if (isSpinningSpindleScreen && SPINNING_DIRECT_FIELD_KEY_BY_LABEL[label]) {
+    const directValue = row?.[SPINNING_DIRECT_FIELD_KEY_BY_LABEL[label]];
+    return directValue !== null && typeof directValue !== "undefined" && String(directValue).trim() !== ""
+      ? String(directValue)
+      : "-";
+  }
+
   const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value);
@@ -539,7 +589,9 @@ export default function GeneralReport() {
     const lines = reportSections.flatMap((section) => {
       const header = section.fields.map((field) => escapeCsvValue(field.label)).join(",");
       const body = section.rows.map((row) =>
-        section.fields.map((field) => escapeCsvValue(getCellValue(row, field))).join(",")
+        section.fields
+          .map((field) => escapeCsvValue(getCellValue(row, field, { subDepartment: selectedSubDept, reportType: section.typeName })))
+          .join(",")
       );
       return [
         escapeCsvValue(section.typeName),
@@ -588,7 +640,7 @@ export default function GeneralReport() {
 
         if (section.rows.length && section.fields.length) {
           section.rows.forEach((row) => {
-            sheet.addRow(fields.map((field) => getCellValue(row, field)));
+            sheet.addRow(fields.map((field) => getCellValue(row, field, { subDepartment: selectedSubDept, reportType: section.typeName })));
           });
         } else {
           sheet.addRow(["No data stored for the selected date."]);
@@ -625,7 +677,7 @@ export default function GeneralReport() {
         const headerCells = section.fields.map((field) => `<th>${escapeHtml(field.label)}</th>`).join("");
         const bodyRows = section.rows.length
           ? section.rows
-              .map((row) => `<tr>${section.fields.map((field) => `<td>${escapeHtml(getCellValue(row, field))}</td>`).join("")}</tr>`)
+              .map((row) => `<tr>${section.fields.map((field) => `<td>${escapeHtml(getCellValue(row, field, { subDepartment: selectedSubDept, reportType: section.typeName }))}</td>`).join("")}</tr>`)
               .join("")
           : `<tr><td colspan="${Math.max(section.fields.length, 1)}">No data stored for the selected date.</td></tr>`;
         return `<h2>${escapeHtml(section.typeName)}</h2><table><thead><tr>${headerCells || "<th>Report Data</th>"}</tr></thead><tbody>${bodyRows}</tbody></table>`;
@@ -818,7 +870,7 @@ export default function GeneralReport() {
                         section.rows.map((row, rowIndex) => (
                           <tr key={row?.id || row?.entry_id || `${section.typeName}-${rowIndex}`}>
                             {section.fields.map((field) => (
-                              <td key={field.key}>{getCellValue(row, field)}</td>
+                              <td key={field.key}>{getCellValue(row, field, { subDepartment: selectedSubDept, reportType: section.typeName })}</td>
                             ))}
                           </tr>
                         ))

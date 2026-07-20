@@ -124,6 +124,24 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/blowroom/process-parameter': 'blowroom.blowroom_header',
   '/blowroom/process_parameter': 'blowroom.blowroom_header',
   '/spinning/cots-checking': 'spinning.cots_checking',
+  // These five were missing from this map, so their "next entry id" was computed from the
+  // ticketing_system.frontend_entry_registry bookkeeping table instead of the real department
+  // table's MAX(entry_id) — if that registry ever drifted out of sync with the actual table
+  // (e.g. a row inserted without going through the reservation flow), the same id could be
+  // handed out twice, causing "Duplicate entry_id" on save. COTS Checking above already had the
+  // correct mapping; these bring the other five Spinning checking screens in line with it.
+  '/spinning/speed-checking': 'spinning.speed_checking',
+  '/spinning/bottom-apron-checking': 'spinning.bottom_apron_checking',
+  '/spinning/lycra-centering': 'spinning.lycra_centering',
+  // information_schema.columns.table_name is always lowercase (Postgres folds
+  // unquoted identifiers), so the mixed-case table names used elsewhere in this
+  // codebase (spinning.RSM_and_lycrasensor_cheking_online) must be lowercased
+  // here or getTableEntryIdMax's information_schema lookup silently matches
+  // zero rows and always reports max=0 — producing "...0001" as the "next" id
+  // on every request regardless of what's already in the table, which
+  // collides with the real first row and fails as "Duplicate entry_id".
+  '/spinning/rsm-lycra-online': 'spinning.rsm_and_lycrasensor_cheking_online',
+  '/spinning/rsm-lycra-offline': 'spinning.rsm_and_lycrasensor_cheking_offline',
   '/drawframe/wheel-change': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type2': 'drawframe.wheel_change',
@@ -194,10 +212,15 @@ const extractFrontendEntryId = (body) => {
 
 const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
   const mappedTable = ENTRY_ID_ROUTE_TABLES[routePath];
-  const registryResult = mappedTable ? null : await db.query(getRegisteredEntryIdMaxSql, [routePath]);
+  // Always check the registry, even when a mapped table exists — a mapped-table-only
+  // computation ignores any id already RESERVED in ticketing_system.frontend_entry_registry
+  // (e.g. a prior attempt that reserved an id, then failed before the department-table insert
+  // committed) and keeps recomputing the exact same already-reserved id forever, hard-failing
+  // every retry with "Duplicate entry_id" even though the real department table is empty.
+  const registryResult = await db.query(getRegisteredEntryIdMaxSql, [routePath]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
   const tableMax = await getTableEntryIdMax(mappedTable);
-  const nextNumber = (mappedTable ? tableMax : Math.max(registryMax, tableMax)) + 1;
+  const nextNumber = Math.max(registryMax, tableMax) + 1;
   const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
   const entryId = routePrefix
     ? `${routePrefix.prefix}${routePrefix.separator}${String(nextNumber).padStart(routePrefix.width, '0')}`
