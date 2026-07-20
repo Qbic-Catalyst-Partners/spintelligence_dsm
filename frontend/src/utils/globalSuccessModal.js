@@ -1,9 +1,11 @@
+import { resolvedBaseUrl } from "@/apis/apiConfig";
+
 const SUCCESS_EVENT_NAME = "global-api-success";
 const SUCCESS_NOTIFICATION_ROUTE_UNAVAILABLE_KEY = "success_notification_route_unavailable";
 let successNotificationRouteUnavailable = false;
 
 const getNotificationBaseUrlCandidates = () => {
-    const apiBaseUrl = String(process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/+$/, "");
+    const apiBaseUrl = String(resolvedBaseUrl || "").trim().replace(/\/+$/, "");
     const notificationBaseUrl = String(process.env.NEXT_PUBLIC_NOTIFICATIONS_API_BASE || "").trim().replace(/\/+$/, "");
     const pathCandidates = [
         "/notifications",

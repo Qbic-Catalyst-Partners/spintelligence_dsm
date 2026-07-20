@@ -109,6 +109,8 @@
 
 .dateControl svg:last-child {
     right: 12px;
+    pointer-events: auto;
+    cursor: pointer;
 }
 
 .searchControl input {

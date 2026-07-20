@@ -21,6 +21,18 @@ const toDisplayDate = (value) => {
   return year && month && day ? `${day}/${month}/${year}` : "";
 };
 
+// Row values for date-type fields arrive as raw ISO timestamps (e.g. "2026-07-18T07:18:15.265Z")
+// straight from the backend — format them the same DD/MM/YYYY way as the report's own date-range
+// label above, instead of showing the raw timestamp with its time component.
+const formatCellDate = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const day = padDatePart(date.getDate());
+  const month = padDatePart(date.getMonth() + 1);
+  return `${day}/${month}/${date.getFullYear()}`;
+};
+
 const titleCase = (value) =>
   String(value || "")
     .replace(/[_-]+/g, " ")
@@ -49,6 +61,11 @@ const toField = (fieldName) => {
 };
 
 const REPORT_FIELD_ALIASES = {
+  // "Created Date" means the real submission timestamp, but the actual row column differs by
+  // screen (Mixing: "created_at"; others: "inspection_date"/"creation_date"), and none of those
+  // exactly match the normalized catalog label "createddate" via getDashboardFieldValue's
+  // exact-only lookup — this always fell through to null/"-" before.
+  "Created Date": ["created_at", "inspection_date", "creation_date"],
   "Span Length (2.5%)": ["span_length", "spanLength"],
   "Invisible Loss %": ["invisible_loss_percentage", "invisible_loss_percent", "invisibleLossPercent"],
   "Trash Content %": ["trash_content_percentage", "trash_content_percent", "trashContentPercent"],
@@ -280,6 +297,23 @@ const SPINNING_DIRECT_FIELD_KEY_BY_LABEL = {
   "Count of RHS Spindle": "rhs_spindle_count",
 };
 
+// Any field recognized as "a date" by its label/key gets rendered through formatCellDate instead
+// of the raw ISO timestamp — mirrors DATE_FIELD_NORMALIZED_KEYS in Custom Report
+// (frontend/src/views/reports/ReportsPage.jsx) so both report pages show dates the same way.
+const DATE_FIELD_NORMALIZED_KEYS = new Set(
+  [
+    "inspection_date",
+    "creation_date",
+    "invoice_date",
+    "entry_date",
+    "created_date",
+    "created_at",
+    "createdat",
+    "updated_at",
+    "updatedat",
+  ].map(normalizeLookup)
+);
+
 const getCellValue = (row, field, context = {}) => {
   const label = field?.label || field?.key;
   const isSpinningSpindleScreen =
@@ -309,6 +343,12 @@ const getCellValue = (row, field, context = {}) => {
 
   const value = getReportFieldValue(row, field);
   if (value === null || typeof value === "undefined" || value === "") return "-";
+  if (
+    DATE_FIELD_NORMALIZED_KEYS.has(normalizeLookup(field?.key)) ||
+    DATE_FIELD_NORMALIZED_KEYS.has(normalizeLookup(field?.label))
+  ) {
+    return formatCellDate(value);
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 };

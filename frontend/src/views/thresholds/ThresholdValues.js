@@ -1373,7 +1373,7 @@ export default function ThresholdValues() {
 
                                                     <div className={styles.ruleBottomGrid}>
                                                         <label className={styles.field}>
-                                                            <span> Idle Value or Typical Value</span>
+                                                            <span> Typical Value</span>
                                                             <span className={styles.actualValueRow}>
                                                                 <input
                                                                     className={styles.actualValueInput}

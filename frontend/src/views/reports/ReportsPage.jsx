@@ -2193,10 +2193,12 @@ const reportFieldAliases = {
   "Fineness CV %": ["fineness_cv_percent"],
   "Long Fiber >46.80 mm %": ["long_fiber_gt_46_80_percent"],
   "Long Fiber Count > 46.80 mm": ["long_fiber_count_gt_46_80"],
-  // Mixing screens' "Created Date" catalog field means the real submission timestamp, but
-  // "createddate" doesn't fuzzy-match the row's actual "created_at" column (no shared substring),
-  // so this always fell through to the generic blind fallback before.
-  "Created Date": ["created_at"],
+  // "Created Date" means the real submission timestamp across several screens, but the actual
+  // row column differs by screen (Mixing: "created_at"; others: "inspection_date"/"creation_date"),
+  // and none of those fuzzy-match the catalog label "createddate" (no shared substring), so this
+  // always fell through to the generic blind fallback before. Every candidate lives in this one
+  // list — a duplicate "Created Date" key further down used to silently overwrite this entry.
+  "Created Date": ["created_at", "inspection_date", "creation_date"],
   // Openness Data Entry's own submitted field is "br_line" (matches the form's brLine state) —
   // "br_line_no" is a separate, always-null legacy column the form never writes to, but the
   // catalog label "B/R Line No" happens to exact-canonical-match that dead column instead of the
@@ -2227,7 +2229,6 @@ const reportFieldAliases = {
   "LHS (Spindle Number)": ["lhs_value"],
   "Number of Readings (N)": ["num_readings"],
   "Number of Rows (N)": ["number_of_entries"],
-  "Created Date": ["inspection_date", "creation_date"],
   "Count": ["count_name"],
   "CVP": ["cvp"],
   "I1": ["l1"],

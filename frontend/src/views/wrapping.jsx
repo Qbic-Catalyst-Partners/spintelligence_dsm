@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { FiFile, FiRefreshCw, FiUpload } from "react-icons/fi";
 import Footer from "@/components/Footer";
 import { runOcrForDocument } from "@/apis/ocrApi";
+import { resolvedBaseUrl } from "@/apis/apiConfig";
 
 const wrappingTypes = ["Carding", "Drawing", "Simplex"];
 export const WRAPPING_INPUT_SCREEN_COUNT = wrappingTypes.length;
@@ -42,7 +43,7 @@ const WRAPPING_SAVE_ENDPOINTS = {
   simplex: "/simplex/wrapping-simplex-notebook",
 };
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+const API_BASE = resolvedBaseUrl.replace(/\/+$/, "");
 
 const toDocType = (type) => String(type || "Carding").trim().toLowerCase();
 const formatSavedRecordMessage = (selectedType, payload) => {

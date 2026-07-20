@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar, FiChevronLeft, FiChevronRight, FiRefreshCw, FiSearch } from "react-icons/fi";
 import { fetchActivityLogFiltersApi, fetchActivityLogsApi } from "@/apis/activityLogApi";
 import styles from "@/styles/activityLog.module.css";
@@ -184,6 +184,18 @@ function ActivityLogs() {
   const [loading, setLoading] = useState(true);
   const [filtersLoading, setFiltersLoading] = useState(true);
   const [error, setError] = useState("");
+  const startDateInputRef = useRef(null);
+  const endDateInputRef = useRef(null);
+
+  const openDatePicker = (inputRef) => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.focus();
+    }
+  };
 
   const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / pagination.limit));
 
@@ -383,12 +395,13 @@ function ActivityLogs() {
             <span>From Date</span>
             <span className={`${styles.control} ${styles.dateControl}`}>
               <input
+                ref={startDateInputRef}
                 type="date"
                 value={filters.start_date}
                 aria-label="From date"
                 onChange={(event) => updateFilter("start_date", event.target.value)}
               />
-              <FiCalendar aria-hidden="true" />
+              <FiCalendar aria-hidden="true" onClick={() => openDatePicker(startDateInputRef)} />
             </span>
           </label>
 
@@ -396,12 +409,13 @@ function ActivityLogs() {
             <span>To Date</span>
             <span className={`${styles.control} ${styles.dateControl}`}>
               <input
+                ref={endDateInputRef}
                 type="date"
                 value={filters.end_date}
                 aria-label="To date"
                 onChange={(event) => updateFilter("end_date", event.target.value)}
               />
-              <FiCalendar aria-hidden="true" />
+              <FiCalendar aria-hidden="true" onClick={() => openDatePicker(endDateInputRef)} />
             </span>
           </label>
 

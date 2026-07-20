@@ -1210,6 +1210,18 @@ const SubmittedNotebooksPage = () => {
     const [activeTab, setActiveTab] = useState("pending");
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
+    const dateFromInputRef = useRef(null);
+    const dateToInputRef = useRef(null);
+
+    const openDatePicker = (inputRef) => {
+        const input = inputRef.current;
+        if (!input) return;
+        if (typeof input.showPicker === "function") {
+            input.showPicker();
+        } else {
+            input.focus();
+        }
+    };
 
     const loadNotebooks = async () => {
         if (!isAuthHydrated) {
@@ -1555,24 +1567,34 @@ const SubmittedNotebooksPage = () => {
                         <small>From</small>
                         <span className={styles.dateInputWrap}>
                             <input
+                                ref={dateFromInputRef}
                                 type="date"
                                 className={styles.filterSelect}
                                 value={filters.dateFrom}
                                 onChange={(event) => handleCustomDateChange("dateFrom", event.target.value)}
                             />
-                            <FiCalendar className={styles.dateInputIcon} aria-hidden="true" />
+                            <FiCalendar
+                                className={styles.dateInputIcon}
+                                aria-hidden="true"
+                                onClick={() => openDatePicker(dateFromInputRef)}
+                            />
                         </span>
                     </label>
                     <label className={styles.filterField}>
                         <small>To</small>
                         <span className={styles.dateInputWrap}>
                             <input
+                                ref={dateToInputRef}
                                 type="date"
                                 className={styles.filterSelect}
                                 value={filters.dateTo}
                                 onChange={(event) => handleCustomDateChange("dateTo", event.target.value)}
                             />
-                            <FiCalendar className={styles.dateInputIcon} aria-hidden="true" />
+                            <FiCalendar
+                                className={styles.dateInputIcon}
+                                aria-hidden="true"
+                                onClick={() => openDatePicker(dateToInputRef)}
+                            />
                         </span>
                     </label>
                 </div>
