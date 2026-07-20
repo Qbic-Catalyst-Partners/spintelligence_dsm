@@ -77,12 +77,45 @@ export const routeDepartmentMap = {
 
 export const buildAccessibleDepartmentSet = (accessByDepartment) => {
   const accessList = Array.isArray(accessByDepartment) ? accessByDepartment : [];
-
-  return new Set(
+  const departmentSet = new Set(
     accessList
       .map((entry) => normalizeName(entry?.department_name))
       .filter(Boolean)
   );
+
+  // A role granted ONLY a "Process Parameter" screen (e.g. "Autoconer - PP",
+  // not plain "Autoconer") has a "Process Parameter" bucket but no entry for
+  // the department that PP screen actually belongs to — without this, the
+  // department's whole route would be blocked even though a PP screen under
+  // it was explicitly granted. Mirrors PP_SCREEN_OWNING_DEPARTMENT in
+  // screenAccess.js (duplicated, not imported, to avoid a circular import —
+  // screenAccess.js already imports from this file).
+  const ppEntry = accessList.find(
+    (entry) => normalizeName(entry?.department_name) === normalizeName("Process Parameter")
+  );
+  const ppScreens = Array.isArray(ppEntry?.screens) ? ppEntry.screens : [];
+  const ppScreenOwningDepartment = {
+    "mixing pp": "mixing",
+    "blow room pp": "blow room",
+    "carding pp": "carding",
+    "simplex pp": "simplex",
+    "spinning pp": "spinning",
+    "autoconer pp": "autoconer",
+    "pp breaker drawing": "draw frame",
+    "pp finisher drawing": "draw frame",
+    "pp autoconer q2": "autoconer",
+    "pp autoconer q3": "autoconer",
+  };
+  ppScreens.forEach((screen) => {
+    // normalizeName collapses whitespace BEFORE turning "-" into " ", so
+    // "Autoconer - PP" comes out as "autoconer   pp" (extra spaces) rather
+    // than a clean single-spaced key — collapse again before the lookup.
+    const screenKey = normalizeName(screen?.name).replace(/\s+/g, " ").trim();
+    const owningDepartment = ppScreenOwningDepartment[screenKey];
+    if (owningDepartment) departmentSet.add(owningDepartment);
+  });
+
+  return departmentSet;
 };
 
 export const hasSubDepartmentAccess = (accessByDepartment, subDepartmentName, user) =>

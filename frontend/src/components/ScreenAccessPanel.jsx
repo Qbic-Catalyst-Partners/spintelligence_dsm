@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FiChevronRight } from "react-icons/fi";
 import styles from "@/styles/screenAccessPanel.module.css";
 
@@ -228,6 +228,29 @@ export default function ScreenAccessPanel({ screens, selectedScreenIds, onChange
     () => new Set((selectedScreenIds || []).map(String)),
     [selectedScreenIds]
   );
+
+  // Editing a role whose access is, say, Comber-only used to always land on
+  // "Mixing" (the first group) since that's this state's initial value — the
+  // actual granted screens were still ticked correctly on the Comber tab,
+  // just not visible until manually clicked, which read as "nothing was
+  // saved". Both selectedScreenIds and departmentGroups arrive asynchronously
+  // (after screens/access finish loading), so switch to whichever department
+  // actually has a selection the FIRST time that becomes known — but only
+  // once, so it doesn't yank the view away if the admin has since clicked
+  // to a different tab themselves.
+  const hasAutoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoOpenedRef.current) return;
+    if (!selectedSet.size) return;
+
+    const groupWithSelection = departmentGroups.find((group) =>
+      group.screens.some((screen) => selectedSet.has(String(screen.id)))
+    );
+    if (groupWithSelection) {
+      setActiveDepartment(groupWithSelection.name);
+      hasAutoOpenedRef.current = true;
+    }
+  }, [departmentGroups, selectedSet]);
 
   const isDepartmentFullySelected = (group) =>
     group.screens.length > 0 && group.screens.every((screen) => selectedSet.has(String(screen.id)));

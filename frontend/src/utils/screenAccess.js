@@ -21,6 +21,50 @@ const getDepartmentAccessEntry = (accessByDepartment, departmentName) => {
   );
 };
 
+// "Process Parameter" (PP) screens — e.g. "Autoconer - PP", "PP - Autoconer Q2",
+// "PP - Breaker Drawing" — are registered in the backend under their own
+// department_id/department_name ("Process Parameter"), separate from the
+// department they functionally belong to (Autoconer, Draw Frame, ...). A role
+// granted only "Autoconer - PP" access (not plain "Autoconer") ends up with an
+// accessByDepartment that has a "Process Parameter" entry but no "Autoconer"
+// entry — so filtering Autoconer's own type list only against the "Autoconer"
+// bucket would silently drop the PP-named type option the role WAS granted.
+// Mirrors ScreenAccessPanel.jsx's HARDCODED_DEPARTMENTS "Process Parameter"
+// group — each PP screen name maps to exactly the one department it belongs
+// to, so a grant never leaks into an unrelated department's type list.
+const PROCESS_PARAMETER_DEPARTMENT_NAME = "Process Parameter";
+
+const PP_SCREEN_OWNING_DEPARTMENT = {
+  "mixing pp": "mixing",
+  "blow room pp": "blow room",
+  "carding pp": "carding",
+  "simplex pp": "simplex",
+  "spinning pp": "spinning",
+  "autoconer pp": "autoconer",
+  "pp breaker drawing": "draw frame",
+  "pp finisher drawing": "draw frame",
+  "pp autoconer q2": "autoconer",
+  "pp autoconer q3": "autoconer",
+};
+
+const getMatchCandidateScreens = (accessByDepartment, departmentName) => {
+  const ownEntry = getDepartmentAccessEntry(accessByDepartment, departmentName);
+  const ownScreens = Array.isArray(ownEntry?.screens) ? ownEntry.screens : [];
+
+  if (normalizeScreenKey(departmentName) === normalizeScreenKey(PROCESS_PARAMETER_DEPARTMENT_NAME)) {
+    return ownScreens;
+  }
+
+  const ppEntry = getDepartmentAccessEntry(accessByDepartment, PROCESS_PARAMETER_DEPARTMENT_NAME);
+  const ppScreens = Array.isArray(ppEntry?.screens) ? ppEntry.screens : [];
+  const departmentKey = normalizeScreenKey(departmentName);
+  const ownedPpScreens = ppScreens.filter(
+    (screen) => PP_SCREEN_OWNING_DEPARTMENT[normalizeScreenKey(screen?.name)] === departmentKey
+  );
+
+  return ownedPpScreens.length ? [...ownScreens, ...ownedPpScreens] : ownScreens;
+};
+
 const getOptionMatchers = (option) => {
   const aliases = Array.isArray(option?.aliases) ? option.aliases : [];
   return [option?.name, ...aliases].map(normalizeScreenKey).filter(Boolean);
@@ -72,8 +116,7 @@ export const filterOptionsByDepartmentAccess = (
     return options.map((option) => withDisplayName(option));
   }
 
-  const departmentEntry = getDepartmentAccessEntry(accessByDepartment, departmentName);
-  const screens = Array.isArray(departmentEntry?.screens) ? departmentEntry.screens : [];
+  const screens = getMatchCandidateScreens(accessByDepartment, departmentName);
 
   return options
     .map((option) => {
@@ -97,7 +140,5 @@ export const getDepartmentScreenCount = (
     return fallbackCount;
   }
 
-  const departmentEntry = getDepartmentAccessEntry(accessByDepartment, departmentName);
-  const screens = Array.isArray(departmentEntry?.screens) ? departmentEntry.screens : [];
-  return screens.length;
+  return getMatchCandidateScreens(accessByDepartment, departmentName).length;
 };
