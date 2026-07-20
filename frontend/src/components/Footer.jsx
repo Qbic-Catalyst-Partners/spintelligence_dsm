@@ -17,7 +17,7 @@ const Footer = ({
     <div
       className={`${styles["footer-container"]} ${
         variant === "compact" ? styles["footer-container-compact"] : ""
-      }`}
+      } ${variant === "tall" ? styles["footer-container-tall"] : ""}`}
     >
       <div className={styles["right-actions"]}>
         {secondaryHandler && (
