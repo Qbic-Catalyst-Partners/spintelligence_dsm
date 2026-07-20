@@ -214,7 +214,7 @@ export const thresholdFieldCatalog = {
         "Make",
         "Denier",
         "Mergen Number",
-        "Slub Partcy Code",
+        "Slub Party Code",
         "Slub / Mtr",
         "Pause Min",
         "Pause Max",

@@ -246,10 +246,10 @@ const EXPLICIT_TICKET_KIND_KEYS = {
   pp_batch: TICKET_KIND.PP_BATCH,
 };
 
-// Single source of truth for "what kind of ticket is this." Manual tickets can carry an
-// explicit ticket_kind (stamped by OperatorCreateTicket.jsx) which is trusted first since
-// it's authoritative; system-generated tickets never carry that field and fall through to
-// the same heuristics every dashboard/detail view used to re-derive independently.
+// Single source of truth for "what kind of ticket is this." A ticket can carry an explicit
+// ticket_kind (e.g. stamped by a past manual-ticket creation flow) which is trusted first
+// since it's authoritative; tickets without that field fall through to the same heuristics
+// every dashboard/detail view used to re-derive independently.
 export const getTicketKind = (ticket) => {
   const explicitKind = EXPLICIT_TICKET_KIND_KEYS[String(ticket?.ticket_kind || "").trim().toLowerCase()];
   if (explicitKind) return explicitKind;

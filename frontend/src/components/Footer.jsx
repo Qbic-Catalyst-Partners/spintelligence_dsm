@@ -10,6 +10,7 @@ const Footer = ({
   secondaryLabel = "Clear Form",
   saveLabel = "Save Record",
   disabled = false,
+  className = "",
 }) => {
   const secondaryHandler = onSecondary || onClear;
 
@@ -17,7 +18,7 @@ const Footer = ({
     <div
       className={`${styles["footer-container"]} ${
         variant === "compact" ? styles["footer-container-compact"] : ""
-      } ${variant === "tall" ? styles["footer-container-tall"] : ""}`}
+      } ${className}`}
     >
       <div className={styles["right-actions"]}>
         {secondaryHandler && (

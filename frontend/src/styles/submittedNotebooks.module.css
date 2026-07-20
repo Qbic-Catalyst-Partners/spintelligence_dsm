@@ -37,6 +37,63 @@
     width: 100%;
 }
 
+.tabSwitch {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: #e9edf3;
+}
+
+.tabButton {
+    min-width: 96px;
+    height: 34px;
+    padding: 0 18px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #667085;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.tabButtonActive {
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+.dateInputWrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.dateInputWrap input[type="date"] {
+    padding-right: 30px;
+}
+
+/* The browser's own calendar indicator is redundant with the icon we render, and in Chrome it
+   sits exactly where FiCalendar is placed — hide it so there's only one icon, not two stacked. */
+.dateInputWrap input[type="date"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0;
+    width: 30px;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.dateInputIcon {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #667085;
+    font-size: 14px;
+    pointer-events: none;
+}
+
 .filterField {
     display: grid;
     gap: 4px;
@@ -57,6 +114,22 @@
     border-radius: 6px;
     background: #ffffff;
     color: #111827;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* Read-only stand-in for a filter a supervisor isn't allowed to change (Department/Sub
+   Department are locked entirely; Checked by is locked to their own name). */
+.filterLocked {
+    display: flex;
+    align-items: center;
+    min-width: 150px;
+    height: 34px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #64748b;
     padding: 0 10px;
     font-size: 12px;
     font-weight: 700;
@@ -112,13 +185,18 @@
 }
 
 .rowMeta {
-    display: flex;
+    display: grid;
+    grid-template-columns: 110px 130px 150px;
     align-items: center;
-    gap: 38px;
-    min-width: 320px;
+    gap: 20px;
 }
 
-.rowMeta span,
+.rowMetaItem {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
 .modalMeta span {
     display: grid;
     gap: 4px;
@@ -302,14 +380,18 @@
 }
 
 .confirmOverlay {
-    position: absolute;
+    /* .modal (the parent) scrolls internally, so an absolutely-positioned overlay anchors to
+       the top of its full scrollable content instead of the current viewport — if the reviewer
+       had scrolled down while writing their note, the confirm dialog rendered above what was
+       on screen and needed scrolling back up to find. Fixed positioning keeps it centered in
+       the actual browser viewport regardless of the modal's scroll position. */
+    position: fixed;
     inset: 0;
-    z-index: 2;
+    z-index: 70;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    border-radius: 8px;
     background: rgba(15, 23, 42, 0.38);
 }
 
@@ -322,6 +404,52 @@
     padding: 36px 26px 28px;
     box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
     text-align: center;
+}
+
+/* Its own overlay, not .overlay (which top-aligns to leave room for the tall detail card) —
+   this dialog is small and needs to sit dead center in the viewport. */
+.successOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.58);
+}
+
+.successDialog {
+    width: min(360px, 100%);
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 32px 26px;
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.26);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.successDialog h3 {
+    margin: 0;
+    color: #111827;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* Same tick treatment as components/SuccessModal.jsx's "Data Submitted" icon. */
+.successIcon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #3d539f;
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    font-size: 30px;
+    font-weight: 800;
 }
 
 .confirmDialog h3 {

@@ -58,13 +58,14 @@
 
 /* Card */
 
+/* This component only ever renders nested inside individualCardPerformance.jsx's own
+   .card-shell (cardThickPlaceEntry.module.css) — that's the real visible card, with the
+   28px horizontal padding Footer's own bleed margin is built to reach. This inner shell
+   must stay a plain pass-through wrapper (no padding/overflow of its own), otherwise its
+   overflow: hidden clips Footer's bleed before it reaches the real card edge. */
 .cardShell {
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #ffffff;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .cardBody {
@@ -296,20 +297,11 @@
   margin-top: 25px;
 }
 
-/* Footer */
-
-.cardFooter {
-  width: 100%;
-  margin-top: 20px;
-  overflow: hidden;
-  border-top: 1px solid #e5edf6;
-  background: #f1f5f9;
-}
-
 .errorField {
   border-color: #ef4444 !important;
   background: #fff1f2 !important;
 }
+
 
 .messageBox {
   margin-top: 16px;
@@ -348,9 +340,5 @@
 
   .parameterCard {
     padding: 14px;
-  }
-
-  .cardFooter {
-    margin-top: 18px;
   }
 }
