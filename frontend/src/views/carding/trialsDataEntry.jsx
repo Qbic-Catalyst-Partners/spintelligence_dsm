@@ -670,19 +670,17 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                 </div>
             ) : null}
 
-            <div className={styles.cardFooter}>
-                <Footer
-                    onBack={() => router.push("/departments/quality-control")}
-                    onClear={handleClear}
-                    onSave={() => {
-                        if (validateForm()) {
-                            setShowPreview(true);
-                        }
-                    }}
-                    saveLabel="Save Record"
-                    disabled={!showForm}
-                />
-            </div>
+            <Footer
+                onBack={() => router.push("/departments/quality-control")}
+                onClear={handleClear}
+                onSave={() => {
+                    if (validateForm()) {
+                        setShowPreview(true);
+                    }
+                }}
+                saveLabel="Save Record"
+                disabled={!showForm}
+            />
 
             <PreviewModal
                 open={showPreview}

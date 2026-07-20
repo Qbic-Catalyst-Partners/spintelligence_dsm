@@ -707,7 +707,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'make',
         'denier',
         'merge_no',
-        'slub_partcy_code',
+        'slub_party_code',
         'slub_mtr',
         'pause_min',
         'pause_max',

@@ -460,9 +460,26 @@ const ensureSpinningEntryIdColumns = async () => {
     `);
   }
 
+  // "Slub Partcy Code" was a typo of "Slub Party Code" — rename the existing column (preserving
+  // its data) rather than adding a new one, guarded so it only runs once per environment.
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'spinning' AND table_name = 'spinning_qc_header' AND column_name = 'slub_partcy_code'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'spinning' AND table_name = 'spinning_qc_header' AND column_name = 'slub_party_code'
+      ) THEN
+        ALTER TABLE spinning.spinning_qc_header RENAME COLUMN slub_partcy_code TO slub_party_code;
+      END IF;
+    END $$;
+  `);
+
   await client.query(`
     ALTER TABLE spinning.spinning_qc_header
-      ADD COLUMN IF NOT EXISTS slub_partcy_code TEXT,
+      ADD COLUMN IF NOT EXISTS slub_party_code TEXT,
       ADD COLUMN IF NOT EXISTS slub_mtr NUMERIC,
       ADD COLUMN IF NOT EXISTS pause_min NUMERIC,
       ADD COLUMN IF NOT EXISTS pause_max NUMERIC,
@@ -3285,7 +3302,7 @@ router.get('/count-change', async (req, res) => {
  *                 type: number
  *               lycra_percent:
  *                 type: number
- *               slub_partcy_code:
+ *               slub_party_code:
  *                 type: string
  *               slub_mtr:
  *                 type: number
@@ -3330,7 +3347,7 @@ router.post('/qc', async (req, res, next) => {
       merge_no,
       lycra_draft,
       lycra_percent,
-      slub_partcy_code,
+      slub_party_code,
       slub_mtr,
       pause_min,
       pause_max,
@@ -3364,7 +3381,7 @@ router.post('/qc', async (req, res, next) => {
         merge_no,
         lycra_draft,
         lycra_percent,
-        slub_partcy_code,
+        slub_party_code,
         slub_mtr,
         pause_min,
         pause_max,
@@ -3398,7 +3415,7 @@ router.post('/qc', async (req, res, next) => {
         merge_no,
         lycra_draft,
         lycra_percent,
-        slub_partcy_code,
+        slub_party_code,
         slub_mtr,
         pause_min,
         pause_max,
@@ -3537,7 +3554,7 @@ router.get('/qc', async (req, res, next) => {
  *                 type: number
  *               lycra_percent:
  *                 type: number
- *               slub_partcy_code:
+ *               slub_party_code:
  *                 type: string
  *               slub_mtr:
  *                 type: number
@@ -3589,7 +3606,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
       merge_no,
       lycra_draft,
       lycra_percent,
-      slub_partcy_code,
+      slub_party_code,
       slub_mtr,
       pause_min,
       pause_max,
@@ -3618,7 +3635,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            merge_no = $15,
            lycra_draft = $16,
            lycra_percent = $17,
-           slub_partcy_code = $18,
+           slub_party_code = $18,
            slub_mtr = $19,
            pause_min = $20,
            pause_max = $21,
@@ -3646,7 +3663,7 @@ router.put('/qc/:qc_id', async (req, res, next) => {
         merge_no,
         lycra_draft,
         lycra_percent,
-        slub_partcy_code,
+        slub_party_code,
         slub_mtr,
         pause_min,
         pause_max,
