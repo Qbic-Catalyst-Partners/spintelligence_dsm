@@ -554,17 +554,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
     return (
         <>
-            <div className={styles["top-logo-center"]}>
-                <Image
-                    src={isDarkMode ? "/dsm-logo-dark.png" : "/logo.png"}
-                    alt="DSM"
-                    width={140}
-                    height={100}
-                    priority
-                    style={{ width: "128px", height: "auto" }}
-                />
-            </div>
-
             <aside className={`${styles.sidebar} ${isSidebarCollapsed ? styles["sidebar-collapsed"] : ""}`}>
                 <div className={styles["sidebar-logo"]}>
                     <Image
@@ -941,6 +930,17 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                     })}
                 </nav>
             </aside>
+
+            <div className={styles["top-logo-center"]}>
+                <Image
+                    src={isDarkMode ? "/dsm-logo-dark.png" : "/logo.png"}
+                    alt="DSM"
+                    width={140}
+                    height={100}
+                    priority
+                    style={{ width: "128px", height: "auto" }}
+                />
+            </div>
 
             <header className={styles["top-actions"]}>
                 <div className={styles["nav-left"]}>

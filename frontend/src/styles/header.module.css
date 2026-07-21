@@ -889,14 +889,40 @@
         min-height: 72px;
     }
 
+    /* Centered across the full viewport (left/right: 0) on desktop, this lands the logo dead
+       center of the whole screen on mobile — squarely under the profile chip/notification bell,
+       which sit inside .top-actions starting after the sidebar. Confining it to that same content
+       area still isn't enough on its own: centered, it sits in the same territory as those
+       right-aligned icons. Pin it to the left edge of that area instead, so the logo and the
+       icon group claim opposite ends of the row rather than both competing for the middle/right. */
+    .top-logo-center {
+        left: var(--app-sidebar-width, 275px);
+        justify-content: flex-start;
+        padding-left: 16px;
+    }
+
+    /* When the sidebar is expanded (275px) rather than collapsed (76px) on a narrow mobile
+       screen, the remaining space after `left: var(--app-sidebar-width)` above shrinks to almost
+       nothing — not enough room for the logo plus the bell/moon/profile-chip group, which is what
+       was still overlapping. Only show the logo once the sidebar is back to its collapsed width. */
+    .sidebar:not(.sidebar-collapsed) ~ .top-logo-center {
+        display: none;
+    }
+
+    .top-logo-center img {
+        width: 80px !important;
+    }
+
     .nav-right {
         justify-content: flex-end;
         flex-wrap: wrap;
         gap: 10px;
     }
 
+    /* The name/employee-id text is what was actually crowding the logo out — drop it and keep
+       just the avatar initials chip, which is enough to open the profile menu on mobile anyway. */
     .profile-meta {
-        max-width: 120px;
+        display: none;
     }
 
     .profile-dropdown {
