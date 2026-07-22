@@ -57,6 +57,54 @@ const extractHviFields = (rawText, fields = []) => {
   return result;
 };
 
+const FIELD_ALIASES_BY_TYPE = {
+  hvi: {
+    "Variety": ["variety", "Variety"],
+    "Invoice No": ["invoice_no", "invoiceNo", "Invoice No"],
+    "Invoice Date": ["invoice_date", "invoiceDate", "Invoice Date"],
+    "SCI": ["sci", "SCI"],
+    "Span Length (2.5%)": ["span_length", "spanLength", "Span Length (2.5%)", "SL2", "SL 2.5%", "SL 2.5"],
+    "Mic": ["mic", "Mic"],
+    "GTEX": ["gtex", "GTEX"],
+    "Maturity": ["maturity", "Maturity", "Mat"],
+    "UR": ["ur", "UR"],
+    "SFI": ["sfi", "SFI"],
+    "Elongation": ["elongation", "Elongation", "Str"],
+    "Yellow + B": ["yellow_b", "yellowB", "Yellow + B", "+b", "Yellow+B"],
+    "TrCnt": ["trcnt", "trCnt", "TrCnt"],
+    "TrAr": ["trar", "trAr", "TrAr"],
+    "TrID": ["trid", "trID", "TrID"],
+    "Invisible Loss %": ["invisible_loss_percentage", "invisibleLossPercent", "Invisible Loss %"],
+    "Trash Content %": ["trash_content_percentage", "trashContentPercent", "Trash Content %"],
+    "RD": ["rd", "RD", "Rd"],
+    "Colour Grade": ["colour_grade", "colourGrade", "Colour Grade", "CGrd"],
+  },
+  afis: {
+    "Variety": ["variety", "Variety"],
+    "Invoice No": ["invoice_no", "invoiceNo", "Invoice No"],
+    "Invoice Date": ["invoice_date", "invoiceDate", "Invoice Date"],
+    "UQL": ["uql", "UQL"],
+    "L5%": ["l5", "L5%", "L5"],
+    "SFC(N)": ["sfc_n", "sfcN", "SFC(N)", "SFC(n)"],
+    "IFC %": ["ifc", "IFC %", "IFC"],
+    "Fibre Neps Gms": ["fibre_neps_gms", "fibreNepsGms", "Fibre Neps Gms", "Neps Gms", "Neps/gm"],
+    "SFC(W)": ["sfc_w", "sfcW", "SFC(W)", "SFC(w)"],
+    "Maturity": ["maturity", "Maturity"],
+    "Fineness": ["fineness", "Fineness"],
+    "SCN/gm": ["scn_gms", "scnGms", "SCN/gm", "SCN gm", "SCN Gms"],
+  },
+};
+
+const buildCanonicalFormValues = (row, docType) => {
+  const aliasMap = FIELD_ALIASES_BY_TYPE[docType];
+  if (!aliasMap) return row || {};
+  const result = {};
+  Object.entries(aliasMap).forEach(([canonicalLabel, aliases]) => {
+    result[canonicalLabel] = getValueFromRow(row, aliases) || "";
+  });
+  return result;
+};
+
 const DOC_TYPES = [
   { label: "HVI Data Entry", value: "hvi" },
   { label: "AFIS Data Entry", value: "afis" },
@@ -70,8 +118,6 @@ const MACHINE_FIELDS = [
   "S.No",
   "Date",
   "ID",
-  "Test ID",
-  "Report Date",
   "Mac Name",
   "Shift",
   "Std. Hank",
@@ -373,7 +419,11 @@ export default function OcrMachinePage() {
           ...machineValues,
           ...(docType === "carding" ? extractMachinePrefill(result) : {}),
         });
+      } else if (docType === "hvi" || docType === "afis") {
+        const first = parsed[0] || {};
+        setFormValues(buildCanonicalFormValues(first, docType));
       } else {
+        const first = parsed[0] || {};
         setFormValues(first);
       }
     } catch (e) {

@@ -205,6 +205,27 @@ def main():
         )
         mapped_rows = mapper.apply_mapping(extracted_tables) if extracted_tables else []
 
+        # Some report exporters embed a landscape table as a sideways raster
+        # image inside an otherwise portrait page (no PDF /Rotate flag to
+        # signal it), so the unrotated pass finds no coherent header row.
+        # Retry against a rotated render before giving up.
+        if not any(mapped_rows):
+            for rotation in (90, 270):
+                rotated_results = ocr_engine.extract_from_bytes(
+                    file_bytes,
+                    filename=file_path.name,
+                    min_confidence=0.4,
+                    pdf_page='last' if requested_doc_type == 'fibre' else 'first',
+                    rotate=rotation,
+                )
+                rotated_tables = parser.reconstruct_table(rotated_results)
+                rotated_mapped = mapper.apply_mapping(rotated_tables) if rotated_tables else []
+                if any(rotated_mapped):
+                    raw_text = "\n".join(r.text for r in rotated_results)
+                    extracted_tables = rotated_tables
+                    mapped_rows = rotated_mapped
+                    break
+
     output = {
         "filename": file_path.name,
         "doc_type": effective_doc_type,

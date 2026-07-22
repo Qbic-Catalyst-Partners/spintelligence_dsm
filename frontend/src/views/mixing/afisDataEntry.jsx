@@ -156,7 +156,10 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                 raw?.result?.json_output ||
                 raw?.result?.data ||
                 [];
-            const source = Array.isArray(list) ? (list[0] || {}) : (raw?.result || raw || {});
+            const reviewedValues = raw?.values || raw?.result?.values || null;
+            const source = Array.isArray(list) && list.length
+                ? { ...(list[0] || {}), ...(reviewedValues || {}) }
+                : (reviewedValues || raw?.result || raw || {});
             const pick = (...keys) => {
                 for (const key of keys) {
                     const v = source?.[key];

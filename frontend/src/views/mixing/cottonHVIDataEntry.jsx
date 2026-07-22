@@ -182,9 +182,10 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
                 raw?.result?.json_output ||
                 raw?.result?.data ||
                 null;
+            const reviewedValues = raw?.values || raw?.result?.values || null;
             const source = Array.isArray(rows) && rows.length
-                ? (rows[0] || {})
-                : (raw?.values || raw?.result || raw || {});
+                ? { ...(rows[0] || {}), ...(reviewedValues || {}) }
+                : (reviewedValues || raw?.result || raw || {});
             const pick = (...keys) => {
                 for (const key of keys) {
                     const v = source?.[key];

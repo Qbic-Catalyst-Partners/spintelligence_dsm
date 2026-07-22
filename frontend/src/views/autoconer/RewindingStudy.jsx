@@ -704,8 +704,8 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   );
   const breakPerMillionMeter = useMemo(() => {
     if (!Number.isFinite(totalLength) || totalLength <= 0) return "0.00";
-    return ((totalCones * 1000000) / totalLength).toFixed(2);
-  }, [totalCones, totalLength]);
+    return ((totalFaults / totalLength) * 1000000).toFixed(2);
+  }, [totalFaults, totalLength]);
 
   useEffect(() => {
     setForm((current) =>

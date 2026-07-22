@@ -20,10 +20,14 @@ const HVI_FIELDS = [
   'Mic',
   'Maturity',
   'UR',
+  'SFI',
   'Elongation',
   'Yellow + B',
   'RD',
   'Colour Grade',
+  'TrCnt',
+  'TrAr',
+  'TrID',
 ];
 const AFIS_FIELDS = [
   'UQL',

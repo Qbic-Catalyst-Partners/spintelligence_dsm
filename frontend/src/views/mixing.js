@@ -877,7 +877,10 @@ function Mixing() {
                 } else {
                     setSelectedTypeName(payload.docType === "afis" ? "AFIS Data Entry" : "Cotton HVI Data Entry");
                 }
-                setPendingOcrValues(payload.result || payload.values);
+                setPendingOcrValues({
+                    ...(payload.result && typeof payload.result === "object" ? payload.result : {}),
+                    values: payload.values && typeof payload.values === "object" ? payload.values : {},
+                });
             }
         } catch {}
     }, []);

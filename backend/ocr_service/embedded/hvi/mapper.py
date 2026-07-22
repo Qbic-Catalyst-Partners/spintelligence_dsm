@@ -21,13 +21,17 @@ FIELD_MAP: Dict[str, str] = {
     "Mic":               "Mic",
     "Maturity":          "Mat",
     "UR":                "UR",
+    "SFI":               "SF",
     "Elongation":        "Elg",
     "Yellow + B":        "+b",
     "RD":                "Rd",
     "Colour Grade":      "CGrd",
+    "TrCnt":             "TrCnt",
+    "TrAr":              "TrAr",
+    "TrID":              "TrID",
 }
 # NOT included (no exact match in HVI PDF):
-#   GTEX, SFI, Trash
+#   GTEX, Trash Content %, Invisible Loss %
 
 
 def apply_mapping(extracted_rows: list) -> list:

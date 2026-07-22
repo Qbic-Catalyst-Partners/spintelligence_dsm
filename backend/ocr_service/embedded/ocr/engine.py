@@ -183,9 +183,16 @@ def extract_from_bytes(
     filename: str = "",
     min_confidence: float = 0.4,
     pdf_page: str = "first",
+    rotate: int = 0,
 ) -> List[OCRResult]:
     """
     Convenience: decode image bytes (or PDF first page) → extract OCR.
+
+    Some report exporters (e.g. certain "print to PDF" drivers) embed a
+    landscape table as a sideways raster image inside an otherwise portrait
+    page, with no PDF-level /Rotate flag to signal it. `rotate` (90/180/270)
+    lets a caller retry extraction against a rotated copy of the rendered
+    page when the unrotated pass fails to find a readable table.
     """
     if filename.lower().endswith(".pdf"):
         try:
@@ -243,5 +250,12 @@ def extract_from_bytes(
         image_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image_np is None:
             raise ValueError("Cannot decode image bytes.")
+
+    if rotate == 90:
+        image_np = cv2.rotate(image_np, cv2.ROTATE_90_CLOCKWISE)
+    elif rotate == 180:
+        image_np = cv2.rotate(image_np, cv2.ROTATE_180)
+    elif rotate == 270:
+        image_np = cv2.rotate(image_np, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
     return extract(image_np, min_confidence=min_confidence)
