@@ -272,6 +272,8 @@ export default function EditUser() {
                   <option value="L1">L1</option>
                   <option value="L2">L2</option>
                   <option value="L3">L3</option>
+                  <option value="L4">L4</option>
+                  <option value="L5">L5</option>
                 </select>
               </div>
             </div>
