@@ -351,6 +351,9 @@ export default function UserManagement() {
               <option value="">Level: All</option>
               <option value="L1">Level: L1</option>
               <option value="L2">Level: L2</option>
+              <option value="L3">Level: L3</option>
+              <option value="L4">Level: L4</option>
+              <option value="L5">Level: L5</option>
             </select>
             <HiMiniChevronDown className={styles.selectChevron} />
           </div>
