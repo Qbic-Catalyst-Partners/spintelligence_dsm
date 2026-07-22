@@ -2,12 +2,17 @@ import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { extractTesterFromLines, extractTesterFromText, getTesterValueFromRow, mergeTesterIntoRows, getFieldValueFromRow, mergeFieldIntoRows } from "@/utils/ocrTester";
 
+// Mirrors apiConfig.js's hardcoded backend host. This fetch runs server-side in the
+// Next.js Node process, not the browser, so there's no mixed-content concern about
+// using plain HTTP here even when the page itself is served over HTTPS.
+const OCR_BACKEND_FALLBACK_URL = "http://187.127.135.236:4000";
+
 const getBackendBaseUrl = () =>
   String(
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.OCR_API_URL ||
     process.env.API_URL ||
-      ""
+    OCR_BACKEND_FALLBACK_URL
   )
     .trim()
     .replace(/\/+$/, "");
