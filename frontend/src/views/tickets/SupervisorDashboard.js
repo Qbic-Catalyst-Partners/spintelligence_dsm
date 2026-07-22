@@ -167,13 +167,19 @@ const formatProcessParameterTicket = (ticket) => {
 export default function SupervisorDashboard({ mode = "L2" }) {
   const dispatch = useDispatch();
   const router = useRouter();
-  const isL3Mode = String(mode || "").trim().toUpperCase() === "L3";
+  // L3/L4/L5 all get the same review-only layout (approve/reject queue, no
+  // threshold-config view) that was originally built just for L3 - which
+  // stage of tickets actually shows up is decided server-side from the
+  // logged-in user's real level (see getReviewerLevel in
+  // supervisorTickets.routes.js), not from this mode prop, so no query
+  // params need to change here - only which UI shell renders.
+  const isEscalationReviewMode = ["L3", "L4", "L5"].includes(String(mode || "").trim().toUpperCase());
 
   const { tickets, isLoading, error } =
     useSelector((state) => state.supervisor) || {};
   const authUser = useSelector((state) => state.auth?.user);
   const isAdminUser = isFullAccessUser(authUser);
-  const isReviewOnlyL3Mode = isL3Mode;
+  const isReviewOnlyL3Mode = isEscalationReviewMode;
 
   const sourceTickets = Array.isArray(tickets)
     ? tickets

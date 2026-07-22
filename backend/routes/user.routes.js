@@ -10,11 +10,32 @@ const { Parser } = require("json2csv");
 const XLSX = require("xlsx");
 const saltRounds = 10;
 const dayjs = require("dayjs");
+const VALID_USER_LEVELS = ["L1", "L2", "L3", "L4", "L5"];
 const normalizeUserLevel = (value) => {
   const normalized = String(value || "").trim().toUpperCase();
-  if (normalized === "L3") return "L3";
-  if (normalized === "L2") return "L2";
-  return "L1";
+  return VALID_USER_LEVELS.includes(normalized) ? normalized : "L1";
+};
+
+// users.user_details.level has a CHECK constraint that predates L4/L5 -
+// without this, saving level='L4' or 'L5' fails at the database layer even
+// though normalizeUserLevel above now happily passes them through.
+let userLevelConstraintEnsured = false;
+const ensureUserLevelConstraintAllowsL4L5 = async () => {
+  if (userLevelConstraintEnsured) return;
+  await client.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'user_details_level_chk'
+      ) THEN
+        ALTER TABLE users.user_details DROP CONSTRAINT user_details_level_chk;
+      END IF;
+      ALTER TABLE users.user_details
+        ADD CONSTRAINT user_details_level_chk
+        CHECK (level IN ('L1', 'L2', 'L3', 'L4', 'L5'));
+    END $$;
+  `);
+  userLevelConstraintEnsured = true;
 };
 
 /**
@@ -181,6 +202,7 @@ router.get('/', async (req, res, next) => {
  */
 router.post('/add-user', async (req, res, next) => {
   try {
+    await ensureUserLevelConstraintAllowsL4L5();
     const {
       first_name,
       last_name,
@@ -412,6 +434,7 @@ router.patch('/change-password/:id', async (req, res, next) => {
  */
 router.patch('/:id', async (req, res, next) => {
   try {
+    await ensureUserLevelConstraintAllowsL4L5();
     const { id } = req.params;
     const {
       first_name,
@@ -873,7 +896,7 @@ const readBulkUploadRows = (filePath, originalName) => {
  *       - If `full_name` is provided and `first_name` is missing, name is split automatically.
  *       - `sub_department` (when present) is matched against rbac.departments; plain `department` is stored as top_department.
  *       - `employee_id` is auto-generated (name-derived letters + digits + special char, max 8 chars) when not supplied.
- *       - `level` is normalized to `L1` or `L2` (default `L1`).
+ *       - `level` is normalized to one of `L1`-`L5` (default `L1`).
  *       - `account_status` is normalized to `Active` / `Inactive` (default `Active`).
  *       - Per-row `password` is used if provided, otherwise defaults to `Password@123`.
  *       - Duplicate emails are skipped (`ON CONFLICT (email) DO NOTHING`).
@@ -914,6 +937,7 @@ const readBulkUploadRows = (filePath, originalName) => {
  */
 router.post("/bulk-upload", upload.single("file"), async (req, res, next) => {
   try {
+    await ensureUserLevelConstraintAllowsL4L5();
     if (!req.file) {
       return res.status(400).json({ message: "Upload file is required" });
     }
