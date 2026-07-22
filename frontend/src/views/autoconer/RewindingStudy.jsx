@@ -9,6 +9,8 @@ import {
 import { fetchAutoconerRewindingStudyMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
@@ -250,6 +252,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   const [form, setForm] = useState(createInitialForm);
   const [readingRows, setReadingRows] = useState([createBlankReadingRow()]);
   const [errors, setErrors] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
   const [portalReady, setPortalReady] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [dropdownMenuStyle, setDropdownMenuStyle] = useState(null);
@@ -267,6 +270,10 @@ const RewindingStudy = forwardRef(function RewindingStudy(
   });
   const effectiveEntryId = entryId || generatedEntryId;
   const drumNoOptions = useMemo(() => Array.from({ length: 120 }, (_, index) => String(index + 1)), []);
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     setPortalReady(true);
@@ -317,6 +324,7 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     setErrors({});
     setFormMessage("");
     setFormMessageIsError(false);
+    setCustomFieldValues({});
   };
 
   const buildPayload = () => {
@@ -462,6 +470,18 @@ const RewindingStudy = forwardRef(function RewindingStudy(
     if (saveAutoconerRewindingStudy.fulfilled.match(resultAction)) {
       dispatch(getAutoconerRewindingStudy({ page: 1, limit: 10 }));
       const successMessage = resultAction.payload?.message || "Inspection data entry saved successfully.";
+      const linkedEntryId = validationResult.payload?.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
       clear();
       setFormMessage(successMessage);
       setFormMessageIsError(false);
@@ -1184,6 +1204,14 @@ const RewindingStudy = forwardRef(function RewindingStudy(
       {rowDrumMenu}
       {summaryPortalTarget ? createPortal(summarySection, summaryPortalTarget) : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving rewinding study...</p> : null}
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Rewinding Study"
+        entryId={effectiveEntryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </>
   );
 });

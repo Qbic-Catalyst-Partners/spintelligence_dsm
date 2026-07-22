@@ -7,6 +7,8 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerDrumWiseMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "@/styles/drumWiseAppearance.module.css";
 import { sanitizeDrumRangeInput } from "@/utils/inputValidation";
 
@@ -99,6 +101,10 @@ function DrumWiseAppearance({
   const [rows, setRows] = useState([]);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
   const errorStyle = (flag) =>
     flag
       ? {
@@ -144,6 +150,7 @@ function DrumWiseAppearance({
     setRemarks("");
     setRows([]);
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -206,6 +213,20 @@ function DrumWiseAppearance({
 
       await dispatch(saveAutoconerDrumWise(payload)).unwrap();
       dispatch(getAutoconerDrumWise({ page: 1, limit: 10 }));
+
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
+
       return true;
     } catch {
       return false;
@@ -492,6 +513,14 @@ function DrumWiseAppearance({
       </div>
       {tablePortalTarget ? createPortal(appearanceSection, tablePortalTarget) : null}
       {summaryPortalTarget ? createPortal(summarySection, summaryPortalTarget) : null}
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Drum wise Appearance"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 }

@@ -15,14 +15,9 @@ const getFirstName = (fullName) => String(fullName || "").trim().split(/\s+/)[0]
 
 const DATE_RANGE_PRESETS = [
     { key: "today", label: "Today" },
-    { key: "yesterday", label: "Yesterday" },
-    { key: "dayBeforeYesterday", label: "Day Before Yesterday" },
-    { key: "weekly", label: "Weekly" },
-    { key: "biweekly", label: "Biweekly" },
-    { key: "monthly", label: "Monthly" },
-    { key: "bimonthly", label: "Bimonthly" },
-    { key: "quarterly", label: "Quarterly" },
-    { key: "yearly", label: "Yearly" },
+    { key: "thisWeek", label: "This Week" },
+    { key: "thisMonth", label: "This Month" },
+    { key: "thisYear", label: "This Year" },
 ];
 
 const toInputDateString = (date) => {
@@ -32,42 +27,29 @@ const toInputDateString = (date) => {
     return `${year}-${month}-${day}`;
 };
 
-// Presets are computed as [from, today] windows, not single days (aside from Today/Yesterday/
-// Day Before Yesterday themselves) — "Weekly" means "the last 7 days," matching how every other
-// date-range preset in this app behaves, not an ISO calendar week.
+// Each preset is a "period-to-date" window: the period start through today, not a full
+// preceding period — "This Week" means Monday of the current week through today, etc.
 const getDateRangeForPreset = (presetKey) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const daysAgo = (days) => {
-        const date = new Date(today);
-        date.setDate(date.getDate() - days);
-        return date;
-    };
-
     switch (presetKey) {
         case "today":
             return { from: today, to: today };
-        case "yesterday": {
-            const yesterday = daysAgo(1);
-            return { from: yesterday, to: yesterday };
+        case "thisWeek": {
+            const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0 ... Sunday = 6
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
+            return { from: startOfWeek, to: today };
         }
-        case "dayBeforeYesterday": {
-            const dayBefore = daysAgo(2);
-            return { from: dayBefore, to: dayBefore };
+        case "thisMonth": {
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            return { from: startOfMonth, to: today };
         }
-        case "weekly":
-            return { from: daysAgo(6), to: today };
-        case "biweekly":
-            return { from: daysAgo(13), to: today };
-        case "monthly":
-            return { from: daysAgo(29), to: today };
-        case "bimonthly":
-            return { from: daysAgo(59), to: today };
-        case "quarterly":
-            return { from: daysAgo(89), to: today };
-        case "yearly":
-            return { from: daysAgo(364), to: today };
+        case "thisYear": {
+            const startOfYear = new Date(today.getFullYear(), 0, 1);
+            return { from: startOfYear, to: today };
+        }
         default:
             return null;
     }
@@ -1534,7 +1516,7 @@ const SubmittedNotebooksPage = () => {
                         </select>
                     </label>
                     <label className={styles.filterField}>
-                        <small>Checked by</small>
+                        <small>{activeTab === "closed" ? "Checked by" : "Check by"}</small>
                         {isSupervisor ? (
                             <span className={styles.filterLocked}>{getFirstName(user?.full_name || user?.fullName || user?.name) || "You"}</span>
                         ) : (
@@ -1622,7 +1604,7 @@ const SubmittedNotebooksPage = () => {
                                 </span>
                                 <span className={styles.rowMeta}>
                                     <span className={styles.rowMetaItem}>
-                                        <small>Checked by</small>
+                                        <small>{activeTab === "closed" ? "Checked by" : "Check by"}</small>
                                         <strong>{getFirstName(item.supervisor)}</strong>
                                     </span>
                                     <span className={styles.rowMetaItem}>

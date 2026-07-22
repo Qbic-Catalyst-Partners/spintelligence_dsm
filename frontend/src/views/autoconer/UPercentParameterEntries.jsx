@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 import styles from "@/styles/uPercentParameterEntries.module.css";
 import { toNullableNumber } from "@/apis/autoconer";
@@ -225,6 +227,10 @@ function UPercentParameterEntries({
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
   const [selectedEntryId, setSelectedEntryId] = useState(null);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
   const { countOptions: masterCountOptions } = useAutoconerCountOptions();
   const countDropdownOptions = useMemo(
     () => {
@@ -326,6 +332,7 @@ function UPercentParameterEntries({
     setCountName("");
     setValues(createInitialValues());
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -399,6 +406,18 @@ function UPercentParameterEntries({
 
     const resultAction = await dispatch(saveAutoconerParameterEntriesOther(payload));
     if (saveAutoconerParameterEntriesOther.fulfilled.match(resultAction)) {
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
       return true;
     }
     return false;
@@ -681,6 +700,14 @@ function UPercentParameterEntries({
       </div>
 
       {portalTarget ? createPortal(pendingSection, portalTarget) : pendingSection}
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="U% Parameter Entries"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 }

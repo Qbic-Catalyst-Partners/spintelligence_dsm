@@ -2,10 +2,12 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import SearchableSelect from '@/components/SearchableSelect';
+import NotebookCustomFields from '@/components/NotebookCustomFields';
 import useMixingMasterVarieties from '@/hooks/useMixingMasterVarieties';
 import { submitCottonHVI, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
+import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
 import styles from '../../styles/cottonHVIDataEntry.module.css';
 
 const initialForm = {
@@ -27,6 +29,11 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     const handleChange = (field, value) => {
         const nextValue = NUMERIC_FIELDS.has(field)
@@ -94,6 +101,19 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         const payload = buildPayload(overrideEntryId);
         await dispatch(submitCottonHVI(payload)).unwrap();
 
+        const linkedEntryId = payload.entry_id;
+        const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+        if (linkedEntryId && customFieldEntries.length) {
+            try {
+                await saveNotebookCustomFieldValuesApi(
+                    linkedEntryId,
+                    customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                );
+            } catch (customFieldError) {
+                console.error("Failed to save custom field values:", customFieldError);
+            }
+        }
+
         try {
             await createThresholdViolationTickets({
                 department: "Quality Control",
@@ -130,6 +150,7 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         setFormData(initialForm);
         dispatch(clearMixingState());
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const getPreviewData = () => ([
@@ -295,6 +316,15 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
                 <CustomInput label="Colour Grade" placeholder="Enter Colour Grade"
                     value={formData.colourGrade} onChange={v => handleChange('colourGrade', v)} error={errors.colourGrade} />
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Mixing"
+                notebook="Cotton HVI Data Entry"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
         </>
     );

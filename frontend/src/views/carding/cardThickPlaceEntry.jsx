@@ -5,9 +5,11 @@ import { useDispatch, useSelector } from "react-redux";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { clearCardingState, submitCardingCardThickPlace } from "@/store/slices/carding";
 import { fetchCardingMasterMachines } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./cardThickPlaceEntry.module.css";
 
 const defaultMachines = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -46,6 +48,12 @@ function CardThickPlaceEntry({
     const [errors, setErrors] = useState({});
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+    const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     const stampNow = () => {
         const now = new Date();
@@ -138,6 +146,7 @@ function CardThickPlaceEntry({
     const handleClear = () => {
         resetFormFields();
         setShowSuccess(false);
+        setCustomFieldValues({});
     };
 
     const handleTypeSelect = (value) => {
@@ -217,8 +226,22 @@ function CardThickPlaceEntry({
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (nextEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        nextEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             await reserveEntryId?.();
             resetFormFields();
+            setCustomFieldValues({});
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");
             setIsError(true);
@@ -235,6 +258,10 @@ function CardThickPlaceEntry({
             { label: `${machine} (5m CV 1)`, value: machineValues[machine]?.cv1 || "-" },
             { label: `${machine} (5m CV 2)`, value: machineValues[machine]?.cv2 || "-" },
         ])),
+        ...customFieldDefs.map((field) => ({
+            label: field.field_label,
+            value: customFieldValues[field.id],
+        })),
     ];
 
     return (
@@ -318,6 +345,16 @@ function CardThickPlaceEntry({
 
             {showForm ? (
                 <>
+                    <NotebookCustomFields
+                        department="Quality Control"
+                        subDepartment="Carding"
+                        notebook="Thick place & CV"
+                        entryId={entryId}
+                        values={customFieldValues}
+                        onChange={handleCustomFieldChange}
+                        onFieldsLoaded={setCustomFieldDefs}
+                    />
+
                     {formMessage ? (
                         <div
                             className={`${styles["message-box"]} ${

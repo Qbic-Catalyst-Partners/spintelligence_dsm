@@ -1,0 +1,567 @@
+.page {
+    min-height: calc(100vh - 72px);
+    padding: 20px clamp(18px, 4vw, 54px) 44px;
+    background: #f4f6f9;
+    color: #111827;
+}
+
+.title {
+    margin: 0;
+    color: #111827;
+    font-size: 26px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.titleBar {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.filterBar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 14px;
+    width: 100%;
+}
+
+.tabSwitch {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: #e9edf3;
+}
+
+.tabButton {
+    min-width: 96px;
+    height: 34px;
+    padding: 0 18px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #667085;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.tabButtonActive {
+    background: #ffffff;
+    color: #111827;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
+.filterField {
+    display: grid;
+    gap: 4px;
+}
+
+.filterField small {
+    color: #7b8494;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.filterSelect {
+    min-width: 150px;
+    height: 34px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.emptyState {
+    width: 100%;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 28px;
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.creationCard {
+    width: 100%;
+    max-width: 560px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 24px 28px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+
+.creationCard h2 {
+    margin: 0 0 18px;
+    color: #111827;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.formField {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 16px;
+}
+
+.formField label {
+    color: #7b8494;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.formInput,
+.formSelect {
+    height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #111827;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.formHint {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.optionRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.optionRow .formInput {
+    flex: 1;
+}
+
+.addOptionButton,
+.removeOptionButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.addOptionButton {
+    border-color: #4056a8;
+    color: #4056a8;
+}
+
+.submitButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 130px;
+    min-height: 38px;
+    border: none;
+    border-radius: 6px;
+    background: #4056a8;
+    color: #ffffff;
+    padding: 0 20px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.submitButton:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.confirmNoButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 90px;
+    min-height: 38px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #334155;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.confirmNoButton:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.modalOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modalCard {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 22px 24px;
+    max-width: 360px;
+    width: 90%;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+}
+
+.modalTitle {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 800;
+    color: #111827;
+}
+
+.modalMessage {
+    margin: 0 0 18px;
+    font-size: 13px;
+    color: #475569;
+}
+
+.modalActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.confirmYesButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 90px;
+    min-height: 38px;
+    border: none;
+    border-radius: 6px;
+    background: #dc2626;
+    color: #ffffff;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.confirmYesButton:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.formSuccess {
+    margin: 0 0 16px;
+    color: #15803d;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.formError {
+    margin: 0 0 16px;
+    color: #dc2626;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.list {
+    display: grid;
+    gap: 8px;
+    max-width: 1180px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    min-height: 74px;
+    border: 1px solid #e5e9f0;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 14px 22px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+}
+
+.rowMain {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.rowMain strong {
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.15;
+    font-weight: 800;
+}
+
+.rowMain span {
+    color: #6b7280;
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 600;
+}
+
+.rowMeta {
+    display: grid;
+    grid-template-columns: 120px 130px auto auto;
+    align-items: center;
+    gap: 20px;
+}
+
+.rowMetaItem {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.rowMeta small {
+    color: #7b8494;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.rowMeta strong {
+    color: #111827;
+    font-size: 13px;
+    line-height: 1.1;
+    font-weight: 800;
+}
+
+.toggleSwitch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    border: none;
+    border-radius: 999px;
+    background: #cbd5e1;
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+.toggleSwitch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    transition: transform 0.18s ease;
+}
+
+.toggleSwitchActive {
+    background: #16a34a;
+}
+
+.toggleSwitchActive::after {
+    transform: translateX(20px);
+}
+
+.toggleSwitch:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.actionMenuWrap {
+    position: relative;
+}
+
+.actionMenuButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid #e5e9f0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.actionMenu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 20;
+    display: grid;
+    min-width: 120px;
+    border: 1px solid #e5e9f0;
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    overflow: hidden;
+}
+
+.actionMenuItem {
+    border: none;
+    background: transparent;
+    color: #334155;
+    padding: 9px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.actionMenuItem:hover {
+    background: #f1f5f9;
+}
+
+.actionMenuItemDanger {
+    color: #dc2626;
+}
+
+:global(:root[data-theme="dark"]) .page {
+    background: #0f172a;
+    color: #e5e7eb;
+}
+
+:global(:root[data-theme="dark"]) .title,
+:global(:root[data-theme="dark"]) .rowMain strong,
+:global(:root[data-theme="dark"]) .rowMeta strong,
+:global(:root[data-theme="dark"]) .creationCard h2 {
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .row,
+:global(:root[data-theme="dark"]) .creationCard,
+:global(:root[data-theme="dark"]) .emptyState {
+    border-color: #334155;
+    background: #111827;
+}
+
+:global(:root[data-theme="dark"]) .filterField small,
+:global(:root[data-theme="dark"]) .formField label {
+    color: #94a3b8;
+}
+
+:global(:root[data-theme="dark"]) .filterSelect,
+:global(:root[data-theme="dark"]) .formInput,
+:global(:root[data-theme="dark"]) .formSelect {
+    border-color: #334155;
+    background: #1f2937;
+    color: #e5e7eb;
+}
+
+:global(:root[data-theme="dark"]) .addOptionButton,
+:global(:root[data-theme="dark"]) .removeOptionButton {
+    border-color: #475569;
+    background: #1f2937;
+    color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) .rowMain span,
+:global(:root[data-theme="dark"]) .emptyState {
+    color: #94a3b8;
+}
+
+:global(:root[data-theme="dark"]) .actionMenuButton,
+:global(:root[data-theme="dark"]) .actionMenu {
+    border-color: #334155;
+    background: #111827;
+    color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) .actionMenuItem {
+    color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) .actionMenuItem:hover {
+    background: #1f2937;
+}
+
+:global(:root[data-theme="dark"]) .confirmNoButton {
+    border-color: #475569;
+    background: #1f2937;
+    color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) .modalCard {
+    background: #111827;
+}
+
+:global(:root[data-theme="dark"]) .modalTitle {
+    color: #e2e8f0;
+}
+
+:global(:root[data-theme="dark"]) .modalMessage {
+    color: #94a3b8;
+}
+
+@media (max-width: 860px) {
+    .filterBar {
+        gap: 10px;
+    }
+
+    .filterField {
+        flex: 1 1 140px;
+    }
+
+    .filterSelect {
+        width: 100%;
+    }
+
+    .row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .rowMeta {
+        width: 100%;
+        justify-content: space-between;
+        gap: 18px;
+    }
+
+    .creationCard {
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 520px) {
+    .page {
+        padding: 18px 14px 34px;
+    }
+
+    .title {
+        font-size: 22px;
+    }
+}

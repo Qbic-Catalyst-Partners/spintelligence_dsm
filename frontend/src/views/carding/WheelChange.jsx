@@ -8,12 +8,14 @@ import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import {
   fetchCardingChangeControlEntries,
   fetchCardingMasterMachines,
   submitCardingChangeControlEntry,
 } from "@/apis/carding";
 import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./cardingWheelChange.module.css";
 
 const CHANGE_CONTROL_TYPE = "Wheel Change";
@@ -196,6 +198,12 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   // in the pending table, so its Proposed values are shown (and will be
   // silently overwritten on the next submit).
   const [unapprovedEntry, setUnapprovedEntry] = useState(null);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const loadLatestSaved = async (mixingValue = "", machineValue = "") => {
     const baseParams = { page: 1, limit: 1 };
@@ -374,8 +382,12 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
         { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
       ]),
       { label: "Remarks", value: remarks || "-" },
+      ...customFieldDefs.map((field) => ({
+        label: field.field_label,
+        value: customFieldValues[field.id],
+      })),
     ],
-    [cdoNo, entryId, proposedCdgNos, remarks, selectedType, unapprovedEntry, values]
+    [cdoNo, entryId, proposedCdgNos, remarks, selectedType, unapprovedEntry, values, customFieldDefs, customFieldValues]
   );
 
   const clearError = (field) => {
@@ -490,6 +502,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setMixingUserPicked(false);
     lastLoadedMixingRef.current = "";
     lastLoadedMachineOnlyRef.current = "";
+    setCustomFieldValues({});
   };
 
   const handlePreview = () => {
@@ -500,9 +513,23 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setSubmitting(true);
     try {
       await submitCardingChangeControlEntry(buildPayload());
+
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (entryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            entryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       setShowPreview(false);
       setShowSuccess(true);
       setEntryDate(getTodayDate());
+      setCustomFieldValues({});
       await reserveEntryId?.();
       await loadLatestSaved(values.mixing?.existing || values.mixing?.proposed || "");
     } catch (error) {
@@ -746,6 +773,16 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
 
         {message ? <div className={styles.messageError}>{message}</div> : null}
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Carding"
+        notebook="WheelChange"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+        onFieldsLoaded={setCustomFieldDefs}
+      />
 
       <div className={styles.footerEdge}>
         <Footer

@@ -3,10 +3,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import { MdEditNote } from 'react-icons/md';
 import CustomInput from '@/components/CustomInput';
 import SearchableSelect from '@/components/SearchableSelect';
+import NotebookCustomFields from '@/components/NotebookCustomFields';
 import useMixingMasterVarieties from '@/hooks/useMixingMasterVarieties';
 import { submitMoisture, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
+import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
 import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
@@ -19,6 +21,11 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
     const [formData, setFormData] = useState(initialForm);
     const [moistureValues, setMoistureValues] = useState(Array(10).fill(''));
     const [errors, setErrors] = useState({});
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     const handleChange = (field, value) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
@@ -98,7 +105,21 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
     });
 
     const handleSubmit = async () => {
-        await dispatch(submitMoisture(buildPayload())).unwrap();
+        const payload = buildPayload();
+        await dispatch(submitMoisture(payload)).unwrap();
+
+        const linkedEntryId = payload.entry_id;
+        const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+        if (linkedEntryId && customFieldEntries.length) {
+            try {
+                await saveNotebookCustomFieldValuesApi(
+                    linkedEntryId,
+                    customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                );
+            } catch (customFieldError) {
+                console.error("Failed to save custom field values:", customFieldError);
+            }
+        }
 
         try {
             await createThresholdViolationTickets({
@@ -130,6 +151,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
         setMoistureValues(Array(10).fill(''));
         dispatch(clearMixingState());
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const getPreviewData = () => ([
@@ -251,6 +273,15 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
                     />
                 </div>
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Mixing"
+                notebook="Moisture Data Entry"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
         </>
     );

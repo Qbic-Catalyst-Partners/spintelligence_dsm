@@ -7,6 +7,8 @@ import {
   saveAutoconerConePackingAudit,
 } from "@/store/slices/autoconer";
 import { fetchAutoconerConePackingAuditMasterData, toNullableNumber } from "@/apis/autoconer";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
@@ -104,6 +106,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   );
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const [customFieldValues, setCustomFieldValues] = useState({});
   const auditRows = useMemo(() => {
     const grossWeight = toNullableNumber(form.grossWtAct);
     const average = toNullableNumber(String(form.netWeight).replace(/,/g, ""));
@@ -127,6 +130,10 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
     setPortalReady(true);
   }, []);
 
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
+
   const handleFormChange = (field, value) => {
     const nextValue = formFieldSanitizers[field] ? formFieldSanitizers[field](value) : value;
     setForm((current) => ({ ...current, [field]: nextValue }));
@@ -141,6 +148,7 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const clear = () => {
     setForm(createInitialForm());
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -197,10 +205,23 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
   const submit = async () => {
     if (!validate()) return false;
 
-    const resultAction = await dispatch(saveAutoconerConePackingAudit(buildPayload()));
+    const payload = buildPayload();
+    const resultAction = await dispatch(saveAutoconerConePackingAudit(payload));
 
     if (saveAutoconerConePackingAudit.fulfilled.match(resultAction)) {
       dispatch(getAutoconerConePackingAudit({ page: 1, limit: 10 }));
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
       return true;
     }
 
@@ -456,6 +477,14 @@ const ConePackingAudit = forwardRef(function ConePackingAudit(
       </div>
       {portalTarget ? createPortal(lowerSection, portalTarget) : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving cone packing audit...</p> : null}
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Cone Packing Audit"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </>
   );
 });

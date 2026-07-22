@@ -1,12 +1,14 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { fetchSimplexMachineMaster } from "@/apis/simplex";
 import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import {
   getSimplexCotsChangeEntries,
   submitSimplexCotsChange,
 } from "@/store/slices/simplex";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const detailItems = [
   "Front Cots Damage",
@@ -57,6 +59,11 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
   const [details, setDetails] = useState(createDetailRows);
   const [errors, setErrors] = useState({});
   const [machineOptions, setMachineOptions] = useState(createSmxMachineOptions);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -133,6 +140,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
     });
     setDetails(createDetailRows());
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -175,6 +183,20 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
 
     if (submitSimplexCotsChange.fulfilled.match(resultAction)) {
       dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
+
+      const linkedEntryId = entryId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       return true;
     }
 
@@ -273,6 +295,15 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
         </div>
       </div>
       {isLoading ? <p style={{ marginTop: "12px", color: "#2563eb" }}>Saving...</p> : null}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Simplex"
+        notebook="SMXCots Change Data Entry"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 });

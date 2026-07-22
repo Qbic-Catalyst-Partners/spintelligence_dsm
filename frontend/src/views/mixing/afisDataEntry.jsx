@@ -2,10 +2,12 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import SearchableSelect from '@/components/SearchableSelect';
+import NotebookCustomFields from '@/components/NotebookCustomFields';
 import useMixingMasterVarieties from '@/hooks/useMixingMasterVarieties';
 import { submitAfis, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
+import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
 import styles from '../../styles/afisDataEntery.module.css';
 
 const initialForm = {
@@ -26,6 +28,11 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useMixingMasterVarieties();
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     const handleChange = (field, value) => {
         const nextValue = NUMERIC_FIELDS.has(field)
@@ -83,7 +90,21 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
     });
 
     const handleSubmit = async () => {
-        await dispatch(submitAfis(buildPayload())).unwrap();
+        const payload = buildPayload();
+        await dispatch(submitAfis(payload)).unwrap();
+
+        const linkedEntryId = payload.entry_id;
+        const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+        if (linkedEntryId && customFieldEntries.length) {
+            try {
+                await saveNotebookCustomFieldValuesApi(
+                    linkedEntryId,
+                    customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                );
+            } catch (customFieldError) {
+                console.error("Failed to save custom field values:", customFieldError);
+            }
+        }
 
         try {
             await createThresholdViolationTickets({
@@ -112,6 +133,7 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
         setFormData(initialForm);
         dispatch(clearMixingState());
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const getPreviewData = () => ([
@@ -302,6 +324,15 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                     error={errors.scnGms}
                 />
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Mixing"
+                notebook="AFIS Data Entry"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
         </>
     );

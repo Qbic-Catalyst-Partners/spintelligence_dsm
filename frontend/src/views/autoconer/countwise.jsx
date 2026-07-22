@@ -6,6 +6,8 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerCountWiseCutsMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "@/styles/countwise.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -135,6 +137,10 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
   const [frameNo, setFrameNo] = useState("");
   const [metrics, setMetrics] = useState(createInitialMetrics());
   const [errors, setErrors] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
   const errorStyle = (flag) =>
     flag
       ? {
@@ -167,6 +173,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     setFrameNo("");
     setMetrics(createInitialMetrics());
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -250,6 +257,20 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
 
       await dispatch(saveAutoconerCountWiseCuts(payload)).unwrap();
       dispatch(getAutoconerCountWiseCuts());
+
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
+
       return true;
     } catch {
       return false;
@@ -417,6 +438,14 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
           </div>
         ))}
       </div>
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Count Wise Cuts Record"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 }

@@ -92,6 +92,7 @@ const ticketingLinks = [
 ];
 const managementHubLinks = [
     { href: "/submitted-notebooks", label: "Submitted Notebooks" },
+    { href: "/new-field-creation", label: "New Field Creation" },
     { href: "/activity-log", label: "Activity Log" },
     {
         label: "WC Approvals",
@@ -293,6 +294,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         if (href === "/submitted-notebooks") {
             return currentPath === "/submitted-notebooks";
+        }
+
+        if (href === "/new-field-creation") {
+            return currentPath === "/new-field-creation";
         }
 
         if (href === "/submitted-notebook-threshold") {
@@ -523,6 +528,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         );
         setIsManagementHubOpen(
             currentPath === "/submitted-notebooks" ||
+            currentPath === "/new-field-creation" ||
             currentPath === "/activity-log" ||
             currentPath === "/wheel-change-approvals" ||
             currentPath === "/drawframe-wheel-change-approvals" ||

@@ -6,6 +6,8 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerLycraCheckingMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "@/styles/lycraChecking.module.css";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
@@ -49,6 +51,10 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
   const [totalWeight, setTotalWeight] = useState("");
   const [generatedRows, setGeneratedRows] = useState([]);
   const [errors, setErrors] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
   const errorStyle = (flag) =>
     flag
       ? {
@@ -122,6 +128,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     setTotalWeight("");
     setGeneratedRows([]);
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -193,6 +200,20 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
 
       await dispatch(saveAutoconerLycraChecking(payload)).unwrap();
       dispatch(getAutoconerLycraChecking());
+
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
+
       return true;
     } catch {
       return false;
@@ -389,6 +410,15 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
           </table>
         </div>
       )}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Lycra% Checking"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 }

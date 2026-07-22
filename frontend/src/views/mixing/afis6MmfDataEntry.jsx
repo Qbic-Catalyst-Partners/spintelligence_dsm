@@ -1,8 +1,10 @@
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { FaUpload } from "react-icons/fa";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { submitAfis6Mmf, clearMixingState } from "@/store/slices/mixing";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "../../styles/cottonHVIDataEntry.module.css";
 
 const NUMERIC_FIELDS = [
@@ -32,6 +34,11 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
   const user = useSelector((state) => state.auth?.user);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     if (actionSuccess) {
@@ -74,7 +81,22 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
   });
 
   const handleSubmit = async () => {
-    await dispatch(submitAfis6Mmf(buildPayload())).unwrap();
+    const payload = buildPayload();
+    await dispatch(submitAfis6Mmf(payload)).unwrap();
+
+    const linkedEntryId = payload.entry_id;
+    const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+    if (linkedEntryId && customFieldEntries.length) {
+      try {
+        await saveNotebookCustomFieldValuesApi(
+          linkedEntryId,
+          customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+        );
+      } catch (customFieldError) {
+        console.error("Failed to save custom field values:", customFieldError);
+      }
+    }
+
     return true;
   };
 
@@ -82,6 +104,7 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
     setFormData(EMPTY_FORM);
     setErrors({});
     dispatch(clearMixingState());
+    setCustomFieldValues({});
   };
 
   const getPreviewData = () => [
@@ -201,6 +224,15 @@ const Afis6MmfDataEntry = forwardRef(function Afis6MmfDataEntry(
         {renderField(NUMERIC_FIELDS[8])}
         {renderField(NUMERIC_FIELDS[9])}
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Mixing"
+        notebook="AFIS-6 MMF Data Entry"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 });

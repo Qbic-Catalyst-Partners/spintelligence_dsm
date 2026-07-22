@@ -2,11 +2,13 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import {
   fetchSpinningWheelChangeDropdown,
   fetchSpinningWheelChangeLatestRecord,
 } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
@@ -830,6 +832,26 @@ const WheelChange = forwardRef(function WheelChange(
 ) {
   const user = useSelector((state) => state.auth?.user);
   const operatorName = getTextValue(user?.name || user?.full_name || user?.user_name || user?.username || "");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
+
+  const saveCustomFields = async (linkedEntryId) => {
+    const targetEntryId = linkedEntryId || entryId;
+    const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+    if (!targetEntryId || !customFieldEntries.length) return;
+    try {
+      await saveNotebookCustomFieldValuesApi(
+        targetEntryId,
+        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+      );
+    } catch (customFieldError) {
+      console.error("Failed to save custom field values:", customFieldError);
+    }
+  };
+
   const [wheelChangeType, setWheelChangeType] = useState("");
   const [machineNumber, setMachineNumber] = useState("");
   const [testNo, setTestNo] = useState("");
@@ -1256,6 +1278,7 @@ const WheelChange = forwardRef(function WheelChange(
     setErrors({});
     setUnapprovedEntry(null);
     setCountFromUserPicked(false);
+    setCustomFieldValues({});
     lastLoadedVarietyRef.current = "";
     lastLoadedMachineOnlyRef.current = "";
     if (typeof window !== "undefined") {
@@ -1389,8 +1412,18 @@ const WheelChange = forwardRef(function WheelChange(
   useImperativeHandle(ref, () => ({
     clear,
     validate,
-    getPayload,
+    getPayload: (...args) => {
+      const payload = getPayload(...args);
+      // getPayload is called by the parent right before it submits this
+      // entry, so this is the closest available hook to "on save" for a
+      // component that delegates the actual submit call upward. Custom
+      // field values are saved as a side effect keyed off the same
+      // entry_id the parent is about to submit with.
+      saveCustomFields(payload?.entry_id);
+      return payload;
+    },
     getPreviewData,
+    saveCustomFields,
   }));
 
   const renderControl = (row, column) => {
@@ -1602,6 +1635,15 @@ const WheelChange = forwardRef(function WheelChange(
             </tbody>
           </table>
         </div>
+
+        <NotebookCustomFields
+          department="Quality Control"
+          subDepartment="Spinning"
+          notebook="Wheel Change"
+          entryId={entryId}
+          values={customFieldValues}
+          onChange={handleCustomFieldChange}
+        />
       </div>
     </>
   );

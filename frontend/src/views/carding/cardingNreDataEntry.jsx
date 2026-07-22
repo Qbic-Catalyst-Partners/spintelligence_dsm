@@ -6,9 +6,11 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { clearCardingState, submitCardingNre } from "@/store/slices/carding";
 import { fetchCardingMasterMachines } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./cardThickPlaceEntry.module.css";
 
 const MACHINE_MODEL_OPTIONS = ["DK803", "DK903", "TC03", "DK800", "TC05", "TC06", "TC10", "TC26I"];
@@ -58,6 +60,12 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
     const [isError, setIsError] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+    const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     useEffect(() => {
         const loadMachines = async () => {
@@ -117,6 +125,7 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
     const handleClear = () => {
         resetForm();
         setShowSuccess(false);
+        setCustomFieldValues({});
     };
 
     const validateForm = () => {
@@ -183,8 +192,22 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (nextEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        nextEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             await reserveEntryId?.();
             resetForm();
+            setCustomFieldValues({});
         } catch (submitError) {
             setFormMessage(submitError || "Error submitting data.");
             setIsError(true);
@@ -207,6 +230,10 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
         { label: "Fibre Nep / Gms card mat", value: formData.fibreNepGmsCardMat || "-" },
         { label: "Fibre Nep / Gms in Silver", value: formData.fibreNepGmsSilver || "-" },
         { label: "Carding NRE%", value: formData.cardingNrePercent || "-" },
+        ...customFieldDefs.map((field) => ({
+            label: field.field_label,
+            value: customFieldValues[field.id],
+        })),
     ];
 
     const fieldClass = (name) => (errors[name] ? styles["field-error"] : "");
@@ -363,6 +390,16 @@ function CardingNreDataEntry({ types, selectedType, onTypeChange, entryId = "", 
                     </div>
                 </div>
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Carding"
+                notebook="Carding NRE%"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+                onFieldsLoaded={setCustomFieldDefs}
+            />
 
             {formMessage ? (
                 <div className={`${styles["message-box"]} ${isError ? styles["message-error"] : styles["message-success"]}`}>

@@ -6,6 +6,8 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import useBlowroomMasterVarieties from "@/hooks/useBlowroomMasterVarieties";
 import { fetchOpennessMachineOptions } from "@/apis/mixing";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./lapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -35,7 +37,12 @@ const BetweenLapCVDataEntry = forwardRef(function BetweenLapCVDataEntry(
     const [errors, setErrors] = useState({});
     const [machineOptions, setMachineOptions] = useState([]);
     const [portalReady, setPortalReady] = useState(false);
+    const [customFieldValues, setCustomFieldValues] = useState({});
     const { varietyOptions } = useBlowroomMasterVarieties();
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     useEffect(() => {
         setPortalReady(true);
@@ -76,6 +83,7 @@ const BetweenLapCVDataEntry = forwardRef(function BetweenLapCVDataEntry(
         setVariety("");
         setStats(defaultStats);
         setErrors({});
+        setCustomFieldValues({});
     };
 
     useEffect(() => {
@@ -183,6 +191,19 @@ const BetweenLapCVDataEntry = forwardRef(function BetweenLapCVDataEntry(
 
     const handleSubmit = async () => {
         await dispatch(saveBlowroomBetweenLapCv(buildPayload())).unwrap();
+
+        const linkedEntryId = entryId;
+        const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+        if (linkedEntryId && customFieldEntries.length) {
+            try {
+                await saveNotebookCustomFieldValuesApi(
+                    linkedEntryId,
+                    customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                );
+            } catch (customFieldError) {
+                console.error("Failed to save custom field values:", customFieldError);
+            }
+        }
     };
 
     const getPreviewData = () => {
@@ -324,6 +345,15 @@ const BetweenLapCVDataEntry = forwardRef(function BetweenLapCVDataEntry(
                     ))}
                 </div>
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Blow Room"
+                notebook="B/R Between Lap CV%"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
         </div>
     );
 

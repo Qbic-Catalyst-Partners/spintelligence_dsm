@@ -2,12 +2,14 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { useSelector } from "react-redux";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import {
   fetchDrawFrameCotsMachineMaster,
   fetchDrawFrameUqcMasterDropdown,
 } from "@/apis/draw-frame";
 import { fetchDrawFrameWheelChangeEntries } from "@/apis/drawFrameWheelChange";
 import { sanitizeBlendPercentInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "@/styles/drawFrameWheelChange.module.css";
 import draftUtils from "@/views/draw-frame/draftUtils";
 
@@ -1372,6 +1374,25 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   const [machineOptions, setMachineOptions] = useState([]);
   const [date, setDate] = useState(getTodayDate);
   const [values, setValues] = useState(createValues);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
+
+  const saveCustomFields = async (linkedEntryId) => {
+    const targetEntryId = linkedEntryId || entryId;
+    const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+    if (!targetEntryId || !customFieldEntries.length) return;
+    try {
+      await saveNotebookCustomFieldValuesApi(
+        targetEntryId,
+        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+      );
+    } catch (customFieldError) {
+      console.error("Failed to save custom field values:", customFieldError);
+    }
+  };
   const [errors, setErrors] = useState({});
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [mixingOptions, setMixingOptions] = useState([]);
@@ -2015,6 +2036,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     setErrors({});
     setUnapprovedEntry(null);
     setMixingUserPicked(false);
+    setCustomFieldValues({});
     lastLoadedMixingRef.current = "";
     lastLoadedMachineOnlyRef.current = "";
     if (typeof window !== "undefined") {
@@ -2134,9 +2156,19 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
   useImperativeHandle(ref, () => ({
     clear,
     validate,
-    getPayload,
+    getPayload: (...args) => {
+      const payload = getPayload(...args);
+      // getPayload is called by the parent right before it submits this
+      // entry, so this is the closest available hook to "on save" for a
+      // component that delegates the actual submit call upward. Custom
+      // field values are saved as a side effect keyed off the same
+      // entry_id the parent is about to submit with.
+      saveCustomFields(payload?.entry_id);
+      return payload;
+    },
     getPreviewData,
     loadLatestSaved,
+    saveCustomFields,
   }));
 
   const renderControl = (row, column) => {
@@ -2408,6 +2440,15 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
             </tbody>
           </table>
         </div>
+
+        <NotebookCustomFields
+          department="Quality Control"
+          subDepartment="Draw Frame"
+          notebook="Wheel Change"
+          entryId={entryId}
+          values={customFieldValues}
+          onChange={handleCustomFieldChange}
+        />
       </div>
     </>
   );
