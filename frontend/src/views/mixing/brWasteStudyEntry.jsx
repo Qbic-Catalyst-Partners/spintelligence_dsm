@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 're
 import { useDispatch, useSelector } from 'react-redux';
 import CustomInput from '@/components/CustomInput';
 import SearchableSelect from '@/components/SearchableSelect';
+import NotebookCustomFields from '@/components/NotebookCustomFields';
 import useBlowroomMasterVarieties from '@/hooks/useBlowroomMasterVarieties';
 import useBlowroomMasterWasteTypes from '@/hooks/useBlowroomMasterWasteTypes';
 import { saveBlowroomBrWaste, resetState } from '@/store/slices/blowroomSlice';
 import { saveBlowroomMasterWasteType } from '@/apis/blowroom';
 import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
+import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
 import styles from '@/styles/brWasteStudyEntry.module.css';
 
 const TYPE_3_COLUMNS = [
@@ -173,7 +175,12 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     const { success } = useSelector((state) => state.blowroom ?? DEFAULT_BLOWROOM_STATE);
     const [formData, setFormData] = useState(initialForm);
     const [errors, setErrors] = useState({});
+    const [customFieldValues, setCustomFieldValues] = useState({});
     const [localSubmitTick, setLocalSubmitTick] = useState(0);
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
     const [machineOptions, setMachineOptions] = useState([]);
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
     const {
@@ -576,6 +583,20 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             } else {
                 await dispatch(saveBlowroomBrWaste(payload)).unwrap();
             }
+
+            const linkedEntryId = entryId;
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (linkedEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        linkedEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             return true;
         } catch (error) {
             throw error;
@@ -597,6 +618,7 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             dispatch(resetState());
         }
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const validate = () => {
@@ -1082,6 +1104,15 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                     </div>
                 </>
             )}
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Blow Room"
+                notebook="BR Waste Study Entry"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
         </>
     );

@@ -4,8 +4,10 @@ import { useDispatch, useSelector } from "react-redux";
 import { clearComberState, submitComberRibbonLapCV } from "@/store/slices/comber";
 import Footer from "@/components/Footer";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { fetchComberMasterVarieties, fetchComberRibbonLapMasterMcNos } from "@/apis/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const defaultSampleCount = 5;
@@ -53,6 +55,11 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
     const [errors, setErrors] = useState({});
     const [machineOptions, setMachineOptions] = useState([]);
     const [varietyOptions, setVarietyOptions] = useState(["Cotton", "Polyester", "PC Blend"]);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     const isCVEntry = selectedType === "Ribbon Lap CV1M Data Entry";
 
@@ -127,6 +134,7 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         setStats(defaultStats);
         setFormMessage("");
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const handleGenerate = () => {
@@ -252,8 +260,23 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
         if (!valid) return false;
 
         try {
-            await dispatch(submitComberRibbonLapCV(buildPayload())).unwrap();
+            const payload = buildPayload();
+            await dispatch(submitComberRibbonLapCV(payload)).unwrap();
             setErrors({});
+
+            const linkedEntryId = payload.entry_id;
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (linkedEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        linkedEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             return true;
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save comber data.");
@@ -510,6 +533,15 @@ const RibbonLapCVDataEntry = forwardRef(function RibbonLapCVDataEntry(
                             </div>
                         </div>
                     </div>
+
+                    <NotebookCustomFields
+                        department="Quality Control"
+                        subDepartment="Comber"
+                        notebook="Ribbon Lap CV1M Data Entry"
+                        entryId={entryId}
+                        values={customFieldValues}
+                        onChange={handleCustomFieldChange}
+                    />
                 </>
             ) : null}
         </>

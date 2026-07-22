@@ -7,6 +7,8 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerSpliceStrengthMasterData } from "@/apis/autoconer";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "@/styles/spliceStrength.module.css";
 import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
@@ -109,6 +111,10 @@ function SpliceStrength({
   const [generatedRows, setGeneratedRows] = useState([]);
   const [errors, setErrors] = useState({});
   const [portalReady, setPortalReady] = useState(false);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
   const errorStyle = (flag) =>
     flag
       ? {
@@ -200,6 +206,7 @@ function SpliceStrength({
     setReadingCount("");
     setGeneratedRows([]);
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -268,6 +275,20 @@ function SpliceStrength({
 
       await dispatch(saveAutoconerSpliceStrength(payload)).unwrap();
       dispatch(getAutoconerSpliceStrength({ page: 1, limit: 10 }));
+
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
+
       await reserveEntryId();
       return true;
     } catch {
@@ -627,6 +648,14 @@ function SpliceStrength({
         </table>
       </div>
       {summaryPortalTarget ? createPortal(summarySection, summaryPortalTarget) : null}
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Splice Strength"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 }

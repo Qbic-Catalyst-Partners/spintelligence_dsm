@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import {
     fetchCardingMasterMachines,
@@ -12,6 +13,7 @@ import {
     fetchTrialsSpinningMachines,
     submitTrialsDataEntry,
 } from "@/apis/carding";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useCardingCountOptions from "@/hooks/useCardingCountOptions";
 import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import styles from "./trialsDataEntry.module.css";
@@ -136,6 +138,12 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
     const [cardingMachineOptions, setCardingMachineOptions] = useState([]);
     const [machinesLoading, setMachinesLoading] = useState(false);
     const [machinesError, setMachinesError] = useState("");
+    const [customFieldValues, setCustomFieldValues] = useState({});
+    const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
     const { countOptions, countOptionsError, loadingCountOptions } = useCardingCountOptions("trials");
     const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("trials");
     const countNameOptions = countOptions.map((option) => option.count_name || option.label || option.value).filter(Boolean);
@@ -355,6 +363,19 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         try {
             const payload = buildTrialsPayload();
             await submitTrialsDataEntry(payload);
+
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (entryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        entryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             setFormMessage("");
             setIsError(false);
             setShowSuccess(true);
@@ -373,6 +394,10 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
         ...requiredFields.map((field) => ({
             label: field,
             value: formData[field],
+        })),
+        ...customFieldDefs.map((field) => ({
+            label: field.field_label,
+            value: customFieldValues[field.id],
         })),
     ];
 
@@ -663,6 +688,16 @@ function TrialDepartment({ types = [], selectedType = "", onTypeChange = () => {
                     </div>
                 </>
             )}
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Individual Card Performance"
+                notebook="Individual Card Performance Data"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+                onFieldsLoaded={setCustomFieldDefs}
+            />
 
             {formMessage ? (
                 <div className={`${styles.messageBox} ${isError ? styles.messageError : styles.messageSuccess}`}>

@@ -2,9 +2,11 @@ import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import CustomInput from "@/components/CustomInput";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import styles from "@/styles/opennessDataEntry.module.css";
 import { mixingOpennessDataEntry } from "@/apis/mixing";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const MACHINE_NAME_OPTIONS = [
   "Circular Bale Pulker",
@@ -100,6 +102,11 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
   const [stages, setStages] = useState([]);
   const [overallOpen, setOverallOpen] = useState("");
   const [errors, setErrors] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const handleFormChange = (field, value) => {
     const nextValue = field === "entries" ? sanitizeIntegerInput(value, 9) : value;
@@ -257,6 +264,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     setStages([]);
     setOverallOpen("");
     setErrors({});
+    setCustomFieldValues({});
   };
 
   const buildPayload = () => ({
@@ -283,7 +291,22 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
 
   const handleSubmit = async () => {
     try {
-      await mixingOpennessDataEntry(buildPayload());
+      const payload = buildPayload();
+      await mixingOpennessDataEntry(payload);
+
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       handleClear();
       onSubmitSuccess?.();
     } catch (error) {
@@ -473,6 +496,15 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
           <input className={styles.overallInput} value={overallOpen} readOnly />
         </div>
       )}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Mixing"
+        notebook="Openness Data Entry"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 });

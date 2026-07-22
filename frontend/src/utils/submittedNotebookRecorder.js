@@ -50,11 +50,14 @@ const removeL1ApprovalFields = (value = {}) => {
   );
 };
 
-const normalizeMatchValue = (value) =>
+// Threshold rows are matched by punctuation/whitespace-insensitive comparison so entry-screen
+// labels ("Cotton HVI Data Entry") still match config rows saved with slightly different
+// spacing/casing/punctuation ("cotton-hvi data entry").
+const normalizeLooseMatchValue = (value) =>
   String(value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ");
+    .replace(/[^a-z0-9]+/g, "");
 
 const getActiveValue = (item) => item?.is_active ?? item?.isActive ?? true;
 
@@ -71,19 +74,39 @@ const getThresholdScreenName = (item) =>
 const findAcknowledgementThreshold = async ({ department, subDepartment, notebookName, inputScreen }) => {
   try {
     const thresholds = await fetchNotebookAcknowledgementThresholdsAPI();
-    const departmentKey = normalizeMatchValue(department);
-    const subDepartmentKey = normalizeMatchValue(subDepartment);
-    const screenKeys = [notebookName, inputScreen].map(normalizeMatchValue).filter(Boolean);
+    const activeThresholds = thresholds.filter(getActiveValue);
 
-    return thresholds.find((item) => {
-      const itemScreen = normalizeMatchValue(getThresholdScreenName(item));
-      return (
-        getActiveValue(item) &&
-        normalizeMatchValue(item?.department) === departmentKey &&
-        normalizeMatchValue(item?.sub_department || item?.subDepartment || item?.sub_department_name || item?.subDepartmentName) === subDepartmentKey &&
-        screenKeys.includes(itemScreen)
+    const departmentKey = normalizeLooseMatchValue(department);
+    const subDepartmentKey = normalizeLooseMatchValue(subDepartment);
+    const screenKeys = [notebookName, inputScreen].map(normalizeLooseMatchValue).filter(Boolean);
+
+    const matchesScreen = (item) => screenKeys.includes(normalizeLooseMatchValue(getThresholdScreenName(item)));
+    const itemDepartmentKey = (item) => normalizeLooseMatchValue(item?.department);
+    const itemSubDepartmentKey = (item) =>
+      normalizeLooseMatchValue(
+        item?.sub_department || item?.subDepartment || item?.sub_department_name || item?.subDepartmentName
       );
-    }) || null;
+
+    // Exact department + sub-department + screen match first, then progressively relax:
+    // a threshold row left with no department/sub-department configured is treated as
+    // applying to any department/sub-department for that screen, rather than never matching.
+    const exactMatch = activeThresholds.find(
+      (item) =>
+        matchesScreen(item) &&
+        itemDepartmentKey(item) === departmentKey &&
+        itemSubDepartmentKey(item) === subDepartmentKey
+    );
+    if (exactMatch) return exactMatch;
+
+    const departmentOnlyMatch = activeThresholds.find(
+      (item) => matchesScreen(item) && itemDepartmentKey(item) === departmentKey && !itemSubDepartmentKey(item)
+    );
+    if (departmentOnlyMatch) return departmentOnlyMatch;
+
+    const screenOnlyMatch = activeThresholds.find(
+      (item) => matchesScreen(item) && !itemDepartmentKey(item) && !itemSubDepartmentKey(item)
+    );
+    return screenOnlyMatch || null;
   } catch (error) {
     console.warn("Submitted notebook acknowledgement threshold could not be resolved.", error?.message);
     return null;

@@ -5,10 +5,12 @@ import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { clearCardingState, submitCardingNati } from "@/store/slices/carding";
 import { fetchCardingMasterMachines, fetchCardingMasterVarieties } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./natiDataEntry.module.css";
 
 const emptyCardingState = {
@@ -41,6 +43,12 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
     const [isMobile, setIsMobile] = useState(false);
     const [varietyOptions, setVarietyOptions] = useState([]);
     const [mcNoOptions, setMcNoOptions] = useState([]);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+    const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
@@ -142,6 +150,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
         setErrors({});
         setShowPreview(false);
         setShowSuccess(false);
+        setCustomFieldValues({});
     };
 
     const buildPayload = () => ({
@@ -209,6 +218,19 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (nextEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        nextEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             await reserveEntryId?.();
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save nati data.");
@@ -227,6 +249,10 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             { label: `Row ${index + 1} Ratio 0.7`, value: entry.ratio_size_07 },
             { label: `Row ${index + 1} Ratio 0.5`, value: entry.ratio_size_05 },
         ])),
+        ...customFieldDefs.map((field) => ({
+            label: field.field_label,
+            value: customFieldValues[field.id],
+        })),
     ];
 
     return (
@@ -360,6 +386,16 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
 
             {showForm && (
                 <>
+                    <NotebookCustomFields
+                        department="Quality Control"
+                        subDepartment="Carding"
+                        notebook="Nati Data Entry"
+                        entryId={entryId}
+                        values={customFieldValues}
+                        onChange={handleCustomFieldChange}
+                        onFieldsLoaded={setCustomFieldDefs}
+                    />
+
                     {formMessage ? (
                         <div className={`${styles["message-box"]} ${error ? styles["message-error"] : styles["message-success"]}`}>
                             {formMessage}

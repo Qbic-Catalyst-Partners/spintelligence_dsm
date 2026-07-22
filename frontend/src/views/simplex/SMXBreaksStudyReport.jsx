@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSimplexStudyMachineNames } from "@/apis/simplex";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import { submitSimplexStudyReport } from "@/store/slices/simplex";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -156,6 +158,11 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
   const [portalReady, setPortalReady] = useState(false);
   const [simplexNoOptions, setSimplexNoOptions] = useState([]);
   const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("simplex");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     setPortalReady(true);
@@ -325,6 +332,7 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     setForm(createInitialForm());
     setBreakMatrix(createInitialBreakMatrix());
     setErrors({ form: {}, matrix: {} });
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -621,6 +629,19 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
     const resultAction = await dispatch(submitSimplexStudyReport(buildStudyPayload()));
 
     if (submitSimplexStudyReport.fulfilled.match(resultAction)) {
+      const linkedEntryId = entryId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       clear();
       return true;
     }
@@ -690,6 +711,15 @@ const SMXBreaksStudyReport = forwardRef(function SMXBreaksStudyReport(
 
       {portalTarget ? createPortal(tableSection, portalTarget) : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving study report...</p> : null}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Simplex"
+        notebook="SMX Breaks Study Report"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </>
   );
 });

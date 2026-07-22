@@ -8,6 +8,8 @@ import {
 } from "@/store/slices/autoconer";
 import { fetchAutoconerConeDensityMasterData as fetchConeDensityMasterData } from "@/apis/autoconer";
 import { toNullableNumber } from "@/apis/autoconer";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { sanitizeDrumRangeInput, sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 
 const today = new Date().toISOString().split("T")[0];
@@ -206,6 +208,7 @@ const ConeDensity = forwardRef(function ConeDensity(
   const [readingRows, setReadingRows] = useState([]);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
   const [countOptions, setCountOptions] = useState(countNameOptions);
   const [autoconerOptions, setAutoconerOptions] = useState(autoConerOptions);
   const [portalReady, setPortalReady] = useState(false);
@@ -213,6 +216,10 @@ const ConeDensity = forwardRef(function ConeDensity(
   useEffect(() => {
     setPortalReady(true);
   }, []);
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const allDrumHeaders = useMemo(
     () => [
@@ -272,6 +279,7 @@ const ConeDensity = forwardRef(function ConeDensity(
     setReadingRows([]);
     setErrors({});
     setSubmitError("");
+    setCustomFieldValues({});
   };
 
   const handleRowChange = (index, field, value) => {
@@ -381,10 +389,23 @@ const calculateGmsPerLitre = (row = {}) => {
     if (!validate()) return false;
 
     setSubmitError("");
-    const resultAction = await dispatch(saveAutoconerConeDensity(buildPayload()));
+    const payload = buildPayload();
+    const resultAction = await dispatch(saveAutoconerConeDensity(payload));
 
     if (saveAutoconerConeDensity.fulfilled.match(resultAction)) {
       dispatch(getAutoconerConeDensity({ page: 1, limit: 1000 }));
+      const linkedEntryId = payload.entry_id;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error('Failed to save custom field values', e);
+        }
+      }
       return true;
     }
 
@@ -836,6 +857,14 @@ const calculateGmsPerLitre = (row = {}) => {
       {bottomPortalTarget ? createPortal(summarySection, bottomPortalTarget) : null}
       {submitError ? <p className="mt-3 text-[14px] text-red-600">{submitError}</p> : null}
       {isLoading ? <p className="mt-3 text-[14px] text-[#3d539f]">Saving cone density...</p> : null}
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Autoconer"
+        notebook="Cone Density"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </>
   );
 });

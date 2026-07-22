@@ -6,9 +6,11 @@ import { clearCardingState, submitCardingBetweenWithin } from "@/store/slices/ca
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingMasterMachines } from "@/apis/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const MAX_ENTRY_COUNT = 100;
 const defaultMachineOptions = Array.from({ length: 25 }, (_, index) => `CDG-${String(index + 1).padStart(2, "0")}`);
@@ -151,6 +153,12 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
     const [showSuccess, setShowSuccess] = useState(false);
     const [submittedEntryId, setSubmittedEntryId] = useState("");
     const [isMobile, setIsMobile] = useState(false);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+    const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     useEffect(() => {
         const now = new Date();
@@ -388,6 +396,19 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (nextEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        nextEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             await reserveEntryId?.();
         } catch (submitError) {
             setFormMessage(submitError || "Save failed");
@@ -410,6 +431,10 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             { label: `Row ${index + 1} Sample Weight`, value: row.sampleWeight },
             { label: `Row ${index + 1} Hank`, value: normalizeHankValue(row.hank) },
         ])),
+        ...customFieldDefs.map((field) => ({
+            label: field.field_label,
+            value: customFieldValues[field.id],
+        })),
     ];
 
     if (!showForm) return null;
@@ -611,6 +636,16 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
                     disabled={isLoading}
                 />
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Carding"
+                notebook="Between & Within Card Data Entry"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+                onFieldsLoaded={setCustomFieldDefs}
+            />
 
             <PreviewModal
                 open={showPreview}

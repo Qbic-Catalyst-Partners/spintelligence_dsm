@@ -4,10 +4,12 @@ import styles from "@/styles/u%dataentry.module.css";
 import Footer from "@/components/Footer";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@/apis/carding";
 import { clearCardingState, getCardingUqcEntries, submitCardingUqc } from "@/store/slices/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 export const STATIC_SHIFT_OPTIONS = [
   { value: "Shift 1", label: "Shift 1" },
@@ -56,6 +58,11 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
   const [varietyOptions, setVarietyOptions] = useState([]);
   const [mcNoOptions, setMcNoOptions] = useState(CDG_MC_NO_OPTIONS);
   const [shiftOptions] = useState(STATIC_SHIFT_OPTIONS);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -97,6 +104,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
     setErrors({});
     setFormMessage("");
     setIsError(false);
+    setCustomFieldValues({});
   };
 
   useEffect(() => {
@@ -164,6 +172,17 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
       }).catch((recordError) => {
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
       });
+
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (nextEntryId && customFieldEntries.length) {
+        saveNotebookCustomFieldValuesApi(
+          nextEntryId,
+          customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+        ).catch((customFieldError) => {
+          console.error("Failed to save custom field values:", customFieldError);
+        });
+      }
+
       reserveEntryId?.();
       resetForm();
       setIsError(false);
@@ -317,6 +336,15 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
           </div>
         </div>
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Carding"
+        notebook="U% Data Entry"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
 
       {formMessage && (
         <div className={`${styles.messageBox} ${isError ? styles.messageError : styles.messageSuccess}`}>

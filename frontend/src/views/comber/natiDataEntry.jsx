@@ -3,8 +3,10 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchComberMasterVarieties, fetchComberNatiMasterMcNos } from "@/apis/comber";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { clearComberState, submitComberNatiDataEntry } from "@/store/slices/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./natiDataEntry.module.css";
 
 const emptyComberState = {
@@ -38,6 +40,11 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
     const [errors, setErrors] = useState({});
     const [varietyOptions, setVarietyOptions] = useState([]);
     const [mcNoOptions, setMcNoOptions] = useState([]);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     useEffect(() => {
         setEntryDate(new Date().toISOString().split("T")[0]);
@@ -99,6 +106,7 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
         setEntries(createEmptyEntries(1));
         setFormMessage("");
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const handleGenerate = () => {
@@ -167,8 +175,23 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
         if (!valid) return false;
 
         try {
-            await dispatch(submitComberNatiDataEntry(buildPayload())).unwrap();
+            const payload = buildPayload();
+            await dispatch(submitComberNatiDataEntry(payload)).unwrap();
             setErrors({});
+
+            const linkedEntryId = payload.entry_id;
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (linkedEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        linkedEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             return true;
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save nati data.");
@@ -332,6 +355,15 @@ const NatiDataEntry = forwardRef(function NatiDataEntry(
                             {formMessage}
                         </div>
                     ) : null}
+
+                    <NotebookCustomFields
+                        department="Quality Control"
+                        subDepartment="Comber"
+                        notebook="Nati Data Entry"
+                        entryId={entryId}
+                        values={customFieldValues}
+                        onChange={handleCustomFieldChange}
+                    />
                 </>
             ) : null}
         </>

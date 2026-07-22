@@ -2,10 +2,12 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import styles from "@/styles/u%dataentry.module.css";
 import { useDispatch, useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchSimplexUqcMasterDropdown } from "@/apis/simplex";
 import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import { getSimplexUqcEntries, submitSimplexUqc } from "@/store/slices/simplex";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const initialForm = () => ({
   date: new Date().toISOString().split("T")[0],
@@ -51,6 +53,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
   const [openField, setOpenField] = useState("");
   const dropdownRefs = useRef({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -103,6 +110,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     setForm(initialForm());
     setErrors({});
     setOpenField("");
+    setCustomFieldValues({});
   };
 
   const validate = () => {
@@ -153,6 +161,20 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
 
     if (submitSimplexUqc.fulfilled.match(resultAction)) {
       dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
+
+      const linkedEntryId = entryId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       return true;
     }
 
@@ -283,6 +305,15 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
         </div>
       </div>
       {isLoading && <p style={{ marginTop: "12px", color: "#2563eb" }}>Saving...</p>}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Simplex"
+        notebook="U% Data Entry"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 });

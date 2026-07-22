@@ -498,6 +498,7 @@ app.use('/carding', require('./routes/carding'));
 app.use('/api/carding', require('./routes/carding'));
 app.use('/departments', require('./routes/department.routes'));
 app.use('/screens', require('./routes/screens.routes'));
+app.use('/notebook-custom-fields', require('./routes/notebookCustomFields.routes'));
 app.use('/trials', require('./routes/trials'));
 app.use('/blowroom', require('./routes/blowroom'));
 app.use('/drawframe', require('./routes/drawframe'));

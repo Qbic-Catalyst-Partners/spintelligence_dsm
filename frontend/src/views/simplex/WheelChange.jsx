@@ -4,12 +4,14 @@ import { MdEditNote } from "react-icons/md";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { createSmxMachineOptions } from "@/views/simplex/smxMachineNames";
 import {
   fetchSimplexUqcMasterDropdown,
   fetchSimplexWheelChangeEntries,
   submitSimplexWheelChangeEntry,
 } from "@/apis/simplex";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const today = new Date().toISOString().split("T")[0];
 
@@ -366,6 +368,11 @@ const WheelChange = forwardRef(function WheelChange(
   // regardless of whether the mixing text itself changed, matching Spinning.
   const [mixingRefreshTick, setMixingRefreshTick] = useState(0);
   const refreshSelectedMixing = () => setMixingRefreshTick((tick) => tick + 1);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   // Fetch/pre-populate is keyed by the Mixing / Process row (matching
   // Spinning and Carding). SMX No. is still sent on submit below since the
@@ -701,6 +708,7 @@ const WheelChange = forwardRef(function WheelChange(
     setSubmitError("");
     setUnapprovedEntry(null);
     setMixingUserPicked(false);
+    setCustomFieldValues({});
     lastLoadedMixingRef.current = "";
     lastLoadedMachineOnlyRef.current = "";
   };
@@ -770,6 +778,20 @@ const WheelChange = forwardRef(function WheelChange(
 
     try {
       await submitSimplexWheelChangeEntry(payload);
+
+      const linkedEntryId = entryId || form.entryId || undefined;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       // Re-fetch so the just-submitted entry shows up as "Awaiting L2" (or
       // supersedes whatever was previously pending/rejected for this machine).
       lastLoadedMixingRef.current = "";
@@ -1173,6 +1195,15 @@ const WheelChange = forwardRef(function WheelChange(
             })}
           </div>
         </div>
+
+        <NotebookCustomFields
+          department="Quality Control"
+          subDepartment="Simplex"
+          notebook="Wheel Change"
+          entryId={entryId}
+          values={customFieldValues}
+          onChange={handleCustomFieldChange}
+        />
       </div>
     </div>
   );

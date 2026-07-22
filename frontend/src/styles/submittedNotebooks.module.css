@@ -74,14 +74,15 @@
 }
 
 /* The browser's own calendar indicator is redundant with the icon we render, and in Chrome it
-   sits exactly where FiCalendar is placed — hide it so there's only one icon, not two stacked. */
+   sits exactly where FiCalendar is placed — hide it and disable its own click handling so every
+   click always reaches our FiCalendar icon/onClick instead of the two fighting over the event. */
 .dateInputWrap input[type="date"]::-webkit-calendar-picker-indicator {
     position: absolute;
     right: 0;
     width: 30px;
     height: 100%;
     opacity: 0;
-    cursor: pointer;
+    pointer-events: none;
 }
 
 .dateInputIcon {
@@ -92,6 +93,7 @@
     color: #667085;
     font-size: 14px;
     cursor: pointer;
+    z-index: 1;
 }
 
 .filterField {

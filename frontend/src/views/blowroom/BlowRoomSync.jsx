@@ -6,6 +6,8 @@ import SearchableSelect from "@/components/SearchableSelect";
 import useBlowroomMasterVarieties from "@/hooks/useBlowroomMasterVarieties";
 import useEmployeeOptions from "@/hooks/useEmployeeOptions";
 import { fetchOpennessMachineOptions } from "@/apis/mixing";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import {
   saveBlowroomData,
   fetchBlowroomData,
@@ -42,7 +44,12 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
   const [tableData, setTableData] = useState([]);
   const [generated, setGenerated] = useState(false);
   const [errors, setErrors] = useState({});
+  const [customFieldValues, setCustomFieldValues] = useState({});
   const rowAInputRefs = useRef([]);
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
   const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
   const { employeeOptions, employeeOptionsError, loadingEmployeeOptions } = useEmployeeOptions("blowroom-checked-by");
   const [lineNoOptions, setLineNoOptions] = useState([]);
@@ -168,6 +175,19 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           })),
         })
       ).unwrap();
+
+      const linkedEntryId = entryId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
     } catch (e) {
       // errors already handled by slice; no-op
     }
@@ -179,6 +199,7 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
     rowAInputRefs.current = [];
     setRows(5);
     setErrors({});
+    setCustomFieldValues({});
     setForm({
       type: "Blow Room Sync",
       entryDate: date || todayValue,
@@ -454,6 +475,15 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
       {loading && <p className={styles.loading}>Saving...</p>}
       {success && <p className={styles.success}>{message}</p>}
       {error && <p className={styles.error}>{error}</p>}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Blow Room"
+        notebook="Blow Room Sync"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 });

@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 
 import CustomSelect from "@/components/CustomSelect";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import styles from "@/styles/u%dataentry.module.css";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/views/carding/u%dataentry";
 import { getComberUqcEntries, submitComberUqc } from "@/store/slices/comber";
 import { fetchComberMasterVarieties, fetchComberUqcMasterDropdown } from "@/apis/comber";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
 const initialForm = () => ({
   date: new Date().toISOString().split("T")[0],
@@ -41,6 +43,11 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const [shiftOptions, setShiftOptions] = useState(SHIFT_OPTIONS);
   const [varietyOptions, setVarietyOptions] = useState(VARIETY_FALLBACK_OPTIONS);
   const [mcNoOptions, setMcNoOptions] = useState(MC_NO_OPTIONS);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const handleChange = (field, value) => {
     const nextValue = ["u_percent", "cvm", "im_cvm", "m3_cvm"].includes(field)
@@ -63,6 +70,7 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
     setForm(initialForm());
     setErrors({});
     setFormMessage("");
+    setCustomFieldValues({});
   };
 
   useEffect(() => {
@@ -156,9 +164,10 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
   const submit = async () => {
     if (!validate()) return false;
     try {
+      const linkedEntryId = entryId || "";
       await dispatch(
         submitComberUqc({
-          entry_id: entryId || "",
+          entry_id: linkedEntryId,
           entry_type: selectedType,
           entry_date: form.date,
           shift: form.shift,
@@ -171,6 +180,19 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           remarks: form.remarks,
         })
       ).unwrap();
+
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (linkedEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       return true;
     } catch (submitError) {
       setFormMessage(submitError || "Unable to submit U% entry.");
@@ -295,6 +317,15 @@ const UPercentDataEntry = forwardRef(function UPercentDataEntry(
           {formMessage}
         </div>
       ) : null}
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Comber"
+        notebook="U% Data Entry"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 });

@@ -5,6 +5,8 @@ import { saveBlowroomDropTest, resetState } from '@/store/slices/blowroomSlice';
 import { sanitizeIntegerInput, sanitizeNumericInput } from '@/utils/inputValidation';
 import SearchableSelect from '@/components/SearchableSelect';
 import useBlowroomMasterVarieties from '@/hooks/useBlowroomMasterVarieties';
+import NotebookCustomFields from '@/components/NotebookCustomFields';
+import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
 import styles from '@/styles/dropTestDataEntry.module.css';
 
 const emptyTuft = () => ({
@@ -29,7 +31,12 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const [tufts, setTufts] = useState([]);
     const [expandedTuftIndex, setExpandedTuftIndex] = useState(0);
     const [errors, setErrors] = useState({});
+    const [customFieldValues, setCustomFieldValues] = useState({});
     const { varietyOptions, varietyOptionsError, loadingVarietyOptions } = useBlowroomMasterVarieties();
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     useEffect(() => {
         if (success) {
@@ -62,6 +69,19 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                     ratio_percent: Number(tufts[i].ratio) || 0,
                 })).unwrap();
             }
+
+            const linkedEntryId = entryId;
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (linkedEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        linkedEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
         } catch (error) {
             throw error;
         }
@@ -74,6 +94,7 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
         setExpandedTuftIndex(0);
         dispatch(resetState());
         setErrors({});
+        setCustomFieldValues({});
     };
 
     const validate = () => {
@@ -339,6 +360,15 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                     )}
                 </div>
             ))}
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Blow Room"
+                notebook="Drop Test Data Entry"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
         </>
     );

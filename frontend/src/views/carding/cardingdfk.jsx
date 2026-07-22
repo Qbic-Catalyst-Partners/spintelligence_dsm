@@ -6,8 +6,10 @@ import CustomInput from "@/components/CustomInput";
 import Footer from "@/components/Footer";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { fetchCardingDfkPressure, submitCardingDfkPressure } from "@/store/slices/carding";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import styles from "./cardingdfk.module.css";
 
 const DFK_TYPE = "Card DFK Data";
@@ -60,6 +62,12 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
   const [isError, setIsError] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [openGroup, setOpenGroup] = useState(0);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     const checkScreen = () => setIsMobile(window.innerWidth <= 767);
@@ -95,6 +103,7 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
   const handleClear = () => {
     setDate(new Date().toISOString().split("T")[0]);
     setRows(createInitialRows());
+    setCustomFieldValues({});
   };
 
   const handleTypeSelect = (value) => {
@@ -145,6 +154,19 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
       } catch (recordError) {
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
       }
+
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+      if (nextEntryId && customFieldEntries.length) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            nextEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
+          console.error("Failed to save custom field values:", customFieldError);
+        }
+      }
+
       await reserveEntryId?.();
 
       handleClear();
@@ -196,6 +218,10 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
         value: rows[machineName][column.key],
       }))
     ),
+    ...customFieldDefs.map((field) => ({
+      label: field.field_label,
+      value: customFieldValues[field.id],
+    })),
   ];
   const typeSelectStyle = {
     background: "#f1f5f9",
@@ -307,6 +333,16 @@ function CardingDfk({ types = [], selectedType = "", onTypeChange, entryId = "",
           })}
         </div>
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Carding"
+        notebook="Card DFK Data"
+        entryId={entryId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+        onFieldsLoaded={setCustomFieldDefs}
+      />
 
       {formMessage ? (
         <div className={`${styles.dfkMessage} ${isError ? styles.dfkMessageError : styles.dfkMessageSuccess}`}>
