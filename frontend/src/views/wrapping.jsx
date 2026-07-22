@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { FiFile, FiRefreshCw, FiUpload } from "react-icons/fi";
 import Footer from "@/components/Footer";
+import SuccessModal from "@/components/SuccessModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
-import { resolvedBaseUrl } from "@/apis/apiConfig";
+import apiConfig from "@/apis/apiConfig";
 
 const wrappingTypes = ["Carding", "Drawing", "Simplex"];
 export const WRAPPING_INPUT_SCREEN_COUNT = wrappingTypes.length;
@@ -39,8 +40,6 @@ const WRAPPING_SAVE_ENDPOINTS = {
   simplex: "/simplex/wrapping-simplex-notebook",
 };
 
-const API_BASE = resolvedBaseUrl.replace(/\/+$/, "");
-
 const toDocType = (type) => String(type || "Carding").trim().toLowerCase();
 const formatSavedRecordMessage = (selectedType, payload) => {
   const resolvedId = String(payload?.id ?? payload?.entry_id ?? payload?.entryId ?? "").trim();
@@ -61,6 +60,8 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
   const [isRunning, setIsRunning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isErrorMessage, setIsErrorMessage] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("Data Submitted");
   const docType = useMemo(() => toDocType(selectedType), [selectedType]);
 
   useEffect(() => {
@@ -119,6 +120,11 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
     }
   };
 
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    handleClear();
+  };
+
   const updateCell = (rowIndex, field, value) => {
     setRows((current) =>
       current.map((row, index) => (index === rowIndex ? { ...row, [field]: value } : row))
@@ -166,23 +172,20 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
     setIsErrorMessage(false);
     try {
       const saveEndpoint = WRAPPING_SAVE_ENDPOINTS[docType] || "/ocr-machine/api/save";
-      const response = await fetch(`${API_BASE}${saveEndpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: file?.name || "",
-          doc_type: docType,
-          mc_name: rows.find((row) => String(row["Mac Name"] || "").trim())?.["Mac Name"] || "",
-          ocr_json: ocrJson,
-          manual_json: rows,
-          rows,
-        }),
+      const response = await apiConfig.post(saveEndpoint, {
+        filename: file?.name || "",
+        doc_type: docType,
+        mc_name: rows.find((row) => String(row["Mac Name"] || "").trim())?.["Mac Name"] || "",
+        ocr_json: ocrJson,
+        manual_json: rows,
+        rows,
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || `Server error ${response.status}`);
-      setMessage(formatSavedRecordMessage(selectedType, payload));
+      setMessage("");
+      setSuccessMessage(formatSavedRecordMessage(selectedType, response.data));
+      setShowSuccess(true);
     } catch (error) {
-      setMessage(`Save failed: ${error.message || "Unknown error"}`);
+      const message = error?.response?.data?.detail || error?.response?.data?.message || error.message || "Unknown error";
+      setMessage(`Save failed: ${message}`);
       setIsErrorMessage(true);
     } finally {
       setIsSaving(false);
@@ -386,6 +389,13 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
           disabled={isSaving || isRunning}
         />
       </main>
+
+      <SuccessModal
+        open={showSuccess}
+        message={successMessage}
+        onClose={handleSuccessClose}
+        closeLabel="OK"
+      />
     </div>
   );
 }
