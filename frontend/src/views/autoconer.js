@@ -12,6 +12,7 @@ import RewindingStudy from "@/views/autoconer/RewindingStudy";
 import ProcessParameter from "@/views/autoconer/ProcessParameter";
 import AutoconerQ2 from "@/views/autoconer/AutoconerQ2";
 import AutoconerQ3 from "@/views/autoconer/AutoconerQ3";
+import AutoconerQ4 from "@/views/autoconer/AutoconerQ4";
 import LycraChecking from "@/views/autoconer/LycraChecking";
 import CspParameterEntries from "@/views/autoconer/CspParameterEntries";
 import UPercentParameterEntries from "@/views/autoconer/UPercentParameterEntries";
@@ -29,6 +30,7 @@ const autoconerTypes = [
   { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameter },
   { id: 1, name: "PP - Autoconer Q2", aliases: ["PP - Autoconer Q2", "Autoconer Q2", "Q2"], component: AutoconerQ2 },
   { id: 2, name: "PP - Autoconer Q3", aliases: ["PP - Autoconer Q3", "Autoconer Q3", "Q3"], component: AutoconerQ3 },
+  { id: 12, name: "PP - Autoconer Q4", aliases: ["PP - Autoconer Q4", "Autoconer Q4", "Q4"], component: AutoconerQ4 },
   { id: 3, name: "Rewinding Study", aliases: ["Rewinding Study"], component: RewindingStudy },
   { id: 4, name: "Cone Density", aliases: ["Cone Density"], component: ConeDensity },
   { id: 5, name: "Cone Packing Audit", aliases: ["Cone Packing Audit"], component: ConePackingAudit },
@@ -45,6 +47,7 @@ const AUTOCONER_PROCESS_PARAMETER_TYPES = [
   "Process Parameter",
   "PP - Autoconer Q2",
   "PP - Autoconer Q3",
+  "PP - Autoconer Q4",
 ];
 const AUTOCONER_ENTRY_ID_CONFIG = {
   "Process Parameter": {
@@ -66,6 +69,13 @@ const AUTOCONER_ENTRY_ID_CONFIG = {
     width: 4,
     fetchPath: "/autoconer/q3",
     pagePath: "/autoconer?type=PP%20-%20Autoconer%20Q3",
+    scope: "pp-global",
+  },
+  "PP - Autoconer Q4": {
+    prefix: "PP",
+    width: 4,
+    fetchPath: "/autoconer/q4",
+    pagePath: "/autoconer?type=PP%20-%20Autoconer%20Q4",
     scope: "pp-global",
   },
   "Rewinding Study": {
@@ -126,6 +136,7 @@ function Autoconer() {
     "process parameter",
     "pp - autoconer q2",
     "pp - autoconer q3",
+    "pp - autoconer q4",
   ].includes(normalizeTypeName(requestedType));
   const fullTypeOptions = useMemo(
     () =>
@@ -197,11 +208,13 @@ function Autoconer() {
   const isFooterHistoryType =
     selectedType === "Process Parameter" ||
     selectedType === "PP - Autoconer Q2" ||
-    selectedType === "PP - Autoconer Q3";
+    selectedType === "PP - Autoconer Q3" ||
+    selectedType === "PP - Autoconer Q4";
   const usesRefFlow =
     selectedType === "Process Parameter" ||
     selectedType === "PP - Autoconer Q2" ||
     selectedType === "PP - Autoconer Q3" ||
+    selectedType === "PP - Autoconer Q4" ||
     selectedType === "Rewinding Study" ||
     selectedType === "Cone Density" ||
     selectedType === "Cone Packing Audit";

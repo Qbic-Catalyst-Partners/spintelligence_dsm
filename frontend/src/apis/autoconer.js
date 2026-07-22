@@ -110,6 +110,13 @@ const AUTOCONER_MASTER_SCREEN_PATHS = {
   ppq3: ["q3", "pp-autoconer-q3"],
   "pp-autoconer-q3": ["pp-autoconer-q3", "q3"],
   ppautoconerq3: ["pp-autoconer-q3", "q3"],
+  q4: ["q4", "pp-autoconer-q4"],
+  "autoconer-q4": ["q4", "pp-autoconer-q4"],
+  autoconerq4inspection: ["q4", "pp-autoconer-q4"],
+  "pp-q4": ["q4", "pp-autoconer-q4"],
+  ppq4: ["q4", "pp-autoconer-q4"],
+  "pp-autoconer-q4": ["pp-autoconer-q4", "q4"],
+  ppautoconerq4: ["pp-autoconer-q4", "q4"],
 };
 
 const getAutoconerMasterScreenPaths = (screen = "") => {
@@ -770,6 +777,43 @@ export const updateAutoconerQ3Entry = async (id, payload) => {
   }
 
   throw new Error(getErrorMessage(lastError, "Unable to update Autoconer Q3 entry."));
+};
+
+export const fetchAutoconerQ4Entries = async ({
+  page = 1,
+  limit = 10,
+} = {}) =>
+  getAutoconer(
+    "q4",
+    { page, limit },
+    "Unable to fetch Autoconer Q4 entries.",
+    { suppressFailure: true, paginated: true }
+  );
+
+export const submitAutoconerQ4Entry = async (payload) =>
+  postAutoconer("q4", payload, "Unable to save Autoconer Q4 entry.");
+
+export const updateAutoconerQ4Entry = async (id, payload) => {
+  const endpoints = buildAutoconerEndpoints(`q4/${id}`);
+  let lastError;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await apiConfig.put(
+        endpoint,
+        removeEmptyValues(normalizePayload(payload)),
+        silentRequestConfig
+      );
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (!shouldTryAlternateEndpoint(error)) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(getErrorMessage(lastError, "Unable to update Autoconer Q4 entry."));
 };
 
 export { toNullableNumber };

@@ -23,6 +23,8 @@ import {
   fetchAutoconerQ2Entries,
   submitAutoconerQ3Entry,
   fetchAutoconerQ3Entries,
+  submitAutoconerQ4Entry,
+  fetchAutoconerQ4Entries,
 } from "@/apis/autoconer";
 import styles from "@/styles/AutoconerQ2.module.css";
 
@@ -228,6 +230,28 @@ const buildZeroFilledQ3Payload = ({ entryId, countName, consigneeName, creationD
   action: "0",
   suction_status: "0",
   blocking: "0",
+});
+
+const buildZeroFilledQ4Payload = ({ entryId, countName, consigneeName, creationDate }) => ({
+  entry_id: entryId || undefined,
+  count_name: countName,
+  consignee_name: consigneeName,
+  creation_date: creationDate,
+  nsl1: 0, nsl2: 0, nsl3: 0, nsl4: 0, nsl5: 0, nsl6: 0, nsl7: 0,
+  t1: 0, t2: 0, t3: 0, t4: 0, t5: 0,
+  pf_sensing: 0, pf_no_of_periods: 0,
+  oc: 0, cp: 0, cm: 0, ccp1: 0, ccp2: 0, ccm1: 0, ccm2: 0,
+  jp1: 0, jp2: 0, jp3: 0, jp4: 0, jp5: 0, jp6: 0, jp7: 0,
+  jp_clearing: 0, jp_u_percent: 0, jp_jm: 0,
+  fd1: 0, fd2: 0, fd3: 0, fd4: 0, fd5: 0, fd6: 0,
+  reference_length: 0, suction: 0, measurement: 0,
+  upper_limit: 0, lower_limit: 0,
+  action: "0",
+  suction_status: "0",
+  blocking: "0",
+  x_status: "Off",
+  dp_plus_30: 0, sm_minus_30: 0, cdp1: 0, cdp2: 0, cdm1: 0, cdm2: 0,
+  nsl_max_event: 0, t_max_event: 0, fd_max_events: 0, fl_max_events: 0,
 });
 
 const buildPayload = (form, entryId = "") => ({
@@ -533,6 +557,7 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       registerProcessParameterId(response, "Autoconer", form.countName, form.consigneeName);
 
       await ensureSiblingQ3Entry(nextParamId);
+      await ensureSiblingQ4Entry(nextParamId);
       await loadVersions();
       return true;
     } catch (error) {
@@ -567,6 +592,31 @@ const AutoconerQ2 = forwardRef(function AutoconerQ2(
       // Sibling auto-submit is best-effort; don't block the Q2 save on it, but
       // log so a silent failure here doesn't look identical to "nothing to do."
       console.error("Sibling Q3 auto-submit failed:", error);
+    }
+  };
+
+  const ensureSiblingQ4Entry = async (paramId) => {
+    if (!paramId) return;
+    try {
+      const q4Response = await fetchAutoconerQ4Entries({ page: 1, limit: 200 });
+      const q4Rows = Array.isArray(q4Response?.data) ? q4Response.data : [];
+      const alreadyExists = q4Rows.some(
+        (row) =>
+          normalizeProcessParameterId(row?.entry_id || row?.ins_code || "") ===
+          normalizeProcessParameterId(paramId)
+      );
+      if (alreadyExists) return;
+
+      await submitAutoconerQ4Entry(
+        buildZeroFilledQ4Payload({
+          entryId: paramId,
+          countName: form.countName,
+          consigneeName: form.consigneeName,
+          creationDate: form.creationDate,
+        })
+      );
+    } catch (error) {
+      console.error("Sibling Q4 auto-submit failed:", error);
     }
   };
 

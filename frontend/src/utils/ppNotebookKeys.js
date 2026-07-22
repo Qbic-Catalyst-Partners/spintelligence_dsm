@@ -17,6 +17,7 @@ export const PP_NOTEBOOK_COLUMNS = [
   { label: "Autoconer PP", notebookKey: "Autoconer Process Parameter" },
   { label: "AC-Q2", notebookKey: "Autoconer Q2 Inspection" },
   { label: "AC-Q3", notebookKey: "Autoconer Q3 Inspection" },
+  { label: "AC-Q4", notebookKey: "Autoconer Q4 Inspection" },
 ];
 
 const normalize = (value) => String(value || "").trim().toLowerCase();

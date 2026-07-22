@@ -27,6 +27,32 @@
   grid-column: span 2;
 }
 
+.sectionHeader {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #dbe4f0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.radioGroup {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 38px;
+}
+
+.radioOption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+}
+
 .fieldGroup label {
   font-size: 14px;
   font-weight: 600;
@@ -317,4 +343,13 @@
 :global(:root[data-theme="dark"]) :local(.statusCell),
 :global(:root[data-theme="dark"]) :local(.expandButton) {
   color: #ffffff !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.sectionHeader) {
+  color: #f8fafc !important;
+  border-bottom-color: #334155 !important;
+}
+
+:global(:root[data-theme="dark"]) :local(.radioOption) {
+  color: #e2e8f0 !important;
 }

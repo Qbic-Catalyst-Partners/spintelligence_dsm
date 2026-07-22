@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { Fragment, forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 
@@ -18,16 +18,15 @@ import {
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
 import {
-  submitAutoconerQ3Entry,
-  updateAutoconerQ3Entry,
-  fetchAutoconerQ3Entries,
+  submitAutoconerQ4Entry,
+  updateAutoconerQ4Entry,
+  fetchAutoconerQ4Entries,
   submitAutoconerQ2Entry,
   fetchAutoconerQ2Entries,
-  submitAutoconerQ4Entry,
-  fetchAutoconerQ4Entries,
+  submitAutoconerQ3Entry,
+  fetchAutoconerQ3Entries,
 } from "@/apis/autoconer";
 import styles from "@/styles/AutoconerQ2.module.css";
-
 
 const fieldDefs = [
   { key: "nsl1", label: "NSL1", numeric: true },
@@ -73,14 +72,25 @@ const fieldDefs = [
   { key: "upperLimit", label: "Upper Limit", numeric: true, wide: true },
   { key: "lowerLimit", label: "Lower Limit", numeric: true, wide: true },
   { key: "action", label: "Action" },
-  { key: "suctionStatus", label: "Suction Status" },
+  { key: "suctionStatus", label: "Suction" },
   { key: "blocking", label: "Blocking" },
+  { key: "xStatus", label: "X", type: "radio", options: ["On", "Off"] },
+  { key: "dpPlus30", label: "DP +30", numeric: true, section: "D/CD" },
+  { key: "smMinus30", label: "SM -30", numeric: true },
+  { key: "cdp1", label: "CDP1", numeric: true },
+  { key: "cdp2", label: "CDP2", numeric: true },
+  { key: "cdm1", label: "CDM1", numeric: true },
+  { key: "cdm2", label: "CDM2", numeric: true },
+  { key: "nslMaxEvent", label: "NSL Max Event", numeric: true, section: "Swarm NSLT" },
+  { key: "tMaxEvent", label: "T Max Event", numeric: true },
+  { key: "fdMaxEvents", label: "FD Max Events", numeric: true, section: "Swarm F" },
+  { key: "flMaxEvents", label: "FL Max Events", numeric: true },
 ];
 
-const createDefaultForm = (selectedType = "PP - Autoconer Q3") => ({
+const createDefaultForm = (selectedType = "PP - Autoconer Q4") => ({
   versionId: "",
   paramId: "",
-  type: selectedType || "PP - Autoconer Q3",
+  type: selectedType || "PP - Autoconer Q4",
   countName: "",
   consigneeName: "",
   creationDate: new Date().toISOString().split("T")[0],
@@ -129,6 +139,17 @@ const createDefaultForm = (selectedType = "PP - Autoconer Q3") => ({
   action: "",
   suctionStatus: "",
   blocking: "",
+  xStatus: "On",
+  dpPlus30: "",
+  smMinus30: "",
+  cdp1: "",
+  cdp2: "",
+  cdm1: "",
+  cdm2: "",
+  nslMaxEvent: "",
+  tMaxEvent: "",
+  fdMaxEvents: "",
+  flMaxEvents: "",
 });
 
 const normalizeDate = (value) => {
@@ -146,7 +167,7 @@ const formatDisplayDate = (value) => {
   return year && month && day ? `${day}/${month}/${year}` : normalized;
 };
 
-const getEntryId = (entry) => String(entry?.id ?? entry?._id ?? entry?.q3_id ?? "");
+const getEntryId = (entry) => String(entry?.id ?? entry?._id ?? entry?.q4_id ?? "");
 
 const displaySavedValue = (value) => {
   const normalized = String(value ?? "").trim();
@@ -165,7 +186,7 @@ const mapApiEntryToVersion = (entry) => ({
   data: {
     versionId: getEntryId(entry),
     paramId: entry?.entry_id || entry?.ins_code || "",
-    type: "PP - Autoconer Q3",
+    type: "PP - Autoconer Q4",
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: normalizeDate(entry?.creation_date),
@@ -214,6 +235,17 @@ const mapApiEntryToVersion = (entry) => ({
     action: entry?.action || "",
     suctionStatus: entry?.suction_status || "",
     blocking: entry?.blocking || "",
+    xStatus: entry?.x_status || "On",
+    dpPlus30: entry?.dp_plus_30 == null ? "" : String(entry.dp_plus_30),
+    smMinus30: entry?.sm_minus_30 == null ? "" : String(entry.sm_minus_30),
+    cdp1: entry?.cdp1 == null ? "" : String(entry.cdp1),
+    cdp2: entry?.cdp2 == null ? "" : String(entry.cdp2),
+    cdm1: entry?.cdm1 == null ? "" : String(entry.cdm1),
+    cdm2: entry?.cdm2 == null ? "" : String(entry.cdm2),
+    nslMaxEvent: entry?.nsl_max_event == null ? "" : String(entry.nsl_max_event),
+    tMaxEvent: entry?.t_max_event == null ? "" : String(entry.t_max_event),
+    fdMaxEvents: entry?.fd_max_events == null ? "" : String(entry.fd_max_events),
+    flMaxEvents: entry?.fl_max_events == null ? "" : String(entry.fl_max_events),
   },
 });
 
@@ -240,7 +272,7 @@ const buildZeroFilledQ2Payload = ({ entryId, countName, consigneeName, creationD
   action: "0",
 });
 
-const buildZeroFilledQ4Payload = ({ entryId, countName, consigneeName, creationDate }) => ({
+const buildZeroFilledQ3Payload = ({ entryId, countName, consigneeName, creationDate }) => ({
   entry_id: entryId || undefined,
   count_name: countName,
   consignee_name: consigneeName,
@@ -257,9 +289,6 @@ const buildZeroFilledQ4Payload = ({ entryId, countName, consigneeName, creationD
   action: "0",
   suction_status: "0",
   blocking: "0",
-  x_status: "Off",
-  dp_plus_30: 0, sm_minus_30: 0, cdp1: 0, cdp2: 0, cdm1: 0, cdm2: 0,
-  nsl_max_event: 0, t_max_event: 0, fd_max_events: 0, fl_max_events: 0,
 });
 
 const buildPayload = (form, entryId = "") => ({
@@ -312,11 +341,22 @@ const buildPayload = (form, entryId = "") => ({
   action: form.action,
   suction_status: form.suctionStatus,
   blocking: form.blocking,
+  x_status: form.xStatus || "On",
+  dp_plus_30: Number(parseNumberValue(form.dpPlus30)) || 0,
+  sm_minus_30: Number(parseNumberValue(form.smMinus30)) || 0,
+  cdp1: Number(parseNumberValue(form.cdp1)) || 0,
+  cdp2: Number(parseNumberValue(form.cdp2)) || 0,
+  cdm1: Number(parseNumberValue(form.cdm1)) || 0,
+  cdm2: Number(parseNumberValue(form.cdm2)) || 0,
+  nsl_max_event: Number(parseNumberValue(form.nslMaxEvent)) || 0,
+  t_max_event: Number(parseNumberValue(form.tMaxEvent)) || 0,
+  fd_max_events: Number(parseNumberValue(form.fdMaxEvents)) || 0,
+  fl_max_events: Number(parseNumberValue(form.flMaxEvents)) || 0,
 });
 
-const AutoconerQ3 = forwardRef(function AutoconerQ3(
+const AutoconerQ4 = forwardRef(function AutoconerQ4(
   {
-    selectedType = "PP - Autoconer Q3",
+    selectedType = "PP - Autoconer Q4",
     onTypeChange,
     types = [],
     savedVersionsTargetId = "",
@@ -334,7 +374,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
-  const displayEntryId = form.paramId || entryId || previewNextId || "Generating next ID...";
+  const displayEntryId = entryId || form.paramId || previewNextId || "Generating next ID...";
 
   const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countOptions = buildProcessParameterOptions(
@@ -353,7 +393,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   const loadVersions = async () => {
     let response;
     try {
-      response = await fetchAutoconerQ3Entries({ page: 1, limit: 200 });
+      response = await fetchAutoconerQ4Entries({ page: 1, limit: 200 });
     } catch {
       setVersions([]);
       setForm({ ...createDefaultForm(selectedType), paramId: entryId || "" });
@@ -413,7 +453,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   useEffect(() => {
     setForm((current) => ({
       ...current,
-      type: selectedType || "PP - Autoconer Q3",
+      type: selectedType || "PP - Autoconer Q4",
     }));
   }, [selectedType]);
 
@@ -560,15 +600,15 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
         : null;
       const targetVersionId = form.versionId || existingVersion?.id;
       const response = targetVersionId
-        ? await updateAutoconerQ3Entry(targetVersionId, payload)
-        : await submitAutoconerQ3Entry(payload);
+        ? await updateAutoconerQ4Entry(targetVersionId, payload)
+        : await submitAutoconerQ4Entry(payload);
 
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId);
       setForm((current) => ({ ...current, paramId: nextParamId }));
       registerProcessParameterId(response, "Autoconer", form.countName, form.consigneeName);
 
       await ensureSiblingQ2Entry(nextParamId);
-      await ensureSiblingQ4Entry(nextParamId);
+      await ensureSiblingQ3Entry(nextParamId);
       await loadVersions();
       return true;
     } catch (error) {
@@ -600,26 +640,26 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
         })
       );
     } catch (error) {
-      // Sibling auto-submit is best-effort; don't block the Q3 save on it, but
+      // Sibling auto-submit is best-effort; don't block the Q4 save on it, but
       // log so a silent failure here doesn't look identical to "nothing to do."
       console.error("Sibling Q2 auto-submit failed:", error);
     }
   };
 
-  const ensureSiblingQ4Entry = async (paramId) => {
+  const ensureSiblingQ3Entry = async (paramId) => {
     if (!paramId) return;
     try {
-      const q4Response = await fetchAutoconerQ4Entries({ page: 1, limit: 200 });
-      const q4Rows = Array.isArray(q4Response?.data) ? q4Response.data : [];
-      const alreadyExists = q4Rows.some(
+      const q3Response = await fetchAutoconerQ3Entries({ page: 1, limit: 200 });
+      const q3Rows = Array.isArray(q3Response?.data) ? q3Response.data : [];
+      const alreadyExists = q3Rows.some(
         (row) =>
           normalizeProcessParameterId(row?.entry_id || row?.ins_code || "") ===
           normalizeProcessParameterId(paramId)
       );
       if (alreadyExists) return;
 
-      await submitAutoconerQ4Entry(
-        buildZeroFilledQ4Payload({
+      await submitAutoconerQ3Entry(
+        buildZeroFilledQ3Payload({
           entryId: paramId,
           countName: form.countName,
           consigneeName: form.consigneeName,
@@ -627,7 +667,7 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
         })
       );
     } catch (error) {
-      console.error("Sibling Q4 auto-submit failed:", error);
+      console.error("Sibling Q3 auto-submit failed:", error);
     }
   };
 
@@ -775,18 +815,38 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
 
         <div className={styles.fieldsGrid}>
           {fieldDefs.map((field) => (
-            <div
-              key={field.key}
-              className={`${styles.fieldGroup}${field.wide ? ` ${styles.wideField}` : ""}`}
-            >
-              <label>{field.label}</label>
-                <input
-                  type="text"
-                  className={`${styles.field}${errors[field.key] ? ` ${styles.errorField}` : ""}`}
-                  value={form[field.key] || ""}
-                  onChange={(event) => handleFieldChange(field.key, event.target.value)}
-                />
-            </div>
+            <Fragment key={field.key}>
+              {field.section ? (
+                <div className={styles.sectionHeader}>{field.section}</div>
+              ) : null}
+              <div
+                className={`${styles.fieldGroup}${field.wide ? ` ${styles.wideField}` : ""}`}
+              >
+                <label>{field.label}</label>
+                {field.type === "radio" ? (
+                  <div className={styles.radioGroup}>
+                    {field.options.map((option) => (
+                      <label key={option} className={styles.radioOption}>
+                        <input
+                          type="radio"
+                          name={field.key}
+                          checked={(form[field.key] || "") === option}
+                          onChange={() => handleFieldChange(field.key, option)}
+                        />
+                        {option}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    className={`${styles.field}${errors[field.key] ? ` ${styles.errorField}` : ""}`}
+                    value={form[field.key] || ""}
+                    onChange={(event) => handleFieldChange(field.key, event.target.value)}
+                  />
+                )}
+              </div>
+            </Fragment>
           ))}
         </div>
 
@@ -799,4 +859,4 @@ const AutoconerQ3 = forwardRef(function AutoconerQ3(
   );
 });
 
-export default AutoconerQ3;
+export default AutoconerQ4;

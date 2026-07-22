@@ -14,6 +14,7 @@ import SpinningProcessParameter from "@/views/spinning/processParameterDataEntry
 import AutoconerProcessParameter from "@/views/autoconer/ProcessParameter";
 import AutoconerQ2 from "@/views/autoconer/AutoconerQ2";
 import AutoconerQ3 from "@/views/autoconer/AutoconerQ3";
+import AutoconerQ4 from "@/views/autoconer/AutoconerQ4";
 import { hasSubDepartmentAccess, isFullAccessUser } from "@/utils/accessControl";
 import { normalizeProcessParameterId, resolveProcessParameterDisplayId } from "@/utils/processParameterId";
 import {
@@ -36,6 +37,7 @@ import {
   fetchAutoconerProcessParameters,
   fetchAutoconerQ2Entries,
   fetchAutoconerQ3Entries,
+  fetchAutoconerQ4Entries,
   fetchAutoconerConsigneeMaster,
 } from "@/apis/autoconer";
 import { fetchPpThresholdsAPI } from "@/apis/ppThresholdApi";
@@ -56,11 +58,12 @@ const updateExistingColumns = [
   "Autoconer PP",
   "AC-Q2",
   "AC-Q3",
+  "AC-Q4",
 ];
 
 const createBlankStatusRow = () => ({
   id: "",
-  statuses: [false, false, false, false, false, false, false, false, false, false],
+  statuses: [false, false, false, false, false, false, false, false, false, false, false],
 });
 
 const PROCESS_PARAMETER_UI_STATE_KEY = "process-parameter-ui-state";
@@ -76,6 +79,7 @@ const COLUMN_TO_DEPARTMENT = {
   "Autoconer PP": "Autoconer",
   "AC-Q2": "Autoconer",
   "AC-Q3": "Autoconer",
+  "AC-Q4": "Autoconer",
 };
 
 const subDepartments = [
@@ -203,6 +207,13 @@ const REMOTE_STATUS_SOURCES = [
     isDone: () => true,
     getDetails: getEntryDetails,
   },
+  {
+    index: 10,
+    fetch: (filters) => fetchAutoconerQ4Entries({ page: 1, limit: 200, ...buildFilterParams(filters) }),
+    getId: (entry) => entry?.entry_id ?? entry?.ins_code,
+    isDone: () => true,
+    getDetails: getEntryDetails,
+  },
 ];
 
 const DEPARTMENT_COMPONENTS = {
@@ -219,6 +230,7 @@ const AUTOCONER_COMPONENTS = {
   "Process Parameter": AutoconerProcessParameter,
   "PP - Autoconer Q2": AutoconerQ2,
   "PP - Autoconer Q3": AutoconerQ3,
+  "PP - Autoconer Q4": AutoconerQ4,
 };
 
 const DEPARTMENT_TYPE_NAMES = {
@@ -247,6 +259,7 @@ const DEPARTMENT_TYPE_OPTION_OBJECTS = {
     makeTypeOption(1, "Process Parameter", ["Process Parameter", "Process Parameter Data Entry"]),
     makeTypeOption(2, "PP - Autoconer Q2", ["PP - Autoconer Q2", "Autoconer Q2", "Q2"]),
     makeTypeOption(3, "PP - Autoconer Q3", ["PP - Autoconer Q3", "Autoconer Q3", "Q3"]),
+    makeTypeOption(4, "PP - Autoconer Q4", ["PP - Autoconer Q4", "Autoconer Q4", "Q4"]),
   ],
 };
 
@@ -312,6 +325,7 @@ const COMBINED_PREVIEW_COLUMNS = [
   { key: "Autoconer PP", label: "Autoconer PP", department: "Autoconer", typeName: "Process Parameter", Component: AutoconerProcessParameter },
   { key: "AC-Q2", label: "AC-Q2", department: "Autoconer", typeName: "PP - Autoconer Q2", Component: AutoconerQ2 },
   { key: "AC-Q3", label: "AC-Q3", department: "Autoconer", typeName: "PP - Autoconer Q3", Component: AutoconerQ3 },
+  { key: "AC-Q4", label: "AC-Q4", department: "Autoconer", typeName: "PP - Autoconer Q4", Component: AutoconerQ4 },
 ];
 
 const getHiddenPreviewProps = (column) => {
@@ -366,13 +380,16 @@ export default function ProcessParameterPage() {
 
   const currentDate = new Date().toLocaleDateString("en-IN");
 
+  // Tolerates rows cached before AC-Q4 existed (10-length statuses arrays) by padding
+  // them out to the current column count rather than discarding the cached progress.
+  const normalizeStatuses = (statuses) =>
+    createBlankStatusRow().statuses.map((_, index) => Boolean(statuses?.[index]));
+
   const loadRegistryRows = () =>
     readProcessParameterRegistry()
       .map((row) => ({
         id: normalizeRegistryId(row?.displayId),
-        statuses: Array.isArray(row?.statuses) && row.statuses.length === 10
-          ? row.statuses.slice(0, 10)
-          : createBlankStatusRow().statuses,
+        statuses: normalizeStatuses(row?.statuses),
       }))
       .filter((row) => row.id && isCanonicalPpId(row.id))
       .slice(0, 10);
@@ -869,6 +886,7 @@ export default function ProcessParameterPage() {
     if (selectedSubDepartment === "Autoconer") {
       if (autoconerType === "PP - Autoconer Q2") return 9;
       if (autoconerType === "PP - Autoconer Q3") return 10;
+      if (autoconerType === "PP - Autoconer Q4") return 11;
       return 8;
     }
     const mapping = {
@@ -986,7 +1004,9 @@ export default function ProcessParameterPage() {
           ? "PP - Autoconer Q2"
           : columnName === "AC-Q3"
             ? "PP - Autoconer Q3"
-            : "Process Parameter"
+            : columnName === "AC-Q4"
+              ? "PP - Autoconer Q4"
+              : "Process Parameter"
         : null;
 
     // Every cell (done or pending) opens its own tab in the tab bar (alongside

@@ -7,7 +7,8 @@ const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require
 const SCREEN_ID_PREFIXES = {
   process: 'AP',
   q2: 'A2',
-  q3: 'A3'
+  q3: 'A3',
+  q4: 'A4'
 };
 
 const AUTOCONER_SCREEN_SLUGS = [
@@ -16,18 +17,25 @@ const AUTOCONER_SCREEN_SLUGS = [
   'process_parameter',
   'q2',
   'q3',
+  'q4',
   'pp-q2',
   'pp-q3',
+  'pp-q4',
   'ppq2',
   'ppq3',
+  'ppq4',
   'pp-autoconer-q2',
   'pp-autoconer-q3',
+  'pp-autoconer-q4',
   'ppautoconerq2',
   'ppautoconerq3',
+  'ppautoconerq4',
   'autoconer-q2',
   'autoconer-q3',
+  'autoconer-q4',
   'autoconerq2inspection',
   'autoconerq3inspection',
+  'autoconerq4inspection',
   'inspection-data-entry',
   'inspectiondataentry',
   'cone-density',
@@ -347,6 +355,9 @@ const fetchAutoconerConsigneeOptions = async () => {
       UNION
       SELECT consignee_name FROM autoconer.autoconer_q3_inspection
       WHERE consignee_name IS NOT NULL AND BTRIM(consignee_name) <> ''
+      UNION
+      SELECT consignee_name FROM autoconer.autoconer_q4_inspection
+      WHERE consignee_name IS NOT NULL AND BTRIM(consignee_name) <> ''
     ) t
     ORDER BY consignee_name
   `);
@@ -485,6 +496,50 @@ const ensureAutoconerEntryIdColumns = async () => {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q3_inspection_entry_id_uq
     ON autoconer.autoconer_q3_inspection (entry_id)
+    WHERE entry_id IS NOT NULL;
+  `);
+
+  // Autoconer Q4 notebook — unlike q2/q3 (created manually in the DB before this codebase
+  // adopted the "ensure*" idempotent-migration convention), this table is created here so the
+  // feature works out of the box against any database, with no manual provisioning step.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS autoconer.autoconer_q4_inspection (
+      id SERIAL PRIMARY KEY,
+      entry_id TEXT,
+      count_name VARCHAR(100) NOT NULL,
+      consignee_name VARCHAR(100) NOT NULL,
+      creation_date DATE NOT NULL,
+      nsl1 NUMERIC(6,2), nsl2 NUMERIC(6,2), nsl3 NUMERIC(6,2), nsl4 NUMERIC(6,2), nsl5 NUMERIC(6,2), nsl6 NUMERIC(6,2), nsl7 NUMERIC(6,2),
+      t1 NUMERIC(6,2), t2 NUMERIC(6,2), t3 NUMERIC(6,2), t4 NUMERIC(6,2), t5 NUMERIC(6,2),
+      pf_sensing NUMERIC(6,2),
+      pf_no_of_periods INTEGER,
+      oc NUMERIC(6,2), cp NUMERIC(6,2), cm NUMERIC(6,2), ccp1 NUMERIC(6,2), ccp2 NUMERIC(6,2), ccm1 NUMERIC(6,2), ccm2 NUMERIC(6,2),
+      jp1 NUMERIC(6,2), jp2 NUMERIC(6,2), jp3 NUMERIC(6,2), jp4 NUMERIC(6,2), jp5 NUMERIC(6,2), jp6 NUMERIC(6,2), jp7 NUMERIC(6,2),
+      jp_clearing NUMERIC(6,2), jp_u_percent NUMERIC(6,2), jp_jm NUMERIC(6,2),
+      fd1 NUMERIC(6,2), fd2 NUMERIC(6,2), fd3 NUMERIC(6,2), fd4 NUMERIC(6,2), fd5 NUMERIC(6,2), fd6 NUMERIC(6,2),
+      reference_length NUMERIC(6,2),
+      suction NUMERIC(6,2),
+      measurement NUMERIC(6,2),
+      upper_limit NUMERIC(6,2),
+      lower_limit NUMERIC(6,2),
+      action VARCHAR(255),
+      suction_status VARCHAR(255),
+      blocking VARCHAR(255),
+      x_status VARCHAR(10) DEFAULT 'On',
+      dp_plus_30 NUMERIC(6,2),
+      sm_minus_30 NUMERIC(6,2),
+      cdp1 NUMERIC(6,2), cdp2 NUMERIC(6,2), cdm1 NUMERIC(6,2), cdm2 NUMERIC(6,2),
+      nsl_max_event NUMERIC(6,2),
+      t_max_event NUMERIC(6,2),
+      fd_max_events NUMERIC(6,2),
+      fl_max_events NUMERIC(6,2),
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+  `);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS autoconer_q4_inspection_entry_id_uq
+    ON autoconer.autoconer_q4_inspection (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
 
@@ -2581,6 +2636,19 @@ router.get('/q3/master-data', async (req, res) => {
 router.get('/q3/master/consignees', sendAutoconerConsigneeDropdown);
 router.get('/q3/master/consignee-names', sendAutoconerConsigneeDropdown);
 router.get('/q3/master/consignee-dropdown', sendAutoconerConsigneeDropdown);
+
+router.get('/q4/master-data', async (req, res) => {
+  try {
+    const payload = await fetchAutoconerMasterData(req.query);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error fetching autoconer Q4 master data:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+router.get('/q4/master/consignees', sendAutoconerConsigneeDropdown);
+router.get('/q4/master/consignee-names', sendAutoconerConsigneeDropdown);
+router.get('/q4/master/consignee-dropdown', sendAutoconerConsigneeDropdown);
 
 /**
  * @swagger
@@ -4825,6 +4893,177 @@ router.put('/q3/:id', async (req, res, next) => {
         data.fd1, data.fd2, data.fd3, data.fd4, data.fd5, data.fd6,
         data.reference_length, data.suction, data.measurement, data.upper_limit, data.lower_limit,
         data.action, data.suction_status, data.blocking,
+        id
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Entry not found' });
+    }
+
+    res.status(200).json({
+      message: 'Updated successfully',
+      data: result.rows[0]
+    });
+
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/q4', async (req, res, next) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const data = req.body;
+
+    if (!data.count_name || !data.consignee_name || !data.creation_date) {
+      return res.status(400).json({
+        message: 'count_name, consignee_name and creation_date are required'
+      });
+    }
+
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+
+    const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
+    if (conflictingCountName) {
+      return res.status(409).json({ message: `This PP id (${resolvedEntryId}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+    }
+
+    const result = await client.query(
+      `INSERT INTO autoconer.autoconer_q4_inspection (
+        entry_id,
+        count_name, consignee_name, creation_date,
+        nsl1, nsl2, nsl3, nsl4, nsl5, nsl6, nsl7,
+        t1, t2, t3, t4, t5,
+        pf_sensing, pf_no_of_periods,
+        oc, cp, cm, ccp1, ccp2, ccm1, ccm2,
+        jp1, jp2, jp3, jp4, jp5, jp6, jp7,
+        jp_clearing, jp_u_percent, jp_jm,
+        fd1, fd2, fd3, fd4, fd5, fd6,
+        reference_length, suction, measurement, upper_limit, lower_limit,
+        action, suction_status, blocking, x_status,
+        dp_plus_30, sm_minus_30, cdp1, cdp2, cdm1, cdm2,
+        nsl_max_event, t_max_event, fd_max_events, fl_max_events
+      )
+      VALUES (
+        $1,$2,$3,$4,
+        $5,$6,$7,$8,$9,$10,$11,
+        $12,$13,$14,$15,$16,
+        $17,$18,
+        $19,$20,$21,$22,$23,$24,$25,
+        $26,$27,$28,$29,$30,$31,$32,
+        $33,$34,$35,
+        $36,$37,$38,$39,$40,$41,
+        $42,$43,$44,$45,$46,
+        $47,$48,$49,$50,
+        $51,$52,$53,$54,$55,$56,
+        $57,$58,$59,$60
+      )
+      RETURNING *`,
+      [
+        resolvedEntryId,
+        data.count_name, data.consignee_name, data.creation_date,
+        data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
+        data.t1, data.t2, data.t3, data.t4, data.t5,
+        data.pf_sensing, data.pf_no_of_periods,
+        data.oc, data.cp, data.cm, data.ccp1, data.ccp2, data.ccm1, data.ccm2,
+        data.jp1, data.jp2, data.jp3, data.jp4, data.jp5, data.jp6, data.jp7,
+        data.jp_clearing, data.jp_u_percent, data.jp_jm,
+        data.fd1, data.fd2, data.fd3, data.fd4, data.fd5, data.fd6,
+        data.reference_length, data.suction, data.measurement, data.upper_limit, data.lower_limit,
+        data.action, data.suction_status, data.blocking, data.x_status,
+        data.dp_plus_30, data.sm_minus_30, data.cdp1, data.cdp2, data.cdm1, data.cdm2,
+        data.nsl_max_event, data.t_max_event, data.fd_max_events, data.fl_max_events
+      ]
+    );
+
+    res.status(201).json({
+      message: 'Q4 entry created successfully',
+      data: withScreenEntryId('q4', result.rows[0])
+    });
+
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
+    }
+    next(err);
+  }
+});
+
+router.get('/q4', async (req, res, next) => {
+  try {
+    await ensureAutoconerEntryIdColumns();
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const result = await client.query(
+      `SELECT *
+       FROM autoconer.autoconer_q4_inspection
+       ORDER BY creation_date DESC
+       OFFSET $1 LIMIT $2`,
+      [offset, limitNum]
+    );
+
+    const total = await client.query(
+      `SELECT COUNT(*) FROM autoconer.autoconer_q4_inspection`
+    );
+
+    res.status(200).json({
+      data: result.rows.map((row) => withScreenEntryId('q4', row)),
+      total: parseInt(total.rows[0].count),
+      page: pageNum,
+      limit: limitNum
+    });
+
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/q4/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id);
+    const data = req.body;
+
+    if (!id || id <= 0) {
+      return res.status(400).json({ message: 'Invalid ID' });
+    }
+
+    const result = await client.query(
+      `UPDATE autoconer.autoconer_q4_inspection
+       SET count_name=$1,
+           consignee_name=$2,
+           creation_date=$3,
+           nsl1=$4, nsl2=$5, nsl3=$6, nsl4=$7, nsl5=$8, nsl6=$9, nsl7=$10,
+           t1=$11, t2=$12, t3=$13, t4=$14, t5=$15,
+           pf_sensing=$16, pf_no_of_periods=$17,
+           oc=$18, cp=$19, cm=$20, ccp1=$21, ccp2=$22, ccm1=$23, ccm2=$24,
+           jp1=$25, jp2=$26, jp3=$27, jp4=$28, jp5=$29, jp6=$30, jp7=$31,
+           jp_clearing=$32, jp_u_percent=$33, jp_jm=$34,
+           fd1=$35, fd2=$36, fd3=$37, fd4=$38, fd5=$39, fd6=$40,
+           reference_length=$41, suction=$42, measurement=$43, upper_limit=$44, lower_limit=$45,
+           action=$46, suction_status=$47, blocking=$48, x_status=$49,
+           dp_plus_30=$50, sm_minus_30=$51, cdp1=$52, cdp2=$53, cdm1=$54, cdm2=$55,
+           nsl_max_event=$56, t_max_event=$57, fd_max_events=$58, fl_max_events=$59,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id=$60
+       RETURNING *`,
+      [
+        data.count_name, data.consignee_name, data.creation_date,
+        data.nsl1, data.nsl2, data.nsl3, data.nsl4, data.nsl5, data.nsl6, data.nsl7,
+        data.t1, data.t2, data.t3, data.t4, data.t5,
+        data.pf_sensing, data.pf_no_of_periods,
+        data.oc, data.cp, data.cm, data.ccp1, data.ccp2, data.ccm1, data.ccm2,
+        data.jp1, data.jp2, data.jp3, data.jp4, data.jp5, data.jp6, data.jp7,
+        data.jp_clearing, data.jp_u_percent, data.jp_jm,
+        data.fd1, data.fd2, data.fd3, data.fd4, data.fd5, data.fd6,
+        data.reference_length, data.suction, data.measurement, data.upper_limit, data.lower_limit,
+        data.action, data.suction_status, data.blocking, data.x_status,
+        data.dp_plus_30, data.sm_minus_30, data.cdp1, data.cdp2, data.cdm1, data.cdm2,
+        data.nsl_max_event, data.t_max_event, data.fd_max_events, data.fl_max_events,
         id
       ]
     );

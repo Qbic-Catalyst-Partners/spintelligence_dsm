@@ -130,7 +130,8 @@ const PP_BATCH_NOTEBOOKS = [
   { sub_department: 'Spinning', notebook: 'Spinning QC Header', label: 'Spinning QC Header', schema: 'spinning', table: 'spinning_qc_header', hasOperator: false },
   { sub_department: 'Autoconer', notebook: 'Autoconer Process Parameter', label: 'Autoconer Process Parameter', schema: 'autoconer', table: 'autoconer_process_parameter', hasOperator: false },
   { sub_department: 'Autoconer', notebook: 'Autoconer Q2 Inspection', label: 'Autoconer Q2 Inspection', schema: 'autoconer', table: 'autoconer_q2_inspection', hasOperator: false },
-  { sub_department: 'Autoconer', notebook: 'Autoconer Q3 Inspection', label: 'Autoconer Q3 Inspection', schema: 'autoconer', table: 'autoconer_q3_inspection', hasOperator: false }
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q3 Inspection', label: 'Autoconer Q3 Inspection', schema: 'autoconer', table: 'autoconer_q3_inspection', hasOperator: false },
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q4 Inspection', label: 'Autoconer Q4 Inspection', schema: 'autoconer', table: 'autoconer_q4_inspection', hasOperator: false }
 ];
 
 const ensurePpBatchConfigTable = async () => {
