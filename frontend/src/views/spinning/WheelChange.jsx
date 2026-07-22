@@ -2,15 +2,11 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
-import WarningModal from "@/components/WarningModal";
-import SuccessModal from "@/components/SuccessModal";
 import {
   fetchSpinningWheelChangeDropdown,
   fetchSpinningWheelChangeLatestRecord,
-  fetchSpinningWheelChangePpApprovalStatus,
 } from "@/apis/spinning";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
-import { PROCESS_PARAMETER_CONSIGNEE_OPTIONS } from "@/data/processParameterMasterOptions";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
@@ -183,7 +179,6 @@ const computeType1TotalDraft = ({ dca, dcb, dfc, dc }) => {
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
-  { key: "consigneeName", label: "Consignee Name", inputType: "select", numeric: false },
   { key: "lycraType", label: "Lycra Type" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "tmDisc", label: "Slub Code" },
@@ -212,7 +207,6 @@ const TYPE_1_PARAMETER_ROWS = [
 
 const TYPE_2_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
-  { key: "consigneeName", label: "Consignee Name", inputType: "select", numeric: false },
   { key: "lycraType", label: "Lycra Type" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "slubCode", label: "Slub Code" },
@@ -242,7 +236,6 @@ const TYPE_2_PARAMETER_ROWS = [
 
 const TYPE_3_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
-  { key: "consigneeName", label: "Consignee Name", inputType: "select", numeric: false },
   { key: "lycraType", label: "Lycra Type" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "slubCode", label: "Slub Code" },
@@ -280,7 +273,6 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fm_no",
     rows: {
       countForm: "count_from",
-      consigneeName: "consignee_name",
       lycraType: "lycra_type",
       lycraDraft: "lycra_draft",
       tmDisc: "slub_code",
@@ -311,7 +303,6 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fm_no",
     rows: {
       countForm: "count_from",
-      consigneeName: "consignee_name",
       lycraType: "lycra_type",
       lycraDraft: "lycra_draft",
       slubCode: "slub_code",
@@ -346,7 +337,6 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fr_no",
     rows: {
       countForm: "count_from",
-      consigneeName: "consignee_name",
       lycraType: "lycra_type",
       lycraDraft: "lycra_draft",
       slubCode: "slub_code",
@@ -951,69 +941,6 @@ const WheelChange = forwardRef(function WheelChange(
   }, [date, draftLoaded, machineNumber, testNo, values, wheelChangeType]);
 
   const selectedVariety = String(values.countForm?.existing || values.countForm?.proposed || "").trim();
-  const selectedConsignee = String(values.consigneeName?.existing || values.consigneeName?.proposed || "").trim();
-
-  // A first-time Wheel Change proposal for a given Count + Consignee Name is
-  // only allowed once the matching Process Parameter (PP) entry for that
-  // same Count + Consignee has been fully approved. The moment both are
-  // picked, this looks up that PP's approval status and blocks
-  // save/submit (via validate() below) until it's approved.
-  const [ppApproval, setPpApproval] = useState({ checked: false, blocked: false, message: "" });
-  const [ppWarningModalOpen, setPpWarningModalOpen] = useState(false);
-  const [ppSuccessModalOpen, setPpSuccessModalOpen] = useState(false);
-  const lastPpApprovalAlertKeyRef = useRef("");
-  const ppSuccessAutoCloseRef = useRef(null);
-
-  useEffect(
-    () => () => {
-      if (ppSuccessAutoCloseRef.current) clearTimeout(ppSuccessAutoCloseRef.current);
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!selectedVariety || !selectedConsignee) {
-      setPpApproval({ checked: false, blocked: false, message: "" });
-      return;
-    }
-
-    let cancelled = false;
-    // Fires as soon as both Count and Consignee are picked - the only delay
-    // before the box appears is this one network round trip to check
-    // approval status (no debounce, no extra waiting on top of it).
-    fetchSpinningWheelChangePpApprovalStatus(selectedVariety, selectedConsignee).then(
-      (result) => {
-        if (cancelled) return;
-        const fullyApproved = Boolean(result?.fully_approved);
-        const message = fullyApproved
-          ? ""
-          : "Wheel Change cannot proceed until the PP ID for this Count & Consignee(s) is fully approved";
-        setPpApproval({ checked: true, blocked: !fullyApproved, message });
-
-        const alertKey = `${selectedVariety}::${selectedConsignee}`;
-        if (lastPpApprovalAlertKeyRef.current === alertKey) return;
-        lastPpApprovalAlertKeyRef.current = alertKey;
-
-        if (fullyApproved) {
-          setPpSuccessModalOpen(true);
-          // Auto-dismiss quickly - this is a "you're clear to proceed"
-          // confirmation, not something that should block the operator the
-          // way the unapproved-combo warning does.
-          if (ppSuccessAutoCloseRef.current) clearTimeout(ppSuccessAutoCloseRef.current);
-          ppSuccessAutoCloseRef.current = setTimeout(() => setPpSuccessModalOpen(false), 1500);
-        } else {
-          setPpWarningModalOpen(true);
-        }
-      },
-      () => {
-        if (!cancelled) setPpApproval({ checked: false, blocked: false, message: "" });
-      }
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedVariety, selectedConsignee]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -1344,10 +1271,6 @@ const WheelChange = forwardRef(function WheelChange(
     if (!date) nextErrors.date = true;
     if (!machineNumber.trim()) nextErrors.machineNumber = true;
     if (!testNo.trim()) nextErrors.testNo = true;
-    if (ppApproval.blocked) {
-      nextErrors.ppApproval = true;
-      setPpWarningModalOpen(true);
-    }
 
     const valueErrors = {};
     activeRows.forEach((row) => {
@@ -1495,12 +1418,7 @@ const WheelChange = forwardRef(function WheelChange(
         ...(STATIC_TYPE_1_DROPDOWN_OPTIONS[row.key] || []),
         ...(STATIC_TYPE_2_DROPDOWN_OPTIONS[row.key] || []),
       ].map((option) => String(option));
-      // Count From and Consignee Name show every master-data option — any
-      // combination can be picked, but selecting one that isn't fully
-      // approved in Process Parameter pops the warning below and blocks
-      // save (see the pp-approval-status effect and validate()).
       const options = normalizeDropdownOptions([
-        ...(row.key === "consigneeName" ? PROCESS_PARAMETER_CONSIGNEE_OPTIONS : []),
         ...dynamicDropdownOptions,
         ...staticDropdownOptions,
         ...getFirstArray(dropdownOptions, optionKeys),
@@ -1547,20 +1465,6 @@ const WheelChange = forwardRef(function WheelChange(
 
   return (
     <>
-      <WarningModal
-        open={ppWarningModalOpen}
-        message={
-          ppApproval.message ||
-          "Wheel Change cannot proceed until the PP ID for this Count & Consignee(s) is fully approved"
-        }
-        onClose={() => setPpWarningModalOpen(false)}
-      />
-      <SuccessModal
-        open={ppSuccessModalOpen}
-        message="PP Approved — Wheel Change can proceed"
-        onClose={() => setPpSuccessModalOpen(false)}
-        closeLabel="OK"
-      />
       <div className={styles.titleRow}>
         <InspectionEntryIcon />
         <h3 className={styles.sectionTitle}>Inspection Data Entry</h3>
@@ -1657,12 +1561,6 @@ const WheelChange = forwardRef(function WheelChange(
             />
           </div>
         </div>
-
-        {ppApproval.blocked && (
-          <div className={styles.rejectedNotice}>
-            <div>{ppApproval.message}</div>
-          </div>
-        )}
 
         {unapprovedEntry?.status === "pending" && (
           <div className={styles.pendingNotice}>

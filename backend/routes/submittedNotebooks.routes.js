@@ -19,35 +19,6 @@ const cleanText = (value) => {
 
 const toJson = (value, fallback = null) => JSON.stringify(value === undefined ? fallback : value);
 
-// operator_tickets' approval_lX_user_ids / lX_tat_due_at columns are also
-// migrated by operatorTickets.routes.js and supervisorTickets.routes.js -
-// this file references them (l2/l3/l4/l5_tat_due_at, approval_l1-l5_user_ids)
-// without ever having run its own copy of that migration, relying entirely
-// on one of those other files' routes having already been hit first. That's
-// fragile even for the pre-existing L1-L3 columns; ensure them here too so
-// this file's own endpoints (PP batch completion check in particular) work
-// standalone.
-let ticketApprovalColumnsEnsured = false;
-const ensureTicketApprovalColumnsForBatchCheck = async () => {
-  if (ticketApprovalColumnsEnsured) return;
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-      ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
-      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
-      ADD COLUMN IF NOT EXISTS l1_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l2_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
-      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
-  `);
-  ticketApprovalColumnsEnsured = true;
-};
-
 const parseTatHours = (value, fallback = null) => {
   if (value === null || value === undefined || value === '') return fallback;
   const n = Number(value);
@@ -145,12 +116,6 @@ const getL3ApproverIds = (providedValues = [], options = {}) =>
 const getL1ApproverIds = (providedValues = [], options = {}) =>
   getApproverIdsByLevel(providedValues, { ...options, level: 'L1' });
 
-const getL4ApproverIds = (providedValues = [], options = {}) =>
-  getApproverIdsByLevel(providedValues, { ...options, level: 'L4' });
-
-const getL5ApproverIds = (providedValues = [], options = {}) =>
-  getApproverIdsByLevel(providedValues, { ...options, level: 'L5' });
-
 // The 7 sub-departments / 10 notebooks tracked by PP Batch Completion, and the
 // underlying table each notebook's submissions actually land in. entry_id here
 // is the shared "PP-000N" id stamped across every department's PP screen —
@@ -180,37 +145,21 @@ const ensurePpBatchConfigTable = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  // L3/L4/L5 escalation tiers - a PP_BATCH_INCOMPLETE ticket escalates
-  // L2 -> L3 -> L4 -> L5 as each tier's TAT elapses (see
-  // escalatePpBatchTickets below), mirroring the existing L2 step.
-  await client.query(`
-    ALTER TABLE ticketing_system.pp_batch_config
-      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
-      ADD COLUMN IF NOT EXISTS approval_l5_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
-  `);
 };
 
 const getPpBatchConfig = async () => {
   await ensurePpBatchConfigTable();
   const result = await client.query(
-    `SELECT * FROM ticketing_system.pp_batch_config WHERE config_key = 'global'`
+    `SELECT config_key, completion_threshold_hours, l2_tat_hours, approval_l1_user_ids, approval_l2_user_ids, is_active, updated_at
+     FROM ticketing_system.pp_batch_config
+     WHERE config_key = 'global'`
   );
   return result.rows[0] || {
     config_key: 'global',
     completion_threshold_hours: 24,
     l2_tat_hours: null,
-    l3_tat_hours: null,
-    l4_tat_hours: null,
-    l5_tat_hours: null,
     approval_l1_user_ids: [],
     approval_l2_user_ids: [],
-    approval_l3_user_ids: [],
-    approval_l4_user_ids: [],
-    approval_l5_user_ids: [],
     is_active: true,
     updated_at: null
   };
@@ -258,7 +207,6 @@ const getPpBatchSubDepartments = async () => {
 // screen) and files a PP_BATCH_INCOMPLETE ticket for each, then expires any
 // already-open PP_BATCH_INCOMPLETE ticket whose L2 TAT has elapsed.
 const runPpBatchCompletionCheck = async () => {
-  await ensureTicketApprovalColumnsForBatchCheck();
   const config = await getPpBatchConfig();
 
   if (config.is_active === false) {
@@ -367,89 +315,18 @@ const runPpBatchCompletionCheck = async () => {
     });
   }
 
-  const escalated = await escalatePpBatchTickets(config);
-
-  return { created, expired: escalated };
-};
-
-// Steps a PP_BATCH_INCOMPLETE ticket from one TAT tier to the next
-// (L2 -> L3 -> L4 -> L5) once the current tier's due date has passed:
-// assigns that tier's approvers, sets its due date, notifies them, and
-// advances tat_current_level. L5 is the final tier - once its TAT elapses
-// the ticket is just marked EXPIRED_L5 with nowhere further to escalate to.
-const escalatePpBatchTickets = async (config) => {
-  const tiers = [
-    { level: 'L2', dueColumn: 'l2_tat_due_at', nextLevel: 'L3', nextDueColumn: 'l3_tat_due_at', nextTatHours: config.l3_tat_hours, nextApproverIds: config.approval_l3_user_ids, getDefault: getL3ApproverIds },
-    { level: 'L3', dueColumn: 'l3_tat_due_at', nextLevel: 'L4', nextDueColumn: 'l4_tat_due_at', nextTatHours: config.l4_tat_hours, nextApproverIds: config.approval_l4_user_ids, getDefault: getL4ApproverIds },
-    { level: 'L4', dueColumn: 'l4_tat_due_at', nextLevel: 'L5', nextDueColumn: 'l5_tat_due_at', nextTatHours: config.l5_tat_hours, nextApproverIds: config.approval_l5_user_ids, getDefault: getL5ApproverIds },
-  ];
-
-  const allEscalated = [];
-
-  for (const tier of tiers) {
-    const dueTickets = await client.query(
-      `SELECT * FROM ticketing_system.operator_tickets
-       WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
-         AND tat_current_level = $1
-         AND ${tier.dueColumn} IS NOT NULL
-         AND ${tier.dueColumn} <= NOW()
-         AND status <> 'Closed'`,
-      [tier.level]
-    );
-    if (!dueTickets.rowCount) continue;
-
-    const nextTatHours = Number(tier.nextTatHours) > 0 ? Number(tier.nextTatHours) : null;
-    const nextApproverIds = (Array.isArray(tier.nextApproverIds) && tier.nextApproverIds.length)
-      ? tier.nextApproverIds
-      // eslint-disable-next-line no-await-in-loop
-      : await tier.getDefault([], { useDefault: true });
-    const nextDueAt = nextTatHours ? new Date(Date.now() + nextTatHours * 60 * 60 * 1000).toISOString() : null;
-
-    for (const ticket of dueTickets.rows) {
-      // eslint-disable-next-line no-await-in-loop
-      const result = await client.query(
-        `UPDATE ticketing_system.operator_tickets
-         SET tat_current_level = $1,
-             approval_${tier.nextLevel.toLowerCase()}_user_ids = $2,
-             ${tier.nextDueColumn} = $3
-         WHERE ticket_id = $4
-         RETURNING *`,
-        [tier.nextLevel, nextApproverIds, nextDueAt, ticket.ticket_id]
-      );
-      const escalatedTicket = result.rows[0];
-      if (escalatedTicket) allEscalated.push(escalatedTicket);
-
-      if (nextApproverIds.length) {
-        // eslint-disable-next-line no-await-in-loop
-        await createNotificationsForUsers(nextApproverIds, {
-          ticketId: ticket.ticket_id,
-          type: 'PP_BATCH_INCOMPLETE',
-          category: 'Tickets',
-          priority: 'High',
-          title: `PP batch incomplete (escalated to ${tier.nextLevel}): ${ticket.violation_details?.entry_id || ticket.ticket_id}`,
-          body: `This PP batch was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
-          linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
-          payload: { ticket_id: ticket.ticket_id }
-        });
-      }
-    }
-  }
-
-  // L5 is terminal - nothing further to escalate to, just mark it expired
-  // once its own TAT elapses so it's visibly overdue rather than silently
-  // stuck at "L5" forever.
-  const expiredL5 = await client.query(
+  const expiredResult = await client.query(
     `UPDATE ticketing_system.operator_tickets
-     SET tat_current_level = 'EXPIRED_L5'
+     SET tat_current_level = 'EXPIRED_L2'
      WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
-       AND tat_current_level = 'L5'
-       AND l5_tat_due_at IS NOT NULL
-       AND l5_tat_due_at <= NOW()
+       AND tat_current_level = 'L2'
+       AND l2_tat_due_at IS NOT NULL
+       AND l2_tat_due_at <= NOW()
        AND status <> 'Closed'
      RETURNING *`
   );
 
-  return [...allEscalated, ...expiredL5.rows];
+  return { created, expired: expiredResult.rows };
 };
 
 const ensureSubmittedNotebookTables = async () => {
@@ -501,8 +378,6 @@ const ensureSubmittedNotebookTables = async () => {
       ADD COLUMN IF NOT EXISTS submitted_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS l2_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
       ADD COLUMN IF NOT EXISTS l3_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      ADD COLUMN IF NOT EXISTS l4_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
-      ADD COLUMN IF NOT EXISTS l5_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
       ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PENDING_ACK',
       ADD COLUMN IF NOT EXISTS submitted_at timestamptz NOT NULL DEFAULT NOW(),
       ADD COLUMN IF NOT EXISTS ack_due_at timestamptz NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
@@ -846,7 +721,6 @@ const createOverdueTicketForSubmission = async () => {
 const generateOverdueNotebookTickets = async () => {
   await ensureSubmittedNotebookTables();
   await ensureNotificationMetadataColumns();
-  await ensureTicketApprovalColumnsForBatchCheck();
 
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_ack_notebook_submission_uq
@@ -903,12 +777,6 @@ const generateOverdueNotebookTickets = async () => {
     const l3ApproverIds = (Array.isArray(submission.l3_approver_user_ids) && submission.l3_approver_user_ids.length)
       ? submission.l3_approver_user_ids
       : await getL3ApproverIds([], { useDefault: true });
-    const l4ApproverIds = (Array.isArray(submission.l4_approver_user_ids) && submission.l4_approver_user_ids.length)
-      ? submission.l4_approver_user_ids
-      : await getL4ApproverIds([], { useDefault: true });
-    const l5ApproverIds = (Array.isArray(submission.l5_approver_user_ids) && submission.l5_approver_user_ids.length)
-      ? submission.l5_approver_user_ids
-      : await getL5ApproverIds([], { useDefault: true });
     const violationDetails = {
       category: 'MISSED_FREQUENCY',
       ticket_type: 'NOTEBOOK_ACK_OVERDUE',
@@ -923,13 +791,12 @@ const generateOverdueNotebookTickets = async () => {
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
-        violation_details, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids,
-        tat_current_level, l2_tat_due_at, l3_tat_due_at)
+        violation_details, approval_l2_user_ids, approval_l3_user_ids, tat_current_level, l2_tat_due_at, l3_tat_due_at)
        VALUES (
          'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
          $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
          'High', 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
-         $9::jsonb, $10::int[], $11::int[], $12::int[], $13::int[], 'L2', NOW(), NULL
+         $9::jsonb, $10::int[], $11::int[], 'L2', NOW(), NULL
        )
        RETURNING *`,
       [
@@ -943,9 +810,7 @@ const generateOverdueNotebookTickets = async () => {
         submission.sub_department,
         toJson(violationDetails, {}),
         l2ApproverIds,
-        l3ApproverIds,
-        l4ApproverIds,
-        l5ApproverIds
+        l3ApproverIds
       ]
     );
 
@@ -967,12 +832,7 @@ const generateOverdueNotebookTickets = async () => {
     );
 
     const ackNotebookName = submission.input_screen || submission.notebook;
-    for (const { level, userIds } of [
-      { level: 'L2', userIds: l2ApproverIds },
-      { level: 'L3', userIds: l3ApproverIds },
-      { level: 'L4', userIds: l4ApproverIds },
-      { level: 'L5', userIds: l5ApproverIds }
-    ]) {
+    for (const { level, userIds } of [{ level: 'L2', userIds: l2ApproverIds }, { level: 'L3', userIds: l3ApproverIds }]) {
       if (!Array.isArray(userIds) || !userIds.length) continue;
       await createNotificationsForUsers(userIds, {
         ticketId: inserted.ticket_id,
@@ -1109,44 +969,28 @@ router.post('/pp-batch-config', async (req, res, next) => {
     }
 
     const l2TatHours = parseTatHours(req.body?.l2_tat_hours, null);
-    const l3TatHours = parseTatHours(req.body?.l3_tat_hours, null);
-    const l4TatHours = parseTatHours(req.body?.l4_tat_hours, null);
-    const l5TatHours = parseTatHours(req.body?.l5_tat_hours, null);
-    const toUserIdArray = (value) =>
-      toArray(value).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0);
-    const approvalL1UserIds = toUserIdArray(req.body?.approval_l1_user_ids);
-    const approvalL2UserIds = toUserIdArray(req.body?.approval_l2_user_ids);
-    const approvalL3UserIds = toUserIdArray(req.body?.approval_l3_user_ids);
-    const approvalL4UserIds = toUserIdArray(req.body?.approval_l4_user_ids);
-    const approvalL5UserIds = toUserIdArray(req.body?.approval_l5_user_ids);
+    const approvalL1UserIds = toArray(req.body?.approval_l1_user_ids)
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const approvalL2UserIds = toArray(req.body?.approval_l2_user_ids)
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
     const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
 
     const result = await client.query(
       `INSERT INTO ticketing_system.pp_batch_config
-       (config_key, completion_threshold_hours, l2_tat_hours, l3_tat_hours, l4_tat_hours, l5_tat_hours,
-        approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids,
-        is_active, updated_at)
-       VALUES ('global', $1, $2, $3, $4, $5, $6::int[], $7::int[], $8::int[], $9::int[], $10::int[], $11, NOW())
+       (config_key, completion_threshold_hours, l2_tat_hours, approval_l1_user_ids, approval_l2_user_ids, is_active, updated_at)
+       VALUES ('global', $1, $2, $3::int[], $4::int[], $5, NOW())
        ON CONFLICT (config_key)
        DO UPDATE SET
          completion_threshold_hours = EXCLUDED.completion_threshold_hours,
          l2_tat_hours = EXCLUDED.l2_tat_hours,
-         l3_tat_hours = EXCLUDED.l3_tat_hours,
-         l4_tat_hours = EXCLUDED.l4_tat_hours,
-         l5_tat_hours = EXCLUDED.l5_tat_hours,
          approval_l1_user_ids = EXCLUDED.approval_l1_user_ids,
          approval_l2_user_ids = EXCLUDED.approval_l2_user_ids,
-         approval_l3_user_ids = EXCLUDED.approval_l3_user_ids,
-         approval_l4_user_ids = EXCLUDED.approval_l4_user_ids,
-         approval_l5_user_ids = EXCLUDED.approval_l5_user_ids,
          is_active = EXCLUDED.is_active,
          updated_at = NOW()
        RETURNING *`,
-      [
-        completionThresholdHours, l2TatHours, l3TatHours, l4TatHours, l5TatHours,
-        approvalL1UserIds, approvalL2UserIds, approvalL3UserIds, approvalL4UserIds, approvalL5UserIds,
-        isActive
-      ]
+      [completionThresholdHours, l2TatHours, approvalL1UserIds, approvalL2UserIds, isActive]
     );
 
     return res.status(200).json({ message: 'PP batch config saved successfully', config: result.rows[0] });

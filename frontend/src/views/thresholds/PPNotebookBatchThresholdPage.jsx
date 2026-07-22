@@ -14,14 +14,8 @@ import styles from "@/styles/SubmissionThreshold.module.css";
 const createFormState = () => ({
   completionThresholdHours: "",
   l2TatHours: "",
-  l3TatHours: "",
-  l4TatHours: "",
-  l5TatHours: "",
   approvalL1Ids: [],
   approvalL2Ids: [],
-  approvalL3Ids: [],
-  approvalL4Ids: [],
-  approvalL5Ids: [],
 });
 
 const getUserDisplayName = (user) =>
@@ -181,23 +175,14 @@ export default function PPNotebookBatchThresholdPage() {
 
   const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
   const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
-  const l3Options = useMemo(() => buildUserOptions(users, "L3"), [users]);
-  const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
-  const l5Options = useMemo(() => buildUserOptions(users, "L5"), [users]);
 
   const populateFromConfig = (config) => {
     if (!config) return;
     setForm({
       completionThresholdHours: String(config.completion_threshold_hours ?? ""),
       l2TatHours: String(config.l2_tat_hours ?? ""),
-      l3TatHours: String(config.l3_tat_hours ?? ""),
-      l4TatHours: String(config.l4_tat_hours ?? ""),
-      l5TatHours: String(config.l5_tat_hours ?? ""),
       approvalL1Ids: normalizeIdList(config.approval_l1_user_ids),
       approvalL2Ids: normalizeIdList(config.approval_l2_user_ids),
-      approvalL3Ids: normalizeIdList(config.approval_l3_user_ids),
-      approvalL4Ids: normalizeIdList(config.approval_l4_user_ids),
-      approvalL5Ids: normalizeIdList(config.approval_l5_user_ids),
     });
     setLastSavedAt(config.updated_at || config.created_at || "");
   };
@@ -259,28 +244,11 @@ export default function PPNotebookBatchThresholdPage() {
         throw new Error("Please select at least one L2 user.");
       }
 
-      // L3/L4/L5 are optional - a ticket simply stops auto-escalating past
-      // whichever tier has no TAT hours set, rather than requiring the full
-      // L1-L5 chain to be configured up front.
-      const parseOptionalTatHours = (value) => {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-      };
-      const l3TatHours = parseOptionalTatHours(form.l3TatHours);
-      const l4TatHours = parseOptionalTatHours(form.l4TatHours);
-      const l5TatHours = parseOptionalTatHours(form.l5TatHours);
-
       const payload = {
         completion_threshold_hours: completionThresholdHours,
         l2_tat_hours: l2TatHours,
-        l3_tat_hours: l3TatHours,
-        l4_tat_hours: l4TatHours,
-        l5_tat_hours: l5TatHours,
         approval_l1_user_ids: form.approvalL1Ids.map((id) => Number(id)),
         approval_l2_user_ids: form.approvalL2Ids.map((id) => Number(id)),
-        approval_l3_user_ids: form.approvalL3Ids.map((id) => Number(id)),
-        approval_l4_user_ids: form.approvalL4Ids.map((id) => Number(id)),
-        approval_l5_user_ids: form.approvalL5Ids.map((id) => Number(id)),
         is_active: true,
       };
 
@@ -358,81 +326,6 @@ export default function PPNotebookBatchThresholdPage() {
                     value={form.l2TatHours}
                     onChange={(event) => updateField("l2TatHours", event.target.value)}
                     disabled={loading}
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>L3 (Sub Manager) — optional</span>
-                  <MultiUserSelect
-                    value={form.approvalL3Ids}
-                    options={l3Options}
-                    onChange={(nextIds) => updateField("approvalL3Ids", nextIds)}
-                    disabled={loading}
-                    placeholder={l3Options.length ? "Select" : "No L3 users available"}
-                    emptyLabel="No L3 users available"
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>L3 TAT (Hours)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={form.l3TatHours}
-                    onChange={(event) => updateField("l3TatHours", event.target.value)}
-                    disabled={loading}
-                    placeholder="Leave blank to not escalate to L3"
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>L4 (Quality/Dept Head) — optional</span>
-                  <MultiUserSelect
-                    value={form.approvalL4Ids}
-                    options={l4Options}
-                    onChange={(nextIds) => updateField("approvalL4Ids", nextIds)}
-                    disabled={loading}
-                    placeholder={l4Options.length ? "Select" : "No L4 users available"}
-                    emptyLabel="No L4 users available"
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>L4 TAT (Hours)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={form.l4TatHours}
-                    onChange={(event) => updateField("l4TatHours", event.target.value)}
-                    disabled={loading}
-                    placeholder="Leave blank to not escalate to L4"
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>L5 (Admin/MD) — optional</span>
-                  <MultiUserSelect
-                    value={form.approvalL5Ids}
-                    options={l5Options}
-                    onChange={(nextIds) => updateField("approvalL5Ids", nextIds)}
-                    disabled={loading}
-                    placeholder={l5Options.length ? "Select" : "No L5 users available"}
-                    emptyLabel="No L5 users available"
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>L5 TAT (Hours)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={form.l5TatHours}
-                    onChange={(event) => updateField("l5TatHours", event.target.value)}
-                    disabled={loading}
-                    placeholder="Leave blank to not escalate to L5"
                   />
                 </label>
 

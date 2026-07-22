@@ -5,29 +5,15 @@ import SuccessModal from "@/components/SuccessModal";
 import { isWheelChangeApproverUser } from "@/utils/accessControl";
 import styles from "@/styles/wheelChangeApprovals.module.css";
 
-const DEFAULT_TAB_LABELS = {
-  pending: "Pending Approvals",
-  approved: "Existing Approvals",
-  rejected: "Rejected",
-};
+const TABS = [
+  { key: "pending", label: "Pending Approvals" },
+  { key: "approved", label: "Existing Approvals" },
+];
 
 const STATUS_BADGE_CLASS = {
   pending: styles.statusBadgePending,
   approved: styles.statusBadgeApproved,
   rejected: styles.statusBadgeRejected,
-  // PP lifecycle statuses (process_parameters.master.status)
-  in_progress: styles.statusBadgePending,
-  pending_approval: styles.statusBadgePending,
-  active: styles.statusBadgeApproved,
-  inactive: styles.statusBadgeRejected,
-};
-
-const STATUS_BADGE_LABEL = {
-  pending: "Awaiting L2",
-  in_progress: "In Progress",
-  pending_approval: "Awaiting L4",
-  active: "Active",
-  inactive: "Inactive",
 };
 
 const trimValue = (value) => String(value ?? "").trim();
@@ -53,7 +39,7 @@ function StatusBadge({ status }) {
   const key = trimValue(status).toLowerCase() || "pending";
   return (
     <span className={`${styles.statusBadge} ${STATUS_BADGE_CLASS[key] || STATUS_BADGE_CLASS.pending}`}>
-      {STATUS_BADGE_LABEL[key] || key}
+      {key === "pending" ? "Awaiting L2" : key}
     </span>
   );
 }
@@ -105,36 +91,6 @@ const getGroupLabel = (value) => {
   return date.toLocaleDateString("en-GB");
 };
 
-// Candidate raw field names to look for Count/Consignee on an approval item —
-// broad enough to cover Spinning's flat `${field}_existing`/`_proposed`
-// wheel-change columns, Spinning's PP header (count_name/consignee_name),
-// and the variety/mixing naming other departments use.
-const DEFAULT_COUNT_NAME_KEYS = [
-  "count_name",
-  "count_from_proposed",
-  "count_from_existing",
-  "count_from",
-  "count",
-  "variety_name",
-  "variety",
-  "mixing_name",
-  "mixing",
-];
-const DEFAULT_CONSIGNEE_NAME_KEYS = [
-  "consignee_name_proposed",
-  "consignee_name_existing",
-  "consignee_name",
-  "consignee",
-];
-
-const extractFieldValue = (item, keys) => {
-  for (const key of keys) {
-    const value = trimValue(item?.[key]);
-    if (value) return value;
-  }
-  return "";
-};
-
 // Default shape: a JSONB parameters/parameter_rows/rows blob of
 // {key,label,existing,proposed} — what Spinning, Draw Frame, and Simplex all
 // store. Carding's backend instead stores flat `${field}_existing`/
@@ -164,7 +120,6 @@ function ApprovalsQueueView({
   entityLabel = "entries",
   fetchPending,
   fetchApproved,
-  fetchRejected,
   approve,
   reject,
   resolveDepartmentLabel = defaultResolveDepartmentLabel,
@@ -172,24 +127,10 @@ function ApprovalsQueueView({
   departmentSuffix = "Department",
   modalTitleId = "approval-title",
   successEntityName = "Entry",
-  countNameKeys = DEFAULT_COUNT_NAME_KEYS,
-  consigneeNameKeys = DEFAULT_CONSIGNEE_NAME_KEYS,
-  canApproveCheck = isWheelChangeApproverUser,
-  accessDeniedText = "Only L2 users can view and approve proposed",
-  tabLabels = DEFAULT_TAB_LABELS,
 }) {
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
-  const canApprove = canApproveCheck(user);
-  const mergedTabLabels = { ...DEFAULT_TAB_LABELS, ...tabLabels };
-  // Rejected is opt-in per screen (only PP Approvals passes fetchRejected
-  // today) - other approval screens (Wheel Change, Carding, etc.) keep their
-  // existing two-tab layout unchanged.
-  const TABS = [
-    { key: "pending", label: mergedTabLabels.pending },
-    { key: "approved", label: mergedTabLabels.approved },
-    ...(fetchRejected ? [{ key: "rejected", label: mergedTabLabels.rejected }] : []),
-  ];
+  const canApprove = isWheelChangeApproverUser(user);
   const [activeTab, setActiveTab] = useState("pending");
   const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -201,22 +142,12 @@ function ApprovalsQueueView({
   const [rejectReason, setRejectReason] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
-  const [filters, setFilters] = useState({
-    department: "",
-    countName: "",
-    consigneeName: "",
-    machineNumber: "",
-    dateFrom: "",
-    dateTo: "",
-  });
 
   const normalizeApprovalItem = useCallback(
     (item, index) => ({
       id: trimValue(item?.id ?? item?.approval_id ?? item?.entry_id ?? index),
       department: trimValue(item?.department ?? item?.department_name ?? ""),
       departmentLabel: resolveDepartmentLabel(item),
-      countName: extractFieldValue(item, countNameKeys),
-      consigneeName: extractFieldValue(item, consigneeNameKeys),
       // A generic screen label like "Wheel Change" on item.type is truthy, so
       // a ?? chain would always stop there before ever reaching the more
       // specific wheel_change_type-derived title (e.g. Spinning's raw rows
@@ -245,15 +176,10 @@ function ApprovalsQueueView({
         ) || "-",
       createdOn: item?.created_at ?? item?.created_on ?? item?.entry_date ?? "",
       remarks: trimValue(item?.remarks ?? item?.comment ?? ""),
-      // Set on reject (and approve, for reviewedBy) - surfaced in the detail
-      // modal so a reviewer (or the operator, on a rejected entry) can see
-      // who acted on it and why.
-      reviewRemarks: trimValue(item?.review_remarks ?? ""),
-      reviewedBy: trimValue(item?.reviewed_by ?? ""),
       status: trimValue(item?.approval_status ?? item?.status ?? "pending").toLowerCase() || "pending",
       parameters: extractParameters(item),
     }),
-    [consigneeNameKeys, countNameKeys, extractParameters, pageTitle, resolveDepartmentLabel]
+    [extractParameters, pageTitle, resolveDepartmentLabel]
   );
 
   const extractApprovalRows = useCallback(
@@ -275,23 +201,18 @@ function ApprovalsQueueView({
       setLoading(true);
       setError("");
       try {
-        const payload =
-          tab === "approved"
-            ? await fetchApproved()
-            : tab === "rejected"
-              ? await fetchRejected()
-              : await fetchPending();
+        const payload = tab === "approved" ? await fetchApproved() : await fetchPending();
         setApprovals(extractApprovalRows(payload));
       } catch (err) {
         setError(
-          err?.message || `Unable to load ${tab === "approved" ? "existing" : tab === "rejected" ? "rejected" : "pending"} ${entityLabel}.`
+          err?.message || `Unable to load ${tab === "approved" ? "existing" : "pending"} ${entityLabel}.`
         );
         setApprovals([]);
       } finally {
         setLoading(false);
       }
     },
-    [entityLabel, extractApprovalRows, fetchApproved, fetchPending, fetchRejected]
+    [entityLabel, extractApprovalRows, fetchApproved, fetchPending]
   );
 
   useEffect(() => {
@@ -339,57 +260,15 @@ function ApprovalsQueueView({
     }
   };
 
-  const departmentOptions = useMemo(() => {
-    const seen = new Map();
-    approvals.forEach((item) => {
-      if (item.departmentLabel) seen.set(item.department || item.departmentLabel, item.departmentLabel);
-    });
-    return Array.from(seen.entries()).map(([value, label]) => ({ value, label }));
-  }, [approvals]);
-
-  const updateFilter = (field) => (event) => {
-    const value = event?.target ? event.target.value : event;
-    setFilters((current) => ({ ...current, [field]: value }));
-  };
-
-  const clearFilters = () =>
-    setFilters({ department: "", countName: "", consigneeName: "", machineNumber: "", dateFrom: "", dateTo: "" });
-
-  const hasActiveFilters = Object.values(filters).some((value) => trimValue(value));
-
-  const filteredApprovals = useMemo(() => {
-    const countNameFilter = filters.countName.trim().toLowerCase();
-    const consigneeNameFilter = filters.consigneeName.trim().toLowerCase();
-    const machineNumberFilter = filters.machineNumber.trim().toLowerCase();
-    const fromTime = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`).getTime() : null;
-    const toTime = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59.999`).getTime() : null;
-
-    return approvals.filter((item) => {
-      if (filters.department && (item.department || item.departmentLabel) !== filters.department) return false;
-      if (countNameFilter && !item.countName.toLowerCase().includes(countNameFilter)) return false;
-      if (consigneeNameFilter && !item.consigneeName.toLowerCase().includes(consigneeNameFilter)) return false;
-      if (machineNumberFilter && !item.machineNumber.toLowerCase().includes(machineNumberFilter)) return false;
-
-      if (fromTime !== null || toTime !== null) {
-        const itemTime = item.createdOn ? new Date(item.createdOn).getTime() : NaN;
-        if (Number.isNaN(itemTime)) return false;
-        if (fromTime !== null && itemTime < fromTime) return false;
-        if (toTime !== null && itemTime > toTime) return false;
-      }
-
-      return true;
-    });
-  }, [approvals, filters]);
-
   const groupedApprovals = useMemo(() => {
     const groups = new Map();
-    filteredApprovals.forEach((item) => {
+    approvals.forEach((item) => {
       const label = getGroupLabel(item.createdOn);
       if (!groups.has(label)) groups.set(label, []);
       groups.get(label).push(item);
     });
     return Array.from(groups.entries()).map(([label, rows]) => ({ label, rows }));
-  }, [filteredApprovals]);
+  }, [approvals]);
 
   return (
     <div className={styles.page}>
@@ -397,7 +276,7 @@ function ApprovalsQueueView({
 
       {isHydrated && !canApprove ? (
         <div className={styles.accessNotice}>
-          {accessDeniedText} {entityLabel}. Please contact your administrator if you need
+          Only L2 users can view and approve proposed {entityLabel}. Please contact your administrator if you need
           access.
         </div>
       ) : null}
@@ -417,97 +296,11 @@ function ApprovalsQueueView({
             ))}
           </div>
 
-          <div className={styles.filterBar}>
-            <div className={styles.filterField}>
-              <label htmlFor="approval-filter-count-name">Count Name</label>
-              <input
-                id="approval-filter-count-name"
-                type="text"
-                className={styles.filterInput}
-                value={filters.countName}
-                onChange={updateFilter("countName")}
-                placeholder="Search count..."
-              />
-            </div>
-            <div className={styles.filterField}>
-              <label htmlFor="approval-filter-consignee-name">Consignee Name</label>
-              <input
-                id="approval-filter-consignee-name"
-                type="text"
-                className={styles.filterInput}
-                value={filters.consigneeName}
-                onChange={updateFilter("consigneeName")}
-                placeholder="Search consignee..."
-              />
-            </div>
-            <div className={styles.filterField}>
-              <label htmlFor="approval-filter-machine-no">Machine No.</label>
-              <input
-                id="approval-filter-machine-no"
-                type="text"
-                className={styles.filterInput}
-                value={filters.machineNumber}
-                onChange={updateFilter("machineNumber")}
-                placeholder="Search machine..."
-              />
-            </div>
-            {departmentOptions.length > 1 ? (
-              <div className={styles.filterField}>
-                <label htmlFor="approval-filter-department">Department</label>
-                <select
-                  id="approval-filter-department"
-                  className={styles.filterSelect}
-                  value={filters.department}
-                  onChange={updateFilter("department")}
-                >
-                  <option value="">All</option>
-                  {departmentOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            <div className={styles.filterField}>
-              <label htmlFor="approval-filter-date-from">Created From</label>
-              <input
-                id="approval-filter-date-from"
-                type="date"
-                className={styles.filterInput}
-                value={filters.dateFrom}
-                onChange={updateFilter("dateFrom")}
-              />
-            </div>
-            <div className={styles.filterField}>
-              <label htmlFor="approval-filter-date-to">Created To</label>
-              <input
-                id="approval-filter-date-to"
-                type="date"
-                className={styles.filterInput}
-                value={filters.dateTo}
-                onChange={updateFilter("dateTo")}
-              />
-            </div>
-            {hasActiveFilters ? (
-              <button type="button" className={styles.filterClearButton} onClick={clearFilters}>
-                Clear Filters
-              </button>
-            ) : null}
-          </div>
-
-          {hasActiveFilters ? (
-            <div className={styles.filterResultCount}>
-              Showing {filteredApprovals.length} of {approvals.length} {entityLabel}.
-            </div>
-          ) : null}
-
           {error ? <div className={styles.errorState}>{error}</div> : null}
 
           {loading ? (
             <div className={styles.emptyState}>
-              Loading {activeTab === "approved" ? "existing" : activeTab === "rejected" ? "rejected" : "pending"}{" "}
-              approvals...
+              Loading {activeTab === "approved" ? "existing" : "pending"} approvals...
             </div>
           ) : groupedApprovals.length ? (
             <div className={styles.groups}>
@@ -546,11 +339,7 @@ function ApprovalsQueueView({
             </div>
           ) : (
             <div className={styles.emptyState}>
-              {hasActiveFilters && approvals.length
-                ? `No ${entityLabel} match the current filters.`
-                : `No ${entityLabel} are ${
-                    activeTab === "approved" ? "approved yet" : activeTab === "rejected" ? "rejected" : "waiting for approval"
-                  }.`}
+              No {entityLabel} are {activeTab === "approved" ? "approved yet" : "waiting for approval"}.
             </div>
           )}
         </>
@@ -606,12 +395,6 @@ function ApprovalsQueueView({
                 <div className={styles.fieldCard} style={{ gridColumn: "span 2" }}>
                   <small>Operator Remarks</small>
                   <strong>{selected.remarks}</strong>
-                </div>
-              ) : null}
-              {selected.status === "rejected" && (selected.reviewRemarks || selected.reviewedBy) ? (
-                <div className={styles.fieldCard} style={{ gridColumn: "span 2" }}>
-                  <small>Rejection Reason{selected.reviewedBy ? ` (${selected.reviewedBy})` : ""}</small>
-                  <strong>{selected.reviewRemarks || "No reason provided"}</strong>
                 </div>
               ) : null}
               {!selected.parameters.length && !selected.remarks ? (

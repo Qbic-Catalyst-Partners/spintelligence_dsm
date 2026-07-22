@@ -513,22 +513,6 @@ const ensureOperatorTicketApprovalColumns = async () => {
     ALTER TABLE ticketing_system.operator_tickets
     ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL
   `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL
-  `);
 };
 
 const ensureNotificationRecipientColumn = async () => {

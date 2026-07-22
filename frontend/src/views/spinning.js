@@ -1659,7 +1659,7 @@ function SpinningDepartment() {
                                 {(!showType2Field || type2Value) && (
                                 <div className={styles["comparison-box"]}>
                                     <div className={styles["side-title-row"]}>
-                                        <Image src="/SideMeasurement.png" alt="logo" width={15} height={30} priority style={{ width: "auto", height: "auto" }} />
+                                        <Image src="/SideMeasurement.png" alt="logo" width={15} height={30} priority />
                                         <p className={styles["side-title"]}>SIDE MEASUREMENTS</p>
                                     </div>
 

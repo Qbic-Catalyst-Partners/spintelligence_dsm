@@ -117,10 +117,6 @@ const mapApiEntryToVersion = (entry) => {
     status: entry?.status || "DONE",
     label: formatDisplayDate(normalizedDate),
     date: normalizedDate,
-    approvalStatus: String(entry?.approval_status || "pending").toLowerCase(),
-    reviewRemarks: entry?.review_remarks || "",
-    reviewedBy: entry?.reviewed_by || "",
-    reviewedAt: entry?.reviewed_at || "",
     data: {
       versionId: String(entry?.qc_id ?? entry?.entry_id ?? entry?.param_id ?? ""),
       paramId,
@@ -305,18 +301,6 @@ const renderFieldInput = (field, form, errors, handleFieldChange, topFieldClass)
     </div>
   );
 
-const APPROVAL_STATUS_BADGE_CLASS = {
-  approved: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  pending: "bg-amber-50 text-amber-700 border border-amber-200",
-  rejected: "bg-red-50 text-red-700 border border-red-200",
-};
-
-const APPROVAL_STATUS_LABEL = {
-  approved: "Approved",
-  pending: "Awaiting L2",
-  rejected: "Rejected",
-};
-
 const SavedVersionsSection = ({
   versions,
   form,
@@ -351,8 +335,6 @@ const SavedVersionsSection = ({
         const isExpanded = expandedVersionId === version.id && isComplete;
         const isActive = version.id === form.versionId;
 
-        const approvalStatus = version.approvalStatus || "pending";
-
         return (
           <div key={version.id} className="process-version-card overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div
@@ -369,13 +351,6 @@ const SavedVersionsSection = ({
                   Param ID
                 </div>
                 <div className="mt-1 text-[13px] font-bold text-slate-900">{displaySavedValue(version.data.paramId)}</div>
-                <span
-                  className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                    APPROVAL_STATUS_BADGE_CLASS[approvalStatus] || APPROVAL_STATUS_BADGE_CLASS.pending
-                  }`}
-                >
-                  {APPROVAL_STATUS_LABEL[approvalStatus] || "Awaiting L2"}
-                </span>
               </button>
 
               <button
@@ -417,19 +392,6 @@ const SavedVersionsSection = ({
                 {isExpanded ? <HiChevronUp /> : <HiChevronDown />}
               </button>
             </div>
-
-            {approvalStatus === "rejected" ? (
-              <div className="border-t border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700">
-                <div className="font-bold">
-                  Rejected by L2{version.reviewedBy ? ` (${version.reviewedBy})` : ""}
-                  {version.reviewedAt ? ` — ${formatDisplayDate(version.reviewedAt)}` : ""}
-                </div>
-                {version.reviewRemarks ? <div className="mt-1">Reviewer remarks: {version.reviewRemarks}</div> : null}
-                <div className="mt-1 text-red-600">
-                  Select this entry, correct the values, and save again — it will be resubmitted for L2 approval.
-                </div>
-              </div>
-            ) : null}
 
             {isExpanded ? (
               <div className="process-version-body border-t border-[#dbe4f0] bg-[#eef5ff] p-4">

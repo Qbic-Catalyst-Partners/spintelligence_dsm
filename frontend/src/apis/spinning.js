@@ -835,29 +835,3 @@ export const fetchSpinningWheelChangeLatestRecord = async (wheelType = "", param
     throw new Error(error.message || "Server error occurred");
   }
 };
-
-// Looks up whether the Process Parameter (PP) entry matching this Count +
-// Consignee Name has been fully approved yet — a first-time Wheel Change
-// proposal for that combination is blocked until it is.
-export const fetchSpinningWheelChangePpApprovalStatus = async (countName = "", consigneeName = "") => {
-  const params = {
-    count_name: String(countName || "").trim(),
-    consignee_name: String(consigneeName || "").trim(),
-  };
-  if (!params.count_name || !params.consignee_name) {
-    return { exists: false, fully_approved: false, approval_status: null };
-  }
-  try {
-    const response = await api.get("/spinning/wheel-change/pp-approval-status", params, {
-      skipGlobalErrorModal: true,
-    });
-    return response.data;
-  } catch (error) {
-    if (error.response?.data) {
-      throw new Error(
-        error.response.data.message || "Failed to check PP approval status."
-      );
-    }
-    throw new Error(error.message || "Server error occurred");
-  }
-};

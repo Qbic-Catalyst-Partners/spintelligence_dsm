@@ -40,11 +40,6 @@ const acknowledgementTicketWhere = `(
   AND COALESCE(ot.violation_details->>'ticket_type', '') IN ('SUBMISSION_ACKNOWLEDGEMENT', 'NOTEBOOK_ACK_OVERDUE')
 )`;
 
-// L1 entry operator, L2 supervisor, L3 sub manager, L4 Quality/Dept Head,
-// L5 Admin/MD - the reviewer/stage levels this ticketing API recognizes.
-const REVIEW_LEVELS = ['L1', 'L2', 'L3', 'L4', 'L5'];
-const isReviewLevel = (value) => REVIEW_LEVELS.includes(value);
-
 const isAdminUser = (req) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
   return role === 'admin' || role === 'super admin' || role === 'superadmin';
@@ -101,14 +96,6 @@ const runEnsureOperatorTicketApprovalColumns = async () => {
   `);
   await client.query(`
     ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
-    ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL
-  `);
-  await client.query(`
-    ALTER TABLE ticketing_system.operator_tickets
     ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
   `);
 };
@@ -138,11 +125,10 @@ const canApproveOrRejectTicket = (req, ticket) => {
   const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
 
-  const allReviewerIds = REVIEW_LEVELS.flatMap((level) => {
-    const ids = ticket[`approval_${level.toLowerCase()}_user_ids`];
-    return Array.isArray(ids) ? ids : [];
-  });
-  return allReviewerIds.includes(requesterId);
+  const l1 = Array.isArray(ticket.approval_l1_user_ids) ? ticket.approval_l1_user_ids : [];
+  const l2 = Array.isArray(ticket.approval_l2_user_ids) ? ticket.approval_l2_user_ids : [];
+  const l3 = Array.isArray(ticket.approval_l3_user_ids) ? ticket.approval_l3_user_ids : [];
+  return l1.includes(requesterId) || l2.includes(requesterId) || l3.includes(requesterId);
 };
 
 const getPrivilegedSupervisorAccess = async (req) => {
@@ -184,7 +170,7 @@ const getRequesterEmployeeId = async (req) => {
 
 const getReviewerLevel = async (req) => {
   const tokenLevel = String(req.user?.level || '').trim().toUpperCase();
-  if (isReviewLevel(tokenLevel)) return tokenLevel;
+  if (tokenLevel === 'L1' || tokenLevel === 'L2' || tokenLevel === 'L3') return tokenLevel;
 
   const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return null;
@@ -196,7 +182,7 @@ const getReviewerLevel = async (req) => {
     [requesterId]
   );
   const level = String(result.rows[0]?.level || '').trim().toUpperCase();
-  return isReviewLevel(level) ? level : null;
+  return level === 'L1' || level === 'L2' || level === 'L3' ? level : null;
 };
 
 const getTicketIdFromRequest = (req) =>
@@ -342,9 +328,11 @@ const canViewTicketAsReviewer = async (req, ticket, requiredLevel = null) => {
   const reviewerLevel = await getReviewerLevel(req);
   if (requiredLevel && reviewerLevel !== requiredLevel) return false;
 
-  const reviewerIds = requiredLevel
-    ? (ticket[`approval_${requiredLevel.toLowerCase()}_user_ids`] || [])
-    : REVIEW_LEVELS.flatMap((level) => ticket[`approval_${level.toLowerCase()}_user_ids`] || []);
+  const reviewerIds = requiredLevel === 'L3'
+    ? ticket.approval_l3_user_ids
+    : requiredLevel === 'L2'
+      ? ticket.approval_l2_user_ids
+      : [...(ticket.approval_l1_user_ids || []), ...(ticket.approval_l2_user_ids || []), ...(ticket.approval_l3_user_ids || [])];
 
   return Array.isArray(reviewerIds) && reviewerIds.includes(requesterId);
 };
@@ -362,7 +350,7 @@ router.get('/tickets', async (req, res, next) => {
     const requesterEmployeeId = await getRequesterEmployeeId(req);
     const isAdmin001 = requesterEmployeeId === 'ADMIN001';
     const requestedStage = String(req.query.stage || req.query.level || '').trim().toUpperCase();
-    const stageFilter = isReviewLevel(requestedStage)
+    const stageFilter = requestedStage === 'L1' || requestedStage === 'L2' || requestedStage === 'L3'
       ? requestedStage
       : (reviewerLevel || 'L2');
 
@@ -379,16 +367,16 @@ router.get('/tickets', async (req, res, next) => {
     const where = [];
     const values = [];
     if (!canViewAll) {
-      where.push(stageFilter !== 'L1'
+      where.push(stageFilter === 'L2' || stageFilter === 'L3'
         ? `(${nonAcknowledgementTicketWhere} OR ${acknowledgementTicketWhere})`
         : nonAcknowledgementTicketWhere);
     }
 
-    // ADMIN001/admin users should see every L1-L5 ticket irrespective of stage or assignee.
-    const applyStageFilter = !canViewAll && !isAdmin001 && isReviewLevel(stageFilter);
-    if (applyStageFilter) {
+    // ADMIN001/admin users should see every L1/L2/L3 ticket irrespective of stage or assignee.
+    const applyStageFilter = !canViewAll && !isAdmin001 && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3');
+    if (applyStageFilter && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3')) {
       values.push(stageFilter);
-      where.push(stageFilter !== 'L1'
+      where.push(stageFilter === 'L2' || stageFilter === 'L3'
         ? `(${acknowledgementTicketWhere} OR COALESCE(ot.tat_current_level, 'L1') = $${values.length})`
         : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
       if (stageFilter === 'L1') {
@@ -426,7 +414,7 @@ router.get('/tickets', async (req, res, next) => {
 
     if (!canViewAll) {
       values.push(requesterId);
-      where.push(`(${REVIEW_LEVELS.map((level) => `$${values.length} = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`).join(' OR ')})`);
+      where.push(`($${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])))`);
     }
 
     values.push(limit);
@@ -456,12 +444,8 @@ router.get('/tickets', async (req, res, next) => {
          ot.approval_l1_user_ids,
          ot.approval_l2_user_ids,
          ot.approval_l3_user_ids,
-         ot.approval_l4_user_ids,
-         ot.approval_l5_user_ids,
          COALESCE(l2_approvers.users, '[]'::json) AS l2_approvers,
          COALESCE(l3_approvers.users, '[]'::json) AS l3_approvers,
-         COALESCE(l4_approvers.users, '[]'::json) AS l4_approvers,
-         COALESCE(l5_approvers.users, '[]'::json) AS l5_approvers,
          CASE WHEN ${acknowledgementTicketWhere} THEN true ELSE false END AS is_acknowledgement_review,
          CASE WHEN ${acknowledgementTicketWhere} THEN 'ACKNOWLEDGE' ELSE 'APPROVE_REJECT' END AS action_mode,
          CASE WHEN ${acknowledgementTicketWhere} THEN '/api/supervisor-tickets/tickets/acknowledge?ticketId=' || ot.ticket_id ELSE NULL END AS acknowledge_endpoint,
@@ -469,8 +453,6 @@ router.get('/tickets', async (req, res, next) => {
          ot.l1_tat_due_at,
          ot.l2_tat_due_at,
          ot.l3_tat_due_at,
-         ot.l4_tat_due_at,
-         ot.l5_tat_due_at,
          ot.created_at,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.operator_tickets ot
@@ -500,32 +482,6 @@ router.get('/tickets', async (req, res, next) => {
          FROM users.user_details u
          WHERE u.id = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
        ) l3_approvers ON true
-       LEFT JOIN LATERAL (
-         SELECT json_agg(
-           json_build_object(
-             'id', u.id,
-             'employee_id', u.employee_id,
-             'full_name', u.full_name,
-             'level', u.level
-           )
-           ORDER BY u.full_name, u.id
-         ) AS users
-         FROM users.user_details u
-         WHERE u.id = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
-       ) l4_approvers ON true
-       LEFT JOIN LATERAL (
-         SELECT json_agg(
-           json_build_object(
-             'id', u.id,
-             'employee_id', u.employee_id,
-             'full_name', u.full_name,
-             'level', u.level
-           )
-           ORDER BY u.full_name, u.id
-         ) AS users
-         FROM users.user_details u
-         WHERE u.id = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
-       ) l5_approvers ON true
        ${whereClause}
        ORDER BY ot.created_at DESC
        LIMIT $${limitIndex}
@@ -644,8 +600,6 @@ router.get('/tickets/:id/l2-preview', async (req, res, next) => {
         l1_user_ids: ticket.approval_l1_user_ids || [],
         l2_user_ids: ticket.approval_l2_user_ids || [],
         l3_user_ids: ticket.approval_l3_user_ids || [],
-        l4_user_ids: ticket.approval_l4_user_ids || [],
-        l5_user_ids: ticket.approval_l5_user_ids || [],
         action_mode: isAcknowledgementReview ? 'ACKNOWLEDGE' : 'APPROVE_REJECT',
         acknowledge_endpoint: isAcknowledgementReview ? `/api/supervisor-tickets/tickets/acknowledge?ticketId=${encodeURIComponent(ticket.ticket_id)}` : null,
         approve_endpoint: isAcknowledgementReview ? null : `/api/supervisor-tickets/tickets/approve?ticketId=${encodeURIComponent(ticket.ticket_id)}`,
@@ -671,7 +625,7 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
     const requesterEmployeeId = await getRequesterEmployeeId(req);
     const isAdmin001 = requesterEmployeeId === 'ADMIN001';
     const requestedStage = String(req.query.stage || req.query.level || '').trim().toUpperCase();
-    const stageFilter = isReviewLevel(requestedStage)
+    const stageFilter = requestedStage === 'L1' || requestedStage === 'L2' || requestedStage === 'L3'
       ? requestedStage
       : (reviewerLevel || 'L2');
 
@@ -685,10 +639,10 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
       where.push(nonAcknowledgementTicketWhere);
     }
 
-    const applyStageFilter = !canViewAll && !isAdmin001 && isReviewLevel(stageFilter);
+    const applyStageFilter = !canViewAll && !isAdmin001 && (stageFilter === 'L1' || stageFilter === 'L2' || stageFilter === 'L3');
     if (applyStageFilter) {
       values.push(stageFilter);
-      where.push(stageFilter !== 'L1'
+      where.push(stageFilter === 'L2' || stageFilter === 'L3'
         ? `(${acknowledgementTicketWhere} OR COALESCE(ot.tat_current_level, 'L1') = $${values.length})`
         : `COALESCE(ot.tat_current_level, 'L1') = $${values.length}`);
       if (stageFilter === 'L1') {
@@ -716,7 +670,7 @@ router.get('/tickets/timeline/graph', async (req, res, next) => {
 
     if (!canViewAll) {
       values.push(requesterId);
-      where.push(`(${REVIEW_LEVELS.map((level) => `$${values.length} = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`).join(' OR ')})`);
+      where.push(`($${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])))`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';

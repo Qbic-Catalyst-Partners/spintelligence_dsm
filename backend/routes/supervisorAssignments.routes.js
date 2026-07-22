@@ -25,45 +25,6 @@ const ensureSupervisorAssignmentsTable = async () => {
       UNIQUE (supervisor_user_id, employee_user_id)
     )
   `);
-
-  // Environments where this table predates the UNIQUE constraint may already
-  // have duplicate (supervisor, employee) rows - the constraint add below
-  // would fail outright without clearing those first. Some of that older
-  // data even has duplicate `id` values (the PRIMARY KEY was apparently
-  // never enforced either), so ctid - guaranteed unique per physical row -
-  // is used for tie-breaking rather than id. Keeps one arbitrary row per pair.
-  await client.query(`
-    DELETE FROM users.supervisor_assignments a
-    USING users.supervisor_assignments b
-    WHERE a.supervisor_user_id = b.supervisor_user_id
-      AND a.employee_user_id = b.employee_user_id
-      AND a.ctid < b.ctid
-  `);
-
-  // CREATE TABLE IF NOT EXISTS above is a no-op on environments where this
-  // table already existed from an older schema without this constraint -
-  // the /assign route's ON CONFLICT (supervisor_user_id, employee_user_id)
-  // needs a matching unique constraint/index to work at all.
-  await client.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'users.supervisor_assignments'::regclass
-          AND contype = 'u'
-          AND conkey = (
-            SELECT array_agg(attnum ORDER BY attnum)
-            FROM pg_attribute
-            WHERE attrelid = 'users.supervisor_assignments'::regclass
-              AND attname IN ('supervisor_user_id', 'employee_user_id')
-          )
-      ) THEN
-        ALTER TABLE users.supervisor_assignments
-          ADD CONSTRAINT supervisor_assignments_supervisor_employee_uq
-          UNIQUE (supervisor_user_id, employee_user_id);
-      END IF;
-    END $$;
-  `);
 };
 
 const getUserIdByEmployeeCode = async (employeeIdCode) => {
