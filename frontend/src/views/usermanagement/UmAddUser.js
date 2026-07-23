@@ -28,6 +28,7 @@ export default function UmAddUser() {
 
   const [localError, setLocalError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [phoneError, setPhoneError] = useState("");
 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -75,6 +76,24 @@ export default function UmAddUser() {
       setFieldErrors((prev) => {
         const next = { ...prev };
         delete next[e.target.name];
+        return next;
+      });
+    }
+  };
+
+  const handlePhoneChange = (e) => {
+    const rawValue = e.target.value;
+    const digitsOnly = rawValue.replace(/\D/g, "").slice(0, 10);
+
+    setFormData((prev) => ({ ...prev, phone: digitsOnly }));
+    setPhoneError(/\D/.test(rawValue) ? "Mobile number must contain digits only" : "");
+
+    if (localError) setLocalError("");
+    if (error) dispatch(clearActionState());
+    if (fieldErrors.phone) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.phone;
         return next;
       });
     }
@@ -133,6 +152,14 @@ export default function UmAddUser() {
       ].filter(Boolean);
       emitGlobalFailureModal({
         message: `This field is missing: ${missingLabels.join(", ")}.`,
+      });
+      return;
+    }
+
+    if (formData.phone.length !== 10) {
+      setFieldErrors((prev) => ({ ...prev, phone: true }));
+      emitGlobalFailureModal({
+        message: "Mobile number must be exactly 10 digits.",
       });
       return;
     }
@@ -217,10 +244,15 @@ export default function UmAddUser() {
                 <label>Mobile Number <span>*</span></label>
                 <input
                   name="phone"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={formData.phone}
                   placeholder="Enter mobile number"
-                  onChange={handleChange}
-                  className={fieldErrors.phone ? styles.inputError : ""}
+                  onChange={handlePhoneChange}
+                  className={fieldErrors.phone || phoneError ? styles.inputError : ""}
                 />
+                {phoneError && <span className={styles.errorText}>{phoneError}</span>}
               </div>
 
               <div className={`${styles.formGroup} ${styles.full}`}>
