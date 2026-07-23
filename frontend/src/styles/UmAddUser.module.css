@@ -281,6 +281,16 @@
   background-color: #fff1f2;
 }
 
+.errorText {
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+:global(:root[data-theme="dark"]) .errorText {
+  color: #f87171;
+}
+
 /* ================= RESPONSIVE ================= */
 @media (max-width: 768px) {
   .grid {

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
+import { handleSessionExpired } from "@/utils/sessionExpiry";
 
 let authToken = null;
 const AUTH_TOKEN_STORAGE_KEY = "token";
@@ -166,8 +167,16 @@ axiosInstance.interceptors.response.use(
         return response;
     },
     (error) => {
+        const status = error.response?.status;
+        // A 401 only means "session expired" when this request actually sent a bearer
+        // token — e.g. login itself returns 401 for a wrong password with no
+        // Authorization header, which must NOT force a redirect off the login screen.
+        if (status === 401 && error.config?.headers?.Authorization) {
+            handleSessionExpired();
+            return Promise.reject(error);
+        }
+
         if (typeof window !== "undefined" && shouldShowGlobalErrorModal(error)) {
-            const status = error.response?.status;
             const message =
                 error.response?.data?.message ||
                 error.response?.data?.error ||

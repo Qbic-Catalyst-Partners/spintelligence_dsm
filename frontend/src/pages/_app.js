@@ -10,6 +10,7 @@ import SuccessModal from "@/components/SuccessModal";
 import { subscribeToGlobalFailureModal } from "@/utils/globalFailureModal";
 import { subscribeToGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { hydrateAuthFromStorage } from "@/store/slices/authSlice";
+import { installAuthFetchGuard } from "@/utils/sessionExpiry";
 import {
   getDefaultTicketingLabel,
   getDefaultTicketingRoute,
@@ -95,6 +96,7 @@ function AppShell({ Component, pageProps }) {
       : undefined;
 
   useEffect(() => {
+    installAuthFetchGuard();
     dispatch(hydrateAuthFromStorage());
   }, [dispatch]);
 
