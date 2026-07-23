@@ -501,6 +501,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
+  const [submitError, setSubmitError] = useState("");
 
   const consigneeOptions = buildProcessParameterOptions(
     PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -644,6 +645,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       return { ...current, [field]: value };
     });
     clearError(field);
+    setSubmitError("");
   };
 
   const handleVersionSelect = (version) => {
@@ -716,27 +718,34 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const submit = async () => {
     if (!validate()) return false;
 
-    const paramId = form.versionId
-      ? form.paramId || savedProcessParameterId
-      : savedProcessParameterId || entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
-    const payload = { ...buildPayload(), entry_id: paramId };
+    try {
+      const paramId = form.versionId
+        ? form.paramId || savedProcessParameterId
+        : savedProcessParameterId || entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
+      const payload = { ...buildPayload(), entry_id: paramId };
 
-    const response = form.versionId
-      ? await updateSpinningProcessParameterEntry(form.versionId, payload)
-      : await spinningProcessParameterDataEntry(payload);
+      const response = form.versionId
+        ? await updateSpinningProcessParameterEntry(form.versionId, payload)
+        : await spinningProcessParameterDataEntry(payload);
 
-    const nextParamId = resolveProcessParameterDisplayId(response, paramId);
-    setSavedProcessParameterId(nextParamId);
-    registerProcessParameterId(response, "Spinning", form.countName, form.consigneeName);
+      const nextParamId = resolveProcessParameterDisplayId(response, paramId);
+      setSavedProcessParameterId(nextParamId);
+      registerProcessParameterId(response, "Spinning", form.countName, form.consigneeName);
 
-    await loadVersions();
-    onSubmitSuccess?.(response);
-    return true;
+      await loadVersions();
+      setSubmitError("");
+      onSubmitSuccess?.(response);
+      return true;
+    } catch (error) {
+      setSubmitError(error?.message || "Unable to submit the form.");
+      return false;
+    }
   };
 
   const clear = () => {
     setForm(createDefaultForm());
     setErrors({});
+    setSubmitError("");
     setSavedProcessParameterId("");
   };
 
@@ -832,6 +841,12 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
             .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}
         </div>
       </div>
+
+      {submitError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
+          {submitError}
+        </div>
+      ) : null}
 
     </div>
   );

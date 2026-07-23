@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 
+import { FaCheckCircle } from "react-icons/fa";
 import SuccessModal from "@/components/SuccessModal";
 import { isWheelChangeApproverUser } from "@/utils/accessControl";
 import styles from "@/styles/wheelChangeApprovals.module.css";
+import combinedStyles from "@/styles/combinedProcessParameterPreview.module.css";
+import { formatDateTime, formatDateOnly } from "@/utils/formatDateTime";
 
 const DEFAULT_TAB_LABELS = {
   pending: "Pending Approvals",
@@ -83,12 +86,8 @@ const defaultResolveDepartmentLabel = (item) => {
 
 const formatCreatedOn = (value) => {
   if (!trimValue(value)) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return trimValue(value);
-  const pad = (num) => String(num).padStart(2, "0");
-  const datePart = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
-  const timePart = date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `${datePart}, ${timePart}`;
+  const formatted = formatDateTime(value);
+  return formatted === "-" ? trimValue(value) : formatted;
 };
 
 const getGroupLabel = (value) => {
@@ -102,7 +101,7 @@ const getGroupLabel = (value) => {
 
   if (diff === 0) return "Today";
   if (diff === 1) return "Yesterday";
-  return date.toLocaleDateString("en-GB");
+  return formatDateOnly(date);
 };
 
 // Candidate raw field names to look for Count/Consignee on an approval item —
@@ -177,6 +176,7 @@ function ApprovalsQueueView({
   canApproveCheck = isWheelChangeApproverUser,
   accessDeniedText = "Only L2 users can view and approve proposed",
   tabLabels = DEFAULT_TAB_LABELS,
+  showDepartmentFilter = true,
 }) {
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
@@ -451,7 +451,7 @@ function ApprovalsQueueView({
                 placeholder="Search machine..."
               />
             </div>
-            {departmentOptions.length > 1 ? (
+            {showDepartmentFilter && departmentOptions.length > 1 ? (
               <div className={styles.filterField}>
                 <label htmlFor="approval-filter-department">Department</label>
                 <select
@@ -595,13 +595,81 @@ function ApprovalsQueueView({
               </div>
             </div>
 
+            {selected.parameters.some((row) => row.group) ? (
+              <div className={combinedStyles.sections}>
+                {(() => {
+                  const flatRows = selected.parameters.filter((row) => !row.group);
+                  const groupOrder = [];
+                  const groupRows = new Map();
+                  const groupHeaders = new Map();
+                  selected.parameters.forEach((row) => {
+                    if (!row.group) return;
+                    if (!groupRows.has(row.group)) {
+                      groupRows.set(row.group, []);
+                      groupOrder.push(row.group);
+                    }
+                    if (row.isSectionHeader) {
+                      groupHeaders.set(row.group, row);
+                    } else {
+                      groupRows.get(row.group).push(row);
+                    }
+                  });
+
+                  return (
+                    <>
+                      {flatRows.length ? (
+                        <div className={combinedStyles.fieldGrid}>
+                          {flatRows.map((row) => (
+                            <div key={row.key} className={combinedStyles.fieldTile}>
+                              <div className={combinedStyles.fieldLabel}>{row.label}</div>
+                              <div className={combinedStyles.fieldValue}>{row.value || "-"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {groupOrder.map((groupKey) => {
+                        const header = groupHeaders.get(groupKey);
+                        const rows = groupRows.get(groupKey) || [];
+                        return (
+                          <div key={groupKey} className={combinedStyles.section}>
+                            <div className={combinedStyles.sectionHeader}>
+                              <span className={combinedStyles.sectionTitle}>{header?.groupLabel || groupKey}</span>
+                              {header?.done ? (
+                                <FaCheckCircle className={combinedStyles.doneIcon} />
+                              ) : (
+                                <span className={combinedStyles.pendingIcon} />
+                              )}
+                            </div>
+                            {rows.length ? (
+                              <div className={combinedStyles.fieldGrid}>
+                                {rows.map((row) => (
+                                  <div key={row.key} className={combinedStyles.fieldTile}>
+                                    <div className={combinedStyles.fieldLabel}>{row.label}</div>
+                                    <div className={combinedStyles.fieldValue}>{row.value || "0"}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className={combinedStyles.loadingRow}>Not submitted yet</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+              </div>
+            ) : (
+              <div className={styles.fieldGrid}>
+                {selected.parameters.map((row) => (
+                  <div key={row.key} className={styles.fieldCard}>
+                    <small>{row.label}</small>
+                    <strong>{row.value || "-"}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className={styles.fieldGrid}>
-              {selected.parameters.map((row) => (
-                <div key={row.key} className={styles.fieldCard}>
-                  <small>{row.label}</small>
-                  <strong>{row.value || "-"}</strong>
-                </div>
-              ))}
               {selected.remarks ? (
                 <div className={styles.fieldCard} style={{ gridColumn: "span 2" }}>
                   <small>Operator Remarks</small>

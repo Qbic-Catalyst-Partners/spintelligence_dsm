@@ -276,6 +276,7 @@ function SpinningDepartment() {
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
+    const submitInProgressRef = useRef(false);
     const { success, error } = useSelector((state) => state.spinning);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -1054,7 +1055,8 @@ function SpinningDepartment() {
     };
 
     const confirmSubmit = async () => {
-        if (submitting) return;
+        if (submitInProgressRef.current) return;
+        submitInProgressRef.current = true;
         setSubmitting(true);
         try {
             if (isProcessParameter) {
@@ -1077,7 +1079,7 @@ function SpinningDepartment() {
             setShowPreview(false);
             if (submitSpinningRecord.fulfilled.match(result)) {
                 // The backend assigns its own entry_id for some screens (e.g. Wheel
-                // Change Type 4 — see SW4-NNNN in its create response) rather than
+                // Change — see SW1/SW2/SW3-NNNN in its create response) rather than
                 // using the locally-reserved placeholder, so prefer whatever the
                 // response actually returned.
                 const responseData = result.payload?.data ?? result.payload;
@@ -1099,6 +1101,7 @@ function SpinningDepartment() {
                 });
             }
         } finally {
+            submitInProgressRef.current = false;
             setSubmitting(false);
         }
     };

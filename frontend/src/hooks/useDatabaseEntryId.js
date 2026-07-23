@@ -128,7 +128,10 @@ export default function useDatabaseEntryId({
   const [loading, setLoading] = useState(true);
 
   const reserveEntryId = useCallback(async () => {
-    if (!department || !typeName || !resolvedPrefix) return null;
+    if (!department || !typeName || !resolvedPrefix) {
+      setLoading(false);
+      return null;
+    }
 
     setLoading(true);
     try {

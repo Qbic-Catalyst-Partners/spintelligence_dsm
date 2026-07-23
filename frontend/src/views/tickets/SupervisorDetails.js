@@ -29,19 +29,7 @@ import {
   getSupervisorStatusLabel,
   setStoredTicketStatus,
 } from "../../utils/ticketStatus";
-
-const formatDateTime = (dateString) => {
-  if (!dateString) return "-";
-  const date = new Date(dateString);
-  return date.toLocaleString("en-US", {
-    timeZone: "Asia/Kolkata",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-};
+import { formatDateTime } from "../../utils/formatDateTime";
 
 const buildTimelineIcon = (title) => {
   const normalized = String(title || "").toLowerCase();

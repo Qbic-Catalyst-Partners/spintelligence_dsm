@@ -771,11 +771,6 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
       fromClause: 'spinning.wheel_change_v2',
       selectColumns: ['entry_id', 'created_at'],
       dateColumn: 'created_at'
-    },
-    wheelchangetype4: {
-      fromClause: 'spinning.wheel_change_type4',
-      selectColumns: ['entry_id', 'created_at'],
-      dateColumn: 'created_at'
     }
   },
   mixing: {

@@ -3,12 +3,17 @@ import { useSelector } from "react-redux";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
 import NotebookCustomFields from "@/components/NotebookCustomFields";
+import SuccessModal from "@/components/SuccessModal";
 import {
   fetchSpinningWheelChangeDropdown,
   fetchSpinningWheelChangeLatestRecord,
+  fetchSpinningWheelChangePpApprovalStatus,
 } from "@/apis/spinning";
+import { fetchAutoconerConsigneeMaster } from "@/apis/autoconer";
+import { PROCESS_PARAMETER_CONSIGNEE_OPTIONS } from "@/data/processParameterMasterOptions";
 import { sanitizeIntegerInput, sanitizeNumericInput } from "@/utils/inputValidation";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
@@ -181,6 +186,7 @@ const computeType1TotalDraft = ({ dca, dcb, dfc, dc }) => {
 
 const TYPE_1_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
+  { key: "consigneeName", label: "Consignee Name", inputType: "select" },
   { key: "lycraType", label: "Lycra Type" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "tmDisc", label: "Slub Code" },
@@ -209,6 +215,7 @@ const TYPE_1_PARAMETER_ROWS = [
 
 const TYPE_2_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
+  { key: "consigneeName", label: "Consignee Name", inputType: "select" },
   { key: "lycraType", label: "Lycra Type" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "slubCode", label: "Slub Code" },
@@ -238,6 +245,7 @@ const TYPE_2_PARAMETER_ROWS = [
 
 const TYPE_3_PARAMETER_ROWS = [
   { key: "countForm", label: "Count From", inputType: "select" },
+  { key: "consigneeName", label: "Consignee Name", inputType: "select" },
   { key: "lycraType", label: "Lycra Type" },
   { key: "lycraDraft", label: "Lycra Draft" },
   { key: "slubCode", label: "Slub Code" },
@@ -275,6 +283,7 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fm_no",
     rows: {
       countForm: "count_from",
+      consigneeName: "consignee_name",
       lycraType: "lycra_type",
       lycraDraft: "lycra_draft",
       tmDisc: "slub_code",
@@ -305,6 +314,7 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fm_no",
     rows: {
       countForm: "count_from",
+      consigneeName: "consignee_name",
       lycraType: "lycra_type",
       lycraDraft: "lycra_draft",
       slubCode: "slub_code",
@@ -339,6 +349,7 @@ const WHEEL_CHANGE_FIELD_MAP = {
     referenceField: "fr_no",
     rows: {
       countForm: "count_from",
+      consigneeName: "consignee_name",
       lycraType: "lycra_type",
       lycraDraft: "lycra_draft",
       slubCode: "slub_code",
@@ -852,6 +863,21 @@ const WheelChange = forwardRef(function WheelChange(
     }
   };
 
+  // A Wheel Change is only allowed against an Active PP id for the same
+  // Count + Consignee Name (see backend's findActivePpForCombo /
+  // consumeActivePpForWheelChange in spinning.js). Consignee Name is now a
+  // parameter row right below Count From (see *_PARAMETER_ROWS above) —
+  // once both are filled, a runtime check confirms there's a matching
+  // Active PP id. Only then does the rest of the form open up; otherwise a
+  // popup explains why and the form stays locked.
+  // idle | checking | confirming | matched | unmatched - "confirming" is a
+  // successful check the operator hasn't acknowledged yet (see
+  // showPpMatchSuccess below); the form only actually unlocks once they hit
+  // OK on that popup, not the instant the backend check succeeds.
+  const [ppMatchStatus, setPpMatchStatus] = useState("idle");
+  const [showPpMatchSuccess, setShowPpMatchSuccess] = useState(false);
+  const ppCheckTokenRef = useRef(0);
+
   const [wheelChangeType, setWheelChangeType] = useState("");
   const [machineNumber, setMachineNumber] = useState("");
   const [testNo, setTestNo] = useState("");
@@ -860,6 +886,35 @@ const WheelChange = forwardRef(function WheelChange(
   const [errors, setErrors] = useState({});
   const [machineOptions, setMachineOptions] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
+  // Consignee Name is a PP-wide field, not something Spinning's own dropdown
+  // endpoint knows about - sourced from the same master consignee list the
+  // Process Parameter forms use, so this dropdown offers every consignee a
+  // PP id could actually be raised against. fetchAutoconerConsigneeMaster
+  // only returns consignees already used in Autoconer's own tables (a much
+  // smaller, department-scoped set) - it must be merged into the full static
+  // list, not replace it, or most consignees would disappear from the list.
+  const [consigneeMasterOptions, setConsigneeMasterOptions] = useState(PROCESS_PARAMETER_CONSIGNEE_OPTIONS);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAutoconerConsigneeMaster()
+      .then((options) => {
+        if (cancelled) return;
+        const names = (Array.isArray(options) ? options : [])
+          .map((option) => String(option || "").trim())
+          .filter(Boolean);
+        if (!names.length) return;
+        setConsigneeMasterOptions((current) =>
+          Array.from(new Set([...current, ...names]))
+        );
+      })
+      .catch(() => {
+        // Keep the static fallback list already in state.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [draftLoaded, setDraftLoaded] = useState(false);
   // Tracks whether the user has actually picked a Count From value (vs. it
   // merely being auto-filled for display by the machine-only lookup below) —
@@ -894,7 +949,7 @@ const WheelChange = forwardRef(function WheelChange(
     []
   );
 
-  // Type 1-4 each post to their own backend table (see WHEEL_CHANGE_API_TYPES
+  // Type 1-3 each post to their own backend table (see WHEEL_CHANGE_API_TYPES
   // above); report the current selection up so the parent can reserve the
   // Entry ID from that same table instead of a generic/shared one.
   useEffect(() => {
@@ -963,6 +1018,47 @@ const WheelChange = forwardRef(function WheelChange(
   }, [date, draftLoaded, machineNumber, testNo, values, wheelChangeType]);
 
   const selectedVariety = String(values.countForm?.existing || values.countForm?.proposed || "").trim();
+  const consigneeName = String(values.consigneeName?.existing || values.consigneeName?.proposed || "").trim();
+
+  // Debounced runtime check: once both Count From and Consignee Name are
+  // filled, ask the backend whether an Active PP id exists for that combo.
+  // A "not matched" result pops the global failure modal once per
+  // combination (not on every keystroke) and keeps the rest of the form
+  // locked via ppMatchStatus below.
+  useEffect(() => {
+    const token = ++ppCheckTokenRef.current;
+    const trimmedConsignee = consigneeName.trim();
+
+    if (!selectedVariety || !trimmedConsignee) {
+      setPpMatchStatus("idle");
+      setShowPpMatchSuccess(false);
+      return;
+    }
+
+    setPpMatchStatus("checking");
+    setShowPpMatchSuccess(false);
+    const timer = setTimeout(async () => {
+      try {
+        const result = await fetchSpinningWheelChangePpApprovalStatus(selectedVariety, trimmedConsignee);
+        if (ppCheckTokenRef.current !== token) return;
+        if (result?.fully_approved) {
+          setPpMatchStatus("confirming");
+          setShowPpMatchSuccess(true);
+        } else {
+          setPpMatchStatus("unmatched");
+          emitGlobalFailureModal({
+            message: "PP-ID for this Count & Consignee Not Found / Approved Yet. Please check with Admin",
+          });
+        }
+      } catch (error) {
+        if (ppCheckTokenRef.current !== token) return;
+        setPpMatchStatus("unmatched");
+        emitGlobalFailureModal({ message: error?.message || "Failed to verify PP approval status." });
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [selectedVariety, consigneeName]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -1161,12 +1257,22 @@ const WheelChange = forwardRef(function WheelChange(
             }
           : null
       );
-      setValues(() => {
+      setValues((current) => {
         let nextValues = buildWheelChangeValuesFromRecord(approvedRecord || {}, wheelChangeType, trimmedMachine);
         if (unapprovedRecord) {
           nextValues = buildWheelChangeProposedValuesFromRecord(unapprovedRecord, wheelChangeType, trimmedMachine, nextValues);
         }
-        return nextValues;
+        return {
+          ...nextValues,
+          // Same reasoning as the variety-change effect below: don't let a
+          // machine-driven record refresh silently clear the Consignee Name
+          // Proposed value the user already picked - Existing still comes
+          // from the fetched record like every other row.
+          consigneeName: {
+            existing: nextValues.consigneeName?.existing || "",
+            proposed: current.consigneeName?.proposed || "",
+          },
+        };
       });
     });
 
@@ -1260,6 +1366,15 @@ const WheelChange = forwardRef(function WheelChange(
             existing: selectedVariety,
             proposed: current.countForm?.proposed || "",
           },
+          // Consignee Name's Proposed cell is the user's own pick driving the
+          // PP-match check alongside Count From - switching Count should
+          // never silently clear it (the check would go back to "idle", no
+          // popup, even though nothing was actually re-validated). Existing
+          // still comes from the fetched record like every other row.
+          consigneeName: {
+            existing: nextValues.consigneeName?.existing || "",
+            proposed: current.consigneeName?.proposed || "",
+          },
         };
       });
     });
@@ -1270,6 +1385,8 @@ const WheelChange = forwardRef(function WheelChange(
   }, [selectedVariety, wheelChangeType, varietyRefreshTick]);
 
   const clear = () => {
+    setPpMatchStatus("idle");
+    setShowPpMatchSuccess(false);
     setWheelChangeType("");
     setMachineNumber("");
     setTestNo("");
@@ -1294,6 +1411,14 @@ const WheelChange = forwardRef(function WheelChange(
     if (!date) nextErrors.date = true;
     if (!machineNumber.trim()) nextErrors.machineNumber = true;
     if (!testNo.trim()) nextErrors.testNo = true;
+    // Gates the rest of the form: a Wheel Change can only be entered against
+    // an Active PP id for the entered Count + Consignee Name combination —
+    // see the runtime check effect above (ppMatchStatus). The row-level
+    // "required" check for Consignee Name itself is handled by the
+    // activeRows loop below, same as every other row.
+    if (ppMatchStatus !== "matched") {
+      nextErrors.ppMatch = true;
+    }
 
     const valueErrors = {};
     activeRows.forEach((row) => {
@@ -1426,6 +1551,19 @@ const WheelChange = forwardRef(function WheelChange(
     saveCustomFields,
   }));
 
+  // Rest of the form stays locked until the runtime check above confirms an
+  // Active PP id exists for the entered Count From + Consignee Name — per
+  // Praveen's spec: "only if it matches, then it allows the form to open
+  // rest of the fields for entering". Count From and Consignee Name
+  // themselves stay editable (see isPpMatchDriverRow below) since they're
+  // the two inputs that drive the check in the first place.
+  const formGatedByPpMatch = ppMatchStatus !== "matched";
+  const isPpMatchDriverRow = (rowKey) => rowKey === "countForm" || rowKey === "consigneeName";
+  const acknowledgePpMatchSuccess = () => {
+    setShowPpMatchSuccess(false);
+    setPpMatchStatus("matched");
+  };
+
   const renderControl = (row, column) => {
     const value = values[row.key]?.[column] || "";
     const className = `${styles.input} ${row.darkInput ? styles.darkInput : ""} ${
@@ -1445,20 +1583,25 @@ const WheelChange = forwardRef(function WheelChange(
     const isReadOnlyExisting = column === "existing";
 
     if (shouldUseSelect) {
-      const optionKeys = WHEEL_CHANGE_DROPDOWN_KEYS[row.key] || [];
-      const dynamicDropdownOptions = getType1MachineSpecificOptions(row.key, machineNumber);
-      const staticDropdownOptions = [
-        ...(STATIC_TYPE_1_DROPDOWN_OPTIONS[row.key] || []),
-        ...(STATIC_TYPE_2_DROPDOWN_OPTIONS[row.key] || []),
-      ].map((option) => String(option));
-      const options = normalizeDropdownOptions([
-        ...dynamicDropdownOptions,
-        ...staticDropdownOptions,
-        ...getFirstArray(dropdownOptions, optionKeys),
-        ...(Array.isArray(dropdownOptions?.fixed_options?.[row.key])
-          ? dropdownOptions.fixed_options[row.key]
-          : []),
-      ]);
+      let options;
+      if (row.key === "consigneeName") {
+        options = normalizeDropdownOptions(consigneeMasterOptions);
+      } else {
+        const optionKeys = WHEEL_CHANGE_DROPDOWN_KEYS[row.key] || [];
+        const dynamicDropdownOptions = getType1MachineSpecificOptions(row.key, machineNumber);
+        const staticDropdownOptions = [
+          ...(STATIC_TYPE_1_DROPDOWN_OPTIONS[row.key] || []),
+          ...(STATIC_TYPE_2_DROPDOWN_OPTIONS[row.key] || []),
+        ].map((option) => String(option));
+        options = normalizeDropdownOptions([
+          ...dynamicDropdownOptions,
+          ...staticDropdownOptions,
+          ...getFirstArray(dropdownOptions, optionKeys),
+          ...(Array.isArray(dropdownOptions?.fixed_options?.[row.key])
+            ? dropdownOptions.fixed_options[row.key]
+            : []),
+        ]);
+      }
 
       return (
         <SearchableSelect
@@ -1469,13 +1612,18 @@ const WheelChange = forwardRef(function WheelChange(
           placeholder="Select"
           ariaLabel={row.label}
           dropUp={row.key === "totalDraft"}
-          disabled={row.computed === true || isReadOnlyExisting}
+          disabled={
+            row.computed === true ||
+            isReadOnlyExisting ||
+            (!isPpMatchDriverRow(row.key) && formGatedByPpMatch)
+          }
           onFocus={row.key === "countForm" ? refreshSelectedVariety : undefined}
         />
       );
     }
 
-    const isReadOnly = row.computed === true || isReadOnlyExisting;
+    const isReadOnly =
+      row.computed === true || isReadOnlyExisting || (!isPpMatchDriverRow(row.key) && formGatedByPpMatch);
     const isNumericInput = isNumericParameterRow(row);
 
     return (
@@ -1487,6 +1635,7 @@ const WheelChange = forwardRef(function WheelChange(
         className={className}
         value={value}
         readOnly={isReadOnly}
+        disabled={!isPpMatchDriverRow(row.key) && formGatedByPpMatch}
         onChange={
           isNumericInput
             ? handleNumericValueChange(row.key, column)
@@ -1645,6 +1794,13 @@ const WheelChange = forwardRef(function WheelChange(
           onChange={handleCustomFieldChange}
         />
       </div>
+
+      <SuccessModal
+        open={showPpMatchSuccess}
+        message="PP-ID approved for this Count & Consignee Name. You may proceed."
+        onClose={acknowledgePpMatchSuccess}
+        closeLabel="OK"
+      />
     </>
   );
 });

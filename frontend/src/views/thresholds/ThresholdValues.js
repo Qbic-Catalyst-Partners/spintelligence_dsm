@@ -20,6 +20,7 @@ import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
+import { formatDateTime } from "@/utils/formatDateTime";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import styles from "@/styles/ThresholdValues.module.css";
 
@@ -746,25 +747,7 @@ export default function ThresholdValues() {
         setFormError("");
     };
 
-    const formatTimestamp = (value) => {
-        if (!value) {
-            return "-";
-        }
-
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) {
-            return "-";
-        }
-
-        return parsed.toLocaleString("en-GB", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-        }).replace(",", "");
-    };
+    const formatTimestamp = formatDateTime;
 
     const getThresholdRowKey = (item, index) =>
         String(

@@ -107,13 +107,7 @@ const managementHubLinks = [
             { href: "/simplex-wheel-change-approvals", label: "Simplex" },
         ],
     },
-    {
-        label: "PP Approvals",
-        wheelChangeApproval: true,
-        children: [
-            { href: "/pp-approvals", label: "Spinning" },
-        ],
-    },
+    { href: "/pp-approvals", label: "PP Approvals", wheelChangeApproval: true },
 ];
 const analyticsHubLinks = [
     { href: "/statistics-analysis", label: "Statistics Analytics" },

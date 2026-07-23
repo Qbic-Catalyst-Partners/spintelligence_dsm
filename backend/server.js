@@ -174,7 +174,7 @@ const ENTRY_ID_ROUTE_PREFIXES = {
 // strip all non-digits globally, which silently concatenated any digit
 // baked into the prefix itself (e.g. "SW1-0002" -> "1" + "0002" = 10002
 // instead of 2) and corrupted the computed next-id for prefixes like
-// Spinning's SW1/SW2/SW3/SW4.
+// Spinning's SW1/SW2/SW3.
 const getRegisteredEntryIdMaxSql = `
   SELECT COALESCE(
     MAX(NULLIF(substring(entry_id from '(\\d+)$'), '')::bigint),

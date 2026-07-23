@@ -25,21 +25,9 @@ import {
   isSubmissionTicketRecord,
   transformTicket,
 } from "../../utils/ticketTransformer";
+import { formatDateTime } from "../../utils/formatDateTime";
 
 const ITEMS_PER_PAGE = 6;
-
-const formatDateTime = (dateString) => {
-  if (!dateString) return "-";
-  const date = new Date(dateString);
-  return date.toLocaleString("en-US", {
-    timeZone: "Asia/Kolkata",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-};
 const formatDateDisplay = (value) => {
   if (!value) return "";
   const [year, month, day] = String(value).split("-");

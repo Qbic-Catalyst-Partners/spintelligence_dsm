@@ -20,6 +20,7 @@ import {
   TICKET_KIND,
 } from "@/utils/ticketTransformer";
 import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketStatus";
+import { formatDateTime } from "@/utils/formatDateTime";
 
 import { IoClose, IoTimeSharp } from "react-icons/io5";
 import { FaRegCommentAlt } from "react-icons/fa";
@@ -114,20 +115,7 @@ export default function TicketDetails() {
     }
   };
 
-  const formatCompactDateTime = (dateString) => {
-    if (!dateString) return "-";
-    const date = new Date(dateString);
-    return isNaN(date)
-      ? "-"
-      : date.toLocaleString("en-US", {
-          timeZone: "Asia/Kolkata",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-  };
+  const formatCompactDateTime = formatDateTime;
 
   const rawParameterNames = getTicketParameterNames(resolvedTicket);
   // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,

@@ -207,7 +207,8 @@ router.get('/supervisor/:supervisorId/employees', async (req, res, next) => {
          e.email,
          e.phone,
          e.department,
-         e.role
+         e.role,
+         e.level
        FROM users.supervisor_assignments sa
        JOIN users.user_details e ON e.id = sa.employee_user_id
        WHERE sa.supervisor_user_id = $1 AND sa.is_active = true
