@@ -44,10 +44,11 @@
 }
 
 .message {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
   color: #111827;
   text-align: center;
+  line-height: 1.4;
 }
 
 .button {

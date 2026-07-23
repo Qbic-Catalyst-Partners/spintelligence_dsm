@@ -10,6 +10,11 @@ import apiConfig from "@/apis/apiConfig";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { isFullAccessUser, isSupervisorNavUser } from "@/utils/accessControl";
 import styles from "@/styles/submittedNotebooks.module.css";
+import {
+    formatDateTime as sharedFormatDateTime,
+    formatDateOnly,
+    formatTimeOnly,
+} from "@/utils/formatDateTime";
 
 const getFirstName = (fullName) => String(fullName || "").trim().split(/\s+/)[0] || fullName || "";
 
@@ -494,31 +499,20 @@ const getNotebookReviewNote = (notebook) =>
 
 const formatTime = (value) => {
     if (!value) return "--";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value).slice(0, 5) || "--";
-    return date.toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    });
+    const formatted = formatTimeOnly(value);
+    return formatted === "-" ? (String(value).slice(0, 5) || "--") : formatted;
 };
 
 const formatDateValue = (value) => {
     if (!value) return "--";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return [
-        String(date.getDate()).padStart(2, "0"),
-        String(date.getMonth() + 1).padStart(2, "0"),
-        date.getFullYear(),
-    ].join("-");
+    const formatted = formatDateOnly(value);
+    return formatted === "-" ? String(value) : formatted;
 };
 
 const formatDateTime = (value) => {
     if (!value) return "--";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return `${formatDateValue(value)} | ${formatTime(value)}`;
+    const formatted = sharedFormatDateTime(value);
+    return formatted === "-" ? String(value) : formatted;
 };
 
 const isDateField = (key) => {

@@ -1,3 +1,5 @@
+import { formatDateTime } from "./formatDateTime";
+
 export const getTicketParameterKey = (parameterName) =>
   String(parameterName || "").toLowerCase().trim();
 
@@ -557,14 +559,7 @@ export const transformTicket = (ticket) => {
     description: ticket.description || "",
 
     rawCreatedAt: createdDate,
-    createdAt: createdDate.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }),
+    createdAt: formatDateTime(createdDate),
   };
 };
 

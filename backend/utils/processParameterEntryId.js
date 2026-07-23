@@ -31,6 +31,40 @@ const ensureProcessParameterSequence = async () => {
   `, [SEQUENCE_KEY]);
 };
 
+// Mirrors processParameters.js's ensureProcessParameterMasterTable - duplicated
+// here (rather than required from that route file) to avoid a circular
+// require, since every department's own save route pulls entry-id helpers
+// from this file. Every path in this file that mints/claims an entry_id must
+// also touch this table - otherwise that PP id has no lifecycle row for
+// GET /process-parameters/master/:id or the L4 approvals queue to ever find,
+// silently stranding it at "no such PP" forever regardless of how many
+// department screens complete it.
+const ensureProcessParameterMasterRow = async (entry_id) => {
+  await db.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS process_parameters.master (
+      id BIGSERIAL PRIMARY KEY,
+      entry_id TEXT NOT NULL UNIQUE,
+      created_by_user_id INTEGER NULL,
+      created_by_name TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.query(`
+    ALTER TABLE process_parameters.master
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'in_progress',
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT
+  `);
+  await db.query(
+    `INSERT INTO process_parameters.master (entry_id) VALUES ($1)
+     ON CONFLICT (entry_id) DO NOTHING`,
+    [entry_id]
+  );
+};
+
 const createProcessParameterEntryId = async () => {
   await ensureProcessParameterSequence();
   const result = await db.query(
@@ -46,7 +80,9 @@ const createProcessParameterEntryId = async () => {
     [SEQUENCE_KEY]
   );
 
-  return formatProcessParameterEntryId(result.rows[0]?.last_number || 1);
+  const entryId = formatProcessParameterEntryId(result.rows[0]?.last_number || 1);
+  await ensureProcessParameterMasterRow(entryId);
+  return entryId;
 };
 
 const peekNextProcessParameterEntryId = async () => {
@@ -105,6 +141,7 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
     // Number before arithmetic/strict comparisons against numericValue.
     const lastNumber = Number(result.rows[0]?.last_number) || 0;
     if (numericValue >= 1 && numericValue <= lastNumber) {
+      await ensureProcessParameterMasterRow(normalized);
       return normalized;
     }
     // Allow the not-yet-reserved "next" id (as previewed by GET /next-id,
@@ -112,6 +149,7 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
     // first submission, advancing the sequence to match.
     if (numericValue === lastNumber + 1) {
       await advanceProcessParameterEntryIdSequence(numericValue);
+      await ensureProcessParameterMasterRow(normalized);
       return normalized;
     }
   }
@@ -176,4 +214,5 @@ module.exports = {
   advanceProcessParameterEntryIdSequence,
   getExistingCountNameForEntryId,
   getCountNameConflict,
+  ensureProcessParameterMasterRow,
 };

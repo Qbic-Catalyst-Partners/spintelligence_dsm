@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { MdPrint, MdSearch } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import { formatDateTime } from "@/utils/formatDateTime";
 import PreviewModal from "@/components/PreviewModal";
 import CombinedProcessParameterPreview from "@/components/CombinedProcessParameterPreview";
 import MixingProcessParameter from "@/views/mixing/processParameterDataEntry";
@@ -1242,7 +1243,7 @@ export default function ProcessParameterPage() {
                 <div className={styles.printLogoSlot} aria-hidden="true" />
                 <div className={styles.printHeaderText}>
                   <div className={styles.printTitle}>Process Parameter Matrix</div>
-                  <div className={styles.printMeta}>Printed on: {new Date().toLocaleString("en-IN")}</div>
+                  <div className={styles.printMeta}>Printed on: {formatDateTime(new Date())}</div>
                 </div>
               </div>
 

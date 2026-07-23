@@ -1590,8 +1590,16 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
     if (!approved && !unapproved) {
       // No saved data for this mixing/machine — clear whatever a previously
       // selected mixing or machine had populated instead of leaving it showing.
+      // Keep the mixing value itself though: it's what the user just picked
+      // to trigger this lookup, not stale data to be wiped.
       setUnapprovedEntry(null);
-      setValues(createValues());
+      const mixingRowKey = findMixingRowKey(requestedWheelChangeType) || selectedMixingRow?.key;
+      setValues({
+        ...createValues(),
+        ...(mixingRowKey && trimmedMixing
+          ? { [mixingRowKey]: { existing: "", proposed: trimmedMixing } }
+          : {}),
+      });
       setErrors({});
       return null;
     }

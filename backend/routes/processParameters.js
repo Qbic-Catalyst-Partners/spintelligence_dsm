@@ -47,8 +47,12 @@ const PP_DEPARTMENTS = [
   { key: 'mixing', label: 'Mixing', table: 'mixing.mixing_qc_header', idColumn: 'qc_id' },
   { key: 'blowroom', label: 'Blowroom', table: 'blowroom.blowroom_header', idColumn: 'br_id' },
   { key: 'carding', label: 'Carding', table: 'carding.carding_qc_header', idColumn: 'qc_id' },
-  { key: 'drawframe_breaker', label: 'Drawframe (Breaker)', table: 'drawframe.drawframe_qc_header', idColumn: 'ins_id' },
-  { key: 'drawframe_finisher', label: 'Drawframe (Finisher)', table: 'drawframe.finisher_drawing_inspection', idColumn: 'id' },
+  // Breaker and Finisher both save into this same table (POST /drawframe/header),
+  // told apart only by entry_scope - drawframe.finisher_drawing_inspection is a
+  // stale table the app no longer writes to, so checking it here always read as
+  // "never submitted" even when Finisher genuinely was.
+  { key: 'drawframe_breaker', label: 'Drawframe (Breaker)', table: 'drawframe.drawframe_qc_header', idColumn: 'ins_id', extraWhere: "AND entry_scope = 'breaker'" },
+  { key: 'drawframe_finisher', label: 'Drawframe (Finisher)', table: 'drawframe.drawframe_qc_header', idColumn: 'ins_id', extraWhere: "AND entry_scope = 'finisher'" },
   { key: 'simplex', label: 'Simplex', table: 'simplex.simplex_process_parameter', idColumn: 'id' },
   { key: 'spinning', label: 'Spinning', table: 'spinning.spinning_qc_header', idColumn: 'qc_id' },
   { key: 'autoconer', label: 'Autoconer', table: 'autoconer.autoconer_process_parameter', idColumn: 'id' },
@@ -85,7 +89,7 @@ const getCompletionStatusForEntryIds = async (entryIds) => {
 
   const existingDepartments = await getExistingPpDepartments();
   const unionQuery = existingDepartments.map(
-    (dept) => `SELECT '${dept.key}' AS dept_key, entry_id FROM ${dept.table} WHERE entry_id = ANY($1::text[])`
+    (dept) => `SELECT '${dept.key}' AS dept_key, entry_id FROM ${dept.table} WHERE entry_id = ANY($1::text[]) ${dept.extraWhere || ''}`
   ).join(' UNION ALL ');
 
   const result = unionQuery ? await client.query(unionQuery, [entryIds]) : { rows: [] };
@@ -105,6 +109,74 @@ const getCompletionStatusForEntryIds = async (entryIds) => {
     statusByEntryId.set(entryId, status);
   }
   return statusByEntryId;
+};
+
+// Not every department table tracks machine_no/operator (Blowroom and the
+// Autoconer Q2/Q3/Q4 inspection tables don't), so this pulls whichever value
+// is available from whichever department has it, per PP id - same
+// best-effort approach as count_name's cross-department lookup above. Used
+// by the PP Approvals queue, which otherwise has no way to show either field
+// since GET /approvals only ever returned the master row + completion flags.
+const MACHINE_NO_TABLES = [
+  'carding.carding_qc_header',
+  'simplex.simplex_process_parameter',
+  'spinning.spinning_qc_header',
+  'autoconer.autoconer_process_parameter',
+];
+const OPERATOR_TABLES = [
+  'mixing.mixing_qc_header',
+  'drawframe.drawframe_qc_header',
+];
+
+const getPpDetailFieldsForEntryIds = async (entryIds) => {
+  const detailByEntryId = new Map(entryIds.map((id) => [id, { machine_no: null, operator: null }]));
+  if (!entryIds.length) return detailByEntryId;
+
+  // machine_no's column type isn't consistent across departments (integer in
+  // some, varchar in others) - UNION ALL requires matching types, so cast
+  // explicitly rather than let Postgres try (and fail) to reconcile them.
+  const machineQuery = MACHINE_NO_TABLES.map(
+    (table) => `SELECT entry_id, machine_no::text AS machine_no FROM ${table} WHERE entry_id = ANY($1::text[]) AND machine_no IS NOT NULL`
+  ).join(' UNION ALL ');
+  const operatorQuery = OPERATOR_TABLES.map(
+    (table) => `SELECT entry_id, operator::text AS operator FROM ${table} WHERE entry_id = ANY($1::text[]) AND operator IS NOT NULL`
+  ).join(' UNION ALL ');
+
+  const [machineResult, operatorResult] = await Promise.all([
+    client.query(machineQuery, [entryIds]),
+    client.query(operatorQuery, [entryIds]),
+  ]);
+
+  for (const row of machineResult.rows) {
+    const detail = detailByEntryId.get(row.entry_id);
+    if (detail && !detail.machine_no) detail.machine_no = row.machine_no;
+  }
+  for (const row of operatorResult.rows) {
+    const detail = detailByEntryId.get(row.entry_id);
+    if (detail && !detail.operator) detail.operator = row.operator;
+  }
+
+  return detailByEntryId;
+};
+
+// Full submitted row per department for one PP id, not just the completion
+// flag/machine_no/operator slices above - the PP Approvals preview needs to
+// show everything a department actually entered, not just whether it's done.
+// One query per department (rather than a UNION, since each table's columns
+// differ entirely) but only for a single entry_id at a time, so this is fine
+// to call per-row rather than batched like the list-level helpers above.
+const getPpFullDetailsForEntryId = async (entry_id) => {
+  const existingDepartments = await getExistingPpDepartments();
+  const results = await Promise.all(
+    existingDepartments.map(async (dept) => {
+      const result = await client.query(
+        `SELECT * FROM ${dept.table} WHERE entry_id = $1 ${dept.extraWhere || ''} LIMIT 1`,
+        [entry_id]
+      );
+      return [dept.key, result.rows[0] || null];
+    })
+  );
+  return Object.fromEntries(results);
 };
 
 // Auto-advances in_progress -> pending_approval the moment every department
@@ -302,7 +374,12 @@ router.get('/approvals', async (req, res, next) => {
     );
 
     const entryIds = result.rows.map((row) => row.entry_id);
-    const statusByEntryId = await getCompletionStatusForEntryIds(entryIds);
+    const [statusByEntryId, detailByEntryId, fullDetailsList] = await Promise.all([
+      getCompletionStatusForEntryIds(entryIds),
+      getPpDetailFieldsForEntryIds(entryIds),
+      Promise.all(entryIds.map((id) => getPpFullDetailsForEntryId(id))),
+    ]);
+    const fullDetailsByEntryId = new Map(entryIds.map((id, index) => [id, fullDetailsList[index]]));
 
     const data = result.rows.map((row) => ({
       ...row,
@@ -310,6 +387,9 @@ router.get('/approvals', async (req, res, next) => {
       title: row.entry_id,
       department: 'Process Parameter',
       completion: statusByEntryId.get(row.entry_id) || {},
+      machine_no: detailByEntryId.get(row.entry_id)?.machine_no || null,
+      operator: detailByEntryId.get(row.entry_id)?.operator || null,
+      department_details: fullDetailsByEntryId.get(row.entry_id) || {},
     }));
 
     res.status(200).json({ data });

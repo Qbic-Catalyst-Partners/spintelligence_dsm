@@ -21,8 +21,7 @@ const SCREEN_ID_PREFIXES = {
   qc: 'SQC',
   wheel_change_type1: 'SW1',
   wheel_change_type2: 'SW2',
-  wheel_change_type3: 'SW3',
-  wheel_change_type4: 'SW4'
+  wheel_change_type3: 'SW3'
 };
 
 const formatScreenEntryId = (screenKey, rawId) => {
@@ -243,9 +242,7 @@ const ensureSpinningTimestampColumnsHaveTimezone = async () => {
     ['spinning.wheel_change_v2', 'created_at'],
     ['spinning.wheel_change_v2', 'updated_at'],
     ['spinning.wheel_change', 'created_at'],
-    ['spinning.wheel_change', 'updated_at'],
-    ['spinning.wheel_change_type4', 'created_at'],
-    ['spinning.wheel_change_type4', 'updated_at']
+    ['spinning.wheel_change', 'updated_at']
   ];
   for (const [tableName, column] of tablesAndColumn) {
     const [schemaName, relationName] = tableName.split('.');
@@ -282,8 +279,7 @@ const ensureSpinningEntryIdColumns = async () => {
     'spinning.spinning_qc_header',
     'spinning.wheel_change_inspection',
     'spinning.wheel_change_v2',
-    'spinning.wheel_change',
-    'spinning.wheel_change_type4'
+    'spinning.wheel_change'
   ];
 
   for (const tableName of tables) {
@@ -428,8 +424,7 @@ const ensureSpinningEntryIdColumns = async () => {
   for (const tableName of [
     'spinning.wheel_change_inspection',
     'spinning.wheel_change_v2',
-    'spinning.wheel_change',
-    'spinning.wheel_change_type4'
+    'spinning.wheel_change'
   ]) {
     await client.query(`
       ALTER TABLE ${tableName}
@@ -440,7 +435,7 @@ const ensureSpinningEntryIdColumns = async () => {
   }
   // consumed_pp_entry_id records which PP id's one-time Wheel Change slot
   // this row spent when it was saved (see the pp-approval-status gate and
-  // the POST /wheel-change/type1-4 handlers below) - needed so a later
+  // the POST /wheel-change/type1-3 handlers below) - needed so a later
   // rejection of this Wheel Change knows exactly which PP to revert back to
   // Active.
 
@@ -452,7 +447,6 @@ const ensureSpinningEntryIdColumns = async () => {
     'spinning.wheel_change_inspection',
     'spinning.wheel_change_v2',
     'spinning.wheel_change',
-    'spinning.wheel_change_type4',
     'spinning.spinning_qc_header'
   ]) {
     await client.query(`
@@ -481,22 +475,12 @@ const ensureSpinningEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS total_draft_proposed NUMERIC;
   `);
 
-  // wheel_change_type4 already existed (created for the Type 4 form) but was missing its
-  // "Count From" column entirely — Type 4 is the only wheel-change type keyed off a variety
-  // dropdown AND a machine number, and this column was simply never added, so every Type 4
-  // submission's Count From selection was silently lost (no POST /wheel-change/type4 route even
-  // existed to insert it until now).
-  await client.query(`
-    ALTER TABLE spinning.wheel_change_type4
-      ADD COLUMN IF NOT EXISTS count_from_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS count_from_proposed VARCHAR(100);
-  `);
+  await client.query(`DROP TABLE IF EXISTS spinning.wheel_change_type4`);
 
   for (const tableName of [
     'spinning.wheel_change_inspection',
     'spinning.wheel_change_v2',
-    'spinning.wheel_change',
-    'spinning.wheel_change_type4'
+    'spinning.wheel_change'
   ]) {
     await client.query(`
       ALTER TABLE ${tableName}
@@ -1343,8 +1327,6 @@ router.get('/wheel-change/type2/varieties', getSpinningVarieties);
 router.get('/wheel-change/type2/master/varieties', getSpinningVarieties);
 router.get('/wheel-change/type3/varieties', getSpinningVarieties);
 router.get('/wheel-change/type3/master/varieties', getSpinningVarieties);
-router.get('/wheel-change/type4/varieties', getSpinningVarieties);
-router.get('/wheel-change/type4/master/varieties', getSpinningVarieties);
 router.get('/wheel-change/count-names', getCountChangeCountNames);
 router.get('/wheel-change/count-dropdown', getCountChangeCountNames);
 router.get('/wheel-change/master/counts', getCountChangeCountNames);
@@ -1361,8 +1343,6 @@ router.get('/wheel-change/type2/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type2/master/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type3/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type3/master/dropdown', getWheelChangeMasterDropdown);
-router.get('/wheel-change/type4/dropdown', getWheelChangeMasterDropdown);
-router.get('/wheel-change/type4/master/dropdown', getWheelChangeMasterDropdown);
 
 const getCountChangeRfNos = async (req, res, next) => {
   try {
@@ -1531,10 +1511,6 @@ router.get('/wheel-change/type3/rf-nos', getCountChangeRfNos);
 router.get('/wheel-change/type3/rf-numbers', getCountChangeRfNos);
 router.get('/wheel-change/type3/master/rf-nos', getCountChangeRfNos);
 router.get('/wheel-change/type3/fr-nos', getCountChangeRfNos);
-router.get('/wheel-change/type4/rf-nos', getCountChangeRfNos);
-router.get('/wheel-change/type4/rf-numbers', getCountChangeRfNos);
-router.get('/wheel-change/type4/master/rf-nos', getCountChangeRfNos);
-router.get('/wheel-change/type4/fm-nos', getCountChangeRfNos);
 
 router.get('/master/machine-numbers', getSpinningLycraMachineNumbers);
 router.get('/master/machine-nos', getSpinningLycraMachineNumbers);
@@ -4048,6 +4024,12 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       return res.status(400).json({ message: 'Required fields missing' });
     }
 
+    if (!(await findActivePpForCombo(d.count_from_proposed, d.consignee_name_proposed))) {
+      return res.status(409).json({
+        message: 'No Active PP id found for this Count + Consignee Name combination. A Wheel Change can only be entered once the matching PP id has been approved.'
+      });
+    }
+
     const result = await insertWheelChangeEntry(
       'spinning.wheel_change_inspection',
       type1Fields,
@@ -4075,17 +4057,15 @@ router.post('/wheel-change/type1', async (req, res, next) => {
 router.get('/wheel-change', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
-    const [type1, type2, type3, type4] = await Promise.all([
+    const [type1, type2, type3] = await Promise.all([
       client.query(`SELECT * FROM spinning.wheel_change_inspection`),
       client.query(`SELECT * FROM spinning.wheel_change_v2`),
-      client.query(`SELECT * FROM spinning.wheel_change`),
-      client.query(`SELECT * FROM spinning.wheel_change_type4`)
+      client.query(`SELECT * FROM spinning.wheel_change`)
     ]);
     const rows = [
       ...type1.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type1' })),
       ...type2.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type2' })),
-      ...type3.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type3' })),
-      ...type4.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type4' }))
+      ...type3.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type3' }))
     ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     res.status(200).json({ data: rows });
   } catch (error) {
@@ -4290,6 +4270,12 @@ router.post('/wheel-change/type2', async (req, res, next) => {
 
     if (!d.wheel_change_type || !d.test_no || !d.date) {
       return res.status(400).json({ message: 'Required fields missing' });
+    }
+
+    if (!(await findActivePpForCombo(d.count_from_proposed, d.consignee_name_proposed))) {
+      return res.status(409).json({
+        message: 'No Active PP id found for this Count + Consignee Name combination. A Wheel Change can only be entered once the matching PP id has been approved.'
+      });
     }
 
     const result = await insertWheelChangeEntry(
@@ -4513,6 +4499,12 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       return res.status(400).json({ message: 'Required fields missing' });
     }
 
+    if (!(await findActivePpForCombo(d.count_from_proposed, d.consignee_name_proposed))) {
+      return res.status(409).json({
+        message: 'No Active PP id found for this Count + Consignee Name combination. A Wheel Change can only be entered once the matching PP id has been approved.'
+      });
+    }
+
     const result = await insertWheelChangeEntry(
       'spinning.wheel_change',
       type3Fields,
@@ -4607,153 +4599,10 @@ router.get('/wheel-change/type3', async (req, res, next) => {
   }
 });
 
-// Spinning Wheel Change has 4 types in the frontend (WheelChange.jsx's WHEEL_CHANGE_TYPES), each
-// posting to its own /spinning/wheel-change/type{N} endpoint — but only type1/type2/type3 ever had
-// a backend route. Type 4 already has its own dedicated table (spinning.wheel_change_type4,
-// created earlier for this purpose) and its own field map (WHEEL_CHANGE_FIELD_MAP["Type 4"] in
-// WheelChange.jsx), so every Type 4 submission has been failing outright with a 404 until now.
-router.post('/wheel-change/type4', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const d = { ...withWheelChangeRfNumber(req.body, 'fm_no'), created_by_user_id: req.user?.id ?? null };
-    const type4Fields = [
-      'entry_id',
-      'type',
-      'wheel_change_type',
-      'test_no',
-      'date',
-      'fm_no',
-      'created_by_user_id',
-      'count_from_existing',
-      'count_from_proposed',
-      'lycra_type_existing',
-      'lycra_type_proposed',
-      'lycra_draft_existing',
-      'lycra_draft_proposed',
-      'slub_code_existing',
-      'slub_code_proposed',
-      'range_existing',
-      'range_proposed',
-      'offset_existing',
-      'offset_proposed',
-      'core_condition_existing',
-      'core_condition_proposed',
-      'production_existing',
-      'production_proposed',
-      'roving_hank_existing',
-      'roving_hank_proposed',
-      'eow_existing',
-      'eow_proposed',
-      'epi_existing',
-      'epi_proposed',
-      'dca_existing',
-      'dca_proposed',
-      'dcb_existing',
-      'dcb_proposed',
-      'dfc_existing',
-      'dfc_proposed',
-      'dc_existing',
-      'dc_proposed',
-      'tcw_existing',
-      'tcw_proposed',
-      'tw_existing',
-      'tw_proposed',
-      'tpm_existing',
-      'tpm_proposed',
-      'travelers_no_existing',
-      'travelers_no_proposed',
-      'spacer_existing',
-      'spacer_proposed',
-      'cop_weight_existing',
-      'cop_weight_proposed',
-      'speed_front_existing',
-      'speed_front_proposed',
-      'speed_rpm_existing',
-      'speed_rpm_proposed',
-      'empires_colour_existing',
-      'empires_colour_proposed',
-      'total_draft_existing',
-      'total_draft_proposed',
-      'bdw_existing',
-      'bdw_proposed',
-      'bd_existing',
-      'bd_proposed',
-      'winding_length_existing',
-      'winding_length_proposed',
-      'operator',
-      'remarks'
-    ];
-
-    if (!d.entry_id) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
-    }
-
-    if (!d.wheel_change_type || !d.test_no || !d.date) {
-      return res.status(400).json({ message: 'Required fields missing' });
-    }
-
-    const result = await insertWheelChangeEntry(
-      'spinning.wheel_change_type4',
-      type4Fields,
-      d
-    );
-
-    res.status(201).json({
-      message: 'Type4 created',
-      data: result.rows[0]
-    });
-
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-    }
-    next(err);
-  }
-});
-
-/**
- * @swagger
- * /spinning/wheel-change/type4:
- *   get:
- *     summary: Get all Type4 entries
- *     tags: [Wheel Change Type4]
- *     responses:
- *       200:
- *         description: Success
- */
-router.get('/wheel-change/type4', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
-    const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
-    const result = await client.query(
-      `SELECT *
-       FROM spinning.wheel_change_type4
-       WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
-         OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
-         AND ($2::text = '' OR approval_status = $2)
-       ORDER BY created_at DESC`,
-      [variety, approvalStatus]
-    );
-    const latestRecord = variety
-      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_type4', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
-      : null;
-
-    res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', row, 'fm_no'), 'fm_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', latestRecord, 'fm_no'), 'fm_no') : null
-    });
-
-  } catch (err) {
-    next(err);
-  }
-});
-
 const WHEEL_CHANGE_APPROVAL_TABLES = {
   type1: 'spinning.wheel_change_inspection',
   type2: 'spinning.wheel_change_v2',
-  type3: 'spinning.wheel_change',
-  type4: 'spinning.wheel_change_type4'
+  type3: 'spinning.wheel_change'
 };
 
 // Same table supervisorAssignments.routes.js owns (L1 employee -> L2

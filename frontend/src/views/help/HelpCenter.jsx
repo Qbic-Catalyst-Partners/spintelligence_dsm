@@ -37,6 +37,7 @@ import {
   saveAnalysisSubscriptionApi,
 } from "@/apis/analysisApi";
 import { isFullAccessUser } from "@/utils/accessControl";
+import { formatDateTime } from "@/utils/formatDateTime";
 import styles from "@/styles/helpCenter.module.css";
 
 const tabs = [
@@ -77,18 +78,6 @@ const normalizers = {
 
 const getId = (item) => item?.id || item?._id || item?.uuid;
 const getTime = (item) => item?.created_at || item?.updated_at || item?.timestamp || item?.createdAt;
-
-const formatDateTime = (value) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
 
 const buildSlug = (value) =>
   String(value || "")

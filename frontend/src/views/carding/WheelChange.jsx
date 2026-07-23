@@ -232,9 +232,11 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     if (!approved && !unapproved) {
       // No saved data for this mixing/machine — clear whatever a previously
       // selected mixing or machine had populated instead of leaving it showing.
+      // Keep the mixing value itself though: it's what the user just picked
+      // to trigger this lookup, not stale data to be wiped.
       setUnapprovedEntry(null);
       setProposedCdgNos([]);
-      setValues(createValues());
+      setValues({ ...createValues(), mixing: { existing: "", proposed: trimmedMixing } });
       setRemarks("");
       setErrors({});
       return null;
