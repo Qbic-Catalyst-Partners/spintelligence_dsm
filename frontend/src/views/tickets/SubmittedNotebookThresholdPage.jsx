@@ -141,7 +141,6 @@ const mergeThresholdRows = (rows, nextRows) =>
   nextRows.reduce((mergedRows, row) => mergeThresholdRow(mergedRows, row), rows);
 
 export default function SubmittedNotebookThresholdPage({ standalone = true } = {}) {
-  const dispatch = useDispatch();
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
