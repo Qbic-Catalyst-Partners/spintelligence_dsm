@@ -191,7 +191,7 @@ const mergeThresholdRow = (rows, row) => {
 const mergeThresholdRows = (rows, nextRows) =>
   nextRows.reduce((mergedRows, row) => mergeThresholdRow(mergedRows, row), rows);
 
-export default function SubmittedNotebookThresholdPage() {
+export default function SubmittedNotebookThresholdPage({ standalone = true } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
@@ -407,14 +407,11 @@ export default function SubmittedNotebookThresholdPage() {
 
   if (!isHydrated || !canAccessPage) return null;
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <h1>Submission Threshold</h1>
-          <p>Set the L2 acknowledgement time for submitted notebooks</p>
-        </div>
+  const effectiveActiveTab = standalone ? activeTab : "new";
 
+  const content = (
+    <>
+        {standalone ? (
         <div className={styles.tabBar} role="tablist" aria-label="Submitted notebook threshold views">
           <button
             type="button"
@@ -431,8 +428,9 @@ export default function SubmittedNotebookThresholdPage() {
             Existing Thresholds
           </button>
         </div>
+        ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <div className={styles.statsGrid}>
             <article className={styles.statCard}>
               <div className={`${styles.statIcon} ${styles.blue}`}>
@@ -464,7 +462,7 @@ export default function SubmittedNotebookThresholdPage() {
           </div>
         ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <form className={styles.stack} onSubmit={handleSave}>
             <section className={styles.sectionPlain}>
               <div className={styles.sectionHeader}>
@@ -714,6 +712,21 @@ export default function SubmittedNotebookThresholdPage() {
             </section>
           </div>
         )}
+    </>
+  );
+
+  if (!standalone) {
+    return content;
+  }
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.intro}>
+          <h1>Acknowledgement Threshold</h1>
+          <p>Set the L2 acknowledgement time for submitted notebooks</p>
+        </div>
+        {content}
       </div>
     </div>
   );

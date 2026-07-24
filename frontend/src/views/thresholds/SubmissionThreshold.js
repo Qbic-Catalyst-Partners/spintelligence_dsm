@@ -396,7 +396,7 @@ function TatTimePicker({ value, onChange, label }) {
   );
 }
 
-export default function SubmissionThreshold() {
+export default function SubmissionThreshold({ standalone = true, editItem = null, onEditItemHandled } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
@@ -656,6 +656,13 @@ export default function SubmissionThreshold() {
     setError("");
   };
 
+  useEffect(() => {
+    if (!editItem) return;
+    openEditConfig(editItem);
+    onEditItemHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editItem]);
+
   const toggleConfigStatus = async (item) => {
     const configId = item?.id;
     if (!configId) {
@@ -788,14 +795,11 @@ export default function SubmissionThreshold() {
     return null;
   }
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <h1>Submission Threshold</h1>
-          <p>Add and edit the threshold Submission</p>
-        </div>
+  const effectiveActiveTab = standalone ? activeTab : "new";
 
+  const content = (
+    <>
+        {standalone ? (
         <div className={styles.tabBar} role="tablist" aria-label="Submission threshold views">
           <button
             type="button"
@@ -812,8 +816,9 @@ export default function SubmissionThreshold() {
             Existing Thresholds
           </button>
         </div>
+        ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <div className={styles.statsGrid}>
             <article className={styles.statCard}>
               <div className={`${styles.statIcon} ${styles.blue}`}>
@@ -845,7 +850,7 @@ export default function SubmissionThreshold() {
           </div>
         ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <form className={styles.stack} onSubmit={handleSave}>
             <section className={styles.sectionPlain}>
               <div className={styles.sectionHeader}>
@@ -1237,6 +1242,21 @@ export default function SubmissionThreshold() {
             </section>
           </div>
         )}
+    </>
+  );
+
+  if (!standalone) {
+    return content;
+  }
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.intro}>
+          <h1>Submission Threshold</h1>
+          <p>Add and edit the threshold Submission</p>
+        </div>
+        {content}
       </div>
     </div>
   );
