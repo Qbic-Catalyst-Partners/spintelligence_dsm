@@ -257,18 +257,10 @@ const reportSources = {
       "Count Change": { endpoint: "/spinning/count-change" },
       "Ring Frame Log Book": { endpoint: "/spinning/ring-frame" },
       "Speed Checking": { endpoint: "/spinning/speed-checking" },
-      "Bottom Apron Checking - Apron Damage": { endpoint: "/spinning/bottom-apron-checking" },
-      "Bottom Apron Checking - Apron Position Not Center": { endpoint: "/spinning/bottom-apron-checking" },
-      "Lycra Out of Centering - Lycra out of center Running": { endpoint: "/spinning/lycra-centering" },
-      "Lycra Out of Centering - Lycra Out of Center": { endpoint: "/spinning/lycra-centering" },
-      "RSM & Lycrasensor Checking Online - RSM Not Working": { endpoint: "/spinning/rsm-lycra-online" },
-      "RSM & Lycrasensor Checking Online - RSM Working but Roving Run": { endpoint: "/spinning/rsm-lycra-online" },
-      "RSM & Lycrasensor Checking Online - Cable Problem": { endpoint: "/spinning/rsm-lycra-online" },
-      "RSM & Lycrasensor Checking Online - Lycrasensor Not Working": { endpoint: "/spinning/rsm-lycra-online" },
-      "RSM & Lycrasensor Checking Offline - RSM Not Working": { endpoint: "/spinning/rsm-lycra-offline" },
-      "RSM & Lycrasensor Checking Offline - RSM Working but Roving Run": { endpoint: "/spinning/rsm-lycra-offline" },
-      "RSM & Lycrasensor Checking Offline - Cable Problem": { endpoint: "/spinning/rsm-lycra-offline" },
-      "RSM & Lycrasensor Checking Offline - Lycrasensor Not Working": { endpoint: "/spinning/rsm-lycra-offline" },
+      "Bottom Apron Checking": { endpoint: "/spinning/bottom-apron-checking" },
+      "Lycra Out of Centering": { endpoint: "/spinning/lycra-centering" },
+      "RSM & Lycrasensor Checking Online": { endpoint: "/spinning/rsm-lycra-online" },
+      "RSM & Lycrasensor Checking Offline": { endpoint: "/spinning/rsm-lycra-offline" },
       "Wheel Change Type 1": { endpoint: "/spinning/wheel-change/type1" },
       "Wheel Change Type 2": { endpoint: "/spinning/wheel-change/type2" },
       "Wheel Change Type 3": { endpoint: "/spinning/wheel-change/type3" },
@@ -1452,29 +1444,6 @@ const normalizeAutoconerSpliceStrengthRows = (response) =>
     });
     return { ...headerFields, ...readingColumns };
   });
-
-// Spinning's four Type-2 screens (Bottom Apron Checking, Lycra Out of Centering, RSM &
-// Lycrasensor Checking Online/Offline) each share one endpoint across every Type-2 fault
-// sub-value — split the Reports dropdown into one selectable report type per sub-value (same
-// pattern as Draw Frame Cots' Breaker/Finisher split below) so a Type-2-based report can be
-// pulled without the caller having to filter the combined screen themselves.
-const SPINNING_TYPE2_SUB_TYPE_BY_REPORT_TYPE = {
-  "Bottom Apron Checking - Apron Damage": "Apron Damage",
-  "Bottom Apron Checking - Apron Position Not Center": "Apron Position Not Center",
-  "Lycra Out of Centering - Lycra out of center Running": "Lycra out of center Running",
-  "Lycra Out of Centering - Lycra Out of Center": "Lycra Out of Center",
-  "RSM & Lycrasensor Checking Online - RSM Not Working": "RSM Not Working",
-  "RSM & Lycrasensor Checking Online - RSM Working but Roving Run": "RSM Working but Roving Run",
-  "RSM & Lycrasensor Checking Online - Cable Problem": "Cable Problem",
-  "RSM & Lycrasensor Checking Online - Lycrasensor Not Working": "Lycrasensor Not Working",
-  "RSM & Lycrasensor Checking Offline - RSM Not Working": "RSM Not Working",
-  "RSM & Lycrasensor Checking Offline - RSM Working but Roving Run": "RSM Working but Roving Run",
-  "RSM & Lycrasensor Checking Offline - Cable Problem": "Cable Problem",
-  "RSM & Lycrasensor Checking Offline - Lycrasensor Not Working": "Lycrasensor Not Working",
-};
-
-const normalizeSpinningCotsRows = (subType) => (response) =>
-  extractResponseRows(response).filter((row) => String(row?.type2 ?? "").trim() === subType);
 
 // Draw Frame's "Draw Frame Cots Data Entry" submits a variable-length `machines` array (one
 // entry per machine actually filled in, each shaped differently depending on whether Process Type
@@ -2782,12 +2751,12 @@ const getParametersArrayProposedValue = (row, fieldLabel) => {
   return match ? match.proposed : undefined;
 };
 
-// Spinning's Speed/COTS Checking and the four Type-2 screens (Bottom Apron Checking, Lycra Out
-// of Centering, RSM & Lycrasensor Checking Online/Offline) — LHS/RHS is always a free-form
-// spindle list (JSONB array), no scalar column exists at all on these six tables. See the guard
-// in getCellValue below for why fields on these rows need a direct, non-fallback lookup (a null/
-// missing field would otherwise fall through to getReportFieldValue's blind "first non-empty
-// value anywhere on the row" fallback and show that row's entry_id in every column).
+// Spinning's Speed/COTS Checking, Bottom Apron Checking, Lycra Out of Centering, and RSM &
+// Lycrasensor Checking Online/Offline — LHS/RHS is always a free-form spindle list (JSONB array),
+// no scalar column exists at all on these six tables. See the guard in getCellValue below for why
+// fields on these rows need a direct, non-fallback lookup (a null/missing field would otherwise
+// fall through to getReportFieldValue's blind "first non-empty value anywhere on the row"
+// fallback and show that row's entry_id in every column).
 const SPINNING_LHS_RHS_SPINDLE_LIST_REPORT_TYPES = new Set([
   "COTS Checking",
   "Speed Checking",
@@ -2795,7 +2764,6 @@ const SPINNING_LHS_RHS_SPINDLE_LIST_REPORT_TYPES = new Set([
   "Lycra Out of Centering",
   "RSM & Lycrasensor Checking Online",
   "RSM & Lycrasensor Checking Offline",
-  ...Object.keys(SPINNING_TYPE2_SUB_TYPE_BY_REPORT_TYPE),
 ]);
 
 const SPINNING_LHS_RHS_FIELD_KEY_BY_LABEL = {
@@ -4332,8 +4300,6 @@ function ReportsPage() {
         const isCardingDfkReport = subDepartment === "Carding" && reportType === "Card DFK Data";
         const drawFrameCotsSubType =
           subDepartment === "Draw Frame" ? DRAWFRAME_COTS_SUB_TYPE_BY_REPORT_TYPE[reportType] : null;
-        const spinningCotsSubType =
-          subDepartment === "Spinning" ? SPINNING_TYPE2_SUB_TYPE_BY_REPORT_TYPE[reportType] : null;
         const isDrawFrameYarnCvReport = subDepartment === "Draw Frame" && reportType === "1 Yard / Half Yard CV Entry";
         const isSpinningCountChangeReport = subDepartment === "Spinning" && reportType === "Count Change";
         const isRingFrameLogBookReport = subDepartment === "Spinning" && reportType === "Ring Frame Log Book";
@@ -4367,8 +4333,6 @@ function ReportsPage() {
                               ? normalizeCardingDfkRows
                               : drawFrameCotsSubType
                                 ? normalizeDrawFrameCotsRows(drawFrameCotsSubType)
-                                : spinningCotsSubType
-                                  ? normalizeSpinningCotsRows(spinningCotsSubType)
                                 : isDrawFrameYarnCvReport
                                   ? normalizeDrawFrameYarnCvRows
                                   : isSpinningCountChangeReport
