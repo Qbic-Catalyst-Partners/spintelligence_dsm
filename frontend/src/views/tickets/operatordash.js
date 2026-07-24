@@ -3,6 +3,7 @@ import styles from "../../styles/operator.module.css";
 import { useRouter } from "next/router";
 import Image from "next/image";
 import { FiCalendar } from "react-icons/fi";
+import Pagination from "@/components/Pagination";
 import { MdFilterList } from "react-icons/md";
 import { useSelector } from "react-redux";
 import { getOperatorTickets, getSubmissionTickets, getProcessParameterTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
@@ -682,16 +683,7 @@ export default function operatorboard() {
                         Showing {displayTickets.length ? indexOfFirst + 1 : 0}–{Math.min(indexOfLast, displayTickets.length)} of {displayTickets.length}
                     </span>
 
-                    <div className={styles.pagination}>
-                        <button disabled={currentPage === 1} onClick={() => setCurrentPage(1)}>«</button>
-                        <button disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)}>‹</button>
-                        {Array.from({ length: totalPages }, (_, i) => (
-                            <button key={i} className={currentPage === i + 1 ? styles.active : ""}
-                                onClick={() => setCurrentPage(i + 1)}>{i + 1}</button>
-                        ))}
-                        <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(currentPage + 1)}>›</button>
-                        <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(totalPages)}>»</button>
-                    </div>
+                    <Pagination page={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                 </div>
             </div>
 

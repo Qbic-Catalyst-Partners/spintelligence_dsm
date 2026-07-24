@@ -7,6 +7,7 @@ import {
     fetchSubmittedNotebooksApi,
 } from "@/apis/submittedNotebooksApi";
 import apiConfig from "@/apis/apiConfig";
+import Pagination from "@/components/Pagination";
 import { fetchUsersAPI } from "@/apis/userApi";
 import { isFullAccessUser, isSupervisorNavUser } from "@/utils/accessControl";
 import styles from "@/styles/submittedNotebooks.module.css";
@@ -1184,6 +1185,8 @@ const SubmittedNotebooksPage = () => {
     const isSupervisor = isSupervisorNavUser(user) && !isFullAccessUser(user);
     const isAdminUser = isFullAccessUser(user);
     const [activeTab, setActiveTab] = useState("pending");
+    const [currentPage, setCurrentPage] = useState(1);
+    const PAGE_SIZE = 5;
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
     const dateFromInputRef = useRef(null);
@@ -1329,6 +1332,17 @@ const SubmittedNotebooksPage = () => {
                 )
                 .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0)),
         [enrichedNotebooks, filters]
+    );
+
+    const totalPages = Math.max(1, Math.ceil(filteredNotebooks.length / PAGE_SIZE));
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, filters]);
+
+    const paginatedNotebooks = useMemo(
+        () => filteredNotebooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+        [filteredNotebooks, currentPage]
     );
 
     const handleFilterChange = (field, value) => {
@@ -1582,7 +1596,7 @@ const SubmittedNotebooksPage = () => {
                 <div className={styles.emptyState}>{error}</div>
             ) : filteredNotebooks.length ? (
                 <div className={styles.list}>
-                    {filteredNotebooks.map((item, index) => {
+                    {paginatedNotebooks.map((item, index) => {
                         const id = item.id || `notebook-${index}`;
 
                         return (
@@ -1617,6 +1631,10 @@ const SubmittedNotebooksPage = () => {
             ) : (
                 <div className={styles.emptyState}>No submitted notebooks found.</div>
             )}
+
+            {!isLoading && !error && filteredNotebooks.length ? (
+                <Pagination page={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+            ) : null}
 
             {selectedNotebook && showAcknowledgeSuccess && (
                 // Thanks-for-acknowledging replaces the whole detail card outright, instead of

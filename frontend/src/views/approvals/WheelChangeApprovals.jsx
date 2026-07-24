@@ -81,6 +81,8 @@ function WheelChangeApprovals() {
       fetchApproved={fetchApprovedWheelChangeApprovals}
       approve={approveWheelChangeApproval}
       reject={rejectWheelChangeApproval}
+      operatorLabel="L1 Name"
+      pendingStatusLabel="Awaiting L4"
     />
   );
 }

@@ -142,6 +142,13 @@ const ENTRY_ID_ROUTE_TABLES = {
   // collides with the real first row and fails as "Duplicate entry_id".
   '/spinning/rsm-lycra-online': 'spinning.rsm_and_lycrasensor_cheking_online',
   '/spinning/rsm-lycra-offline': 'spinning.rsm_and_lycrasensor_cheking_offline',
+  // Same root cause as the five Spinning screens above: '/autoconer/cone-density' had no
+  // mapping here, so its "next entry id" was computed only from the frontend_entry_registry
+  // bookkeeping table, not the real autoconer.cone_density_notebook table the Cone Density
+  // screen actually saves to (see the /cone-density-notebook route in routes/autoconer.js).
+  // Any drift between the two let the same entry_id be reissued, failing saves with
+  // "Duplicate entry_id".
+  '/autoconer/cone-density': 'autoconer.cone_density_notebook',
   '/drawframe/wheel-change': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type2': 'drawframe.wheel_change',

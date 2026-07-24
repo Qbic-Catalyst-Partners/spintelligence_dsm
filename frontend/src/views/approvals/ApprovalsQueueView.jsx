@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 
-import { FaCheckCircle } from "react-icons/fa";
+import { FaCheckCircle, FaIdCard } from "react-icons/fa";
+import { FiCalendar } from "react-icons/fi";
+import Pagination from "@/components/Pagination";
+import { HiOutlineTag, HiOutlineUserGroup } from "react-icons/hi2";
 import SuccessModal from "@/components/SuccessModal";
+import SearchableSelect from "@/components/SearchableSelect";
 import { isWheelChangeApproverUser } from "@/utils/accessControl";
 import styles from "@/styles/wheelChangeApprovals.module.css";
 import combinedStyles from "@/styles/combinedProcessParameterPreview.module.css";
@@ -35,6 +39,11 @@ const STATUS_BADGE_LABEL = {
 
 const trimValue = (value) => String(value ?? "").trim();
 
+// Operator/consignee/count names sometimes carry double spaces or odd
+// spacing from source data (e.g. "Aravinth  S") - collapse to single spaces
+// before comparing so a normally-typed filter query still matches them.
+const normalizeSearchText = (value) => trimValue(value).toLowerCase().replace(/\s+/g, " ");
+
 const firstNonEmpty = (...values) => {
   for (const value of values) {
     const trimmed = trimValue(value);
@@ -52,11 +61,12 @@ const humanizeWheelChangeTypeCode = (value) => {
   return match ? `Type ${match[1]}` : "";
 };
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, pendingLabel }) {
   const key = trimValue(status).toLowerCase() || "pending";
+  const label = key === "pending" && pendingLabel ? pendingLabel : STATUS_BADGE_LABEL[key] || key;
   return (
     <span className={`${styles.statusBadge} ${STATUS_BADGE_CLASS[key] || STATUS_BADGE_CLASS.pending}`}>
-      {STATUS_BADGE_LABEL[key] || key}
+      {label}
     </span>
   );
 }
@@ -177,6 +187,8 @@ function ApprovalsQueueView({
   accessDeniedText = "Only L2 users can view and approve proposed",
   tabLabels = DEFAULT_TAB_LABELS,
   showDepartmentFilter = true,
+  operatorLabel = "Operator",
+  pendingStatusLabel = "",
 }) {
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
@@ -206,9 +218,42 @@ function ApprovalsQueueView({
     countName: "",
     consigneeName: "",
     machineNumber: "",
+    operatorName: "",
     dateFrom: "",
     dateTo: "",
   });
+  const [dateRangePreset, setDateRangePreset] = useState("custom");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 20;
+  const dateFromInputRef = useRef(null);
+  const dateToInputRef = useRef(null);
+  // Same calendar-icon pattern as the ticketing screens (SubmittedNotebooksPage,
+  // ActivityLogs) - a native date input with its own indicator hidden (see
+  // .dateInputWrap in the shared CSS) and this icon driving showPicker() instead,
+  // so both places behave identically.
+  const openDatePicker = (inputRef) => {
+    const input = inputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.focus();
+    }
+  };
+
+  // Picking "Custom" from the date-range preset dropdown should immediately
+  // open the date picker rather than leaving the operator to notice and
+  // click the now-visible input themselves - but not on first mount, since
+  // "custom" is also the default preset before the operator has touched it.
+  const dateRangePresetMountedRef = useRef(false);
+  useEffect(() => {
+    if (!dateRangePresetMountedRef.current) {
+      dateRangePresetMountedRef.current = true;
+      return;
+    }
+    if (dateRangePreset !== "custom") return;
+    openDatePicker(dateFromInputRef);
+  }, [dateRangePreset]);
 
   const normalizeApprovalItem = useCallback(
     (item, index) => ({
@@ -347,28 +392,97 @@ function ApprovalsQueueView({
     return Array.from(seen.entries()).map(([value, label]) => ({ value, label }));
   }, [approvals]);
 
+  // Distinct, non-empty values seen in the current tab's data - used to
+  // populate the Count Name/Consignee Name/Machine No./Operator filters as
+  // dropdowns instead of free-text search, so an approver can only pick a
+  // value that's actually present rather than guessing spelling.
+  const buildUniqueOptions = (getValue) => {
+    const seen = new Set();
+    approvals.forEach((item) => {
+      const value = trimValue(getValue(item));
+      if (value) seen.add(value);
+    });
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  };
+  const countNameOptions = useMemo(() => buildUniqueOptions((item) => item.countName), [approvals]);
+  const consigneeNameOptions = useMemo(() => buildUniqueOptions((item) => item.consigneeName), [approvals]);
+  const machineNumberOptions = useMemo(() => buildUniqueOptions((item) => item.machineNumber), [approvals]);
+  const operatorNameOptions = useMemo(() => buildUniqueOptions((item) => item.operator), [approvals]);
+
+  const submissionCount = approvals.length;
+  const uniqueCountNameCount = countNameOptions.length;
+  const uniqueConsigneeNameCount = consigneeNameOptions.length;
+
   const updateFilter = (field) => (event) => {
     const value = event?.target ? event.target.value : event;
     setFilters((current) => ({ ...current, [field]: value }));
   };
 
-  const clearFilters = () =>
-    setFilters({ department: "", countName: "", consigneeName: "", machineNumber: "", dateFrom: "", dateTo: "" });
+  const formatDateInputValue = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleDateRangePresetChange = (event) => {
+    const preset = event.target.value;
+    setDateRangePreset(preset);
+
+    if (preset === "custom") return;
+
+    const now = new Date();
+    let from = null;
+    let to = now;
+
+    if (preset === "today") {
+      from = now;
+    } else if (preset === "week") {
+      from = new Date(now);
+      // Sunday-start week, matching the calendar week the user is currently in.
+      from.setDate(now.getDate() - now.getDay());
+    } else if (preset === "month") {
+      from = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (preset === "year") {
+      from = new Date(now.getFullYear(), 0, 1);
+    }
+
+    setFilters((current) => ({
+      ...current,
+      dateFrom: formatDateInputValue(from),
+      dateTo: formatDateInputValue(to),
+    }));
+  };
+
+  const clearFilters = () => {
+    setDateRangePreset("custom");
+    setFilters({
+      department: "",
+      countName: "",
+      consigneeName: "",
+      machineNumber: "",
+      operatorName: "",
+      dateFrom: "",
+      dateTo: "",
+    });
+  };
 
   const hasActiveFilters = Object.values(filters).some((value) => trimValue(value));
 
   const filteredApprovals = useMemo(() => {
-    const countNameFilter = filters.countName.trim().toLowerCase();
-    const consigneeNameFilter = filters.consigneeName.trim().toLowerCase();
-    const machineNumberFilter = filters.machineNumber.trim().toLowerCase();
+    const countNameFilter = normalizeSearchText(filters.countName);
+    const consigneeNameFilter = normalizeSearchText(filters.consigneeName);
+    const machineNumberFilter = normalizeSearchText(filters.machineNumber);
+    const operatorNameFilter = normalizeSearchText(filters.operatorName);
     const fromTime = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`).getTime() : null;
     const toTime = filters.dateTo ? new Date(`${filters.dateTo}T23:59:59.999`).getTime() : null;
 
     return approvals.filter((item) => {
       if (filters.department && (item.department || item.departmentLabel) !== filters.department) return false;
-      if (countNameFilter && !item.countName.toLowerCase().includes(countNameFilter)) return false;
-      if (consigneeNameFilter && !item.consigneeName.toLowerCase().includes(consigneeNameFilter)) return false;
-      if (machineNumberFilter && !item.machineNumber.toLowerCase().includes(machineNumberFilter)) return false;
+      if (countNameFilter && !normalizeSearchText(item.countName).includes(countNameFilter)) return false;
+      if (consigneeNameFilter && !normalizeSearchText(item.consigneeName).includes(consigneeNameFilter)) return false;
+      if (machineNumberFilter && !normalizeSearchText(item.machineNumber).includes(machineNumberFilter)) return false;
+      if (operatorNameFilter && !normalizeSearchText(item.operator).includes(operatorNameFilter)) return false;
 
       if (fromTime !== null || toTime !== null) {
         const itemTime = item.createdOn ? new Date(item.createdOn).getTime() : NaN;
@@ -381,15 +495,33 @@ function ApprovalsQueueView({
     });
   }, [approvals, filters]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredApprovals.length / PAGE_SIZE));
+
+  // Reset back to page 1 whenever the tab or filters change the underlying
+  // result set - otherwise a page number from a longer list can point past
+  // the end of a shorter, newly-filtered one.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, filters]);
+
+  const paginatedApprovals = useMemo(
+    () => filteredApprovals.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredApprovals, currentPage]
+  );
+
+  const goToPage = (page) => {
+    setCurrentPage(Math.min(Math.max(1, page), totalPages));
+  };
+
   const groupedApprovals = useMemo(() => {
     const groups = new Map();
-    filteredApprovals.forEach((item) => {
+    paginatedApprovals.forEach((item) => {
       const label = getGroupLabel(item.createdOn);
       if (!groups.has(label)) groups.set(label, []);
       groups.get(label).push(item);
     });
     return Array.from(groups.entries()).map(([label, rows]) => ({ label, rows }));
-  }, [filteredApprovals]);
+  }, [paginatedApprovals]);
 
   return (
     <div className={styles.page}>
@@ -417,78 +549,157 @@ function ApprovalsQueueView({
             ))}
           </div>
 
+          <div className={styles.statsGrid}>
+            <article className={styles.statCard}>
+              <div className={`${styles.statIcon} ${styles.blue}`}>
+                <FaIdCard />
+              </div>
+              <div>
+                <span>No. of Submission</span>
+                <strong>{submissionCount}</strong>
+              </div>
+            </article>
+            <article className={styles.statCard}>
+              <div className={`${styles.statIcon} ${styles.activeTone}`}>
+                <HiOutlineTag />
+              </div>
+              <div>
+                <span>No. of Count Name Unique</span>
+                <strong>{uniqueCountNameCount}</strong>
+              </div>
+            </article>
+            <article className={styles.statCard}>
+              <div className={`${styles.statIcon} ${styles.inactiveTone}`}>
+                <HiOutlineUserGroup />
+              </div>
+              <div>
+                <span>No. of Consignee Name Unique</span>
+                <strong>{uniqueConsigneeNameCount}</strong>
+              </div>
+            </article>
+          </div>
+
           <div className={styles.filterBar}>
             <div className={styles.filterField}>
               <label htmlFor="approval-filter-count-name">Count Name</label>
-              <input
-                id="approval-filter-count-name"
-                type="text"
-                className={styles.filterInput}
+              <SearchableSelect
+                className={styles.filterSelect}
                 value={filters.countName}
                 onChange={updateFilter("countName")}
-                placeholder="Search count..."
+                options={countNameOptions}
+                includeEmptyOption
+                emptyOptionLabel="All"
+                placeholder="All"
+                ariaLabel="Count Name"
               />
             </div>
             <div className={styles.filterField}>
               <label htmlFor="approval-filter-consignee-name">Consignee Name</label>
-              <input
-                id="approval-filter-consignee-name"
-                type="text"
-                className={styles.filterInput}
+              <SearchableSelect
+                className={styles.filterSelect}
                 value={filters.consigneeName}
                 onChange={updateFilter("consigneeName")}
-                placeholder="Search consignee..."
+                options={consigneeNameOptions}
+                includeEmptyOption
+                emptyOptionLabel="All"
+                placeholder="All"
+                ariaLabel="Consignee Name"
               />
             </div>
             <div className={styles.filterField}>
               <label htmlFor="approval-filter-machine-no">Machine No.</label>
-              <input
-                id="approval-filter-machine-no"
-                type="text"
-                className={styles.filterInput}
+              <SearchableSelect
+                className={styles.filterSelect}
                 value={filters.machineNumber}
                 onChange={updateFilter("machineNumber")}
-                placeholder="Search machine..."
+                options={machineNumberOptions}
+                includeEmptyOption
+                emptyOptionLabel="All"
+                placeholder="All"
+                ariaLabel="Machine No."
+              />
+            </div>
+            <div className={styles.filterField}>
+              <label htmlFor="approval-filter-operator-name">{operatorLabel}</label>
+              <SearchableSelect
+                className={styles.filterSelect}
+                value={filters.operatorName}
+                onChange={updateFilter("operatorName")}
+                options={operatorNameOptions}
+                includeEmptyOption
+                emptyOptionLabel="All"
+                placeholder="All"
+                ariaLabel={operatorLabel}
               />
             </div>
             {showDepartmentFilter && departmentOptions.length > 1 ? (
               <div className={styles.filterField}>
                 <label htmlFor="approval-filter-department">Department</label>
-                <select
-                  id="approval-filter-department"
+                <SearchableSelect
                   className={styles.filterSelect}
                   value={filters.department}
                   onChange={updateFilter("department")}
-                >
-                  <option value="">All</option>
-                  {departmentOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={departmentOptions}
+                  includeEmptyOption
+                  emptyOptionLabel="All"
+                  placeholder="All"
+                  ariaLabel="Department"
+                />
               </div>
             ) : null}
             <div className={styles.filterField}>
-              <label htmlFor="approval-filter-date-from">Created From</label>
-              <input
-                id="approval-filter-date-from"
-                type="date"
-                className={styles.filterInput}
-                value={filters.dateFrom}
-                onChange={updateFilter("dateFrom")}
-              />
+              <label htmlFor="approval-filter-date-range">Created Date</label>
+              <select
+                id="approval-filter-date-range"
+                className={styles.filterSelect}
+                value={dateRangePreset}
+                onChange={handleDateRangePresetChange}
+              >
+                <option value="custom">Custom</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="year">This Year</option>
+              </select>
             </div>
-            <div className={styles.filterField}>
-              <label htmlFor="approval-filter-date-to">Created To</label>
-              <input
-                id="approval-filter-date-to"
-                type="date"
-                className={styles.filterInput}
-                value={filters.dateTo}
-                onChange={updateFilter("dateTo")}
-              />
-            </div>
+            {dateRangePreset === "custom" ? (
+              <div className={`${styles.filterField} ${styles.filterDateRange}`}>
+                <label htmlFor="approval-filter-date-from">Date Range</label>
+                <div className={styles.filterDateRangeInputs}>
+                  <span className={styles.dateInputWrap}>
+                    <input
+                      id="approval-filter-date-from"
+                      ref={dateFromInputRef}
+                      type="date"
+                      className={styles.filterInput}
+                      value={filters.dateFrom}
+                      onChange={updateFilter("dateFrom")}
+                    />
+                    <FiCalendar
+                      className={styles.dateInputIcon}
+                      aria-hidden="true"
+                      onClick={() => openDatePicker(dateFromInputRef)}
+                    />
+                  </span>
+                  <span className={styles.filterDateRangeSeparator}>to</span>
+                  <span className={styles.dateInputWrap}>
+                    <input
+                      id="approval-filter-date-to"
+                      ref={dateToInputRef}
+                      type="date"
+                      className={styles.filterInput}
+                      value={filters.dateTo}
+                      onChange={updateFilter("dateTo")}
+                    />
+                    <FiCalendar
+                      className={styles.dateInputIcon}
+                      aria-hidden="true"
+                      onClick={() => openDatePicker(dateToInputRef)}
+                    />
+                  </span>
+                </div>
+              </div>
+            ) : null}
             {hasActiveFilters ? (
               <button type="button" className={styles.filterClearButton} onClick={clearFilters}>
                 Clear Filters
@@ -506,8 +717,7 @@ function ApprovalsQueueView({
 
           {loading ? (
             <div className={styles.emptyState}>
-              Loading {activeTab === "approved" ? "existing" : activeTab === "rejected" ? "rejected" : "pending"}{" "}
-              approvals...
+              Loading {tabLabels[activeTab] || DEFAULT_TAB_LABELS[activeTab] || ""} Approvals...
             </div>
           ) : groupedApprovals.length ? (
             <div className={styles.groups}>
@@ -520,19 +730,31 @@ function ApprovalsQueueView({
                         <span className={styles.rowMain}>
                           <span className={styles.rowTitleLine}>
                             <strong>{item.title}</strong>
-                            <StatusBadge status={item.status} />
+                            <StatusBadge status={item.status} pendingLabel={pendingStatusLabel} />
                           </span>
                           <span>{item.departmentLabel ? `${item.departmentLabel} ${departmentSuffix}` : "-"}</span>
                         </span>
                         <span className={styles.rowMeta}>
                           <span>
-                            <small>Operator</small>
+                            <small>{operatorLabel}</small>
                             <strong>{item.operator}</strong>
                           </span>
                           <span>
                             <small>Machine No.</small>
                             <strong>{item.machineNumber}</strong>
                           </span>
+                          {item.countName ? (
+                            <span>
+                              <small>Count Name</small>
+                              <strong>{item.countName}</strong>
+                            </span>
+                          ) : null}
+                          {item.consigneeName ? (
+                            <span>
+                              <small>Consignee Name</small>
+                              <strong>{item.consigneeName}</strong>
+                            </span>
+                          ) : null}
                           <span>
                             <small>Created On</small>
                             <strong>{formatCreatedOn(item.createdOn)}</strong>
@@ -553,6 +775,10 @@ function ApprovalsQueueView({
                   }.`}
             </div>
           )}
+
+          {!loading && filteredApprovals.length ? (
+            <Pagination page={currentPage} totalPages={totalPages} onPageChange={goToPage} />
+          ) : null}
         </>
       ) : null}
 
@@ -573,7 +799,7 @@ function ApprovalsQueueView({
               <div>
                 <div className={styles.modalHeaderTitleLine}>
                   <h2 id={modalTitleId}>{selected.title}</h2>
-                  <StatusBadge status={selected.status} />
+                  <StatusBadge status={selected.status} pendingLabel={pendingStatusLabel} />
                 </div>
                 <p>
                   Quality Control &gt; {selected.departmentLabel || "-"}
@@ -581,7 +807,7 @@ function ApprovalsQueueView({
               </div>
               <div className={styles.modalMeta}>
                 <span>
-                  <small>Operator</small>
+                  <small>{operatorLabel}</small>
                   <strong>{selected.operator}</strong>
                 </span>
                 <span>
