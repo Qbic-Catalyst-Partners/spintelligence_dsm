@@ -428,7 +428,6 @@ export default function GeneralReport() {
   const [selectedSubDept, setSelectedSubDept] = useState("");
   const [selectedNotebook, setSelectedNotebook] = useState("");
   const [isReportGenerated, setIsReportGenerated] = useState(false);
-  const [generatedAt, setGeneratedAt] = useState("");
   const [rows, setRows] = useState([]);
   const [rowsByType, setRowsByType] = useState({});
   const [loadingRows, setLoadingRows] = useState(false);
@@ -493,14 +492,6 @@ export default function GeneralReport() {
     () => reportSections.reduce((total, section) => total + section.rows.length, 0),
     [reportSections]
   );
-  const reportDateLabel = `${toDisplayDate(fromDate)}${toDate && toDate !== fromDate ? ` - ${toDisplayDate(toDate)}` : ""}`;
-  const reportTimeLabel = generatedAt
-    ? new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).format(new Date(generatedAt))
-    : "-";
   const currentDateLabel = new Intl.DateTimeFormat("en-GB", {
     year: "numeric",
     month: "2-digit",
@@ -611,7 +602,6 @@ export default function GeneralReport() {
   const handleGenerateReport = () => {
     if (!selectedDept || !selectedSubDept || !selectedNotebook) return;
     setIsReportGenerated(true);
-    setGeneratedAt(new Date().toISOString());
   };
 
   const getReportFilename = (extension) =>
@@ -870,17 +860,6 @@ export default function GeneralReport() {
 
         {isReportGenerated ? (
           <>
-            <div className={styles.reportMetaBar}>
-              <div className={styles.reportMetaItem}>
-                <span className={styles.reportMetaLabel}>Current Time</span>
-                <strong>{reportTimeLabel}</strong>
-              </div>
-              <div className={styles.reportMetaItem}>
-                <span className={styles.reportMetaLabel}>Date</span>
-                <strong>{reportDateLabel || "-"}</strong>
-              </div>
-            </div>
-
             {reportSections.map((section) => (
               <section key={section.typeName} style={{ marginTop: 18 }}>
                 <h2 className={styles.reportSectionTitle}>{section.typeName}</h2>
