@@ -3,6 +3,7 @@ import styles from "../../styles/supervisordashboard.module.css";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
+import Pagination from "@/components/Pagination";
 import { FiCalendar } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
 import { updateOperatorTicketStatus, getProcessParameterTickets } from "../../apis/operatorApi";
@@ -130,6 +131,53 @@ const getReviewL3 = (ticket) =>
     ticket?.approval_l3,
     ticket?.l3_approver
   ) || getReviewL2(ticket);
+
+// Unlike WC/PP Approvals (open to any user at that level), a ticket is
+// assigned to specific L4/L5 users the moment it escalates to that level
+// (approval_l4_user_ids/approval_l5_user_ids) - so showing who it's actually
+// assigned to is meaningful here, same as the existing L2/L3 columns.
+const getReviewL4 = (ticket) =>
+  firstText(
+    ticket?.l4_approvers,
+    ticket?.l4Approvers,
+    ticket?.approval_l4_name,
+    ticket?.approvalL4Name,
+    ticket?.l4_approver_name,
+    ticket?.l4ApproverName,
+    ticket?.l4_name,
+    ticket?.assigned_l4_name,
+    ticket?.approval_l4_user_ids,
+    ticket?.approvalL4UserIds,
+    ticket?.approval_l4,
+    ticket?.l4_approver
+  ) || getReviewL3(ticket);
+
+const getReviewL5 = (ticket) =>
+  firstText(
+    ticket?.l5_approvers,
+    ticket?.l5Approvers,
+    ticket?.approval_l5_name,
+    ticket?.approvalL5Name,
+    ticket?.l5_approver_name,
+    ticket?.l5ApproverName,
+    ticket?.l5_name,
+    ticket?.assigned_l5_name,
+    ticket?.approval_l5_user_ids,
+    ticket?.approvalL5UserIds,
+    ticket?.approval_l5,
+    ticket?.l5_approver
+  ) || getReviewL4(ticket);
+
+// Picks whichever level's assigned reviewer(s) are relevant to show right
+// now, based on the ticket's current escalation stage - so the "Reviewer"
+// column always reflects who it's actually sitting with, not always L2.
+const getCurrentReviewer = (ticket) => {
+  const level = String(ticket?.tat_current_level || ticket?.tatCurrentLevel || "L2").toUpperCase();
+  if (level.startsWith("L5")) return getReviewL5(ticket);
+  if (level.startsWith("L4")) return getReviewL4(ticket);
+  if (level.startsWith("L3")) return getReviewL3(ticket);
+  return getReviewL2(ticket);
+};
 
 // PP_NOTEBOOK_INCOMPLETE tickets from /operator-tickets/process-parameter-ticketing —
 // these no longer appear in the generic /tickets feed (segregation fix), so they're
@@ -736,7 +784,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                       {activeTicketingView === "review" ? (
                         <>
                           <td>{getReviewSubDepartment(t)}</td>
-                          <td>{getReviewL2(t)}</td>
+                          <td>{getCurrentReviewer(t)}</td>
                           <td>{getTicketNotebookLabel(t)}</td>
                           <td>
                             {isReviewOnlyL3Mode ? (
@@ -896,41 +944,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
               {Math.min(start + ITEMS_PER_PAGE, displayTickets.length)} of{" "}
               {displayTickets.length}
             </div>
-            <div className={styles["sup-pagination"]}>
-              <button
-                disabled={page === 1}
-                onClick={() => setPage(1)}
-              >
-                &lt;&lt;
-              </button>
-              <button
-                disabled={page === 1}
-                onClick={() => setPage(page - 1)}
-              >
-                â€¹
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => (
-                <button
-                  key={i}
-                  className={page === i + 1 ? styles.active : ""}
-                  onClick={() => setPage(i + 1)}
-                >
-                  {i + 1}
-                </button>
-              ))}
-              <button
-                disabled={page === totalPages}
-                onClick={() => setPage(page + 1)}
-              >
-                â€º
-              </button>
-              <button
-                disabled={page === totalPages}
-                onClick={() => setPage(totalPages)}
-              >
-                &gt;&gt;
-              </button>
-            </div>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         </div>
 

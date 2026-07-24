@@ -26,6 +26,26 @@ const throwWithStatus = (error, fallbackMessage) => {
   throw wrapped;
 };
 
+// process_parameters.master rows have no count_name/consignee_name column of
+// their own (those live per-department, inside department_details) - lift
+// whichever department has them up to the top level so the shared
+// ApprovalsQueueView's generic Count Name/Consignee Name extraction (which
+// only looks at top-level fields) can actually find them for PP rows.
+const withTopLevelCountAndConsignee = (payload) => {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const data = rows.map((row) => {
+    const fromDept = Object.values(row?.department_details || {}).find(
+      (dept) => dept?.count_name || dept?.consignee_name
+    );
+    return {
+      ...row,
+      count_name: row.count_name || fromDept?.count_name || "",
+      consignee_name: row.consignee_name || fromDept?.consignee_name || "",
+    };
+  });
+  return { ...payload, data };
+};
+
 export const fetchPendingPpApprovals = async (params = {}) => {
   try {
     const response = await apiConfig.get(
@@ -33,7 +53,7 @@ export const fetchPendingPpApprovals = async (params = {}) => {
       { status: "pending_approval", ...params },
       { skipGlobalErrorModal: true }
     );
-    return response.data;
+    return withTopLevelCountAndConsignee(response.data);
   } catch (error) {
     throwWithStatus(error, "Unable to load pending PP approvals.");
   }
@@ -46,7 +66,7 @@ export const fetchApprovedPpApprovals = async (params = {}) => {
       { status: "active", ...params },
       { skipGlobalErrorModal: true }
     );
-    return response.data;
+    return withTopLevelCountAndConsignee(response.data);
   } catch (error) {
     throwWithStatus(error, "Unable to load active PP ids.");
   }
@@ -59,7 +79,7 @@ export const fetchInactivePpApprovals = async (params = {}) => {
       { status: "inactive", ...params },
       { skipGlobalErrorModal: true }
     );
-    return response.data;
+    return withTopLevelCountAndConsignee(response.data);
   } catch (error) {
     throwWithStatus(error, "Unable to load inactive PP ids.");
   }

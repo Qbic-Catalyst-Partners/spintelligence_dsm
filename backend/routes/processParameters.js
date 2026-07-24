@@ -18,7 +18,7 @@ const router = express.Router();
 // "Rejected" by L4 is not a separate stored stage - it sends the PP back to
 // in_progress (departments need to fix and resubmit), with the reason kept
 // in review_remarks for context.
-const ensureProcessParameterMasterTable = async () => {
+const ensureProcessParameterMasterTableImpl = async () => {
   await client.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
   await client.query(`
     CREATE TABLE IF NOT EXISTS process_parameters.master (
@@ -37,6 +37,21 @@ const ensureProcessParameterMasterTable = async () => {
       ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS review_remarks TEXT
   `);
+};
+
+// This is a one-time schema migration, but every caller (across spinning.js,
+// processParameters.js, etc.) awaits it on every request - memoize the
+// promise so the actual CREATE/ALTER statements only ever run once per
+// server process; every call after that resolves immediately.
+let ensureProcessParameterMasterTablePromise = null;
+const ensureProcessParameterMasterTable = () => {
+  if (!ensureProcessParameterMasterTablePromise) {
+    ensureProcessParameterMasterTablePromise = ensureProcessParameterMasterTableImpl().catch((error) => {
+      ensureProcessParameterMasterTablePromise = null;
+      throw error;
+    });
+  }
+  return ensureProcessParameterMasterTablePromise;
 };
 
 // One entry per department/type screen that shares the PP entry_id system.
@@ -173,7 +188,32 @@ const getPpFullDetailsForEntryId = async (entry_id) => {
         `SELECT * FROM ${dept.table} WHERE entry_id = $1 ${dept.extraWhere || ''} LIMIT 1`,
         [entry_id]
       );
-      return [dept.key, result.rows[0] || null];
+      const row = result.rows[0] || null;
+
+      // Mixing's actual entered values (percentage, lot no, cut length,
+      // tenacity, elongation, merge no) don't live on mixing_qc_header at
+      // all - they're in a separate mixing_qc_blends child table, one row
+      // per blend, joined by qc_id. Without this, Mixing's header-only row
+      // has nothing to show in the PP Approvals preview but entry_id/count/
+      // consignee/status.
+      if (dept.key === 'mixing' && row?.qc_id) {
+        const blendsResult = await client.query(
+          `SELECT blend_no, percentage, lot_no, cut_length, tenacity, elongation, merge_no
+           FROM mixing.mixing_qc_blends WHERE qc_id = $1 ORDER BY blend_no`,
+          [row.qc_id]
+        );
+        blendsResult.rows.forEach((blend) => {
+          const suffix = blend.blend_no ?? '';
+          row[`blend_${suffix}_percentage`] = blend.percentage;
+          row[`blend_${suffix}_lot_no`] = blend.lot_no;
+          row[`blend_${suffix}_cut_length`] = blend.cut_length;
+          row[`blend_${suffix}_tenacity`] = blend.tenacity;
+          row[`blend_${suffix}_elongation`] = blend.elongation;
+          row[`blend_${suffix}_merge_no`] = blend.merge_no;
+        });
+      }
+
+      return [dept.key, row];
     })
   );
   return Object.fromEntries(results);

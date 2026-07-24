@@ -6,6 +6,7 @@ import {
     toggleNotebookCustomFieldApi,
 } from "@/apis/notebookCustomFieldsApi";
 import SuccessModal from "@/components/SuccessModal";
+import Pagination from "@/components/Pagination";
 import styles from "@/styles/newFieldCreation.module.css";
 
 // Departments this page groups under. Update this list if the actual set changes.
@@ -590,7 +591,12 @@ const NewFieldCreationPage = () => {
                     </div>
                 )
             ) : (
-                renderExistingFieldsList()
+                <>
+                    {renderExistingFieldsList()}
+                    {!isLoadingExisting && !existingError && existingFields.length ? (
+                        <Pagination page={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                    ) : null}
+                </>
             )}
 
             {fieldPendingDelete ? (

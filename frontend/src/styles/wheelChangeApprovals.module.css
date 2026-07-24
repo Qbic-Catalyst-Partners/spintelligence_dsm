@@ -32,6 +32,79 @@
     border-bottom: 1px solid #e5e9f0;
 }
 
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    max-width: 1180px;
+    margin-bottom: 18px;
+}
+
+.statCard {
+    min-height: 98px;
+    padding: 20px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.statCard span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.statCard strong {
+    display: block;
+    margin-top: 8px;
+    color: #1e293b;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.statIcon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.statIcon.blue {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.statIcon.activeTone {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.statIcon.inactiveTone {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+:global(:root[data-theme="dark"]) .statCard {
+    background: #111827;
+    border-color: #374151;
+}
+
+:global(:root[data-theme="dark"]) .statCard span {
+    color: #9ca3af;
+}
+
+:global(:root[data-theme="dark"]) .statCard strong {
+    color: #f8fafc;
+}
+
 .tab {
     padding: 10px 18px;
     border: none;
@@ -53,22 +126,81 @@
 
 .filterBar {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: end;
-    gap: 14px;
+    gap: 12px;
     max-width: 1180px;
     margin-bottom: 18px;
     padding: 14px 16px;
     border: 1px solid #e5e9f0;
     border-radius: 10px;
     background: #ffffff;
+    overflow-x: auto;
 }
 
 .filterField {
     display: flex;
+    flex: 1 1 130px;
     flex-direction: column;
     gap: 4px;
-    min-width: 150px;
+    min-width: 130px;
+}
+
+.filterDateRange {
+    flex: 1 1 240px;
+    min-width: 240px;
+}
+
+.filterDateRangeInputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.filterDateRangeInputs .filterInput {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.filterDateRangeSeparator {
+    color: #9aa4b2;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* Same calendar-icon pattern as the ticketing screens (submittedNotebooks.module.css /
+   ActivityLogs) - the native date input's own calendar indicator is hidden and this icon
+   drives showPicker() instead, so both places look and behave identically. */
+.dateInputWrap {
+    position: relative;
+    display: inline-flex;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.dateInputWrap input[type="date"] {
+    width: 100%;
+    padding-right: 30px;
+}
+
+.dateInputWrap input[type="date"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0;
+    width: 30px;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.dateInputIcon {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #667085;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 1;
 }
 
 .filterField label {
@@ -96,6 +228,7 @@
 }
 
 .filterClearButton {
+    flex: 0 0 auto;
     border: 1px solid #dbe4f0;
     border-radius: 6px;
     background: #f8fafc;
@@ -105,6 +238,7 @@
     padding: 8px 14px;
     cursor: pointer;
     height: 34px;
+    white-space: nowrap;
 }
 
 .filterClearButton:hover {

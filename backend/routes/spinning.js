@@ -264,7 +264,7 @@ const ensureSpinningTimestampColumnsHaveTimezone = async () => {
   }
 };
 
-const ensureSpinningEntryIdColumns = async () => {
+const ensureSpinningEntryIdColumnsImpl = async () => {
   await ensureSpinningTimestampColumnsHaveTimezone();
   const tables = [
     'spinning.speed_checking',
@@ -542,6 +542,23 @@ const ensureSpinningEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE spinning.spinning_qc_header ALTER COLUMN approval_status SET DEFAULT 'pending';
   `);
+};
+
+// ensureSpinningEntryIdColumnsImpl runs ~17 sequential ALTER TABLE/DO $$ statements — fine as a
+// one-time startup migration, but every route in this file awaits it on every single request, and
+// each statement is a round trip to the remote Supabase pooler. Memoizing the in-flight/completed
+// promise means the real migration work only ever runs once per server process; every call after
+// that resolves immediately instead of re-running all 17 statements (this was making routes like
+// GET /wheel-change/pp-approval-status - hit on every debounced keystroke - feel sluggish).
+let ensureSpinningEntryIdColumnsPromise = null;
+const ensureSpinningEntryIdColumns = () => {
+  if (!ensureSpinningEntryIdColumnsPromise) {
+    ensureSpinningEntryIdColumnsPromise = ensureSpinningEntryIdColumnsImpl().catch((error) => {
+      ensureSpinningEntryIdColumnsPromise = null;
+      throw error;
+    });
+  }
+  return ensureSpinningEntryIdColumnsPromise;
 };
 
 // Writes the Type-2 fault-subtype value into its own table for a given
@@ -4035,11 +4052,9 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       type1Fields,
       d
     );
-    const savedRow = await consumeAndStampWheelChangeRow('spinning.wheel_change_inspection', result.rows[0]);
-
     res.status(201).json({
       message: 'Type1 created',
-      data: savedRow
+      data: result.rows[0]
     });
 
   } catch (err) {
@@ -4283,11 +4298,9 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       type2Fields,
       d
     );
-    const savedRow = await consumeAndStampWheelChangeRow('spinning.wheel_change_v2', result.rows[0]);
-
     res.status(201).json({
       message: 'Type2 created',
-      data: savedRow
+      data: result.rows[0]
     });
 
   } catch (err) {
@@ -4510,11 +4523,9 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       type3Fields,
       d
     );
-    const savedRow = await consumeAndStampWheelChangeRow('spinning.wheel_change', result.rows[0]);
-
     res.status(201).json({
       message: 'Type3 created',
-      data: savedRow
+      data: result.rows[0]
     });
 
   } catch (err) {
@@ -4741,11 +4752,12 @@ const findActivePpForCombo = async (countName, consigneeName) => {
 };
 
 // Spends the one Wheel Change use an Active PP unlocks for this Count +
-// Consignee - flips that PP id from active to inactive. Called right after a
-// Wheel Change row is saved (not on its later approval - see the PP lifecycle
-// notes on process_parameters.master). Returns the consumed entry_id (or
-// null if there was no Active PP to consume, which shouldn't happen given
-// the pp-approval-status gate, but isn't fatal if it does).
+// Consignee - flips that PP id from active to inactive. Called only once the
+// Wheel Change itself is approved (not when it's first saved/pending - a
+// pending or rejected Wheel Change never touches the PP's status, so it
+// stays Active and simply doesn't need reverting). Returns the consumed
+// entry_id (or null if there was no Active PP to consume, which shouldn't
+// happen given the pp-approval-status gate, but isn't fatal if it does).
 const consumeActivePpForWheelChange = async (countName, consigneeName) => {
   const entryId = await findActivePpForCombo(countName, consigneeName);
   if (!entryId) return null;
@@ -4759,23 +4771,10 @@ const consumeActivePpForWheelChange = async (countName, consigneeName) => {
   return result.rows[0]?.entry_id || null;
 };
 
-// Reverses consumeActivePpForWheelChange - if the Wheel Change that consumed
-// a PP id gets rejected, that PP goes back to Active so the operator can
-// retry against it instead of it being wasted.
-const restorePpAfterWheelChangeRejection = async (entryId) => {
-  if (!entryId) return;
-  await client.query(
-    `UPDATE process_parameters.master SET status = 'active', updated_at = NOW()
-     WHERE entry_id = $1 AND status = 'inactive'`,
-    [entryId]
-  );
-};
-
-// Called right after a Wheel Change row is inserted (type1-4) - consumes the
+// Called right after a Wheel Change is approved (type1-4) - consumes the
 // Active PP for its Count + Consignee (flips it to Inactive) and stamps
-// consumed_pp_entry_id on the row so a later rejection knows what to revert.
-// Returns the row as saved (with consumed_pp_entry_id filled in if a PP was
-// consumed).
+// consumed_pp_entry_id on the row for audit. Returns the row as saved (with
+// consumed_pp_entry_id filled in if a PP was consumed).
 const consumeAndStampWheelChangeRow = async (tableName, row) => {
   const consumedEntryId = await consumeActivePpForWheelChange(row.count_from_proposed, row.consignee_name_proposed);
   if (!consumedEntryId) return row;
@@ -4790,6 +4789,7 @@ const consumeAndStampWheelChangeRow = async (tableName, row) => {
 router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
+    await ensureProcessParameterMasterTable();
     const resolved = resolveWheelChangeApprovalTable(req.params.id);
     if (!resolved) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -4806,9 +4806,15 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
       return res.status(404).json({ message: 'Entry not found' });
     }
 
+    // The PP id's one-time Wheel Change slot is only spent once the Wheel
+    // Change itself is approved (by L2/WC Approvals) - not the moment it's
+    // saved/pending. Until then the PP stays Active so it's clear the slot
+    // hasn't actually been used yet.
+    const savedRow = await consumeAndStampWheelChangeRow(resolved.tableName, result.rows[0]);
+
     res.status(200).json({
       message: 'Spinning wheel change entry approved',
-      data: { ...result.rows[0], id: `${resolved.type}:${result.rows[0].id}`, wheel_change_type: resolved.type }
+      data: { ...savedRow, id: `${resolved.type}:${savedRow.id}`, wheel_change_type: resolved.type }
     });
   } catch (error) {
     console.error('Spinning wheel change approve error:', error);
@@ -4819,7 +4825,6 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
 router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
-    await ensureProcessParameterMasterTable();
     const resolved = resolveWheelChangeApprovalTable(req.params.id);
     if (!resolved) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -4837,8 +4842,9 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
       return res.status(404).json({ message: 'Entry not found' });
     }
 
+    // Nothing to revert on the PP side any more - the PP only goes Inactive
+    // on approval now, so a rejected (still-pending) entry never touched it.
     const rejectedRow = result.rows[0];
-    await restorePpAfterWheelChangeRejection(rejectedRow.consumed_pp_entry_id);
 
     res.status(200).json({
       message: 'Spinning wheel change entry rejected',
