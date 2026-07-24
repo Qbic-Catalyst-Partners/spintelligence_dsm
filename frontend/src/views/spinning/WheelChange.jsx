@@ -473,7 +473,9 @@ const getParameterInputType = (row) => {
     label === "lycratype" ||
     label === "emptiescolor" ||
     label === "spacer" ||
-    label === "travellersno"
+    label === "travellersno" ||
+    label === "countfrom" ||
+    label === "consigneename"
   )
     return "text";
   if (label === "offsetonoff") return "onOff";
@@ -1019,6 +1021,13 @@ const WheelChange = forwardRef(function WheelChange(
 
   const selectedVariety = String(values.countForm?.existing || values.countForm?.proposed || "").trim();
   const consigneeName = String(values.consigneeName?.existing || values.consigneeName?.proposed || "").trim();
+  // The PP-match check itself must only look at what the operator actually
+  // picked for this new entry (Proposed) - not the read-only Existing column
+  // (last approved history), which selectedVariety/consigneeName above fall
+  // back to for other purposes (pre-filling, display) and would otherwise
+  // let a stale/historical value silently satisfy the check.
+  const proposedVariety = String(values.countForm?.proposed || "").trim();
+  const proposedConsigneeName = String(values.consigneeName?.proposed || "").trim();
 
   // Debounced runtime check: once both Count From and Consignee Name are
   // filled, ask the backend whether an Active PP id exists for that combo.
@@ -1027,9 +1036,11 @@ const WheelChange = forwardRef(function WheelChange(
   // locked via ppMatchStatus below.
   useEffect(() => {
     const token = ++ppCheckTokenRef.current;
-    const trimmedConsignee = consigneeName.trim();
+    const trimmedConsignee = proposedConsigneeName.trim();
+    console.debug("[ppMatch] effect fired", { token, proposedVariety, trimmedConsignee });
 
-    if (!selectedVariety || !trimmedConsignee) {
+    if (!proposedVariety || !trimmedConsignee) {
+      console.debug("[ppMatch] -> idle (missing variety/consignee)", { token });
       setPpMatchStatus("idle");
       setShowPpMatchSuccess(false);
       return;
@@ -1039,12 +1050,17 @@ const WheelChange = forwardRef(function WheelChange(
     setShowPpMatchSuccess(false);
     const timer = setTimeout(async () => {
       try {
-        const result = await fetchSpinningWheelChangePpApprovalStatus(selectedVariety, trimmedConsignee);
-        if (ppCheckTokenRef.current !== token) return;
+        const result = await fetchSpinningWheelChangePpApprovalStatus(proposedVariety, trimmedConsignee);
+        if (ppCheckTokenRef.current !== token) {
+          console.debug("[ppMatch] stale token, ignoring result", { token, current: ppCheckTokenRef.current });
+          return;
+        }
         if (result?.fully_approved) {
+          console.debug("[ppMatch] -> confirming (matched)", { token, result });
           setPpMatchStatus("confirming");
           setShowPpMatchSuccess(true);
         } else {
+          console.debug("[ppMatch] -> unmatched", { token, result });
           setPpMatchStatus("unmatched");
           emitGlobalFailureModal({
             message: "PP-ID for this Count & Consignee Not Found / Approved Yet. Please check with Admin",
@@ -1052,13 +1068,14 @@ const WheelChange = forwardRef(function WheelChange(
         }
       } catch (error) {
         if (ppCheckTokenRef.current !== token) return;
+        console.debug("[ppMatch] -> unmatched (error)", { token, message: error?.message });
         setPpMatchStatus("unmatched");
         emitGlobalFailureModal({ message: error?.message || "Failed to verify PP approval status." });
       }
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [selectedVariety, consigneeName]);
+  }, [proposedVariety, proposedConsigneeName]);
 
   const clearFieldError = (field) => {
     setErrors((current) => {
@@ -1416,8 +1433,15 @@ const WheelChange = forwardRef(function WheelChange(
     // see the runtime check effect above (ppMatchStatus). The row-level
     // "required" check for Consignee Name itself is handled by the
     // activeRows loop below, same as every other row.
+    console.debug("[ppMatch] validate() reading status", { ppMatchStatus });
     if (ppMatchStatus !== "matched") {
       nextErrors.ppMatch = true;
+      emitGlobalFailureModal({
+        message:
+          ppMatchStatus === "confirming"
+            ? "Please click OK on the PP-ID approved popup before saving."
+            : "PP-ID for this Count & Consignee Not Found / Approved Yet. Please check with Admin",
+      });
     }
 
     const valueErrors = {};
@@ -1518,7 +1542,7 @@ const WheelChange = forwardRef(function WheelChange(
             value:
               unapprovedEntry.status === "rejected"
                 ? "This machine/variety has a rejected entry still pending resubmission. Submitting will replace it — there is no undo."
-                : "This machine/variety already has an entry awaiting L2 verification. Submitting will overwrite it — there is no undo.",
+                : "This machine/variety already has an entry awaiting L4 verification. Submitting will overwrite it — there is no undo.",
             wide: true,
           },
         ]
@@ -1560,6 +1584,7 @@ const WheelChange = forwardRef(function WheelChange(
   const formGatedByPpMatch = ppMatchStatus !== "matched";
   const isPpMatchDriverRow = (rowKey) => rowKey === "countForm" || rowKey === "consigneeName";
   const acknowledgePpMatchSuccess = () => {
+    console.debug("[ppMatch] OK clicked -> matched");
     setShowPpMatchSuccess(false);
     setPpMatchStatus("matched");
   };
@@ -1656,7 +1681,7 @@ const WheelChange = forwardRef(function WheelChange(
               unapprovedEntry.status === "rejected" ? styles.statusBadgeRejected : styles.statusBadgePending
             }`}
           >
-            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L2"}
+            {unapprovedEntry.status === "rejected" ? "Rejected" : "Awaiting L4"}
           </span>
         )}
         <InputScreenUploadButton className="ml-auto" />
@@ -1746,7 +1771,7 @@ const WheelChange = forwardRef(function WheelChange(
 
         {unapprovedEntry?.status === "pending" && (
           <div className={styles.pendingNotice}>
-            A proposed entry for this variety is still awaiting L2 approval. The Proposed column below shows that
+            A proposed entry for this variety is still awaiting L4 approval. The Proposed column below shows that
             pending submission — submitting again will overwrite it.
           </div>
         )}
@@ -1754,7 +1779,7 @@ const WheelChange = forwardRef(function WheelChange(
         {unapprovedEntry?.status === "rejected" && (
           <div className={styles.rejectedNotice}>
             <div>
-              This entry was rejected by L2{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
+              This entry was rejected by L4{unapprovedEntry.reviewedBy ? ` (${unapprovedEntry.reviewedBy})` : ""}.
               {unapprovedEntry.reviewedAt ? ` Reviewed ${unapprovedEntry.reviewedAt}.` : ""} The Proposed column
               below shows the rejected submission — resubmitting will overwrite it.
             </div>

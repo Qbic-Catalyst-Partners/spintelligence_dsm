@@ -21,6 +21,20 @@ const humanizeKey = (key) =>
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
+// Every department table has its own internal auto-increment primary key
+// (qc_id, br_id, ins_id, plain id...) plus, on several of them, a separate
+// legacy per-screen code (param_id/ins_code/qc_code) that happens to also
+// look like "PP0NN" - easy to mistake for a second, conflicting PP id next
+// to the real one (Entry Id, which is consistently PP-000N across every
+// department for the same batch). None of these internal identifiers are
+// meaningful outside their own table, so they're excluded here rather than
+// left in to confuse the reviewer.
+const INTERNAL_ID_SKIP_KEYS = new Set([
+  "id", "qc_id", "br_id", "ins_id",
+  "param_id", "ins_code", "qc_code",
+  "entry_scope",
+]);
+
 const DEPARTMENT_LABELS = {
   mixing: "Mixing",
   blowroom: "Blowroom",
@@ -63,6 +77,7 @@ const extractPpParameters = (item) => {
 
     if (submitted && departmentRow) {
       Object.entries(departmentRow).forEach(([fieldKey, fieldValue]) => {
+        if (INTERNAL_ID_SKIP_KEYS.has(fieldKey)) return;
         // Matches the matrix's combined preview: every field shows, blank/null
         // values render as "0" rather than being hidden.
         const trimmed = trimValue(fieldValue);
@@ -103,6 +118,7 @@ function PpApprovals() {
       canApproveCheck={isPpApproverUser}
       accessDeniedText="Only L4, L5, or Admin can view and approve"
       tabLabels={{ pending: "Awaiting L4 Approval", approved: "Active", rejected: "Inactive" }}
+      operatorLabel="L1 Name"
       fetchPending={fetchPendingPpApprovals}
       fetchApproved={fetchApprovedPpApprovals}
       fetchRejected={fetchInactivePpApprovals}
