@@ -61,6 +61,7 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/umedit") ||
     router.pathname.startsWith("/umchangepassword") ||
     router.pathname === "/rolespermission" ||
+    router.pathname === "/delegation-system" ||
     router.pathname === "/threshold-values" ||
     router.pathname === "/submission-threshold" ||
     router.pathname === "/pp-batch-threshold" ||

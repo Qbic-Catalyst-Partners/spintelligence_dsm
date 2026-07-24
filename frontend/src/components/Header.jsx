@@ -85,6 +85,7 @@ const settingsLinks = [
 ];
 const ticketingLinks = [
     { href: "__ticketingHome__", label: "Ticket System" },
+    { href: "/delegation-system", label: "Delegation System", admin: true },
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
@@ -209,9 +210,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = ticketingLinks.map((link) =>
-        link.href === "__ticketingHome__" ? { ...link, href: defaultTicketingRoute } : link
-    );
+    const visibleTicketingLinks = ticketingLinks
+        .filter((link) => !link.admin || hasFullAccess)
+        .map((link) =>
+            link.href === "__ticketingHome__" ? { ...link, href: defaultTicketingRoute } : link
+        );
     const visibleManagementHubLinks = hasFullAccess
         ? managementHubLinks
         : managementHubLinks.filter((link) =>
