@@ -15,6 +15,12 @@ const normalizeSubDepartments = (data) => {
   return Array.isArray(candidate) ? candidate : [];
 };
 
+const normalizeSubDepartmentTat = (data) => {
+  const candidate =
+    data?.sub_department_tat || data?.subDepartmentTat || data?.data?.sub_department_tat || data?.data?.subDepartmentTat;
+  return Array.isArray(candidate) ? candidate : [];
+};
+
 export const fetchPpNotebookBatchConfigAPI = async () => {
   try {
     const response = await apiConfig.get(
@@ -25,6 +31,7 @@ export const fetchPpNotebookBatchConfigAPI = async () => {
     return {
       config: normalizeConfig(response?.data),
       subDepartments: normalizeSubDepartments(response?.data),
+      subDepartmentTat: normalizeSubDepartmentTat(response?.data),
     };
   } catch (error) {
     if (error.request) {
@@ -38,5 +45,10 @@ export const fetchPpNotebookBatchConfigAPI = async () => {
 
 export const savePpNotebookBatchConfigAPI = async (payload) => {
   const response = await apiConfig.post("/submitted-notebooks/pp-batch-config", payload);
+  return response?.data;
+};
+
+export const savePpBatchSubDepartmentTatAPI = async (rows) => {
+  const response = await apiConfig.post("/submitted-notebooks/pp-batch-config/sub-department-tat", { rows });
   return response?.data;
 };

@@ -63,6 +63,9 @@ function AppShell({ Component, pageProps }) {
     router.pathname === "/rolespermission" ||
     router.pathname === "/threshold-values" ||
     router.pathname === "/submission-threshold" ||
+    router.pathname === "/pp-batch-threshold" ||
+    router.pathname === "/pp-approval-threshold" ||
+    router.pathname === "/wheel-change-approval-threshold" ||
     router.pathname === "/settings" ||
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");

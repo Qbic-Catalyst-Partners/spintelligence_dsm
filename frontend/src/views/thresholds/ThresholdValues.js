@@ -3,8 +3,6 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiChevronDown,
-    FiChevronLeft,
-    FiChevronRight,
     FiCheckCircle,
     FiClock,
     FiMoreVertical,
@@ -16,6 +14,7 @@ import {
 import { FaIdCard } from "react-icons/fa6";
 
 import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateThresholdAPI, updateThresholdStatusAPI } from "@/apis/thresholdsApi";
+import Pagination from "@/components/Pagination";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
@@ -1746,58 +1745,7 @@ export default function ThresholdValues() {
                             {existingError ? <p className={styles.errorMessage}>{existingError}</p> : null}
 
                             {!loading && !loadError && filteredThresholds.length > 0 ? (
-                                <div className={styles.paginationBar}>
-                                    <div className={styles.paginationControls}>
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage(1)}
-                                            disabled={safeExistingPage === 1}
-                                            aria-label="First page"
-                                        >
-                                            <FiChevronLeft />
-                                            <FiChevronLeft className={styles.doubleChevron} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage((value) => Math.max(1, value - 1))}
-                                            disabled={safeExistingPage === 1}
-                                            aria-label="Previous page"
-                                        >
-                                            <FiChevronLeft />
-                                        </button>
-                                        {Array.from({ length: totalExistingPages }, (_, index) => index + 1).map((pageNumber) => (
-                                            <button
-                                                key={pageNumber}
-                                                type="button"
-                                                className={`${styles.paginationNumber} ${pageNumber === safeExistingPage ? styles.paginationNumberActive : ""}`}
-                                                onClick={() => setExistingPage(pageNumber)}
-                                            >
-                                                {pageNumber}
-                                            </button>
-                                        ))}
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage((value) => Math.min(totalExistingPages, value + 1))}
-                                            disabled={safeExistingPage === totalExistingPages}
-                                            aria-label="Next page"
-                                        >
-                                            <FiChevronRight />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage(totalExistingPages)}
-                                            disabled={safeExistingPage === totalExistingPages}
-                                            aria-label="Last page"
-                                        >
-                                            <FiChevronRight />
-                                            <FiChevronRight className={styles.doubleChevron} />
-                                        </button>
-                                    </div>
-                                </div>
+                                <Pagination page={safeExistingPage} totalPages={totalExistingPages} onPageChange={setExistingPage} />
                             ) : null}
                         </section>
                     </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 import { FiCheckCircle, FiClock, FiSlash, FiX } from "react-icons/fi";
 import { FaIdCard } from "react-icons/fa6";
 
@@ -8,7 +8,6 @@ import {
   fetchNotebookAcknowledgementThresholdsAPI,
   saveNotebookAcknowledgementThresholdAPI,
 } from "@/apis/notebookAcknowledgementThresholdApi";
-import { fetchUsers } from "@/store/slices/userSlice";
 import { isSubmittedNotebookManagerUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
@@ -18,7 +17,6 @@ const createRule = () => ({
   subDepartmentSlug: "",
   screenName: "",
   acknowledgeWithinHours: "24",
-  approvalL2: "",
 });
 
 const buildExistingFilters = () => ({
@@ -29,50 +27,6 @@ const buildExistingFilters = () => ({
 });
 
 const PENDING_ACK_THRESHOLD_STORAGE_KEY = "submittedNotebookPendingAcknowledgementThresholds";
-
-const normalizeLookupValue = (value) => String(value ?? "").trim().toLowerCase();
-
-const getUserDisplayName = (user) =>
-  String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
-
-const getUserEmployeeId = (user) =>
-  String(user?.employee_id || user?.employeeId || user?.id || "").trim();
-
-const buildUserOptions = (users, level) => {
-  const seen = new Set();
-
-  return users
-    .filter((user) => String(user?.level || "").trim().toUpperCase() === level)
-    .map((user) => ({
-      id: user?.id,
-      employeeId: getUserEmployeeId(user),
-      name: getUserDisplayName(user),
-    }))
-    .filter((user) => {
-      const key = normalizeLookupValue(user.employeeId || user.name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((left, right) => left.name.localeCompare(right.name));
-};
-
-const resolveUser = (users, value) => {
-  const normalized = normalizeLookupValue(value);
-  if (!normalized) return null;
-
-  return users.find((user) =>
-    [
-      user?.id,
-      user?.employee_id,
-      user?.employeeId,
-      user?.name,
-      user?.full_name,
-      user?.fullName,
-      user?.username,
-    ].some((candidate) => normalizeLookupValue(candidate) === normalized)
-  ) || null;
-};
 
 const getThresholdId = (item) =>
   item?.id || item?.threshold_id || item?.thresholdId || item?._id || "";
@@ -94,14 +48,9 @@ const getThresholdAckHours = (item) =>
   item?.acknowledgementHours ??
   "";
 
-const getThresholdL2 = (item) =>
-  item?.approval_l2_name ||
-  item?.approvalL2Name ||
-  item?.l2_approver_name ||
-  item?.l2ApproverName ||
-  item?.approval_l2 ||
-  item?.approvalL2 ||
-  "-";
+// L2 is auto-resolved from the L1 submitter's real reporting manager at ticket time
+// (per the hierarchy spec) — this threshold no longer takes a manual L2 assignment.
+const getThresholdL2 = () => "Auto (reporting L2)";
 
 const formatTimestamp = (value) => {
   if (!value) return "-";
@@ -192,11 +141,9 @@ const mergeThresholdRows = (rows, nextRows) =>
   nextRows.reduce((mergedRows, row) => mergeThresholdRow(mergedRows, row), rows);
 
 export default function SubmittedNotebookThresholdPage() {
-  const dispatch = useDispatch();
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
-  const users = useSelector((state) => state.users?.users || []);
   const canAccessPage = isSubmittedNotebookManagerUser(user);
 
   const [activeTab, setActiveTab] = useState("new");
@@ -223,8 +170,6 @@ export default function SubmittedNotebookThresholdPage() {
   const existingSubDepartment = (existingDepartment?.subDepartments || []).find(
     (item) => item.name === existingFilters.subDepartment
   ) || null;
-  const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
-
   const totalThresholds = thresholds.length;
   const activeThresholds = thresholds.filter((item) => getActiveValue(item)).length;
   const inactiveThresholds = thresholds.filter((item) => !getActiveValue(item)).length;
@@ -290,8 +235,7 @@ export default function SubmittedNotebookThresholdPage() {
       return;
     }
     loadThresholds();
-    dispatch(fetchUsers());
-  }, [canAccessPage, dispatch, isHydrated, router]);
+  }, [canAccessPage, isHydrated, router]);
 
   const updateRule = (field, value) => {
     setRule((current) => ({
@@ -347,9 +291,6 @@ export default function SubmittedNotebookThresholdPage() {
         throw new Error("Please enter acknowledge within hours greater than 0.");
       }
 
-      const selectedL2 = resolveUser(users, rule.approvalL2);
-      if (!selectedL2) throw new Error("Please select an L2 approver.");
-
       const existingThreshold = thresholds.find((item) =>
         isSameThreshold(item, {
           screen_name: rule.screenName,
@@ -370,8 +311,6 @@ export default function SubmittedNotebookThresholdPage() {
         department: selectedDepartment.name,
         sub_department: selectedSubDepartment.name,
         acknowledge_within_hours: hours,
-        approval_l2: getUserEmployeeId(selectedL2) || selectedL2.id || rule.approvalL2,
-        approval_l2_name: getUserDisplayName(selectedL2),
         is_active: true,
       };
 
@@ -532,21 +471,6 @@ export default function SubmittedNotebookThresholdPage() {
                         value={rule.acknowledgeWithinHours}
                         onChange={(event) => updateRule("acknowledgeWithinHours", event.target.value)}
                       />
-                    </label>
-
-                    <label className={styles.field}>
-                      <span>L2 Approver</span>
-                      <select
-                        value={rule.approvalL2}
-                        onChange={(event) => updateRule("approvalL2", event.target.value)}
-                      >
-                        <option value="">Select L2</option>
-                        {l2Options.map((item) => (
-                          <option key={`${item.employeeId}-${item.name}`} value={item.employeeId || item.name}>
-                            {item.name || item.employeeId}
-                          </option>
-                        ))}
-                      </select>
                     </label>
 
                     <div className={styles.ruleActions}>

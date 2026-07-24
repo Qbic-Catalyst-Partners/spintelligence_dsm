@@ -30,7 +30,7 @@ const STATUS_BADGE_CLASS = {
 };
 
 const STATUS_BADGE_LABEL = {
-  pending: "Awaiting L2",
+  pending: "Awaiting L4",
   in_progress: "In Progress",
   pending_approval: "Awaiting L4",
   active: "Active",
@@ -184,7 +184,7 @@ function ApprovalsQueueView({
   countNameKeys = DEFAULT_COUNT_NAME_KEYS,
   consigneeNameKeys = DEFAULT_CONSIGNEE_NAME_KEYS,
   canApproveCheck = isWheelChangeApproverUser,
-  accessDeniedText = "Only L2 users can view and approve proposed",
+  accessDeniedText = "Only L4 users can view and approve proposed",
   tabLabels = DEFAULT_TAB_LABELS,
   showDepartmentFilter = true,
   operatorLabel = "Operator",

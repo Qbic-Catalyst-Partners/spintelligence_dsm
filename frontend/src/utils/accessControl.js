@@ -50,13 +50,14 @@ export const isSubmittedNotebookManagerUser = (user) =>
 const getUserLevelKey = (user) =>
   String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
 
-// Levels: L1 entry operator, L2 supervisor, L3 sub manager (no role in
-// approvals), L4 Quality/Department Head (approves PP ids), L5 Admin/MD
-// (unrestricted - this is what L3 used to be responsible for). Gates
-// visibility of the WC/PP Approvals pages in general; each page's own
-// backend endpoint further scopes what an L2 vs L4 vs L5 actually sees.
+// Levels: L1 entry operator, L2 supervisor (no role in approvals - moved to
+// L4), L3 sub manager (no role in approvals), L4 Quality/Department Head
+// (approves WC and PP ids), L5 Admin/MD (unrestricted - this is what L3
+// used to be responsible for). Gates visibility of the WC/PP Approvals
+// pages in general; each page's own backend endpoint further scopes what
+// an L4 vs L5 actually sees.
 export const isWheelChangeApproverUser = (user) =>
-  isFullAccessUser(user) || ["L2", "L4", "L5"].includes(getUserLevelKey(user));
+  isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
 
 export const isPpApproverUser = (user) =>
   isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
@@ -65,10 +66,10 @@ export const isDashboardManagerUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
 
 export const getDefaultTicketingRoute = (user) =>
-  isSupervisorNavUser(user) ? "/supervisordashboard" : "/operator";
+  isFullAccessUser(user) || isSupervisorNavUser(user) ? "/supervisordashboard" : "/operator";
 
 export const getDefaultTicketingLabel = (user) =>
-  isSupervisorNavUser(user) ? "L2 Ticketing System" : "L1 Ticketing System";
+  isFullAccessUser(user) || isSupervisorNavUser(user) ? "L2 Ticketing System" : "L1 Ticketing System";
 
 export const routeDepartmentMap = {
   "/mixing": "Mixing",

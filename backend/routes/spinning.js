@@ -4052,6 +4052,7 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       type1Fields,
       d
     );
+    await createWheelChangeApprovalTicket('spinning.wheel_change_inspection', result.rows[0].id);
     res.status(201).json({
       message: 'Type1 created',
       data: result.rows[0]
@@ -4298,6 +4299,7 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       type2Fields,
       d
     );
+    await createWheelChangeApprovalTicket('spinning.wheel_change_v2', result.rows[0].id);
     res.status(201).json({
       message: 'Type2 created',
       data: result.rows[0]
@@ -4523,6 +4525,7 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       type3Fields,
       d
     );
+    await createWheelChangeApprovalTicket('spinning.wheel_change', result.rows[0].id);
     res.status(201).json({
       message: 'Type3 created',
       data: result.rows[0]
@@ -4616,23 +4619,6 @@ const WHEEL_CHANGE_APPROVAL_TABLES = {
   type3: 'spinning.wheel_change'
 };
 
-// Same table supervisorAssignments.routes.js owns (L1 employee -> L2
-// supervisor). Guarded here too since this route may run before that
-// router's own migration has ever fired on a fresh environment.
-const ensureSupervisorAssignmentsTable = async () => {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS users.supervisor_assignments (
-      id bigserial PRIMARY KEY,
-      supervisor_user_id integer NOT NULL REFERENCES users.user_details(id) ON DELETE CASCADE,
-      employee_user_id integer NOT NULL REFERENCES users.user_details(id) ON DELETE CASCADE,
-      is_active boolean NOT NULL DEFAULT true,
-      assigned_at timestamptz NOT NULL DEFAULT now(),
-      assigned_by integer REFERENCES users.user_details(id),
-      UNIQUE (supervisor_user_id, employee_user_id)
-    )
-  `);
-};
-
 const isFullAccessRequest = (req) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
   return role === 'admin' || role === 'super admin' || role === 'superadmin';
@@ -4640,30 +4626,17 @@ const isFullAccessRequest = (req) => {
 
 // WC Approvals visibility: L5 and Admin see every submission, no
 // restrictions (L5/MD/Admin took over the "sees everything" role L3 used to
-// have - L3 has no part in this flow now). An L2 only sees submissions from
-// the L1 employees assigned to them (users.supervisor_assignments) - an L2
-// with nobody assigned sees nothing, rather than silently falling back to
-// "see everything". L4 also gets unrestricted access here (on top of their
-// separate PP approval queue, not instead of it) - Wheel Change is
-// something L4 co-manages alongside L5/Admin. Any other level (L1, L3,
-// etc.) sees nothing (enforced on the frontend too, but re-checked here).
+// have - L3 has no part in this flow now). L4 also gets unrestricted access
+// here (on top of their separate PP approval queue, not instead of it) -
+// Wheel Change is something L4 co-manages alongside L5/Admin. L2 no longer
+// has any access to WC Approvals (moved to L4). Any other level (L1, L2,
+// L3, etc.) sees nothing (enforced on the frontend too, but re-checked
+// here).
 const resolveApprovalVisibilityScope = async (req) => {
   if (isFullAccessRequest(req)) return { unrestricted: true, allowedUserIds: [] };
 
   const level = String(req.user?.level || '').trim().toUpperCase();
   if (level === 'L5' || level === 'L4') return { unrestricted: true, allowedUserIds: [] };
-
-  if (level === 'L2') {
-    await ensureSupervisorAssignmentsTable();
-    const supervisorUserId = req.user?.id;
-    if (!supervisorUserId) return { unrestricted: false, allowedUserIds: [] };
-    const result = await client.query(
-      `SELECT employee_user_id FROM users.supervisor_assignments
-       WHERE supervisor_user_id = $1 AND is_active = true`,
-      [supervisorUserId]
-    );
-    return { unrestricted: false, allowedUserIds: result.rows.map((row) => row.employee_user_id) };
-  }
 
   return { unrestricted: false, allowedUserIds: [] };
 };
@@ -4672,6 +4645,44 @@ const applyApprovalVisibilityScope = (rows, scope) =>
   scope.unrestricted
     ? rows
     : rows.filter((row) => scope.allowedUserIds.includes(row.created_by_user_id));
+
+router.get('/wheel-change/approval-config', async (req, res, next) => {
+  try {
+    const config = await getWheelChangeApprovalConfig();
+    return res.status(200).json({ config });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approval-config', async (req, res, next) => {
+  try {
+    await ensureWheelChangeApprovalConfigTable();
+
+    const l4UserId = req.body?.l4_user_id ? Number(req.body.l4_user_id) : null;
+    if (req.body?.l4_user_id !== undefined && req.body?.l4_user_id !== null && req.body?.l4_user_id !== '' && !(Number.isInteger(l4UserId) && l4UserId > 0)) {
+      return res.status(400).json({ message: 'l4_user_id must be a positive integer' });
+    }
+
+    const tatHours = Number(req.body?.tat_hours);
+    if (!Number.isFinite(tatHours) || tatHours <= 0) {
+      return res.status(400).json({ message: 'tat_hours must be a positive integer' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_id, tat_hours, updated_at)
+       VALUES ('global', $1, $2, NOW())
+       ON CONFLICT (config_key)
+       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, tat_hours = EXCLUDED.tat_hours, updated_at = NOW()
+       RETURNING *`,
+      [l4UserId, tatHours]
+    );
+
+    return res.status(200).json({ message: 'Wheel Change Approval configuration saved successfully', config: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
@@ -4771,6 +4782,142 @@ const consumeActivePpForWheelChange = async (countName, consigneeName) => {
   return result.rows[0]?.entry_id || null;
 };
 
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: "Wheel Change Approval" is
+// one of the six threshold types - submitting a proposal should raise a
+// real TAT-tracked approval task on L4, escalating to L5 if L4 doesn't act
+// in time. Mirrors createPpApprovalTicket/closePpApprovalTicket/
+// runPpApprovalTatCheck in processParameters.js - same "any current L4/L5"
+// resolution (this app's WC Approvals access model isn't assigned to one
+// named L4 user), same TAT-then-escalate-to-L5 shape.
+const WHEEL_CHANGE_APPROVAL_TAT_HOURS = Number(process.env.WHEEL_CHANGE_APPROVAL_TAT_HOURS) > 0
+  ? Number(process.env.WHEEL_CHANGE_APPROVAL_TAT_HOURS)
+  : 24;
+
+const getUsersAtLevelForWheelChange = async (level) => {
+  const result = await client.query(`SELECT id FROM users.user_details WHERE level = $1`, [level]);
+  return result.rows.map((row) => row.id);
+};
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf, "PP Approval & Wheel Change
+// Approval Configuration": "L4 User: Select the specific L4 Department Head
+// responsible... TAT: configurable." When no specific L4 user is configured,
+// ticket creation falls back to "any current L4 user" so existing setups
+// keep working.
+const ensureWheelChangeApprovalConfigTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.wheel_change_approval_config (
+      config_key TEXT PRIMARY KEY DEFAULT 'global',
+      l4_user_id INTEGER NULL,
+      tat_hours INTEGER NOT NULL DEFAULT 24,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+};
+
+const getWheelChangeApprovalConfig = async () => {
+  await ensureWheelChangeApprovalConfigTable();
+  const result = await client.query(
+    `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = 'global'`
+  );
+  return result.rows[0] || { config_key: 'global', l4_user_id: null, tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS, updated_at: null };
+};
+
+const ensureWheelChangeApprovalTicketSchema = async () => {
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
+      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+};
+
+// wheelChangeRowKey uniquely identifies the WC row this ticket is for
+// (table name + row id), since ticket_id-style composite ids
+// ("type1:123") aren't stable identifiers to search violation_details by.
+const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+  await ensureWheelChangeApprovalTicketSchema();
+  const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
+
+  const existing = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'
+     LIMIT 1`,
+    [wheelChangeRowKey]
+  );
+  if (existing.rows[0]?.ticket_id) return existing.rows[0].ticket_id;
+
+  const approvalConfig = await getWheelChangeApprovalConfig();
+  const l4UserIds = approvalConfig.l4_user_id ? [approvalConfig.l4_user_id] : await getUsersAtLevelForWheelChange('L4');
+  const tatHours = Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
+  const l4TatDueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000).toISOString();
+  const violationDetails = {
+    category: 'PENDING_APPROVAL',
+    ticket_type: 'WHEEL_CHANGE_APPROVAL',
+    wheel_change_row_key: wheelChangeRowKey,
+    message: `A Wheel Change proposal is awaiting L4 approval.`
+  };
+
+  const ticket = await client.query(
+    `INSERT INTO ticketing_system.operator_tickets
+     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+      severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+      violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+     VALUES (
+       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+       $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       'High', 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+       $2::jsonb, $3::int[], 'L4', $4
+     )
+     RETURNING ticket_id`,
+    [wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt]
+  );
+  return ticket.rows[0]?.ticket_id || null;
+};
+
+const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+  await ensureWheelChangeApprovalTicketSchema();
+  const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
+  await client.query(
+    `UPDATE ticketing_system.operator_tickets
+     SET status = 'Closed'
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'`,
+    [wheelChangeRowKey]
+  );
+};
+
+// L4 -> L5 escalation once the L4 TAT elapses without action.
+const runWheelChangeApprovalTatCheck = async () => {
+  await ensureWheelChangeApprovalTicketSchema();
+
+  const dueTickets = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()
+       AND status <> 'Closed'`
+  );
+  if (!dueTickets.rowCount) return [];
+
+  const l5UserIds = await getUsersAtLevelForWheelChange('L5');
+  const escalated = [];
+  for (const row of dueTickets.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET tat_current_level = 'L5', approval_l5_user_ids = $1, l5_tat_due_at = NOW()
+       WHERE ticket_id = $2
+       RETURNING *`,
+      [l5UserIds, row.ticket_id]
+    );
+    if (result.rows[0]) escalated.push(result.rows[0]);
+  }
+  return escalated;
+};
+
 // Called right after a Wheel Change is approved (type1-4) - consumes the
 // Active PP for its Count + Consignee (flips it to Inactive) and stamps
 // consumed_pp_entry_id on the row for audit. Returns the row as saved (with
@@ -4811,6 +4958,7 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     // saved/pending. Until then the PP stays Active so it's clear the slot
     // hasn't actually been used yet.
     const savedRow = await consumeAndStampWheelChangeRow(resolved.tableName, result.rows[0]);
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
 
     res.status(200).json({
       message: 'Spinning wheel change entry approved',
@@ -4845,6 +4993,7 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     // Nothing to revert on the PP side any more - the PP only goes Inactive
     // on approval now, so a rejected (still-pending) entry never touched it.
     const rejectedRow = result.rows[0];
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
 
     res.status(200).json({
       message: 'Spinning wheel change entry rejected',
@@ -4985,5 +5134,10 @@ router.get('/wheel-change/pp-approval-status', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.runWheelChangeApprovalTatCheck = runWheelChangeApprovalTatCheck;
+module.exports.createWheelChangeApprovalTicket = createWheelChangeApprovalTicket;
+module.exports.closeWheelChangeApprovalTicket = closeWheelChangeApprovalTicket;
+module.exports.ensureWheelChangeApprovalConfigTable = ensureWheelChangeApprovalConfigTable;
+module.exports.getWheelChangeApprovalConfig = getWheelChangeApprovalConfig;
 
 

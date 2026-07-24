@@ -59,7 +59,6 @@ const sidebarLinks = [
     { href: "/process-parameter", label: "Process Parameter", icon: FiClipboard },
     { href: "/usermanagement", label: "User Management", icon: FiUsers, admin: true },
     { href: "/rolespermission", label: "Roles & Permissions", icon: FiShield, admin: true },
-    { href: "/supervisor-assignments", label: "Supervisor Assignments", icon: FiUsers, admin: true },
     { href: "/statistics-analysis", label: "Analytics Hub", icon: FiCalendar, section: "calendars" },
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
@@ -85,11 +84,7 @@ const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
 ];
 const ticketingLinks = [
-    { href: "/operator", label: "L1 Ticketing System" },
-    { href: "/supervisordashboard", label: "L2 Ticketing System" },
-    { href: "/l3-ticketing", label: "L3 Ticketing System" },
-    { href: "/l4-ticketing", label: "L4 Ticketing System" },
-    { href: "/l5-ticketing", label: "L5 Ticketing System" },
+    { href: "__ticketingHome__", label: "Ticket System" },
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
@@ -124,6 +119,8 @@ const thresholdLinks = [
     { href: "/submission-threshold", label: "Submission Threshold" },
     { href: "/pp-batch-threshold", label: "PP Threshold" },
     { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
+    { href: "/pp-approval-threshold", label: "PP Approval Threshold" },
+    { href: "/wheel-change-approval-threshold", label: "Wheel Change Approval Threshold" },
 ];
 const reportLinks = [
     { href: "/reports/general", label: "General Report" },
@@ -221,9 +218,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = hasFullAccess
-        ? ticketingLinks
-        : ticketingLinks.filter((link) => !["/l3-ticketing", "/l4-ticketing", "/l5-ticketing"].includes(link.href));
+    const visibleTicketingLinks = ticketingLinks.map((link) =>
+        link.href === "__ticketingHome__" ? { ...link, href: defaultTicketingRoute } : link
+    );
     const visibleManagementHubLinks = hasFullAccess
         ? managementHubLinks
         : managementHubLinks.filter((link) =>
@@ -558,7 +555,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/pp-batch-threshold" ||
             currentPath.startsWith("/pp-batch-threshold/") ||
             currentPath === "/submitted-notebook-threshold" ||
-            currentPath.startsWith("/submitted-notebook-threshold/")
+            currentPath.startsWith("/submitted-notebook-threshold/") ||
+            currentPath === "/pp-approval-threshold" ||
+            currentPath.startsWith("/pp-approval-threshold/") ||
+            currentPath === "/wheel-change-approval-threshold" ||
+            currentPath.startsWith("/wheel-change-approval-threshold/")
         );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
         setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
@@ -622,7 +623,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/pp-batch-threshold" ||
                             currentPath.startsWith("/pp-batch-threshold/") ||
                             currentPath === "/submitted-notebook-threshold" ||
-                            currentPath.startsWith("/submitted-notebook-threshold/")
+                            currentPath.startsWith("/submitted-notebook-threshold/") ||
+                            currentPath === "/pp-approval-threshold" ||
+                            currentPath.startsWith("/pp-approval-threshold/") ||
+                            currentPath === "/wheel-change-approval-threshold" ||
+                            currentPath.startsWith("/wheel-change-approval-threshold/")
                         );
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
