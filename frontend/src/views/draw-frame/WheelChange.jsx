@@ -38,6 +38,15 @@ const WHEEL_CHANGE_API_TYPES = {
   "Type 3 (D50/D55)": "type3_d50_d55",
   "Type 4 (LDF3S)": "type4_ldf3s",
 };
+const WHEEL_CHANGE_CUSTOM_FIELD_NOTEBOOKS = {
+  "Type 1 (SB20)": "Wheel Change - Type 1 (SB20)",
+  "Type 2 (TD7)": "Wheel Change - Type 2 (TD7)",
+  "Type 3 (TD9)": "Wheel Change - Type 3 (TD9)",
+  "Type 1 (LRSB)": "Wheel Change - Type 1 (LRSB)",
+  "Type 2 (D40)": "Wheel Change - Type 2 (D40)",
+  "Type 3 (D50/D55)": "Wheel Change - Type 3 (D50/D55)",
+  "Type 4 (LDF3S)": "Wheel Change - Type 4 (LDF3S)",
+};
 // Bumped to _v2 to invalidate any stale cached drafts from before the
 // machine_no/pending/rejected approval workflow existed — old-keyed drafts
 // are simply never read and get swept away below.
@@ -2452,7 +2461,7 @@ const DrawFrameWheelChange = forwardRef(function DrawFrameWheelChange(
         <NotebookCustomFields
           department="Quality Control"
           subDepartment="Draw Frame"
-          notebook="Wheel Change"
+          notebook={WHEEL_CHANGE_CUSTOM_FIELD_NOTEBOOKS[wheelChangeType] || "Wheel Change - Type 1 (SB20)"}
           entryId={entryId}
           values={customFieldValues}
           onChange={handleCustomFieldChange}

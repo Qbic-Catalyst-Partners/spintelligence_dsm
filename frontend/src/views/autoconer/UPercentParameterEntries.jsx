@@ -481,7 +481,7 @@ function UPercentParameterEntries({
       saveLabel: "Save Record",
       disabled: isLoading,
     });
-  }, [onRegisterActions, selectedType, entryDate, countName, mergedValues, isLoading]);
+  }, [onRegisterActions, selectedType, entryDate, countName, mergedValues, isLoading, customFieldValues]);
 
   const renderField = (field, options = {}) => {
     const {

@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
@@ -502,6 +504,11 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const consigneeOptions = buildProcessParameterOptions(
     PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -732,6 +739,19 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       setSavedProcessParameterId(nextParamId);
       registerProcessParameterId(response, "Spinning", form.countName, form.consigneeName);
 
+      const linkedEntryId = payload.entry_id || nextParamId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
+
       await loadVersions();
       setSubmitError("");
       onSubmitSuccess?.(response);
@@ -747,6 +767,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
     setErrors({});
     setSubmitError("");
     setSavedProcessParameterId("");
+    setCustomFieldValues({});
   };
 
   const getPreviewData = () => [
@@ -841,6 +862,15 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
             .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}
         </div>
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Process Parameter"
+        notebook="Spinning - PP"
+        entryId={form.paramId || entryId || savedProcessParameterId || nextEntryIdPreview}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
 
       {submitError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">

@@ -5,7 +5,9 @@ import { FaCheckCircle } from "react-icons/fa";
 import { FiTrash2 } from "react-icons/fi";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { clearMixingState } from "@/store/slices/mixing";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
@@ -345,6 +347,11 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isMounted, setIsMounted] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const loadVersions = async () => {
     let response;
@@ -606,6 +613,20 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
     registerProcessParameterId(response, "Mixing", form.countName, form.consigneeName);
     setSavedProcessParameterId(nextParamId);
+
+    const linkedEntryId = payload.entry_id || nextParamId;
+    const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+    if (linkedEntryId && customFieldEntries.length > 0) {
+      try {
+        await saveNotebookCustomFieldValuesApi(
+          linkedEntryId,
+          customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+        );
+      } catch (e) {
+        console.error("Failed to save custom field values", e);
+      }
+    }
+
     await loadVersions();
     dispatch(clearMixingState());
     onSubmitSuccess?.(response);
@@ -616,6 +637,7 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
     setForm(createDefaultForm());
     setErrors({});
     setSavedProcessParameterId("");
+    setCustomFieldValues({});
   };
 
   const getPreviewData = () => [
@@ -790,6 +812,15 @@ const ProcessParameterDataEntry = forwardRef(function ProcessParameterDataEntry(
           </div>
         ))}
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Process Parameter"
+        notebook="Mixing - PP"
+        entryId={form.paramId || entryId || savedProcessParameterId || previewNextId}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
     </div>
   );
 

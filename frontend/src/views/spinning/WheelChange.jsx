@@ -17,6 +17,11 @@ import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import styles from "@/styles/spinningWheelChange.module.css";
 
 const WHEEL_CHANGE_TYPES = ["Type 1", "Type 2", "Type 3"];
+const WHEEL_CHANGE_CUSTOM_FIELD_NOTEBOOKS = {
+  "Type 1": "Wheel Change - Type 1",
+  "Type 2": "Wheel Change - Type 2",
+  "Type 3": "Wheel Change - Type 3",
+};
 const WHEEL_CHANGE_API_TYPES = {
   "Type 1": "type1",
   "Type 2": "type2",
@@ -1813,7 +1818,7 @@ const WheelChange = forwardRef(function WheelChange(
         <NotebookCustomFields
           department="Quality Control"
           subDepartment="Spinning"
-          notebook="Wheel Change"
+          notebook={WHEEL_CHANGE_CUSTOM_FIELD_NOTEBOOKS[wheelChangeType] || "Wheel Change - Type 1"}
           entryId={entryId}
           values={customFieldValues}
           onChange={handleCustomFieldChange}

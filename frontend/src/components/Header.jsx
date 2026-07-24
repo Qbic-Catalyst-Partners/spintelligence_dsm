@@ -63,7 +63,7 @@ const sidebarLinks = [
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
     { href: "/reports", label: "Reports", icon: FiFileText, section: "reports" },
-    { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true, section: "thresholds" },
+    { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true },
     { href: "/settings", label: "Settings", icon: FiSettings, admin: true, section: "settings" },
 ];
 
@@ -114,14 +114,6 @@ const analyticsHubLinks = [
         ],
     },
 ];
-const thresholdLinks = [
-    { href: "/threshold-values", label: "Values Threshold" },
-    { href: "/submission-threshold", label: "Submission Threshold" },
-    { href: "/pp-batch-threshold", label: "PP Threshold" },
-    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
-    { href: "/pp-approval-threshold", label: "PP Approval Threshold" },
-    { href: "/wheel-change-approval-threshold", label: "Wheel Change Approval Threshold" },
-];
 const reportLinks = [
     { href: "/reports/general", label: "General Report" },
     { href: "/reports/custom", label: "Custom Report" },
@@ -135,7 +127,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isDepartmentMenuOpen, setIsDepartmentMenuOpen] = useState(false);
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
-    const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const [isManagementHubOpen, setIsManagementHubOpen] = useState(false);
     const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
@@ -339,15 +330,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return nextIsOpen;
         });
     };
-    const handleThresholdClick = () => {
-        setIsThresholdMenuOpen((isOpen) => {
-            const nextIsOpen = !isOpen;
-            if (nextIsOpen && router.asPath?.split("?")[0] !== "/threshold-values") {
-                router.push("/threshold-values");
-            }
-            return nextIsOpen;
-        });
-    };
     const handleTicketsClick = () => {
         setIsTicketsMenuOpen((isOpen) => {
             const nextIsOpen = !isOpen;
@@ -547,20 +529,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
         );
-        setIsThresholdMenuOpen(
-            currentPath === "/threshold-values" ||
-            currentPath.startsWith("/threshold-values/") ||
-            currentPath === "/submission-threshold" ||
-            currentPath.startsWith("/submission-threshold/") ||
-            currentPath === "/pp-batch-threshold" ||
-            currentPath.startsWith("/pp-batch-threshold/") ||
-            currentPath === "/submitted-notebook-threshold" ||
-            currentPath.startsWith("/submitted-notebook-threshold/") ||
-            currentPath === "/pp-approval-threshold" ||
-            currentPath.startsWith("/pp-approval-threshold/") ||
-            currentPath === "/wheel-change-approval-threshold" ||
-            currentPath.startsWith("/wheel-change-approval-threshold/")
-        );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
         setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
     }, [router.asPath, router.pathname]);
@@ -610,25 +578,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             </>
                         );
                         const currentPath = router.asPath?.split("?")[0] || router.pathname;
-                        const isThresholdGroup = link.section === "thresholds";
                         const isTicketingGroup = link.section === "tickets";
                         const isManagementGroup = link.section === "management";
                         const isReportsGroup = link.section === "reports";
                         const isAnalyticsHubGroup = link.section === "calendars";
-                        const isThresholdGroupActive = isThresholdGroup && (
-                            currentPath === "/threshold-values" ||
-                            currentPath.startsWith("/threshold-values/") ||
-                            currentPath === "/submission-threshold" ||
-                            currentPath.startsWith("/submission-threshold/") ||
-                            currentPath === "/pp-batch-threshold" ||
-                            currentPath.startsWith("/pp-batch-threshold/") ||
-                            currentPath === "/submitted-notebook-threshold" ||
-                            currentPath.startsWith("/submitted-notebook-threshold/") ||
-                            currentPath === "/pp-approval-threshold" ||
-                            currentPath.startsWith("/pp-approval-threshold/") ||
-                            currentPath === "/wheel-change-approval-threshold" ||
-                            currentPath.startsWith("/wheel-change-approval-threshold/")
-                        );
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
                             currentPath.startsWith("/operator/") ||
@@ -660,17 +613,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath.startsWith("/reports/")
                         );
                         const linkClassName = `${styles["side-nav-link"]} ${
-                            (isThresholdGroup
-                                ? isThresholdGroupActive
-                                : isTicketingGroup
-                                    ? isTicketingGroupActive
-                                    : isManagementGroup
-                                        ? isManagementGroupActive
-                                        : isAnalyticsHubGroup
-                                            ? isAnalyticsHubGroupActive
-                                            : isReportsGroup
-                                                ? isReportsGroupActive
-                                                : isActiveLink(link.href))
+                            (isTicketingGroup
+                                ? isTicketingGroupActive
+                                : isManagementGroup
+                                    ? isManagementGroupActive
+                                    : isAnalyticsHubGroup
+                                        ? isAnalyticsHubGroupActive
+                                        : isReportsGroup
+                                            ? isReportsGroupActive
+                                            : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
                         }`;
@@ -724,34 +675,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(settingsLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
                                                 {settingsLink.label}
-                                            </Link>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        if (link.section === "thresholds") {
-                            return (
-                                <div key={link.href} className={styles["side-nav-group"]}>
-                                    <button
-                                        type="button"
-                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
-                                        aria-expanded={isThresholdMenuOpen}
-                                        title={isSidebarCollapsed ? link.label : undefined}
-                                        onClick={handleThresholdClick}
-                                    >
-                                        {content}
-                                        <FiChevronDown className={`${styles["department-chevron"]} ${isThresholdMenuOpen ? styles["department-chevron-open"] : ""}`} />
-                                    </button>
-                                    <div className={`${styles["side-subnav"]} ${isThresholdMenuOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {thresholdLinks.map((thresholdLink) => (
-                                            <Link
-                                                key={thresholdLink.href}
-                                                href={thresholdLink.href}
-                                                className={`${styles["side-subnav-link"]} ${isActiveLink(thresholdLink.href) ? styles["side-subnav-active"] : ""}`}
-                                            >
-                                                {thresholdLink.label}
                                             </Link>
                                         ))}
                                     </div>

@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FiCalendar } from "react-icons/fi";
 import {
     createNotebookCustomFieldApi,
-    deleteNotebookCustomFieldApi,
     fetchNotebookCustomFieldsApi,
     toggleNotebookCustomFieldApi,
-    updateNotebookCustomFieldApi,
 } from "@/apis/notebookCustomFieldsApi";
 import SuccessModal from "@/components/SuccessModal";
 import Pagination from "@/components/Pagination";
@@ -25,6 +24,7 @@ const SUB_DEPARTMENTS = [
     "Spinning",
     "Autoconer",
     "Individual Card Performance",
+    "Process Parameter",
 ];
 
 // Notebook options keyed by sub-department (same underlying screen names ScreenAccessPanel.jsx
@@ -61,7 +61,13 @@ const NOTEBOOKS_BY_SUB_DEPARTMENT = {
         "Draw Frame Cots Data Entry",
         "U% Data Entry",
         "A%",
-        "Wheel Change",
+        "Wheel Change - Type 1 (SB20)",
+        "Wheel Change - Type 2 (TD7)",
+        "Wheel Change - Type 3 (TD9)",
+        "Wheel Change - Type 1 (LRSB)",
+        "Wheel Change - Type 2 (D40)",
+        "Wheel Change - Type 3 (D50/D55)",
+        "Wheel Change - Type 4 (LDF3S)",
     ],
     Simplex: [
         "SMXCots Change Data Entry",
@@ -79,7 +85,9 @@ const NOTEBOOKS_BY_SUB_DEPARTMENT = {
         "Lycra out of Centering",
         "RSM & Lycrasensor Checking Online",
         "RSM & Lycrasensor Checking Offline",
-        "Wheel Change",
+        "Wheel Change - Type 1",
+        "Wheel Change - Type 2",
+        "Wheel Change - Type 3",
     ],
     Autoconer: [
         "Rewinding Study",
@@ -103,6 +111,19 @@ const NOTEBOOKS_BY_SUB_DEPARTMENT = {
     "Individual Card Performance": [
         "Individual Card Performance Data",
     ],
+    "Process Parameter": [
+        "Mixing - PP",
+        "Blow Room - PP",
+        "Carding - PP",
+        "Simplex - PP",
+        "Spinning - PP",
+        "Autoconer - PP",
+        "PP - Breaker Drawing",
+        "PP - Finisher Drawing",
+        "PP - Autoconer Q2",
+        "PP - Autoconer Q3",
+        "PP - Autoconer Q4",
+    ],
 };
 
 const FIELD_TYPES = [
@@ -124,9 +145,84 @@ const formatDate = (value) => {
     return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 };
 
+const DATE_RANGE_PRESETS = [
+    { key: "today", label: "Today" },
+    { key: "thisWeek", label: "This Week" },
+    { key: "thisMonth", label: "This Month" },
+    { key: "thisYear", label: "This Year" },
+];
+
+const toInputDateString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+// Each preset is a "period-to-date" window: the period start through today, not a full
+// preceding period — "This Week" means Monday of the current week through today, etc.
+const getDateRangeForPreset = (presetKey) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    switch (presetKey) {
+        case "today":
+            return { from: today, to: today };
+        case "thisWeek": {
+            const dayOfWeek = (today.getDay() + 6) % 7; // Monday = 0 ... Sunday = 6
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
+            return { from: startOfWeek, to: today };
+        }
+        case "thisMonth": {
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            return { from: startOfMonth, to: today };
+        }
+        case "thisYear": {
+            const startOfYear = new Date(today.getFullYear(), 0, 1);
+            return { from: startOfYear, to: today };
+        }
+        default:
+            return null;
+    }
+};
+
 const NewFieldCreationPage = () => {
     const [activeTab, setActiveTab] = useState("creation");
-    const [filters, setFilters] = useState({ department: "", subDepartment: "", notebook: "" });
+    const [filters, setFilters] = useState({
+        department: "",
+        subDepartment: "",
+        notebook: "",
+        datePreset: "",
+        dateFrom: "",
+        dateTo: "",
+    });
+    const dateFromInputRef = useRef(null);
+    const dateToInputRef = useRef(null);
+
+    const openDatePicker = (inputRef) => {
+        const input = inputRef.current;
+        if (!input) return;
+        if (typeof input.showPicker === "function") {
+            input.showPicker();
+        } else {
+            input.focus();
+        }
+    };
+
+    const handleDatePresetChange = (presetKey) => {
+        const range = getDateRangeForPreset(presetKey);
+        setFilters((current) => ({
+            ...current,
+            datePreset: presetKey,
+            dateFrom: range ? toInputDateString(range.from) : "",
+            dateTo: range ? toInputDateString(range.to) : "",
+        }));
+    };
+
+    const handleCustomDateChange = (field, value) => {
+        setFilters((current) => ({ ...current, datePreset: "", [field]: value }));
+    };
     const [fieldLabel, setFieldLabel] = useState("");
     const [fieldType, setFieldType] = useState("text");
     const [decimalPlaces, setDecimalPlaces] = useState(2);
@@ -139,32 +235,18 @@ const NewFieldCreationPage = () => {
     const [isLoadingExisting, setIsLoadingExisting] = useState(false);
     const [existingError, setExistingError] = useState("");
     const [togglingId, setTogglingId] = useState(null);
-    const [openMenuId, setOpenMenuId] = useState(null);
-    const [editingField, setEditingField] = useState(null);
-    const [editLabel, setEditLabel] = useState("");
-    const [editType, setEditType] = useState("text");
-    const [editDecimalPlaces, setEditDecimalPlaces] = useState(2);
-    const [editOptions, setEditOptions] = useState([""]);
-    const [isSavingEdit, setIsSavingEdit] = useState(false);
-    const [deletingId, setDeletingId] = useState(null);
-    const [fieldPendingDelete, setFieldPendingDelete] = useState(null);
-    const [currentPage, setCurrentPage] = useState(1);
-    const PAGE_SIZE = 5;
 
     const notebookOptions = useMemo(
         () => NOTEBOOKS_BY_SUB_DEPARTMENT[filters.subDepartment] || [],
         [filters.subDepartment]
     );
 
-    const totalPages = Math.max(1, Math.ceil(existingFields.length / PAGE_SIZE));
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [existingFields]);
-
-    const paginatedExistingFields = useMemo(
-        () => existingFields.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-        [existingFields, currentPage]
+    const filteredExistingFields = useMemo(
+        () => existingFields.filter((field) =>
+            (!filters.dateFrom || new Date(field.created_at || 0) >= new Date(`${filters.dateFrom}T00:00:00`)) &&
+            (!filters.dateTo || new Date(field.created_at || 0) <= new Date(`${filters.dateTo}T23:59:59.999`))
+        ),
+        [existingFields, filters.dateFrom, filters.dateTo]
     );
 
     const handleFilterChange = (field, value) => {
@@ -251,74 +333,6 @@ const NewFieldCreationPage = () => {
         }
     };
 
-    const handleStartEdit = (field) => {
-        setOpenMenuId(null);
-        setEditingField(field);
-        setEditLabel(field.field_label);
-        setEditType(field.field_type);
-        setEditDecimalPlaces(Number.isInteger(field.decimal_places) ? field.decimal_places : 2);
-        setEditOptions(Array.isArray(field.field_options) && field.field_options.length ? field.field_options : [""]);
-    };
-
-    const handleCancelEdit = () => {
-        setEditingField(null);
-    };
-
-    const handleSaveEdit = async (event) => {
-        event.preventDefault();
-        if (!editingField || !editLabel.trim()) return;
-
-        setIsSavingEdit(true);
-        try {
-            await updateNotebookCustomFieldApi(editingField.id, {
-                field_label: editLabel.trim(),
-                field_type: editType,
-                decimal_places: editType === "number" ? editDecimalPlaces : undefined,
-                field_options: editType === "dropdown"
-                    ? editOptions.map((item) => item.trim()).filter(Boolean)
-                    : [],
-            });
-            setEditingField(null);
-            await loadExistingFields();
-        } finally {
-            setIsSavingEdit(false);
-        }
-    };
-
-    const handleEditOptionChange = (index, value) => {
-        setEditOptions((current) => current.map((item, i) => (i === index ? value : item)));
-    };
-
-    const handleAddEditOption = () => {
-        setEditOptions((current) => [...current, ""]);
-    };
-
-    const handleRemoveEditOption = (index) => {
-        setEditOptions((current) => (current.length > 1 ? current.filter((_, i) => i !== index) : current));
-    };
-
-    const handleDeleteField = (field) => {
-        setOpenMenuId(null);
-        setFieldPendingDelete(field);
-    };
-
-    const handleCancelDelete = () => {
-        setFieldPendingDelete(null);
-    };
-
-    const handleConfirmDelete = async () => {
-        if (!fieldPendingDelete) return;
-        const id = fieldPendingDelete.id;
-        setDeletingId(id);
-        try {
-            await deleteNotebookCustomFieldApi(id);
-            await loadExistingFields();
-        } finally {
-            setDeletingId(null);
-            setFieldPendingDelete(null);
-        }
-    };
-
     const handleDropdownOptionChange = (index, value) => {
         setDropdownOptions((current) => current.map((item, i) => (i === index ? value : item)));
     };
@@ -338,161 +352,35 @@ const NewFieldCreationPage = () => {
         if (existingError) {
             return <div className={styles.emptyState}>{existingError}</div>;
         }
-        if (!existingFields.length) {
+        if (!filteredExistingFields.length) {
             return <div className={styles.emptyState}>No fields created yet for this notebook.</div>;
         }
         return (
             <div className={styles.list}>
-                {paginatedExistingFields.map((field) => (
-                    editingField?.id === field.id ? (
-                        <div className={styles.creationCard} key={field.id}>
-                            <h2>Edit field</h2>
-                            <form onSubmit={handleSaveEdit}>
-                                <div className={styles.formField}>
-                                    <label htmlFor={`edit-label-${field.id}`}>Field Label</label>
-                                    <input
-                                        id={`edit-label-${field.id}`}
-                                        type="text"
-                                        className={styles.formInput}
-                                        value={editLabel}
-                                        onChange={(event) => setEditLabel(event.target.value)}
-                                        required
-                                    />
-                                </div>
-                                <div className={styles.formField}>
-                                    <label htmlFor={`edit-type-${field.id}`}>Field Type</label>
-                                    <select
-                                        id={`edit-type-${field.id}`}
-                                        className={styles.formSelect}
-                                        value={editType}
-                                        onChange={(event) => setEditType(event.target.value)}
-                                    >
-                                        {FIELD_TYPES.map((type) => (
-                                            <option key={type.value} value={type.value}>{type.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                {editType === "number" ? (
-                                    <div className={styles.formField}>
-                                        <label htmlFor={`edit-decimal-places-${field.id}`}>Decimal Places</label>
-                                        <select
-                                            id={`edit-decimal-places-${field.id}`}
-                                            className={styles.formSelect}
-                                            value={editDecimalPlaces}
-                                            onChange={(event) => setEditDecimalPlaces(Number(event.target.value))}
-                                            disabled={Boolean(field.db_column_name)}
-                                        >
-                                            {DECIMAL_PLACES_OPTIONS.map((count) => (
-                                                <option key={count} value={count}>{count}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ) : null}
-                                {editType === "dropdown" ? (
-                                    <div className={styles.formField}>
-                                        <label>Dropdown Options</label>
-                                        {editOptions.map((option, index) => (
-                                            <div className={styles.optionRow} key={index}>
-                                                <input
-                                                    type="text"
-                                                    className={styles.formInput}
-                                                    value={option}
-                                                    onChange={(event) => handleEditOptionChange(index, event.target.value)}
-                                                    placeholder={`Option ${index + 1}`}
-                                                />
-                                                {editOptions.length > 1 ? (
-                                                    <button
-                                                        type="button"
-                                                        className={styles.removeOptionButton}
-                                                        onClick={() => handleRemoveEditOption(index)}
-                                                        aria-label="Remove option"
-                                                    >
-                                                        &minus;
-                                                    </button>
-                                                ) : null}
-                                                {index === editOptions.length - 1 ? (
-                                                    <button
-                                                        type="button"
-                                                        className={styles.addOptionButton}
-                                                        onClick={handleAddEditOption}
-                                                        aria-label="Add option"
-                                                    >
-                                                        +
-                                                    </button>
-                                                ) : null}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : null}
-                                <div className={styles.optionRow}>
-                                    <button type="submit" className={styles.submitButton} disabled={isSavingEdit}>
-                                        {isSavingEdit ? "Saving..." : "Save"}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={styles.confirmNoButton}
-                                        onClick={handleCancelEdit}
-                                        disabled={isSavingEdit}
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    ) : (
-                        <div className={styles.row} key={field.id}>
-                            <span className={styles.rowMain}>
-                                <strong>{field.field_label}</strong>
-                                <span>{field.department} &gt; {field.sub_department} &gt; {field.notebook}</span>
+                {filteredExistingFields.map((field) => (
+                    <div className={styles.row} key={field.id}>
+                        <span className={styles.rowMain}>
+                            <strong>{field.field_label}</strong>
+                            <span>{field.department} &gt; {field.sub_department} &gt; {field.notebook}</span>
+                        </span>
+                        <span className={styles.rowMeta}>
+                            <span className={styles.rowMetaItem}>
+                                <small>Type</small>
+                                <strong>{field.field_type}</strong>
                             </span>
-                            <span className={styles.rowMeta}>
-                                <span className={styles.rowMetaItem}>
-                                    <small>Type</small>
-                                    <strong>{field.field_type}</strong>
-                                </span>
-                                <span className={styles.rowMetaItem}>
-                                    <small>Created</small>
-                                    <strong>{formatDate(field.created_at)}</strong>
-                                </span>
-                                <button
-                                    type="button"
-                                    className={`${styles.toggleSwitch} ${field.is_active ? styles.toggleSwitchActive : ""}`}
-                                    onClick={() => handleToggleField(field.id)}
-                                    disabled={togglingId === field.id}
-                                    aria-label={field.is_active ? "Deactivate field" : "Activate field"}
-                                />
-                                <span className={styles.actionMenuWrap}>
-                                    <button
-                                        type="button"
-                                        className={styles.actionMenuButton}
-                                        onClick={() => setOpenMenuId((current) => (current === field.id ? null : field.id))}
-                                        aria-label="More actions"
-                                    >
-                                        &#8942;
-                                    </button>
-                                    {openMenuId === field.id ? (
-                                        <div className={styles.actionMenu}>
-                                            <button
-                                                type="button"
-                                                className={styles.actionMenuItem}
-                                                onClick={() => handleStartEdit(field)}
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
-                                                onClick={() => handleDeleteField(field)}
-                                                disabled={deletingId === field.id}
-                                            >
-                                                Delete
-                                            </button>
-                                        </div>
-                                    ) : null}
-                                </span>
+                            <span className={styles.rowMetaItem}>
+                                <small>Created</small>
+                                <strong>{formatDate(field.created_at)}</strong>
                             </span>
-                        </div>
-                    )
+                            <button
+                                type="button"
+                                className={`${styles.toggleSwitch} ${field.is_active ? styles.toggleSwitchActive : ""}`}
+                                onClick={() => handleToggleField(field.id)}
+                                disabled={togglingId === field.id}
+                                aria-label={field.is_active ? "Deactivate field" : "Activate field"}
+                            />
+                        </span>
+                    </div>
                 ))}
             </div>
         );
@@ -559,6 +447,53 @@ const NewFieldCreationPage = () => {
                                 <option key={value} value={value}>{value}</option>
                             ))}
                         </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>Date Range</small>
+                        <select
+                            className={styles.filterSelect}
+                            value={filters.datePreset}
+                            onChange={(event) => handleDatePresetChange(event.target.value)}
+                        >
+                            <option value="">Custom</option>
+                            {DATE_RANGE_PRESETS.map((preset) => (
+                                <option key={preset.key} value={preset.key}>{preset.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>From</small>
+                        <span className={styles.dateInputWrap}>
+                            <input
+                                ref={dateFromInputRef}
+                                type="date"
+                                className={styles.filterSelect}
+                                value={filters.dateFrom}
+                                onChange={(event) => handleCustomDateChange("dateFrom", event.target.value)}
+                            />
+                            <FiCalendar
+                                className={styles.dateInputIcon}
+                                aria-hidden="true"
+                                onClick={() => openDatePicker(dateFromInputRef)}
+                            />
+                        </span>
+                    </label>
+                    <label className={styles.filterField}>
+                        <small>To</small>
+                        <span className={styles.dateInputWrap}>
+                            <input
+                                ref={dateToInputRef}
+                                type="date"
+                                className={styles.filterSelect}
+                                value={filters.dateTo}
+                                onChange={(event) => handleCustomDateChange("dateTo", event.target.value)}
+                            />
+                            <FiCalendar
+                                className={styles.dateInputIcon}
+                                aria-hidden="true"
+                                onClick={() => openDatePicker(dateToInputRef)}
+                            />
+                        </span>
                     </label>
                 </div>
             </div>
