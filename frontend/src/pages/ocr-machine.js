@@ -501,8 +501,8 @@ export default function OcrMachinePage() {
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontSize: 36 / 2.2, fontWeight: 700, color: colors.heading }}>{rows.length > 0 ? "Review & Edit" : "Upload Report PDF"}</h2>
-          <div style={{ marginTop: 2, fontWeight: 700, fontSize: 18, color: colors.heading }}>
+          <h2 style={{ margin: 0, fontSize: 36 / 2.2, fontWeight: 400, color: colors.heading, textAlign: "center" }}>{rows.length > 0 ? "Review & Edit" : "Upload Report PDF"}</h2>
+          <div style={{ marginTop: 2, fontWeight: 700, fontSize: 18, color: colors.heading, textAlign: "left" }}>
             {docTypeLabel}
           </div>
         </div>

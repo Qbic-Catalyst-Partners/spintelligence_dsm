@@ -62,6 +62,7 @@ const NotebookCustomFields = ({ department, subDepartment, notebook, entryId, va
                             <label className="text-[14px] font-semibold text-slate-700 truncate">{field.field_label}</label>
                             <select
                                 className="w-full h-9.5 px-3 py-2 rounded-lg text-[14px] border border-slate-200 bg-slate-100"
+                                style={{ borderColor: "#e2e8f0", backgroundColor: "#f1f5f9" }}
                                 value={value}
                                 onChange={(event) => onChange?.(field.id, event.target.value)}
                             >

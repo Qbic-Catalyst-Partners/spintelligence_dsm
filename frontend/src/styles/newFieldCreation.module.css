@@ -82,6 +82,38 @@
     font-weight: 700;
 }
 
+.dateInputWrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.dateInputWrap input[type="date"] {
+    padding-right: 30px;
+}
+
+/* The browser's own calendar indicator is redundant with the icon we render, and in Chrome it
+   sits exactly where the icon is placed — hide it and disable its own click handling so every
+   click always reaches our calendar icon/onClick instead of the two fighting over the event. */
+.dateInputWrap input[type="date"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0;
+    width: 30px;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.dateInputIcon {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #667085;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 1;
+}
+
 .emptyState {
     width: 100%;
     border: 1px solid #e5e9f0;
@@ -537,6 +569,14 @@
     }
 
     .filterSelect {
+        width: 100%;
+    }
+
+    .dateInputWrap {
+        width: 100%;
+    }
+
+    .dateInputWrap input[type="date"] {
         width: 100%;
     }
 

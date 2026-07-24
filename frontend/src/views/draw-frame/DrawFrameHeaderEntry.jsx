@@ -6,9 +6,11 @@ import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
@@ -363,6 +365,11 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const [formMessage, setFormMessage] = useState("");
   const [recentEntries, setRecentEntries] = useState([]);
   const [expandedEntryId, setExpandedEntryId] = useState(null);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     const nextType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
@@ -488,6 +495,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     setForm(activeConfig.createForm(activeType));
     setErrors({});
     setFormMessage("");
+    setCustomFieldValues({});
   };
 
   const findLatestEntryByCountName = (countName) => {
@@ -606,6 +614,18 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       const savedEntry = response?.data || response;
 
       registerProcessParameterId(savedEntry, activeType, form.countName, form.consigneeName);
+
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (paramId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            paramId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
       setForm((current) => ({
         ...current,
         paramId,
@@ -781,6 +801,15 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
               {activeConfig.bottomRow.map(renderField)}
             </div>
           </div>
+
+          <NotebookCustomFields
+            department="Quality Control"
+            subDepartment="Process Parameter"
+            notebook={activeType}
+            entryId={form.paramId || entryId || nextEntryIdPreview}
+            values={customFieldValues}
+            onChange={handleCustomFieldChange}
+          />
 
           {formMessage ? <p className={styles.messageError}>{formMessage}</p> : null}
 

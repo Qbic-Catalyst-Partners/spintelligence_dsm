@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
@@ -297,6 +299,11 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isMounted, setIsMounted] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const consigneeOptions = useMemo(
     () =>
@@ -540,6 +547,7 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
     setErrors({});
     setSubmitError("");
     setSavedProcessParameterId("");
+    setCustomFieldValues({});
   };
 
   const submit = async () => {
@@ -561,6 +569,19 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
       registerProcessParameterId(response, "Simplex", form.countName, form.consigneeName);
       setSavedProcessParameterId(nextParamId);
+
+      const linkedEntryId = payload.entry_id || nextParamId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
 
       await loadVersions();
       setSubmitError("");
@@ -661,6 +682,15 @@ const SimplexProcessParameterDataEntry = forwardRef(function SimplexProcessParam
             </div>
           ))}
         </div>
+
+        <NotebookCustomFields
+          department="Quality Control"
+          subDepartment="Process Parameter"
+          notebook="Simplex - PP"
+          entryId={form.paramId || entryId || savedProcessParameterId || previewNextId}
+          values={customFieldValues}
+          onChange={handleCustomFieldChange}
+        />
 
         {submitError ? (
           <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">

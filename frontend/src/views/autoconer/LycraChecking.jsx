@@ -280,7 +280,7 @@ function LycraChecking({ types, selectedType, onTypeChange, onRegisterActions, e
     averageLength,
     dispatch,
     isLoading,
-    generatedRows,
+    customFieldValues,
   ]);
 
   return (

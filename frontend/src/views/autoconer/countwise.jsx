@@ -353,6 +353,7 @@ function CoastWasteCrateRecord({ types, selectedType, onTypeChange, onRegisterAc
     metrics,
     dispatch,
     isLoading,
+    customFieldValues,
   ]);
 
   return (
