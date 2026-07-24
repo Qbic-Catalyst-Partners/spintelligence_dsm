@@ -485,7 +485,7 @@ function MultiSelectDropdown({
     );
 }
 
-export default function ThresholdValues() {
+export default function ThresholdValues({ standalone = true, editItem = null, onEditItemHandled } = {}) {
     const dispatch = useDispatch();
     const router = useRouter();
     const user = useSelector((state) => state.auth?.user);
@@ -808,6 +808,13 @@ export default function ThresholdValues() {
         setExistingError("");
     };
 
+    useEffect(() => {
+        if (!editItem) return;
+        openEditThreshold(editItem);
+        onEditItemHandled?.();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editItem]);
+
     const toggleThresholdStatus = async (rowKey) => {
         const currentIndex = thresholds.findIndex((item, index) => getThresholdRowKey(item, index) === rowKey);
 
@@ -1127,14 +1134,11 @@ export default function ThresholdValues() {
         return null;
     }
 
-    return (
-        <div className={styles.page}>
-            <div className={styles.shell}>
-                <div className={styles.intro}>
-                    <h1>Threshold values</h1>
-                    <p>Add and edit the threshold value</p>
-                </div>
+    const effectiveActiveTab = standalone ? activeTab : "new";
 
+    const content = (
+        <>
+                {standalone ? (
                 <div className={styles.tabBar} role="tablist" aria-label="Threshold views">
                     <button
                         type="button"
@@ -1151,8 +1155,9 @@ export default function ThresholdValues() {
                         Existing Thresholds
                     </button>
                 </div>
+                ) : null}
 
-                {activeTab === "new" ? (
+                {effectiveActiveTab === "new" ? (
                     <>
                         <div className={styles.statsGrid}>
                             <article className={styles.statCard}>
@@ -1802,6 +1807,21 @@ export default function ThresholdValues() {
                         </section>
                     </div>
                 )}
+        </>
+    );
+
+    if (!standalone) {
+        return content;
+    }
+
+    return (
+        <div className={styles.page}>
+            <div className={styles.shell}>
+                <div className={styles.intro}>
+                    <h1>Threshold values</h1>
+                    <p>Add and edit the threshold value</p>
+                </div>
+                {content}
             </div>
         </div>
     );
