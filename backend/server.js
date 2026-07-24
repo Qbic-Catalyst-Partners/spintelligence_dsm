@@ -371,6 +371,7 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
+const delegationsRouter = require('./routes/delegations.routes');
 const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
 const processParametersRoutes = require('./routes/processParameters');
 const spinningRoutes = require('./routes/spinning');
@@ -486,6 +487,7 @@ app.use('/user-guide', (req, res, next) => {
   return helpContentRouter(req, res, next);
 });
 app.use('/supervisor-assignments', supervisorAssignmentsRouter);
+app.use('/delegations', delegationsRouter);
 // Backward-compatible path used by some frontend builds: /api/reportSchedules/*
 app.use('/reportSchedules', reportSchedulesRouter);
 app.use('/reports', reportSchedulesRouter);

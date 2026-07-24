@@ -1,0 +1,320 @@
+.container {
+  background: #f4f6f8;
+  min-height: 100vh;
+  font-family: Inter, sans-serif;
+  overflow-x: hidden;
+}
+
+.wrapper {
+  padding: var(--management-page-padding);
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.title {
+  font-size: 30px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 18px;
+}
+
+/* ================= FORM CARD ================= */
+.formCard {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.formTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 16px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.field select,
+.field input {
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 14px;
+  padding: 0 12px;
+  color: #0f172a;
+}
+
+.field input[readOnly] {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.dateInputWrapper {
+  position: relative;
+}
+
+.dateInputWrapper input[type="date"] {
+  width: 100%;
+  padding-right: 34px;
+}
+
+.dateInputWrapper input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 34px;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.calendarIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.submitField {
+  display: flex;
+}
+
+.btnPrimary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #3d539f;
+  color: white;
+  border: none;
+  padding: 0 20px;
+  height: 40px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.formError {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+/* ================= TABLE ================= */
+.table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #cfe0ff;
+}
+
+.table thead {
+  background: #d0e2f4;
+}
+
+.table th {
+  font-size: 12px;
+  color: #2f3b52;
+  text-align: left;
+  padding: 14px 20px;
+  height: 56px;
+  border-bottom: 1px solid #cfe0ff;
+  letter-spacing: 0.03em;
+}
+
+.table td {
+  padding: 16px 20px;
+  font-size: 14px;
+  border-bottom: 1px solid #e0ecff;
+  color: #334155;
+}
+
+.table tbody tr:hover {
+  background: #f8fbff;
+}
+
+.bold {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.emptyRow {
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px !important;
+}
+
+/* ================= PAGINATION ================= */
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 18px;
+  padding: 10px 4px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.pageInfo {
+  font-size: 13px;
+}
+
+.pageControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pageBtn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.activePage {
+  background: #197fe6;
+  color: #ffffff;
+  border-color: #197fe6;
+  font-weight: 600;
+}
+
+.navBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.navBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageBtn:hover,
+.navBtn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+@media (max-width: 1100px) {
+  .formGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .pageControls {
+    flex-wrap: wrap;
+  }
+}
+
+/* ================= DARK MODE ================= */
+:global(:root[data-theme="dark"]) .container {
+  background: #181818;
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .title {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .formCard,
+:global(:root[data-theme="dark"]) .table,
+:global(:root[data-theme="dark"]) .table thead,
+:global(:root[data-theme="dark"]) .table tr,
+:global(:root[data-theme="dark"]) .pageBtn,
+:global(:root[data-theme="dark"]) .navBtn,
+:global(:root[data-theme="dark"]) .field select,
+:global(:root[data-theme="dark"]) .field input {
+  background: #3b3b3b;
+  border-color: #5f5f5f;
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .formTitle,
+:global(:root[data-theme="dark"]) .table td,
+:global(:root[data-theme="dark"]) .bold {
+  color: #ffffff;
+}
+
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .pageInfo,
+:global(:root[data-theme="dark"]) .field label {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .calendarIcon {
+  color: #cbd5e1;
+}
+
+:global(:root[data-theme="dark"]) .field input[type="date"] {
+  color-scheme: dark;
+}
+
+:global(:root[data-theme="dark"]) .table,
+:global(:root[data-theme="dark"]) .table thead,
+:global(:root[data-theme="dark"]) .table tbody tr,
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .table td {
+  background: #000000 !important;
+  background-color: #000000 !important;
+}
+
+:global(:root[data-theme="dark"]) .table th,
+:global(:root[data-theme="dark"]) .table td {
+  border-color: #5f5f5f;
+}
+
+:global(:root[data-theme="dark"]) .pageBtn:hover,
+:global(:root[data-theme="dark"]) .navBtn:hover:not(:disabled) {
+  background: #242424;
+}
