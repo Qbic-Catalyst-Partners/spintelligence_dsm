@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/router";
 import { useSelector } from "react-redux";
 import { FiCalendar } from "react-icons/fi";
 import {
@@ -1159,6 +1160,7 @@ const buildFieldCards = (notebook) => {
 };
 
 const SubmittedNotebooksPage = () => {
+    const router = useRouter();
     const user = useSelector((state) => state.auth?.user);
     const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
     const [notebooks, setNotebooks] = useState([]);
@@ -1189,6 +1191,7 @@ const SubmittedNotebooksPage = () => {
     const PAGE_SIZE = 5;
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
+    const handledOpenNotebookIdRef = useRef("");
     const dateFromInputRef = useRef(null);
     const dateToInputRef = useRef(null);
 
@@ -1405,6 +1408,28 @@ const SubmittedNotebooksPage = () => {
             setIsDetailLoading(false);
         }
     };
+
+    // Deep-link from the acknowledgement ticket detail view: it passes ?openNotebookId= so the
+    // exact notebook card/preview opens here directly, rather than dropping the reviewer on the
+    // bare list to hunt for it themselves.
+    useEffect(() => {
+        if (!router.isReady) return;
+        const openNotebookId = String(router.query.openNotebookId || "").trim();
+        if (!openNotebookId || openNotebookId === handledOpenNotebookIdRef.current) return;
+        if (!notebooks.length) return;
+
+        const match = notebooks.find((notebook) => String(getNotebookId(notebook) || "") === openNotebookId);
+        if (!match) return;
+
+        handledOpenNotebookIdRef.current = openNotebookId;
+        if (!isNotebookPendingAcknowledgement(match)) {
+            setActiveTab("closed");
+        }
+        openNotebook(match);
+
+        const { openNotebookId: _omit, ...restQuery } = router.query;
+        router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
+    }, [notebooks, router.isReady, router.query.openNotebookId]);
 
     const handleAcknowledge = async () => {
         const id = getNotebookId(selectedNotebook);

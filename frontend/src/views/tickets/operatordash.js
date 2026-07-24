@@ -14,7 +14,7 @@ import {
     isThresholdTicketRecord,
     transformTicket,
 } from "../../utils/ticketTransformer";
-import { isSupervisorNavUser } from "../../utils/accessControl";
+import { isFullAccessUser, isSupervisorNavUser } from "../../utils/accessControl";
 import {
     applyStoredTicketStatuses,
     getStatusClassKey,
@@ -58,7 +58,7 @@ export default function operatorboard() {
         ).trim();
 
     const router = useRouter();
-    const shouldUseSupervisorDashboard = isSupervisorNavUser(authUser);
+    const shouldUseSupervisorDashboard = isFullAccessUser(authUser) || isSupervisorNavUser(authUser);
     const openCalendarPicker = (inputRef) => {
         const input = inputRef.current;
         if (!input) return;
@@ -167,10 +167,6 @@ export default function operatorboard() {
         fetchSubmissionTickets();
         fetchProcessParameterTickets();
     }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
-
-    if (shouldUseSupervisorDashboard) {
-        return null;
-    }
 
     const fetchTickets = async () => {
         try {
@@ -359,6 +355,7 @@ export default function operatorboard() {
         };
     }, [authToken, isAuthHydrated, shouldUseSupervisorDashboard]);
 
+    if (shouldUseSupervisorDashboard) return null;
     if (loading) return <p>Loading tickets...</p>;
 
     const submissionTicketData = [

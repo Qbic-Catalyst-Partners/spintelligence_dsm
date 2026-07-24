@@ -38,6 +38,88 @@ const ensureUserLevelConstraintAllowsL4L5 = async () => {
   userLevelConstraintEnsured = true;
 };
 
+// Reporting hierarchy (Employee-Hierarchy-and-Workflow-System_V2.pdf): every
+// user except L5 must be linked to exactly one reporting manager from the
+// level immediately above. This single column is the source of truth every
+// later escalation/visibility phase will walk, replacing the old ad-hoc
+// per-threshold approver-id arrays and the many-to-many supervisor_assignments
+// table.
+let reportsToColumnEnsured = false;
+const ensureReportsToColumn = async () => {
+  if (reportsToColumnEnsured) return;
+  // Plain nullable integer, no FK constraint: production's users.user_details
+  // has no primary/unique constraint on id (confirmed live), so a real
+  // REFERENCES clause here would fail the moment this ALTER TABLE actually
+  // ran (unlike other tables' FK-to-user_details clauses in this codebase,
+  // which only ever "worked" because their CREATE TABLE IF NOT EXISTS was a
+  // no-op against an already-existing table). Integrity is enforced at the
+  // application level instead, via validateReportingManager below.
+  await client.query(`
+    ALTER TABLE users.user_details
+      ADD COLUMN IF NOT EXISTS reports_to_user_id INTEGER NULL
+  `);
+  reportsToColumnEnsured = true;
+};
+
+const LEVEL_ABOVE = { L1: "L2", L2: "L3", L3: "L4", L4: "L5" };
+
+// Enforces the PDF's "Key Rule": a user can only be assigned a reporting
+// manager from the level directly above their own; L5 has no manager (top of
+// the hierarchy). Returns an error message string, or null if valid.
+const validateReportingManager = async (level, reportsToUserId) => {
+  const normalizedLevel = normalizeUserLevel(level);
+
+  if (normalizedLevel === "L5") {
+    return reportsToUserId ? "L5 users cannot have a reporting manager." : null;
+  }
+
+  const requiredManagerLevel = LEVEL_ABOVE[normalizedLevel];
+  if (!reportsToUserId) {
+    return `A reporting manager (${requiredManagerLevel}) is required for ${normalizedLevel} users.`;
+  }
+
+  const managerResult = await client.query(
+    `SELECT level FROM users.user_details WHERE id = $1`,
+    [reportsToUserId]
+  );
+  const managerLevel = managerResult.rows[0]?.level;
+  if (!managerLevel) return "Selected reporting manager does not exist.";
+  if (managerLevel !== requiredManagerLevel) {
+    return `Reporting manager must be a ${requiredManagerLevel} user (selected user is ${managerLevel}).`;
+  }
+  return null;
+};
+
+// Walks reports_to_user_id upward from a user, returning their manager chain
+// ordered from immediate manager to the top (e.g. an L1's chain is
+// [L2manager, L3manager, L4manager, L5manager]). Used by ticket
+// escalation/visibility logic in later phases instead of manually-configured
+// approver-id arrays. Capped at 10 hops as a safety net against any cyclical
+// data slipping through validation.
+const getManagerChain = async (userId) => {
+  await ensureReportsToColumn();
+  const chain = [];
+  let currentId = userId;
+  for (let hop = 0; hop < 10; hop++) {
+    const result = await client.query(
+      `SELECT id, employee_id, full_name, level, reports_to_user_id
+       FROM users.user_details WHERE id = $1`,
+      [currentId]
+    );
+    const row = result.rows[0];
+    if (!row?.reports_to_user_id) break;
+    const managerResult = await client.query(
+      `SELECT id, employee_id, full_name, level FROM users.user_details WHERE id = $1`,
+      [row.reports_to_user_id]
+    );
+    const manager = managerResult.rows[0];
+    if (!manager) break;
+    chain.push(manager);
+    currentId = manager.id;
+  }
+  return chain;
+};
+
 /**
  * @swagger
  * /users:
@@ -81,23 +163,52 @@ const ensureUserLevelConstraintAllowsL4L5 = async () => {
 
 router.get('/', async (req, res, next) => {
   try {
-    
+    await ensureReportsToColumn();
     const result = await client.query(`
-      SELECT 
+      SELECT
         id,
         employee_id,
-        full_name, 
-        email, 
+        full_name,
+        email,
         phone,
         level,
         role,
         department,
         account_status,
-        created_at
+        created_at,
+        reports_to_user_id
       FROM users.user_details
       ORDER BY id
     `);
 
+    res.status(200).json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Onboarding/edit support: given the hierarchy level a user is being
+// assigned, returns only the users eligible to be their reporting manager
+// (i.e. active users at the level directly above) - so the frontend dropdown
+// can never offer a cross-level or same-level manager in the first place,
+// per the PDF's "Key Rule".
+router.get('/eligible-managers', async (req, res, next) => {
+  try {
+    await ensureReportsToColumn();
+    const level = normalizeUserLevel(req.query.level);
+    const managerLevel = LEVEL_ABOVE[level];
+    if (!managerLevel) {
+      // L5 (or an invalid level) has no level above it - nothing eligible.
+      return res.status(200).json([]);
+    }
+
+    const result = await client.query(
+      `SELECT id, employee_id, full_name, level
+       FROM users.user_details
+       WHERE level = $1 AND (account_status IS NULL OR account_status <> 'inactive')
+       ORDER BY full_name`,
+      [managerLevel]
+    );
     res.status(200).json(result.rows);
   } catch (error) {
     next(error);
@@ -203,6 +314,7 @@ router.get('/', async (req, res, next) => {
 router.post('/add-user', async (req, res, next) => {
   try {
     await ensureUserLevelConstraintAllowsL4L5();
+    await ensureReportsToColumn();
     const {
       first_name,
       last_name,
@@ -214,7 +326,8 @@ router.post('/add-user', async (req, res, next) => {
       designation,
       level,
       dob,
-      password
+      password,
+      reports_to_user_id
     } = req.body;
 
     if (
@@ -262,6 +375,13 @@ router.post('/add-user', async (req, res, next) => {
     const department_id = deptResult.rows[0].id;
     const department_name = deptResult.rows[0].name;
 
+    const normalizedLevel = normalizeUserLevel(level);
+    const reportingManagerError = await validateReportingManager(normalizedLevel, reports_to_user_id || null);
+    if (reportingManagerError) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ message: reportingManagerError });
+    }
+
     const password_hash = await bcrypt.hash(password, saltRounds);
     const full_name = `${first_name} ${last_name}`.trim();
 
@@ -269,10 +389,10 @@ router.post('/add-user', async (req, res, next) => {
       `INSERT INTO users.user_details
       (full_name, first_name, last_name, email, phone, password_hash,
       employee_id, role_id, role, department_id, department,
-      designation, level, dob)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      designation, level, dob, reports_to_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       RETURNING id, full_name, email, phone,
-                role, department, designation, level, dob, created_at`,
+                role, department, designation, level, dob, created_at, reports_to_user_id`,
       [
         full_name,
         first_name,
@@ -286,8 +406,9 @@ router.post('/add-user', async (req, res, next) => {
         department_id,
         department_name,
         designation || null,
-        normalizeUserLevel(level),
-        dob || null
+        normalizedLevel,
+        dob || null,
+        reports_to_user_id || null
       ]
     );
 
@@ -435,6 +556,7 @@ router.patch('/change-password/:id', async (req, res, next) => {
 router.patch('/:id', async (req, res, next) => {
   try {
     await ensureUserLevelConstraintAllowsL4L5();
+    await ensureReportsToColumn();
     const { id } = req.params;
     const {
       first_name,
@@ -443,7 +565,8 @@ router.patch('/:id', async (req, res, next) => {
       role,
       department,
       level,
-      dob
+      dob,
+      reports_to_user_id
     } = req.body;
 
     await client.query("BEGIN");
@@ -456,6 +579,21 @@ router.patch('/:id', async (req, res, next) => {
     if (!existingUser.rows.length) {
       await client.query("ROLLBACK");
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Only re-validate the reporting manager if either the level or the
+    // manager itself is actually changing on this request - editing
+    // unrelated fields (phone, role, ...) shouldn't force re-selecting a
+    // manager that was already valid.
+    if (level || reports_to_user_id !== undefined) {
+      const effectiveLevel = level ? normalizeUserLevel(level) : existingUser.rows[0].level;
+      const effectiveManagerId =
+        reports_to_user_id !== undefined ? reports_to_user_id || null : existingUser.rows[0].reports_to_user_id;
+      const reportingManagerError = await validateReportingManager(effectiveLevel, effectiveManagerId);
+      if (reportingManagerError) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ message: reportingManagerError });
+      }
     }
 
     let role_id = null;
@@ -495,6 +633,14 @@ router.patch('/:id', async (req, res, next) => {
       department_name = deptResult.rows[0].name;
     }
 
+    // reports_to_user_id needs to support being explicitly cleared (e.g. a
+    // user promoted to L5, which must have no manager) - COALESCE can't do
+    // that, since it treats a supplied null the same as "not provided", so
+    // this column is written unconditionally to whatever was already
+    // resolved above (either the new value or the untouched existing one).
+    const nextReportsToUserId =
+      reports_to_user_id !== undefined ? reports_to_user_id || null : existingUser.rows[0].reports_to_user_id;
+
     const updated = await client.query(
       `UPDATE users.user_details
       SET first_name = COALESCE($1, first_name),
@@ -505,10 +651,11 @@ router.patch('/:id', async (req, res, next) => {
           department_id = COALESCE($6, department_id),
           department = COALESCE($7, department),
           level = COALESCE($8, level),
-          dob = COALESCE($9, dob)
+          dob = COALESCE($9, dob),
+          reports_to_user_id = $11
       WHERE id = $10
       RETURNING id, full_name, email,
-                role, department, level, dob`,
+                role, department, level, dob, reports_to_user_id`,
       [
         first_name || null,
         last_name || null,
@@ -519,7 +666,8 @@ router.patch('/:id', async (req, res, next) => {
         department_name,
         level ? normalizeUserLevel(level) : null,
         dob || null,
-        id
+        id,
+        nextReportsToUserId
       ]
     );
 
@@ -887,7 +1035,8 @@ const readBulkUploadRows = (filePath, originalName) => {
  *
  *       Accepted columns (aliases in parentheses):
  *       - Required (effective): `first_name` (First Name, or Full Name), `email` (Email Address), `phone` (Mobile Number),
- *         `role` (Role Selection), `department` or `sub_department` (Sub Department)
+ *         `role` (Role Selection), `department` or `sub_department` (Sub Department), `reports_to_employee_id`
+ *         (required for every level except L5 - see Notes)
  *       - Optional: `last_name` (Last Name), `employee_id` (auto-generated from the name if omitted), `employee_type`
  *         (Employee Type), `department` (Department, stored as top_department when `sub_department` is also present),
  *         `designation`, `level` (Level), `dob`, `account_status`, `password` (Password)
@@ -897,6 +1046,10 @@ const readBulkUploadRows = (filePath, originalName) => {
  *       - `sub_department` (when present) is matched against rbac.departments; plain `department` is stored as top_department.
  *       - `employee_id` is auto-generated (name-derived letters + digits + special char, max 8 chars) when not supplied.
  *       - `level` is normalized to one of `L1`-`L5` (default `L1`).
+ *       - `reports_to_employee_id` must be the `employee_id` of an existing (or earlier-in-this-file) user whose level
+ *         is exactly one level above this row's level - e.g. an L2 row must reference an L3 user. Required for L1-L4;
+ *         must be blank for L5 (the top of the hierarchy has no manager). Rows are processed top-to-bottom in one
+ *         transaction, so a manager can be defined earlier in the same file as the people who report to them.
  *       - `account_status` is normalized to `Active` / `Inactive` (default `Active`).
  *       - Per-row `password` is used if provided, otherwise defaults to `Password@123`.
  *       - Duplicate emails are skipped (`ON CONFLICT (email) DO NOTHING`).
@@ -938,6 +1091,7 @@ const readBulkUploadRows = (filePath, originalName) => {
 router.post("/bulk-upload", upload.single("file"), async (req, res, next) => {
   try {
     await ensureUserLevelConstraintAllowsL4L5();
+    await ensureReportsToColumn();
     if (!req.file) {
       return res.status(400).json({ message: "Upload file is required" });
     }
@@ -989,6 +1143,16 @@ async function processUsers(data) {
       const employee_type = getBulkValue(row, ["employee_type", "employee type"]);
       const designation = getBulkValue(row, ["designation"]);
       const level = getBulkValue(row, ["level", "user_level"]);
+      const reports_to_employee_id = getBulkValue(row, [
+        "reports_to_employee_id",
+        "reports to employee id",
+        "reporting_manager_employee_id",
+        "reporting manager employee id",
+        "reporting_manager",
+        "reporting manager",
+        "manager_employee_id",
+        "manager employee id"
+      ]);
       const dob = getBulkValue(row, ["dob", "date_of_birth", "date of birth"]);
       const account_status = getBulkValue(row, ["account_status", "account status", "status"]);
       const rowPassword = getBulkValue(row, ["password"]);
@@ -1036,13 +1200,50 @@ async function processUsers(data) {
       const department_id = departmentResolved.id;
       const department_name = departmentResolved.name;
 
+      const normalizedLevel = normalizeUserLevel(level);
+      let reports_to_user_id = null;
+      if (normalizedLevel !== "L5") {
+        if (!reports_to_employee_id) {
+          throw createBulkUploadError(
+            `Missing required field in row ${rowNumber}: reports_to_employee_id (required for every level except L5)`,
+            { row: rowNumber, missing_fields: ["reports_to_employee_id"] }
+          );
+        }
+        // Resolved via a fresh SELECT rather than caching across rows, since
+        // an earlier row in this same upload may be the manager being
+        // referenced here - Postgres sees its own transaction's uncommitted
+        // inserts, so this correctly picks up managers created earlier in
+        // the same file.
+        const managerResult = await client.query(
+          `SELECT id FROM users.user_details WHERE employee_id = $1`,
+          [String(reports_to_employee_id).trim()]
+        );
+        const managerId = managerResult.rows[0]?.id;
+        if (!managerId) {
+          throw createBulkUploadError(
+            `Row ${rowNumber}: no user found with employee_id "${reports_to_employee_id}" for reports_to_employee_id`,
+            { row: rowNumber }
+          );
+        }
+        const reportingManagerError = await validateReportingManager(normalizedLevel, managerId);
+        if (reportingManagerError) {
+          throw createBulkUploadError(`Row ${rowNumber}: ${reportingManagerError}`, { row: rowNumber });
+        }
+        reports_to_user_id = managerId;
+      } else if (reports_to_employee_id) {
+        throw createBulkUploadError(
+          `Row ${rowNumber}: L5 users cannot have a reports_to_employee_id.`,
+          { row: rowNumber }
+        );
+      }
+
       const insertResult = await client.query(
         `INSERT INTO users.user_details
         (full_name, first_name, last_name, email, phone, password_hash,
         employee_id, role_id, role,
         department_id, department, top_department, employee_type,
-        designation, level, dob, account_status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        designation, level, dob, account_status, reports_to_user_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
         ON CONFLICT (email) DO NOTHING
         RETURNING id`,
         [
@@ -1060,9 +1261,10 @@ async function processUsers(data) {
           top_department || null,
           employee_type || null,
           designation || null,
-          normalizeUserLevel(level),
+          normalizedLevel,
           dob || null,
-          normalizeAccountStatus(account_status)
+          normalizeAccountStatus(account_status),
+          reports_to_user_id
         ]
       );
 
@@ -1133,3 +1335,5 @@ router.get("/export", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.getManagerChain = getManagerChain;
+module.exports.ensureReportsToColumn = ensureReportsToColumn;

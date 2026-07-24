@@ -3,9 +3,9 @@ import { useRouter } from "next/router";
 import { IoTimeSharp } from "react-icons/io5";
 import { BsThreeDotsVertical } from "react-icons/bs";
 import styles from "../../styles/SupervisorDetails.module.css";
+import Pagination from "@/components/Pagination";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  acknowledgeTicket,
   approveTicket,
   fetchTicketDetails,
   rejectTicket,
@@ -80,6 +80,31 @@ const buildPreviewTicket = (preview) => {
 
 const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK;
 
+// Acknowledgement tickets are raised against a specific submitted_notebooks row (stamped into
+// violation_details.submitted_notebook_id when the ticket is created - see
+// submittedNotebooks.routes.js). Pulling it back out here is what lets the redirect to
+// Submitted Notebooks open that exact notebook's card instead of just the list.
+const getTicketNotebookId = (ticket) => {
+  if (!ticket) return null;
+  const raw = ticket.violation_details;
+  const parsed = typeof raw === "string"
+    ? (() => {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })()
+    : raw;
+
+  return (
+    parsed?.submitted_notebook_id ??
+    ticket?.submitted_notebook_id ??
+    ticket?.submittedNotebookId ??
+    null
+  );
+};
+
 export default function SupervisorDetails() {
   const router = useRouter();
   const { ticketId, ticketType } = router.query;
@@ -91,6 +116,7 @@ export default function SupervisorDetails() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
+  const [timelinePage, setTimelinePage] = useState(1);
   const [l2Preview, setL2Preview] = useState(null);
   const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -99,6 +125,13 @@ export default function SupervisorDetails() {
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
   const requestedTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
   const normalizedRequestedTicketId = normalizeTicketId(requestedTicketId);
+  const requestedTicketType = Array.isArray(ticketType) ? ticketType[0] : ticketType;
+  // The L2 preview endpoint returns raw submitted-notebook fields, not the
+  // actual_value/threshold_value shape review tickets use - fetching/using it for an
+  // Acknowledgement ticket overwrites the correct dashboard record with mismatched data,
+  // which both renders a stray object as a table cell and flips the UI to the Accept/Reject
+  // (non-acknowledgement) action layout a moment after the page first loads correctly.
+  const isKnownAcknowledgementTicket = String(requestedTicketType || "").toLowerCase() === "acknowledgement";
 
   const dashboardTicket = useMemo(() => {
     if (!requestedTicketId || !Array.isArray(tickets)) return null;
@@ -109,15 +142,16 @@ export default function SupervisorDetails() {
   }, [requestedTicketId, tickets]);
 
   const ticket = useMemo(() => {
-    const previewSource = buildPreviewTicket(l2Preview);
+    const previewSource = isKnownAcknowledgementTicket ? null : buildPreviewTicket(l2Preview);
     const previewMatches =
       previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
+      !isKnownAcknowledgementTicket &&
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
     const source = previewMatches ? previewSource : detailMatches ? detailSource : dashboardTicket;
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, isKnownAcknowledgementTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
@@ -125,13 +159,14 @@ export default function SupervisorDetails() {
     if (!l2PreviewLoaded) return;
 
     if (
+      !isKnownAcknowledgementTicket &&
       !l2Preview &&
       !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dashboardTicket, dispatch, isKnownAcknowledgementTicket, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   useEffect(() => {
     let mounted = true;
@@ -164,7 +199,10 @@ export default function SupervisorDetails() {
   useEffect(() => {
     let mounted = true;
     const loadPreview = async () => {
-      if (!requestedTicketId) return;
+      if (!requestedTicketId || isKnownAcknowledgementTicket) {
+        if (mounted) setL2PreviewLoaded(true);
+        return;
+      }
       setL2PreviewLoaded(false);
       try {
         const response = await fetchL2TicketPreviewApi(requestedTicketId);
@@ -195,7 +233,7 @@ export default function SupervisorDetails() {
     return () => {
       mounted = false;
     };
-  }, [requestedTicketId]);
+  }, [requestedTicketId, isKnownAcknowledgementTicket]);
 
   useEffect(() => {
     if (!showMoreMenu) return undefined;
@@ -234,14 +272,18 @@ export default function SupervisorDetails() {
     }
   };
 
-  const handleAcknowledge = async () => {
-    try {
-      await dispatch(acknowledgeTicket(ticket.ticket_id)).unwrap();
-      setStoredTicketStatus(ticket.ticket_id, "Closed");
-      router.push("/supervisordashboard");
-    } catch (err) {
-      alert(err);
-    }
+  // Acknowledging a notebook ticket doesn't happen from this detail view anymore - it only
+  // hands off to Submitted Notebooks, where the reviewer must actually open the notebook and
+  // click Acknowledge there. That page owns the real acknowledgeSubmittedNotebookApi call.
+  // The notebook id is passed through so that page can auto-open the matching card/preview
+  // instead of dropping the reviewer on the bare list.
+  const handleAcknowledge = () => {
+    const notebookId = getTicketNotebookId(ticket);
+    router.push(
+      notebookId
+        ? `/submitted-notebooks?openNotebookId=${encodeURIComponent(notebookId)}`
+        : "/submitted-notebooks"
+    );
   };
 
   const handleCopyTicketId = async () => {
@@ -404,6 +446,23 @@ export default function SupervisorDetails() {
     baseTimeline.push(l2CommentEvent);
     return baseTimeline;
   })();
+
+  const displayedTimeline = timelineWithL2Comment.length
+    ? timelineWithL2Comment
+    : [{
+        time: formatDateTime(ticket.created_at),
+        title: "Created",
+        description: `Ticket created for ${ticket.user_name || "Operator"}`,
+        icon: "/created.png",
+        alt: "Created",
+      }];
+  const TIMELINE_PAGE_SIZE = 10;
+  const timelineTotalPages = Math.max(1, Math.ceil(displayedTimeline.length / TIMELINE_PAGE_SIZE));
+  const safeTimelinePage = Math.min(timelinePage, timelineTotalPages);
+  const paginatedTimeline = displayedTimeline.slice(
+    (safeTimelinePage - 1) * TIMELINE_PAGE_SIZE,
+    safeTimelinePage * TIMELINE_PAGE_SIZE
+  );
 
   return (
     <div>
@@ -601,13 +660,7 @@ export default function SupervisorDetails() {
               <h3>Activity Timeline</h3>
             </div>
 
-            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
-              time: formatDateTime(ticket.created_at),
-              title: "Created",
-              description: `Ticket created for ${ticket.user_name || "Operator"}`,
-              icon: "/created.png",
-              alt: "Created",
-            }]).map((item, index) => (
+            {paginatedTimeline.map((item) => (
               <div className={styles.item} key={item.title}>
                 <span className={styles.itemTime}>{item.time}</span>
                 <div className={styles.itemContent}>
@@ -619,6 +672,7 @@ export default function SupervisorDetails() {
                 </div>
               </div>
             ))}
+            <Pagination page={safeTimelinePage} totalPages={timelineTotalPages} onPageChange={setTimelinePage} />
           </div>
 
           <div className={styles.resolution}>
@@ -739,13 +793,7 @@ export default function SupervisorDetails() {
           </div>
 
           <div className={styles.timelineWrap}>
-            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
-              time: formatDateTime(ticket.created_at),
-              title: "Created",
-              description: `Ticket created for ${ticket.user_name || "Operator"}`,
-              icon: "/created.png",
-              alt: "Created",
-            }]).map((item) => (
+            {paginatedTimeline.map((item) => (
               <div className={styles.timelineItem} key={item.title}>
                 <span className={styles.time}>{item.time}</span>
                 <div className={styles.iconCol}>
@@ -759,6 +807,7 @@ export default function SupervisorDetails() {
               </div>
             ))}
           </div>
+          <Pagination page={safeTimelinePage} totalPages={timelineTotalPages} onPageChange={setTimelinePage} />
         </div>
 
         <div className={styles.resolutionCard}>

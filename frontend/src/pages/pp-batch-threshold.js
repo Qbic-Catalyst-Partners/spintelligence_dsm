@@ -1,5 +1,5 @@
-import PPThresholdPage from "@/views/thresholds/PPThresholdPage";
+import PPNotebookBatchThresholdPage from "@/views/thresholds/PPNotebookBatchThresholdPage";
 
 export default function PPThresholdRoute() {
-  return <PPThresholdPage />;
+  return <PPNotebookBatchThresholdPage />;
 }

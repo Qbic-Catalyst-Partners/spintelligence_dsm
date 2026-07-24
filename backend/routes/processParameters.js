@@ -241,8 +241,186 @@ const refreshProcessParameterStatus = async (entry_id) => {
     `UPDATE process_parameters.master SET status = 'pending_approval', updated_at = NOW() WHERE entry_id = $1`,
     [entry_id]
   );
+  await createPpApprovalTicket(entry_id);
   return 'pending_approval';
 };
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: "PP Approval" is one of the
+// six threshold types - once all departments finish, an actual TAT-tracked
+// approval task is raised on L4, escalating to L5 if L4 doesn't act in
+// time. Previously PP Approvals was just a static queue with no deadline or
+// escalation at all. PP/Wheel Change Approval aren't assigned to one named
+// L4 user (unlike the other threshold types) - this app's access model
+// already treats "any current L4/L5" as eligible reviewers
+// (isPpApproverUser/isWheelChangeApproverUser), so the ticket is raised
+// against whichever users currently hold that level, resolved fresh each
+// time rather than a stored assignment.
+const PP_APPROVAL_TAT_HOURS = Number(process.env.PP_APPROVAL_TAT_HOURS) > 0
+  ? Number(process.env.PP_APPROVAL_TAT_HOURS)
+  : 24;
+
+const getUsersAtLevel = async (level) => {
+  const result = await client.query(`SELECT id FROM users.user_details WHERE level = $1`, [level]);
+  return result.rows.map((row) => row.id);
+};
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf, "PP Approval & Wheel Change
+// Approval Configuration": "L4 User: Select the specific L4 Department Head
+// responsible... TAT: configurable." This table holds that per-instance
+// config; when no specific L4 user is configured, ticket creation falls back
+// to the previous "any current L4 user" behavior so existing setups keep working.
+const ensurePpApprovalConfigTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.pp_approval_config (
+      config_key TEXT PRIMARY KEY DEFAULT 'global',
+      l4_user_id INTEGER NULL,
+      tat_hours INTEGER NOT NULL DEFAULT 24,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+};
+
+const getPpApprovalConfig = async () => {
+  await ensurePpApprovalConfigTable();
+  const result = await client.query(
+    `SELECT * FROM ticketing_system.pp_approval_config WHERE config_key = 'global'`
+  );
+  return result.rows[0] || { config_key: 'global', l4_user_id: null, tat_hours: PP_APPROVAL_TAT_HOURS, updated_at: null };
+};
+
+const ensureApprovalTicketSchema = async () => {
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+      ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
+      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+};
+
+const createPpApprovalTicket = async (entry_id) => {
+  await ensureApprovalTicketSchema();
+
+  const existing = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'
+     LIMIT 1`,
+    [entry_id]
+  );
+  if (existing.rows[0]?.ticket_id) return existing.rows[0].ticket_id;
+
+  const approvalConfig = await getPpApprovalConfig();
+  const l4UserIds = approvalConfig.l4_user_id ? [approvalConfig.l4_user_id] : await getUsersAtLevel('L4');
+  const tatHours = Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS;
+  const l4TatDueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000).toISOString();
+  const violationDetails = {
+    category: 'PENDING_APPROVAL',
+    ticket_type: 'PP_APPROVAL',
+    entry_id,
+    message: `PP id ${entry_id} has completed all departments and is awaiting L4 approval.`
+  };
+
+  const ticket = await client.query(
+    `INSERT INTO ticketing_system.operator_tickets
+     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+      severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+      violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+     VALUES (
+       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+       $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       'High', 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+       $2::jsonb, $3::int[], 'L4', $4
+     )
+     RETURNING ticket_id`,
+    [entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt]
+  );
+  return ticket.rows[0]?.ticket_id || null;
+};
+
+const closePpApprovalTicket = async (entry_id) => {
+  await ensureApprovalTicketSchema();
+  await client.query(
+    `UPDATE ticketing_system.operator_tickets
+     SET status = 'Closed'
+     WHERE ticket_type = 'PP_APPROVAL' AND (violation_details->>'entry_id') = $1 AND status <> 'Closed'`,
+    [entry_id]
+  );
+};
+
+// L4 -> L5 escalation once the L4 TAT elapses without action - L5 is the
+// final escalation authority per the PDF, so there's nowhere further to go;
+// this just makes the ticket visible to L5 and marks it as such.
+const runPpApprovalTatCheck = async () => {
+  await ensureApprovalTicketSchema();
+
+  const dueTickets = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'PP_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()
+       AND status <> 'Closed'`
+  );
+  if (!dueTickets.rowCount) return [];
+
+  const l5UserIds = await getUsersAtLevel('L5');
+  const escalated = [];
+  for (const row of dueTickets.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET tat_current_level = 'L5', approval_l5_user_ids = $1, l5_tat_due_at = NOW()
+       WHERE ticket_id = $2
+       RETURNING *`,
+      [l5UserIds, row.ticket_id]
+    );
+    if (result.rows[0]) escalated.push(result.rows[0]);
+  }
+  return escalated;
+};
+
+router.get('/approval-config', async (req, res, next) => {
+  try {
+    const config = await getPpApprovalConfig();
+    return res.status(200).json({ config });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/approval-config', async (req, res, next) => {
+  try {
+    await ensurePpApprovalConfigTable();
+
+    const l4UserId = req.body?.l4_user_id ? Number(req.body.l4_user_id) : null;
+    if (req.body?.l4_user_id !== undefined && req.body?.l4_user_id !== null && req.body?.l4_user_id !== '' && !(Number.isInteger(l4UserId) && l4UserId > 0)) {
+      return res.status(400).json({ message: 'l4_user_id must be a positive integer' });
+    }
+
+    const tatHours = Number(req.body?.tat_hours);
+    if (!Number.isFinite(tatHours) || tatHours <= 0) {
+      return res.status(400).json({ message: 'tat_hours must be a positive integer' });
+    }
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.pp_approval_config (config_key, l4_user_id, tat_hours, updated_at)
+       VALUES ('global', $1, $2, NOW())
+       ON CONFLICT (config_key)
+       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, tat_hours = EXCLUDED.tat_hours, updated_at = NOW()
+       RETURNING *`,
+      [l4UserId, tatHours]
+    );
+
+    return res.status(200).json({ message: 'PP Approval configuration saved successfully', config: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/next-id', async (req, res, next) => {
   try {
@@ -457,6 +635,7 @@ router.post('/:entry_id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' });
     }
+    await closePpApprovalTicket(entry_id);
 
     res.status(200).json({ message: 'PP id approved — now Active', data: result.rows[0] });
   } catch (error) {
@@ -486,6 +665,7 @@ router.post('/:entry_id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(409).json({ message: 'This PP id is not awaiting approval (already actioned, or not yet complete).' });
     }
+    await closePpApprovalTicket(entry_id);
 
     res.status(200).json({ message: 'PP id rejected — back to In Progress', data: result.rows[0] });
   } catch (error) {
@@ -497,3 +677,8 @@ module.exports = router;
 module.exports.PP_DEPARTMENTS = PP_DEPARTMENTS;
 module.exports.ensureProcessParameterMasterTable = ensureProcessParameterMasterTable;
 module.exports.refreshProcessParameterStatus = refreshProcessParameterStatus;
+module.exports.runPpApprovalTatCheck = runPpApprovalTatCheck;
+module.exports.createPpApprovalTicket = createPpApprovalTicket;
+module.exports.closePpApprovalTicket = closePpApprovalTicket;
+module.exports.ensurePpApprovalConfigTable = ensurePpApprovalConfigTable;
+module.exports.getPpApprovalConfig = getPpApprovalConfig;

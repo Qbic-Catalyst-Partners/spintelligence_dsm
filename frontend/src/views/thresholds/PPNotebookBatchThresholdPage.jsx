@@ -6,6 +6,7 @@ import { FiClock } from "react-icons/fi";
 import {
   fetchPpNotebookBatchConfigAPI,
   savePpNotebookBatchConfigAPI,
+  savePpBatchSubDepartmentTatAPI,
 } from "@/apis/ppNotebookBatchConfigApi";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
@@ -178,6 +179,10 @@ export default function PPNotebookBatchThresholdPage() {
   const [error, setError] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [subDepartments, setSubDepartments] = useState([]);
+  const [subDepartmentTatRows, setSubDepartmentTatRows] = useState([]);
+  const [savingSubDepartmentTat, setSavingSubDepartmentTat] = useState(false);
+  const [subDepartmentTatMessage, setSubDepartmentTatMessage] = useState("");
+  const [subDepartmentTatError, setSubDepartmentTatError] = useState("");
 
   const l1Options = useMemo(() => buildUserOptions(users, "L1"), [users]);
   const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
@@ -206,9 +211,15 @@ export default function PPNotebookBatchThresholdPage() {
     if (!canAccessPage) return;
     setLoading(true);
     try {
-      const { config, subDepartments: nextSubDepartments } = await fetchPpNotebookBatchConfigAPI();
+      const { config, subDepartments: nextSubDepartments, subDepartmentTat } = await fetchPpNotebookBatchConfigAPI();
       populateFromConfig(config);
       setSubDepartments(nextSubDepartments);
+      setSubDepartmentTatRows(
+        subDepartmentTat.map((row) => ({
+          subDepartment: row.sub_department,
+          completionThresholdHours: String(row.completion_threshold_hours ?? ""),
+        }))
+      );
       setError("");
     } catch (err) {
       setError(err?.message || "Unable to load the PP batch completion threshold.");
@@ -296,6 +307,40 @@ export default function PPNotebookBatchThresholdPage() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const updateSubDepartmentTatRow = (subDepartment, value) => {
+    setSubDepartmentTatRows((current) =>
+      current.map((row) => (row.subDepartment === subDepartment ? { ...row, completionThresholdHours: value } : row))
+    );
+    setSubDepartmentTatMessage("");
+    setSubDepartmentTatError("");
+  };
+
+  const handleSaveSubDepartmentTat = async (event) => {
+    event.preventDefault();
+    setSavingSubDepartmentTat(true);
+    setSubDepartmentTatMessage("");
+    setSubDepartmentTatError("");
+
+    try {
+      const rows = subDepartmentTatRows.map((row) => {
+        const hours = Number(row.completionThresholdHours);
+        if (!Number.isFinite(hours) || hours <= 0) {
+          throw new Error(`Please enter a TAT greater than 0 hours for ${row.subDepartment}.`);
+        }
+        return { sub_department: row.subDepartment, completion_threshold_hours: hours };
+      });
+
+      const response = await savePpBatchSubDepartmentTatAPI(rows);
+      setSubDepartmentTatMessage(response?.message || "Sub-department TAT saved successfully.");
+    } catch (err) {
+      setSubDepartmentTatError(
+        err?.response?.data?.message || err?.response?.data?.error || err?.message || "Failed to save sub-department TAT."
+      );
+    } finally {
+      setSavingSubDepartmentTat(false);
     }
   };
 
@@ -458,6 +503,66 @@ export default function PPNotebookBatchThresholdPage() {
 
             {message ? <p className={styles.successMessage}>{message}</p> : null}
             {error ? <p className={styles.errorMessage}>{error}</p> : null}
+          </section>
+        </form>
+
+        <form onSubmit={handleSaveSubDepartmentTat}>
+          <section className={`${styles.card} ${styles.existingThresholdCard}`}>
+            <div className={styles.sectionHeader}>
+              <h2>Sub-Department TAT</h2>
+            </div>
+            <p style={{ color: "#7b89a0", fontSize: "12px", marginTop: "-8px" }}>
+              Each participating sub-department gets its own completion TAT, timed from the first
+              department&apos;s PP submission. Falls back to the global Completion Threshold above if unset.
+            </p>
+            <div className={styles.tableWrap}>
+              <table className={`${styles.table} ${styles.existingThresholdTable}`}>
+                <thead>
+                  <tr>
+                    <th>Sub-Department</th>
+                    <th>Completion TAT (Hours)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={2}>Loading...</td>
+                    </tr>
+                  ) : !subDepartmentTatRows.length ? (
+                    <tr>
+                      <td colSpan={2}>No sub-departments found.</td>
+                    </tr>
+                  ) : (
+                    subDepartmentTatRows.map((row) => (
+                      <tr key={row.subDepartment}>
+                        <td>{row.subDepartment}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={row.completionThresholdHours}
+                            onChange={(event) => updateSubDepartmentTatRow(row.subDepartment, event.target.value)}
+                            style={{ width: "100px" }}
+                          />
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className={styles.formFooter}>
+              <div className={styles.actionButtons}>
+                <button type="submit" className={styles.saveButton} disabled={savingSubDepartmentTat || loading}>
+                  {savingSubDepartmentTat ? "Saving..." : "Save Sub-Department TAT"}
+                </button>
+              </div>
+            </div>
+
+            {subDepartmentTatMessage ? <p className={styles.successMessage}>{subDepartmentTatMessage}</p> : null}
+            {subDepartmentTatError ? <p className={styles.errorMessage}>{subDepartmentTatError}</p> : null}
           </section>
         </form>
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import styles from "../../styles/UmAddUser.module.css";
 import { useRouter } from "next/router";
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
+import { fetchEligibleManagersAPI } from "@/apis/userApi";
 
 // ICONS
 import { IoPersonSharp } from "react-icons/io5";
@@ -18,6 +19,8 @@ import {
   addUser,
   clearActionState,
 } from "../../store/slices/userSlice";
+
+const LEVEL_ABOVE_LABEL = { L1: "L2", L2: "L3", L3: "L4", L4: "L5" };
 
 export default function UmAddUser() {
   const dispatch = useDispatch();
@@ -41,13 +44,43 @@ export default function UmAddUser() {
     role: "",
     department: "",
     level: "",
+    reports_to_user_id: "",
   });
+  const [eligibleManagers, setEligibleManagers] = useState([]);
+  const [loadingManagers, setLoadingManagers] = useState(false);
 
   // FETCH DROPDOWN DATA
   useEffect(() => {
     dispatch(fetchRoles());
     dispatch(fetchDepartments());
   }, [dispatch]);
+
+  // Every level except L5 requires a reporting manager from the level
+  // directly above (see backend GET /users/eligible-managers) - refetch the
+  // eligible pool whenever the selected level changes, and clear out
+  // whatever manager was previously picked since it may no longer be valid
+  // for the new level.
+  useEffect(() => {
+    if (!formData.level || formData.level === "L5") {
+      setEligibleManagers([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingManagers(true);
+    fetchEligibleManagersAPI(formData.level)
+      .then((managers) => {
+        if (!cancelled) setEligibleManagers(managers);
+      })
+      .catch(() => {
+        if (!cancelled) setEligibleManagers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingManagers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.level]);
 
   // SUCCESS REDIRECT
   useEffect(() => {
@@ -67,7 +100,14 @@ export default function UmAddUser() {
 
   // HANDLE INPUT
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+      // A manager valid for the old level may not be valid for the new one -
+      // clear it so a stale/mismatched selection can't slip through.
+      ...(name === "level" ? { reports_to_user_id: "" } : {}),
+    }));
 
     if (localError) setLocalError("");
     if (error) dispatch(clearActionState());
@@ -119,16 +159,21 @@ export default function UmAddUser() {
     e.preventDefault();
 
     const missingFieldNames = Object.keys(REQUIRED_FIELD_LABELS).filter((field) => !formData[field]);
+    // L5 is the top of the hierarchy and has no manager; every other level
+    // requires one (see backend validateReportingManager).
+    const managerMissing = formData.level && formData.level !== "L5" && !formData.reports_to_user_id;
     const missingFields = {};
     missingFieldNames.forEach((field) => {
       missingFields[field] = true;
     });
+    if (managerMissing) missingFields.reports_to_user_id = true;
     if (!password) missingFields.password = true;
     setFieldErrors(missingFields);
 
-    if (missingFieldNames.length || !password) {
+    if (missingFieldNames.length || managerMissing || !password) {
       const missingLabels = [
         ...missingFieldNames.map((field) => REQUIRED_FIELD_LABELS[field]),
+        managerMissing && "Reporting Manager",
         !password && "Password",
       ].filter(Boolean);
       emitGlobalFailureModal({
@@ -293,6 +338,28 @@ export default function UmAddUser() {
                   <option value="L5">L5</option>
                 </select>
               </div>
+
+              {formData.level && formData.level !== "L5" ? (
+                <div className={styles.formGroup}>
+                  <label>Reporting Manager <span>*</span></label>
+                  <select
+                    name="reports_to_user_id"
+                    value={formData.reports_to_user_id}
+                    onChange={handleChange}
+                    className={fieldErrors.reports_to_user_id ? styles.inputError : ""}
+                    disabled={loadingManagers}
+                  >
+                    <option value="">
+                      {loadingManagers ? "Loading..." : `Select ${LEVEL_ABOVE_LABEL[formData.level]} manager`}
+                    </option>
+                    {eligibleManagers.map((manager) => (
+                      <option key={manager.id} value={manager.id}>
+                        {manager.full_name} ({manager.employee_id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
           </div>
 

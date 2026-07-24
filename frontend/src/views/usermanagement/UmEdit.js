@@ -15,7 +15,9 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchRoles, fetchDepartments, clearActionState } from "../../store/slices/userSlice";
 
 // API
-import { fetchUsersAPI, updateUserAPI } from "../../apis/userApi";
+import { fetchUsersAPI, updateUserAPI, fetchEligibleManagersAPI } from "../../apis/userApi";
+
+const LEVEL_ABOVE_LABEL = { L1: "L2", L2: "L3", L3: "L4", L4: "L5" };
 
 export default function EditUser() {
   const router = useRouter();
@@ -38,13 +40,38 @@ export default function EditUser() {
     role: "",
     department: "",
     level: "",
+    reports_to_user_id: "",
   });
+  const [eligibleManagers, setEligibleManagers] = useState([]);
+  const [loadingManagers, setLoadingManagers] = useState(false);
 
   // FETCH ROLES
   useEffect(() => {
     dispatch(fetchRoles());
     dispatch(fetchDepartments());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (!formData.level || formData.level === "L5") {
+      setEligibleManagers([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingManagers(true);
+    fetchEligibleManagersAPI(formData.level)
+      .then((managers) => {
+        if (!cancelled) setEligibleManagers(managers);
+      })
+      .catch(() => {
+        if (!cancelled) setEligibleManagers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingManagers(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.level]);
 
   // FETCH USER DATA
   useEffect(() => {
@@ -68,6 +95,7 @@ export default function EditUser() {
           role: user.role || "",
           department: user.department || "",
           level: user.level || "",
+          reports_to_user_id: user.reports_to_user_id || "",
         });
       } catch (err) {
         console.error(err);
@@ -93,7 +121,16 @@ export default function EditUser() {
 
   // HANDLE INPUT
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    // This only ever fires from the actual <select>/<input> onChange, never
+    // from the initial fetch-and-populate effect above (which calls
+    // setFormData directly) - so a "level" change here is always a real,
+    // user-driven change, safe to reset the manager for.
+    setFormData((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === "level" ? { reports_to_user_id: "" } : {}),
+    }));
     if (localError) setLocalError("");
     if (error) dispatch(clearActionState());
   };
@@ -122,6 +159,11 @@ export default function EditUser() {
       return;
     }
 
+    if (formData.level !== "L5" && !formData.reports_to_user_id) {
+      setLocalError(`A reporting manager (${LEVEL_ABOVE_LABEL[formData.level]}) is required.`);
+      return;
+    }
+
     // New Password is optional here (blank keeps the existing password) — only enforce the
     // requirements when the admin actually typed a replacement.
     if (password) {
@@ -146,6 +188,7 @@ export default function EditUser() {
         role: formData.role,
         department: formData.department,
         level: formData.level,
+        reports_to_user_id: formData.level === "L5" ? null : formData.reports_to_user_id,
       };
 
       await updateUserAPI(id, updatedData);
@@ -276,6 +319,27 @@ export default function EditUser() {
                   <option value="L5">L5</option>
                 </select>
               </div>
+
+              {formData.level && formData.level !== "L5" ? (
+                <div className={styles.formGroup}>
+                  <label>Reporting Manager <span>*</span></label>
+                  <select
+                    name="reports_to_user_id"
+                    value={formData.reports_to_user_id}
+                    onChange={handleChange}
+                    disabled={loadingManagers}
+                  >
+                    <option value="">
+                      {loadingManagers ? "Loading..." : `Select ${LEVEL_ABOVE_LABEL[formData.level]} manager`}
+                    </option>
+                    {eligibleManagers.map((manager) => (
+                      <option key={manager.id} value={manager.id}>
+                        {manager.full_name} ({manager.employee_id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
             </div>
           </div>
 

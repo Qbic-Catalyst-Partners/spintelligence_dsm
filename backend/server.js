@@ -371,7 +371,9 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets } = require('./routes/submittedNotebooks.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
+const processParametersRoutes = require('./routes/processParameters');
+const spinningRoutes = require('./routes/spinning');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
 const ocrMachineRouter = require('./routes/ocrMachine.routes');
 
@@ -557,5 +559,66 @@ const startSubmittedNotebookAckWorker = () => {
 };
 
 startSubmittedNotebookAckWorker();
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: every threshold's ticket
+// generation/escalation is "automatic ... requiring no manual intervention
+// at any level." Before this, PP Batch Incomplete and Submission Frequency
+// only ever ran when their API routes were hit manually - nothing scheduled
+// them. This worker runs all three (PP batch detection+escalation,
+// submission-frequency detection, submission-frequency TAT escalation) on
+// the same timer as the acknowledgement worker above.
+const startThresholdTicketWorker = () => {
+  const intervalMs = Number(process.env.THRESHOLD_TICKET_WORKER_INTERVAL_MS || 15 * 60 * 1000);
+  const run = async () => {
+    await db.initPromise.catch(() => {});
+
+    try {
+      const { created } = await runPpBatchCompletionCheck();
+      if (created.length) {
+        console.log(`[pp-batch] generated ${created.length} incomplete-batch ticket(s)`);
+      }
+    } catch (error) {
+      console.warn('[pp-batch] worker skipped:', error.message);
+    }
+
+    try {
+      const created = await operatorTicketRoutes.runSubmissionFrequencyCheck();
+      if (created.length) {
+        console.log(`[submission-frequency] generated ${created.length} missed-frequency ticket(s)`);
+      }
+    } catch (error) {
+      console.warn('[submission-frequency] detection worker skipped:', error.message);
+    }
+
+    try {
+      await operatorTicketRoutes.runSubmissionFrequencyTatCheck();
+    } catch (error) {
+      console.warn('[submission-frequency] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const escalated = await processParametersRoutes.runPpApprovalTatCheck();
+      if (escalated.length) {
+        console.log(`[pp-approval] escalated ${escalated.length} ticket(s) to L5`);
+      }
+    } catch (error) {
+      console.warn('[pp-approval] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const escalated = await spinningRoutes.runWheelChangeApprovalTatCheck();
+      if (escalated.length) {
+        console.log(`[wheel-change-approval] escalated ${escalated.length} ticket(s) to L5`);
+      }
+    } catch (error) {
+      console.warn('[wheel-change-approval] TAT worker skipped:', error.message);
+    }
+  };
+
+  setTimeout(run, 8000);
+  setInterval(run, intervalMs);
+};
+
+startThresholdTicketWorker();
 
 

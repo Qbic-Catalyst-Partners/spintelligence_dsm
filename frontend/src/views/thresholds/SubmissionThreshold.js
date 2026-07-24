@@ -767,6 +767,7 @@ export default function SubmissionThreshold({ standalone = true, editItem = null
           is_active: rule.isActive,
           approval_l1: l1Ids.length ? l1Ids.join(", ") : selectedL1.join(", "),
           approval_l1_name: l1Names.length ? l1Names.join(", ") : selectedL1.join(", "),
+          tracked_l1_user_ids: l1Ids,
           l1_tat_hours: tatValueToHours(rule.approvalL1Tat),
           approval_l2: l2Ids.length ? l2Ids.join(", ") : selectedL2.join(", "),
           approval_l2_name: l2Names.length ? l2Names.join(", ") : selectedL2.join(", "),
