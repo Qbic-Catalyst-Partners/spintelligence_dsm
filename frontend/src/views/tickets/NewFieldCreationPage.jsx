@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar } from "react-icons/fi";
 import {
     createNotebookCustomFieldApi,
+    deleteNotebookCustomFieldApi,
     fetchNotebookCustomFieldsApi,
     toggleNotebookCustomFieldApi,
 } from "@/apis/notebookCustomFieldsApi";
@@ -235,6 +236,8 @@ const NewFieldCreationPage = () => {
     const [isLoadingExisting, setIsLoadingExisting] = useState(false);
     const [existingError, setExistingError] = useState("");
     const [togglingId, setTogglingId] = useState(null);
+    const [fieldPendingDelete, setFieldPendingDelete] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
 
     const notebookOptions = useMemo(
         () => NOTEBOOKS_BY_SUB_DEPARTMENT[filters.subDepartment] || [],
@@ -333,6 +336,22 @@ const NewFieldCreationPage = () => {
         }
     };
 
+    const handleCancelDelete = () => {
+        setFieldPendingDelete(null);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!fieldPendingDelete) return;
+        setDeletingId(fieldPendingDelete.id);
+        try {
+            await deleteNotebookCustomFieldApi(fieldPendingDelete.id);
+            setFieldPendingDelete(null);
+            await loadExistingFields();
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
     const handleDropdownOptionChange = (index, value) => {
         setDropdownOptions((current) => current.map((item, i) => (i === index ? value : item)));
     };
@@ -379,6 +398,15 @@ const NewFieldCreationPage = () => {
                                 disabled={togglingId === field.id}
                                 aria-label={field.is_active ? "Deactivate field" : "Activate field"}
                             />
+                            <button
+                                type="button"
+                                className={styles.deleteButton}
+                                onClick={() => setFieldPendingDelete(field)}
+                                disabled={deletingId === field.id}
+                                aria-label="Delete field"
+                            >
+                                Delete
+                            </button>
                         </span>
                     </div>
                 ))}
