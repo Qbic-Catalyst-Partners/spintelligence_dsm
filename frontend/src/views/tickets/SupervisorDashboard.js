@@ -6,13 +6,10 @@ import { fetchSupervisorTickets } from "../../store/slices/supervisorSlice";
 import Pagination from "@/components/Pagination";
 import { FiCalendar, FiX } from "react-icons/fi";
 import { MdFilterList } from "react-icons/md";
-import { updateOperatorTicketStatus, getProcessParameterTickets } from "../../apis/operatorApi";
-import { acknowledgeTicketApi } from "../../apis/supervisorApi";
+import { getProcessParameterTickets, fetchL2ApprovalQueueApi } from "../../apis/operatorApi";
 import {
   applyStoredTicketStatuses,
   getStatusClassKey,
-  getOperatorStatusLabel,
-  getOperatorStatusOptions,
   getSupervisorStatusLabel,
   isSupervisorVisibleTicket,
   SUPERVISOR_VISIBLE_STATUS_OPTIONS,
@@ -167,7 +164,7 @@ const getTicketTypeLabel = (ticket) => {
   return "Value";
 };
 
-// Deterministic per-ticket seed so placeholder resolution/ownership figures stay
+// Deterministic per-ticket seed so placeholder ownership figures stay
 // stable across re-renders instead of reshuffling on every fetch.
 const hashTicketId = (value) => {
   const str = String(value || "");
@@ -185,32 +182,46 @@ const minutesToClock = (totalMinutes) => {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 };
 
-// Real defined/actual resolution timers aren't tracked in the ticket data model yet -
-// these are display-only placeholders derived from the ticket id so the merged table
-// layout can be previewed before that data exists.
+const diffMinutes = (fromValue, toValue) => {
+  const from = fromValue ? new Date(fromValue) : null;
+  const to = toValue ? new Date(toValue) : null;
+  if (!from || Number.isNaN(from.getTime()) || !to || Number.isNaN(to.getTime())) return null;
+  return (to.getTime() - from.getTime()) / 60000;
+};
+
+// TAT due-at for the ticket's current escalation level - the "Defined Res Time"
+// window it was given, measured from creation.
+const getCurrentLevelDueAt = (ticket) => {
+  const level = String(ticket?.tat_current_level || ticket?.tatCurrentLevel || "L1").toUpperCase();
+  return (
+    {
+      L1: ticket?.l1_tat_due_at,
+      L2: ticket?.l2_tat_due_at,
+      L3: ticket?.l3_tat_due_at,
+      L4: ticket?.l4_tat_due_at,
+      L5: ticket?.l5_tat_due_at,
+    }[level] || null
+  );
+};
+
+// Defined = TAT window (created_at -> current level's due_at). Actual = time it
+// really took to resolve (created_at -> ticket_logs Approved/ACKNOWLEDGED
+// timestamp, returned by the API as resolved_at). Gap = defined - actual.
 const getResolutionDisplay = (ticket) => {
-  const seed = hashTicketId(ticket?.ticket_id);
-  const definedMinutes = 30 + (seed % 8) * 30;
+  const definedMinutes = diffMinutes(ticket?.created_at, getCurrentLevelDueAt(ticket));
   const resolved = isTicketResolved(ticket?.status);
-
-  if (!resolved) {
-    return {
-      defined: minutesToClock(definedMinutes),
-      actual: "--:--",
-      gapLabel: "--:--",
-      isGapPositive: null,
-    };
-  }
-
-  const varianceMinutes = ((seed % 7) - 3) * 15;
-  const actualMinutes = Math.max(15, definedMinutes + varianceMinutes);
-  const gapMinutes = definedMinutes - actualMinutes;
+  const resolvedAt = ticket?.resolved_at;
+  const actualMinutes = resolved ? diffMinutes(ticket?.created_at, resolvedAt) : null;
 
   return {
-    defined: minutesToClock(definedMinutes),
-    actual: minutesToClock(actualMinutes),
-    gapLabel: `${gapMinutes < 0 ? "-" : ""}${minutesToClock(Math.abs(gapMinutes))}`,
-    isGapPositive: gapMinutes >= 0,
+    defined: definedMinutes !== null ? minutesToClock(definedMinutes) : "--:--",
+    actual: actualMinutes !== null ? minutesToClock(actualMinutes) : "--:--",
+    gapLabel:
+      definedMinutes !== null && actualMinutes !== null
+        ? `${definedMinutes - actualMinutes < 0 ? "-" : ""}${minutesToClock(Math.abs(definedMinutes - actualMinutes))}`
+        : "--:--",
+    isGapPositive:
+      definedMinutes !== null && actualMinutes !== null ? definedMinutes - actualMinutes >= 0 : null,
   };
 };
 
@@ -291,9 +302,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
   const [activeTicketingView, setActiveTicketingView] = useState("owned");
-  const [statusUpdatingId, setStatusUpdatingId] = useState("");
   const [processParameterTicketData, setProcessParameterTicketData] = useState([]);
   const [processParameterError, setProcessParameterError] = useState("");
+  const [l2ApprovalQueueData, setL2ApprovalQueueData] = useState([]);
   const startDateInputRef = useRef(null);
   const endDateInputRef = useRef(null);
 
@@ -322,9 +333,24 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     }
   };
 
+  // Value Threshold L1->L2 tickets: fetch one row per ticket_approvals L2 entry so a
+  // ticket that was rejected and resubmitted shows every submit/approve/reject cycle
+  // as its own separate row, instead of a single row that just overwrites its status.
+  const fetchL2ApprovalQueue = async () => {
+    try {
+      const response = await fetchL2ApprovalQueueApi({ page: 1, limit: 500, _ts: Date.now() });
+      const rows = Array.isArray(response?.approvals) ? response.approvals : [];
+      setL2ApprovalQueueData(rows);
+    } catch (queueError) {
+      console.error("Error fetching L2 approval queue:", queueError);
+      setL2ApprovalQueueData([]);
+    }
+  };
+
   useEffect(() => {
     dispatch(fetchSupervisorTickets(supervisorTicketQuery));
     fetchProcessParameterTickets();
+    fetchL2ApprovalQueue();
   }, [dispatch, isAdminUser]);
 
   // Operators can change a ticket's status from their own dashboard while an admin/supervisor
@@ -335,6 +361,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     const refreshFromServer = () => {
       dispatch(fetchSupervisorTickets(supervisorTicketQuery));
       fetchProcessParameterTickets();
+      fetchL2ApprovalQueue();
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -364,14 +391,47 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
   // Every ticket type (Value/Submission/Acknowledgement/PP) is merged into one row shape
   // here so they can share a single table, filter bar, and Owned/Mapped toggle instead of
-  // separate tabbed views per ticket type.
+  // separate tabbed views per ticket type. Value Threshold tickets still with L1 (Open/In
+  // Progress/Reopened) keep coming from safeTickets like before, but once submitted they're
+  // excluded here - from that point on they come exclusively from l2ApprovalQueueData below,
+  // which shows one row per ticket_approvals L2 entry (so a rejected+resubmitted ticket shows
+  // every submit/approve/reject cycle as its own row) instead of one row with just current status.
   const mergedTickets = [
-    ...safeTickets.map((ticket) => ({
-      ...ticket,
-      ticketType: getTicketTypeLabel(ticket),
-      userName: isAcknowledgementReviewTicket(ticket) ? getCurrentReviewer(ticket) : (ticket.user_name || "-"),
-      levelType: String(ticket?.tat_current_level || ticket?.tatCurrentLevel || mode).toUpperCase(),
-    })),
+    ...safeTickets
+      .filter((ticket) => {
+        if (getTicketTypeLabel(ticket) !== "Value") return true;
+        const normalizedStatus = String(ticket?.status || "").trim().toLowerCase();
+        return ["open", "in progress", "reopened"].includes(normalizedStatus);
+      })
+      .map((ticket) => ({
+        ...ticket,
+        ticketType: getTicketTypeLabel(ticket),
+        userName: isAcknowledgementReviewTicket(ticket) ? getCurrentReviewer(ticket) : (ticket.user_name || "-"),
+        levelType: String(ticket?.tat_current_level || ticket?.tatCurrentLevel || mode).toUpperCase(),
+      })),
+    ...l2ApprovalQueueData.map((row) => {
+      const transformed = transformTicket({
+        ticket_id: row.ticket_id,
+        user_id: row.user_id,
+        user_name: row.user_name,
+        machine_name: row.machine_name,
+        parameter_name: row.parameter_name,
+        actual_value: row.actual_value,
+        threshold_value: row.threshold_value,
+        severity: row.severity,
+        status: row.ticket_status,
+        created_at: row.approval_created_at,
+      });
+      return {
+        ...transformed,
+        id: `${row.ticket_id}-approval-${row.approval_row_id}`,
+        approvalRowId: row.approval_row_id,
+        approvalActionStatus: row.action_status,
+        ticketType: "Value",
+        userName: row.user_name || "-",
+        levelType: "L2",
+      };
+    }),
     ...processParameterTicketData.map((ticket) => ({
       ...ticket,
       ticketType: "PP",
@@ -432,56 +492,28 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const start = (page - 1) * ITEMS_PER_PAGE;
   const pageData = displayTickets.slice(start, start + ITEMS_PER_PAGE);
 
-  const handleTicketClick = (ticketId, ticketType) => {
+  const handleTicketClick = (ticketId, ticketType, status) => {
     const id = ticketId?.startsWith("#") ? ticketId : `#${ticketId}`;
+    // A ticket still with L1 - not yet submitted ("Open"/"In Progress"/"Reopened") - has
+    // no Accept/Reject decision to make yet, so route to the operator's own Fix & Resubmit
+    // page instead of the L2 review screen. Only "Submit" (L1 done, awaiting L2) and
+    // "Closed" (already reviewed) open the review screen.
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+    if (!["submit", "closed"].includes(normalizedStatus)) {
+      router.push(`/operatordetail?ticketId=${encodeURIComponent(String(id).replace(/^#/, ""))}&ticketType=${ticketType}`);
+      return;
+    }
     router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}&ticketType=${ticketType}`);
   };
 
   const handleDashboardTicketClick = (ticket) => {
     if (isAcknowledgementReviewTicket(ticket)) return;
-    handleTicketClick(ticket.ticket_id, ticket.ticketType);
+    handleTicketClick(ticket.ticket_id, ticket.ticketType, ticket.status);
   };
 
   const selectTicketingView = (view) => {
     setActiveTicketingView(view);
     setPage(1);
-  };
-
-  const handleStatusChange = async (ticketId, nextStatus, ticket = null) => {
-    if (!ticketId || !nextStatus) return;
-    if (String(ticket?.status || "").trim().toLowerCase() === String(nextStatus || "").trim().toLowerCase()) return;
-
-    try {
-      setStatusUpdatingId(ticketId);
-      const normalizedStatus = String(nextStatus || "").trim().toLowerCase();
-      const shouldAcknowledge =
-        ticket &&
-        isAcknowledgementReviewTicket(ticket) &&
-        ["submit", "closed", "acknowledged", "ack"].includes(normalizedStatus);
-
-      if (shouldAcknowledge) {
-        await acknowledgeTicketApi(ticketId);
-      } else {
-        await updateOperatorTicketStatus(ticketId, nextStatus);
-      }
-      await dispatch(fetchSupervisorTickets(supervisorTicketQuery));
-    } catch (updateError) {
-      // Keep the current table visible; the global API layer already surfaces failures.
-      console.error("Failed to update ticket status:", updateError);
-    } finally {
-      setStatusUpdatingId("");
-    }
-  };
-
-  const getDisplayStatusOptions = (currentStatus) => {
-    const options = getOperatorStatusOptions(currentStatus);
-    const seenLabels = new Set();
-    return options.filter((option) => {
-      const label = getOperatorStatusLabel(option);
-      if (seenLabels.has(label)) return false;
-      seenLabels.add(label);
-      return true;
-    });
   };
 
   if (isLoading) return <p>Loading...</p>;
@@ -699,7 +731,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                       className={styles["sup-ticket-link"]}
                       onClick={(event) => {
                         event.stopPropagation();
-                        handleTicketClick(t.ticket_id, t.ticketType);
+                        handleTicketClick(t.ticket_id, t.ticketType, t.status);
                       }}
                     >
                       {t.ticket_id}
@@ -714,32 +746,15 @@ export default function SupervisorDashboard({ mode = "L2" }) {
                     <td>{t.levelType}</td>
                     <td>{t.userName}</td>
                     <td>
-                      {isAcknowledgementReviewTicket(t) ? (
-                        <span
-                          className={`${styles["status-badge"]} ${
-                            styles[`status-${getStatusClassKey(t.status)}`] ||
-                            styles[getStatusClassKey(t.status).replace(/-/g, "_")] ||
-                            ""
-                          }`}
-                        >
-                          {getSupervisorStatusLabel(t.status)}
-                        </span>
-                      ) : (
-                        <span onClick={(event) => event.stopPropagation()}>
-                          <select
-                            className={styles["status-select"]}
-                            value={t.status}
-                            disabled={statusUpdatingId === t.ticket_id}
-                            onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
-                          >
-                            {getDisplayStatusOptions(t.status).map((option) => (
-                              <option key={option} value={option}>
-                                {getOperatorStatusLabel(option)}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                      )}
+                      <span
+                        className={`${styles["status-badge"]} ${
+                          styles[`status-${getStatusClassKey(t.status)}`] ||
+                          styles[getStatusClassKey(t.status).replace(/-/g, "_")] ||
+                          ""
+                        }`}
+                      >
+                        {getSupervisorStatusLabel(t.status)}
+                      </span>
                     </td>
                     <td>
                       <span
@@ -789,7 +804,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
         <div className={styles["sup-mobile-cards"]}>
           {displayTickets.map((t, i) => (
             <div
-              key={t.ticket_id || i}
+              key={`${t.ticket_id}-${i}`}
               className={`${styles["sup-mobile-card"]} ${
                 getSupervisorStatusLabel(t.status) === "Closed" ? styles["sup-muted"] : ""
               }`}
@@ -828,32 +843,14 @@ export default function SupervisorDashboard({ mode = "L2" }) {
               </div>
 
               <div className={styles["sup-card-bottom"]}>
-                {isAcknowledgementReviewTicket(t) ? (
-                  <div className={styles["status-text"]} onClick={(event) => event.stopPropagation()}>
-                    <span className={styles["status-dot"]} />
-                    <select
-                      className={styles["mobile-status-select"]}
-                      value={t.status}
-                      disabled={statusUpdatingId === t.ticket_id}
-                      onChange={(event) => handleStatusChange(t.ticket_id, event.target.value, t)}
-                    >
-                      {getDisplayStatusOptions(t.status).map((option) => (
-                        <option key={option} value={option}>
-                          {getOperatorStatusLabel(option)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div
-                    className={`${styles["status-text"]} ${
-                      styles[getStatusClassKey(t.status).replace(/-/g, "_")]
-                    }`}
-                  >
-                    <span className={styles["status-dot"]} />
-                    {getSupervisorStatusLabel(t.status)}
-                  </div>
-                )}
+                <div
+                  className={`${styles["status-text"]} ${
+                    styles[getStatusClassKey(t.status).replace(/-/g, "_")]
+                  }`}
+                >
+                  <span className={styles["status-dot"]} />
+                  {getSupervisorStatusLabel(t.status)}
+                </div>
                 {isAcknowledgementReviewTicket(t) ? null : (
                   <div className={styles["details-link"]}>Details &gt;</div>
                 )}

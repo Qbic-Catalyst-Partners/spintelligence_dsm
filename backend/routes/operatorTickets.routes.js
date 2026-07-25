@@ -389,6 +389,24 @@ const ensureThresholdMasterApprovalColumns = async () => {
   `);
 };
 
+const ensureTicketApprovalsTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.ticket_approvals (
+      id BIGSERIAL PRIMARY KEY,
+      ticket_id TEXT NOT NULL,
+      level TEXT NOT NULL,
+      action_status TEXT NOT NULL,
+      performed_by TEXT,
+      role TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS ticket_approvals_ticket_id_idx
+    ON ticketing_system.ticket_approvals (ticket_id)
+  `);
+};
+
 const ensureThresholdMasterL1ApproverTable = async () => {
   await client.query(`
     CREATE TABLE IF NOT EXISTS ticketing_system.threshold_master_l1_approvers (
@@ -1090,8 +1108,8 @@ const ensureScreenFrequencyTable = async () => {
       screen_name TEXT NOT NULL,
       department TEXT NULL,
       sub_department TEXT NULL,
-      frequency INTEGER NOT NULL,
-      occurrences INTEGER NULL,
+      range INTEGER NOT NULL,
+      frequency INTEGER NULL,
       is_active BOOLEAN NOT NULL DEFAULT true,
       approval_l1 TEXT NULL,
       approval_l1_name TEXT NULL,
@@ -1107,7 +1125,7 @@ const ensureScreenFrequencyTable = async () => {
 
   await client.query(`
     ALTER TABLE ticketing_system.screen_submission_frequency
-    ADD COLUMN IF NOT EXISTS occurrences INTEGER NULL
+    ADD COLUMN IF NOT EXISTS frequency INTEGER NULL
   `);
 
   await client.query(`
@@ -1169,6 +1187,40 @@ const ensureScreenFrequencyTable = async () => {
     ALTER TABLE ticketing_system.screen_submission_frequency
     ADD COLUMN IF NOT EXISTS tracked_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
   `);
+  // Value-range breach check alongside the existing frequency check - optional per
+  // row (input_field left blank keeps a config frequency-only, as before).
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS input_field TEXT NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS criticality TEXT NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS actual_value NUMERIC NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS value_mode TEXT NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS plus_threshold NUMERIC NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS minus_threshold NUMERIC NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS positive_tolerance_percent NUMERIC NULL
+  `);
+  await client.query(`
+    ALTER TABLE ticketing_system.screen_submission_frequency
+    ADD COLUMN IF NOT EXISTS negative_tolerance_percent NUMERIC NULL
+  `);
 };
 
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: "If an L1 user fails to
@@ -1181,6 +1233,104 @@ const ensureScreenFrequencyTable = async () => {
 // ticketing_system.submitted_notebooks, the same table
 // generateOverdueNotebookTickets reads), and raise a ticket on anyone short
 // of the required `occurrences` who doesn't already have an open one.
+// Value-range check for a submission-frequency config that also has input_field
+// set - reuses evaluateThresholdBreach's "more_and_less_than" semantics against
+// the most recently submitted value for that field, same as Value Threshold.
+const checkSubmissionFrequencyValueBreach = async (config) => {
+  const source = SCREEN_SUBMISSION_SOURCES[config.screen_name];
+  if (!source) return null; // screen not wired to a known submission table - skip gracefully
+
+  const latestRow = await client.query(
+    `SELECT "${config.input_field}" AS field_value, "${source.dateColumn}" AS submitted_at
+     FROM ${source.table}
+     WHERE "${config.input_field}" IS NOT NULL
+     ORDER BY "${source.dateColumn}" DESC
+     LIMIT 1`
+  );
+
+  const actualValue = latestRow.rows[0]?.field_value;
+  if (actualValue === null || actualValue === undefined) return null;
+
+  const rule = {
+    condition_level: 'more_and_less_than',
+    actual_value: config.actual_value,
+    plus_threshold: config.plus_threshold,
+    minus_threshold: config.minus_threshold
+  };
+  const breached = evaluateThresholdBreach(actualValue, rule);
+  if (breached !== true) return null;
+
+  const existingTicket = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE submission_frequency_config_id = $1
+       AND ticket_reason = 'THRESHOLD_BREACH'
+       AND status NOT IN ('Closed', 'No Due')
+     LIMIT 1`,
+    [config.id]
+  );
+  if (existingTicket.rows[0]?.ticket_id) return null;
+
+  const violationDetails = {
+    category: 'VALUE_BREACH',
+    ticket_type: 'SUBMISSION_FREQUENCY',
+    screen_name: config.screen_name,
+    field: config.input_field,
+    actual_value: Number(actualValue),
+    typical_value: config.actual_value,
+    plus_threshold: config.plus_threshold,
+    minus_threshold: config.minus_threshold,
+    message: `${config.input_field} on ${config.screen_name} submitted value ${actualValue} is outside the typical range.`
+  };
+
+  const severity = deriveSeverity({ missing_fields: [], threshold_breaches: [{ deviation_percent: null }] });
+  const l1TatHours = Number(config.l1_tat_hours) > 0 ? Number(config.l1_tat_hours) : null;
+  const l1TatDueAt = l1TatHours ? new Date(Date.now() + l1TatHours * 60 * 60 * 1000).toISOString() : null;
+
+  const ticket = await client.query(
+    `INSERT INTO ticketing_system.operator_tickets
+     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+      severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
+      violation_details, submission_frequency_config_id, tat_current_level, l1_tat_due_at)
+     VALUES (
+       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+       $1, $2::jsonb, $3::jsonb, $4::jsonb,
+       $5, 'Open', NOW(), $6, $7, 'THRESHOLD_BREACH', 'SUBMISSION_FREQUENCY',
+       $8::jsonb, $9, 'L1', $10
+     )
+     RETURNING *`,
+    [
+      config.screen_name,
+      JSON.stringify([config.input_field]),
+      JSON.stringify([Number(actualValue)]),
+      JSON.stringify([{ actual_value: config.actual_value, plus_threshold: config.plus_threshold, minus_threshold: config.minus_threshold }]),
+      severity,
+      config.department,
+      config.sub_department,
+      JSON.stringify(violationDetails),
+      config.id,
+      l1TatDueAt
+    ]
+  );
+
+  const inserted = ticket.rows[0];
+
+  const trackedUserIds = Array.isArray(config.tracked_l1_user_ids) ? config.tracked_l1_user_ids : [];
+  if (trackedUserIds.length) {
+    await createNotificationsForUsers(trackedUserIds, {
+      ticketId: inserted.ticket_id,
+      type: 'SUBMISSION_FREQUENCY',
+      category: 'Tickets',
+      priority: severity,
+      title: `Value threshold breach: ${config.screen_name}`,
+      body: violationDetails.message,
+      linkUrl: `/operator-tickets/${inserted.ticket_id}`,
+      payload: { ticket_id: inserted.ticket_id }
+    });
+  }
+
+  return inserted;
+};
+
 const runSubmissionFrequencyCheck = async () => {
   await ensureScreenFrequencyTable();
   await ensureOperatorTicketApprovalColumns();
@@ -1192,11 +1342,17 @@ const runSubmissionFrequencyCheck = async () => {
   const created = [];
 
   for (const config of configs.rows) {
+    if (config.input_field) {
+      // eslint-disable-next-line no-await-in-loop
+      const valueBreachTicket = await checkSubmissionFrequencyValueBreach(config);
+      if (valueBreachTicket) created.push(valueBreachTicket);
+    }
+
     const trackedUserIds = Array.isArray(config.tracked_l1_user_ids) ? config.tracked_l1_user_ids : [];
     if (!trackedUserIds.length) continue; // nobody configured to track for this screen yet
 
-    const windowDays = Number(config.frequency) > 0 ? Number(config.frequency) : 7;
-    const requiredCount = Number(config.occurrences) > 0 ? Number(config.occurrences) : 1;
+    const windowDays = Number(config.range) > 0 ? Number(config.range) : 7;
+    const requiredCount = Number(config.frequency) > 0 ? Number(config.frequency) : 1;
 
     for (const l1UserId of trackedUserIds) {
       // eslint-disable-next-line no-await-in-loop
@@ -1494,13 +1650,14 @@ router.post('/submission-frequency', async (req, res, next) => {
   try {
     await ensureScreenFrequencyTable();
     await ensureOperatorTicketApprovalColumns();
+    console.log('[DEBUG submission-frequency POST] req.body =', JSON.stringify(req.body));
 
     const {
       screen_name,
       department = null,
       sub_department = null,
-      frequency,
-      occurrences = null,
+      range,
+      frequency = null,
       is_active = true,
       approval_l1 = null,
       approval_l1_name = null,
@@ -1511,36 +1668,44 @@ router.post('/submission-frequency', async (req, res, next) => {
       l1_tat_hours = null,
       l2_tat_hours = null,
       l3_tat_hours = null,
-      tracked_l1_user_ids = []
+      tracked_l1_user_ids = [],
+      input_field = null,
+      criticality = null,
+      actual_value = null,
+      value_mode = null,
+      plus_threshold = null,
+      minus_threshold = null,
+      positive_tolerance_percent = null,
+      negative_tolerance_percent = null
     } = req.body || {};
 
     const normalizedTrackedL1UserIds = Array.isArray(tracked_l1_user_ids)
       ? tracked_l1_user_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
       : [];
 
-    const normalizedFrequency = normalizeFrequency(frequency);
-    const normalizedOccurrences =
-      occurrences === null || occurrences === undefined || occurrences === ''
+    const normalizedRange = normalizeFrequency(range);
+    const normalizedFrequency =
+      frequency === null || frequency === undefined || frequency === ''
         ? null
-        : Number(occurrences);
+        : Number(frequency);
     const normalizedL1TatHours = parseTatHours(l1_tat_hours);
     const normalizedL2TatHours = parseTatHours(l2_tat_hours);
     const normalizedL3TatHours = parseTatHours(l3_tat_hours);
 
-    if (!screen_name || !normalizedFrequency) {
+    if (!screen_name || !normalizedRange) {
       return res.status(400).json({
         error: 'Invalid parameters',
-        message: 'screen_name and frequency are required'
+        message: 'screen_name and range are required'
       });
     }
 
     if (
-      normalizedOccurrences !== null &&
-      (!Number.isInteger(normalizedOccurrences) || normalizedOccurrences < 1)
+      normalizedFrequency !== null &&
+      (!Number.isInteger(normalizedFrequency) || normalizedFrequency < 1)
     ) {
       return res.status(400).json({
-        error: 'Invalid occurrences',
-        message: 'occurrences must be a positive integer'
+        error: 'Invalid frequency',
+        message: 'frequency must be a positive integer'
       });
     }
     if (l1_tat_hours !== null && l1_tat_hours !== undefined && l1_tat_hours !== '' && !normalizedL1TatHours) {
@@ -1568,8 +1733,8 @@ router.post('/submission-frequency', async (req, res, next) => {
          screen_name,
          department,
          sub_department,
+         range,
          frequency,
-         occurrences,
          is_active,
          approval_l1,
          approval_l1_name,
@@ -1581,13 +1746,21 @@ router.post('/submission-frequency', async (req, res, next) => {
          l2_tat_hours,
          l3_tat_hours,
          tracked_l1_user_ids,
+         input_field,
+         criticality,
+         actual_value,
+         value_mode,
+         plus_threshold,
+         minus_threshold,
+         positive_tolerance_percent,
+         negative_tolerance_percent,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::int[], NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::int[], $17, $18, $19, $20, $21, $22, $23, $24, NOW())
        ON CONFLICT (screen_name, department, sub_department)
        DO UPDATE SET
+         range = EXCLUDED.range,
          frequency = EXCLUDED.frequency,
-         occurrences = EXCLUDED.occurrences,
          is_active = EXCLUDED.is_active,
          approval_l1 = EXCLUDED.approval_l1,
          approval_l1_name = EXCLUDED.approval_l1_name,
@@ -1599,14 +1772,22 @@ router.post('/submission-frequency', async (req, res, next) => {
          l2_tat_hours = EXCLUDED.l2_tat_hours,
          l3_tat_hours = EXCLUDED.l3_tat_hours,
          tracked_l1_user_ids = EXCLUDED.tracked_l1_user_ids,
+         input_field = EXCLUDED.input_field,
+         criticality = EXCLUDED.criticality,
+         actual_value = EXCLUDED.actual_value,
+         value_mode = EXCLUDED.value_mode,
+         plus_threshold = EXCLUDED.plus_threshold,
+         minus_threshold = EXCLUDED.minus_threshold,
+         positive_tolerance_percent = EXCLUDED.positive_tolerance_percent,
+         negative_tolerance_percent = EXCLUDED.negative_tolerance_percent,
          updated_at = NOW()
        RETURNING *`,
       [
         screen_name,
         department,
         sub_department,
+        normalizedRange,
         normalizedFrequency,
-        normalizedOccurrences,
         is_active,
         approval_l1,
         approval_l1_name,
@@ -1617,7 +1798,15 @@ router.post('/submission-frequency', async (req, res, next) => {
         normalizedL1TatHours,
         normalizedL2TatHours,
         normalizedL3TatHours,
-        normalizedTrackedL1UserIds
+        normalizedTrackedL1UserIds,
+        input_field,
+        criticality,
+        actual_value,
+        value_mode,
+        plus_threshold,
+        minus_threshold,
+        positive_tolerance_percent,
+        negative_tolerance_percent
       ]
     );
 
@@ -1650,8 +1839,8 @@ router.get('/submission-frequency', async (req, res, next) => {
          screen_name,
          department,
          sub_department,
+         range,
          frequency,
-         occurrences,
          is_active,
          approval_l1,
          approval_l1_name,
@@ -1659,6 +1848,14 @@ router.get('/submission-frequency', async (req, res, next) => {
          approval_l2_name,
          l1_tat_hours,
          l2_tat_hours,
+         input_field,
+         criticality,
+         actual_value,
+         value_mode,
+         plus_threshold,
+         minus_threshold,
+         positive_tolerance_percent,
+         negative_tolerance_percent,
          created_at,
          updated_at
        FROM ticketing_system.screen_submission_frequency
@@ -1694,7 +1891,7 @@ router.post('/submission-frequency/check', async (req, res, next) => {
 
     const today = new Date();
     const rows = await client.query(
-      `SELECT id, screen_name, department, sub_department, frequency, occurrences, is_active, l1_tat_hours, l2_tat_hours, l3_tat_hours
+      `SELECT id, screen_name, department, sub_department, range, frequency, is_active, l1_tat_hours, l2_tat_hours, l3_tat_hours
        FROM ticketing_system.screen_submission_frequency
        WHERE is_active = true`
     );
@@ -1712,7 +1909,7 @@ router.post('/submission-frequency/check', async (req, res, next) => {
         continue;
       }
 
-      const gapDays = frequencyGapDays(config.frequency);
+      const gapDays = frequencyGapDays(config.range);
       const dueFromDate = new Date(today);
       dueFromDate.setDate(dueFromDate.getDate() - gapDays);
 
@@ -1729,7 +1926,7 @@ router.post('/submission-frequency/check', async (req, res, next) => {
         ? new Date(activityResult.rows[0].last_submission_date)
         : null;
       const actualOccurrences = Number(activityResult.rows[0]?.submissions_in_window || 0);
-      const minOccurrences = Number(config.occurrences || 0);
+      const minOccurrences = Number(config.frequency || 0);
 
       const missedFrequency = !lastSubmission || lastSubmission < dueFromDate;
       const missedOccurrences = Number.isInteger(minOccurrences) && minOccurrences > 0
@@ -2271,7 +2468,7 @@ router.get('/', async (req, res, next) => {
           ot.severity,
           ot.status,
           ot.created_at
-      ORDER BY ot.created_at DESC;
+      ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\D', '', 'g'), '')::bigint DESC, ot.created_at DESC;
     `;
 
     const result = await client.query(query, values);
@@ -2359,7 +2556,7 @@ router.get('/submission-ticketing', async (req, res, next) => {
        FROM ticketing_system.operator_tickets ot
        LEFT JOIN users.user_details ud ON ud.id = ot.user_id
        WHERE ${where.join(' AND ')}
-       ORDER BY ot.created_at DESC
+       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
        LIMIT $${limitIndex}
        OFFSET $${offsetIndex}`,
       values
@@ -3052,8 +3249,8 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
       screen_name,
       department,
       sub_department,
+      range,
       frequency,
-      occurrences,
       is_active,
       approval_l1,
       approval_l1_name,
@@ -3064,26 +3261,34 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
       l1_tat_hours,
       l2_tat_hours,
       l3_tat_hours,
-      tracked_l1_user_ids
+      tracked_l1_user_ids,
+      input_field,
+      criticality,
+      actual_value,
+      value_mode,
+      plus_threshold,
+      minus_threshold,
+      positive_tolerance_percent,
+      negative_tolerance_percent
     } = req.body || {};
 
     const normalizedTrackedL1UserIds = Array.isArray(tracked_l1_user_ids)
       ? tracked_l1_user_ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
       : undefined;
 
-    const normalizedFrequency =
-      frequency === undefined ? undefined : normalizeFrequency(frequency);
+    const normalizedRange =
+      range === undefined ? undefined : normalizeFrequency(range);
 
-    if (frequency !== undefined && !normalizedFrequency) {
-      return res.status(400).json({ message: 'frequency must be a positive integer' });
+    if (range !== undefined && !normalizedRange) {
+      return res.status(400).json({ message: 'range must be a positive integer' });
     }
 
-    const normalizedOccurrences =
-      occurrences === undefined
+    const normalizedFrequency =
+      frequency === undefined
         ? undefined
-        : occurrences === null || occurrences === ''
+        : frequency === null || frequency === ''
           ? null
-          : Number(occurrences);
+          : Number(frequency);
     const normalizedL1TatHours =
       l1_tat_hours === undefined ? undefined : parseTatHours(l1_tat_hours);
     const normalizedL2TatHours =
@@ -3092,11 +3297,11 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
       l3_tat_hours === undefined ? undefined : parseTatHours(l3_tat_hours);
 
     if (
-      normalizedOccurrences !== undefined &&
-      normalizedOccurrences !== null &&
-      (!Number.isInteger(normalizedOccurrences) || normalizedOccurrences < 1)
+      normalizedFrequency !== undefined &&
+      normalizedFrequency !== null &&
+      (!Number.isInteger(normalizedFrequency) || normalizedFrequency < 1)
     ) {
-      return res.status(400).json({ message: 'occurrences must be a positive integer' });
+      return res.status(400).json({ message: 'frequency must be a positive integer' });
     }
     if (
       l1_tat_hours !== undefined &&
@@ -3128,8 +3333,8 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
        SET screen_name = COALESCE($1, screen_name),
            department = COALESCE($2, department),
            sub_department = COALESCE($3, sub_department),
-           frequency = COALESCE($4, frequency),
-           occurrences = COALESCE($5, occurrences),
+           range = COALESCE($4, range),
+           frequency = COALESCE($5, frequency),
            is_active = COALESCE($6, is_active),
            approval_l1 = COALESCE($7, approval_l1),
            approval_l1_name = COALESCE($8, approval_l1_name),
@@ -3141,6 +3346,14 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
            l2_tat_hours = COALESCE($14, l2_tat_hours),
            l3_tat_hours = COALESCE($15, l3_tat_hours),
            tracked_l1_user_ids = COALESCE($17::int[], tracked_l1_user_ids),
+           input_field = COALESCE($18, input_field),
+           criticality = COALESCE($19, criticality),
+           actual_value = COALESCE($20, actual_value),
+           value_mode = COALESCE($21, value_mode),
+           plus_threshold = COALESCE($22, plus_threshold),
+           minus_threshold = COALESCE($23, minus_threshold),
+           positive_tolerance_percent = COALESCE($24, positive_tolerance_percent),
+           negative_tolerance_percent = COALESCE($25, negative_tolerance_percent),
            updated_at = NOW()
        WHERE id = $16
        RETURNING *`,
@@ -3148,8 +3361,8 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
         screen_name,
         department,
         sub_department,
+        normalizedRange,
         normalizedFrequency,
-        normalizedOccurrences,
         is_active,
         approval_l1,
         approval_l1_name,
@@ -3161,7 +3374,15 @@ router.patch('/submission-frequency/:id', async (req, res, next) => {
         normalizedL2TatHours,
         normalizedL3TatHours,
         id,
-        normalizedTrackedL1UserIds
+        normalizedTrackedL1UserIds,
+        input_field,
+        criticality,
+        actual_value,
+        value_mode,
+        plus_threshold,
+        minus_threshold,
+        positive_tolerance_percent,
+        negative_tolerance_percent
       ]
     );
 
@@ -3900,22 +4121,15 @@ router.put('/submit/:id', async (req, res, next) => {
 
     const normalizedStatus = String(ticket.status || '').trim().toLowerCase();
 
-    if (normalizedStatus === 'in progress') {
-      return res.status(200).json({
-        message: 'Ticket is already submitted and sent for approval',
-        ticket
-      });
-    }
-
-    if (!['open', 'reopened'].includes(normalizedStatus)) {
+    if (!['open', 'reopened', 'in progress'].includes(normalizedStatus)) {
       return res.status(400).json({
-        message: 'Only Open or Reopened tickets can be submitted'
+        message: 'Only Open, Reopened, or In Progress tickets can be submitted'
       });
     }
 
     const updateResult = await client.query(
       `UPDATE ticketing_system.operator_tickets
-       SET status = 'In Progress',
+       SET status = 'Submit',
            violation_details = CASE
              WHEN $2::text IS NULL OR btrim($2::text) = '' THEN violation_details
              ELSE COALESCE(violation_details, '{}'::jsonb) || jsonb_build_object('operator_comment', $2::text)
@@ -3939,6 +4153,23 @@ router.put('/submit/:id', async (req, res, next) => {
       ]
     );
 
+    await ensureTicketApprovalsTable();
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status, performed_by, role)
+       VALUES ($1, 'L1', $2, $3, $4)`,
+      [
+        ticketId,
+        normalizedStatus === 'reopened' ? 'Resubmitted' : 'Submitted',
+        req.user?.full_name || req.user?.employee_id || 'Operator',
+        req.user?.role || 'Operator'
+      ]
+    );
+    await client.query(
+      `INSERT INTO ticketing_system.ticket_approvals (ticket_id, level, action_status)
+       VALUES ($1, 'L2', 'Pending')`,
+      [ticketId]
+    );
+
     sendEmail({
       to: ticket.supevisor_email || 'otpdemoin@gmail.com',
       subject: `Ticket In Progress: ${updatedTicket.ticket_id}`,
@@ -3950,6 +4181,112 @@ router.put('/submit/:id', async (req, res, next) => {
       ticket: updatedTicket
     });
 
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/approvals', async (req, res, next) => {
+  try {
+    await ensureTicketApprovalsTable();
+    const ticketId = req.params.id;
+
+    const result = await client.query(
+      `SELECT ticket_id, level, action_status, performed_by, role, created_at
+       FROM ticketing_system.ticket_approvals
+       WHERE ticket_id = $1
+       ORDER BY created_at ASC`,
+      [ticketId]
+    );
+
+    res.status(200).json({ ticket_id: ticketId, approvals: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Value Threshold L1->L2 tickets only: one row per ticket_approvals L2 entry (not
+// one row per ticket), so a ticket that was rejected and resubmitted shows each
+// L2 pending/approved/rejected cycle as its own separate, clickable list row.
+router.get('/approvals/l2-queue', async (req, res, next) => {
+  try {
+    await ensureTicketApprovalsTable();
+
+    const statusFilter = String(req.query.status || '').trim();
+    const severityFilter = String(req.query.severity || '').trim();
+    const machineFilter = String(req.query.machine || '').trim();
+
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 25, 1);
+    const offset = (page - 1) * limit;
+
+    const where = [
+      `ta.level = 'L2'`,
+      `COALESCE(ot.ticket_type, 'THRESHOLD') = 'THRESHOLD'`,
+      nonAcknowledgementTicketWhere
+    ];
+    const values = [];
+
+    if (statusFilter && statusFilter.toLowerCase() !== 'all') {
+      values.push(statusFilter);
+      where.push(`ta.action_status = $${values.length}`);
+    }
+
+    if (severityFilter && severityFilter.toLowerCase() !== 'all') {
+      values.push(severityFilter);
+      where.push(`ot.severity = $${values.length}`);
+    }
+
+    if (machineFilter && machineFilter.toLowerCase() !== 'all') {
+      values.push(machineFilter);
+      where.push(`ot.machine_name = $${values.length}`);
+    }
+
+    values.push(limit);
+    const limitIndex = values.length;
+    values.push(offset);
+    const offsetIndex = values.length;
+
+    const result = await client.query(
+      `SELECT
+         ta.id AS approval_row_id,
+         ta.ticket_id,
+         ta.level,
+         ta.action_status,
+         ta.performed_by,
+         ta.role,
+         ta.created_at AS approval_created_at,
+         ot.user_id,
+         ot.user_name,
+         ot.machine_name,
+         ot.parameter_name,
+         ot.actual_value,
+         ot.threshold_value,
+         ot.severity,
+         ot.status AS ticket_status,
+         ot.created_at AS ticket_created_at,
+         COUNT(*) OVER()::int AS total_count
+       FROM ticketing_system.ticket_approvals ta
+       JOIN ticketing_system.operator_tickets ot ON ot.ticket_id = ta.ticket_id
+       WHERE ${where.join(' AND ')}
+       ORDER BY ta.created_at DESC
+       LIMIT $${limitIndex}
+       OFFSET $${offsetIndex}`,
+      values
+    );
+
+    const rows = result.rows;
+    const totalCount = rows[0]?.total_count || 0;
+
+    res.status(200).json({
+      approvals: rows,
+      pagination: {
+        totalItems: totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -4178,3 +4515,4 @@ router.delete('/thresholds/:id', async (req, res, next) => {
 module.exports = router;
 module.exports.runSubmissionFrequencyTatCheck = runSubmissionFrequencyTatCheck;
 module.exports.runSubmissionFrequencyCheck = runSubmissionFrequencyCheck;
+module.exports.ensureTicketApprovalsTable = ensureTicketApprovalsTable;

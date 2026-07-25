@@ -3,6 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
 const { createNotification, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { ensureTicketApprovalsTable } = require('./operatorTickets.routes');
 
 const parsePositiveInt = (value) => {
   const n = Number(value);
@@ -472,8 +473,17 @@ router.get('/tickets', async (req, res, next) => {
          ot.l4_tat_due_at,
          ot.l5_tat_due_at,
          ot.created_at,
+         resolution_log.resolved_at,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.operator_tickets ot
+       LEFT JOIN LATERAL (
+         SELECT tl.created_at AS resolved_at
+         FROM ticketing_system.ticket_logs tl
+         WHERE tl.ticket_id = ot.ticket_id
+           AND UPPER(tl.action) IN ('APPROVED', 'ACKNOWLEDGED')
+         ORDER BY tl.created_at DESC
+         LIMIT 1
+       ) resolution_log ON true
        LEFT JOIN LATERAL (
          SELECT json_agg(
            json_build_object(
@@ -527,7 +537,7 @@ router.get('/tickets', async (req, res, next) => {
          WHERE u.id = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
        ) l5_approvers ON true
        ${whereClause}
-       ORDER BY ot.created_at DESC
+       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
        LIMIT $${limitIndex}
        OFFSET $${offsetIndex}`,
       values
@@ -1102,6 +1112,14 @@ router.patch('/tickets/approve', async (req, res, next) => {
       [ticketId, req.user?.full_name || req.user?.employee_id || 'Supervisor', req.user?.role || 'Supervisor']
     );
 
+    await ensureTicketApprovalsTable();
+    await client.query(
+      `UPDATE ticketing_system.ticket_approvals
+       SET action_status = 'Approved'
+       WHERE ticket_id = $1 AND level = 'L2' AND action_status = 'Pending'`,
+      [ticketId]
+    );
+
     const approveOwnerId = parsePositiveInt(updated.rows[0].user_id);
     if (approveOwnerId) {
       await createNotification({
@@ -1165,6 +1183,14 @@ router.patch('/tickets/reject', async (req, res, next) => {
        (ticket_id, action, performed_by, role, created_at)
        VALUES ($1, 'Rejected', $2, $3, CURRENT_TIMESTAMP)`,
       [ticketId, req.user?.full_name || req.user?.employee_id || 'Supervisor', req.user?.role || 'Supervisor']
+    );
+
+    await ensureTicketApprovalsTable();
+    await client.query(
+      `UPDATE ticketing_system.ticket_approvals
+       SET action_status = 'Rejected'
+       WHERE ticket_id = $1 AND level = 'L2' AND action_status = 'Pending'`,
+      [ticketId]
     );
 
     const ownerId = parsePositiveInt(updated.rows[0].user_id);
