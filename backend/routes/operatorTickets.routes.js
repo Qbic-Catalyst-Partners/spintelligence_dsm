@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const client = require('../connection');
 const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { ensureDelegationsTable } = require('./delegations.routes');
 const { getManagerChain } = require('./user.routes');
 const sendEmail = require('../email');
 const multer = require('multer');
@@ -2164,6 +2165,7 @@ router.get('/', async (req, res, next) => {
   try {
     await ensureOperatorTicketApprovalColumns();
     await ensureNotificationRecipientColumn();
+    await ensureDelegationsTable();
 
     const page = parseInt(req.query.page) || 1;
     const limit = 6; 
@@ -2213,7 +2215,18 @@ router.get('/', async (req, res, next) => {
     const viewerUserId = canViewAllTickets ? null : parsePositiveInt(user_id);
     if (viewerUserId) {
       values.push(viewerUserId);
-      where.push(`(ot.user_id = $${values.length} OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[])) OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[])))`);
+      where.push(`(
+        ot.user_id = $${values.length}
+        OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
+        OR ot.user_id IN (
+          SELECT owner_user_id FROM users.delegations
+          WHERE delegate_user_id = $${values.length}
+            AND from_date <= CURRENT_DATE
+            AND to_date >= CURRENT_DATE
+        )
+      )`);
     }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';

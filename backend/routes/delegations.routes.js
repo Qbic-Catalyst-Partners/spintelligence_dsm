@@ -19,7 +19,24 @@ const parseDateOnly = (value) => {
   return trimmed;
 };
 
+const ensureUserDetailsPrimaryKey = async () => {
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        WHERE nsp.nspname = 'users' AND rel.relname = 'user_details' AND con.contype = 'p'
+      ) THEN
+        ALTER TABLE users.user_details ADD CONSTRAINT user_details_pkey PRIMARY KEY (id);
+      END IF;
+    END $$;
+  `);
+};
+
 const ensureDelegationsTable = async () => {
+  await ensureUserDetailsPrimaryKey();
   await client.query(`
     CREATE TABLE IF NOT EXISTS users.delegations (
       id bigserial PRIMARY KEY,
@@ -131,3 +148,4 @@ router.get('/', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.ensureDelegationsTable = ensureDelegationsTable;
