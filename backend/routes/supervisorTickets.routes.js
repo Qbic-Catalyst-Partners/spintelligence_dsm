@@ -3,6 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
 const { createNotification, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { ensureDelegationsTable } = require('./delegations.routes');
 
 const parsePositiveInt = (value) => {
   const n = Number(value);
@@ -353,6 +354,7 @@ router.get('/tickets', async (req, res, next) => {
   try {
     await ensureOperatorTicketApprovalColumns();
     await ensureNotificationRecipientColumn();
+    await ensureDelegationsTable();
 
     const requesterId = parsePositiveInt(req.user?.id);
     if (!requesterId) return res.status(401).json({ message: 'Authentication required' });
@@ -424,9 +426,37 @@ router.get('/tickets', async (req, res, next) => {
       where.push(`ot.created_at::date <= $${values.length}::date`);
     }
 
+    const delegatedOwnerMatch = REVIEW_LEVELS
+      .map((level) => `d.owner_user_id = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`)
+      .join(' OR ');
+    // Requester-scoped: used only to widen visibility for the specific
+    // delegate whose session this is.
+    const requesterIsDelegateExpr = `EXISTS (
+      SELECT 1 FROM users.delegations d
+      WHERE d.delegate_user_id = ${requesterId}
+        AND d.from_date <= CURRENT_DATE
+        AND d.to_date >= CURRENT_DATE
+        AND (${delegatedOwnerMatch})
+    )`;
+    // Only the specific delegate and admins/L5 (canViewAll) should see the
+    // "Delegate" tag - other approvers who can see this ticket via their
+    // own approval-list membership should not.
+    const isDelegatedExpr = canViewAll
+      ? `EXISTS (
+          SELECT 1 FROM users.delegations d
+          WHERE d.from_date <= CURRENT_DATE
+            AND d.to_date >= CURRENT_DATE
+            AND (${delegatedOwnerMatch})
+        )`
+      : requesterIsDelegateExpr;
+
     if (!canViewAll) {
       values.push(requesterId);
-      where.push(`(${REVIEW_LEVELS.map((level) => `$${values.length} = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`).join(' OR ')})`);
+      const requesterParam = values.length;
+      where.push(`(
+        (${REVIEW_LEVELS.map((level) => `$${requesterParam} = ANY(COALESCE(ot.approval_${level.toLowerCase()}_user_ids, ARRAY[]::int[]))`).join(' OR ')})
+        OR ${requesterIsDelegateExpr}
+      )`);
     }
 
     values.push(limit);
@@ -472,6 +502,7 @@ router.get('/tickets', async (req, res, next) => {
          ot.l4_tat_due_at,
          ot.l5_tat_due_at,
          ot.created_at,
+         ${isDelegatedExpr} AS is_delegated,
          COUNT(*) OVER()::int AS total_count
        FROM ticketing_system.operator_tickets ot
        LEFT JOIN LATERAL (

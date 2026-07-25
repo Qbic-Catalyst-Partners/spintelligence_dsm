@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useRouter } from "next/router";
 import { FiCalendar } from "react-icons/fi";
 import styles from "../../styles/DelegationSystem.module.css";
 import { fetchUsers } from "../../store/slices/userSlice";
 import { assignDelegationAPI, fetchDelegationsAPI } from "../../apis/delegationsApi";
+import { isDelegationManagerUser } from "../../utils/accessControl";
 
 const ROWS_PER_PAGE = 9;
 
@@ -39,6 +41,10 @@ const computeNoOfDays = (fromDate, toDate) => {
 
 export default function DelegationSystem() {
   const dispatch = useDispatch();
+  const router = useRouter();
+  const authUser = useSelector((state) => state.auth?.user);
+  const isHydrated = useSelector((state) => state.auth?.isHydrated);
+  const canAccessPage = isDelegationManagerUser(authUser);
   const { users = [] } = useSelector((state) => state.users || {});
   const fromDateRef = useRef(null);
   const toDateRef = useRef(null);
@@ -56,8 +62,15 @@ export default function DelegationSystem() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+    if (!canAccessPage) {
+      router.replace("/departments");
+      return;
+    }
     dispatch(fetchUsers());
-  }, [dispatch]);
+  }, [canAccessPage, dispatch, isHydrated, router]);
 
   const loadDelegations = async (targetPage) => {
     setLoading(true);
@@ -75,8 +88,11 @@ export default function DelegationSystem() {
   };
 
   useEffect(() => {
+    if (!isHydrated || !canAccessPage) {
+      return;
+    }
     loadDelegations(1);
-  }, []);
+  }, [canAccessPage, isHydrated]);
 
   const noOfDays = useMemo(() => computeNoOfDays(fromDate, toDate), [fromDate, toDate]);
   const totalPages = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
@@ -133,6 +149,10 @@ export default function DelegationSystem() {
       setSubmitting(false);
     }
   };
+
+  if (!isHydrated || !canAccessPage) {
+    return null;
+  }
 
   return (
     <div className={styles.container}>
