@@ -4,6 +4,7 @@ const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { createNotificationsForUsers } = require('../utils/notifications');
 const {
   ensureProcessParameterMasterTable,
   refreshProcessParameterStatus
@@ -4977,7 +4978,23 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
      RETURNING ticket_id`,
     [wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
-  return ticket.rows[0]?.ticket_id || null;
+  const insertedTicketId = ticket.rows[0]?.ticket_id || null;
+
+  if (insertedTicketId && l4UserIds.length) {
+    await createNotificationsForUsers(l4UserIds, {
+      ticketId: insertedTicketId,
+      type: 'WHEEL_CHANGE_APPROVAL',
+      category: 'Tickets',
+      priority: severity === 'High' ? 'High' : 'Medium',
+      title: (user) => `Hi ${user.full_name || 'there'} (L4), a Wheel Change needs your approval`,
+      body: (user) =>
+        `${user.full_name || 'You'} (L4) - a Wheel Change proposal for ${department} is awaiting your approval within ${tatHours} hour(s).`,
+      linkUrl: `/supervisor-tickets/${insertedTicketId}`,
+      payload: { ticket_id: insertedTicketId, wheel_change_row_key: wheelChangeRowKey }
+    });
+  }
+
+  return insertedTicketId;
 };
 
 const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
@@ -5016,7 +5033,22 @@ const runWheelChangeApprovalTatCheck = async () => {
        RETURNING *`,
       [l5UserIds, row.ticket_id]
     );
-    if (result.rows[0]) escalated.push(result.rows[0]);
+    const escalatedTicket = result.rows[0];
+    if (escalatedTicket) {
+      escalated.push(escalatedTicket);
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l5UserIds, {
+        ticketId: escalatedTicket.ticket_id,
+        type: 'WHEEL_CHANGE_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L5), a Wheel Change escalated to you`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L5) - a Wheel Change proposal was not approved at L4 in time and has escalated to you. Please approve it.`,
+        linkUrl: `/supervisor-tickets/${escalatedTicket.ticket_id}`,
+        payload: { ticket_id: escalatedTicket.ticket_id }
+      });
+    }
   }
   return escalated;
 };

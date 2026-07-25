@@ -570,8 +570,9 @@ const runPpBatchCompletionCheck = async () => {
         type: 'PP_BATCH_INCOMPLETE',
         category: 'Tickets',
         priority: 'High',
-        title: `PP batch incomplete: ${row.entry_id} (${missingLabel})`,
-        body: violationDetails.message,
+        title: (user) => `Hi ${user.full_name || 'there'} (L1), PP entry ${row.entry_id} needs your action`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L1) - ${missingLabel} for PP entry ${row.entry_id} was not submitted within ${completionThresholdHours} hour(s). Please fix and resubmit it.`,
         linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
         payload: { ticket_id: inserted.ticket_id, entry_id: row.entry_id }
       });
@@ -1037,18 +1038,14 @@ const generateOverdueNotebookTickets = async () => {
       continue;
     }
 
-    // Per-notebook L3/L4/L5 TAT hours (from the Acknowledgement Threshold
-    // config screen) are stored on the ticket itself, not read from a single
-    // shared config like PP Batch's escalatePpBatchTickets - each notebook
-    // screen can configure its own escalation pace, so
-    // escalateNotebookAckTickets below reads each ticket's own stored values
-    // rather than one global setting.
     const acknowledgementThreshold = await getAcknowledgementThresholdForNotebook(submission);
 
-    // The Acknowledgement Threshold screen's manually-picked L2 approver
-    // takes priority when configured; the submitter's real reporting chain
-    // is the fallback (so notebooks without a configured L2 still route
-    // correctly), and the submission's own approver columns / department
+    // Acknowledgement Threshold (per the ticket-type spec table) is a flat,
+    // L2-only ticket - raised on L2 once L1 submits and resolved by L2
+    // acknowledging it, with no L3/L4/L5 escalation and no visibility to any
+    // other level's dashboard. The screen's manually-picked L2 approver takes
+    // priority when configured; the submitter's real L2 manager is the
+    // fallback, and the submission's own approver columns / department
     // default are the last resort.
     const resolvedChain = await resolveEscalationChainForSubmitter(submission.submitted_by_user_id);
     const manualL2Ids = acknowledgementThreshold?.approval_l2
@@ -1064,21 +1061,6 @@ const generateOverdueNotebookTickets = async () => {
         : (Array.isArray(submission.l2_approver_user_ids) && submission.l2_approver_user_ids.length)
           ? submission.l2_approver_user_ids
           : await getL2ApproverIds([], { useDefault: true });
-    const l3ApproverIds = resolvedChain.l3.length
-      ? resolvedChain.l3
-      : (Array.isArray(submission.l3_approver_user_ids) && submission.l3_approver_user_ids.length)
-        ? submission.l3_approver_user_ids
-        : await getL3ApproverIds([], { useDefault: true });
-    const l4ApproverIds = resolvedChain.l4.length
-      ? resolvedChain.l4
-      : (Array.isArray(submission.l4_approver_user_ids) && submission.l4_approver_user_ids.length)
-        ? submission.l4_approver_user_ids
-        : await getL4ApproverIds([], { useDefault: true });
-    const l5ApproverIds = resolvedChain.l5.length
-      ? resolvedChain.l5
-      : (Array.isArray(submission.l5_approver_user_ids) && submission.l5_approver_user_ids.length)
-        ? submission.l5_approver_user_ids
-        : await getL5ApproverIds([], { useDefault: true });
     const violationDetails = {
       category: 'MISSED_FREQUENCY',
       ticket_type: 'NOTEBOOK_ACK_OVERDUE',
@@ -1086,9 +1068,6 @@ const generateOverdueNotebookTickets = async () => {
       submitted_notebook_id: submission.id,
       notebook_submission_id: submission.notebook_submission_id,
       ack_due_at: submission.ack_due_at,
-      l3_tat_hours: Number(acknowledgementThreshold?.l3_tat_hours) > 0 ? Number(acknowledgementThreshold.l3_tat_hours) : null,
-      l4_tat_hours: Number(acknowledgementThreshold?.l4_tat_hours) > 0 ? Number(acknowledgementThreshold.l4_tat_hours) : null,
-      l5_tat_hours: Number(acknowledgementThreshold?.l5_tat_hours) > 0 ? Number(acknowledgementThreshold.l5_tat_hours) : null,
       message: 'Submitted notebook was not acknowledged within the configured time.'
     };
 
@@ -1096,13 +1075,12 @@ const generateOverdueNotebookTickets = async () => {
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
-        violation_details, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids,
-        tat_current_level, l2_tat_due_at, l3_tat_due_at)
+        violation_details, approval_l2_user_ids, tat_current_level)
        VALUES (
          'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
          $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-         $14, 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
-         $9::jsonb, $10::int[], $11::int[], $12::int[], $13::int[], 'L2', NOW(), NULL
+         $11, 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
+         $9::jsonb, $10::int[], 'L2'
        )
        RETURNING *`,
       [
@@ -1116,9 +1094,6 @@ const generateOverdueNotebookTickets = async () => {
         submission.sub_department,
         toJson(violationDetails, {}),
         l2ApproverIds,
-        l3ApproverIds,
-        l4ApproverIds,
-        l5ApproverIds,
         acknowledgementThreshold?.criticality || 'High'
       ]
     );
@@ -1140,9 +1115,6 @@ const generateOverdueNotebookTickets = async () => {
       [inserted.ticket_id]
     );
 
-    // Per the PDF, this ticket starts at L2 only - L3/L4/L5 must not be
-    // notified until their own tier's TAT elapses (see
-    // escalateNotebookAckTickets below), not all at once on creation.
     const ackNotebookName = submission.input_screen || submission.notebook;
     if (l2ApproverIds.length) {
       await createNotificationsForUsers(l2ApproverIds, {
@@ -1150,8 +1122,9 @@ const generateOverdueNotebookTickets = async () => {
         type: 'NOTEBOOK_ACK_OVERDUE',
         category: 'Tickets',
         priority: 'High',
-        title: `Acknowledgement overdue — ${ackNotebookName} (L2)`,
-        body: `${ackNotebookName} is waiting for your L2 acknowledgement.`,
+        title: (user) => `Hi ${user.full_name || 'there'} (L2), ${ackNotebookName} needs your acknowledgement`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L2) - ${ackNotebookName} was due for acknowledgement by ${new Date(submission.ack_due_at).toLocaleString()} and is now overdue. Please acknowledge it.`,
         linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
         payload: {
           ticket_id: inserted.ticket_id,
@@ -1166,91 +1139,9 @@ const generateOverdueNotebookTickets = async () => {
     created.push(inserted);
   }
 
-  const escalated = await escalateNotebookAckTickets();
-
-  return { created, escalated };
-};
-
-// Steps a NOTEBOOK_ACK_OVERDUE ticket from one tier to the next
-// (L2 -> L3 -> L4 -> L5) once the current tier's due date has passed,
-// mirroring escalatePpBatchTickets. Unlike PP Batch's single global config,
-// each notebook screen configures its own L3/L4/L5 TAT hours, so those are
-// read from the ticket's own violation_details (stamped at creation time)
-// rather than one shared config object.
-const escalateNotebookAckTickets = async () => {
-  const tiers = [
-    { level: 'L2', dueColumn: 'l2_tat_due_at', nextLevel: 'L3', nextDueColumn: 'l3_tat_due_at', tatKey: 'l3_tat_hours' },
-    { level: 'L3', dueColumn: 'l3_tat_due_at', nextLevel: 'L4', nextDueColumn: 'l4_tat_due_at', tatKey: 'l4_tat_hours' },
-    { level: 'L4', dueColumn: 'l4_tat_due_at', nextLevel: 'L5', nextDueColumn: 'l5_tat_due_at', tatKey: 'l5_tat_hours' },
-  ];
-
-  const allEscalated = [];
-
-  for (const tier of tiers) {
-    const dueTickets = await client.query(
-      `SELECT * FROM ticketing_system.operator_tickets
-       WHERE COALESCE(violation_details->>'ticket_type', '') IN ('SUBMISSION_ACKNOWLEDGEMENT', 'NOTEBOOK_ACK_OVERDUE')
-         AND tat_current_level = $1
-         AND ${tier.dueColumn} IS NOT NULL
-         AND ${tier.dueColumn} <= NOW()
-         AND status <> 'Closed'`,
-      [tier.level]
-    );
-    if (!dueTickets.rowCount) continue;
-
-    for (const ticket of dueTickets.rows) {
-      const nextApproverIds = Array.isArray(ticket[`approval_${tier.nextLevel.toLowerCase()}_user_ids`])
-        ? ticket[`approval_${tier.nextLevel.toLowerCase()}_user_ids`]
-        : [];
-      const nextTatHours = Number(ticket.violation_details?.[tier.tatKey]) > 0
-        ? Number(ticket.violation_details[tier.tatKey])
-        : null;
-      const nextDueAt = nextTatHours ? new Date(Date.now() + nextTatHours * 60 * 60 * 1000).toISOString() : null;
-
-      // eslint-disable-next-line no-await-in-loop
-      const result = await client.query(
-        `UPDATE ticketing_system.operator_tickets
-         SET tat_current_level = $1,
-             ${tier.nextDueColumn} = $2
-         WHERE ticket_id = $3
-         RETURNING *`,
-        [tier.nextLevel, nextDueAt, ticket.ticket_id]
-      );
-      const escalatedTicket = result.rows[0];
-      if (escalatedTicket) allEscalated.push(escalatedTicket);
-
-      if (nextApproverIds.length) {
-        const ackNotebookName = ticket.parameter_name || ticket.machine_name || 'Notebook';
-        // eslint-disable-next-line no-await-in-loop
-        await createNotificationsForUsers(nextApproverIds, {
-          ticketId: ticket.ticket_id,
-          type: 'NOTEBOOK_ACK_OVERDUE',
-          category: 'Tickets',
-          priority: 'High',
-          title: `Acknowledgement overdue (escalated to ${tier.nextLevel}): ${ackNotebookName}`,
-          body: `This acknowledgement was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
-          linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
-          payload: { ticket_id: ticket.ticket_id, level: tier.nextLevel }
-        });
-      }
-    }
-  }
-
-  // L5 is terminal - mark it expired once its own TAT elapses, same pattern
-  // as PP Batch's escalatePpBatchTickets, so it's visibly overdue instead of
-  // silently stuck at "L5" forever with the ticket "remaining open" per spec.
-  const expiredL5 = await client.query(
-    `UPDATE ticketing_system.operator_tickets
-     SET tat_current_level = 'EXPIRED_L5'
-     WHERE COALESCE(violation_details->>'ticket_type', '') IN ('SUBMISSION_ACKNOWLEDGEMENT', 'NOTEBOOK_ACK_OVERDUE')
-       AND tat_current_level = 'L5'
-       AND l5_tat_due_at IS NOT NULL
-       AND l5_tat_due_at <= NOW()
-       AND status <> 'Closed'
-     RETURNING *`
-  );
-
-  return [...allEscalated, ...expiredL5.rows];
+  // Acknowledgement Threshold (per the ticket-type spec table) is a flat,
+  // L2-only ticket - it does not escalate to L3/L4/L5.
+  return { created, escalated: [] };
 };
 
 router.use(auth);

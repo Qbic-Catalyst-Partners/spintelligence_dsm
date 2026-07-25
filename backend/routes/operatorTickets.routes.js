@@ -2403,11 +2403,15 @@ router.get('/', async (req, res, next) => {
 
     const requesterEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
     const requesterRole = String(req.user?.role || '').trim().toLowerCase();
+    const requesterLevel = String(req.user?.level || '').trim().toUpperCase();
+    // L5 (Executive Leadership) sees every ticket system-wide, same as admin,
+    // rather than only the ones that happened to reach approval_l5_user_ids.
     const canViewAllTickets =
       requesterEmployeeId === 'ADMIN001' ||
       requesterRole === 'admin' ||
       requesterRole === 'super admin' ||
-      requesterRole === 'superadmin';
+      requesterRole === 'superadmin' ||
+      requesterLevel === 'L5';
 
     // Scope by the AUTHENTICATED requester (from the JWT), never a
     // client-supplied user_id - previously this trusted req.query.user_id,
@@ -2494,7 +2498,7 @@ router.get('/', async (req, res, next) => {
           ot.severity,
           ot.status,
           ot.created_at
-      ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\D', '', 'g'), '')::bigint DESC, ot.created_at DESC;
+      ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC;
     `;
 
     const result = await client.query(query, values);
@@ -2582,7 +2586,7 @@ router.get('/submission-ticketing', async (req, res, next) => {
        FROM ticketing_system.operator_tickets ot
        LEFT JOIN users.user_details ud ON ud.id = ot.user_id
        WHERE ${where.join(' AND ')}
-       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
+       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
        LIMIT $${limitIndex}
        OFFSET $${offsetIndex}`,
       values

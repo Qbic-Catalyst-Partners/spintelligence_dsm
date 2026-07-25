@@ -7,6 +7,7 @@ const {
   createProcessParameterEntryId,
 } = require('../utils/processParameterEntryId');
 const { getPpNotebookThresholds } = require('./submittedNotebooks.routes');
+const { createNotificationsForUsers } = require('../utils/notifications');
 
 const router = express.Router();
 
@@ -408,7 +409,23 @@ const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
      RETURNING ticket_id`,
     [entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
-  return ticket.rows[0]?.ticket_id || null;
+  const insertedTicketId = ticket.rows[0]?.ticket_id || null;
+
+  if (insertedTicketId && l4UserIds.length) {
+    await createNotificationsForUsers(l4UserIds, {
+      ticketId: insertedTicketId,
+      type: 'PP_APPROVAL',
+      category: 'Tickets',
+      priority: severity === 'High' ? 'High' : 'Medium',
+      title: (user) => `Hi ${user.full_name || 'there'} (L4), PP entry ${entry_id} needs your approval`,
+      body: (user) =>
+        `${user.full_name || 'You'} (L4) - PP entry ${entry_id} has completed all departments and is awaiting your approval within ${tatHours} hour(s).`,
+      linkUrl: `/supervisor-tickets/${insertedTicketId}`,
+      payload: { ticket_id: insertedTicketId, entry_id }
+    });
+  }
+
+  return insertedTicketId;
 };
 
 const closePpApprovalTicket = async (entry_id) => {
@@ -448,7 +465,23 @@ const runPpApprovalTatCheck = async () => {
        RETURNING *`,
       [l5UserIds, row.ticket_id]
     );
-    if (result.rows[0]) escalated.push(result.rows[0]);
+    const escalatedTicket = result.rows[0];
+    if (escalatedTicket) {
+      escalated.push(escalatedTicket);
+      const entryId = escalatedTicket.violation_details?.entry_id || row.ticket_id;
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l5UserIds, {
+        ticketId: escalatedTicket.ticket_id,
+        type: 'PP_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L5), PP entry ${entryId} escalated to you`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L5) - PP entry ${entryId} was not approved at L4 in time and has escalated to you. Please approve it.`,
+        linkUrl: `/supervisor-tickets/${escalatedTicket.ticket_id}`,
+        payload: { ticket_id: escalatedTicket.ticket_id, entry_id: entryId }
+      });
+    }
   }
   return escalated;
 };
