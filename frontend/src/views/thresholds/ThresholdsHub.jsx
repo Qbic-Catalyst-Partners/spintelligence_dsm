@@ -12,11 +12,14 @@ import WheelChangeApprovalThresholdPage from "@/views/thresholds/WheelChangeAppr
 import {
   fetchThresholdsAPI,
   updateThresholdStatusAPI,
+  updateThresholdAPI,
   deleteThresholdAPI,
 } from "@/apis/thresholdsApi";
 import {
   fetchSubmissionFrequencyConfigsAPI,
+  saveSubmissionFrequencyConfigAPI,
   updateSubmissionFrequencyStatusAPI,
+  updateSubmissionFrequencyConfigAPI,
   deleteSubmissionFrequencyConfigAPI,
 } from "@/apis/submissionFrequencyApi";
 import {
@@ -31,6 +34,7 @@ import {
 } from "@/apis/wheelChangeApprovalConfigApi";
 
 import { departmentDirectory } from "@/views/departments/data";
+import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import { isFullAccessUser, isSubmittedNotebookManagerUser } from "@/utils/accessControl";
 import styles from "@/styles/SubmissionThreshold.module.css";
 import warningStyles from "@/styles/warningModal.module.css";
@@ -51,6 +55,7 @@ const THRESHOLD_TYPE_COLUMNS = {
     { key: "field", label: "Input Field" },
     { key: "l1", label: "L1" },
     { key: "l2", label: "L2" },
+    { key: "typicalValue", label: "Typical Value" },
     { key: "detail", label: "Plus (+) / Minus (-)" },
   ],
   submission: [
@@ -120,6 +125,7 @@ const normalizeValueThresholdRow = (item) => ({
   field: item?.input_field || item?.parameter_name || "-",
   l1: nameListToText(item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1),
   l2: nameListToText(item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2),
+  typicalValue: item?.actual_value ?? "-",
   detail: `${item?.plus_threshold ?? item?.positive_tolerance ?? "-"} / ${item?.minus_threshold ?? item?.negative_tolerance ?? "-"}`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
@@ -136,7 +142,7 @@ const normalizeSubmissionThresholdRow = (item) => ({
   field: "-",
   l1: nameListToText(item?.approval_l1_name || item?.approval_l1),
   l2: nameListToText(item?.approval_l2_name || item?.approval_l2),
-  detail: `Every ${item?.frequency ?? "-"}d x ${item?.occurrences ?? "-"}`,
+  detail: `Every ${item?.range ?? "-"}d x ${item?.frequency ?? "-"}`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,
 });
@@ -217,6 +223,7 @@ const THRESHOLD_TYPE_LOADERS = {
     canDelete: true,
     toggleStatus: (row, nextActive) => updateThresholdStatusAPI(row.raw, nextActive),
     remove: (row) => deleteThresholdAPI(row.raw),
+    updateTat: (raw, field, hours) => updateThresholdAPI(raw, { [field]: hours }),
   },
   submission: {
     fetch: fetchSubmissionFrequencyConfigsAPI,
@@ -224,8 +231,9 @@ const THRESHOLD_TYPE_LOADERS = {
     canEdit: true,
     canToggleStatus: true,
     canDelete: true,
-    toggleStatus: (row, nextActive) => updateSubmissionFrequencyStatusAPI(row.id, nextActive),
-    remove: (row) => deleteSubmissionFrequencyConfigAPI(row.id),
+    toggleStatus: (row, nextActive) => updateSubmissionFrequencyStatusAPI(getRowId(row.raw), nextActive),
+    remove: (row) => deleteSubmissionFrequencyConfigAPI(getRowId(row.raw)),
+    updateTat: (raw, field, hours) => updateSubmissionFrequencyConfigAPI(getRowId(raw), { [field]: hours }),
   },
   pp: {
     fetch: fetchPpNotebookThresholdsAPI,
@@ -368,13 +376,19 @@ function ExistingThresholdsTab({ onEditRow }) {
   const selectedDepartment =
     availableDepartments.find((item) => item.slug === filters.departmentSlug) || null;
   const availableSubDepartments = selectedDepartment?.subDepartments || [];
-  const notebookTypeOptions = useMemo(
-    () =>
-      Array.from(new Set(rows.map((row) => row.notebookType).filter((value) => value && value !== "-"))).sort(
-        (left, right) => left.localeCompare(right)
-      ),
-    [rows]
-  );
+  const notebookTypeOptions = useMemo(() => {
+    const selectedSubDepartment = availableSubDepartments.find(
+      (item) => item.slug === filters.subDepartmentSlug
+    );
+    const scopedRows = rows.filter((row) => {
+      if (selectedDepartment && row.department !== selectedDepartment.name) return false;
+      if (selectedSubDepartment && row.subDepartment !== selectedSubDepartment.name) return false;
+      return true;
+    });
+    return Array.from(new Set(scopedRows.map((row) => row.notebookType).filter((value) => value && value !== "-"))).sort(
+      (left, right) => left.localeCompare(right)
+    );
+  }, [rows, selectedDepartment, availableSubDepartments, filters.subDepartmentSlug]);
 
   const loadRows = async (nextType) => {
     if (!nextType) {
@@ -711,6 +725,534 @@ function ExistingThresholdsTab({ onEditRow }) {
   );
 }
 
+const ROLE_LEVELS = ["L1", "L2", "L3", "L4"];
+
+// Each option lists which units the TAT column breaks the duration into,
+// e.g. ["h"] shows whole/fractional hours only, ["h","m","s"] shows all three.
+const TAT_UNIT_OPTIONS = [
+  { value: "h", label: "Hours", units: ["h"] },
+  { value: "m", label: "Minutes", units: ["m"] },
+  { value: "s", label: "Seconds", units: ["s"] },
+  { value: "hm", label: "Hours & Minutes", units: ["h", "m"] },
+  { value: "hms", label: "Hours, Minutes & Seconds", units: ["h", "m", "s"] },
+];
+
+const UNIT_INPUT_LABELS = { h: "Hours", m: "Minutes", s: "Seconds" };
+
+const formatTatHoursDisplay = (hours, units = ["h", "m"]) => {
+  const numeric = Number(hours);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "-";
+
+  const totalSeconds = Math.round(numeric * 3600);
+  if (totalSeconds <= 0) return "-";
+
+  if (units.length === 1 && units[0] === "h") {
+    const hoursOnly = numeric;
+    const rounded = Math.round(hoursOnly * 100) / 100;
+    return `${rounded}h`;
+  }
+  if (units.length === 1 && units[0] === "m") {
+    const totalMinutes = Math.round(totalSeconds / 60);
+    return `${totalMinutes}m`;
+  }
+  if (units.length === 1 && units[0] === "s") {
+    return `${totalSeconds}s`;
+  }
+
+  const wholeHours = Math.floor(totalSeconds / 3600);
+  const remAfterHours = totalSeconds - wholeHours * 3600;
+  const wholeMinutes = Math.floor(remAfterHours / 60);
+  const remSeconds = remAfterHours - wholeMinutes * 60;
+
+  const parts = [];
+  if (units.includes("h") && wholeHours > 0) parts.push(`${wholeHours}h`);
+  if (units.includes("m") && wholeMinutes > 0) parts.push(`${wholeMinutes}m`);
+  if (units.includes("s") && remSeconds > 0) parts.push(`${remSeconds}s`);
+  return parts.length ? parts.join(" ") : "0m";
+};
+
+// Expands one Value/Submission Threshold rule into one row per configured
+// role level (L1, L2, ...) so Department/Sub-Department/Notebook Type/Role
+// Level/TAT can be shown as a flat, filterable list. Each expanded row keeps
+// a reference back to the source rule (type + raw) so Edit/Delete/Active
+// actions still operate on the whole rule via THRESHOLD_TYPE_LOADERS.
+const expandRuleIntoResolutionRows = (item, type, typeLabel) => {
+  const department = item?.department || item?.management_field || "-";
+  const subDepartment = item?.sub_department || item?.erp_product_code || "-";
+  const notebookType = item?.input_screen || item?.screen_name || item?.machine_name || "-";
+
+  const levelHours = {
+    L1: item?.l1_tat_hours,
+    L2: item?.l2_tat_hours,
+    L3: item?.l3_tat_hours,
+    L4: item?.l4_tat_hours,
+  };
+
+  return ROLE_LEVELS.filter((level) => Number(levelHours[level]) > 0).map((level) => ({
+    id: `${getRowId(item)}-${level}`,
+    type,
+    typeLabel,
+    raw: item,
+    department,
+    subDepartment,
+    notebookType,
+    roleLevel: level,
+    tatHours: levelHours[level],
+    isActive: getActiveValue(item),
+  }));
+};
+
+function ResolutionTimeTab({ onEditRow }) {
+  const [rows, setRows] = useState([]);
+  const [rawSubmissionConfigs, setRawSubmissionConfigs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [filters, setFilters] = useState({ departmentSlug: "", subDepartmentSlug: "", notebookType: "", roleLevel: "" });
+  const [tatUnit, setTatUnit] = useState("hm");
+  const [tatUnitValues, setTatUnitValues] = useState({ h: "", m: "", s: "" });
+  const [applyingTat, setApplyingTat] = useState(false);
+  const [busyRowKey, setBusyRowKey] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [pendingDeleteRow, setPendingDeleteRow] = useState(null);
+
+  const availableDepartments = departmentDirectory;
+  const selectedDepartment =
+    availableDepartments.find((item) => item.slug === filters.departmentSlug) || null;
+  const availableSubDepartments = selectedDepartment?.subDepartments || [];
+
+  const loadRows = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [valueData, submissionData] = await Promise.all([
+        fetchThresholdsAPI(),
+        fetchSubmissionFrequencyConfigsAPI(),
+      ]);
+      const valueList = Array.isArray(valueData) ? valueData : Array.isArray(valueData?.data) ? valueData.data : [];
+      const submissionList = Array.isArray(submissionData)
+        ? submissionData
+        : Array.isArray(submissionData?.data)
+        ? submissionData.data
+        : [];
+
+      const expanded = [
+        ...valueList.flatMap((item) => expandRuleIntoResolutionRows(item, "value", "Value Threshold")),
+        ...submissionList.flatMap((item) => expandRuleIntoResolutionRows(item, "submission", "Submission Threshold")),
+      ];
+
+      setRows(expanded);
+      setRawSubmissionConfigs(submissionList);
+    } catch (err) {
+      setError(err?.message || "Unable to load resolution time data.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadRows();
+  }, []);
+
+  // Notebook types come from the full threshold screen catalog (every
+  // notebook type available for the selected sub-department), not just ones
+  // that already have a threshold rule, since this tab is used to create new
+  // TAT entries for combinations that may not exist yet.
+  const notebookTypeOptions = useMemo(() => {
+    if (filters.departmentSlug && filters.subDepartmentSlug) {
+      const catalogTypes = getThresholdScreensForSubDepartment(filters.departmentSlug, filters.subDepartmentSlug);
+      if (catalogTypes.length) {
+        return [...catalogTypes].sort((left, right) => left.localeCompare(right));
+      }
+    }
+
+    const selectedSubDepartment = availableSubDepartments.find(
+      (item) => item.slug === filters.subDepartmentSlug
+    );
+    const scopedRows = rows.filter((row) => {
+      if (selectedDepartment && row.department !== selectedDepartment.name) return false;
+      if (selectedSubDepartment && row.subDepartment !== selectedSubDepartment.name) return false;
+      return true;
+    });
+    return Array.from(new Set(scopedRows.map((row) => row.notebookType).filter((value) => value && value !== "-"))).sort(
+      (left, right) => left.localeCompare(right)
+    );
+  }, [rows, selectedDepartment, availableSubDepartments, filters.departmentSlug, filters.subDepartmentSlug]);
+
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (selectedDepartment && row.department !== selectedDepartment.name) return false;
+        const selectedSubDepartment = availableSubDepartments.find(
+          (item) => item.slug === filters.subDepartmentSlug
+        );
+        if (selectedSubDepartment && row.subDepartment !== selectedSubDepartment.name) return false;
+        if (filters.notebookType && row.notebookType !== filters.notebookType) return false;
+        if (filters.roleLevel && row.roleLevel !== filters.roleLevel) return false;
+        return true;
+      }),
+    [rows, filters, selectedDepartment, availableSubDepartments]
+  );
+
+  // Looks up the raw Submission Threshold config (not the expanded per-level
+  // rows, which drop levels with no TAT set yet) so Apply can find a rule
+  // even if this specific role level's TAT hasn't been set before.
+  const matchedConfigForCreate = useMemo(() => {
+    if (!filters.departmentSlug || !filters.subDepartmentSlug || !filters.notebookType || !filters.roleLevel) {
+      return null;
+    }
+    const selectedSubDepartment = availableSubDepartments.find(
+      (item) => item.slug === filters.subDepartmentSlug
+    );
+    if (!selectedDepartment || !selectedSubDepartment) return null;
+
+    const match = rawSubmissionConfigs.find(
+      (config) =>
+        config?.department === selectedDepartment.name &&
+        config?.sub_department === selectedSubDepartment.name &&
+        config?.screen_name === filters.notebookType
+    );
+    return match || null;
+  }, [rawSubmissionConfigs, filters, selectedDepartment, availableSubDepartments]);
+
+  const activeTatUnitOption =
+    TAT_UNIT_OPTIONS.find((option) => option.value === tatUnit) || TAT_UNIT_OPTIONS[0];
+
+  const canApplyTat = Boolean(
+    filters.departmentSlug &&
+      filters.subDepartmentSlug &&
+      filters.notebookType &&
+      filters.roleLevel &&
+      activeTatUnitOption.units.some((unit) => Number(tatUnitValues[unit]) > 0)
+  );
+
+  const getRowKey = (row, index) => `${row.type}-${row.id || index}`;
+
+  const handleEdit = (row) => {
+    onEditRow?.(row.type, row.raw);
+  };
+
+  const handleToggleStatus = async (row) => {
+    const loader = THRESHOLD_TYPE_LOADERS[row.type];
+    if (!loader?.toggleStatus) return;
+
+    const rowKey = getRowKey(row, rows.indexOf(row));
+    setBusyRowKey(rowKey);
+    setActionMessage("");
+    setActionError("");
+    try {
+      await loader.toggleStatus(row, !row.isActive);
+      setActionMessage("Threshold status updated successfully.");
+      await loadRows();
+    } catch (err) {
+      setActionError(
+        err?.response?.data?.message || err?.message || "Unable to update threshold status."
+      );
+    } finally {
+      setBusyRowKey("");
+    }
+  };
+
+  const requestDelete = (row) => {
+    setPendingDeleteRow(row);
+  };
+
+  const cancelDelete = () => setPendingDeleteRow(null);
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteRow) return;
+    const loader = THRESHOLD_TYPE_LOADERS[pendingDeleteRow.type];
+    if (!loader?.remove) {
+      setPendingDeleteRow(null);
+      return;
+    }
+
+    const rowKey = getRowKey(pendingDeleteRow, rows.indexOf(pendingDeleteRow));
+    setBusyRowKey(rowKey);
+    setActionMessage("");
+    setActionError("");
+    try {
+      await loader.remove(pendingDeleteRow);
+      setActionMessage("Threshold deleted successfully.");
+      await loadRows();
+    } catch (err) {
+      setActionError(err?.response?.data?.message || err?.message || "Unable to delete threshold.");
+    } finally {
+      setBusyRowKey("");
+      setPendingDeleteRow(null);
+    }
+  };
+
+  const handleApplyTat = async () => {
+    if (!canApplyTat) return;
+
+    const hoursFromUnits =
+      (Number(tatUnitValues.h) || 0) + (Number(tatUnitValues.m) || 0) / 60 + (Number(tatUnitValues.s) || 0) / 3600;
+    if (!Number.isFinite(hoursFromUnits) || hoursFromUnits <= 0) {
+      setActionError("Enter a TAT value greater than 0.");
+      return;
+    }
+
+    // Backend only accepts a whole positive integer number of hours for
+    // lN_tat_hours, so any minutes/seconds entered round up to the next hour.
+    const hours = Math.ceil(hoursFromUnits);
+
+    const field = `${filters.roleLevel.toLowerCase()}_tat_hours`;
+    setApplyingTat(true);
+    setActionMessage("");
+    setActionError("");
+    try {
+      if (matchedConfigForCreate) {
+        await updateSubmissionFrequencyConfigAPI(getRowId(matchedConfigForCreate), { [field]: hours });
+      } else {
+        await saveSubmissionFrequencyConfigAPI({
+          screen_name: filters.notebookType,
+          department: selectedDepartment?.name,
+          sub_department: availableSubDepartments.find((item) => item.slug === filters.subDepartmentSlug)?.name,
+          range: 1,
+          frequency: 1,
+          [field]: hours,
+        });
+      }
+      setActionMessage("TAT saved successfully.");
+      setTatUnitValues({ h: "", m: "", s: "" });
+      await loadRows();
+    } catch (err) {
+      setActionError(err?.response?.data?.message || err?.message || "Unable to save TAT.");
+    } finally {
+      setApplyingTat(false);
+    }
+  };
+
+  return (
+    <div className={styles.stack}>
+      <section className={`${styles.existingFilterPanel} ${styles.hubFilterPanel}`}>
+        <label className={styles.field}>
+          <span>Department</span>
+          <select
+            value={filters.departmentSlug}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, departmentSlug: event.target.value, subDepartmentSlug: "" }))
+            }
+          >
+            <option value="">All Departments</option>
+            {availableDepartments.map((department) => (
+              <option key={department.slug} value={department.slug}>
+                {department.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={styles.field}>
+          <span>Sub Department</span>
+          <select
+            value={filters.subDepartmentSlug}
+            onChange={(event) => setFilters((current) => ({ ...current, subDepartmentSlug: event.target.value }))}
+            disabled={!selectedDepartment}
+          >
+            <option value="">All Sub Departments</option>
+            {availableSubDepartments.map((subDepartment) => (
+              <option key={subDepartment.slug} value={subDepartment.slug}>
+                {subDepartment.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={styles.field}>
+          <span>Notebook Type</span>
+          <select
+            value={filters.notebookType}
+            onChange={(event) => setFilters((current) => ({ ...current, notebookType: event.target.value }))}
+          >
+            <option value="">All Notebook Types</option>
+            {notebookTypeOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={styles.field}>
+          <span>Role Level</span>
+          <select
+            value={filters.roleLevel}
+            onChange={(event) => setFilters((current) => ({ ...current, roleLevel: event.target.value }))}
+          >
+            <option value="">All Levels</option>
+            {ROLE_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <button
+          type="button"
+          className={`${styles.clearFilterButton} ${styles.hubClearFilterButton}`}
+          onClick={() => setFilters({ departmentSlug: "", subDepartmentSlug: "", notebookType: "", roleLevel: "" })}
+        >
+          <FiX />
+          Clear Filter
+        </button>
+      </section>
+
+      {filters.roleLevel ? (
+        <div className={styles.existingFilterPanel} style={{ alignItems: "flex-end" }}>
+          <label className={styles.field}>
+            <span>TAT Unit</span>
+            <select value={tatUnit} onChange={(event) => setTatUnit(event.target.value)}>
+              {TAT_UNIT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {activeTatUnitOption.units.map((unit) => (
+            <label className={styles.field} key={unit}>
+              <span>{UNIT_INPUT_LABELS[unit]}</span>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={tatUnitValues[unit]}
+                onChange={(event) =>
+                  setTatUnitValues((current) => ({ ...current, [unit]: event.target.value }))
+                }
+                placeholder="0"
+              />
+            </label>
+          ))}
+
+          <button
+            type="button"
+            className={styles.clearFilterButton}
+            onClick={handleApplyTat}
+            disabled={applyingTat || !canApplyTat}
+          >
+            {applyingTat ? "Applying..." : "Apply"}
+          </button>
+        </div>
+      ) : (
+        <p className={styles.emptyState}>Select a Role Level above to view and format TAT.</p>
+      )}
+
+      <section className={`${styles.card} ${styles.existingThresholdCard}`}>
+        <div className={styles.tableWrap}>
+          <table className={`${styles.table} ${styles.existingThresholdTable} ${styles.hubExistingThresholdTable}`}>
+            <thead>
+              <tr>
+                <th>Department</th>
+                <th>Sub-Department</th>
+                <th>Notebook Type</th>
+                <th>Role Level</th>
+                <th>TAT</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7}>Loading...</td>
+                </tr>
+              ) : filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>No resolution time data found.</td>
+                </tr>
+              ) : (
+                filteredRows.map((row, index) => {
+                  const rowKey = getRowKey(row, index);
+                  const loader = THRESHOLD_TYPE_LOADERS[row.type];
+                  return (
+                    <tr key={rowKey}>
+                      <td>{row.department}</td>
+                      <td>{row.subDepartment}</td>
+                      <td>{row.notebookType}</td>
+                      <td>{row.roleLevel}</td>
+                      <td>
+                        {filters.roleLevel
+                          ? formatTatHoursDisplay(
+                              row.tatHours,
+                              TAT_UNIT_OPTIONS.find((option) => option.value === tatUnit)?.units
+                            )
+                          : "Select Role Level"}
+                      </td>
+                      <td>
+                        <span
+                          className={`${styles.statusBadge} ${
+                            row.isActive ? styles.statusActive : styles.statusInactive
+                          }`}
+                        >
+                          {row.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td>
+                        <RowActionsMenu
+                          row={row}
+                          loader={loader}
+                          busy={busyRowKey === rowKey}
+                          onEdit={handleEdit}
+                          onToggleStatus={handleToggleStatus}
+                          onDelete={requestDelete}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {actionMessage ? <p className={styles.successMessage}>{actionMessage}</p> : null}
+        {(error || actionError) ? <p className={styles.errorMessage}>{error || actionError}</p> : null}
+      </section>
+
+      {pendingDeleteRow ? (
+        <div className={warningStyles.overlay} data-warning-modal="true">
+          <div className={warningStyles.modal} role="alertdialog" aria-modal="true">
+            <div className={warningStyles.icon} aria-hidden="true">
+              !
+            </div>
+            <div className={warningStyles.message}>
+              Are you sure you want to delete this threshold?
+              <br />
+              <strong>{pendingDeleteRow.notebookType}</strong>
+            </div>
+
+            <div className={styles.hubConfirmActions}>
+              <button
+                type="button"
+                className={styles.hubConfirmCancelButton}
+                onClick={cancelDelete}
+                disabled={busyRowKey === getRowKey(pendingDeleteRow, rows.indexOf(pendingDeleteRow))}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={warningStyles.button}
+                onClick={confirmDelete}
+                disabled={busyRowKey === getRowKey(pendingDeleteRow, rows.indexOf(pendingDeleteRow))}
+              >
+                {busyRowKey === getRowKey(pendingDeleteRow, rows.indexOf(pendingDeleteRow))
+                  ? "Deleting..."
+                  : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ThresholdsHub() {
   const [activeTab, setActiveTab] = useState("value");
   const [editItems, setEditItems] = useState({});
@@ -739,6 +1281,7 @@ export default function ThresholdsHub() {
     { value: "acknowledgement", label: "Acknowledgement Threshold" },
     { value: "wheel-change-approval", label: "WC Threshold" },
     { value: "existing", label: "Existing Thresholds" },
+    { value: "resolutionTime", label: "Resolution Time" },
   ];
 
   return (
@@ -795,6 +1338,7 @@ export default function ThresholdsHub() {
           />
         ) : null}
         {activeTab === "existing" ? <ExistingThresholdsTab onEditRow={handleEditRow} /> : null}
+        {activeTab === "resolutionTime" ? <ResolutionTimeTab onEditRow={handleEditRow} /> : null}
       </div>
     </div>
   );

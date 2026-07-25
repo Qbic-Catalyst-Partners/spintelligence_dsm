@@ -1322,17 +1322,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                         </label>
 
                                                         <label className={styles.field}>
-                                                            <span>TAT</span>
-                                                            <TatTimePicker
-                                                                label="L1 TAT"
-                                                                value={rule.approvalL1Tat}
-                                                                onChange={(nextValue) =>
-                                                                    handleRuleChange(rule.id, "approvalL1Tat", nextValue)
-                                                                }
-                                                            />
-                                                        </label>
-
-                                                        <label className={styles.field}>
                                                             <span>L2</span>
                                                             <MultiSelectDropdown
                                                                 values={rule.approvalL2}
@@ -1343,17 +1332,6 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                                     handleRuleChange(rule.id, "approvalL2", nextValues)
                                                                 }
                                                                 emptyLabel="No L2 users available"
-                                                            />
-                                                        </label>
-
-                                                        <label className={styles.field}>
-                                                            <span>TAT</span>
-                                                            <TatTimePicker
-                                                                label="L2 TAT"
-                                                                value={rule.approvalL2Tat}
-                                                                onChange={(nextValue) =>
-                                                                    handleRuleChange(rule.id, "approvalL2Tat", nextValue)
-                                                                }
                                                             />
                                                         </label>
                                                     </div>
@@ -1618,7 +1596,7 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                                                 <th>L1</th>
                                                 <th>L2</th>
                                                 <th>Criticality</th>
-                                                <th>Idle Value</th>
+                                                <th>Typical Value</th>
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
                                                 <th>Status</th>
