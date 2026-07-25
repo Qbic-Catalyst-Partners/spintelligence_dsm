@@ -6,7 +6,7 @@ import { FiCalendar } from "react-icons/fi";
 import Pagination from "@/components/Pagination";
 import { MdFilterList } from "react-icons/md";
 import { useSelector } from "react-redux";
-import { getOperatorTickets, getSubmissionTickets, getProcessParameterTickets, updateOperatorTicketStatus } from "../../apis/operatorApi";
+import { getOperatorTickets, getSubmissionTickets, getProcessParameterTickets } from "../../apis/operatorApi";
 import {
     applyOneTimeThresholdTicketReset,
     isNotebookAcknowledgementTicketRecord,
@@ -19,8 +19,8 @@ import { isFullAccessUser, isSupervisorNavUser } from "../../utils/accessControl
 import {
     applyStoredTicketStatuses,
     getStatusClassKey,
-    getOperatorStatusOptions,
     getOperatorStatusLabel,
+    isTicketHiddenFromOperatorList,
     TICKET_STATUS_OPTIONS,
 } from "../../utils/ticketStatus";
 
@@ -37,7 +37,6 @@ export default function operatorboard() {
     const [submissionError, setSubmissionError] = useState("");
     const [processParameterError, setProcessParameterError] = useState("");
     const [showMobileFilter, setShowMobileFilter] = useState(false);
-    const [statusUpdatingId, setStatusUpdatingId] = useState("");
 
     const [status, setStatus] = useState("All");
     const [severity, setSeverity] = useState("All");
@@ -172,7 +171,12 @@ export default function operatorboard() {
     const fetchTickets = async () => {
         try {
             setThresholdError("");
-            const response = await getOperatorTickets({ page: 1, limit: 500, _ts: Date.now() });
+            const response = await getOperatorTickets({
+                page: 1,
+                limit: 500,
+                _ts: Date.now(),
+                user_id: authUser?.id || authUser?.user_id || authUser?.userId,
+            });
 
             const ticketsArray = Array.isArray(response)
                 ? response
@@ -226,6 +230,7 @@ export default function operatorboard() {
                         status: transformedTicket.status,
                         rawCreatedAt: transformedTicket.rawCreatedAt,
                         createdAt: transformedTicket.createdAt,
+                        isDelegated: Boolean(ticket.is_delegated),
                     };
                 })
                 .filter(
@@ -297,50 +302,6 @@ export default function operatorboard() {
             setProcessParameterTicketData([]);
             setProcessParameterError(ppError.message || "Failed to fetch process parameter tickets.");
         }
-    };
-
-    const applyTicketStatus = (ticketId, nextStatus) => {
-        const updateMatching = (tickets) =>
-            tickets.map((ticket) => (ticket.id === ticketId ? { ...ticket, status: nextStatus } : ticket));
-
-        setTicketData(updateMatching);
-        setApiSubmissionTicketData(updateMatching);
-        setOperatorSubmissionTicketData(updateMatching);
-        setProcessParameterTicketData(updateMatching);
-    };
-
-    const handleStatusChange = async (ticketId, nextStatus) => {
-        if (!ticketId || !nextStatus) return;
-
-        const previousStatus = displayTickets.find((ticket) => ticket.id === ticketId)?.status;
-
-        // Reflect the change immediately so the dropdown doesn't sit stale while the request
-        // is in flight; roll back only if the update actually fails.
-        applyTicketStatus(ticketId, nextStatus);
-
-        try {
-            setStatusUpdatingId(ticketId);
-            await updateOperatorTicketStatus(ticketId, nextStatus);
-            await fetchTickets();
-        } catch (updateError) {
-            if (previousStatus !== undefined) {
-                applyTicketStatus(ticketId, previousStatus);
-            }
-            setThresholdError(updateError.message || "Failed to update ticket status.");
-        } finally {
-            setStatusUpdatingId("");
-        }
-    };
-
-    const getDisplayUniqueStatusOptions = (currentStatus) => {
-        const options = getOperatorStatusOptions(currentStatus);
-        const seenLabels = new Set();
-        return options.filter((option) => {
-            const label = getOperatorStatusLabel(option);
-            if (seenLabels.has(label)) return false;
-            seenLabels.add(label);
-            return true;
-        });
     };
 
     useEffect(() => {
@@ -621,6 +582,7 @@ export default function operatorboard() {
                             <th>SEVERITY</th>
                             <th>STATUS</th>
                             <th>CREATED AT</th>
+                            <th>OWNERSHIP</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -628,8 +590,11 @@ export default function operatorboard() {
                         {currentTickets.map((t) => (
                             <tr
                                 key={t.id} // Use 't.id', not 'ticket.id'
-                                style={{ cursor: "pointer" }}
-                                onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`)}
+                                style={{ cursor: isTicketHiddenFromOperatorList(t.status) ? "default" : "pointer" }}
+                                onClick={() => {
+                                    if (isTicketHiddenFromOperatorList(t.status)) return;
+                                    router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`);
+                                }}
                             >
                                 <td className={styles["ticket-link"]}>{t.id}</td>
                                 {activeTicketingView === "process_parameter" ? (
@@ -665,27 +630,22 @@ export default function operatorboard() {
                                     </span>
                                 </td>
                                 <td>
-                                    <select
-                                        className={styles["status-select"]}
-                                        value={t.status}
-                                        disabled={statusUpdatingId === t.id}
-                                        onClick={(event) => event.stopPropagation()}
-                                        onChange={(event) => handleStatusChange(t.id, event.target.value)}
-                                    >
-                                        {getDisplayUniqueStatusOptions(t.status).map((option) => (
-                                            <option key={option} value={option}>
-                                                {getOperatorStatusLabel(option)}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <span className={`${styles["status-badge"]} ${styles[getStatusClassKey(t.status).replace(/-/g, "_")] || ""}`}>
+                                        {getOperatorStatusLabel(t.status)}
+                                    </span>
                                 </td>
                                 <td>{t.createdAt}</td>
+                                <td>
+                                    <span className={`${styles.badge} ${t.isDelegated ? styles.high : styles.low}`}>
+                                        {t.isDelegated ? "Delegate" : "Owned"}
+                                    </span>
+                                </td>
                             </tr>
                         ))}
                         {currentTickets.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={activeTicketingView === "process_parameter" ? 9 : activeTicketingView === "submission" ? 8 : 10}
+                                    colSpan={activeTicketingView === "process_parameter" ? 10 : activeTicketingView === "submission" ? 9 : 11}
                                     style={{ textAlign: "center", color: "#667085" }}
                                 >
                                     No tickets found for the selected filters.
@@ -756,7 +716,14 @@ export default function operatorboard() {
                 )}
 
                 {displayTickets.map((t) => (
-                    <div key={t.id} className={styles["mobile-card"]} onClick={() => router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`)}>
+                    <div
+                        key={t.id}
+                        className={styles["mobile-card"]}
+                        onClick={() => {
+                            if (isTicketHiddenFromOperatorList(t.status)) return;
+                            router.push(`/operatordetail?ticketId=${encodeURIComponent(t.id.replace("#", ""))}&ticketType=${activeTicketingView}`);
+                        }}
+                    >
                         <div className={styles["card-top"]}>
                             <div className={styles["left-section"]}>
                                 <div className={styles["card-id-machine"]}>{t.id} | {t.machine}</div>
@@ -781,18 +748,7 @@ export default function operatorboard() {
                         <div className={styles["card-bottom"]}>
                             <div className={styles["status-left"]} onClick={(event) => event.stopPropagation()}>
                                 <span className={`${styles["status-dot"]} ${styles[getStatusClassKey(t.status).replace(/-/g, "_")]}`}></span>
-                                <select
-                                    className={styles["mobile-status-select"]}
-                                    value={t.status}
-                                    disabled={statusUpdatingId === t.id}
-                                    onChange={(event) => handleStatusChange(t.id, event.target.value)}
-                                >
-                                    {getDisplayUniqueStatusOptions(t.status).map((option) => (
-                                        <option key={option} value={option}>
-                                            {getOperatorStatusLabel(option)}
-                                        </option>
-                                    ))}
-                                </select>
+                                <span className={styles["status-text"]}>{getOperatorStatusLabel(t.status)}</span>
                             </div>
                             <div className={styles["details-link"]}>Details &gt;</div>
                         </div>

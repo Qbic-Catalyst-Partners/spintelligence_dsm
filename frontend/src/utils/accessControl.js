@@ -69,6 +69,11 @@ export const isWheelChangeApproverUser = (user) =>
 export const isPpApproverUser = (user) =>
   isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
 
+// L5 is the super-admin level - the Delegation System is gated on level
+// alone, not on the "admin" role string, so L1-L4 never see it regardless
+// of their role field.
+export const isDelegationManagerUser = (user) => getUserLevelKey(user) === "L5";
+
 export const isDashboardManagerUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
 

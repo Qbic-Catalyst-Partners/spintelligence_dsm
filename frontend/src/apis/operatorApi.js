@@ -1,11 +1,14 @@
 import apiConfig, { resolvedBaseUrl } from "./apiConfig";
 
+// ticket_id is stored with a leading "#" in the database (e.g. "#TK-0332"), so try that
+// form first - trying the unprefixed form first means every single call needlessly 404s
+// once before falling back to the form that actually matches.
 const getTicketIdCandidates = (ticketId) => {
   const id = String(ticketId || "").trim();
   const withoutHash = id.replace(/^#/, "");
   const withHash = withoutHash ? `#${withoutHash}` : "";
 
-  return Array.from(new Set([withoutHash, withHash].filter(Boolean)));
+  return Array.from(new Set([withHash, withoutHash].filter(Boolean)));
 };
 
 const getApiErrorMessage = (error, fallbackMessage) =>
@@ -138,6 +141,39 @@ export const getOperatorTicketById = async (ticketId) => {
   throw new Error(getApiErrorMessage(lastError, "Failed to fetch ticket details."));
 };
 
+// GET per-level approval history (L1/L2 rows) for a ticket
+export const fetchTicketApprovalsApi = async (ticketId) => {
+  try {
+    const response = await apiConfig.get(
+      `/operator-tickets/${encodeURIComponent(ticketId)}/approvals`,
+      {},
+      { skipGlobalErrorModal: true }
+    );
+    return response.data;
+  } catch (error) {
+    if (error?.response?.data) {
+      throw new Error(error.response.data.message || "Failed to fetch ticket approvals");
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
+// GET Value Threshold L2 approval queue - one row per ticket_approvals L2 entry
+// (not one row per ticket), so rejected+resubmitted tickets show every cycle separately.
+export const fetchL2ApprovalQueueApi = async (params = {}) => {
+  try {
+    const response = await apiConfig.get("/operator-tickets/approvals/l2-queue", params, {
+      skipGlobalErrorModal: true,
+    });
+    return response.data;
+  } catch (error) {
+    if (error?.response?.data) {
+      throw new Error(error.response.data.message || "Failed to fetch L2 approval queue");
+    }
+    throw new Error(error.message || "Server error occurred");
+  }
+};
+
 export const createOperatorTicket = async (payload) => {
   try {
     const response = await apiConfig.post("/operator-tickets", payload, {
@@ -166,7 +202,8 @@ export const submitOperatorTicket = async (ticketId, payload) => {
           operator_comment:
             payload?.operator_comment ?? payload?.resolution_comment ?? payload?.comment ?? "",
           comment: payload?.comment ?? payload?.resolution_comment ?? "",
-        }
+        },
+        { skipGlobalErrorModal: true, skipGlobalSuccessModal: true }
       );
       return response.data;
     } catch (error) {
@@ -197,21 +234,19 @@ export const updateOperatorTicketStatus = async (ticketId, status) => {
     { id: rawId, status },
   ];
 
-  // Primary path for this backend: submit endpoint drives Open/Reopened -> In Progress.
+  // Primary path for this backend: submit endpoint drives Open/Reopened/In Progress -> In Progress
+  // (L1 marking a ticket "Closed" means "I'm done, send it to L2 for review" - same action as
+  // Fix & Resubmit). This is the only real endpoint for this transition, so a failure here is a
+  // real error, not a reason to guess at 20+ nonexistent URLs.
   if (
     normalizedStatus === "in progress" ||
     normalizedStatus === "submit" ||
     normalizedStatus === "closed"
   ) {
-    try {
-      const submitted = await submitOperatorTicket(formattedId, {
-        operator_comment: "Submitted from dashboard status update.",
-        comment: "Submitted from dashboard status update.",
-      });
-      return submitted;
-    } catch (_) {
-      // Fall through to legacy endpoint attempts below.
-    }
+    return submitOperatorTicket(formattedId, {
+      operator_comment: "Submitted from dashboard status update.",
+      comment: "Submitted from dashboard status update.",
+    });
   }
 
   const requests = [

@@ -146,7 +146,10 @@
 }
 
 .departmentRow {
-  max-width: 300px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 12px;
+  max-width: 900px;
 }
 
 .rulesTable {
@@ -172,7 +175,18 @@
 
 .ruleGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+  gap: 14px 12px;
+  align-items: end;
+}
+
+/* Simple auto-flowing grid for forms with only a few fields (e.g. Submitted Notebook
+   Threshold's Sub-Department/Notebook Type/Acknowledge Within Hours) - the row/column
+   overrides below are sized for Submission Threshold's 13-field layout and would
+   misplace a shorter field list, so those forms use this class instead of .ruleGrid. */
+.compactRuleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   gap: 14px 12px;
   align-items: end;
 }
@@ -183,24 +197,42 @@
   min-width: 0;
 }
 
-.ruleGrid > .field:nth-of-type(5) {
+/* Row 1: Frequency, Occurrences, Input Field Name (Sub-Department/Notebook Type moved
+   up to the shared .departmentRow above, so this grid now starts at Frequency) */
+.ruleGrid > .field:nth-of-type(1) { grid-column: 1 / 2; grid-row: 1; }
+.ruleGrid > .field:nth-of-type(2) { grid-column: 2 / 3; grid-row: 1; }
+.ruleGrid > .field:nth-of-type(7) { grid-column: 3 / 4; grid-row: 1; }
+
+/* Row 2: L1, TAT, L2, TAT */
+.ruleGrid > .field:nth-of-type(3) {
   grid-column: 1 / 2;
   grid-row: 2;
 }
 
-.ruleGrid > .field:nth-of-type(6) {
+.ruleGrid > .field:nth-of-type(4) {
   grid-column: 2 / 3;
   grid-row: 2;
 }
 
-.ruleGrid > .field:nth-of-type(7) {
+.ruleGrid > .field:nth-of-type(5) {
   grid-column: 3 / 4;
   grid-row: 2;
 }
 
-.ruleGrid > .field:nth-of-type(8) {
+.ruleGrid > .field:nth-of-type(6) {
   grid-column: 4 / 5;
   grid-row: 2;
+}
+
+/* Row 3: Criticality, Typical Value (spans 2 cols for input + Numbers/Percentage), Plus, Minus */
+.ruleGrid > .field:nth-of-type(8) { grid-column: 1 / 2; grid-row: 3; }
+.ruleGrid > .field:nth-of-type(9) { grid-column: 2 / 4; grid-row: 3; }
+.ruleGrid > .field:nth-of-type(10) { grid-column: 4 / 5; grid-row: 3; }
+.ruleGrid > .field:nth-of-type(11) { grid-column: 5 / 6; grid-row: 3; }
+
+.ruleGrid > .ruleActions {
+  grid-column: 6 / 7;
+  grid-row: 3;
 }
 
 .field span {
@@ -222,6 +254,43 @@
   font-size: 12px;
   outline: none;
   box-sizing: border-box;
+}
+
+.actualValueRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.actualValueInput {
+  flex: 1;
+  min-width: 90px;
+}
+
+.valueModeGroup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.valueModeOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #29374f;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.valueModeOption input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #4f63b6;
+  cursor: pointer;
 }
 
 .tatTimeWrap {
@@ -386,24 +455,28 @@
 }
 
 .ruleActions {
-  grid-column: 5 / 6;
-  grid-row: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   align-self: end;
 }
 
 .addIconButton,
 .deleteIconButton {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.addIconButton svg,
+.deleteIconButton svg {
+  width: 13px;
+  height: 13px;
 }
 
 .addIconButton {
@@ -419,8 +492,8 @@
 }
 
 .actionSpacer {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
 }
 
 .formFooter {
@@ -438,9 +511,9 @@
 
 .clearButton,
 .saveButton {
-  min-height: 36px;
-  border-radius: 8px;
-  font-size: 14px;
+  min-height: 32px;
+  border-radius: 7px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -449,14 +522,14 @@
   border: 1px solid #8d9098;
   background: #ffffff;
   color: #4a505e;
-  padding: 0 14px;
+  padding: 0 12px;
 }
 
 .saveButton {
   border: none;
   background: #4f63b6;
   color: #ffffff;
-  padding: 0 16px;
+  padding: 0 14px;
 }
 
 .clearButton:disabled,
@@ -900,6 +973,7 @@
 :global(:root[data-theme="dark"]) .tatTimeMenu label span,
 :global(:root[data-theme="dark"]) .summaryCard span,
 :global(:root[data-theme="dark"]) .statCard span,
+:global(:root[data-theme="dark"]) .valueModeOption,
 :global(:root[data-theme="dark"]) .multiSelectEmpty {
   color: #cbd5e1;
 }
@@ -1042,10 +1116,12 @@
   }
 
   .departmentRow {
+    grid-template-columns: 1fr;
     max-width: none;
   }
 
-  .ruleGrid {
+  .ruleGrid,
+  .compactRuleGrid {
     grid-template-columns: 1fr;
   }
 
@@ -1065,10 +1141,10 @@
     justify-content: flex-start;
   }
 
+  .ruleGrid > .field:nth-of-type(3),
+  .ruleGrid > .field:nth-of-type(4),
   .ruleGrid > .field:nth-of-type(5),
-  .ruleGrid > .field:nth-of-type(6),
-  .ruleGrid > .field:nth-of-type(7),
-  .ruleGrid > .field:nth-of-type(8) {
+  .ruleGrid > .field:nth-of-type(6) {
     grid-column: auto;
     grid-row: auto;
   }

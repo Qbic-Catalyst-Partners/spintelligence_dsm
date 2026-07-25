@@ -11,6 +11,7 @@ import {
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
 import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
+import { fetchTicketApprovalsApi } from "../../apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -115,6 +116,7 @@ export default function SupervisorDetails() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
+  const [approvalHistory, setApprovalHistory] = useState([]);
   const [timelinePage, setTimelinePage] = useState(1);
   const [l2Preview, setL2Preview] = useState(null);
   const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
@@ -193,6 +195,34 @@ export default function SupervisorDetails() {
       }
     };
     loadTimeline();
+    return () => {
+      mounted = false;
+    };
+  }, [requestedTicketId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadApprovalHistory = async () => {
+      if (!requestedTicketId) return;
+      try {
+        const response = await fetchTicketApprovalsApi(requestedTicketId);
+        const rows = Array.isArray(response?.approvals) ? response.approvals : [];
+        const mapped = rows.map((row) => {
+          const iconMeta = buildTimelineIcon(row?.action_status);
+          return {
+            time: formatDateTime(row?.created_at),
+            title: `${row?.level || ""} ${row?.action_status || ""}`.trim(),
+            description: row?.performed_by ? `By ${row.performed_by}` : "-",
+            icon: iconMeta.icon,
+            alt: iconMeta.alt,
+          };
+        });
+        if (mounted) setApprovalHistory(mapped);
+      } catch {
+        if (mounted) setApprovalHistory([]);
+      }
+    };
+    loadApprovalHistory();
     return () => {
       mounted = false;
     };
@@ -452,8 +482,12 @@ export default function SupervisorDetails() {
     return baseTimeline;
   })();
 
-  const displayedTimeline = timelineWithL2Comment.length
-    ? timelineWithL2Comment
+  const timelineWithApprovalHistory = approvalHistory.length
+    ? [...timelineWithL2Comment, ...approvalHistory]
+    : timelineWithL2Comment;
+
+  const displayedTimeline = timelineWithApprovalHistory.length
+    ? timelineWithApprovalHistory
     : [{
         time: formatDateTime(ticket.created_at),
         title: "Created",
@@ -535,35 +569,37 @@ export default function SupervisorDetails() {
                 <strong>{ticket.user_name}</strong>
               </div>
 
-              <div className={styles.actions}>
-                {isAcknowledgeTicket ? (
-                  <button
-                    className={styles.accept}
-                    onClick={handleAcknowledge}
-                    disabled={isClosedTicket || actionLoading}
-                  >
-                    Acknowledge
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      className={styles.reject}
-                      onClick={() => setShowRejectModal(true)}
-                      disabled={isClosedTicket || actionLoading}
-                    >
-                      Reject
-                    </button>
-
+              {!isClosedTicket && (
+                <div className={styles.actions}>
+                  {isAcknowledgeTicket ? (
                     <button
                       className={styles.accept}
-                      onClick={handleApprove}
-                      disabled={isClosedTicket || actionLoading}
+                      onClick={handleAcknowledge}
+                      disabled={actionLoading}
                     >
-                      Accept
+                      Acknowledge
                     </button>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <button
+                        className={styles.reject}
+                        onClick={() => setShowRejectModal(true)}
+                        disabled={actionLoading}
+                      >
+                        Reject
+                      </button>
+
+                      <button
+                        className={styles.accept}
+                        onClick={handleApprove}
+                        disabled={actionLoading}
+                      >
+                        Accept
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -737,10 +773,6 @@ export default function SupervisorDetails() {
             <div className={styles.comment}>
               {resolutionComment}
             </div>
-
-            <button className={styles.review}>
-              Review Submission
-            </button>
           </div>
         </div>
       </div>
@@ -877,35 +909,37 @@ export default function SupervisorDetails() {
           </div>
         </div>
 
-        <div className={styles.actions}>
-          {isAcknowledgeTicket ? (
-            <button
-              className={styles.accept}
-              onClick={handleAcknowledge}
-              disabled={isClosedTicket || actionLoading}
-            >
-              Acknowledge
-            </button>
-          ) : (
-            <>
-              <button
-                className={styles.reject}
-                onClick={() => setShowRejectModal(true)}
-                disabled={isClosedTicket || actionLoading}
-              >
-                Reject
-              </button>
-
+        {!isClosedTicket && (
+          <div className={styles.actions}>
+            {isAcknowledgeTicket ? (
               <button
                 className={styles.accept}
-                onClick={handleApprove}
-                disabled={isClosedTicket || actionLoading}
+                onClick={handleAcknowledge}
+                disabled={actionLoading}
               >
-                Accept
+                Acknowledge
               </button>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <button
+                  className={styles.reject}
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={actionLoading}
+                >
+                  Reject
+                </button>
+
+                <button
+                  className={styles.accept}
+                  onClick={handleApprove}
+                  disabled={actionLoading}
+                >
+                  Accept
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {showRejectModal && (
           <div
