@@ -454,7 +454,6 @@ const runPpBatchCompletionCheck = async () => {
     const perSubDepartmentHours = subDepartmentThresholds.get(subDepartment);
     return Number(perSubDepartmentHours) > 0 ? Number(perSubDepartmentHours) : defaultCompletionThresholdHours;
   };
-  const l2TatHours = Number(config.l2_tat_hours) > 0 ? Number(config.l2_tat_hours) : null;
 
   const unionSelects = PP_BATCH_NOTEBOOKS.map(
     (notebookConfig) =>
@@ -519,13 +518,6 @@ const runPpBatchCompletionCheck = async () => {
       const approvalL1UserIds = (Array.isArray(notebookRow?.approval_l1_user_ids) && notebookRow.approval_l1_user_ids.length)
         ? notebookRow.approval_l1_user_ids
         : configuredL1UserIds;
-      const notebookL2UserIds = (Array.isArray(notebookRow?.approval_l2_user_ids) && notebookRow.approval_l2_user_ids.length)
-        ? notebookRow.approval_l2_user_ids
-        : config.approval_l2_user_ids;
-      const escalationChain = await resolveUnionEscalationChain(approvalL1UserIds, {
-        l2: notebookL2UserIds,
-      });
-      const approvalL2UserIds = escalationChain.l2;
 
       const violationDetails = {
         category: 'MISSED_FREQUENCY',
@@ -539,19 +531,24 @@ const runPpBatchCompletionCheck = async () => {
         message: `Process Parameter ${row.entry_id} was not completed within ${completionThresholdHours} hour(s). Missing: ${missingLabel}.`
       };
 
-      const l2TatDueAt = l2TatHours ? new Date(Date.now() + l2TatHours * 60 * 60 * 1000).toISOString() : null;
       const ticketSeverity = notebookRow?.severity || 'High';
 
+      // PP Entry Threshold (per the ticket-type spec table) is a flat, L1-only
+      // ticket - raised on L1 and resolved by L1 fixing/resubmitting the
+      // missing entry, with no L2/L3/L4/L5 escalation chain and no visibility
+      // to any other level's dashboard. The separate PP Approval ticket (see
+      // createPpApprovalTicket in processParameters.js) is what actually goes
+      // to L4, and only fires once every department's entry is in.
       const ticket = await client.query(
         `INSERT INTO ticketing_system.operator_tickets
          (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
           severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-          violation_details, approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids, tat_current_level, l2_tat_due_at)
+          violation_details, approval_l1_user_ids, tat_current_level)
          VALUES (
            'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
            $1, $2::jsonb, $3::jsonb, $4::jsonb,
-           $12, 'In Progress', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
-           $5::jsonb, $6::int[], $7::int[], $8::int[], $9::int[], $10::int[], 'L2', $11
+           $7, 'In Progress', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
+           $5::jsonb, $6::int[], 'L1'
          )
          RETURNING *`,
         [
@@ -561,11 +558,6 @@ const runPpBatchCompletionCheck = async () => {
           toJson({ completion_threshold_hours: completionThresholdHours }, {}),
           toJson(violationDetails, {}),
           approvalL1UserIds,
-          approvalL2UserIds,
-          escalationChain.l3,
-          escalationChain.l4,
-          escalationChain.l5,
-          l2TatDueAt,
           ticketSeverity
         ]
       );
@@ -573,7 +565,7 @@ const runPpBatchCompletionCheck = async () => {
       const inserted = ticket.rows[0];
       created.push(inserted);
 
-      await createNotificationsForUsers([...approvalL1UserIds, ...approvalL2UserIds], {
+      await createNotificationsForUsers(approvalL1UserIds, {
         ticketId: inserted.ticket_id,
         type: 'PP_BATCH_INCOMPLETE',
         category: 'Tickets',
@@ -586,93 +578,7 @@ const runPpBatchCompletionCheck = async () => {
     }
   }
 
-  const escalated = await escalatePpBatchTickets(config);
-
-  return { created, expired: escalated };
-};
-
-// Steps a PP_BATCH_INCOMPLETE ticket from one TAT tier to the next
-// (L2 -> L3 -> L4 -> L5) once the current tier's due date has passed:
-// assigns that tier's approvers, sets its due date, notifies them, and
-// advances tat_current_level. L5 is the final tier - once its TAT elapses
-// the ticket is just marked EXPIRED_L5 with nowhere further to escalate to.
-const escalatePpBatchTickets = async (config) => {
-  const tiers = [
-    { level: 'L2', dueColumn: 'l2_tat_due_at', nextLevel: 'L3', nextDueColumn: 'l3_tat_due_at', nextTatHours: config.l3_tat_hours },
-    { level: 'L3', dueColumn: 'l3_tat_due_at', nextLevel: 'L4', nextDueColumn: 'l4_tat_due_at', nextTatHours: config.l4_tat_hours },
-    { level: 'L4', dueColumn: 'l4_tat_due_at', nextLevel: 'L5', nextDueColumn: 'l5_tat_due_at', nextTatHours: config.l5_tat_hours },
-  ];
-
-  const allEscalated = [];
-
-  for (const tier of tiers) {
-    const dueTickets = await client.query(
-      `SELECT * FROM ticketing_system.operator_tickets
-       WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
-         AND tat_current_level = $1
-         AND ${tier.dueColumn} IS NOT NULL
-         AND ${tier.dueColumn} <= NOW()
-         AND status <> 'Closed'`,
-      [tier.level]
-    );
-    if (!dueTickets.rowCount) continue;
-
-    const nextTatHours = Number(tier.nextTatHours) > 0 ? Number(tier.nextTatHours) : null;
-    const nextDueAt = nextTatHours ? new Date(Date.now() + nextTatHours * 60 * 60 * 1000).toISOString() : null;
-
-    for (const ticket of dueTickets.rows) {
-      // Each ticket already carries its own real-chain-derived approver ids
-      // for every level (computed once at creation via
-      // resolveUnionEscalationChain) - escalating just means reading this
-      // ticket's own next-tier column, not recomputing a single shared value
-      // for every ticket in the tier.
-      const nextApproverIds = Array.isArray(ticket[`approval_${tier.nextLevel.toLowerCase()}_user_ids`])
-        ? ticket[`approval_${tier.nextLevel.toLowerCase()}_user_ids`]
-        : [];
-
-      // eslint-disable-next-line no-await-in-loop
-      const result = await client.query(
-        `UPDATE ticketing_system.operator_tickets
-         SET tat_current_level = $1,
-             ${tier.nextDueColumn} = $2
-         WHERE ticket_id = $3
-         RETURNING *`,
-        [tier.nextLevel, nextDueAt, ticket.ticket_id]
-      );
-      const escalatedTicket = result.rows[0];
-      if (escalatedTicket) allEscalated.push(escalatedTicket);
-
-      if (nextApproverIds.length) {
-        // eslint-disable-next-line no-await-in-loop
-        await createNotificationsForUsers(nextApproverIds, {
-          ticketId: ticket.ticket_id,
-          type: 'PP_BATCH_INCOMPLETE',
-          category: 'Tickets',
-          priority: 'High',
-          title: `PP batch incomplete (escalated to ${tier.nextLevel}): ${ticket.violation_details?.entry_id || ticket.ticket_id}`,
-          body: `This PP batch was not actioned at ${tier.level} in time and has escalated to ${tier.nextLevel}.`,
-          linkUrl: `/supervisor-tickets/${ticket.ticket_id}`,
-          payload: { ticket_id: ticket.ticket_id }
-        });
-      }
-    }
-  }
-
-  // L5 is terminal - nothing further to escalate to, just mark it expired
-  // once its own TAT elapses so it's visibly overdue rather than silently
-  // stuck at "L5" forever.
-  const expiredL5 = await client.query(
-    `UPDATE ticketing_system.operator_tickets
-     SET tat_current_level = 'EXPIRED_L5'
-     WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
-       AND tat_current_level = 'L5'
-       AND l5_tat_due_at IS NOT NULL
-       AND l5_tat_due_at <= NOW()
-       AND status <> 'Closed'
-     RETURNING *`
-  );
-
-  return [...allEscalated, ...expiredL5.rows];
+  return { created, expired: [] };
 };
 
 const ensureSubmittedNotebookTables = async () => {
