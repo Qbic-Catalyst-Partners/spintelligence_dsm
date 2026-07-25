@@ -97,7 +97,6 @@ const PP_MANAGED_ROUTES = new Set([
   '/blowroom/header',
   '/carding/qc-header',
   '/drawframe/header',
-  '/drawframe/finisher',
   '/simplex/process_parameter',
   '/spinning/qc',
   '/autoconer/process',
@@ -547,9 +546,12 @@ const startSubmittedNotebookAckWorker = () => {
   const run = async () => {
     try {
       await db.initPromise.catch(() => {});
-      const created = await generateOverdueNotebookTickets();
+      const { created, escalated } = await generateOverdueNotebookTickets();
       if (created.length) {
         console.log(`[submitted-notebooks] generated ${created.length} overdue acknowledgement ticket(s)`);
+      }
+      if (escalated.length) {
+        console.log(`[submitted-notebooks] escalated ${escalated.length} acknowledgement ticket(s) to the next tier`);
       }
     } catch (error) {
       console.warn('[submitted-notebooks] overdue worker skipped:', error.message);

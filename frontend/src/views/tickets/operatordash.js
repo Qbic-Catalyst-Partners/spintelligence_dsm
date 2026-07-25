@@ -9,6 +9,7 @@ import { useSelector } from "react-redux";
 import { getOperatorTickets, getSubmissionTickets, getProcessParameterTickets } from "../../apis/operatorApi";
 import {
     applyOneTimeThresholdTicketReset,
+    isNotebookAcknowledgementTicketRecord,
     isPpBatchCompletionTicketRecord,
     isSubmissionTicketRecord,
     isThresholdTicketRecord,
@@ -196,7 +197,17 @@ export default function operatorboard() {
                     (ticket) => isThresholdTicketRecord(ticket) && !isSubmissionTicketRecord(ticket)
                 )
             );
-            const submissionTickets = normalizedTickets.filter(isSubmissionTicketRecord);
+            // isSubmissionTicketRecord is a broad "not a plain Value Threshold ticket" check
+            // (also true for PP Batch and Notebook Acknowledgement tickets) - PP Batch tickets
+            // already have their own dedicated "Process Parameter Tickets" tab/fetch below, and
+            // Acknowledgement tickets aren't ones L1 acts on directly, so both must be excluded
+            // here or they'd double up in the "Submission Ticket" tab too.
+            const submissionTickets = normalizedTickets.filter(
+                (ticket) =>
+                    isSubmissionTicketRecord(ticket) &&
+                    !isPpBatchCompletionTicketRecord(ticket) &&
+                    !isNotebookAcknowledgementTicketRecord(ticket)
+            );
 
             const formattedData = thresholdTickets
                 .map((ticket) => {
@@ -398,6 +409,17 @@ export default function operatorboard() {
                         <MdFilterList className={styles["filter-icon-img"]} />Filter
                     </button>
                 </div>
+            </div>
+
+            {/* L1 is the lowest hierarchy level - nothing escalates to it from
+                below, so unlike L2-L5's Owned/Mapped toggle, L1 only ever has
+                Owned tickets (its own submissions/corrections). This label
+                just makes that explicit, matching the Owned/Mapped pattern
+                used on the L2-L5 dashboards. */}
+            <div className={styles["ticketing-toggle"]}>
+                <span className={`${styles["ticketing-toggle-btn"]} ${styles["ticketing-toggle-btn-active"]}`}>
+                    Owned Tickets
+                </span>
             </div>
 
             <div className={styles["ticketing-toggle"]}>

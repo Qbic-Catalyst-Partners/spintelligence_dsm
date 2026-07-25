@@ -6,6 +6,7 @@ const {
   getExistingCountNameForEntryId,
   createProcessParameterEntryId,
 } = require('../utils/processParameterEntryId');
+const { getPpNotebookThresholds } = require('./submittedNotebooks.routes');
 
 const router = express.Router();
 
@@ -79,6 +80,43 @@ const PP_DEPARTMENTS = [
   // a submitted row, so completion simply never reaches 100% until Q4 ships.
   { key: 'autoconer_q4', label: 'Autoconer Q4', table: 'autoconer.autoconer_q4_inspection', idColumn: 'id' },
 ];
+
+// Maps this file's PP_DEPARTMENTS keys onto the notebook labels used by
+// submittedNotebooks.routes.js's pp_notebook_threshold config (these are two
+// separate PP-tracking systems built at different times - this bridges them
+// so the combined PP Threshold + Approval config screen's per-notebook L4
+// Approver/Approve-Within-Hours can drive this file's PP Approval ticket).
+const PP_DEPARTMENT_KEY_TO_NOTEBOOK_LABEL = {
+  mixing: 'Mixing Process Parameter',
+  blowroom: 'Blowroom Process Parameter',
+  carding: 'Carding Process Parameter',
+  drawframe_breaker: 'Drawframe Process Parameter (Breaker)',
+  drawframe_finisher: 'Drawframe Process Parameter (Finisher)',
+  simplex: 'Simplex Process Parameter',
+  spinning: 'Spinning Process Parameter',
+  autoconer: 'Autoconer Process Parameter',
+  autoconer_q2: 'Autoconer Process Parameter (Q2)',
+  autoconer_q3: 'Autoconer Process Parameter (Q3)',
+  autoconer_q4: 'Autoconer Process Parameter (Q4)',
+};
+
+// Finds whichever participating department's row for this entry_id has the
+// latest created_at - i.e. the one that just completed the batch and
+// triggered pending_approval. Its per-notebook config (if any) governs the
+// L4 Approver/Approve-Within-Hours for the resulting PP Approval ticket.
+const getLastCompletedDepartmentKey = async (entry_id) => {
+  const existingDepartments = await getExistingPpDepartments();
+  const unionQuery = existingDepartments.map(
+    (dept) => `SELECT '${dept.key}' AS dept_key, created_at FROM ${dept.table} WHERE entry_id = $1 ${dept.extraWhere || ''}`
+  ).join(' UNION ALL ');
+  if (!unionQuery) return null;
+
+  const result = await client.query(
+    `${unionQuery} ORDER BY created_at DESC NULLS LAST LIMIT 1`,
+    [entry_id]
+  );
+  return result.rows[0]?.dept_key || null;
+};
 
 // Cached per-process since table existence only changes via a deploy, not
 // per-request.
@@ -241,7 +279,9 @@ const refreshProcessParameterStatus = async (entry_id) => {
     `UPDATE process_parameters.master SET status = 'pending_approval', updated_at = NOW() WHERE entry_id = $1`,
     [entry_id]
   );
-  await createPpApprovalTicket(entry_id);
+  const lastCompletedDeptKey = await getLastCompletedDepartmentKey(entry_id);
+  const lastCompletedNotebookLabel = PP_DEPARTMENT_KEY_TO_NOTEBOOK_LABEL[lastCompletedDeptKey] || null;
+  await createPpApprovalTicket(entry_id, lastCompletedNotebookLabel);
   return 'pending_approval';
 };
 
@@ -278,6 +318,13 @@ const ensurePpApprovalConfigTable = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Admin can assign as many L4 approvers as needed, not just one - l4_user_ids
+  // is now the source of truth; the older single l4_user_id column is kept
+  // (and folded into the array) so existing saved configs keep working.
+  await client.query(`
+    ALTER TABLE ticketing_system.pp_approval_config
+      ADD COLUMN IF NOT EXISTS l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
+  `);
 };
 
 const getPpApprovalConfig = async () => {
@@ -285,7 +332,14 @@ const getPpApprovalConfig = async () => {
   const result = await client.query(
     `SELECT * FROM ticketing_system.pp_approval_config WHERE config_key = 'global'`
   );
-  return result.rows[0] || { config_key: 'global', l4_user_id: null, tat_hours: PP_APPROVAL_TAT_HOURS, updated_at: null };
+  const row = result.rows[0];
+  if (!row) {
+    return { config_key: 'global', l4_user_ids: [], tat_hours: PP_APPROVAL_TAT_HOURS, updated_at: null };
+  }
+  const l4UserIds = Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
+    ? row.l4_user_ids
+    : (row.l4_user_id ? [row.l4_user_id] : []);
+  return { ...row, l4_user_ids: l4UserIds };
 };
 
 const ensureApprovalTicketSchema = async () => {
@@ -303,7 +357,12 @@ const ensureApprovalTicketSchema = async () => {
   `);
 };
 
-const createPpApprovalTicket = async (entry_id) => {
+// notebookLabel is the last-completed department's PP notebook (see
+// getLastCompletedDepartmentKey) - when it has its own per-notebook config
+// (approval_l4_user_ids/approve_within_hours/severity, set from the
+// combined PP Threshold + Approval config screen), that governs this
+// ticket; otherwise falls back to the old single global pp_approval_config.
+const createPpApprovalTicket = async (entry_id, notebookLabel = null) => {
   await ensureApprovalTicketSchema();
 
   const existing = await client.query(
@@ -314,14 +373,24 @@ const createPpApprovalTicket = async (entry_id) => {
   );
   if (existing.rows[0]?.ticket_id) return existing.rows[0].ticket_id;
 
+  const notebookThresholds = notebookLabel ? await getPpNotebookThresholds() : null;
+  const notebookConfig = notebookThresholds?.get(notebookLabel) || null;
+  const notebookL4UserIds = Array.isArray(notebookConfig?.approval_l4_user_ids) ? notebookConfig.approval_l4_user_ids : [];
+
   const approvalConfig = await getPpApprovalConfig();
-  const l4UserIds = approvalConfig.l4_user_id ? [approvalConfig.l4_user_id] : await getUsersAtLevel('L4');
-  const tatHours = Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS;
+  const l4UserIds = notebookL4UserIds.length
+    ? notebookL4UserIds
+    : (approvalConfig.l4_user_ids.length ? approvalConfig.l4_user_ids : await getUsersAtLevel('L4'));
+  const tatHours = Number(notebookConfig?.approve_within_hours) > 0
+    ? Number(notebookConfig.approve_within_hours)
+    : (Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : PP_APPROVAL_TAT_HOURS);
+  const severity = notebookConfig?.severity || 'High';
   const l4TatDueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000).toISOString();
   const violationDetails = {
     category: 'PENDING_APPROVAL',
     ticket_type: 'PP_APPROVAL',
     entry_id,
+    notebook_label: notebookLabel,
     message: `PP id ${entry_id} has completed all departments and is awaiting L4 approval.`
   };
 
@@ -333,11 +402,11 @@ const createPpApprovalTicket = async (entry_id) => {
      VALUES (
        'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
        $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       'High', 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
+       $5, 'Open', NOW(), 'MISSING_VALUE', 'PP_APPROVAL', 'pp_approval',
        $2::jsonb, $3::int[], 'L4', $4
      )
      RETURNING ticket_id`,
-    [entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt]
+    [entry_id, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
   return ticket.rows[0]?.ticket_id || null;
 };
@@ -397,10 +466,9 @@ router.post('/approval-config', async (req, res, next) => {
   try {
     await ensurePpApprovalConfigTable();
 
-    const l4UserId = req.body?.l4_user_id ? Number(req.body.l4_user_id) : null;
-    if (req.body?.l4_user_id !== undefined && req.body?.l4_user_id !== null && req.body?.l4_user_id !== '' && !(Number.isInteger(l4UserId) && l4UserId > 0)) {
-      return res.status(400).json({ message: 'l4_user_id must be a positive integer' });
-    }
+    const l4UserIds = (Array.isArray(req.body?.l4_user_ids) ? req.body.l4_user_ids : [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
 
     const tatHours = Number(req.body?.tat_hours);
     if (!Number.isFinite(tatHours) || tatHours <= 0) {
@@ -408,12 +476,12 @@ router.post('/approval-config', async (req, res, next) => {
     }
 
     const result = await client.query(
-      `INSERT INTO ticketing_system.pp_approval_config (config_key, l4_user_id, tat_hours, updated_at)
-       VALUES ('global', $1, $2, NOW())
+      `INSERT INTO ticketing_system.pp_approval_config (config_key, l4_user_id, l4_user_ids, tat_hours, updated_at)
+       VALUES ('global', $1, $2::int[], $3, NOW())
        ON CONFLICT (config_key)
-       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, tat_hours = EXCLUDED.tat_hours, updated_at = NOW()
+       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, updated_at = NOW()
        RETURNING *`,
-      [l4UserId, tatHours]
+      [l4UserIds[0] || null, l4UserIds, tatHours]
     );
 
     return res.status(200).json({ message: 'PP Approval configuration saved successfully', config: result.rows[0] });
@@ -441,12 +509,18 @@ router.get('/next-id', async (req, res, next) => {
 router.post('/master', async (req, res, next) => {
   try {
     await ensureProcessParameterMasterTable();
+    // createProcessParameterEntryId() already inserts the master row for this
+    // entry_id (via ensureProcessParameterMasterRow) as part of minting the id
+    // - so this must UPDATE that existing row rather than INSERT a second one,
+    // or it duplicate-key-fails on every call.
     const entry_id = await createProcessParameterEntryId();
 
     const result = await client.query(
-      `INSERT INTO process_parameters.master (entry_id, created_by_user_id, created_by_name)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
+      `UPDATE process_parameters.master
+          SET created_by_user_id = $2,
+              created_by_name = $3
+        WHERE entry_id = $1
+        RETURNING *`,
       [entry_id, req.user?.id ?? null, req.user?.employee_id ?? null]
     );
 

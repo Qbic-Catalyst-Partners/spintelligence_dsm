@@ -689,15 +689,6 @@ export const fetchDrawFrameBreakerProcessParameterEntries = (params) =>
 export const fetchDrawFrameFinisherProcessParameterEntries = (params) =>
     fetchDrawFrameHeaderEntriesByScope("finisher", params);
 
-export const submitDrawFrameFinisherEntry = async (payload) => {
-    try {
-        const response = await apiConfig.post("/drawframe/finisher", payload);
-        return response.data;
-    } catch (error) {
-        throw new Error(extractApiError(error, "Failed to create draw frame finisher entry"));
-    }
-};
-
 export const submitDrawFrameWheelChangeEntry = async (payload) => {
     const normalizedType = String(payload?.wheel_change_type || "")
         .trim()
@@ -751,15 +742,6 @@ export const fetchDrawFrameWheelChangeEntries = async ({
         return response.data;
     } catch (error) {
         throw new Error(extractApiError(error, "Failed to fetch draw frame wheel change entries"));
-    }
-};
-
-export const fetchDrawFrameFinisherEntries = async ({ page = 1, limit = 10 } = {}) => {
-    try {
-        const response = await apiConfig.get("/drawframe/finisher", { page, limit });
-        return response.data;
-    } catch (error) {
-        throw new Error(extractApiError(error, "Failed to fetch draw frame finisher entries"));
     }
 };
 
@@ -860,11 +842,3 @@ export const updateDrawFrameHeaderEntry = async (insId, payload) => {
     }
 };
 
-export const updateDrawFrameFinisherEntry = async (id, payload) => {
-    try {
-        const response = await apiConfig.put(`/drawframe/finisher/${id}`, payload);
-        return response.data;
-    } catch (error) {
-        throw new Error(extractApiError(error, "Failed to update draw frame finisher entry"));
-    }
-};

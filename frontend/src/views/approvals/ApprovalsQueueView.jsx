@@ -717,7 +717,7 @@ function ApprovalsQueueView({
 
           {loading ? (
             <div className={styles.emptyState}>
-              Loading {tabLabels[activeTab] || DEFAULT_TAB_LABELS[activeTab] || ""} Approvals...
+              Loading {tabLabels[activeTab] || DEFAULT_TAB_LABELS[activeTab] || "Approvals"}...
             </div>
           ) : groupedApprovals.length ? (
             <div className={styles.groups}>

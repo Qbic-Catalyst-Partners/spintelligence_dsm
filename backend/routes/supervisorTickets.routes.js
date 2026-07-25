@@ -483,6 +483,8 @@ router.get('/tickets', async (req, res, next) => {
          ot.severity,
          ot.status,
          COALESCE(ot.ticket_type, 'THRESHOLD') AS ticket_type,
+         ot.ticket_reason,
+         ot.violation_details,
          ot.approval_l1_user_ids,
          ot.approval_l2_user_ids,
          ot.approval_l3_user_ids,

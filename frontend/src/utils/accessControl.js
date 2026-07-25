@@ -50,6 +50,13 @@ export const isSubmittedNotebookManagerUser = (user) =>
 const getUserLevelKey = (user) =>
   String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
 
+// Any user with a recognized L1-L5 hierarchy level has some ticketing view
+// (L1 operator board, L2-L5 escalation dashboards) - used to gate whether
+// the "Ticketing System" nav entry shows at all, since that used to only
+// check isFullAccessUser/isSupervisorNavUser (a leftover from before the
+// hierarchy levels existed) and hid the link for plain L1-L5 accounts.
+export const hasHierarchyLevel = (user) => ["L1", "L2", "L3", "L4", "L5"].includes(getUserLevelKey(user));
+
 // Levels: L1 entry operator, L2 supervisor (no role in approvals - moved to
 // L4), L3 sub manager (no role in approvals), L4 Quality/Department Head
 // (approves WC and PP ids), L5 Admin/MD (unrestricted - this is what L3
@@ -70,11 +77,41 @@ export const isDelegationManagerUser = (user) => getUserLevelKey(user) === "L5";
 export const isDashboardManagerUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
 
-export const getDefaultTicketingRoute = (user) =>
-  isFullAccessUser(user) || isSupervisorNavUser(user) ? "/supervisordashboard" : "/operator";
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: each level has its own
+// ticketing view (L1 operator board, L2-L5 escalation dashboards at
+// /supervisordashboard, /l3-ticketing, /l4-ticketing, /l5-ticketing - these
+// pages already exist and pass the right `mode` to SupervisorDashboard, but
+// nothing routed users to them by their real level, so every L3/L4/L5 user
+// was silently falling through to the L2 view instead. Route by level first;
+// only fall back to the legacy full-access/supervisor-employee-id check for
+// accounts that don't have a level set at all.
+const LEVEL_TICKETING_ROUTES = {
+  L1: "/operator",
+  L2: "/supervisordashboard",
+  L3: "/l3-ticketing",
+  L4: "/l4-ticketing",
+  L5: "/l5-ticketing",
+};
 
-export const getDefaultTicketingLabel = (user) =>
-  isFullAccessUser(user) || isSupervisorNavUser(user) ? "L2 Ticketing System" : "L1 Ticketing System";
+const LEVEL_TICKETING_LABELS = {
+  L1: "L1 Ticketing System",
+  L2: "L2 Ticketing System",
+  L3: "L3 Ticketing System",
+  L4: "L4 Ticketing System",
+  L5: "L5 Ticketing System",
+};
+
+export const getDefaultTicketingRoute = (user) => {
+  const levelRoute = LEVEL_TICKETING_ROUTES[getUserLevelKey(user)];
+  if (levelRoute) return levelRoute;
+  return isFullAccessUser(user) || isSupervisorNavUser(user) ? "/supervisordashboard" : "/operator";
+};
+
+export const getDefaultTicketingLabel = (user) => {
+  const levelLabel = LEVEL_TICKETING_LABELS[getUserLevelKey(user)];
+  if (levelLabel) return levelLabel;
+  return isFullAccessUser(user) || isSupervisorNavUser(user) ? "L2 Ticketing System" : "L1 Ticketing System";
+};
 
 export const routeDepartmentMap = {
   "/mixing": "Mixing",

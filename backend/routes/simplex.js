@@ -6,6 +6,7 @@ const sqlServerPrep = require('../config/sqlserverPrep');
 const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVariety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const SCREEN_ID_PREFIXES = {
   smx_cots_change: 'SX',
   study: 'SS',
@@ -414,6 +415,8 @@ router.post('/wheel-change', async (req, res, next) => {
       ]
     );
 
+    await createWheelChangeApprovalTicket('simplex.wheel_change', result.rows[0].id);
+
     res.status(201).json({
       message: 'Simplex wheel change entry created successfully',
       data: withScreenEntryId('simplex_wheel_change', result.rows[0]),
@@ -510,6 +513,7 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('simplex.wheel_change', id);
     res.status(200).json({
       message: 'Simplex wheel change entry approved',
       data: withScreenEntryId('simplex_wheel_change', result.rows[0])
@@ -539,6 +543,7 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('simplex.wheel_change', id);
     res.status(200).json({
       message: 'Simplex wheel change entry rejected',
       data: withScreenEntryId('simplex_wheel_change', result.rows[0])

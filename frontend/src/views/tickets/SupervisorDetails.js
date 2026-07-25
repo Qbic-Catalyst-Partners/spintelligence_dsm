@@ -21,7 +21,6 @@ import {
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
   isSubmissionFrequencyParameterName,
-  isSubmissionTicketRecord,
   TICKET_KIND,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
@@ -144,24 +143,27 @@ export default function SupervisorDetails() {
   }, [requestedTicketId, tickets]);
 
   const ticket = useMemo(() => {
+    // The L2 preview endpoint's response shape only makes sense for non-acknowledgement
+    // tickets, but GET /tickets/:id (fetchTicketDetails) returns the raw operator_tickets row
+    // (ot.*, including violation_details) for both kinds - it's a safe fallback when the
+    // dashboard list hasn't been loaded yet (e.g. a hard refresh straight onto this page),
+    // which previously left acknowledgement tickets with no notebook id to deep-link to.
     const previewSource = isKnownAcknowledgementTicket ? null : buildPreviewTicket(l2Preview);
     const previewMatches =
       previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
-      !isKnownAcknowledgementTicket &&
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = previewMatches ? previewSource : detailMatches ? detailSource : dashboardTicket;
+    const source = previewMatches ? previewSource : dashboardTicket || (detailMatches ? detailSource : null);
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
   }, [dashboardTicket, isKnownAcknowledgementTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
-    if (!l2PreviewLoaded) return;
+    if (!isKnownAcknowledgementTicket && !l2PreviewLoaded) return;
 
     if (
-      !isKnownAcknowledgementTicket &&
       !l2Preview &&
       !dashboardTicket &&
       normalizeTicketId(ticketDetail?.ticket_id) !== normalizedRequestedTicketId
@@ -359,10 +361,13 @@ export default function SupervisorDetails() {
   // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,
   // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
   // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
+  // Uses getTicketKind (which checks the explicit ticket_kind column first) rather than a
+  // bare violation_details.category === 'MISSED_FREQUENCY' check - PP_BATCH_INCOMPLETE
+  // tickets also carry that same category value, so that check alone misclassified every
+  // PP batch ticket as a Submission ticket.
   const isSubmissionTicket = ticketType
     ? ticketType === "submission"
-    : isSubmissionTicketRecord(ticket) ||
-      String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+    : getTicketKind(ticket) === TICKET_KIND.SUBMISSION_FREQUENCY;
   const rawParameterNames = getTicketParameterNames(ticket);
   const submissionParameterNames = rawParameterNames.filter(
     (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)
@@ -598,53 +603,103 @@ export default function SupervisorDetails() {
             </div>
           </div>
 
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>NOTEBOOK TYPE</th>
-                <th>PARAMETER</th>
-                <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
-                <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
-                <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
-                <th>CREATED AT</th>
-              </tr>
-            </thead>
+          {isPpBatchTicket ? (
+            // Purpose-built layout for PP Batch tickets, replacing the
+            // Value/Submission table above - that table iterates every key
+            // in actual_value/threshold_value, which for a PP Batch ticket
+            // are the completed-screens array and a stray
+            // completion_threshold_hours key, neither of which is the actual
+            // point of the ticket (the missing department). Each ticket
+            // already represents exactly one missing department (see PDF
+            // Step 3: "tickets are raised per user, not per PP ID"), so this
+            // shows that directly instead of a noisy 10-row table of mostly
+            // blank cells.
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>ENTRY ID</th>
+                    <th>MISSING DEPARTMENT</th>
+                    <th>COMPLETED</th>
+                    <th>COMPLETION THRESHOLD</th>
+                    <th>FIRST SUBMITTED</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{ticket?.violation_details?.entry_id || ticket.notebook || ticket.machine_name || "-"}</td>
+                    <td style={{ color: "#CA0000" }}>
+                      {ticket?.violation_details?.missing_screen || "-"}
+                    </td>
+                    <td>
+                      {Array.isArray(ticket?.violation_details?.completed_screens)
+                        ? `${ticket.violation_details.completed_screens.length} dept(s): ${ticket.violation_details.completed_screens.join(", ")}`
+                        : "-"}
+                    </td>
+                    <td>
+                      {ticket?.violation_details?.completion_threshold_hours
+                        ? `${ticket.violation_details.completion_threshold_hours} Hrs`
+                        : "-"}
+                    </td>
+                    <td>{formatDateTime(ticket?.violation_details?.first_created_at || ticket.created_at)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>NOTEBOOK TYPE</th>
+                      <th>PARAMETER</th>
+                      <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
+                      <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
+                      <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
+                      <th>CREATED AT</th>
+                    </tr>
+                  </thead>
 
-            <tbody>
-              {visibleParameterNames.map((key, i) => (
-                <tr key={i}>
-                  <td>{ticket.notebook || ticket.machine_name || "-"}</td>
-                  <td>{key.toUpperCase()}</td>
-                  <td style={{ color: "#CA0000" }}>
-                    {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
-                  </td>
-                  <td>
-                    {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
-                      getTicketValueForParameter(ticket?.threshold_value, key)
-                    )}
-                  </td>
-                  <td>
-                    {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
-                      getTicketValueForParameter(ticket?.threshold_value, key)
-                    )}
-                  </td>
-                  <td>{formatDateTime(ticket.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <tbody>
+                    {visibleParameterNames.map((key, i) => (
+                      <tr key={i}>
+                        <td>{ticket.notebook || ticket.machine_name || "-"}</td>
+                        <td>{key.toUpperCase()}</td>
+                        <td style={{ color: "#CA0000" }}>
+                          {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
+                        </td>
+                        <td>
+                          {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
+                            getTicketValueForParameter(ticket?.threshold_value, key)
+                          )}
+                        </td>
+                        <td>
+                          {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
+                            getTicketValueForParameter(ticket?.threshold_value, key)
+                          )}
+                        </td>
+                        <td>{formatDateTime(ticket.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-          {parameterNames.length > 1 && (
-            <button
-              type="button"
-              className={styles.dots}
-              onClick={() => setExpanded(!expanded)}
-              aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
-              title={expanded ? "Show less" : "Show all"}
-            >
-              ...
-            </button>
+              {parameterNames.length > 1 && (
+                <button
+                  type="button"
+                  className={styles.dots}
+                  onClick={() => setExpanded(!expanded)}
+                  aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+                  title={expanded ? "Show less" : "Show all"}
+                >
+                  ...
+                </button>
+              )}
+            </>
           )}
+
         </div>
 
         {showRejectModal && (

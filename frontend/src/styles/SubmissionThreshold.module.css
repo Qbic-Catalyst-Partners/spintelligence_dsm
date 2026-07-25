@@ -786,6 +786,11 @@
   overflow: hidden;
 }
 
+.hubActionMenuUp {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
 .hubActionMenuItem {
   border: none;
   background: transparent;

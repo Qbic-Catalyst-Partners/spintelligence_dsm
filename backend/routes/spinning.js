@@ -4648,8 +4648,20 @@ const applyApprovalVisibilityScope = (rows, scope) =>
 
 router.get('/wheel-change/approval-config', async (req, res, next) => {
   try {
-    const config = await getWheelChangeApprovalConfig();
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.query?.department) ? req.query.department : 'Spinning';
+    const config = await getWheelChangeApprovalConfig(department);
     return res.status(200).json({ config });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// One row per department (Spinning/Drawframe/Carding/Simplex) - these are
+// already separate Wheel Change / Change Control approval queues in the app.
+router.get('/wheel-change/approval-config/list', async (req, res, next) => {
+  try {
+    const configs = await getAllWheelChangeApprovalConfigs();
+    return res.status(200).json({ configs });
   } catch (error) {
     next(error);
   }
@@ -4659,26 +4671,60 @@ router.post('/wheel-change/approval-config', async (req, res, next) => {
   try {
     await ensureWheelChangeApprovalConfigTable();
 
-    const l4UserId = req.body?.l4_user_id ? Number(req.body.l4_user_id) : null;
-    if (req.body?.l4_user_id !== undefined && req.body?.l4_user_id !== null && req.body?.l4_user_id !== '' && !(Number.isInteger(l4UserId) && l4UserId > 0)) {
-      return res.status(400).json({ message: 'l4_user_id must be a positive integer' });
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.body?.department) ? req.body.department : null;
+    if (!department) {
+      return res.status(400).json({ message: `department must be one of ${WHEEL_CHANGE_DEPARTMENTS.join(', ')}` });
     }
+
+    const l4UserIds = (Array.isArray(req.body?.l4_user_ids) ? req.body.l4_user_ids : [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
 
     const tatHours = Number(req.body?.tat_hours);
     if (!Number.isFinite(tatHours) || tatHours <= 0) {
       return res.status(400).json({ message: 'tat_hours must be a positive integer' });
     }
 
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+    const severity = String(req.body?.severity || '').trim() || 'High';
+
     const result = await client.query(
-      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_id, tat_hours, updated_at)
-       VALUES ('global', $1, $2, NOW())
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_id, l4_user_ids, tat_hours, is_active, severity, updated_at)
+       VALUES ($1, $2, $3::int[], $4, $5, $6, NOW())
        ON CONFLICT (config_key)
-       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, tat_hours = EXCLUDED.tat_hours, updated_at = NOW()
+       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, is_active = EXCLUDED.is_active, severity = EXCLUDED.severity, updated_at = NOW()
        RETURNING *`,
-      [l4UserId, tatHours]
+      [department, l4UserIds[0] || null, l4UserIds, tatHours, isActive, severity]
     );
 
-    return res.status(200).json({ message: 'Wheel Change Approval configuration saved successfully', config: result.rows[0] });
+    return res.status(200).json({ message: `Wheel Change Approval configuration for ${department} saved successfully`, config: { department, ...result.rows[0] } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/wheel-change/approval-config/:department/status', async (req, res, next) => {
+  try {
+    await ensureWheelChangeApprovalConfigTable();
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.params.department) ? req.params.department : null;
+    if (!department) {
+      return res.status(400).json({ message: `department must be one of ${WHEEL_CHANGE_DEPARTMENTS.join(', ')}` });
+    }
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, tat_hours, is_active, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (config_key)
+       DO UPDATE SET is_active = EXCLUDED.is_active, updated_at = NOW()
+       RETURNING *`,
+      [department, WHEEL_CHANGE_APPROVAL_TAT_HOURS, isActive]
+    );
+
+    return res.status(200).json({
+      message: `Wheel Change Approval status for ${department} updated successfully`,
+      config: { department, ...result.rows[0] }
+    });
   } catch (error) {
     next(error);
   }
@@ -4803,6 +4849,20 @@ const getUsersAtLevelForWheelChange = async (level) => {
 // responsible... TAT: configurable." When no specific L4 user is configured,
 // ticket creation falls back to "any current L4 user" so existing setups
 // keep working.
+// Wheel Change Approval is a separate approval queue per department today
+// (Spinning, Drawframe, Carding, Simplex each have their own proposal table
+// and approve/reject routes) - config_key now holds the department name
+// instead of always 'global', so each can have its own L4 approver(s)/TAT.
+// A 'global' row (from before this change) is kept as a fallback for any
+// department without its own row yet.
+const WHEEL_CHANGE_DEPARTMENTS = ['Spinning', 'Drawframe', 'Carding', 'Simplex'];
+
+const deriveWheelChangeDepartment = (tableName) => {
+  const schema = String(tableName || '').split('.')[0] || '';
+  const match = WHEEL_CHANGE_DEPARTMENTS.find((department) => department.toLowerCase() === schema.toLowerCase());
+  return match || 'Spinning';
+};
+
 const ensureWheelChangeApprovalConfigTable = async () => {
   await client.query(`
     CREATE TABLE IF NOT EXISTS ticketing_system.wheel_change_approval_config (
@@ -4812,14 +4872,45 @@ const ensureWheelChangeApprovalConfigTable = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Admin can assign as many L4 approvers as needed, not just one - l4_user_ids
+  // is now the source of truth; the older single l4_user_id column is kept
+  // (and folded into the array) so existing saved configs keep working.
+  await client.query(`
+    ALTER TABLE ticketing_system.wheel_change_approval_config
+      ADD COLUMN IF NOT EXISTS l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'High'
+  `);
 };
 
-const getWheelChangeApprovalConfig = async () => {
+const getWheelChangeApprovalConfig = async (department = 'Spinning') => {
   await ensureWheelChangeApprovalConfigTable();
   const result = await client.query(
-    `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = 'global'`
+    `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = $1`,
+    [department]
   );
-  return result.rows[0] || { config_key: 'global', l4_user_id: null, tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS, updated_at: null };
+  let row = result.rows[0];
+  if (!row) {
+    const fallback = await client.query(
+      `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = 'global'`
+    );
+    row = fallback.rows[0];
+  }
+  if (!row) {
+    return { config_key: department, l4_user_ids: [], tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS, is_active: true, severity: 'High', updated_at: null };
+  }
+  const l4UserIds = Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
+    ? row.l4_user_ids
+    : (row.l4_user_id ? [row.l4_user_id] : []);
+  return { ...row, l4_user_ids: l4UserIds };
+};
+
+const getAllWheelChangeApprovalConfigs = async () => {
+  await ensureWheelChangeApprovalConfigTable();
+  const configs = await Promise.all(
+    WHEEL_CHANGE_DEPARTMENTS.map((department) => getWheelChangeApprovalConfig(department))
+  );
+  return WHEEL_CHANGE_DEPARTMENTS.map((department, index) => ({ department, ...configs[index] }));
 };
 
 const ensureWheelChangeApprovalTicketSchema = async () => {
@@ -4849,14 +4940,26 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
   );
   if (existing.rows[0]?.ticket_id) return existing.rows[0].ticket_id;
 
-  const approvalConfig = await getWheelChangeApprovalConfig();
-  const l4UserIds = approvalConfig.l4_user_id ? [approvalConfig.l4_user_id] : await getUsersAtLevelForWheelChange('L4');
-  const tatHours = Number(approvalConfig.tat_hours) > 0 ? Number(approvalConfig.tat_hours) : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
+  const department = deriveWheelChangeDepartment(tableName);
+  const approvalConfig = await getWheelChangeApprovalConfig(department);
+  // A department toggled inactive isn't exempt from approval (the ticket
+  // still must be raised per the PDF) - "inactive" just means its specific
+  // L4 override/TAT no longer applies, falling back to the same defaults
+  // used when no config exists at all.
+  const useConfig = approvalConfig.is_active !== false;
+  const l4UserIds = useConfig && approvalConfig.l4_user_ids.length
+    ? approvalConfig.l4_user_ids
+    : await getUsersAtLevelForWheelChange('L4');
+  const tatHours = useConfig && Number(approvalConfig.tat_hours) > 0
+    ? Number(approvalConfig.tat_hours)
+    : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
   const l4TatDueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000).toISOString();
+  const severity = useConfig && approvalConfig.severity ? approvalConfig.severity : 'High';
   const violationDetails = {
     category: 'PENDING_APPROVAL',
     ticket_type: 'WHEEL_CHANGE_APPROVAL',
     wheel_change_row_key: wheelChangeRowKey,
+    department,
     message: `A Wheel Change proposal is awaiting L4 approval.`
   };
 
@@ -4868,11 +4971,11 @@ const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
      VALUES (
        'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
        $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
-       'High', 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+       $5, 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
        $2::jsonb, $3::int[], 'L4', $4
      )
      RETURNING ticket_id`,
-    [wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt]
+    [wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
   );
   return ticket.rows[0]?.ticket_id || null;
 };
@@ -5139,5 +5242,7 @@ module.exports.createWheelChangeApprovalTicket = createWheelChangeApprovalTicket
 module.exports.closeWheelChangeApprovalTicket = closeWheelChangeApprovalTicket;
 module.exports.ensureWheelChangeApprovalConfigTable = ensureWheelChangeApprovalConfigTable;
 module.exports.getWheelChangeApprovalConfig = getWheelChangeApprovalConfig;
+module.exports.getAllWheelChangeApprovalConfigs = getAllWheelChangeApprovalConfigs;
+module.exports.deriveWheelChangeDepartment = deriveWheelChangeDepartment;
 
 

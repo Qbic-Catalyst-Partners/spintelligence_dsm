@@ -70,7 +70,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
   // Keep breaker and finisher on separate sequence scopes so they do not share storage identity.
   "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header?scope=breaker" },
-  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher?scope=finisher" },
+  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header?scope=finisher" },
   "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },
   "Wheel Change": { prefix: "DWC", width: 4, routePath: "/drawframe/wheel-change" },
 };
