@@ -170,7 +170,12 @@ export default function operatorboard() {
     const fetchTickets = async () => {
         try {
             setThresholdError("");
-            const response = await getOperatorTickets({ page: 1, limit: 500, _ts: Date.now() });
+            const response = await getOperatorTickets({
+                page: 1,
+                limit: 500,
+                _ts: Date.now(),
+                user_id: authUser?.id || authUser?.user_id || authUser?.userId,
+            });
 
             const ticketsArray = Array.isArray(response)
                 ? response
@@ -214,6 +219,7 @@ export default function operatorboard() {
                         status: transformedTicket.status,
                         rawCreatedAt: transformedTicket.rawCreatedAt,
                         createdAt: transformedTicket.createdAt,
+                        isDelegated: Boolean(ticket.is_delegated),
                     };
                 })
                 .filter(
@@ -554,6 +560,7 @@ export default function operatorboard() {
                             <th>SEVERITY</th>
                             <th>STATUS</th>
                             <th>CREATED AT</th>
+                            <th>OWNERSHIP</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -606,12 +613,17 @@ export default function operatorboard() {
                                     </span>
                                 </td>
                                 <td>{t.createdAt}</td>
+                                <td>
+                                    <span className={`${styles.badge} ${t.isDelegated ? styles.high : styles.low}`}>
+                                        {t.isDelegated ? "Delegate" : "Owned"}
+                                    </span>
+                                </td>
                             </tr>
                         ))}
                         {currentTickets.length === 0 && (
                             <tr>
                                 <td
-                                    colSpan={activeTicketingView === "process_parameter" ? 9 : activeTicketingView === "submission" ? 8 : 10}
+                                    colSpan={activeTicketingView === "process_parameter" ? 10 : activeTicketingView === "submission" ? 9 : 11}
                                     style={{ textAlign: "center", color: "#667085" }}
                                 >
                                     No tickets found for the selected filters.

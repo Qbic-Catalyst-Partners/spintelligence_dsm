@@ -232,13 +232,12 @@ const isTicketResolved = (status) => {
 
 const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement"];
 
-const getOwnershipDisplay = (ticket, delegateName) => {
-  const seed = hashTicketId(ticket?.ticket_id);
-  const isDelegate = seed % 3 === 0;
+const getOwnershipDisplay = (ticket) => {
+  const isDelegate = Boolean(ticket?.is_delegated);
   return {
     kind: isDelegate ? "mapped" : "owned",
     label: isDelegate ? "Delegate" : "Owned",
-    delegateName: isDelegate ? (delegateName || "-") : "",
+    delegateName: isDelegate ? (ticket?.user_name || "-") : "",
   };
 };
 
@@ -477,10 +476,9 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   ];
   const statusFilterOptions = SUPERVISOR_VISIBLE_STATUS_OPTIONS;
 
-  const authFullName = authUser?.full_name || authUser?.name || "You";
   const taggedTickets = filteredTickets.map((t) => ({
     ...t,
-    ownership: getOwnershipDisplay(t, authFullName),
+    ownership: getOwnershipDisplay(t),
     resolution: getResolutionDisplay(t),
   }));
   const displayTickets = taggedTickets.filter((t) => t.ownership.kind === activeTicketingView);

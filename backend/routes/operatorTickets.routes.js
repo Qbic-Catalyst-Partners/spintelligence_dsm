@@ -2428,6 +2428,24 @@ router.get('/', async (req, res, next) => {
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
+    // Only the specific delegate and admins/L5 (canViewAllTickets) should
+    // see the "Delegate" tag - other approvers who can see this ticket via
+    // their own approval-list membership should not.
+    const isDelegatedExpr = canViewAllTickets
+      ? `ot.user_id IN (
+          SELECT owner_user_id FROM users.delegations
+          WHERE from_date <= CURRENT_DATE
+            AND to_date >= CURRENT_DATE
+        )`
+      : viewerUserId
+        ? `(ot.user_id != ${viewerUserId} AND ot.user_id IN (
+            SELECT owner_user_id FROM users.delegations
+            WHERE delegate_user_id = ${viewerUserId}
+              AND from_date <= CURRENT_DATE
+              AND to_date >= CURRENT_DATE
+          ))`
+        : 'false';
+
     const query = `
       SELECT
           ot.ticket_id,
@@ -2440,6 +2458,7 @@ router.get('/', async (req, res, next) => {
           ot.severity,
           ot.status,
           ot.created_at,
+          ${isDelegatedExpr} AS is_delegated,
           COUNT(*) OVER()::int AS total_count,
           COALESCE(
               json_agg(

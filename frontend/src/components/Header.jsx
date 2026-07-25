@@ -32,6 +32,7 @@ import {
     hasAnyQualityControlAccess,
     hasReportAccess,
     hasSubDepartmentAccess,
+    isDelegationManagerUser,
     isFullAccessUser,
     isSubmittedNotebookManagerUser,
     isSupervisorNavUser,
@@ -85,7 +86,7 @@ const settingsLinks = [
 ];
 const ticketingLinks = [
     { href: "__ticketingHome__", label: "Ticket System" },
-    { href: "/delegation-system", label: "Delegation System", admin: true },
+    { href: "/delegation-system", label: "Delegation System", requiresLevel5: true },
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
@@ -211,7 +212,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
     const visibleTicketingLinks = ticketingLinks
-        .filter((link) => !link.admin || hasFullAccess)
+        .filter((link) =>
+            link.requiresLevel5 ? isDelegationManagerUser(user) : (!link.admin || hasFullAccess)
+        )
         .map((link) =>
             link.href === "__ticketingHome__" ? { ...link, href: defaultTicketingRoute } : link
         );
