@@ -49,6 +49,9 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/operatordetail") ||
     router.pathname === "/supervisordashboard" ||
     router.pathname === "/supervisordetails" ||
+    router.pathname === "/l3-ticketing" ||
+    router.pathname === "/l4-ticketing" ||
+    router.pathname === "/l5-ticketing" ||
     router.pathname === "/submitted-notebooks" ||
     router.pathname === "/submitted-notebook-threshold" ||
     router.pathname === "/ticket-calendar" ||

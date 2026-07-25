@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { FiClock } from "react-icons/fi";
+import { FiAlertTriangle, FiClock, FiUserCheck } from "react-icons/fi";
 
 import {
   fetchPpNotebookBatchConfigAPI,
@@ -164,7 +164,7 @@ function MultiUserSelect({
   );
 }
 
-export default function PPNotebookBatchThresholdPage() {
+export default function PPNotebookBatchThresholdPage({ standalone = true } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
@@ -346,12 +346,44 @@ export default function PPNotebookBatchThresholdPage() {
 
   if (!isHydrated || !canAccessPage) return null;
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <h1>PP Batch Completion Threshold</h1>
-          <p>Set how long L1 has to complete a PP batch, and who reviews it.</p>
+  const escalatesToLabel = form.l5TatHours
+    ? "L5 (final)"
+    : form.l4TatHours
+      ? "L4"
+      : form.l3TatHours
+        ? "L3"
+        : "L2 only";
+
+  const content = (
+    <>
+        <div className={styles.statsGrid}>
+          <article className={styles.statCard}>
+            <div className={`${styles.statIcon} ${styles.blue}`}>
+              <FiClock />
+            </div>
+            <div>
+              <span>Completion TAT (Hours)</span>
+              <strong>{loading ? "-" : form.completionThresholdHours || "-"}</strong>
+            </div>
+          </article>
+          <article className={styles.statCard}>
+            <div className={`${styles.statIcon} ${styles.activeTone}`}>
+              <FiUserCheck />
+            </div>
+            <div>
+              <span>Assigned L1 Users</span>
+              <strong>{loading ? "-" : form.approvalL1Ids.length || "-"}</strong>
+            </div>
+          </article>
+          <article className={styles.statCard}>
+            <div className={`${styles.statIcon} ${styles.inactiveTone}`}>
+              <FiAlertTriangle />
+            </div>
+            <div>
+              <span>Escalates To</span>
+              <strong>{loading ? "-" : escalatesToLabel}</strong>
+            </div>
+          </article>
         </div>
 
         <form className={styles.stack} onSubmit={handleSave}>
@@ -621,6 +653,21 @@ export default function PPNotebookBatchThresholdPage() {
             </table>
           </div>
         </section>
+    </>
+  );
+
+  if (!standalone) {
+    return content;
+  }
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.intro}>
+          <h1>PP Batch Completion Threshold</h1>
+          <p>Set how long L1 has to complete a PP batch, and who reviews it.</p>
+        </div>
+        {content}
       </div>
     </div>
   );

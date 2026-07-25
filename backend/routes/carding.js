@@ -7,6 +7,7 @@ const { fetchPrepVarieties, sendPrepVarietyDropdown } = require('../utils/prepVa
 const { sendUqcMasterData } = require('./uqcMasterData');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const MSSQL_THRESHOLD_TABLE = String(process.env.MSSQL_THRESHOLD_TABLE || 'dbo.threshold_master').trim();
 const SCREEN_ID_PREFIXES = {
   card_thick_place: 'CT',
@@ -270,6 +271,14 @@ const ensureCardingChangeTables = async () => {
   await client.query(`
     ALTER TABLE carding.carding_change_request ALTER COLUMN approval_status SET DEFAULT 'pending';
   `);
+  // cdg_no_proposed was TEXT[] on some pre-existing databases (from an older
+  // schema version); the route has always sent a plain string, which
+  // Postgres rejects with "malformed array literal" against an array column.
+  // CREATE TABLE IF NOT EXISTS never fixes an already-created table, so force
+  // the column back to TEXT on every startup, same as the default fix above.
+  await client.query(`
+    ALTER TABLE carding.carding_change_request ALTER COLUMN cdg_no_proposed TYPE TEXT USING array_to_string(cdg_no_proposed, ', ');
+  `).catch(() => {});
 };
 
 const ensureCardWasteStudyTable = async () => {
@@ -3411,6 +3420,8 @@ router.post('/change-control', async (req, res, next) => {
       ]
     );
 
+    await createWheelChangeApprovalTicket('carding.carding_change_request', result.rows[0].id);
+
     res.status(201).json({
       message: 'Carding change control entry created successfully',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3541,6 +3552,7 @@ router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
     res.status(200).json({
       message: 'Carding change control entry approved',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3569,6 +3581,7 @@ router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
     res.status(200).json({
       message: 'Carding change control entry rejected',
       data: withScreenEntryId('card_change_control', result.rows[0])

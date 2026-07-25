@@ -2170,7 +2170,7 @@ router.get('/', async (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = 6; 
     const offset = (page - 1) * limit;
-    const { status, severity, machine, start_date, end_date, user_id } = req.query;
+    const { status, severity, machine, start_date, end_date } = req.query;
 
     const where = [];
     const values = [];
@@ -2212,7 +2212,12 @@ router.get('/', async (req, res, next) => {
       requesterRole === 'super admin' ||
       requesterRole === 'superadmin';
 
-    const viewerUserId = canViewAllTickets ? null : parsePositiveInt(user_id);
+    // Scope by the AUTHENTICATED requester (from the JWT), never a
+    // client-supplied user_id - previously this trusted req.query.user_id,
+    // which the frontend never actually sent, so every non-admin viewer
+    // silently got every ticket in the system with no ownership filtering
+    // at all (e.g. L1 "Owned Tickets" showing everyone's tickets).
+    const viewerUserId = canViewAllTickets ? null : parsePositiveInt(req.user?.id);
     if (viewerUserId) {
       values.push(viewerUserId);
       where.push(`(
@@ -2220,6 +2225,8 @@ router.get('/', async (req, res, next) => {
         OR $${values.length} = ANY(COALESCE(ot.approval_l1_user_ids, ARRAY[]::int[]))
         OR $${values.length} = ANY(COALESCE(ot.approval_l2_user_ids, ARRAY[]::int[]))
         OR $${values.length} = ANY(COALESCE(ot.approval_l3_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l4_user_ids, ARRAY[]::int[]))
+        OR $${values.length} = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
         OR ot.user_id IN (
           SELECT owner_user_id FROM users.delegations
           WHERE delegate_user_id = $${values.length}

@@ -30,6 +30,7 @@ import { logout, setAuthUser } from "../store/slices/authSlice";
 import {
     getDefaultTicketingRoute,
     hasAnyQualityControlAccess,
+    hasHierarchyLevel,
     hasReportAccess,
     hasSubDepartmentAccess,
     isFullAccessUser,
@@ -148,8 +149,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
     const hasManagementHubAccess = hasSubmittedNotebookAccess || hasWheelChangeApprovalAccess;
-    const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess;
-    const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess;
+    // Every L1-L5 hierarchy account has some ticketing view (L1 operator
+    // board, L2-L5 escalation dashboards) - this used to only check
+    // isFullAccessUser/isSupervisorNavUser (from before hierarchy levels
+    // existed), which hid the "Ticketing System" nav entry entirely for
+    // plain L1-L4 accounts once routing started resolving by real level
+    // instead of always falling back to "/operator".
+    const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess || hasHierarchyLevel(user);
+    const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess || hasHierarchyLevel(user);
     const defaultTicketingRoute = getDefaultTicketingRoute(user);
     const fullName = user?.full_name || user?.name || "User";
     const employeeId = user?.employee_id || user?.employeeId || "No ID";
@@ -277,6 +284,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
 
         if (href === "/l3-ticketing") {
             return currentPath === "/l3-ticketing";
+        }
+
+        if (href === "/l4-ticketing") {
+            return currentPath === "/l4-ticketing";
+        }
+
+        if (href === "/l5-ticketing") {
+            return currentPath === "/l5-ticketing";
         }
 
         if (href === "/ticket-calendar") {

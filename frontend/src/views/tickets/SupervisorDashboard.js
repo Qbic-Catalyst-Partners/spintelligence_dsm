@@ -25,6 +25,8 @@ import {
   isPpBatchCompletionTicketRecord,
   isSubmissionTicketRecord,
   transformTicket,
+  getTicketKind,
+  TICKET_KIND,
 } from "../../utils/ticketTransformer";
 import { formatDateTime } from "../../utils/formatDateTime";
 
@@ -221,13 +223,42 @@ const isTicketResolved = (status) => {
 
 const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement"];
 
-const getOwnershipDisplay = (ticket, delegateName) => {
-  const seed = hashTicketId(ticket?.ticket_id);
-  const isDelegate = seed % 3 === 0;
+// Per the PDF's hierarchy design, a ticket's escalation walks L1->L2->L3->L4->L5
+// as each level's TAT window elapses without action - "Owned" means it is
+// CURRENTLY sitting at the viewer's own level (their turn to act on/escalate
+// it), and "Mapped" means it's visible to them because it's still active at
+// a level below theirs (cumulative visibility: L4 sees L1/L2/L3 tickets
+// mapped, L3 sees L1/L2, L2 sees L1, L1 sees nothing below it). L5 is the
+// final escalation authority with no reportees below assigning tickets to
+// it directly, so it never "owns" anything here - everything it sees is Mapped.
+const LEVEL_RANK = { L1: 1, L2: 2, L3: 3, L4: 4, L5: 5 };
+
+// Only Submission Frequency, PP Batch Incomplete, and Acknowledgement
+// Overdue tickets carry a real tat_current_level state machine today; Value
+// Threshold tickets are created with every level's approvers precomputed at
+// once and never set tat_current_level (it stays null), so they have no
+// progressive "current tier" - they fall back to the level that must act on
+// them per the PDF (L1 submits a Correction Report, or L2 acknowledges).
+const getPrimaryActorLevel = (ticket) => (getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK ? "L2" : "L1");
+
+const getTicketCurrentLevel = (ticket) => {
+  const raw = String(ticket?.tat_current_level || "").trim().toUpperCase();
+  const stripped = raw.startsWith("EXPIRED_") ? raw.slice("EXPIRED_".length) : raw;
+  if (LEVEL_RANK[stripped]) return stripped;
+  return getPrimaryActorLevel(ticket);
+};
+
+// Previously this was a random hashTicketId(...) % 3 placeholder completely
+// disconnected from real ticket data - replaced with the actual current
+// escalation-tier check above.
+const getOwnershipDisplay = (ticket, mode, delegateName) => {
+  const viewLevel = String(mode || "L2").trim().toUpperCase();
+  const currentLevel = getTicketCurrentLevel(ticket);
+  const isOwned = viewLevel !== "L5" && currentLevel === viewLevel;
   return {
-    kind: isDelegate ? "mapped" : "owned",
-    label: isDelegate ? "Delegate" : "Owned",
-    delegateName: isDelegate ? (delegateName || "-") : "",
+    kind: isOwned ? "owned" : "mapped",
+    label: isOwned ? "Owned" : "Mapped",
+    delegateName: isOwned ? "" : (delegateName || "-"),
   };
 };
 
@@ -252,13 +283,15 @@ const formatProcessParameterTicket = (ticket) => {
   };
 };
 
-export default function SupervisorDashboard({ mode = "L2" }) {
+export default function SupervisorDashboard({ mode = "L2", detailRoute = "/supervisordetails" }) {
   const dispatch = useDispatch();
   const router = useRouter();
 
   const { tickets, isLoading, error } =
     useSelector((state) => state.supervisor) || {};
   const authUser = useSelector((state) => state.auth?.user);
+  const authToken = useSelector((state) => state.auth?.token);
+  const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
   const isAdminUser = isFullAccessUser(authUser);
 
   const sourceTickets = Array.isArray(tickets)
@@ -290,7 +323,14 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showFilter, setShowFilter] = useState(false);
-  const [activeTicketingView, setActiveTicketingView] = useState("owned");
+  // L1-L4 each get an "Owned" tab (tickets currently escalated to their own
+  // level right now); L5 is the final escalation authority with nothing
+  // assigned directly to it, so it's Mapped-only. L1 has nothing escalating
+  // to it from below, so it has no "Mapped" tab.
+  const showOwnedTab = mode !== "L5";
+  const showMappedTab = mode !== "L1";
+  const defaultTicketingView = showOwnedTab ? "owned" : "mapped";
+  const [activeTicketingView, setActiveTicketingView] = useState(defaultTicketingView);
   const [statusUpdatingId, setStatusUpdatingId] = useState("");
   const [processParameterTicketData, setProcessParameterTicketData] = useState([]);
   const [processParameterError, setProcessParameterError] = useState("");
@@ -323,9 +363,15 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   };
 
   useEffect(() => {
+    // Wait for auth rehydration to finish (and a token to actually exist)
+    // before firing any ticket fetch - on a fresh page load/reload this
+    // effect can otherwise run before the token is restored, sending
+    // requests with no Authorization header and surfacing as a crash.
+    if (!isAuthHydrated || !authToken) return;
     dispatch(fetchSupervisorTickets(supervisorTicketQuery));
     fetchProcessParameterTickets();
-  }, [dispatch, isAdminUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, isAdminUser, isAuthHydrated, authToken]);
 
   // Operators can change a ticket's status from their own dashboard while an admin/supervisor
   // already has this page open — refetch on refocus so those changes show up without a manual reload.
@@ -333,6 +379,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
     if (typeof window === "undefined") return;
 
     const refreshFromServer = () => {
+      if (!isAuthHydrated || !authToken) return;
       dispatch(fetchSupervisorTickets(supervisorTicketQuery));
       fetchProcessParameterTickets();
     };
@@ -349,7 +396,8 @@ export default function SupervisorDashboard({ mode = "L2" }) {
       window.removeEventListener("focus", refreshFromServer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [dispatch, isAdminUser]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch, isAdminUser, isAuthHydrated, authToken]);
 
   const openCalendarPicker = (inputRef) => {
     const input = inputRef.current;
@@ -420,7 +468,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
   const authFullName = authUser?.full_name || authUser?.name || "You";
   const taggedTickets = filteredTickets.map((t) => ({
     ...t,
-    ownership: getOwnershipDisplay(t, authFullName),
+    ownership: getOwnershipDisplay(t, mode, authFullName),
     resolution: getResolutionDisplay(t),
   }));
   const displayTickets = taggedTickets.filter((t) => t.ownership.kind === activeTicketingView);
@@ -434,7 +482,7 @@ export default function SupervisorDashboard({ mode = "L2" }) {
 
   const handleTicketClick = (ticketId, ticketType) => {
     const id = ticketId?.startsWith("#") ? ticketId : `#${ticketId}`;
-    router.push(`/supervisordetails?ticketId=${encodeURIComponent(id)}&ticketType=${ticketType}`);
+    router.push(`${detailRoute}?ticketId=${encodeURIComponent(id)}&ticketType=${ticketType}`);
   };
 
   const handleDashboardTicketClick = (ticket) => {
@@ -492,22 +540,28 @@ export default function SupervisorDashboard({ mode = "L2" }) {
       <div className={styles["sup-content"]}>
         <h1 className={styles["sup-title"]}>Ticketing System</h1>
 
-        <div className={styles["ticketing-toggle"]}>
-          <button
-            type="button"
-            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "owned" ? styles["ticketing-toggle-btn-active"] : ""}`}
-            onClick={() => selectTicketingView("owned")}
-          >
-            Owned Tickets
-          </button>
-          <button
-            type="button"
-            className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "mapped" ? styles["ticketing-toggle-btn-active"] : ""}`}
-            onClick={() => selectTicketingView("mapped")}
-          >
-            Mapped Tickets
-          </button>
-        </div>
+        {showOwnedTab || showMappedTab ? (
+          <div className={styles["ticketing-toggle"]}>
+            {showOwnedTab ? (
+              <button
+                type="button"
+                className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "owned" ? styles["ticketing-toggle-btn-active"] : ""}`}
+                onClick={() => selectTicketingView("owned")}
+              >
+                Owned Tickets
+              </button>
+            ) : null}
+            {showMappedTab ? (
+              <button
+                type="button"
+                className={`${styles["ticketing-toggle-btn"]} ${activeTicketingView === "mapped" ? styles["ticketing-toggle-btn-active"] : ""}`}
+                onClick={() => selectTicketingView("mapped")}
+              >
+                Mapped Tickets
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {processParameterError ? (
           <div

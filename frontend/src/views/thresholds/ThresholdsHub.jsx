@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchUsers } from "@/store/slices/userSlice";
 import { FiMoreVertical, FiX } from "react-icons/fi";
 
 import ThresholdValuesPage from "@/views/thresholds/ThresholdValues";
 import SubmissionThresholdPage from "@/views/thresholds/SubmissionThreshold";
-import PPThresholdPage from "@/views/thresholds/PPThresholdPage";
+import PPNotebookThresholdPage from "@/views/thresholds/PPNotebookThresholdPage";
 import SubmittedNotebookThresholdPage from "@/views/tickets/SubmittedNotebookThresholdPage";
+import WheelChangeApprovalThresholdPage from "@/views/thresholds/WheelChangeApprovalThresholdPage";
 
 import {
   fetchThresholdsAPI,
@@ -17,8 +19,16 @@ import {
   updateSubmissionFrequencyStatusAPI,
   deleteSubmissionFrequencyConfigAPI,
 } from "@/apis/submissionFrequencyApi";
-import { fetchPpThresholdsAPI, deletePpThresholdAPI } from "@/apis/ppThresholdApi";
+import {
+  fetchPpNotebookThresholdsAPI,
+  deletePpNotebookThresholdAPI,
+  updatePpNotebookThresholdStatusAPI,
+} from "@/apis/ppNotebookThresholdApi";
 import { fetchNotebookAcknowledgementThresholdsAPI } from "@/apis/notebookAcknowledgementThresholdApi";
+import {
+  fetchWheelChangeApprovalConfigListAPI,
+  updateWheelChangeApprovalConfigStatusAPI,
+} from "@/apis/wheelChangeApprovalConfigApi";
 
 import { departmentDirectory } from "@/views/departments/data";
 import { isFullAccessUser, isSubmittedNotebookManagerUser } from "@/utils/accessControl";
@@ -30,6 +40,7 @@ const THRESHOLD_TYPES = [
   { value: "submission", label: "Submission Threshold" },
   { value: "pp", label: "PP Threshold" },
   { value: "acknowledgement", label: "Acknowledgement Threshold" },
+  { value: "wheel-change-approval", label: "WC Threshold" },
 ];
 
 // Columns differ per threshold type, so each type declares its own extra
@@ -48,15 +59,31 @@ const THRESHOLD_TYPE_COLUMNS = {
     { key: "detail", label: "Frequency" },
   ],
   pp: [
-    { key: "l1", label: "L1" },
-    { key: "l2", label: "L2" },
-    { key: "detail", label: "Completion Threshold" },
+    { key: "field", label: "Severity" },
+    { key: "l1", label: "L1 Proposer" },
+    { key: "l2", label: "L4 Approver" },
+    { key: "detail", label: "Entry / Approve Within" },
   ],
   acknowledgement: [
     { key: "l2", label: "L2" },
     { key: "detail", label: "Acknowledge Within" },
   ],
+  "wheel-change-approval": [
+    { key: "field", label: "Severity" },
+    { key: "l1", label: "L4 Approver" },
+    { key: "detail", label: "Approve Within" },
+  ],
 };
+
+// Wheel Change Approval is scoped by department only, not sub-department -
+// that column is dropped from the merged Existing Thresholds table instead
+// of always showing "-".
+const THRESHOLD_TYPE_LOCATION_COLUMNS = {
+  "wheel-change-approval": { department: true, subDepartment: false },
+};
+
+const getLocationColumns = (type) =>
+  THRESHOLD_TYPE_LOCATION_COLUMNS[type] || { department: true, subDepartment: true };
 
 const getActiveValue = (item) => item?.is_active ?? item?.isActive ?? true;
 
@@ -114,21 +141,27 @@ const normalizeSubmissionThresholdRow = (item) => ({
   createdAt: item?.created_at || item?.createdAt,
 });
 
-const normalizePpThresholdRow = (item) => ({
+const resolveUserNames = (ids, users) =>
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => (users || []).find((candidate) => String(candidate?.id) === String(id)))
+    .filter(Boolean)
+    .map((candidate) => candidate?.name || candidate?.full_name || candidate?.fullName)
+    .filter(Boolean);
+
+const normalizePpThresholdRow = (item, users) => ({
   type: "pp",
   typeLabel: "PP Threshold",
   id: getRowId(item),
   raw: item,
-  department: "-",
-  subDepartment: "-",
-  notebookType:
-    item?.notebook_name || item?.notebookName || item?.notebook || item?.screen_name || "-",
-  field: "-",
-  l1: nameListToText(item?.approval_l1_names || item?.approval_l1_name || item?.approval_l1),
-  l2: nameListToText(item?.approval_l2_names || item?.approval_l2_name || item?.approval_l2),
-  detail: `${item?.completion_threshold_hours ?? item?.completionThresholdHours ?? "-"} Hrs`,
+  department: item?.department || "-",
+  subDepartment: item?.sub_department || "-",
+  notebookType: item?.notebook_label || item?.notebookLabel || "-",
+  field: item?.severity || "-",
+  l1: nameListToText(resolveUserNames(item?.approval_l1_user_ids, users)),
+  l2: nameListToText(resolveUserNames(item?.approval_l4_user_ids, users)) || "Any current L4 user",
+  detail: `Entry ${item?.completion_threshold_hours ?? "-"}h / Approve ${item?.approve_within_hours ?? "-"}h`,
   isActive: getActiveValue(item),
-  createdAt: item?.created_at || item?.createdAt,
+  createdAt: item?.updated_at || item?.created_at || item?.createdAt,
 });
 
 const normalizeAcknowledgementThresholdRow = (item) => ({
@@ -147,10 +180,34 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
   createdAt: item?.created_at || item?.createdAt,
 });
 
+// Wheel Change Approval is one row per department (Spinning/Drawframe/
+// Carding/Simplex) - each is its own separate approval queue in the app,
+// so each gets its own editable row here too.
+const normalizeWheelChangeApprovalRow = (item, users) => {
+  const approverNames = resolveUserNames(item?.l4_user_ids, users);
+  return {
+    type: "wheel-change-approval",
+    typeLabel: "WC Threshold",
+    id: item?.department,
+    raw: item,
+    department: item?.department || "-",
+    subDepartment: "-",
+    notebookType: item?.department || "All",
+    field: item?.severity || "-",
+    l1: approverNames.length ? nameListToText(approverNames) : "Any current L4 user",
+    l2: "-",
+    detail: `${item?.tat_hours ?? "-"} Hrs`,
+    isActive: Boolean(item?.updated_at),
+    createdAt: item?.updated_at,
+  };
+};
+
 // Each threshold type only supports the actions its backend API actually
-// exposes today: Value/Submission have full edit+delete+status APIs, PP
-// Threshold only has delete, and Acknowledgement Threshold has no
-// update/delete/status API at all (create + fetch only).
+// exposes today: Value/Submission have full edit+delete+status APIs. PP
+// Threshold and Wheel Change Approval support edit (per-notebook /
+// per-department rows) but not delete/status. Acknowledgement Threshold has
+// no update/delete/status API at all (create + fetch only). PP Approval is a
+// single global row, editable in place, no delete/status.
 const THRESHOLD_TYPE_LOADERS = {
   value: {
     fetch: fetchThresholdsAPI,
@@ -171,12 +228,13 @@ const THRESHOLD_TYPE_LOADERS = {
     remove: (row) => deleteSubmissionFrequencyConfigAPI(row.id),
   },
   pp: {
-    fetch: fetchPpThresholdsAPI,
+    fetch: fetchPpNotebookThresholdsAPI,
     normalize: normalizePpThresholdRow,
-    canEdit: false,
-    canToggleStatus: false,
+    canEdit: true,
+    canToggleStatus: true,
     canDelete: true,
-    remove: (row) => deletePpThresholdAPI(row.id),
+    toggleStatus: (row, nextActive) => updatePpNotebookThresholdStatusAPI(row.id, nextActive),
+    remove: (row) => deletePpNotebookThresholdAPI(row.id),
   },
   acknowledgement: {
     fetch: fetchNotebookAcknowledgementThresholdsAPI,
@@ -184,6 +242,14 @@ const THRESHOLD_TYPE_LOADERS = {
     canEdit: false,
     canToggleStatus: false,
     canDelete: false,
+  },
+  "wheel-change-approval": {
+    fetch: fetchWheelChangeApprovalConfigListAPI,
+    normalize: normalizeWheelChangeApprovalRow,
+    canEdit: true,
+    canToggleStatus: true,
+    canDelete: false,
+    toggleStatus: (row, nextActive) => updateWheelChangeApprovalConfigStatusAPI(row.department, nextActive),
   },
 };
 
@@ -196,6 +262,7 @@ const buildExistingFilters = () => ({
 
 function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropUp, setDropUp] = useState(false);
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -212,18 +279,31 @@ function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy })
     return null;
   }
 
+  const handleToggleOpen = () => {
+    if (!isOpen) {
+      // Estimate whether the menu would render below the visible viewport
+      // (e.g. the last row(s) of a long table) and open upward instead so
+      // it's never clipped/invisible below the fold.
+      const buttonRect = containerRef.current?.getBoundingClientRect();
+      const estimatedMenuHeight = 160;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      setDropUp(Boolean(buttonRect) && buttonRect.bottom + estimatedMenuHeight > viewportHeight);
+    }
+    setIsOpen((current) => !current);
+  };
+
   return (
     <div className={styles.hubActionMenuWrap} ref={containerRef}>
       <button
         type="button"
         className={styles.hubActionMenuButton}
         aria-label="Open threshold actions"
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={handleToggleOpen}
       >
         <FiMoreVertical />
       </button>
       {isOpen ? (
-        <div className={styles.hubActionMenu}>
+        <div className={`${styles.hubActionMenu} ${dropUp ? styles.hubActionMenuUp : ""}`}>
           {loader.canEdit ? (
             <button
               type="button"
@@ -270,12 +350,19 @@ function RowActionsMenu({ row, loader, onEdit, onToggleStatus, onDelete, busy })
 }
 
 function ExistingThresholdsTab({ onEditRow }) {
+  const dispatch = useDispatch();
+  const users = useSelector((state) => state.users?.users || []);
   const [thresholdType, setThresholdType] = useState("");
   const [filters, setFilters] = useState(buildExistingFilters);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasLoaded, setHasLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!users.length) dispatch(fetchUsers());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const availableDepartments = departmentDirectory;
   const selectedDepartment =
@@ -304,7 +391,7 @@ function ExistingThresholdsTab({ onEditRow }) {
     try {
       const data = await loader.fetch();
       const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
-      setRows(list.map(loader.normalize));
+      setRows(list.map((item) => loader.normalize(item, users)));
       setHasLoaded(true);
     } catch (err) {
       setRows([]);
@@ -418,6 +505,9 @@ function ExistingThresholdsTab({ onEditRow }) {
   );
 
   const columns = THRESHOLD_TYPE_COLUMNS[thresholdType] || [];
+  const locationColumns = getLocationColumns(thresholdType);
+  const visibleColumnCount =
+    (locationColumns.department ? 1 : 0) + (locationColumns.subDepartment ? 1 : 0) + 1 + columns.length + 3;
 
   return (
     <div className={styles.stack}>
@@ -517,8 +607,8 @@ function ExistingThresholdsTab({ onEditRow }) {
             <table className={`${styles.table} ${styles.existingThresholdTable} ${styles.hubExistingThresholdTable}`}>
               <thead>
                 <tr>
-                  <th>Department</th>
-                  <th>Sub Department</th>
+                  {locationColumns.department ? <th>Department</th> : null}
+                  {locationColumns.subDepartment ? <th>Sub Department</th> : null}
                   <th>Notebook Type</th>
                   {columns.map((column) => (
                     <th key={column.key}>{column.label}</th>
@@ -531,11 +621,11 @@ function ExistingThresholdsTab({ onEditRow }) {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={columns.length + 6}>Loading...</td>
+                    <td colSpan={visibleColumnCount}>Loading...</td>
                   </tr>
                 ) : filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length + 6}>{hasLoaded ? "No thresholds found." : "Loading..."}</td>
+                    <td colSpan={visibleColumnCount}>{hasLoaded ? "No thresholds found." : "Loading..."}</td>
                   </tr>
                 ) : (
                   filteredRows.map((row, index) => {
@@ -543,8 +633,8 @@ function ExistingThresholdsTab({ onEditRow }) {
                     const loader = THRESHOLD_TYPE_LOADERS[row.type];
                     return (
                     <tr key={rowKey}>
-                      <td>{row.department}</td>
-                      <td>{row.subDepartment}</td>
+                      {locationColumns.department ? <td>{row.department}</td> : null}
+                      {locationColumns.subDepartment ? <td>{row.subDepartment}</td> : null}
                       <td>{row.notebookType}</td>
                       {columns.map((column) => (
                         <td key={column.key}>{row[column.key]}</td>
@@ -647,6 +737,7 @@ export default function ThresholdsHub() {
     { value: "submission", label: "Submission Threshold" },
     { value: "pp", label: "PP Threshold" },
     { value: "acknowledgement", label: "Acknowledgement Threshold" },
+    { value: "wheel-change-approval", label: "WC Threshold" },
     { value: "existing", label: "Existing Thresholds" },
   ];
 
@@ -686,9 +777,22 @@ export default function ThresholdsHub() {
             onEditItemHandled={() => clearEditItem("submission")}
           />
         ) : null}
-        {activeTab === "pp" && canAccessOthers ? <PPThresholdPage standalone={false} /> : null}
+        {activeTab === "pp" && canAccessOthers ? (
+          <PPNotebookThresholdPage
+            standalone={false}
+            editItem={editItems.pp || null}
+            onEditItemHandled={() => clearEditItem("pp")}
+          />
+        ) : null}
         {activeTab === "acknowledgement" && canAccessAcknowledgement ? (
           <SubmittedNotebookThresholdPage standalone={false} />
+        ) : null}
+        {activeTab === "wheel-change-approval" && canAccessOthers ? (
+          <WheelChangeApprovalThresholdPage
+            standalone={false}
+            editItem={editItems["wheel-change-approval"] || null}
+            onEditItemHandled={() => clearEditItem("wheel-change-approval")}
+          />
         ) : null}
         {activeTab === "existing" ? <ExistingThresholdsTab onEditRow={handleEditRow} /> : null}
       </div>

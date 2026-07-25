@@ -7,6 +7,7 @@ const { fetchPrepVarieties, isDatabaseAccessDenied } = require('../utils/prepVar
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
 const { recordPpNotebookSubmission } = require('./submittedNotebooks.routes');
+const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const SCREEN_ID_PREFIXES = {
   yarn_cv: 'DY',
   cots: 'DC',
@@ -395,15 +396,6 @@ const ensureDrawframeEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 
-  await client.query(`
-    ALTER TABLE drawframe.finisher_drawing_inspection
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS finisher_drawing_inspection_entry_id_uq
-    ON drawframe.finisher_drawing_inspection (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
 };
 
 const ensureDrawframeWheelChangeTable = async () => {
@@ -2114,7 +2106,6 @@ router.post('/header', async (req, res, next) => {
     const {
       entry_id,
       type,
-      entry_scope,
       count_name,
       consignee_name,
       creation_date,
@@ -2142,6 +2133,16 @@ router.post('/header', async (req, res, next) => {
         message: 'count_name, consignee_name and creation_date are required'
       });
     }
+
+    // The Process Parameter matrix's "DF Breaker"/"DF Finisher" completion
+    // check splits on this column, not on `type` (see PP_DEPARTMENTS in
+    // processParameters.js) - previously this trusted a req.body.entry_scope
+    // the frontend never actually sends, so every freshly-created row landed
+    // with entry_scope=NULL and could never match either check, leaving
+    // Finisher permanently stuck showing "not completed" no matter what was
+    // submitted. Derive it from `type` the same way PUT /header/:ins_id
+    // already does for edits.
+    const entry_scope = String(type || '').toLowerCase().includes('finisher') ? 'finisher' : 'breaker';
 
     const result = await client.query(
       `INSERT INTO drawframe.drawframe_qc_header (
@@ -2303,6 +2304,8 @@ const createDrawframeWheelChangeEntry = async (req, res, next, defaultWheelChang
       ]
     );
 
+    await createWheelChangeApprovalTicket('drawframe.wheel_change', result.rows[0].id);
+
     res.status(201).json({
       message: 'Drawframe wheel change entry created successfully',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0])),
@@ -2432,6 +2435,7 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id);
     res.status(200).json({
       message: 'Draw frame wheel change entry approved',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
@@ -2460,6 +2464,7 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('drawframe.wheel_change', id);
     res.status(200).json({
       message: 'Draw frame wheel change entry rejected',
       data: withScreenEntryId('wheel_change', hydrateWheelChangeRow(result.rows[0]))
@@ -2727,232 +2732,4 @@ router.put('/header/:ins_id', async (req, res, next) => {
  *         description: Server error
  */
 
-router.post('/finisher', async (req, res, next) => {
-  try {
-    await ensureDrawframeEntryIdColumns();
-    const data = req.body;
-
-    if (!data.count_name || !data.consignee_name || !data.creation_date) {
-      return res.status(400).json({
-        message: 'count_name, consignee_name and creation_date are required'
-      });
-    }
-
-    const result = await client.query(
-      `INSERT INTO drawframe.finisher_drawing_inspection (
-        entry_id, count_name, consignee_name, creation_date,
-        make, no_of_ends, bottom_roll_setting,
-        break_draft, total_draft, web_tension_draft,
-        trumpet_size, insert_size, web_funnel_size,
-        delivery_hank, delivery_speed,
-        pressure_bar, scanning_rolls_size
-      )
-      VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,
-        $8,$9,$10,
-        $11,$12,$13,
-        $14,$15,
-        $16,$17
-      )
-      RETURNING *`,
-      [
-        data.entry_id || null,
-        data.count_name,
-        data.consignee_name,
-        data.creation_date,
-        data.make,
-        data.no_of_ends,
-        data.bottom_roll_setting,
-        data.break_draft,
-        data.total_draft,
-        data.web_tension_draft,
-        data.trumpet_size,
-        data.insert_size,
-        data.web_funnel_size,
-        data.delivery_hank,
-        data.delivery_speed,
-        data.pressure_bar,
-        data.scanning_rolls_size
-      ]
-    );
-
-    res.status(201).json({
-      message: 'Finisher entry created successfully',
-      data: withScreenEntryId('finisher', result.rows[0])
-    });
-
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-    }
-    console.error(error);
-    next(error);
-  }
-});
-
-/**
- * @swagger
- * /drawframe/finisher:
- *   get:
- *     summary: Get all Finisher Drawing entries
- *     tags: [Drawframe]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *     responses:
- *       200:
- *         description: Data retrieved successfully
- *       500:
- *         description: Server error
- */
-
-router.get('/finisher', async (req, res, next) => {
-  try {
-    const { page = 1, limit = 10 } = req.query;
-
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
-    const offset = (pageNum - 1) * limitNum;
-
-    const result = await client.query(
-      `SELECT *
-       FROM drawframe.finisher_drawing_inspection
-       ORDER BY creation_date DESC
-       OFFSET $1 LIMIT $2`,
-      [offset, limitNum]
-    );
-
-    const totalResult = await client.query(
-      `SELECT COUNT(*) FROM drawframe.finisher_drawing_inspection`
-    );
-
-    res.status(200).json({
-      data: result.rows.map((row) => withScreenEntryId('finisher', row)),
-      total: parseInt(totalResult.rows[0].count),
-      page: pageNum,
-      limit: limitNum
-    });
-
-  } catch (error) {
-    console.error(error);
-    next(error);
-  }
-});
-
-/**
- * @swagger
- * /drawframe/finisher/{id}:
- *   put:
- *     summary: Update Finisher Drawing entry
- *     tags: [Drawframe]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Entry ID
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - count_name
- *               - consignee_name
- *               - creation_date
- *     responses:
- *       200:
- *         description: Updated successfully
- *       400:
- *         description: Invalid input
- *       404:
- *         description: Entry not found
- *       500:
- *         description: Server error
- */
-
-router.put('/finisher/:id', async (req, res, next) => {
-  try {
-    const id = parseInt(req.params.id);
-
-    if (!id || id <= 0) {
-      return res.status(400).json({ message: 'Invalid ID' });
-    }
-
-    const data = req.body;
-
-    if (!data.count_name || !data.consignee_name || !data.creation_date) {
-      return res.status(400).json({
-        message: 'count_name, consignee_name and creation_date are required'
-      });
-    }
-
-    const result = await client.query(
-      `UPDATE drawframe.finisher_drawing_inspection
-       SET count_name=$1,
-           consignee_name=$2,
-           creation_date=$3,
-           make=$4,
-           no_of_ends=$5,
-           bottom_roll_setting=$6,
-           break_draft=$7,
-           total_draft=$8,
-           web_tension_draft=$9,
-           trumpet_size=$10,
-           insert_size=$11,
-           web_funnel_size=$12,
-           delivery_hank=$13,
-           delivery_speed=$14,
-           pressure_bar=$15,
-           scanning_rolls_size=$16,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id=$17
-       RETURNING *`,
-      [
-        data.count_name,
-        data.consignee_name,
-        data.creation_date,
-        data.make,
-        data.no_of_ends,
-        data.bottom_roll_setting,
-        data.break_draft,
-        data.total_draft,
-        data.web_tension_draft,
-        data.trumpet_size,
-        data.insert_size,
-        data.web_funnel_size,
-        data.delivery_hank,
-        data.delivery_speed,
-        data.pressure_bar,
-        data.scanning_rolls_size,
-        id
-      ]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Entry not found' });
-    }
-
-    res.status(200).json({
-      message: 'Finisher entry updated successfully',
-      data: withScreenEntryId('finisher', result.rows[0])
-    });
-
-  } catch (error) {
-    console.error(error);
-    next(error);
-  }
-});
-
-module.exports = router;    
+module.exports = router;
