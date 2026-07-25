@@ -424,7 +424,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
 
               <div className={styles.rulesTable}>
                 <div className={styles.ruleCard}>
-                  <div className={styles.ruleGrid}>
+                  <div className={styles.compactRuleGrid}>
                     <label className={styles.field}>
                       <span>Sub-Department</span>
                       <select

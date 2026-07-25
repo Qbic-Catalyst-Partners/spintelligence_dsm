@@ -19,7 +19,8 @@ import {
   isSubmissionTicketRecord,
   TICKET_KIND,
 } from "@/utils/ticketTransformer";
-import { applyStoredTicketStatus, getOperatorStatusLabel } from "@/utils/ticketStatus";
+import { applyStoredTicketStatus, getOperatorStatusLabel, isTicketLockedForOperator } from "@/utils/ticketStatus";
+import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { formatDateTime } from "@/utils/formatDateTime";
 
 import { IoClose, IoTimeSharp } from "react-icons/io5";
@@ -92,8 +93,8 @@ export default function TicketDetails() {
       return;
     }
 
-    if (!["Open", "Reopened"].includes(currentStatus)) {
-      alert(`Only Open or Reopened tickets can be submitted. Current status: ${currentStatus || "Unknown"}`);
+    if (!["Open", "Reopened", "In Progress"].includes(currentStatus)) {
+      alert(`Only Open, Reopened, or In Progress tickets can be submitted. Current status: ${currentStatus || "Unknown"}`);
       return;
     }
 
@@ -107,6 +108,7 @@ export default function TicketDetails() {
 
       setIsPopupOpen(false);
       setComment("");
+      emitGlobalSuccessModal({ message: "Data Submitted" });
       dispatch(fetchOperatorTicketById(submitTicketId));
     } catch (error) {
       const errorMessage =
@@ -264,8 +266,19 @@ export default function TicketDetails() {
     setShowMoreMenu(false);
   };
 
+  // Once L1 has submitted (Submit) or L2 has closed it (Closed), the ticket is
+  // locked from the L1 side - no re-entering the detail/fix screen.
+  const isLockedForOperator = isTicketLockedForOperator(resolvedTicket?.status);
+
+  useEffect(() => {
+    if (isLockedForOperator) {
+      router.replace("/operator");
+    }
+  }, [isLockedForOperator, router]);
+
   if (loading && !resolvedTicket) return <p>Loading...</p>;
   if (!resolvedTicket) return <p>No ticket found</p>;
+  if (isLockedForOperator) return null;
 
   return (
     <div className={styles.page}>
