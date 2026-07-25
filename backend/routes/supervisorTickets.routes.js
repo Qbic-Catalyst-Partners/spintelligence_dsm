@@ -4,6 +4,7 @@ const client = require('../connection');
 const auth = require('../middleware/auth');
 const { createNotification, ensureNotificationMetadataColumns } = require('../utils/notifications');
 const { ensureTicketApprovalsTable } = require('./operatorTickets.routes');
+const { ensureDelegationsTable } = require('./delegations.routes');
 
 const parsePositiveInt = (value) => {
   const n = Number(value);

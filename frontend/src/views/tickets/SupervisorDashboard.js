@@ -304,6 +304,13 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const authToken = useSelector((state) => state.auth?.token);
   const isAuthHydrated = useSelector((state) => state.auth?.isHydrated);
   const isAdminUser = isFullAccessUser(authUser);
+  const authFullName = firstText(
+    authUser?.full_name,
+    authUser?.fullName,
+    authUser?.name,
+    authUser?.employee_name,
+    authUser?.employeeName
+  );
 
   const sourceTickets = Array.isArray(tickets)
     ? tickets
