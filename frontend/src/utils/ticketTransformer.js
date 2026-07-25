@@ -17,6 +17,18 @@ const tryParseJsonObject = (value) => {
   }
 };
 
+// Several ticket-creation paths (Value Threshold, Submission Threshold, ...)
+// store actual_value/threshold_value as a single-element array wrapping one
+// detail object (e.g. [{ plus_threshold, minus_threshold, ... }]) rather than
+// a plain array of scalars. Unwrapping that here keeps every caller below
+// from ever handing a raw object/array straight to React as a child.
+const unwrapSingleObjectArray = (value) => {
+  if (Array.isArray(value) && value.length === 1 && value[0] && typeof value[0] === "object") {
+    return value[0];
+  }
+  return value;
+};
+
 export const isSubmissionFrequencyParameterName = (parameterName) =>
   getTicketParameterKey(parameterName) === "submission_frequency";
 
@@ -364,7 +376,7 @@ export const isThresholdTicketRecord = (ticket) => {
 
 export const getTicketValueForParameter = (source, parameterName) => {
   if (!source || !parameterName) return "-";
-  const normalizedSource = tryParseJsonObject(source);
+  const normalizedSource = unwrapSingleObjectArray(tryParseJsonObject(source));
 
   if (typeof normalizedSource !== "object" || Array.isArray(normalizedSource)) {
     return normalizedSource;
@@ -387,26 +399,55 @@ export const formatThresholdValue = (value) => {
   if (value === null || typeof value === "undefined") {
     return "-";
   }
-  const normalizedValue = tryParseJsonObject(value);
+  const normalizedValue = unwrapSingleObjectArray(tryParseJsonObject(value));
 
   if (typeof normalizedValue !== "object" || Array.isArray(normalizedValue)) {
     return normalizedValue;
   }
 
-  const plusThreshold =
-    normalizedValue.plus_threshold ??
-    normalizedValue.positive_tolerance ??
-    normalizedValue.upper_threshold ??
-    normalizedValue.max_tolerance ??
-    "-";
-  const minusThreshold =
-    normalizedValue.minus_threshold ??
-    normalizedValue.negative_tolerance ??
-    normalizedValue.lower_threshold ??
-    normalizedValue.min_tolerance ??
-    "-";
+  const hasToleranceShape =
+    normalizedValue.plus_threshold !== undefined ||
+    normalizedValue.positive_tolerance !== undefined ||
+    normalizedValue.upper_threshold !== undefined ||
+    normalizedValue.max_tolerance !== undefined ||
+    normalizedValue.minus_threshold !== undefined ||
+    normalizedValue.negative_tolerance !== undefined ||
+    normalizedValue.lower_threshold !== undefined ||
+    normalizedValue.min_tolerance !== undefined;
 
-  return `+:${plusThreshold}/-:${minusThreshold}`;
+  if (hasToleranceShape) {
+    const plusThreshold =
+      normalizedValue.plus_threshold ??
+      normalizedValue.positive_tolerance ??
+      normalizedValue.upper_threshold ??
+      normalizedValue.max_tolerance ??
+      "-";
+    const minusThreshold =
+      normalizedValue.minus_threshold ??
+      normalizedValue.negative_tolerance ??
+      normalizedValue.lower_threshold ??
+      normalizedValue.min_tolerance ??
+      "-";
+
+    return `+:${plusThreshold}/-:${minusThreshold}`;
+  }
+
+  // Submission-frequency-shaped threshold (required_occurrences every
+  // window_days days) - not a tolerance range, so render it as a sentence
+  // instead of guessing at plus/minus keys that don't exist on this shape.
+  if (normalizedValue.required_occurrences !== undefined || normalizedValue.window_days !== undefined) {
+    const occurrences = normalizedValue.required_occurrences ?? "-";
+    const windowDays = normalizedValue.window_days ?? "-";
+    return `${occurrences}x every ${windowDays}d`;
+  }
+
+  // Unknown object shape - fall back to a safe string instead of ever
+  // handing a raw object to a caller that renders it directly as JSX.
+  try {
+    return JSON.stringify(normalizedValue);
+  } catch {
+    return "-";
+  }
 };
 
 // Deviation = how far Actual is past the breached limit. Threshold usually renders as a
@@ -461,7 +502,7 @@ export const formatStandardValue = (value) => {
   if (value === null || typeof value === "undefined") {
     return "-";
   }
-  const normalizedValue = tryParseJsonObject(value);
+  const normalizedValue = unwrapSingleObjectArray(tryParseJsonObject(value));
 
   if (typeof normalizedValue !== "object" || Array.isArray(normalizedValue)) {
     return normalizedValue;

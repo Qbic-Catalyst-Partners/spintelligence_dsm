@@ -153,11 +153,17 @@ const getPrivilegedSupervisorAccess = async (req) => {
   const tokenEmployeeId = String(req.user?.employee_id || '').trim().toUpperCase();
   if (tokenEmployeeId === 'ADMIN001') return true;
 
+  // L5 is the top of the hierarchy (Executive Leadership) - it sees every
+  // ticket system-wide, same as admin, rather than only the ones that
+  // happened to reach its own approval_l5_user_ids array.
+  const tokenLevel = String(req.user?.level || '').trim().toUpperCase();
+  if (tokenLevel === 'L5') return true;
+
   const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
 
   const result = await client.query(
-    `SELECT COALESCE(role, '') AS role, COALESCE(employee_id, '') AS employee_id
+    `SELECT COALESCE(role, '') AS role, COALESCE(employee_id, '') AS employee_id, COALESCE(level, '') AS level
      FROM users.user_details
      WHERE id = $1`,
     [requesterId]
@@ -165,7 +171,8 @@ const getPrivilegedSupervisorAccess = async (req) => {
   const row = result.rows[0] || {};
   const role = String(row.role || '').trim().toLowerCase();
   const employeeId = String(row.employee_id || '').trim().toUpperCase();
-  return role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+  const level = String(row.level || '').trim().toUpperCase();
+  return role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001' || level === 'L5';
 };
 
 const getRequesterEmployeeId = async (req) => {
@@ -569,7 +576,7 @@ router.get('/tickets', async (req, res, next) => {
          WHERE u.id = ANY(COALESCE(ot.approval_l5_user_ids, ARRAY[]::int[]))
        ) l5_approvers ON true
        ${whereClause}
-       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
+       ORDER BY NULLIF(regexp_replace(ot.ticket_id, '\\D', '', 'g'), '')::bigint DESC, ot.created_at DESC
        LIMIT $${limitIndex}
        OFFSET $${offsetIndex}`,
       values
