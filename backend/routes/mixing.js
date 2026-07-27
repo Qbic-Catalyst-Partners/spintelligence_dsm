@@ -1737,6 +1737,9 @@ router.post('/afis6-cotton', async (req, res, next) => {
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
+    if (!toDateOnly(inspection_date)) {
+      return res.status(400).json({ message: 'inspection_date is required' });
+    }
 
     const result = await client.query(
       `INSERT INTO mixing.afis6_cotton_data_entry (
@@ -1748,7 +1751,11 @@ router.post('/afis6-cotton', async (req, res, next) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
       [
-        entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
+        // Invoice Date is an optional field on the form — left blank it arrives as "", which
+        // Postgres rejects for a `date` column ("invalid input syntax for type date: \"\"")
+        // and used to fail the whole save as an opaque 500 ("Internal Server Error"). toDateOnly
+        // normalizes both fields' blank/invalid input to null instead.
+        entry_id, toDateOnly(inspection_date), lot_no, variety, toDateOnly(invoice_date), mc_name,
         blow_room, carding, breaker_drawing, finisher_drawing, comber,
         scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
         l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm, user_name || null

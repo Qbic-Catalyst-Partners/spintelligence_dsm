@@ -971,7 +971,10 @@ router.post('/count-wise-cuts', async (req, res) => {
 
   } catch (err) {
     console.error("❌ Insert Error:", err);
-    res.status(500).json({ message: "Save failed" });
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ message: "Duplicate entry_id. Please use a unique ID." });
+    }
+    res.status(500).json({ message: "Save failed", error: err.message });
   }
 });
 
@@ -3197,6 +3200,9 @@ router.post('/parameter-entries', async (req, res) => {
 
   } catch (err) {
     console.error(err);
+    if (isUniqueViolation(err)) {
+      return res.status(409).json({ error: 'Duplicate entry_id. Please use a unique ID.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });

@@ -340,6 +340,17 @@ const ensureCardWasteStudyTable = async () => {
     )
   `);
 
+  // Type 3's three Lickerin Speed fields (first/second/third) have their own columns, distinct
+  // from the single shared `lickerin_speed` column Types 1/2 use — without these the POST
+  // /card-waste-study handler had nowhere to write them, so every Type 3 save silently dropped
+  // those 3 required fields instead of persisting them.
+  await client.query(`
+    ALTER TABLE carding.card_waste_study_type_rows
+      ADD COLUMN IF NOT EXISTS lickerin_speed_1 NUMERIC(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_2 NUMERIC(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_3 NUMERIC(12,4);
+  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS carding.card_waste_study_waste_rows (
       id BIGSERIAL PRIMARY KEY,
@@ -3686,8 +3697,8 @@ router.post('/card-waste-study', async (req, res, next) => {
       const row = normalizedTypeRows[i] || {};
       await client.query(
         `INSERT INTO carding.card_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           study.id,
           row.row_no ?? (i + 1),
@@ -3699,7 +3710,10 @@ router.post('/card-waste-study', async (req, res, next) => {
           toDecimal4OrNull(row.wing_setting_1),
           toDecimal4OrNull(row.wing_setting_2),
           row.mc_no ?? null,
-          toDecimal4OrNull(row.mc_production)
+          toDecimal4OrNull(row.mc_production),
+          toDecimal4OrNull(row.first_lickerin_speed),
+          toDecimal4OrNull(row.second_lickerin_speed),
+          toDecimal4OrNull(row.third_lickerin_speed)
         ]
       );
     }

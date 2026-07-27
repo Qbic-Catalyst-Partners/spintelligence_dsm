@@ -148,6 +148,22 @@ const ENTRY_ID_ROUTE_TABLES = {
   // Any drift between the two let the same entry_id be reissued, failing saves with
   // "Duplicate entry_id".
   '/autoconer/cone-density': 'autoconer.cone_density_notebook',
+  // Same root cause again: Count Wise Cuts and the CSP/U% Parameter Entries screens had no
+  // mapping here either, so their "next entry id" was computed only from frontend_entry_registry.
+  // For Count Wise Cuts that registry had drifted behind the real table (a stuck 'reserved' row
+  // masked a higher already-committed id), so the next reservation reissued an id that was
+  // already taken, failing with "duplicate key value violates ... count_wise_cuts_entry_id_uq".
+  // CSP and U% Parameter Entries share ONE table (autoconer.parameter_entries) with two
+  // different prefixes (ACS/AUP) distinguished by inspection_type — plus their save request
+  // actually posts to plain /autoconer/parameter-entries, a different route_path than the one
+  // used to reserve the id (/parameter-entries/pending-csp|pending-quality), so the registry for
+  // those two route_paths never saw a committed id and kept handing out ACS-0001 forever. Mapping
+  // the real table here (see getTableEntryIdMax's prefix filtering, which keeps ACS/AUP numbered
+  // independently despite sharing a table) fixes both without needing to touch the frontend.
+  '/autoconer/count-wise-cuts': 'autoconer.count_wise_cuts',
+  '/autoconer/parameter-entries': 'autoconer.parameter_entries',
+  '/autoconer/parameter-entries/pending-csp': 'autoconer.parameter_entries',
+  '/autoconer/parameter-entries/pending-quality': 'autoconer.parameter_entries',
   '/drawframe/wheel-change': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type2': 'drawframe.wheel_change',
@@ -190,7 +206,12 @@ const getRegisteredEntryIdMaxSql = `
   WHERE route_path = $1
 `;
 
-const getTableEntryIdMax = async (tableName) => {
+// `entryIdPrefix` restricts the MAX() to rows starting with that prefix (e.g. "ACS-") — needed
+// for tables shared by multiple screens/prefixes (autoconer.parameter_entries holds both
+// ACS-xxxx CSP rows and AUP-xxxx U% rows), otherwise a table-wide MAX would mix the two
+// sequences and hand out numbers under the wrong prefix. Omitted for tables that only ever hold
+// one prefix, where it's a no-op.
+const getTableEntryIdMax = async (tableName, entryIdPrefix) => {
   if (!tableName) return 0;
   const [schemaName, relationName] = tableName.split('.');
   const columnResult = await db.query(
@@ -209,7 +230,9 @@ const getTableEntryIdMax = async (tableName) => {
        MAX(NULLIF(substring(entry_id from '(\\d+)$'), '')::bigint),
        0
      ) AS max_number
-     FROM ${tableName}`
+     FROM ${tableName}
+     WHERE $1::text IS NULL OR entry_id LIKE $1 || '%'`,
+    [entryIdPrefix || null]
   );
   return Number(result.rows[0]?.max_number || 0);
 };
@@ -234,9 +257,10 @@ const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
   // every retry with "Duplicate entry_id" even though the real department table is empty.
   const registryResult = await db.query(getRegisteredEntryIdMaxSql, [routePath]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
-  const tableMax = await getTableEntryIdMax(mappedTable);
-  const nextNumber = Math.max(registryMax, tableMax) + 1;
   const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
+  const tableEntryIdPrefix = routePrefix ? `${routePrefix.prefix}${routePrefix.separator}` : null;
+  const tableMax = await getTableEntryIdMax(mappedTable, tableEntryIdPrefix);
+  const nextNumber = Math.max(registryMax, tableMax) + 1;
   const entryId = routePrefix
     ? `${routePrefix.prefix}${routePrefix.separator}${String(nextNumber).padStart(routePrefix.width, '0')}`
     : formatNextEntryId(nextNumber);

@@ -230,8 +230,80 @@ const ensureSimplexNotebookTable = async () => {
   `);
 };
 
+// Safety net matching the real production schema for the SMX Breaks Study Report's 5 tables —
+// in case this ever runs against a fresh DB that hasn't had them created yet. No-ops via
+// IF NOT EXISTS wherever the tables (as on the current DB) already exist.
+let smxBreaksStudyTablesReady = false;
+const ensureSmxBreaksStudyTables = async () => {
+  if (smxBreaksStudyTablesReady) return;
+  await client.query(`CREATE SCHEMA IF NOT EXISTS simplex`);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS simplex.smx_breaks_study_header (
+      id SERIAL PRIMARY KEY,
+      entry_id TEXT,
+      s_no VARCHAR NOT NULL,
+      entry_date DATE NOT NULL,
+      machine_name VARCHAR NOT NULL,
+      operator_name VARCHAR,
+      shift CHAR(1),
+      remarks TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS simplex.smx_breaks_inspection_items (
+      id SERIAL PRIMARY KEY,
+      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
+      item_name VARCHAR,
+      status_value VARCHAR,
+      remarks TEXT,
+      length_range TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS simplex.smx_user_fiber_parameters (
+      id SERIAL PRIMARY KEY,
+      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
+      A1 VARCHAR, A2 VARCHAR, A3 VARCHAR, A4 VARCHAR,
+      B1 VARCHAR, B2 VARCHAR, B3 VARCHAR, B4 VARCHAR,
+      C1 VARCHAR, C2 VARCHAR, C3 VARCHAR, C4 VARCHAR,
+      D1 VARCHAR, D2 VARCHAR, D3 VARCHAR, D4 VARCHAR,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS simplex.smx_epi_parameters (
+      id SERIAL PRIMARY KEY,
+      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
+      yarn_a1 NUMERIC, yarn_a2 NUMERIC, yarn_a3 NUMERIC, yarn_a4 NUMERIC,
+      yarn_b1 NUMERIC, yarn_b2 NUMERIC, yarn_b3 NUMERIC, yarn_b4 NUMERIC,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS simplex.smx_other_field_values (
+      id SERIAL PRIMARY KEY,
+      study_id INTEGER NOT NULL REFERENCES simplex.smx_breaks_study_header(id) ON DELETE CASCADE,
+      time TIME,
+      break_count INTEGER,
+      remarks TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  smxBreaksStudyTablesReady = true;
+};
+
 const ensureSimplexEntryIdColumns = async () => {
   await ensureSimplexTimestampColumnsHaveTimezone();
+  await ensureSmxBreaksStudyTables();
   await client.query(`
     ALTER TABLE IF EXISTS simplex.simplex_inspections
       ADD COLUMN IF NOT EXISTS entry_id text;
@@ -1712,7 +1784,11 @@ router.post('/study', async (req, res, next) => {
          VALUES ($1, $2, $3, $4)`,
         [
           study_id,
-          startTime?.hhmm && endTime?.hhmm ? `${startTime.hhmm}-${endTime.hhmm}` : other_field_values.time,
+          // `time` is a Postgres `time without time zone` column — it can't hold a "08:00-16:00"
+          // range string (that used to throw "invalid input syntax for type time", surfaced to
+          // the user as a generic "Server error"). The full range is already captured as text in
+          // remarksBlock below (START:/END:/TOTAL_MINUTES:), so only the start time goes here.
+          startTime?.hhmm || other_field_values.time || null,
           toWholeNumberOrNull(computedBreakCount),
           remarksBlock
         ]
