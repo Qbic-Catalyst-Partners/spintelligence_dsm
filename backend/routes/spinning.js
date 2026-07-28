@@ -4795,12 +4795,16 @@ const findActivePpForCombo = async (countName, consigneeName) => {
   const trimmedConsignee = String(consigneeName || '').trim();
   if (!trimmedCount || !trimmedConsignee) return null;
 
+  // regexp_replace(..., '\s+', ' ', 'g') collapses runs of internal whitespace
+  // (e.g. an accidental double space typed into one but not the other) before
+  // comparing - a genuine match otherwise silently fails LOWER(TRIM(...))
+  // equality over a difference no user would ever notice or intentionally type.
   const result = await client.query(
     `SELECT h.entry_id
      FROM spinning.spinning_qc_header h
      JOIN process_parameters.master m ON m.entry_id = h.entry_id
-     WHERE LOWER(TRIM(COALESCE(h.count_name, ''))) = LOWER(TRIM($1))
-       AND LOWER(TRIM(COALESCE(h.consignee_name, ''))) = LOWER(TRIM($2))
+     WHERE LOWER(regexp_replace(TRIM(COALESCE(h.count_name, '')), '\\s+', ' ', 'g')) = LOWER(regexp_replace(TRIM($1), '\\s+', ' ', 'g'))
+       AND LOWER(regexp_replace(TRIM(COALESCE(h.consignee_name, '')), '\\s+', ' ', 'g')) = LOWER(regexp_replace(TRIM($2), '\\s+', ' ', 'g'))
        AND m.status = 'active'
      ORDER BY h.created_at DESC
      LIMIT 1`,

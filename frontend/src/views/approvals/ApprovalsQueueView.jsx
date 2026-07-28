@@ -241,20 +241,6 @@ function ApprovalsQueueView({
     }
   };
 
-  // Picking "Custom" from the date-range preset dropdown should immediately
-  // open the date picker rather than leaving the operator to notice and
-  // click the now-visible input themselves - but not on first mount, since
-  // "custom" is also the default preset before the operator has touched it.
-  const dateRangePresetMountedRef = useRef(false);
-  useEffect(() => {
-    if (!dateRangePresetMountedRef.current) {
-      dateRangePresetMountedRef.current = true;
-      return;
-    }
-    if (dateRangePreset !== "custom") return;
-    openDatePicker(dateFromInputRef);
-  }, [dateRangePreset]);
-
   const normalizeApprovalItem = useCallback(
     (item, index) => ({
       id: trimValue(item?.id ?? item?.approval_id ?? item?.entry_id ?? index),
@@ -429,7 +415,17 @@ function ApprovalsQueueView({
     const preset = event.target.value;
     setDateRangePreset(preset);
 
-    if (preset === "custom") return;
+    if (preset === "custom") {
+      // Picking "Custom" should immediately open the date picker rather than
+      // leaving the operator to notice and click the now-visible input
+      // themselves. Must happen synchronously here (inside the actual
+      // browser change event) rather than in a useEffect reacting to the
+      // state change - showPicker() requires an active user gesture, and by
+      // the time an effect runs after React's commit, that gesture window
+      // has already expired.
+      openDatePicker(dateFromInputRef);
+      return;
+    }
 
     const now = new Date();
     let from = null;

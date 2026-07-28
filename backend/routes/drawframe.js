@@ -2134,6 +2134,17 @@ router.post('/header', async (req, res, next) => {
       });
     }
 
+    // Enforce the same "one count_name per PP id across all sub-departments"
+    // rule here that PUT /header/:ins_id already enforces - without it, a
+    // fresh row created here (rather than edited) can silently diverge from
+    // a count_name already recorded elsewhere for the same PP id.
+    if (entry_id) {
+      const conflictingCountName = await getCountNameConflict(entry_id, count_name);
+      if (conflictingCountName) {
+        return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
+      }
+    }
+
     // The Process Parameter matrix's "DF Breaker"/"DF Finisher" completion
     // check splits on this column, not on `type` (see PP_DEPARTMENTS in
     // processParameters.js) - previously this trusted a req.body.entry_scope
@@ -2581,7 +2592,10 @@ router.put('/header/:ins_id', async (req, res, next) => {
 
     const entry_id = await resolveOrCreateProcessParameterEntryId(req.body.entry_id, { forceNew: req.body.force_new === true || req.body.force_new === 'true' });
 
-    const conflictingCountName = await getCountNameConflict(entry_id, count_name);
+    const conflictingCountName = await getCountNameConflict(entry_id, count_name, {
+      table: 'drawframe.drawframe_qc_header',
+      id
+    });
     if (conflictingCountName) {
       return res.status(409).json({ message: `This PP id (${entry_id}) already uses count name "${conflictingCountName}". All sub-departments under a PP id must use the same count name.` });
     }
