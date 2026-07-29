@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FiCalendar } from "react-icons/fi";
 import {
     createNotebookCustomFieldApi,
-    deleteNotebookCustomFieldApi,
     fetchNotebookCustomFieldsApi,
     toggleNotebookCustomFieldApi,
 } from "@/apis/notebookCustomFieldsApi";
@@ -236,8 +235,8 @@ const NewFieldCreationPage = () => {
     const [isLoadingExisting, setIsLoadingExisting] = useState(false);
     const [existingError, setExistingError] = useState("");
     const [togglingId, setTogglingId] = useState(null);
-    const [fieldPendingDelete, setFieldPendingDelete] = useState(null);
-    const [deletingId, setDeletingId] = useState(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const PAGE_SIZE = 5;
 
     const notebookOptions = useMemo(
         () => NOTEBOOKS_BY_SUB_DEPARTMENT[filters.subDepartment] || [],
@@ -250,6 +249,17 @@ const NewFieldCreationPage = () => {
             (!filters.dateTo || new Date(field.created_at || 0) <= new Date(`${filters.dateTo}T23:59:59.999`))
         ),
         [existingFields, filters.dateFrom, filters.dateTo]
+    );
+
+    const totalPages = Math.max(1, Math.ceil(filteredExistingFields.length / PAGE_SIZE));
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filters.department, filters.subDepartment, filters.notebook, filters.dateFrom, filters.dateTo]);
+
+    const paginatedExistingFields = useMemo(
+        () => filteredExistingFields.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+        [filteredExistingFields, currentPage]
     );
 
     const handleFilterChange = (field, value) => {
@@ -336,22 +346,6 @@ const NewFieldCreationPage = () => {
         }
     };
 
-    const handleCancelDelete = () => {
-        setFieldPendingDelete(null);
-    };
-
-    const handleConfirmDelete = async () => {
-        if (!fieldPendingDelete) return;
-        setDeletingId(fieldPendingDelete.id);
-        try {
-            await deleteNotebookCustomFieldApi(fieldPendingDelete.id);
-            setFieldPendingDelete(null);
-            await loadExistingFields();
-        } finally {
-            setDeletingId(null);
-        }
-    };
-
     const handleDropdownOptionChange = (index, value) => {
         setDropdownOptions((current) => current.map((item, i) => (i === index ? value : item)));
     };
@@ -376,7 +370,7 @@ const NewFieldCreationPage = () => {
         }
         return (
             <div className={styles.list}>
-                {filteredExistingFields.map((field) => (
+                {paginatedExistingFields.map((field) => (
                     <div className={styles.row} key={field.id}>
                         <span className={styles.rowMain}>
                             <strong>{field.field_label}</strong>
@@ -398,15 +392,6 @@ const NewFieldCreationPage = () => {
                                 disabled={togglingId === field.id}
                                 aria-label={field.is_active ? "Deactivate field" : "Activate field"}
                             />
-                            <button
-                                type="button"
-                                className={styles.deleteButton}
-                                onClick={() => setFieldPendingDelete(field)}
-                                disabled={deletingId === field.id}
-                                aria-label="Delete field"
-                            >
-                                Delete
-                            </button>
                         </span>
                     </div>
                 ))}
@@ -626,35 +611,6 @@ const NewFieldCreationPage = () => {
                     ) : null}
                 </>
             )}
-
-            {fieldPendingDelete ? (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modalCard}>
-                        <h3 className={styles.modalTitle}>Delete this field?</h3>
-                        <p className={styles.modalMessage}>
-                            "{fieldPendingDelete.field_label}" will be permanently removed. This cannot be undone.
-                        </p>
-                        <div className={styles.modalActions}>
-                            <button
-                                type="button"
-                                className={styles.confirmNoButton}
-                                onClick={handleCancelDelete}
-                                disabled={deletingId === fieldPendingDelete.id}
-                            >
-                                No
-                            </button>
-                            <button
-                                type="button"
-                                className={styles.confirmYesButton}
-                                onClick={handleConfirmDelete}
-                                disabled={deletingId === fieldPendingDelete.id}
-                            >
-                                {deletingId === fieldPendingDelete.id ? "Deleting..." : "Yes, delete"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
 
             <SuccessModal
                 open={Boolean(submitSuccess)}
