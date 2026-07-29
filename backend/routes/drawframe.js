@@ -2103,6 +2103,7 @@ router.get('/uqc', async (req, res) => {
 router.post('/header', async (req, res, next) => {
   try {
     await ensureDrawframeEntryIdColumns();
+    console.log('[DF DEBUG] POST /header body', { entry_id: req.body.entry_id, type: req.body.type, count_name: req.body.count_name });
     const {
       entry_id,
       type,
@@ -2203,6 +2204,7 @@ router.post('/header', async (req, res, next) => {
 
   } catch (error) {
     if (isUniqueViolation(error)) {
+      console.log('[DF DEBUG] POST /header DUPLICATE', { entry_id: req.body.entry_id, type: req.body.type, count_name: req.body.count_name, detail: error.detail });
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
     console.error(error);
@@ -2240,13 +2242,22 @@ router.get('/header', async (req, res, next) => {
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 10));
+    // Unlike Carding's/Spinning's equivalent PP list routes, this was hard-capped at 100
+    // regardless of what the client asked for — and since Breaker and Finisher share this one
+    // table, that shared 100-row window filled up roughly twice as fast per scope, pushing older
+    // rows off page 1. The frontend's edit-detection (DrawFrameHeaderEntry.jsx's loadEntries)
+    // depends on fetching enough rows to find the one being edited; when it fell outside this
+    // cap, editing silently fell through to create/POST and failed with "Duplicate entry_id".
+    const limitNum = Math.max(1, parseInt(limit) || 10);
     const offset = (pageNum - 1) * limitNum;
 
     const result = await client.query(
+      // creation_date is a user-typed form field, not a server timestamp, so ties are common —
+      // ins_id DESC as a secondary key keeps pagination stable across ties (mirrors Spinning's
+      // ORDER BY qc_id DESC, an equivalent monotonic PK).
       `SELECT *, breaker_draft AS break_draft
        FROM drawframe.drawframe_qc_header
-       ORDER BY creation_date DESC
+       ORDER BY creation_date DESC, ins_id DESC
        OFFSET $1 LIMIT $2`,
       [offset, limitNum]
     );
@@ -2553,6 +2564,7 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
 router.put('/header/:ins_id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.ins_id, 10);
+    console.log('[DF DEBUG] PUT /header/:ins_id', { ins_id: req.params.ins_id, entry_id: req.body.entry_id, type: req.body.type, count_name: req.body.count_name });
 
     // ✅ ID validation
     if (!Number.isInteger(id) || id <= 0) {

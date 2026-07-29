@@ -266,13 +266,19 @@ function normalizeBreakerEntries(payload) {
 function normalizeFinisherEntries(payload) {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
   return rows.map((entry, index) => ({
-    id: String(entry?.id || index),
+    // Row PK is `ins_id`, not `id` (drawframe.drawframe_qc_header has no `id` column) — without
+    // this fallback every Finisher row's "id" was the array index, so editing/re-saving one sent
+    // updates to whatever unrelated row happened to have that index as its real ins_id (or 404'd),
+    // and when that row's entry_id/entry_scope got overwritten it could collide with the row just
+    // created, surfacing as "Duplicate entry_id. Please use a unique ID." normalizeBreakerEntries
+    // already checked ins_id first — this was the only place missing it.
+    id: String(entry?.ins_id || entry?.id || index),
     paramId: getDisplayEntryId(entry),
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: entry?.creation_date || "",
     data: {
-      versionId: String(entry?.id || index),
+      versionId: String(entry?.ins_id || entry?.id || index),
       paramId: getDisplayEntryId(entry),
       type: "PP - Finisher Drawing",
       countName: entry?.count_name || "",
@@ -369,6 +375,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     setForm(TYPE_CONFIG[nextType].createForm(nextType));
     setErrors({});
     setFormMessage("");
+    setEntriesLoaded(false);
   }, [selectedType]);
 
   const allFields = useMemo(
@@ -381,7 +388,10 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     let rows = [];
     setFormMessage("");
     try {
-      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
+      // Breaker and Finisher share this one table/fetch, so 100 combined rows filled up per-scope
+      // windows roughly twice as fast as a dedicated table would — raised to match the matrix's
+      // own fetch size (process-parameter.js) now that the backend no longer clamps it back down.
+      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
       const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
       rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === config.entryScope);
     } catch (error) {
@@ -391,6 +401,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       .normalizeEntries(rows)
       .sort((left, right) => getEntrySortValue(right) - getEntrySortValue(left));
     setRecentEntries(normalizedEntries);
+    setEntriesLoaded(true);
 
     const matchByEntryId = entryId
       ? normalizedEntries.find(
@@ -560,6 +571,10 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   };
 
   const handleSave = () => {
+    if (!entriesLoaded) {
+      setFormMessage("Still loading existing entries — please wait a moment and try again.");
+      return;
+    }
     if (!validate()) {
       setFormMessage("Please fill all required fields before saving.");
       return;
@@ -571,9 +586,41 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      const selectedExistingEntry = recentEntries.find(
-        (entry) => String(entry.id) === String(form.versionId)
-      );
+      // `recentEntries` is populated by loadEntries's background fetch (kicked off on mount) —
+      // if the user fills the form and hits Save faster than that fetch resolves (confirmed via
+      // logging: handleSubmit was running with recentEntries still empty), matching against that
+      // state alone is a race that misses rows which genuinely exist, re-inserting the same
+      // entry_id and failing with "Duplicate entry_id". Re-fetching fresh right here — awaited,
+      // so it's guaranteed to reflect the current DB — removes the race entirely instead of
+      // just narrowing its window.
+      const targetIdForMatch = entryId || form.paramId;
+      let selectedExistingEntry =
+        recentEntries.find((entry) => String(entry.id) === String(form.versionId)) ||
+        (targetIdForMatch
+          ? recentEntries.find(
+              (entry) => normalizeProcessParameterId(entry.paramId) === normalizeProcessParameterId(targetIdForMatch)
+            )
+          : null);
+      if (!selectedExistingEntry && targetIdForMatch) {
+        try {
+          const freshResponse = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
+          const freshRows = Array.isArray(freshResponse)
+            ? freshResponse
+            : Array.isArray(freshResponse?.data)
+              ? freshResponse.data
+              : [];
+          const freshScoped = freshRows.filter(
+            (row) => (row?.entry_scope || "").toLowerCase() === activeConfig.entryScope
+          );
+          const freshNormalized = activeConfig.normalizeEntries(freshScoped);
+          selectedExistingEntry = freshNormalized.find(
+            (entry) => normalizeProcessParameterId(entry.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          ) || null;
+        } catch {
+          // If this fresh check fails, fall through to the create path below — the backend's own
+          // unique-index check is still the final safety net.
+        }
+      }
       const paramId = selectedExistingEntry
         ? form.paramId || entryId
         : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
