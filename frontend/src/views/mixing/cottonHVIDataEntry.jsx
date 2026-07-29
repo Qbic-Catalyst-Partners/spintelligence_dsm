@@ -16,10 +16,12 @@ const initialForm = {
     gtex: '', maturity: '', ur: '',
     sfi: '', elongation: '', yellowB: '',
     trCnt: '', trAr: '', trID: '', invisibleLossPercent: '', trashContentPercent: '', rd: '', colourGrade: '',
+    moisture: '', strength: '', amt: '',
 };
 
 const NUMERIC_FIELDS = new Set([
     'sci', 'spanLength', 'mic', 'gtex', 'maturity', 'ur', 'sfi', 'elongation', 'yellowB', 'trCnt', 'trAr', 'trID', 'invisibleLossPercent', 'trashContentPercent', 'rd', 'colourGrade',
+    'moisture', 'strength', 'amt',
 ]);
 
 const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
@@ -94,6 +96,9 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         trash_content_percentage: Number(formData.trashContentPercent) || 0,
         rd:              Number(formData.rd)          || 0,
         colour_grade:    Number(formData.colourGrade) || 0,
+        moisture:        Number(formData.moisture)     || 0,
+        strength:        Number(formData.strength)     || 0,
+        amt:             Number(formData.amt)          || 0,
         user_name:       user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
@@ -137,6 +142,9 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
                     { label: "Trash Content %", value: formData.trashContentPercent },
                     { label: "RD", value: formData.rd },
                     { label: "Colour Grade", value: formData.colourGrade },
+                    { label: "Moisture", value: formData.moisture },
+                    { label: "Strength", value: formData.strength },
+                    { label: "Amt", value: formData.amt },
                 ],
             });
         } catch (ticketError) {
@@ -175,6 +183,9 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         { label: "Trash Content %", value: formData.trashContentPercent },
         { label: "RD", value: formData.rd },
         { label: "Colour Grade", value: formData.colourGrade },
+        { label: "Moisture", value: formData.moisture },
+        { label: "Strength", value: formData.strength },
+        { label: "Amt", value: formData.amt },
     ]);
 
     const validate = () => {
@@ -236,6 +247,9 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
                 trashContentPercent: pick("trash_content_percentage", "trashContentPercent", "Trash Content %"),
                 rd: pick("rd", "RD"),
                 colourGrade: pick("colour_grade", "colourGrade", "Colour Grade"),
+                moisture: pick("moisture", "Moisture", "Mst"),
+                strength: pick("strength", "Strength", "Str"),
+                amt: pick("amt", "Amt"),
             }));
         },
     }));
@@ -316,6 +330,15 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
             <div className={styles['mixx-row']}>
                 <CustomInput label="Colour Grade" placeholder="Enter Colour Grade"
                     value={formData.colourGrade} onChange={v => handleChange('colourGrade', v)} error={errors.colourGrade} />
+                <CustomInput label="Moisture" placeholder="Enter Moisture"
+                    value={formData.moisture} onChange={v => handleChange('moisture', v)} error={errors.moisture} />
+                <CustomInput label="Strength" placeholder="Enter Strength"
+                    value={formData.strength} onChange={v => handleChange('strength', v)} error={errors.strength} />
+            </div>
+
+            <div className={styles['mixx-row']}>
+                <CustomInput label="Amt" placeholder="Enter Amt"
+                    value={formData.amt} onChange={v => handleChange('amt', v)} error={errors.amt} />
             </div>
 
             <NotebookCustomFields

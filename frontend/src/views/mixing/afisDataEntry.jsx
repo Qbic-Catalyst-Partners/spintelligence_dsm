@@ -15,10 +15,12 @@ const initialForm = {
     uql: '', l5: '', sfcN: '',
     ifc: '', fibreNepsGms: '', sfcW: '',
     maturity: '', fineness: '', scnGms: '',
+    lw: '', ln: '', totalNepCount: '',
 };
 
 const NUMERIC_FIELDS = new Set([
     'uql', 'l5', 'sfcN', 'ifc', 'fibreNepsGms', 'sfcW', 'maturity', 'fineness', 'scnGms',
+    'lw', 'ln', 'totalNepCount',
 ]);
 
 const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
@@ -86,6 +88,9 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
         maturity:         Number(formData.maturity)     || 0,
         fineness:         Number(formData.fineness)     || 0,
         scn_gms:          Number(formData.scnGms)       || 0,
+        lw:               Number(formData.lw)            || 0,
+        ln:               Number(formData.ln)            || 0,
+        total_nep_count:  Number(formData.totalNepCount) || 0,
         user_name:        user?.name || user?.full_name || user?.user_name || user?.username || "",
     });
 
@@ -122,6 +127,9 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                     { label: "Maturity", value: formData.maturity },
                     { label: "Fineness", value: formData.fineness },
                     { label: "SCN/gm", value: formData.scnGms },
+                    { label: "L(w)", value: formData.lw },
+                    { label: "L(n)", value: formData.ln },
+                    { label: "Total Nep Count", value: formData.totalNepCount },
                 ],
             });
         } catch (ticketError) {
@@ -151,6 +159,9 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
         { label: "Maturity", value: formData.maturity },
         { label: "Fineness", value: formData.fineness },
         { label: "SCN/gm", value: formData.scnGms },
+        { label: "L(w)", value: formData.lw },
+        { label: "L(n)", value: formData.ln },
+        { label: "Total Nep Count", value: formData.totalNepCount },
     ]);
 
     const validate = () => {
@@ -204,6 +215,9 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                 maturity: pick("maturity", "Maturity"),
                 fineness: pick("fineness", "Fineness"),
                 scnGms: pick("scn_gms", "scnGms", "SCN/gm"),
+                lw: pick("lw", "l_w", "L(w)"),
+                ln: pick("ln", "l_n", "L(n)"),
+                totalNepCount: pick("total_nep_count", "totalNepCount", "Total Nep Count", "TotNepCnt"),
             }));
         },
     }));
@@ -325,6 +339,33 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
                     value={formData.scnGms}
                     onChange={(value) => handleChange('scnGms', value)}
                     error={errors.scnGms}
+                />
+            </div>
+
+            {/* Row 5: L(w), L(n), Total Nep Count */}
+            <div className={styles['mixx-row']}>
+                <CustomInput
+                    label="L(w)"
+                    placeholder="Enter L(w)"
+                    value={formData.lw}
+                    onChange={(value) => handleChange('lw', value)}
+                    error={errors.lw}
+                />
+
+                <CustomInput
+                    label="L(n)"
+                    placeholder="Enter L(n)"
+                    value={formData.ln}
+                    onChange={(value) => handleChange('ln', value)}
+                    error={errors.ln}
+                />
+
+                <CustomInput
+                    label="Total Nep Count"
+                    placeholder="Enter Total Nep Count"
+                    value={formData.totalNepCount}
+                    onChange={(value) => handleChange('totalNepCount', value)}
+                    error={errors.totalNepCount}
                 />
             </div>
 
