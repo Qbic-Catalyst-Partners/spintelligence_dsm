@@ -173,31 +173,59 @@ const advanceProcessParameterEntryIdSequence = async (minimumLastNumber) => {
 // recorded a count_name for that PP id, every other sub-department must use
 // the same count_name (consignee_name is free to differ per sub-department).
 const COUNT_NAME_HEADER_TABLES = [
-  'carding.carding_qc_header',
-  'blowroom.blowroom_header',
-  'drawframe.drawframe_qc_header',
-  'spinning.spinning_qc_header',
-  'simplex.simplex_process_parameter',
-  'mixing.mixing_qc_header',
-  'autoconer.autoconer_process_parameter',
+  { table: 'carding.carding_qc_header', idColumn: 'qc_id' },
+  { table: 'blowroom.blowroom_header', idColumn: 'br_id' },
+  { table: 'drawframe.drawframe_qc_header', idColumn: 'ins_id' },
+  { table: 'spinning.spinning_qc_header', idColumn: 'qc_id' },
+  { table: 'simplex.simplex_process_parameter', idColumn: 'id' },
+  { table: 'mixing.mixing_qc_header', idColumn: 'qc_id' },
+  { table: 'autoconer.autoconer_process_parameter', idColumn: 'id' },
 ];
 
 // Returns the count_name already recorded for this PP id across any
 // sub-department header table, or null if the PP id has no count_name yet.
-const getExistingCountNameForEntryId = async (entry_id) => {
+// `exclude` (e.g. { table: 'drawframe.drawframe_qc_header', id: 39 }) leaves
+// out the row currently being edited, so saving a correction to your own
+// record isn't blocked by that same record's own prior value.
+const getExistingCountNameForEntryId = async (entry_id, exclude = null) => {
   if (!entry_id) return null;
-  const unionQuery = COUNT_NAME_HEADER_TABLES.map(
-    (table) => `SELECT count_name FROM ${table} WHERE entry_id = $1 AND count_name IS NOT NULL`
-  ).join(' UNION ALL ');
-  const result = await db.query(`${unionQuery} LIMIT 1`, [entry_id]);
+  const unionQuery = COUNT_NAME_HEADER_TABLES.map(({ table, idColumn }) => {
+    const excludeClause = exclude?.table === table ? ` AND ${idColumn} != $2` : '';
+    return `SELECT count_name FROM ${table} WHERE entry_id = $1 AND count_name IS NOT NULL${excludeClause}`;
+  }).join(' UNION ALL ');
+  const params = exclude ? [entry_id, exclude.id] : [entry_id];
+  const result = await db.query(`${unionQuery} LIMIT 1`, params);
   return result.rows[0]?.count_name ?? null;
+};
+
+// Given a count_name + consignee_name pair with no explicit entry_id supplied, finds whether
+// an existing PP id already covers that same combo in any department's header table - used
+// by callers that submit with no PP id picked (a fresh "Create New PP"-style submission) so
+// they reuse the already in-progress PP for this exact batch instead of silently minting a
+// duplicate PP id for what is really the same one (e.g. Autoconer Q4 submitted with no PP id
+// chosen, matching an already in-progress PP's count/consignee exactly, spawned a second PP
+// id rather than joining the first).
+const findExistingPpIdForCombo = async (countName, consigneeName) => {
+  const trimmedCount = String(countName || '').trim();
+  const trimmedConsignee = String(consigneeName || '').trim();
+  if (!trimmedCount || !trimmedConsignee) return null;
+
+  const unionQuery = COUNT_NAME_HEADER_TABLES.map(
+    ({ table }) => `SELECT entry_id FROM ${table}
+      WHERE LOWER(TRIM(COALESCE(count_name, ''))) = LOWER(TRIM($1))
+        AND LOWER(TRIM(COALESCE(consignee_name, ''))) = LOWER(TRIM($2))
+        AND entry_id IS NOT NULL`
+  ).join(' UNION ALL ');
+
+  const result = await db.query(`${unionQuery} LIMIT 1`, [trimmedCount, trimmedConsignee]);
+  return result.rows[0]?.entry_id || null;
 };
 
 // Returns the conflicting count_name already recorded for this PP id if
 // count_name doesn't match it, or null if there's no conflict. Call before
 // inserting a new header row so the mismatch is caught prior to any write.
-const getCountNameConflict = async (entry_id, count_name) => {
-  const existing = await getExistingCountNameForEntryId(entry_id);
+const getCountNameConflict = async (entry_id, count_name, exclude = null) => {
+  const existing = await getExistingCountNameForEntryId(entry_id, exclude);
   if (existing && count_name && existing !== count_name) {
     return existing;
   }
@@ -208,6 +236,7 @@ module.exports = {
   createProcessParameterEntryId,
   resolveOrCreateProcessParameterEntryId,
   peekNextProcessParameterEntryId,
+  findExistingPpIdForCombo,
   normalizeProcessParameterEntryId,
   formatProcessParameterEntryId,
   resetProcessParameterEntryIdSequence,

@@ -3,7 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
-const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { resolveOrCreateProcessParameterEntryId, getCountNameConflict, findExistingPpIdForCombo } = require('../utils/processParameterEntryId');
 const SCREEN_ID_PREFIXES = {
   process: 'AP',
   q2: 'A2',
@@ -4138,7 +4138,18 @@ router.post('/q2', async (req, res, next) => {
     // sequence (advancing it if this is the first save to claim it), instead of
     // trusting it verbatim - otherwise the sequence never moves and every
     // department keeps previewing/claiming the same "next" PP id.
-    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+    //
+    // When no entry_id is supplied at all (a "Create New PP"-style submission),
+    // check first whether an already in-progress PP has this exact count_name +
+    // consignee_name combo elsewhere - otherwise a submission for a batch that's
+    // already underway silently mints a duplicate PP id instead of joining it.
+    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
+    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
+    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
+    // data.entry_id is essentially never actually empty and a fallback-only check here would
+    // never run.
+    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
     if (conflictingCountName) {
@@ -4643,7 +4654,18 @@ router.post('/q3', async (req, res, next) => {
     // sequence (advancing it if this is the first save to claim it), instead of
     // trusting it verbatim - otherwise the sequence never moves and every
     // department keeps previewing/claiming the same "next" PP id.
-    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+    //
+    // When no entry_id is supplied at all (a "Create New PP"-style submission),
+    // check first whether an already in-progress PP has this exact count_name +
+    // consignee_name combo elsewhere - otherwise a submission for a batch that's
+    // already underway silently mints a duplicate PP id instead of joining it.
+    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
+    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
+    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
+    // data.entry_id is essentially never actually empty and a fallback-only check here would
+    // never run.
+    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
     if (conflictingCountName) {
@@ -4928,7 +4950,17 @@ router.post('/q4', async (req, res, next) => {
       });
     }
 
-    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(data.entry_id);
+    // When no entry_id is supplied at all (a "Create New PP"-style submission), check first
+    // whether an already in-progress PP has this exact count_name + consignee_name combo
+    // elsewhere - otherwise a submission for a batch that's already underway silently mints a
+    // duplicate PP id instead of joining it.
+    // Check for an existing PP match FIRST, before trusting whatever entry_id was sent - the
+    // frontend proactively fills entry_id with a client-guessed "next id" preview even on a
+    // fresh "Create New PP" (not just when the user explicitly continues an existing one), so
+    // data.entry_id is essentially never actually empty and a fallback-only check here would
+    // never run.
+    const requestedEntryId = (await findExistingPpIdForCombo(data.count_name, data.consignee_name)) || data.entry_id;
+    const resolvedEntryId = await resolveOrCreateProcessParameterEntryId(requestedEntryId);
 
     const conflictingCountName = await getCountNameConflict(resolvedEntryId, data.count_name);
     if (conflictingCountName) {

@@ -1,7 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { FaCheckCircle } from "react-icons/fa";
-import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
@@ -25,7 +23,11 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { submitDrawFrameHeaderEntry, updateDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import {
+  submitDrawFrameHeaderEntry,
+  updateDrawFrameHeaderEntry,
+  fetchDrawFrameHeaderEntries,
+} from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
@@ -169,6 +171,7 @@ const TYPE_CONFIG = {
     }),
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
+      type: form.type,
       entry_scope: "finisher",
       count_name: form.countName,
       consignee_name: form.consigneeName,
@@ -313,11 +316,6 @@ function normalizeFinisherEntries(payload) {
   }));
 }
 
-function displaySavedValue(value) {
-  const normalized = String(value ?? "").trim();
-  return normalized && normalized !== "-" ? normalized : "-";
-}
-
 function getDisplayEntryId(entry, fallback = "") {
   return (
     normalizeProcessParameterId(
@@ -329,10 +327,6 @@ function getDisplayEntryId(entry, fallback = "") {
         fallback
     ) || String(fallback || "").trim()
   );
-}
-
-function isEntryComplete(entry) {
-  return Array.isArray(entry?.details) && entry.details.some((detail) => String(detail?.value ?? "").trim());
 }
 
 function extractEntrySequence(value) {
@@ -370,13 +364,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [recentEntries, setRecentEntries] = useState([]);
-  // Guards against saving before loadEntries's background fetch resolves — without this, a user
-  // editing an existing PP id could hit Save while the form (and the existing-entry match used to
-  // route to update-vs-create) was still on its blank initial state, showing "-" for every field
-  // in Preview and, worse, either wiping the existing row's other fields with blanks on update or
-  // failing outright with "Duplicate entry_id" if it fell through to create instead.
-  const [entriesLoaded, setEntriesLoaded] = useState(false);
-  const [expandedEntryId, setExpandedEntryId] = useState(null);
   const [customFieldValues, setCustomFieldValues] = useState({});
 
   const handleCustomFieldChange = (fieldId, value) => {
@@ -453,19 +440,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     );
   }, [lockedConsigneeName, recentEntries]);
 
-  useEffect(() => {
-    if (!recentEntries.length) {
-      setExpandedEntryId(null);
-      return;
-    }
-
-    setExpandedEntryId((current) =>
-      recentEntries.some((entry) => String(entry.id) === String(current))
-        ? current
-        : recentEntries[0].id
-    );
-  }, [recentEntries]);
-
   const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countNameOptions = useMemo(
     () =>
@@ -494,18 +468,15 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       allFields.map((field) => ({
         label: field.label,
         value:
-          field.key === "creationDate"
-            ? formatDisplayDate(form.creationDate) || "-"
+          field.control === "entry-id-display"
+            ? form.paramId || entryId || "-"
             : form[field.key] || "-",
       })),
-    [allFields, form]
+    [allFields, form, entryId]
   );
 
   useImperativeHandle(ref, () => ({
-    getPreviewData: () => [
-      { label: "Process Parameter ID", value: form.paramId || "-" },
-      ...previewItems,
-    ],
+    getPreviewData: () => previewItems,
   }));
 
   const resetForm = () => {
@@ -655,7 +626,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
       const payload = {
         ...activeConfig.buildPayload(form, entryId),
-        id: selectedExistingEntry ? selectedExistingEntry.id : undefined,
         entry_id: paramId,
         param_id: paramId,
         // drawframe_qc_header now has its own "operator" column (see backend) — persist it
@@ -663,6 +633,9 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         // has proven fragile for this screen (some entries never got recorded).
         user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
       };
+      // drawframe_qc_header has a unique (entry_id, entry_scope) index, so re-submitting the
+      // same PP id/scope via POST (create) would 409. When we're re-saving an entry that's
+      // already in recentEntries, update it in place instead of creating a duplicate.
       const response = selectedExistingEntry
         ? await updateDrawFrameHeaderEntry(selectedExistingEntry.id, payload)
         : await submitDrawFrameHeaderEntry(payload);
@@ -717,21 +690,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const handleSuccessClose = () => {
     setShowSuccess(false);
     resetForm();
-  };
-
-  const handleEntrySelect = (entry) => {
-    setForm({ ...activeConfig.createForm(activeType), ...entry.data, versionId: entry.id });
-    setErrors({});
-    setFormMessage("");
-  };
-
-  const handleEntryToggle = (entry) => {
-    handleEntrySelect(entry);
-    if (!isEntryComplete(entry)) {
-      setExpandedEntryId(null);
-      return;
-    }
-    setExpandedEntryId((current) => (String(current) === String(entry.id) ? null : entry.id));
   };
 
   const renderField = (field) => {
@@ -898,73 +856,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         onClose={handleSuccessClose}
       />
 
-      <div className={styles.headerEntryList}>
-        {recentEntries.length ? (
-          recentEntries.map((entry, index) => (
-            <div key={`${entry.id}-${index}`} className={styles.headerEntryCard}>
-              <div className={styles.headerEntryCardHeader}>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaBlock} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Param ID</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.paramId || entry.id)}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaMain} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Consignee Name</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.consigneeName)}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaMain} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Count Name</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.countName)}</span>
-                </button>
-                <div className={styles.headerEntryCardStatus}>
-                  {isEntryComplete(entry) ? <FaCheckCircle className={styles.headerEntryStatusIcon} /> : null}
-                </div>
-                <button
-                  type="button"
-                  className={styles.headerEntryToggle}
-                  onClick={() => handleEntryToggle(entry)}
-                  aria-label={
-                    String(expandedEntryId) === String(entry.id)
-                      ? "Collapse saved entry details"
-                      : "Expand saved entry details"
-                  }
-                >
-                  {String(expandedEntryId) === String(entry.id) ? <HiChevronUp /> : <HiChevronDown />}
-                </button>
-              </div>
-
-              {String(expandedEntryId) === String(entry.id) ? (
-                <div className={styles.headerEntryCardDetails}>
-                  <div className={styles.headerEntryDetailsGrid}>
-                    {entry.details.map((detail) => (
-                      <div key={`${entry.id}-${detail.label}`} className={styles.headerEntryDetailItem}>
-                        <span className={styles.headerEntryMetaLabel}>{detail.label}</span>
-                        <span className={styles.headerEntryMetaValue}>{displaySavedValue(detail.value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.headerEntryCardDate}>
-                    {formatDisplayDate(entry.creationDate) || "-"}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))
-        ) : (
-          <p className={styles.messageInfo}>No entries found.</p>
-        )}
-      </div>
     </>
   );
 });

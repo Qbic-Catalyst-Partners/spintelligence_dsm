@@ -29,6 +29,9 @@ FIELD_MAP: Dict[str, str] = {
     "TrCnt":             "TrCnt",
     "TrAr":              "TrAr",
     "TrID":              "TrID",
+    "Moisture":          "Mst",
+    "Strength":          "Str",
+    "Amt":               "Amt",
 }
 # NOT included (no exact match in HVI PDF):
 #   GTEX, Trash Content %, Invisible Loss %

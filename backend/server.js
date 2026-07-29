@@ -171,9 +171,26 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/drawframe/a-percent': 'wrapping.a_percent',
   '/drawframe/stretch-percent': 'wrapping.stretch_percent',
   '/drawframe/stretch-percentage': 'wrapping.stretch_percent',
+  // Simplex's own "Stretch %" screen (simplex.js) reserves its entry id under this
+  // separate route_path, but actually submits through submitWrappingOcrPercentInspection
+  // to /drawframe/stretch-percent (draw-frame.js) — the same endpoint Draw Frame's own
+  // Stretch % screen uses, landing in this same wrapping.stretch_percent table. Without
+  // this mapping, Simplex's "next id" only tracked its own route's reservations, blind to
+  // rows the Draw Frame screen (or Simplex itself) already committed to the real table —
+  // guaranteeing a "duplicate key ... wrapping_stretch_percent_entry_id_uq" once both
+  // screens are used.
+  '/simplex/stretch-percent': 'wrapping.stretch_percent',
   '/drawframe/comber-noil-percent': 'wrapping.comber_noil_percent',
   '/drawframe/noil-percent': 'wrapping.comber_noil_percent',
-  '/drawframe/noils-percent': 'wrapping.comber_noil_percent'
+  '/drawframe/noils-percent': 'wrapping.comber_noil_percent',
+  // Same root cause as the Spinning/cone-density fixes above: these two routes are just
+  // read-only "pending" views (see autoconer.js's buildAutoconerEndpoints comment) — the
+  // actual save always goes to the shared autoconer.parameter_entries table. Without this
+  // mapping, "next entry id" was computed only from frontend_entry_registry, which can
+  // drift behind what's really in the table and reissue an id that already exists,
+  // failing the save with "duplicate key value violates ... parameter_entries_entry_id_uq".
+  '/autoconer/parameter-entries/pending-csp': 'autoconer.parameter_entries',
+  '/autoconer/parameter-entries/pending-quality': 'autoconer.parameter_entries'
 };
 
 const ENTRY_ID_ROUTE_PREFIXES = {

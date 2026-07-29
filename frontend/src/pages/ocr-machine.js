@@ -78,6 +78,9 @@ const FIELD_ALIASES_BY_TYPE = {
     "Trash Content %": ["trash_content_percentage", "trashContentPercent", "Trash Content %"],
     "RD": ["rd", "RD", "Rd"],
     "Colour Grade": ["colour_grade", "colourGrade", "Colour Grade", "CGrd"],
+    "Moisture": ["moisture", "Moisture", "Mst"],
+    "Strength": ["strength", "Strength", "Str"],
+    "Amt": ["amt", "Amt"],
   },
   afis: {
     "Variety": ["variety", "Variety"],
@@ -92,6 +95,9 @@ const FIELD_ALIASES_BY_TYPE = {
     "Maturity": ["maturity", "Maturity"],
     "Fineness": ["fineness", "Fineness"],
     "SCN/gm": ["scn_gms", "scnGms", "SCN/gm", "SCN gm", "SCN Gms"],
+    "L(w)": ["lw", "l_w", "L(w)"],
+    "L(n)": ["ln", "l_n", "L(n)"],
+    "Total Nep Count": ["total_nep_count", "totalNepCount", "Total Nep Count", "TotNepCnt"],
   },
 };
 

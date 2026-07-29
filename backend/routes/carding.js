@@ -3339,6 +3339,15 @@ router.post('/change-control', async (req, res, next) => {
       });
     }
 
+    // cdg_no_proposed is a TEXT column (see the array_to_string migration above), but the
+    // frontend sends a JS array for its multi-select - passed straight through as a bound
+    // array parameter, node-pg serializes it into Postgres array-literal syntax
+    // (e.g. {"CDG-01","CDG-02"}) rather than plain text, so it comes back as one unreadable
+    // blob instead of the individually selected values.
+    const normalizedCdgNoProposed = Array.isArray(cdg_no_proposed)
+      ? cdg_no_proposed.map((value) => String(value ?? '').trim()).filter(Boolean).join(', ')
+      : (cdg_no_proposed ?? null);
+
     const result = await client.query(
       `INSERT INTO carding.carding_change_request
        (
@@ -3391,7 +3400,7 @@ router.post('/change-control', async (req, res, next) => {
         test_no ?? null,
         entry_date,
         cdo_no ?? null,
-        cdg_no_proposed ?? null,
+        normalizedCdgNoProposed,
         mixing_existing ?? null,
         mixing_proposed ?? null,
         toNumericOrNull(blend_percent_existing),

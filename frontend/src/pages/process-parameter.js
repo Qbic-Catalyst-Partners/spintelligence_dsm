@@ -1378,6 +1378,7 @@ export default function ProcessParameterPage() {
                       if (!selectedEntryId) setSelectedEntryId(nextEntryId);
                       refreshRegistryRows();
                     }
+                    if (!selectedEntryId) refreshNextAvailableId();
                   }}
                   entryId={selectedEntryId}
                   nextEntryIdPreview={nextAvailableId}
