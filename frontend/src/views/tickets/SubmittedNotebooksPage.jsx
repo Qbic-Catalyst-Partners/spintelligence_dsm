@@ -10,7 +10,12 @@ import {
 import apiConfig from "@/apis/apiConfig";
 import Pagination from "@/components/Pagination";
 import { fetchUsersAPI } from "@/apis/userApi";
-import { isFullAccessUser, isSupervisorNavUser } from "@/utils/accessControl";
+import {
+    hasHierarchyLevel,
+    isFullAccessUser,
+    isSubmittedNotebookApproverUser,
+    isSupervisorNavUser,
+} from "@/utils/accessControl";
 import styles from "@/styles/submittedNotebooks.module.css";
 import {
     formatDateTime as sharedFormatDateTime,
@@ -614,7 +619,11 @@ const getNotebookApproverValues = (notebook) =>
         .filter(Boolean);
 
 const isNotebookForUser = (notebook, user) => {
-    if (isFullAccessUser(user)) return true;
+    // Every L1-L5 hierarchy account can view the full submitted-notebooks
+    // list now (approval itself is separately restricted to L4/L5) - only
+    // accounts without a recognized level still fall back to the legacy
+    // "am I the specifically assigned approver" scoping below.
+    if (isFullAccessUser(user) || hasHierarchyLevel(user)) return true;
 
     const approverValues = getNotebookApproverValues(notebook);
     if (!approverValues.length) return false;
@@ -634,14 +643,27 @@ const isNotebookPendingAcknowledgement = (notebook) => {
     return !["acknowledged", "ack", "completed", "closed", "approved"].includes(status);
 };
 
+// Scopes the primary fetch to the caller's own approver identity at their
+// real hierarchy level (so an L4 person's query actually hits
+// approval_l4/l4_approver_user_id - the fields a notebook assigned to them
+// as L4 is stored under - not just the legacy L2 fields). Full-access users
+// skip scoping entirely; for a level-less account (e.g. plain supervisor
+// employee id with no `level` set) this falls back to L2, matching the
+// original behaviour before per-level approval existed. loadNotebooks()
+// always merges this scoped result with a second unfiltered fetch, so an
+// L4/L5's assigned notebook still surfaces even if the scoped query above
+// doesn't match anything server-side.
 const buildSubmittedNotebookQuery = (user) => {
     if (isFullAccessUser(user)) return {};
 
+    const level = String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
+    const levelKey = ["L1", "L2", "L3", "L4", "L5"].includes(level) ? level.toLowerCase() : "l2";
+
     return Object.fromEntries(
         Object.entries({
-            approval_l2: user?.employee_id || user?.employeeId || user?.id || "",
-            approval_l2_name: user?.full_name || user?.fullName || user?.name || "",
-            l2_approver_user_id: user?.id || user?.employee_id || user?.employeeId || "",
+            [`approval_${levelKey}`]: user?.employee_id || user?.employeeId || user?.id || "",
+            [`approval_${levelKey}_name`]: user?.full_name || user?.fullName || user?.name || "",
+            [`${levelKey}_approver_user_id`]: user?.id || user?.employee_id || user?.employeeId || "",
         }).filter(([, value]) => String(value || "").trim())
     );
 };
@@ -734,16 +756,32 @@ const getUsersDisplayNames = (userList) =>
         .filter(Boolean);
 
 const getNotebookSupervisorName = (notebook, users = []) => {
+    // Once a notebook has actually been acknowledged, acknowledged_by_name is the ground truth
+    // for who checked it - the pre-assignment (assigned_l2_users etc., checked below) may be
+    // empty on older rows that predate the L4 approver-resolution fix, even though the
+    // acknowledgement itself went through fine. Prefer the real acknowledger whenever it's set.
+    const acknowledgedByName = String(notebook?.acknowledged_by_name || notebook?.acknowledgedByName || "").trim();
+    if (acknowledgedByName) return acknowledgedByName;
+
     // The backend actually resolves the L2 approver(s) into notebook.assigned_l2_users — full
     // {id, employee_id, full_name, level, role} objects, not any of the flat approval_l2_name /
     // supervisor_name / l2_approver_name style fields below (those were never populated on a
     // submitted_notebooks row; they only ever existed on a separate submission-threshold config
     // table). Check the real field first before falling back to the legacy guesses.
-    const assignedL2Names = getUsersDisplayNames(notebook?.assigned_l2_users);
-    if (assignedL2Names.length) return assignedL2Names.join(", ");
+    // Checked in L5->L2 order: a notebook escalated up to L4/L5 for approval
+    // should show the person it's actually sitting with now, not whichever
+    // lower level it passed through first.
+    const assignedL5Names = getUsersDisplayNames(notebook?.assigned_l5_users);
+    if (assignedL5Names.length) return assignedL5Names.join(", ");
+
+    const assignedL4Names = getUsersDisplayNames(notebook?.assigned_l4_users);
+    if (assignedL4Names.length) return assignedL4Names.join(", ");
 
     const assignedL3Names = getUsersDisplayNames(notebook?.assigned_l3_users);
     if (assignedL3Names.length) return assignedL3Names.join(", ");
+
+    const assignedL2Names = getUsersDisplayNames(notebook?.assigned_l2_users);
+    if (assignedL2Names.length) return assignedL2Names.join(", ");
 
     const names = resolveDisplayValues(users, [
         ...normalizeNameList(notebook?.approval_l2_name),
@@ -856,8 +894,15 @@ const getNotebookTitle = (notebook) => {
     );
 };
 
-const getNotebookL2ApprovalName = (notebook) => {
+const getNotebookApprovalName = (notebook) => {
     const names = [
+        ...normalizeNameList(notebook?.approval_l4_name),
+        ...normalizeNameList(notebook?.approval_l4_names),
+        ...normalizeNameList(notebook?.l4_approver_name),
+        ...normalizeNameList(notebook?.l4_approver_names),
+        ...normalizeNameList(notebook?.l4ApproverName),
+        ...normalizeNameList(notebook?.l4ApproverNames),
+        // Legacy fallback for already-saved rows that only ever got an L2 name.
         ...normalizeNameList(notebook?.approval_l2_name),
         ...normalizeNameList(notebook?.approval_l2_names),
         ...normalizeNameList(notebook?.l2_approver_name),
@@ -1131,9 +1176,9 @@ const buildFieldCards = (notebook) => {
     Object.entries(payload || {}).forEach(([key, value]) => {
         if (ACKNOWLEDGEMENT_TIME_KEYS.has(normalizeKey(key))) {
             fields.push({
-                key: "approval_l2_name",
-                label: "L2 Approval Name",
-                value: getNotebookL2ApprovalName(notebook),
+                key: "approval_l4_name",
+                label: "L4 Approval Name",
+                value: getNotebookApprovalName(notebook),
             });
             usedKeys.add(normalizeKey(key));
             return;
@@ -1171,6 +1216,7 @@ const SubmittedNotebooksPage = () => {
     const [acknowledgingId, setAcknowledgingId] = useState(null);
     const [showAcknowledgeConfirm, setShowAcknowledgeConfirm] = useState(false);
     const [showAcknowledgeSuccess, setShowAcknowledgeSuccess] = useState(false);
+    const [showApprovalRestricted, setShowApprovalRestricted] = useState(false);
     const [reviewNote, setReviewNote] = useState("");
     const [reviewNoteError, setReviewNoteError] = useState(false);
     const [users, setUsers] = useState([]);
@@ -1186,6 +1232,7 @@ const SubmittedNotebooksPage = () => {
     });
     const isSupervisor = isSupervisorNavUser(user) && !isFullAccessUser(user);
     const isAdminUser = isFullAccessUser(user);
+    const canApproveNotebooks = isSubmittedNotebookApproverUser(user);
     const [activeTab, setActiveTab] = useState("pending");
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 5;
@@ -1281,13 +1328,11 @@ const SubmittedNotebooksPage = () => {
                         subDepartment,
                         title: getNotebookTitle(notebook),
                         operator: getNotebookOperatorName(notebook, users),
-                        // Who acknowledged a Closed notebook is only shown to admins — everyone
-                        // else (including the supervisor who acknowledged it themselves) sees
-                        // "--" on this tab so one supervisor's activity isn't visible to another.
-                        supervisor:
-                            activeTab === "closed" && !isAdminUser
-                                ? "--"
-                                : getNotebookSupervisorName(notebook, users),
+                        // Every L1-L5 hierarchy account (not just admin) can see who checked a
+                        // Closed notebook - visibility of the whole list is already open to
+                        // L1-L5, and only L4/L5 can ever be the one who acknowledged it, so
+                        // there's no separate secrecy concern for who did it.
+                        supervisor: getNotebookSupervisorName(notebook, users),
                         createdAt: getCreatedDate(notebook),
                         review: getNotebookReviewNote(notebook),
                     };
@@ -1379,6 +1424,7 @@ const SubmittedNotebooksPage = () => {
         const id = getNotebookId(notebook);
         setSelectedNotebook(notebook);
         setShowAcknowledgeConfirm(false);
+        setShowApprovalRestricted(false);
         setReviewNote("");
         setReviewNoteError(false);
 
@@ -1456,6 +1502,10 @@ const SubmittedNotebooksPage = () => {
 
     const requestAcknowledgeConfirmation = () => {
         if (!getNotebookId(selectedNotebook)) return;
+        if (!canApproveNotebooks) {
+            setShowApprovalRestricted(true);
+            return;
+        }
         if (!reviewNote.trim()) {
             setReviewNoteError(true);
             return;
@@ -1687,6 +1737,7 @@ const SubmittedNotebooksPage = () => {
                         setSelectedNotebook(null);
                         setShowAcknowledgeConfirm(false);
                         setShowAcknowledgeSuccess(false);
+                        setShowApprovalRestricted(false);
                         setReviewNote("");
                         setReviewNoteError(false);
                     }}
@@ -1796,6 +1847,29 @@ const SubmittedNotebooksPage = () => {
                                             onClick={handleAcknowledge}
                                         >
                                             Yes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {showApprovalRestricted ? (
+                            <div className={styles.confirmOverlay} role="presentation">
+                                <div
+                                    className={styles.confirmDialog}
+                                    role="alertdialog"
+                                    aria-modal="true"
+                                    aria-labelledby="approval-restricted-title"
+                                    onClick={(event) => event.stopPropagation()}
+                                >
+                                    <h3 id="approval-restricted-title">Only L4 and L5 have access to approve.</h3>
+                                    <div className={styles.confirmActions}>
+                                        <button
+                                            type="button"
+                                            className={styles.confirmYesButton}
+                                            onClick={() => setShowApprovalRestricted(false)}
+                                        >
+                                            OK
                                         </button>
                                     </div>
                                 </div>

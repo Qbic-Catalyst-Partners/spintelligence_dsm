@@ -47,6 +47,13 @@ export const isSupervisorNavUser = (user) =>
 export const isSubmittedNotebookManagerUser = (user) =>
   isFullAccessUser(user) || isSupervisorNavUser(user);
 
+// Submitted Notebooks list itself is visible to the whole L1-L5 hierarchy (not
+// just the L2 supervisor accounts / admin that manage the notebook-threshold
+// config) - viewing who submitted what is useful at every level, only the
+// ability to actually approve is restricted further below.
+export const isSubmittedNotebookViewerUser = (user) =>
+  isSubmittedNotebookManagerUser(user) || hasHierarchyLevel(user);
+
 const getUserLevelKey = (user) =>
   String(user?.level ?? user?.user_details?.level ?? "").trim().toUpperCase();
 
@@ -67,6 +74,11 @@ export const isWheelChangeApproverUser = (user) =>
   isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
 
 export const isPpApproverUser = (user) =>
+  isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
+
+// Submitted Notebooks follows the same L4/L5-only approval rule as WC/PP -
+// L1-L3 can view the list but Acknowledge is blocked for them.
+export const isSubmittedNotebookApproverUser = (user) =>
   isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
 
 // L5 is the super-admin level - the Delegation System is gated on level

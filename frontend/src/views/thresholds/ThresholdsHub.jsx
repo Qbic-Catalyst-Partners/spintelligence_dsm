@@ -70,7 +70,7 @@ const THRESHOLD_TYPE_COLUMNS = {
     { key: "detail", label: "Entry / Approve Within" },
   ],
   acknowledgement: [
-    { key: "l2", label: "L2" },
+    { key: "l2", label: "L4" },
     { key: "detail", label: "Acknowledge Within" },
   ],
   "wheel-change-approval": [
@@ -180,7 +180,7 @@ const normalizeAcknowledgementThresholdRow = (item) => ({
   notebookType: item?.screen_name || item?.notebook || item?.notebook_name || "-",
   field: "-",
   l1: "-",
-  l2: nameListToText(item?.approval_l2_name || item?.approval_l2),
+  l2: nameListToText(item?.approval_l4_name || item?.approval_l4 || item?.approval_l2_name || item?.approval_l2),
   detail: `${item?.acknowledge_within_hours ?? item?.acknowledgeWithinHours ?? "-"} Hrs`,
   isActive: getActiveValue(item),
   createdAt: item?.created_at || item?.createdAt,

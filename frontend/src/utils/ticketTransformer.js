@@ -251,6 +251,7 @@ export const TICKET_KIND = {
   SUBMISSION_FREQUENCY: "submission_frequency",
   NOTEBOOK_ACK: "notebook_ack",
   PP_BATCH: "pp_batch",
+  WHEEL_CHANGE: "wheel_change",
 };
 
 const EXPLICIT_TICKET_KIND_KEYS = {
@@ -258,6 +259,25 @@ const EXPLICIT_TICKET_KIND_KEYS = {
   submission_frequency: TICKET_KIND.SUBMISSION_FREQUENCY,
   notebook_ack: TICKET_KIND.NOTEBOOK_ACK,
   pp_batch: TICKET_KIND.PP_BATCH,
+  wheel_change_approval: TICKET_KIND.WHEEL_CHANGE,
+};
+
+// Wheel Change approval tickets are raised from the spinning wheel-change workflow
+// (backend/routes/spinning.js createWheelChangeApprovalTicket) with an explicit
+// ticket_type/ticket_kind stamp - checked directly here (rather than only via the
+// EXPLICIT_TICKET_KIND_KEYS lookup) so older rows that only have ticket_type set,
+// or callers still on the raw violation_details.ticket_type, are also recognized.
+export const isWheelChangeApprovalTicketRecord = (ticket) => {
+  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
+  const violationDetails = getViolationDetails(ticket);
+  const violationTicketType = String(violationDetails?.ticket_type || "").trim().toUpperCase();
+  const ticketKind = String(ticket?.ticket_kind || ticket?.ticketKind || "").trim().toLowerCase();
+
+  return (
+    ticketType === "WHEEL_CHANGE_APPROVAL" ||
+    violationTicketType === "WHEEL_CHANGE_APPROVAL" ||
+    ticketKind === "wheel_change_approval"
+  );
 };
 
 // Single source of truth for "what kind of ticket is this." A ticket can carry an explicit
@@ -268,6 +288,7 @@ export const getTicketKind = (ticket) => {
   const explicitKind = EXPLICIT_TICKET_KIND_KEYS[String(ticket?.ticket_kind || "").trim().toLowerCase()];
   if (explicitKind) return explicitKind;
 
+  if (isWheelChangeApprovalTicketRecord(ticket)) return TICKET_KIND.WHEEL_CHANGE;
   if (isPpBatchCompletionTicketRecord(ticket)) return TICKET_KIND.PP_BATCH;
   if (isNotebookAcknowledgementTicketRecord(ticket)) return TICKET_KIND.NOTEBOOK_ACK;
   if (isSubmissionFrequencyTicketRecord(ticket)) return TICKET_KIND.SUBMISSION_FREQUENCY;

@@ -32,6 +32,11 @@ const requestNotificationsApi = async (path = "", payload = {}, method = "get") 
           skipGlobalErrorModal: true,
           skipGlobalSuccessModal: true,
         });
+      } else if (method === "delete") {
+        response = await apiConfig.delete(url, payload, {
+          skipGlobalErrorModal: true,
+          skipGlobalSuccessModal: true,
+        });
       } else {
         response = await apiConfig.get(url, payload, {
           skipGlobalErrorModal: true,
@@ -59,6 +64,9 @@ export const markNotificationReadApi = ({ source, id }) =>
 
 export const markAllNotificationsReadApi = (payload = {}) =>
   requestNotificationsApi("/read-all", payload, "patch");
+
+export const clearAllNotificationsApi = (payload = {}) =>
+  requestNotificationsApi("/clear-all", payload, "delete");
 
 export const createTestNotificationApi = (payload = {}) =>
   requestNotificationsApi("/test", payload, "post");
