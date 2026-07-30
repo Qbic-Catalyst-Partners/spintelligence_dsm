@@ -295,4 +295,27 @@ router.patch('/read-all', async (req, res, next) => {
   }
 });
 
+router.delete('/clear-all', async (req, res, next) => {
+  try {
+    const userId = resolveRequestedUserId(req);
+
+    const ticketResult = await client.query(
+      `DELETE FROM ticketing_system.notifications WHERE recipient_user_id = $1 RETURNING id`,
+      [userId]
+    );
+
+    const analysisResult = await client.query(
+      `DELETE FROM ticketing_system.analysis_notification_events WHERE user_id = $1 RETURNING id`,
+      [userId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      deleted_count: ticketResult.rowCount + analysisResult.rowCount
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

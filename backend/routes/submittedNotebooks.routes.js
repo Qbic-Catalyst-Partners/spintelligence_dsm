@@ -947,11 +947,24 @@ const recordPpNotebookSubmission = async ({
   return result.rows[0];
 };
 
-const canViewSubmission = (req, row) => {
+const isAdminRequester = (req) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
-  const requesterId = parsePositiveInt(req.user?.id);
   const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-  if (role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001') return true;
+  return role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+};
+
+const getRequesterLevel = (req) => String(req.user?.level || '').trim().toUpperCase();
+
+const hasHierarchyLevel = (req) => ['L1', 'L2', 'L3', 'L4', 'L5'].includes(getRequesterLevel(req));
+
+// Approval itself is restricted to L4/L5 - viewing (canViewSubmission /
+// GET list's canViewAll below) is open to the whole L1-L5 hierarchy.
+const canApproveSubmission = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
+
+const canViewSubmission = (req, row) => {
+  if (isAdminRequester(req)) return true;
+  if (hasHierarchyLevel(req)) return true;
+  const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
   if (row.submitted_by_user_id === requesterId) return true;
   return (
@@ -1040,27 +1053,29 @@ const generateOverdueNotebookTickets = async () => {
 
     const acknowledgementThreshold = await getAcknowledgementThresholdForNotebook(submission);
 
-    // Acknowledgement Threshold (per the ticket-type spec table) is a flat,
-    // L2-only ticket - raised on L2 once L1 submits and resolved by L2
-    // acknowledging it, with no L3/L4/L5 escalation and no visibility to any
-    // other level's dashboard. The screen's manually-picked L2 approver takes
-    // priority when configured; the submitter's real L2 manager is the
-    // fallback, and the submission's own approver columns / department
+    // Acknowledgement Threshold is a flat, L4-only ticket - raised once L1
+    // submits and resolved by L4 acknowledging it (L2/L3 have no approval
+    // role per the current hierarchy design), with no further escalation and
+    // no visibility to any other level's dashboard. The screen's
+    // manually-picked L4 approver takes priority when configured; the
+    // submitter's real L4 manager is the fallback, and the submission's own
+    // approver columns (still the legacy l2_approver_user_ids column, now
+    // populated with the resolved L4 id(s) - see POST /) / department
     // default are the last resort.
     const resolvedChain = await resolveEscalationChainForSubmitter(submission.submitted_by_user_id);
-    const manualL2Ids = acknowledgementThreshold?.approval_l2
-      ? String(acknowledgementThreshold.approval_l2)
+    const manualL4Ids = acknowledgementThreshold?.approval_l4
+      ? String(acknowledgementThreshold.approval_l4)
           .split(',')
           .map((value) => parseInt(value.trim(), 10))
           .filter((value) => Number.isInteger(value) && value > 0)
       : [];
-    const l2ApproverIds = manualL2Ids.length
-      ? manualL2Ids
-      : resolvedChain.l2.length
-        ? resolvedChain.l2
+    const l2ApproverIds = manualL4Ids.length
+      ? manualL4Ids
+      : resolvedChain.l4.length
+        ? resolvedChain.l4
         : (Array.isArray(submission.l2_approver_user_ids) && submission.l2_approver_user_ids.length)
           ? submission.l2_approver_user_ids
-          : await getL2ApproverIds([], { useDefault: true });
+          : await getL4ApproverIds([], { useDefault: true });
     const violationDetails = {
       category: 'MISSED_FREQUENCY',
       ticket_type: 'NOTEBOOK_ACK_OVERDUE',
@@ -1075,12 +1090,12 @@ const generateOverdueNotebookTickets = async () => {
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
-        violation_details, approval_l2_user_ids, tat_current_level)
+        violation_details, approval_l4_user_ids, tat_current_level)
        VALUES (
          'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
          $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
          $11, 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
-         $9::jsonb, $10::int[], 'L2'
+         $9::jsonb, $10::int[], 'L4'
        )
        RETURNING *`,
       [
@@ -1122,16 +1137,16 @@ const generateOverdueNotebookTickets = async () => {
         type: 'NOTEBOOK_ACK_OVERDUE',
         category: 'Tickets',
         priority: 'High',
-        title: (user) => `Hi ${user.full_name || 'there'} (L2), ${ackNotebookName} needs your acknowledgement`,
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), ${ackNotebookName} needs your acknowledgement`,
         body: (user) =>
-          `${user.full_name || 'You'} (L2) - ${ackNotebookName} was due for acknowledgement by ${new Date(submission.ack_due_at).toLocaleString()} and is now overdue. Please acknowledge it.`,
+          `${user.full_name || 'You'} (L4) - ${ackNotebookName} was due for acknowledgement by ${new Date(submission.ack_due_at).toLocaleString()} and is now overdue. Please acknowledge it.`,
         linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
         payload: {
           ticket_id: inserted.ticket_id,
           submitted_notebook_id: submission.id,
           notebook_submission_id: submission.notebook_submission_id,
           action_type: 'ACKNOWLEDGE_ONLY',
-          level: 'L2'
+          level: 'L4'
         }
       });
     }
@@ -1139,8 +1154,8 @@ const generateOverdueNotebookTickets = async () => {
     created.push(inserted);
   }
 
-  // Acknowledgement Threshold (per the ticket-type spec table) is a flat,
-  // L2-only ticket - it does not escalate to L3/L4/L5.
+  // Acknowledgement Threshold is a flat, L4-only ticket - it does not
+  // escalate further.
   return { created, escalated: [] };
 };
 
@@ -1510,10 +1525,10 @@ router.post('/', async (req, res, next) => {
 
     // Always resolve the per-screen Submission Threshold config (previously only fetched to
     // compute ack_due_at, and only when the caller hadn't already supplied one) — its
-    // approval_l2/approval_l3 columns are the actual "Checked by" assignment configured on the
+    // approval_l4/approval_l3 columns are the actual "Checked by" assignment configured on the
     // Submission Threshold page, and were never being read into l2_approver_user_ids at all, so
-    // every submission's L2 approver stayed an empty array unless the caller happened to pass
-    // one explicitly in the request body.
+    // every submission's approver stayed an empty array unless the caller happened to pass one
+    // explicitly in the request body.
     const { hours: acknowledgementHours, acknowledgementThreshold } = await resolveAcknowledgementDeadlineHours({
       input_screen: cleanText(req.body?.input_screen) || notebook,
       notebook,
@@ -1528,15 +1543,27 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    const l2ApproverUserIds = await getL2ApproverIds(
+    // Notebook approval moved from L2 to L4 - resolved ids still land in the
+    // legacy l2_approver_user_ids column (kept as-is to avoid a schema/data
+    // migration), just populated with the L4 approver's id(s) now instead.
+    // approval_l2_* body/config keys are kept as a fallback for any caller
+    // or already-saved threshold row that hasn't been updated to L4 yet.
+    const l2ApproverUserIds = await getL4ApproverIds(
+      req.body?.l4_approver_user_ids ||
+      req.body?.approval_l4_user_ids ||
+      req.body?.l4_approver_employee_ids ||
+      req.body?.approval_l4_employee_ids ||
+      req.body?.l4_approver_employee_id ||
+      req.body?.approval_l4_employee_id ||
+      req.body?.assigned_l4 ||
       req.body?.l2_approver_user_ids ||
       req.body?.approval_l2_user_ids ||
-      req.body?.l2_approver_employee_ids ||
-      req.body?.approval_l2_employee_ids ||
-      req.body?.l2_approver_employee_id ||
-      req.body?.approval_l2_employee_id ||
       req.body?.assigned_l2 ||
-      (acknowledgementThreshold?.approval_l2 ? acknowledgementThreshold.approval_l2.split(',').map((value) => value.trim()).filter(Boolean) : []) ||
+      (acknowledgementThreshold?.approval_l4
+        ? acknowledgementThreshold.approval_l4.split(',').map((value) => value.trim()).filter(Boolean)
+        : acknowledgementThreshold?.approval_l2
+          ? acknowledgementThreshold.approval_l2.split(',').map((value) => value.trim()).filter(Boolean)
+          : []) ||
       [],
       { useDefault: false }
     );
@@ -1623,9 +1650,10 @@ router.get('/', async (req, res, next) => {
       where.push(`LOWER(TRIM(COALESCE(sub_department, ''))) = LOWER(TRIM($${params.length}))`);
     }
 
-    const role = String(req.user?.role || '').trim().toLowerCase();
-    const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-    const canViewAll = role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+    // The submitted-notebooks list is visible to the whole L1-L5 hierarchy,
+    // not just admin - only accounts without a recognized level stay scoped
+    // to notebooks they submitted or are specifically assigned to approve.
+    const canViewAll = isAdminRequester(req) || hasHierarchyLevel(req);
     if (!canViewAll) {
       params.push(requesterId);
       where.push(`($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) OR submitted_by_user_id = $${params.length})`);
@@ -1735,9 +1763,13 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
     if (!current.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = current.rows[0];
     if (!canViewSubmission(req, row)) return res.status(403).json({ message: 'You are not authorized to acknowledge this submitted notebook' });
+    // Viewing is open to the whole L1-L5 hierarchy above, but only L4/L5
+    // (or admin) may actually approve - mirrors the frontend's Acknowledge
+    // gate so a direct API call can't bypass it.
+    if (!canApproveSubmission(req)) return res.status(403).json({ message: 'Only L4 and L5 have access to approve.' });
 
     const requesterId = parsePositiveInt(req.user?.id);
-    const requesterName = await getUserDisplayName(requesterId) || cleanText(req.user?.employee_id) || 'L2 User';
+    const requesterName = await getUserDisplayName(requesterId) || cleanText(req.user?.employee_id) || 'L4 User';
     const updated = await client.query(
       `UPDATE ticketing_system.submitted_notebooks
        SET status = 'ACKNOWLEDGED',
@@ -1755,7 +1787,7 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
       await client.query(
         `UPDATE ticketing_system.operator_tickets
          SET status = 'Closed',
-             tat_current_level = COALESCE(tat_current_level, 'L2')
+             tat_current_level = COALESCE(tat_current_level, 'L4')
          WHERE ticket_id = $1
            AND status <> 'Closed'`,
         [row.overdue_ticket_id]
@@ -1764,7 +1796,7 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
         `INSERT INTO ticketing_system.ticket_logs
          (ticket_id, action, performed_by, role, created_at)
          VALUES ($1, 'ACKNOWLEDGED', $2, $3, NOW())`,
-        [row.overdue_ticket_id, requesterName, req.user?.role || 'L2']
+        [row.overdue_ticket_id, requesterName, req.user?.role || 'L4']
       );
     }
 

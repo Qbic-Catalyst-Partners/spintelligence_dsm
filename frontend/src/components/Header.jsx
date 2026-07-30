@@ -7,7 +7,6 @@ import {
     FiBell,
     FiBriefcase,
     FiCalendar,
-    FiCheck,
     FiChevronDown,
     FiChevronLeft,
     FiClipboard,
@@ -23,6 +22,7 @@ import {
     FiShield,
     FiSliders,
     FiSun,
+    FiTrash2,
     FiUsers,
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
@@ -36,6 +36,7 @@ import {
     isDelegationManagerUser,
     isFullAccessUser,
     isSubmittedNotebookManagerUser,
+    isSubmittedNotebookViewerUser,
     isSupervisorNavUser,
     isWheelChangeApproverUser,
     routeDepartmentMap,
@@ -46,8 +47,8 @@ import {
     saveAnalysisSubscriptionApi,
 } from "@/apis/analysisApi";
 import {
+    clearAllNotificationsApi,
     fetchNotificationsApi,
-    markAllNotificationsReadApi,
     markNotificationReadApi,
 } from "@/apis/notificationsApi";
 import styles from "../styles/header.module.css";
@@ -92,7 +93,7 @@ const ticketingLinks = [
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
 const managementHubLinks = [
-    { href: "/submitted-notebooks", label: "Submitted Notebooks" },
+    { href: "/submitted-notebooks", label: "Submitted Notebooks", submittedNotebookView: true },
     { href: "/new-field-creation", label: "New Field Creation" },
     { href: "/activity-log", label: "Activity Log" },
     {
@@ -148,8 +149,13 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const hasFullAccess = isFullAccessUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
+    // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
+    // link itself is open to every L1-L5 hierarchy account, while the other
+    // Management Hub entries (New Field Creation, Activity Log, threshold
+    // config) stay limited to admin/supervisor.
+    const hasSubmittedNotebookViewAccess = isSubmittedNotebookViewerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
-    const hasManagementHubAccess = hasSubmittedNotebookAccess || hasWheelChangeApprovalAccess;
+    const hasManagementHubAccess = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess || hasWheelChangeApprovalAccess;
     // Every L1-L5 hierarchy account has some ticketing view (L1 operator
     // board, L2-L5 escalation dashboards) - this used to only check
     // isFullAccessUser/isSupervisorNavUser (from before hierarchy levels
@@ -227,9 +233,11 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         );
     const visibleManagementHubLinks = hasFullAccess
         ? managementHubLinks
-        : managementHubLinks.filter((link) =>
-            link.wheelChangeApproval ? hasWheelChangeApprovalAccess : hasSubmittedNotebookAccess
-        );
+        : managementHubLinks.filter((link) => {
+            if (link.wheelChangeApproval) return hasWheelChangeApprovalAccess;
+            if (link.submittedNotebookView) return hasSubmittedNotebookViewAccess;
+            return hasSubmittedNotebookAccess;
+        });
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -363,7 +371,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const handleManagementHubClick = () => {
         setIsManagementHubOpen((isOpen) => {
             const nextIsOpen = !isOpen;
-            const defaultManagementRoute = hasSubmittedNotebookAccess
+            const defaultManagementRoute = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess
                 ? "/submitted-notebooks"
                 : "/wheel-change-approvals";
             if (nextIsOpen && router.asPath?.split("?")[0] !== defaultManagementRoute) {
@@ -474,17 +482,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         }
     };
 
-    const handleMarkAllNotificationsRead = async () => {
+    const handleClearAllNotifications = async () => {
         try {
-            await markAllNotificationsReadApi();
-            setNotifications((current) =>
-                current.map((item) => ({
-                    ...item,
-                    is_unread: false,
-                    status: "READ",
-                    read_at: item.read_at || new Date().toISOString(),
-                }))
-            );
+            await clearAllNotificationsApi();
+            setNotifications([]);
             setNotificationUnreadCount(0);
         } catch {
             // no-op for non-blocking UX
@@ -931,9 +932,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             <div className={styles["notification-header"]}>
                                 <strong>Notifications</strong>
                                 <div className={styles["notification-actions"]}>
-                                    <button type="button" onClick={handleMarkAllNotificationsRead} disabled={!unreadCount}>
-                                        <FiCheck />
-                                        <span>Read all</span>
+                                    <button type="button" onClick={handleClearAllNotifications} disabled={!notifications.length}>
+                                        <FiTrash2 />
+                                        <span>Clear all</span>
                                     </button>
                                 </div>
                             </div>

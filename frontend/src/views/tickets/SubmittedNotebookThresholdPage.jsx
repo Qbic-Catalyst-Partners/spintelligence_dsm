@@ -21,7 +21,7 @@ const createRule = () => ({
   subDepartmentSlug: "",
   screenName: "",
   criticality: "High",
-  approvalL2Ids: [],
+  approvalL4Ids: [],
   acknowledgeWithinHours: "24",
 });
 
@@ -56,7 +56,7 @@ const getThresholdAckHours = (item) =>
 
 const getThresholdCriticality = (item) => item?.criticality || "-";
 
-const getThresholdL2Name = (item) => item?.approval_l2_name || item?.approvalL2Name || "-";
+const getThresholdL4Name = (item) => item?.approval_l4_name || item?.approvalL4Name || "-";
 
 const formatTimestamp = (value) => {
   if (!value) return "-";
@@ -265,7 +265,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
   const [rules, setRules] = useState([createRule()]);
   const [existingFilters, setExistingFilters] = useState(buildExistingFilters);
 
-  const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
+  const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
 
   const availableDepartments = departmentDirectory.filter((item) => item.enabled);
   const selectedDepartment =
@@ -423,8 +423,8 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
           throw new Error("Please enter approved within hours greater than 0 for every row.");
         }
 
-        const l2Names = l2Options
-          .filter((option) => normalizeIdList(rule.approvalL2Ids).includes(String(option.id)))
+        const l4Names = l4Options
+          .filter((option) => normalizeIdList(rule.approvalL4Ids).includes(String(option.id)))
           .map((option) => option.name);
 
         const existingThreshold = thresholds.find((item) =>
@@ -447,8 +447,8 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
           department: selectedDepartment.name,
           sub_department: subDepartment.name,
           criticality: rule.criticality,
-          approval_l2: normalizeIdList(rule.approvalL2Ids),
-          approval_l2_name: l2Names,
+          approval_l4: normalizeIdList(rule.approvalL4Ids),
+          approval_l4_name: l4Names,
           acknowledge_within_hours: hours,
           is_active: true,
           _existingThreshold: existingThreshold,
@@ -630,13 +630,13 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
                       </label>
 
                       <label className={styles.field} style={{ gridColumn: "4 / 5", gridRow: "1" }}>
-                        <span>L2</span>
+                        <span>L4</span>
                         <MultiUserSelect
-                          value={rule.approvalL2Ids}
-                          options={l2Options}
-                          onChange={(nextIds) => updateRule(rule.id, "approvalL2Ids", nextIds)}
-                          placeholder="Select L2 user"
-                          emptyLabel="No L2 users available"
+                          value={rule.approvalL4Ids}
+                          options={l4Options}
+                          onChange={(nextIds) => updateRule(rule.id, "approvalL4Ids", nextIds)}
+                          placeholder="Select L4 user"
+                          emptyLabel="No L4 users available"
                         />
                       </label>
 
@@ -787,7 +787,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
                       <th>Sub-Deprt.</th>
                       <th>Notebook</th>
                       <th>Criticality</th>
-                      <th>L2</th>
+                      <th>L4</th>
                       <th>Approved Within</th>
                       <th>Status</th>
                       <th>Created At</th>
@@ -813,7 +813,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
                             <td>{getThresholdSubDepartment(item) || "-"}</td>
                             <td>{getThresholdScreenName(item) || "-"}</td>
                             <td>{getThresholdCriticality(item)}</td>
-                            <td>{getThresholdL2Name(item)}</td>
+                            <td>{getThresholdL4Name(item)}</td>
                             <td>{getThresholdAckHours(item) || "-"} Hrs</td>
                             <td>
                               <span
@@ -850,7 +850,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
       <div className={styles.shell}>
         <div className={styles.intro}>
           <h1>Acknowledgement Threshold</h1>
-          <p>Set the L2 acknowledgement time for submitted notebooks</p>
+          <p>Set the L4 acknowledgement time for submitted notebooks</p>
         </div>
         {content}
       </div>

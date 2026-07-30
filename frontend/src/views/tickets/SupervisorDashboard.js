@@ -21,6 +21,7 @@ import {
   isNotebookAcknowledgementTicketRecord as isAcknowledgementReviewTicket,
   isPpBatchCompletionTicketRecord,
   isSubmissionTicketRecord,
+  isWheelChangeApprovalTicketRecord,
   transformTicket,
   getTicketKind,
   TICKET_KIND,
@@ -160,6 +161,7 @@ const getCurrentReviewer = (ticket) => {
 };
 
 const getTicketTypeLabel = (ticket) => {
+  if (isWheelChangeApprovalTicketRecord(ticket)) return "Wheel Change";
   if (isAcknowledgementReviewTicket(ticket)) return "Acknowledgement";
   if (isPpBatchCompletionTicketRecord(ticket)) return "PP";
   if (isSubmissionTicketRecord(ticket)) return "Submission";
@@ -232,7 +234,7 @@ const isTicketResolved = (status) => {
   return normalized === "closed" || normalized === "submit";
 };
 
-const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement"];
+const TICKET_TYPE_OPTIONS = ["Value", "Submission", "PP", "Acknowledgement", "Wheel Change"];
 
 // Per the PDF's hierarchy design, a ticket's escalation walks L1->L2->L3->L4->L5
 // as each level's TAT window elapses without action - "Owned" means it is
@@ -336,6 +338,12 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
   const [severity, setSeverity] = useState("");
   const [userName, setUserName] = useState("");
   const [ticketType, setTicketType] = useState("");
+  const [level, setLevel] = useState("");
+  // L1 (operator) only ever sees its own L1 tickets, so a Level filter there
+  // would always have exactly one meaningful option - it's only useful once
+  // a view can show tickets sitting at more than one escalation level.
+  const showLevelFilter = mode !== "L1";
+  const levelFilterOptions = Object.keys(LEVEL_RANK).filter((option) => option !== "L5");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [search, setSearch] = useState("");
@@ -521,6 +529,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
       (!severity || t.severity === severity) &&
       (!userName || t.userName === userName) &&
       (!ticketType || t.ticketType === ticketType) &&
+      (!level || t.levelType === level) &&
       (!search ||
         t.ticket_id?.toLowerCase().includes(search.toLowerCase()) ||
         t.userName?.toLowerCase().includes(search.toLowerCase()))
@@ -634,6 +643,22 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
             </select>
           </div>
 
+          {showLevelFilter && (
+            <div className={styles["sup-filter"]}>
+              <label>Level</label>
+              <select
+                className={styles["sup-select"]}
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+              >
+                <option value="">All</option>
+                {levelFilterOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className={styles["sup-filter"]}>
             <label>Severity</label>
             <select
@@ -728,6 +753,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
               setSeverity("");
               setUserName("");
               setTicketType("");
+              setLevel("");
               setStartDate("");
               setEndDate("");
               setSearch("");
@@ -938,6 +964,21 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                   </select>
                 </div>
 
+                {showLevelFilter && (
+                  <div className={styles["sup-filter-group"]}>
+                    <label>Level</label>
+                    <select
+                      value={level}
+                      onChange={(e) => setLevel(e.target.value)}
+                    >
+                      <option value="">All</option>
+                      {levelFilterOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className={styles["sup-filter-group"]}>
                   <label>Status</label>
                   <select
@@ -1001,6 +1042,7 @@ export default function SupervisorDashboard({ mode = "L2", detailRoute = "/super
                       setSeverity("");
                       setUserName("");
                       setTicketType("");
+                      setLevel("");
                       setStartDate("");
                       setEndDate("");
                       setSearch("");
