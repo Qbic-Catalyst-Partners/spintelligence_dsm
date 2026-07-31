@@ -3,6 +3,7 @@ const router = express.Router();
 const client = require('../connection');
 const auth = require('../middleware/auth');
 const { createNotificationsForUsers, ensureNotificationMetadataColumns } = require('../utils/notifications');
+const { getManagerChain } = require('./user.routes');
 
 const MAX_LIMIT = 100;
 const ACK_DEADLINE_HOURS = 24;
@@ -18,6 +19,40 @@ const cleanText = (value) => {
 };
 
 const toJson = (value, fallback = null) => JSON.stringify(value === undefined ? fallback : value);
+
+// operator_tickets' approval_lX_user_ids / lX_tat_due_at columns are also
+// migrated by operatorTickets.routes.js and supervisorTickets.routes.js -
+// this file references them (l2/l3/l4/l5_tat_due_at, approval_l1-l5_user_ids)
+// without ever having run its own copy of that migration, relying entirely
+// on one of those other files' routes having already been hit first. That's
+// fragile even for the pre-existing L1-L3 columns; ensure them here too so
+// this file's own endpoints (PP batch completion check in particular) work
+// standalone.
+let ticketApprovalColumnsEnsured = false;
+const ensureTicketApprovalColumnsForBatchCheck = async () => {
+  if (ticketApprovalColumnsEnsured) return;
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+      ADD COLUMN IF NOT EXISTS approval_l1_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l2_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l3_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
+      ADD COLUMN IF NOT EXISTS l1_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l2_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l3_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+  // PP_BATCH_INCOMPLETE used to file one ticket per PP id; a leftover unique
+  // index from that model (entry_id alone) now conflicts with the current
+  // one-ticket-per-missing-notebook design (see runPpBatchCompletionCheck),
+  // which needs several open tickets sharing the same entry_id at once.
+  await client.query(`DROP INDEX IF EXISTS ticketing_system.operator_tickets_pp_batch_entry_id_uq`);
+  ticketApprovalColumnsEnsured = true;
+};
 
 const parseTatHours = (value, fallback = null) => {
   if (value === null || value === undefined || value === '') return fallback;
@@ -116,22 +151,95 @@ const getL3ApproverIds = (providedValues = [], options = {}) =>
 const getL1ApproverIds = (providedValues = [], options = {}) =>
   getApproverIdsByLevel(providedValues, { ...options, level: 'L1' });
 
+const getL4ApproverIds = (providedValues = [], options = {}) =>
+  getApproverIdsByLevel(providedValues, { ...options, level: 'L4' });
+
+const getL5ApproverIds = (providedValues = [], options = {}) =>
+  getApproverIdsByLevel(providedValues, { ...options, level: 'L5' });
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: the Acknowledgement
+// Threshold (and, per the same principle, every other threshold's
+// escalation) is "automatically assigned to the reporting L2 manager of each
+// L1 user - no manual selection required". Resolves the submitting user's
+// real reports_to_user_id chain (see getManagerChain in user.routes.js)
+// into per-level approver-id arrays; falls back to the old
+// department-default lookup only for a level the chain doesn't reach (e.g.
+// the submitter hasn't been assigned a manager yet, or their chain doesn't
+// go all the way to L5).
+const resolveEscalationChainForSubmitter = async (submitterUserId) => {
+  const chain = submitterUserId ? await getManagerChain(submitterUserId) : [];
+  const byLevel = new Map(chain.map((manager) => [manager.level, manager.id]));
+
+  const [l2Default, l3Default, l4Default, l5Default] = await Promise.all([
+    byLevel.has('L2') ? null : getL2ApproverIds([], { useDefault: true }),
+    byLevel.has('L3') ? null : getL3ApproverIds([], { useDefault: true }),
+    byLevel.has('L4') ? null : getL4ApproverIds([], { useDefault: true }),
+    byLevel.has('L5') ? null : getL5ApproverIds([], { useDefault: true }),
+  ]);
+
+  return {
+    l2: byLevel.has('L2') ? [byLevel.get('L2')] : l2Default,
+    l3: byLevel.has('L3') ? [byLevel.get('L3')] : l3Default,
+    l4: byLevel.has('L4') ? [byLevel.get('L4')] : l4Default,
+    l5: byLevel.has('L5') ? [byLevel.get('L5')] : l5Default,
+  };
+};
+
+// Same idea as resolveEscalationChainForSubmitter, but for tickets that
+// aren't tied to one specific submitter - PP Batch Incomplete tickets are
+// filed against whichever L1 user(s) are configured as responsible for a
+// department (there's no "the person who should have submitted" on record,
+// only candidates), so this unions each of their real manager chains
+// per level instead of resolving just one person's chain. Falls back to the
+// department-default lookup for any level none of the candidates reach.
+const resolveUnionEscalationChain = async (l1UserIds = [], fallback = {}) => {
+  const uniqueIds = Array.from(new Set((l1UserIds || []).filter(Boolean)));
+  const chains = await Promise.all(uniqueIds.map((id) => getManagerChain(id)));
+
+  const byLevel = { L2: new Set(), L3: new Set(), L4: new Set(), L5: new Set() };
+  chains.forEach((chain) => {
+    chain.forEach((manager) => {
+      if (byLevel[manager.level]) byLevel[manager.level].add(manager.id);
+    });
+  });
+
+  const [l2Default, l3Default, l4Default, l5Default] = await Promise.all([
+    byLevel.L2.size ? null : (fallback.l2 && fallback.l2.length ? fallback.l2 : getL2ApproverIds([], { useDefault: true })),
+    byLevel.L3.size ? null : (fallback.l3 && fallback.l3.length ? fallback.l3 : getL3ApproverIds([], { useDefault: true })),
+    byLevel.L4.size ? null : (fallback.l4 && fallback.l4.length ? fallback.l4 : getL4ApproverIds([], { useDefault: true })),
+    byLevel.L5.size ? null : (fallback.l5 && fallback.l5.length ? fallback.l5 : getL5ApproverIds([], { useDefault: true })),
+  ]);
+
+  return {
+    l2: byLevel.L2.size ? Array.from(byLevel.L2) : l2Default,
+    l3: byLevel.L3.size ? Array.from(byLevel.L3) : l3Default,
+    l4: byLevel.L4.size ? Array.from(byLevel.L4) : l4Default,
+    l5: byLevel.L5.size ? Array.from(byLevel.L5) : l5Default,
+  };
+};
+
 // The 7 sub-departments / 10 notebooks tracked by PP Batch Completion, and the
 // underlying table each notebook's submissions actually land in. entry_id here
 // is the shared "PP-000N" id stamped across every department's PP screen —
 // a batch is "complete" once all 10 of these have a row for the same entry_id.
 const PP_BATCH_NOTEBOOKS = [
-  { sub_department: 'Mixing', notebook: 'Mixing QC Header', label: 'Mixing QC Header', schema: 'mixing', table: 'mixing_qc_header', hasOperator: true },
-  { sub_department: 'Carding', notebook: 'Carding QC Header', label: 'Carding QC Header', schema: 'carding', table: 'carding_qc_header', hasOperator: false },
-  { sub_department: 'Blowroom', notebook: 'Blowroom Header', label: 'Blowroom Header', schema: 'blowroom', table: 'blowroom_header', hasOperator: false },
-  { sub_department: 'Drawframe', notebook: 'Drawframe QC Header', label: 'PP-Breaker', schema: 'drawframe', table: 'drawframe_qc_header', hasOperator: true },
-  { sub_department: 'Drawframe', notebook: 'Drawframe Finisher Drawing Inspection', label: 'PP-Finisher', schema: 'drawframe', table: 'finisher_drawing_inspection', hasOperator: false },
+  { sub_department: 'Mixing', notebook: 'Mixing QC Header', label: 'Mixing Process Parameter', schema: 'mixing', table: 'mixing_qc_header', hasOperator: true },
+  { sub_department: 'Carding', notebook: 'Carding QC Header', label: 'Carding Process Parameter', schema: 'carding', table: 'carding_qc_header', hasOperator: false },
+  { sub_department: 'Blowroom', notebook: 'Blowroom Header', label: 'Blowroom Process Parameter', schema: 'blowroom', table: 'blowroom_header', hasOperator: false },
+  // Breaker and Finisher both save into this same table (POST /drawframe/header,
+  // told apart by entry_scope) - drawframe.finisher_drawing_inspection is a dead
+  // table with no frontend caller (its API functions in apis/draw-frame.js are
+  // never imported anywhere), so checking it here always read as "never
+  // submitted" even when Finisher genuinely was. Both rows need their own
+  // entry_scope filter, or either one alone would satisfy both labels.
+  { sub_department: 'Drawframe', notebook: 'Drawframe QC Header', label: 'Drawframe Process Parameter (Breaker)', schema: 'drawframe', table: 'drawframe_qc_header', hasOperator: true, extraWhere: "AND entry_scope = 'breaker'" },
+  { sub_department: 'Drawframe', notebook: 'Drawframe QC Header', label: 'Drawframe Process Parameter (Finisher)', schema: 'drawframe', table: 'drawframe_qc_header', hasOperator: false, extraWhere: "AND entry_scope = 'finisher'" },
   { sub_department: 'Simplex', notebook: 'Simplex Process Parameter', label: 'Simplex Process Parameter', schema: 'simplex', table: 'simplex_process_parameter', hasOperator: false },
-  { sub_department: 'Spinning', notebook: 'Spinning QC Header', label: 'Spinning QC Header', schema: 'spinning', table: 'spinning_qc_header', hasOperator: false },
+  { sub_department: 'Spinning', notebook: 'Spinning QC Header', label: 'Spinning Process Parameter', schema: 'spinning', table: 'spinning_qc_header', hasOperator: false },
   { sub_department: 'Autoconer', notebook: 'Autoconer Process Parameter', label: 'Autoconer Process Parameter', schema: 'autoconer', table: 'autoconer_process_parameter', hasOperator: false },
-  { sub_department: 'Autoconer', notebook: 'Autoconer Q2 Inspection', label: 'Autoconer Q2 Inspection', schema: 'autoconer', table: 'autoconer_q2_inspection', hasOperator: false },
-  { sub_department: 'Autoconer', notebook: 'Autoconer Q3 Inspection', label: 'Autoconer Q3 Inspection', schema: 'autoconer', table: 'autoconer_q3_inspection', hasOperator: false },
-  { sub_department: 'Autoconer', notebook: 'Autoconer Q4 Inspection', label: 'Autoconer Q4 Inspection', schema: 'autoconer', table: 'autoconer_q4_inspection', hasOperator: false }
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q2 Inspection', label: 'Autoconer Process Parameter (Q2)', schema: 'autoconer', table: 'autoconer_q2_inspection', hasOperator: false },
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q3 Inspection', label: 'Autoconer Process Parameter (Q3)', schema: 'autoconer', table: 'autoconer_q3_inspection', hasOperator: false },
+  { sub_department: 'Autoconer', notebook: 'Autoconer Q4 Inspection', label: 'Autoconer Process Parameter (Q4)', schema: 'autoconer', table: 'autoconer_q4_inspection', hasOperator: false }
 ];
 
 const ensurePpBatchConfigTable = async () => {
@@ -146,21 +254,140 @@ const ensurePpBatchConfigTable = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // L3/L4/L5 escalation tiers - a PP_BATCH_INCOMPLETE ticket escalates
+  // L2 -> L3 -> L4 -> L5 as each tier's TAT elapses (see
+  // escalatePpBatchTickets below), mirroring the existing L2 step.
+  await client.query(`
+    ALTER TABLE ticketing_system.pp_batch_config
+      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS approval_l3_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      ADD COLUMN IF NOT EXISTS approval_l5_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[]
+  `);
+};
+
+// Per-PDF spec: PP Threshold config is "Multiple Sub-Department Rows: each
+// participating sub-department is listed as a separate row... each with its
+// own individual TAT", timed from the first department's submission - not
+// one global TAT shared by every department. This table holds that per-row
+// override; pp_batch_config.completion_threshold_hours remains the fallback
+// for any sub-department without its own row.
+const ensurePpBatchSubDepartmentConfigTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.pp_batch_sub_department_config (
+      sub_department TEXT PRIMARY KEY,
+      completion_threshold_hours INTEGER NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+};
+
+const getPpBatchSubDepartmentThresholds = async () => {
+  await ensurePpBatchSubDepartmentConfigTable();
+  const result = await client.query(
+    `SELECT sub_department, completion_threshold_hours, updated_at
+     FROM ticketing_system.pp_batch_sub_department_config`
+  );
+  const bySubDepartment = new Map();
+  for (const row of result.rows) {
+    bySubDepartment.set(row.sub_department, Number(row.completion_threshold_hours));
+  }
+  return bySubDepartment;
+};
+
+const PP_BATCH_LABEL_TO_SUB_DEPARTMENT = PP_BATCH_NOTEBOOKS.reduce((map, notebookConfig) => {
+  map[notebookConfig.label] = notebookConfig.sub_department;
+  return map;
+}, {});
+
+// Finest-grained PP Threshold config: per-notebook TAT plus the specific L1
+// user(s) responsible and L2 escalation approver(s) for that notebook -
+// overrides the per-sub-department TAT and the global candidate pool when
+// set for a given notebook. Falls back to sub-department, then global, when
+// a notebook has no row (or is inactive).
+const ensurePpNotebookThresholdTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.pp_notebook_threshold (
+      id BIGSERIAL PRIMARY KEY,
+      notebook_label TEXT UNIQUE NOT NULL,
+      completion_threshold_hours INTEGER NOT NULL,
+      approval_l1_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      approval_l2_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Combined PP Threshold + PP Approval config per notebook: department/
+  // sub_department are informational (filters on the config screen),
+  // severity tags the raised ticket, and approval_l4_user_ids/
+  // approve_within_hours drive the PP Approval ticket (createPpApprovalTicket
+  // in processParameters.js) when this notebook's department is the one that
+  // completes a shared PP entry_id last.
+  await client.query(`
+    ALTER TABLE ticketing_system.pp_notebook_threshold
+      ADD COLUMN IF NOT EXISTS department TEXT NULL,
+      ADD COLUMN IF NOT EXISTS sub_department TEXT NULL,
+      ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'High',
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      ADD COLUMN IF NOT EXISTS approve_within_hours INTEGER NULL
+  `);
+  // Notebook labels were renamed to "X Process Parameter" style - carry any
+  // already-configured rows (saved under the old labels) over to the new
+  // ones so they don't silently become invisible/orphaned.
+  const LEGACY_LABEL_RENAMES = {
+    'Mixing QC Header': 'Mixing Process Parameter',
+    'Carding QC Header': 'Carding Process Parameter',
+    'Blowroom Header': 'Blowroom Process Parameter',
+    'PP-Breaker': 'Drawframe Process Parameter (Breaker)',
+    'PP-Finisher': 'Drawframe Process Parameter (Finisher)',
+    'Spinning QC Header': 'Spinning Process Parameter',
+    'Autoconer Q2 Inspection': 'Autoconer Process Parameter (Q2)',
+    'Autoconer Q3 Inspection': 'Autoconer Process Parameter (Q3)',
+    'Autoconer Q4 Inspection': 'Autoconer Process Parameter (Q4)',
+  };
+  for (const [oldLabel, newLabel] of Object.entries(LEGACY_LABEL_RENAMES)) {
+    // eslint-disable-next-line no-await-in-loop
+    await client.query(
+      `UPDATE ticketing_system.pp_notebook_threshold SET notebook_label = $2, updated_at = NOW()
+       WHERE notebook_label = $1
+         AND NOT EXISTS (SELECT 1 FROM ticketing_system.pp_notebook_threshold WHERE notebook_label = $2)`,
+      [oldLabel, newLabel]
+    );
+  }
+};
+
+const getPpNotebookThresholds = async () => {
+  await ensurePpNotebookThresholdTable();
+  const result = await client.query(
+    `SELECT * FROM ticketing_system.pp_notebook_threshold WHERE is_active = true`
+  );
+  const byLabel = new Map();
+  for (const row of result.rows) {
+    byLabel.set(row.notebook_label, row);
+  }
+  return byLabel;
 };
 
 const getPpBatchConfig = async () => {
   await ensurePpBatchConfigTable();
   const result = await client.query(
-    `SELECT config_key, completion_threshold_hours, l2_tat_hours, approval_l1_user_ids, approval_l2_user_ids, is_active, updated_at
-     FROM ticketing_system.pp_batch_config
-     WHERE config_key = 'global'`
+    `SELECT * FROM ticketing_system.pp_batch_config WHERE config_key = 'global'`
   );
   return result.rows[0] || {
     config_key: 'global',
     completion_threshold_hours: 24,
     l2_tat_hours: null,
+    l3_tat_hours: null,
+    l4_tat_hours: null,
+    l5_tat_hours: null,
     approval_l1_user_ids: [],
     approval_l2_user_ids: [],
+    approval_l3_user_ids: [],
+    approval_l4_user_ids: [],
+    approval_l5_user_ids: [],
     is_active: true,
     updated_at: null
   };
@@ -208,22 +435,31 @@ const getPpBatchSubDepartments = async () => {
 // screen) and files a PP_BATCH_INCOMPLETE ticket for each, then expires any
 // already-open PP_BATCH_INCOMPLETE ticket whose L2 TAT has elapsed.
 const runPpBatchCompletionCheck = async () => {
+  await ensureTicketApprovalColumnsForBatchCheck();
   const config = await getPpBatchConfig();
 
   if (config.is_active === false) {
     return { created: [], expired: [] };
   }
 
-  const completionThresholdHours = Number(config.completion_threshold_hours) > 0
+  const defaultCompletionThresholdHours = Number(config.completion_threshold_hours) > 0
     ? Number(config.completion_threshold_hours)
     : 24;
-  const l2TatHours = Number(config.l2_tat_hours) > 0 ? Number(config.l2_tat_hours) : null;
+  const subDepartmentThresholds = await getPpBatchSubDepartmentThresholds();
+  const notebookThresholds = await getPpNotebookThresholds();
+  const getCompletionThresholdHoursForLabel = (label) => {
+    const notebookRow = notebookThresholds.get(label);
+    if (Number(notebookRow?.completion_threshold_hours) > 0) return Number(notebookRow.completion_threshold_hours);
+    const subDepartment = PP_BATCH_LABEL_TO_SUB_DEPARTMENT[label];
+    const perSubDepartmentHours = subDepartmentThresholds.get(subDepartment);
+    return Number(perSubDepartmentHours) > 0 ? Number(perSubDepartmentHours) : defaultCompletionThresholdHours;
+  };
 
   const unionSelects = PP_BATCH_NOTEBOOKS.map(
     (notebookConfig) =>
       `SELECT entry_id, created_at, '${notebookConfig.label.replace(/'/g, "''")}' AS notebook_label
        FROM ${notebookConfig.schema}.${notebookConfig.table}
-       WHERE entry_id IS NOT NULL AND TRIM(entry_id) <> ''`
+       WHERE entry_id IS NOT NULL AND TRIM(entry_id) <> '' ${notebookConfig.extraWhere || ''}`
   ).join('\nUNION ALL\n');
 
   const grouped = await client.query(`
@@ -237,6 +473,15 @@ const runPpBatchCompletionCheck = async () => {
   const allLabels = PP_BATCH_NOTEBOOKS.map((notebookConfig) => notebookConfig.label);
   const created = [];
 
+  // Base pool of L1 users considered responsible for a missing screen -
+  // there's no per-department L1 assignment stored yet (that needs the PP
+  // Threshold config screen from the PDF's Phase 5), so every missing
+  // screen for now shares this same candidate pool. Once that config screen
+  // exists, this should be looked up per notebookConfig instead.
+  const configuredL1UserIds = (Array.isArray(config.approval_l1_user_ids) && config.approval_l1_user_ids.length)
+    ? config.approval_l1_user_ids
+    : await getL1ApproverIds([], { useDefault: true });
+
   for (const row of grouped.rows) {
     const completedScreens = Array.isArray(row.completed_screens) ? row.completed_screens : [];
     const missingScreens = allLabels.filter((label) => !completedScreens.includes(label));
@@ -244,90 +489,97 @@ const runPpBatchCompletionCheck = async () => {
 
     const firstCreatedAt = new Date(row.first_created_at);
     const hoursElapsed = (Date.now() - firstCreatedAt.getTime()) / (1000 * 60 * 60);
-    if (hoursElapsed < completionThresholdHours) continue;
 
-    const existing = await client.query(
-      `SELECT ticket_id
-       FROM ticketing_system.operator_tickets
-       WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
-         AND (violation_details->>'entry_id') = $1
-         AND status <> 'Closed'
-       LIMIT 1`,
-      [row.entry_id]
-    );
-    if (existing.rows[0]?.ticket_id) continue;
+    // PDF Step 3 (Process Parameter Threshold): "For each department whose L1
+    // user has not submitted within the TAT, the system raises an individual
+    // ticket on that specific L1 user. Tickets are raised per user, not per
+    // PP ID." - one ticket per missing department/notebook for this entry_id,
+    // each governed by that sub-department's own configured TAT.
+    for (const missingLabel of missingScreens) {
+      const completionThresholdHours = getCompletionThresholdHoursForLabel(missingLabel);
+      if (hoursElapsed < completionThresholdHours) continue;
 
-    const approvalL1UserIds = (Array.isArray(config.approval_l1_user_ids) && config.approval_l1_user_ids.length)
-      ? config.approval_l1_user_ids
-      : await getL1ApproverIds([], { useDefault: true });
-    const approvalL2UserIds = (Array.isArray(config.approval_l2_user_ids) && config.approval_l2_user_ids.length)
-      ? config.approval_l2_user_ids
-      : await getL2ApproverIds([], { useDefault: true });
+      // Guards against ever raising a second open ticket for the same
+      // (entry_id, missing_screen) pair - this is the actual duplicate
+      // prevention the "only one ticket per PP ID/department" request needs.
+      const existing = await client.query(
+        `SELECT ticket_id
+         FROM ticketing_system.operator_tickets
+         WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
+           AND (violation_details->>'entry_id') = $1
+           AND (violation_details->>'missing_screen') = $2
+           AND status <> 'Closed'
+         LIMIT 1`,
+        [row.entry_id, missingLabel]
+      );
+      if (existing.rows[0]?.ticket_id) continue;
 
-    const violationDetails = {
-      category: 'MISSED_FREQUENCY',
-      ticket_type: 'PP_BATCH_INCOMPLETE',
-      entry_id: row.entry_id,
-      first_created_at: row.first_created_at,
-      completion_threshold_hours: completionThresholdHours,
-      completed_screens: completedScreens,
-      missing_screens: missingScreens,
-      message: `Process Parameter ${row.entry_id} was not completed by L1 within ${completionThresholdHours} hour(s). Missing: ${missingScreens.join(', ')}.`
-    };
+      const notebookRow = notebookThresholds.get(missingLabel);
+      const approvalL1UserIds = (Array.isArray(notebookRow?.approval_l1_user_ids) && notebookRow.approval_l1_user_ids.length)
+        ? notebookRow.approval_l1_user_ids
+        : configuredL1UserIds;
 
-    const l2TatDueAt = l2TatHours ? new Date(Date.now() + l2TatHours * 60 * 60 * 1000).toISOString() : null;
+      const violationDetails = {
+        category: 'MISSED_FREQUENCY',
+        ticket_type: 'PP_BATCH_INCOMPLETE',
+        entry_id: row.entry_id,
+        first_created_at: row.first_created_at,
+        completion_threshold_hours: completionThresholdHours,
+        completed_screens: completedScreens,
+        missing_screens: missingScreens,
+        missing_screen: missingLabel,
+        message: `Process Parameter ${row.entry_id} was not completed within ${completionThresholdHours} hour(s). Missing: ${missingLabel}.`
+      };
 
-    const ticket = await client.query(
-      `INSERT INTO ticketing_system.operator_tickets
-       (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
-        severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
-        violation_details, approval_l1_user_ids, approval_l2_user_ids, tat_current_level, l2_tat_due_at)
-       VALUES (
-         'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
-         $1, $2::jsonb, $3::jsonb, $4::jsonb,
-         'High', 'In Progress', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
-         $5::jsonb, $6::int[], $7::int[], 'L2', $8
-       )
-       RETURNING *`,
-      [
-        row.entry_id,
-        toJson(missingScreens, []),
-        toJson(completedScreens, []),
-        toJson({ completion_threshold_hours: completionThresholdHours }, {}),
-        toJson(violationDetails, {}),
-        approvalL1UserIds,
-        approvalL2UserIds,
-        l2TatDueAt
-      ]
-    );
+      const ticketSeverity = notebookRow?.severity || 'High';
 
-    const inserted = ticket.rows[0];
-    created.push(inserted);
+      // PP Entry Threshold (per the ticket-type spec table) is a flat, L1-only
+      // ticket - raised on L1 and resolved by L1 fixing/resubmitting the
+      // missing entry, with no L2/L3/L4/L5 escalation chain and no visibility
+      // to any other level's dashboard. The separate PP Approval ticket (see
+      // createPpApprovalTicket in processParameters.js) is what actually goes
+      // to L4, and only fires once every department's entry is in.
+      const ticket = await client.query(
+        `INSERT INTO ticketing_system.operator_tickets
+         (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+          severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+          violation_details, approval_l1_user_ids, tat_current_level)
+         VALUES (
+           'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+           $1, $2::jsonb, $3::jsonb, $4::jsonb,
+           $7, 'In Progress', NOW(), 'MISSING_VALUE', 'PP_BATCH_INCOMPLETE', 'pp_batch',
+           $5::jsonb, $6::int[], 'L1'
+         )
+         RETURNING *`,
+        [
+          row.entry_id,
+          toJson([missingLabel], []),
+          toJson(completedScreens, []),
+          toJson({ completion_threshold_hours: completionThresholdHours }, {}),
+          toJson(violationDetails, {}),
+          approvalL1UserIds,
+          ticketSeverity
+        ]
+      );
 
-    await createNotificationsForUsers([...approvalL1UserIds, ...approvalL2UserIds], {
-      ticketId: inserted.ticket_id,
-      type: 'PP_BATCH_INCOMPLETE',
-      category: 'Tickets',
-      priority: 'High',
-      title: `PP batch incomplete: ${row.entry_id}`,
-      body: violationDetails.message,
-      linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
-      payload: { ticket_id: inserted.ticket_id, entry_id: row.entry_id }
-    });
+      const inserted = ticket.rows[0];
+      created.push(inserted);
+
+      await createNotificationsForUsers(approvalL1UserIds, {
+        ticketId: inserted.ticket_id,
+        type: 'PP_BATCH_INCOMPLETE',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L1), PP entry ${row.entry_id} needs your action`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L1) - ${missingLabel} for PP entry ${row.entry_id} was not submitted within ${completionThresholdHours} hour(s). Please fix and resubmit it.`,
+        linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
+        payload: { ticket_id: inserted.ticket_id, entry_id: row.entry_id }
+      });
+    }
   }
 
-  const expiredResult = await client.query(
-    `UPDATE ticketing_system.operator_tickets
-     SET tat_current_level = 'EXPIRED_L2'
-     WHERE (violation_details->>'ticket_type') = 'PP_BATCH_INCOMPLETE'
-       AND tat_current_level = 'L2'
-       AND l2_tat_due_at IS NOT NULL
-       AND l2_tat_due_at <= NOW()
-       AND status <> 'Closed'
-     RETURNING *`
-  );
-
-  return { created, expired: expiredResult.rows };
+  return { created, expired: [] };
 };
 
 const ensureSubmittedNotebookTables = async () => {
@@ -379,6 +631,8 @@ const ensureSubmittedNotebookTables = async () => {
       ADD COLUMN IF NOT EXISTS submitted_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS l2_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
       ADD COLUMN IF NOT EXISTS l3_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
+      ADD COLUMN IF NOT EXISTS l4_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
+      ADD COLUMN IF NOT EXISTS l5_approver_user_ids integer[] NOT NULL DEFAULT ARRAY[]::integer[],
       ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PENDING_ACK',
       ADD COLUMN IF NOT EXISTS submitted_at timestamptz NOT NULL DEFAULT NOW(),
       ADD COLUMN IF NOT EXISTS ack_due_at timestamptz NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
@@ -500,7 +754,15 @@ const ensureAcknowledgementThresholdTable = async () => {
       ADD COLUMN IF NOT EXISTS approval_l2 TEXT NULL,
       ADD COLUMN IF NOT EXISTS approval_l2_name TEXT NULL,
       ADD COLUMN IF NOT EXISTS approval_l3 TEXT NULL,
-      ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL
+      ADD COLUMN IF NOT EXISTS approval_l3_name TEXT NULL,
+      ADD COLUMN IF NOT EXISTS approval_l4 TEXT NULL,
+      ADD COLUMN IF NOT EXISTS approval_l4_name TEXT NULL,
+      ADD COLUMN IF NOT EXISTS approval_l5 TEXT NULL,
+      ADD COLUMN IF NOT EXISTS approval_l5_name TEXT NULL,
+      ADD COLUMN IF NOT EXISTS l3_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS l4_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS l5_tat_hours INTEGER NULL,
+      ADD COLUMN IF NOT EXISTS criticality TEXT NOT NULL DEFAULT 'High'
   `);
   await client.query(`
     DELETE FROM ticketing_system.notebook_acknowledgement_threshold t
@@ -588,7 +850,10 @@ const getSubmissionFrequencyConfigForThreshold = async ({ screenName, department
 const getAcknowledgementThresholdForNotebook = async (submission) => {
   await ensureAcknowledgementThresholdTable();
   const result = await client.query(
-    `SELECT id, screen_name, department, sub_department, acknowledge_within_hours, approval_l2, approval_l2_name, approval_l3, approval_l3_name
+    `SELECT id, screen_name, department, sub_department, acknowledge_within_hours,
+            approval_l2, approval_l2_name, approval_l3, approval_l3_name,
+            approval_l4, approval_l4_name, approval_l5, approval_l5_name,
+            l3_tat_hours, l4_tat_hours, l5_tat_hours, criticality
      FROM ticketing_system.notebook_acknowledgement_threshold
      WHERE is_active = true
        AND LOWER(TRIM(screen_name)) = LOWER(TRIM($1))
@@ -682,11 +947,24 @@ const recordPpNotebookSubmission = async ({
   return result.rows[0];
 };
 
-const canViewSubmission = (req, row) => {
+const isAdminRequester = (req) => {
   const role = String(req.user?.role || '').trim().toLowerCase();
-  const requesterId = parsePositiveInt(req.user?.id);
   const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-  if (role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001') return true;
+  return role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+};
+
+const getRequesterLevel = (req) => String(req.user?.level || '').trim().toUpperCase();
+
+const hasHierarchyLevel = (req) => ['L1', 'L2', 'L3', 'L4', 'L5'].includes(getRequesterLevel(req));
+
+// Approval itself is restricted to L4/L5 - viewing (canViewSubmission /
+// GET list's canViewAll below) is open to the whole L1-L5 hierarchy.
+const canApproveSubmission = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
+
+const canViewSubmission = (req, row) => {
+  if (isAdminRequester(req)) return true;
+  if (hasHierarchyLevel(req)) return true;
+  const requesterId = parsePositiveInt(req.user?.id);
   if (!requesterId) return false;
   if (row.submitted_by_user_id === requesterId) return true;
   return (
@@ -722,6 +1000,7 @@ const createOverdueTicketForSubmission = async () => {
 const generateOverdueNotebookTickets = async () => {
   await ensureSubmittedNotebookTables();
   await ensureNotificationMetadataColumns();
+  await ensureTicketApprovalColumnsForBatchCheck();
 
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS operator_tickets_ack_notebook_submission_uq
@@ -772,12 +1051,31 @@ const generateOverdueNotebookTickets = async () => {
       continue;
     }
 
-    const l2ApproverIds = (Array.isArray(submission.l2_approver_user_ids) && submission.l2_approver_user_ids.length)
-      ? submission.l2_approver_user_ids
-      : await getL2ApproverIds([], { useDefault: true });
-    const l3ApproverIds = (Array.isArray(submission.l3_approver_user_ids) && submission.l3_approver_user_ids.length)
-      ? submission.l3_approver_user_ids
-      : await getL3ApproverIds([], { useDefault: true });
+    const acknowledgementThreshold = await getAcknowledgementThresholdForNotebook(submission);
+
+    // Acknowledgement Threshold is a flat, L4-only ticket - raised once L1
+    // submits and resolved by L4 acknowledging it (L2/L3 have no approval
+    // role per the current hierarchy design), with no further escalation and
+    // no visibility to any other level's dashboard. The screen's
+    // manually-picked L4 approver takes priority when configured; the
+    // submitter's real L4 manager is the fallback, and the submission's own
+    // approver columns (still the legacy l2_approver_user_ids column, now
+    // populated with the resolved L4 id(s) - see POST /) / department
+    // default are the last resort.
+    const resolvedChain = await resolveEscalationChainForSubmitter(submission.submitted_by_user_id);
+    const manualL4Ids = acknowledgementThreshold?.approval_l4
+      ? String(acknowledgementThreshold.approval_l4)
+          .split(',')
+          .map((value) => parseInt(value.trim(), 10))
+          .filter((value) => Number.isInteger(value) && value > 0)
+      : [];
+    const l2ApproverIds = manualL4Ids.length
+      ? manualL4Ids
+      : resolvedChain.l4.length
+        ? resolvedChain.l4
+        : (Array.isArray(submission.l2_approver_user_ids) && submission.l2_approver_user_ids.length)
+          ? submission.l2_approver_user_ids
+          : await getL4ApproverIds([], { useDefault: true });
     const violationDetails = {
       category: 'MISSED_FREQUENCY',
       ticket_type: 'NOTEBOOK_ACK_OVERDUE',
@@ -792,12 +1090,12 @@ const generateOverdueNotebookTickets = async () => {
       `INSERT INTO ticketing_system.operator_tickets
        (ticket_id, user_id, user_name, machine_name, parameter_name, actual_value, threshold_value,
         severity, status, created_at, management_field, erp_product_code, ticket_reason, ticket_type,
-        violation_details, approval_l2_user_ids, approval_l3_user_ids, tat_current_level, l2_tat_due_at, l3_tat_due_at)
+        violation_details, approval_l4_user_ids, tat_current_level)
        VALUES (
          'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
          $1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb,
-         'High', 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
-         $9::jsonb, $10::int[], $11::int[], 'L2', NOW(), NULL
+         $11, 'In Progress', NOW(), $7, $8, 'MISSING_VALUE', 'REVIEW',
+         $9::jsonb, $10::int[], 'L4'
        )
        RETURNING *`,
       [
@@ -811,7 +1109,7 @@ const generateOverdueNotebookTickets = async () => {
         submission.sub_department,
         toJson(violationDetails, {}),
         l2ApproverIds,
-        l3ApproverIds
+        acknowledgementThreshold?.criticality || 'High'
       ]
     );
 
@@ -833,22 +1131,22 @@ const generateOverdueNotebookTickets = async () => {
     );
 
     const ackNotebookName = submission.input_screen || submission.notebook;
-    for (const { level, userIds } of [{ level: 'L2', userIds: l2ApproverIds }, { level: 'L3', userIds: l3ApproverIds }]) {
-      if (!Array.isArray(userIds) || !userIds.length) continue;
-      await createNotificationsForUsers(userIds, {
+    if (l2ApproverIds.length) {
+      await createNotificationsForUsers(l2ApproverIds, {
         ticketId: inserted.ticket_id,
         type: 'NOTEBOOK_ACK_OVERDUE',
         category: 'Tickets',
         priority: 'High',
-        title: `Acknowledgement overdue — ${ackNotebookName} (${level})`,
-        body: `${ackNotebookName} is waiting for your ${level} acknowledgement.`,
+        title: (user) => `Hi ${user.full_name || 'there'} (L4), ${ackNotebookName} needs your acknowledgement`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L4) - ${ackNotebookName} was due for acknowledgement by ${new Date(submission.ack_due_at).toLocaleString()} and is now overdue. Please acknowledge it.`,
         linkUrl: `/supervisor-tickets/${inserted.ticket_id}`,
         payload: {
           ticket_id: inserted.ticket_id,
           submitted_notebook_id: submission.id,
           notebook_submission_id: submission.notebook_submission_id,
           action_type: 'ACKNOWLEDGE_ONLY',
-          level
+          level: 'L4'
         }
       });
     }
@@ -856,7 +1154,9 @@ const generateOverdueNotebookTickets = async () => {
     created.push(inserted);
   }
 
-  return created;
+  // Acknowledgement Threshold is a flat, L4-only ticket - it does not
+  // escalate further.
+  return { created, escalated: [] };
 };
 
 router.use(auth);
@@ -877,27 +1177,26 @@ router.post('/acknowledgement-thresholds', async (req, res, next) => {
       });
     }
 
+    // The Acknowledgement Threshold screen configures Department/Sub
+    // Department/Notebook/Criticality/L2/Approved-Within on its own now, so
+    // it no longer requires a Submission Threshold row to already exist -
+    // that link is still surfaced (if one happens to exist) purely for
+    // reference on the response.
     const submissionThreshold = await getSubmissionFrequencyConfigForThreshold({
       screenName,
       department,
       subDepartment
     });
 
-    if (!submissionThreshold) {
-      return res.status(400).json({
-        message: 'Create a submission threshold first before creating an acknowledgement threshold',
-        required_submission_threshold: {
-          screen_name: screenName,
-          department,
-          sub_department: subDepartment
-        }
-      });
-    }
+    const criticality = cleanText(req.body?.criticality) || 'High';
 
     const result = await client.query(
       `INSERT INTO ticketing_system.notebook_acknowledgement_threshold
-       (screen_name, department, sub_department, acknowledge_within_hours, is_active, approval_l2, approval_l2_name, approval_l3, approval_l3_name, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       (screen_name, department, sub_department, acknowledge_within_hours, is_active,
+        approval_l2, approval_l2_name, approval_l3, approval_l3_name,
+        approval_l4, approval_l4_name, approval_l5, approval_l5_name,
+        l3_tat_hours, l4_tat_hours, l5_tat_hours, criticality, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
        ON CONFLICT (screen_name, department, sub_department)
        DO UPDATE SET
          acknowledge_within_hours = EXCLUDED.acknowledge_within_hours,
@@ -906,6 +1205,14 @@ router.post('/acknowledgement-thresholds', async (req, res, next) => {
          approval_l2_name = EXCLUDED.approval_l2_name,
          approval_l3 = EXCLUDED.approval_l3,
          approval_l3_name = EXCLUDED.approval_l3_name,
+         approval_l4 = EXCLUDED.approval_l4,
+         approval_l4_name = EXCLUDED.approval_l4_name,
+         approval_l5 = EXCLUDED.approval_l5,
+         approval_l5_name = EXCLUDED.approval_l5_name,
+         l3_tat_hours = EXCLUDED.l3_tat_hours,
+         l4_tat_hours = EXCLUDED.l4_tat_hours,
+         l5_tat_hours = EXCLUDED.l5_tat_hours,
+         criticality = EXCLUDED.criticality,
          updated_at = NOW()
        RETURNING *`,
       [
@@ -917,7 +1224,15 @@ router.post('/acknowledgement-thresholds', async (req, res, next) => {
         cleanText(req.body?.approval_l2),
         cleanText(req.body?.approval_l2_name),
         cleanText(req.body?.approval_l3),
-        cleanText(req.body?.approval_l3_name)
+        cleanText(req.body?.approval_l3_name),
+        cleanText(req.body?.approval_l4),
+        cleanText(req.body?.approval_l4_name),
+        cleanText(req.body?.approval_l5),
+        cleanText(req.body?.approval_l5_name),
+        parseTatHours(req.body?.l3_tat_hours) || null,
+        parseTatHours(req.body?.l4_tat_hours) || null,
+        parseTatHours(req.body?.l5_tat_hours) || null,
+        criticality
       ]
     );
 
@@ -936,7 +1251,9 @@ router.get('/acknowledgement-thresholds', async (req, res, next) => {
     await ensureAcknowledgementThresholdTable();
     const result = await client.query(
       `SELECT id, screen_name, department, sub_department, acknowledge_within_hours,
-              is_active, approval_l2, approval_l2_name, approval_l3, approval_l3_name, created_at, updated_at
+              is_active, approval_l2, approval_l2_name, approval_l3, approval_l3_name,
+              approval_l4, approval_l4_name, approval_l5, approval_l5_name,
+              l3_tat_hours, l4_tat_hours, l5_tat_hours, criticality, created_at, updated_at
        FROM ticketing_system.notebook_acknowledgement_threshold
        ORDER BY screen_name, department NULLS FIRST, sub_department NULLS FIRST`
     );
@@ -954,7 +1271,158 @@ router.get('/pp-batch-config', async (req, res, next) => {
   try {
     const config = await getPpBatchConfig();
     const subDepartments = await getPpBatchSubDepartments();
-    return res.status(200).json({ config, sub_departments: subDepartments });
+    const subDepartmentThresholds = await getPpBatchSubDepartmentThresholds();
+    const subDepartmentNames = [...new Set(PP_BATCH_NOTEBOOKS.map((notebookConfig) => notebookConfig.sub_department))];
+    const subDepartmentTat = subDepartmentNames.map((subDepartment) => ({
+      sub_department: subDepartment,
+      completion_threshold_hours:
+        subDepartmentThresholds.get(subDepartment) ?? config.completion_threshold_hours
+    }));
+    return res.status(200).json({ config, sub_departments: subDepartments, sub_department_tat: subDepartmentTat });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Per-PDF spec: each participating sub-department has its own TAT row,
+// separate from the global fallback in POST /pp-batch-config.
+router.post('/pp-batch-config/sub-department-tat', async (req, res, next) => {
+  try {
+    await ensurePpBatchSubDepartmentConfigTable();
+
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [req.body];
+    const saved = [];
+
+    for (const row of rows) {
+      const subDepartment = cleanText(row?.sub_department);
+      const completionThresholdHours = parseTatHours(row?.completion_threshold_hours);
+      if (!subDepartment || !completionThresholdHours) {
+        return res.status(400).json({
+          message: 'sub_department and a positive completion_threshold_hours are required for each row'
+        });
+      }
+
+      // eslint-disable-next-line no-await-in-loop
+      const result = await client.query(
+        `INSERT INTO ticketing_system.pp_batch_sub_department_config
+         (sub_department, completion_threshold_hours, updated_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (sub_department)
+         DO UPDATE SET completion_threshold_hours = EXCLUDED.completion_threshold_hours, updated_at = NOW()
+         RETURNING *`,
+        [subDepartment, completionThresholdHours]
+      );
+      saved.push(result.rows[0]);
+    }
+
+    return res.status(200).json({ message: 'Sub-department TAT saved successfully', rows: saved });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Per-PDF spec (finest grain): one row per PP notebook, each with its own
+// TAT, responsible L1 user(s), and L2 escalation approver(s) - overrides the
+// sub-department and global config for that specific notebook.
+router.get('/pp-notebook-threshold', async (req, res, next) => {
+  try {
+    await ensurePpNotebookThresholdTable();
+    const result = await client.query(
+      `SELECT * FROM ticketing_system.pp_notebook_threshold ORDER BY notebook_label`
+    );
+    return res.status(200).json({ rows: result.rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/pp-notebook-threshold', async (req, res, next) => {
+  try {
+    await ensurePpNotebookThresholdTable();
+
+    const notebookLabel = cleanText(req.body?.notebook_label);
+    if (!notebookLabel) {
+      return res.status(400).json({ message: 'notebook_label is required' });
+    }
+    const isValidLabel = PP_BATCH_NOTEBOOKS.some((notebookConfig) => notebookConfig.label === notebookLabel);
+    if (!isValidLabel) {
+      return res.status(400).json({ message: 'notebook_label is not a recognized PP notebook' });
+    }
+
+    const completionThresholdHours = parseTatHours(req.body?.completion_threshold_hours);
+    if (!completionThresholdHours) {
+      return res.status(400).json({ message: 'completion_threshold_hours must be a positive integer' });
+    }
+
+    const toUserIdArray = (value) =>
+      toArray(value).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0);
+    const approvalL1UserIds = toUserIdArray(req.body?.approval_l1_user_ids);
+    const approvalL2UserIds = toUserIdArray(req.body?.approval_l2_user_ids);
+    const approvalL4UserIds = toUserIdArray(req.body?.approval_l4_user_ids);
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+    const department = cleanText(req.body?.department);
+    const subDepartment = cleanText(req.body?.sub_department);
+    const severity = cleanText(req.body?.severity) || 'High';
+    const approveWithinHours = parseTatHours(req.body?.approve_within_hours, null);
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.pp_notebook_threshold
+       (notebook_label, completion_threshold_hours, approval_l1_user_ids, approval_l2_user_ids, is_active,
+        department, sub_department, severity, approval_l4_user_ids, approve_within_hours, updated_at)
+       VALUES ($1, $2, $3::int[], $4::int[], $5, $6, $7, $8, $9::int[], $10, NOW())
+       ON CONFLICT (notebook_label)
+       DO UPDATE SET
+         completion_threshold_hours = EXCLUDED.completion_threshold_hours,
+         approval_l1_user_ids = EXCLUDED.approval_l1_user_ids,
+         approval_l2_user_ids = EXCLUDED.approval_l2_user_ids,
+         is_active = EXCLUDED.is_active,
+         department = EXCLUDED.department,
+         sub_department = EXCLUDED.sub_department,
+         severity = EXCLUDED.severity,
+         approval_l4_user_ids = EXCLUDED.approval_l4_user_ids,
+         approve_within_hours = EXCLUDED.approve_within_hours,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        notebookLabel, completionThresholdHours, approvalL1UserIds, approvalL2UserIds, isActive,
+        department, subDepartment, severity, approvalL4UserIds, approveWithinHours
+      ]
+    );
+
+    return res.status(200).json({ message: 'PP notebook threshold saved successfully', row: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/pp-notebook-threshold/:id', async (req, res, next) => {
+  try {
+    await ensurePpNotebookThresholdTable();
+    const result = await client.query(
+      `DELETE FROM ticketing_system.pp_notebook_threshold WHERE id = $1 RETURNING id`,
+      [req.params.id]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'PP notebook threshold not found' });
+    }
+    return res.status(200).json({ message: 'PP notebook threshold deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/pp-notebook-threshold/:id/status', async (req, res, next) => {
+  try {
+    await ensurePpNotebookThresholdTable();
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+    const result = await client.query(
+      `UPDATE ticketing_system.pp_notebook_threshold SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [isActive, req.params.id]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'PP notebook threshold not found' });
+    }
+    return res.status(200).json({ message: 'PP notebook threshold status updated successfully', row: result.rows[0] });
   } catch (error) {
     next(error);
   }
@@ -970,28 +1438,44 @@ router.post('/pp-batch-config', async (req, res, next) => {
     }
 
     const l2TatHours = parseTatHours(req.body?.l2_tat_hours, null);
-    const approvalL1UserIds = toArray(req.body?.approval_l1_user_ids)
-      .map((id) => Number(id))
-      .filter((id) => Number.isInteger(id) && id > 0);
-    const approvalL2UserIds = toArray(req.body?.approval_l2_user_ids)
-      .map((id) => Number(id))
-      .filter((id) => Number.isInteger(id) && id > 0);
+    const l3TatHours = parseTatHours(req.body?.l3_tat_hours, null);
+    const l4TatHours = parseTatHours(req.body?.l4_tat_hours, null);
+    const l5TatHours = parseTatHours(req.body?.l5_tat_hours, null);
+    const toUserIdArray = (value) =>
+      toArray(value).map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0);
+    const approvalL1UserIds = toUserIdArray(req.body?.approval_l1_user_ids);
+    const approvalL2UserIds = toUserIdArray(req.body?.approval_l2_user_ids);
+    const approvalL3UserIds = toUserIdArray(req.body?.approval_l3_user_ids);
+    const approvalL4UserIds = toUserIdArray(req.body?.approval_l4_user_ids);
+    const approvalL5UserIds = toUserIdArray(req.body?.approval_l5_user_ids);
     const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
 
     const result = await client.query(
       `INSERT INTO ticketing_system.pp_batch_config
-       (config_key, completion_threshold_hours, l2_tat_hours, approval_l1_user_ids, approval_l2_user_ids, is_active, updated_at)
-       VALUES ('global', $1, $2, $3::int[], $4::int[], $5, NOW())
+       (config_key, completion_threshold_hours, l2_tat_hours, l3_tat_hours, l4_tat_hours, l5_tat_hours,
+        approval_l1_user_ids, approval_l2_user_ids, approval_l3_user_ids, approval_l4_user_ids, approval_l5_user_ids,
+        is_active, updated_at)
+       VALUES ('global', $1, $2, $3, $4, $5, $6::int[], $7::int[], $8::int[], $9::int[], $10::int[], $11, NOW())
        ON CONFLICT (config_key)
        DO UPDATE SET
          completion_threshold_hours = EXCLUDED.completion_threshold_hours,
          l2_tat_hours = EXCLUDED.l2_tat_hours,
+         l3_tat_hours = EXCLUDED.l3_tat_hours,
+         l4_tat_hours = EXCLUDED.l4_tat_hours,
+         l5_tat_hours = EXCLUDED.l5_tat_hours,
          approval_l1_user_ids = EXCLUDED.approval_l1_user_ids,
          approval_l2_user_ids = EXCLUDED.approval_l2_user_ids,
+         approval_l3_user_ids = EXCLUDED.approval_l3_user_ids,
+         approval_l4_user_ids = EXCLUDED.approval_l4_user_ids,
+         approval_l5_user_ids = EXCLUDED.approval_l5_user_ids,
          is_active = EXCLUDED.is_active,
          updated_at = NOW()
        RETURNING *`,
-      [completionThresholdHours, l2TatHours, approvalL1UserIds, approvalL2UserIds, isActive]
+      [
+        completionThresholdHours, l2TatHours, l3TatHours, l4TatHours, l5TatHours,
+        approvalL1UserIds, approvalL2UserIds, approvalL3UserIds, approvalL4UserIds, approvalL5UserIds,
+        isActive
+      ]
     );
 
     return res.status(200).json({ message: 'PP batch config saved successfully', config: result.rows[0] });
@@ -1041,10 +1525,10 @@ router.post('/', async (req, res, next) => {
 
     // Always resolve the per-screen Submission Threshold config (previously only fetched to
     // compute ack_due_at, and only when the caller hadn't already supplied one) — its
-    // approval_l2/approval_l3 columns are the actual "Checked by" assignment configured on the
+    // approval_l4/approval_l3 columns are the actual "Checked by" assignment configured on the
     // Submission Threshold page, and were never being read into l2_approver_user_ids at all, so
-    // every submission's L2 approver stayed an empty array unless the caller happened to pass
-    // one explicitly in the request body.
+    // every submission's approver stayed an empty array unless the caller happened to pass one
+    // explicitly in the request body.
     const { hours: acknowledgementHours, acknowledgementThreshold } = await resolveAcknowledgementDeadlineHours({
       input_screen: cleanText(req.body?.input_screen) || notebook,
       notebook,
@@ -1059,15 +1543,27 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    const l2ApproverUserIds = await getL2ApproverIds(
+    // Notebook approval moved from L2 to L4 - resolved ids still land in the
+    // legacy l2_approver_user_ids column (kept as-is to avoid a schema/data
+    // migration), just populated with the L4 approver's id(s) now instead.
+    // approval_l2_* body/config keys are kept as a fallback for any caller
+    // or already-saved threshold row that hasn't been updated to L4 yet.
+    const l2ApproverUserIds = await getL4ApproverIds(
+      req.body?.l4_approver_user_ids ||
+      req.body?.approval_l4_user_ids ||
+      req.body?.l4_approver_employee_ids ||
+      req.body?.approval_l4_employee_ids ||
+      req.body?.l4_approver_employee_id ||
+      req.body?.approval_l4_employee_id ||
+      req.body?.assigned_l4 ||
       req.body?.l2_approver_user_ids ||
       req.body?.approval_l2_user_ids ||
-      req.body?.l2_approver_employee_ids ||
-      req.body?.approval_l2_employee_ids ||
-      req.body?.l2_approver_employee_id ||
-      req.body?.approval_l2_employee_id ||
       req.body?.assigned_l2 ||
-      (acknowledgementThreshold?.approval_l2 ? acknowledgementThreshold.approval_l2.split(',').map((value) => value.trim()).filter(Boolean) : []) ||
+      (acknowledgementThreshold?.approval_l4
+        ? acknowledgementThreshold.approval_l4.split(',').map((value) => value.trim()).filter(Boolean)
+        : acknowledgementThreshold?.approval_l2
+          ? acknowledgementThreshold.approval_l2.split(',').map((value) => value.trim()).filter(Boolean)
+          : []) ||
       [],
       { useDefault: false }
     );
@@ -1154,9 +1650,10 @@ router.get('/', async (req, res, next) => {
       where.push(`LOWER(TRIM(COALESCE(sub_department, ''))) = LOWER(TRIM($${params.length}))`);
     }
 
-    const role = String(req.user?.role || '').trim().toLowerCase();
-    const employeeId = String(req.user?.employee_id || '').trim().toUpperCase();
-    const canViewAll = role === 'admin' || role === 'super admin' || role === 'superadmin' || employeeId === 'ADMIN001';
+    // The submitted-notebooks list is visible to the whole L1-L5 hierarchy,
+    // not just admin - only accounts without a recognized level stay scoped
+    // to notebooks they submitted or are specifically assigned to approve.
+    const canViewAll = isAdminRequester(req) || hasHierarchyLevel(req);
     if (!canViewAll) {
       params.push(requesterId);
       where.push(`($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) OR submitted_by_user_id = $${params.length})`);
@@ -1216,8 +1713,13 @@ router.get('/', async (req, res, next) => {
 
 router.post('/generate-overdue-tickets', async (req, res, next) => {
   try {
-    const created = await generateOverdueNotebookTickets();
-    return res.status(200).json({ success: true, created_count: created.length, tickets: created });
+    const { created, escalated } = await generateOverdueNotebookTickets();
+    return res.status(200).json({
+      success: true,
+      created_count: created.length,
+      escalated_count: escalated.length,
+      tickets: created
+    });
   } catch (error) {
     next(error);
   }
@@ -1261,9 +1763,13 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
     if (!current.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = current.rows[0];
     if (!canViewSubmission(req, row)) return res.status(403).json({ message: 'You are not authorized to acknowledge this submitted notebook' });
+    // Viewing is open to the whole L1-L5 hierarchy above, but only L4/L5
+    // (or admin) may actually approve - mirrors the frontend's Acknowledge
+    // gate so a direct API call can't bypass it.
+    if (!canApproveSubmission(req)) return res.status(403).json({ message: 'Only L4 and L5 have access to approve.' });
 
     const requesterId = parsePositiveInt(req.user?.id);
-    const requesterName = await getUserDisplayName(requesterId) || cleanText(req.user?.employee_id) || 'L2 User';
+    const requesterName = await getUserDisplayName(requesterId) || cleanText(req.user?.employee_id) || 'L4 User';
     const updated = await client.query(
       `UPDATE ticketing_system.submitted_notebooks
        SET status = 'ACKNOWLEDGED',
@@ -1281,7 +1787,7 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
       await client.query(
         `UPDATE ticketing_system.operator_tickets
          SET status = 'Closed',
-             tat_current_level = COALESCE(tat_current_level, 'L2')
+             tat_current_level = COALESCE(tat_current_level, 'L4')
          WHERE ticket_id = $1
            AND status <> 'Closed'`,
         [row.overdue_ticket_id]
@@ -1290,7 +1796,7 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
         `INSERT INTO ticketing_system.ticket_logs
          (ticket_id, action, performed_by, role, created_at)
          VALUES ($1, 'ACKNOWLEDGED', $2, $3, NOW())`,
-        [row.overdue_ticket_id, requesterName, req.user?.role || 'L2']
+        [row.overdue_ticket_id, requesterName, req.user?.role || 'L4']
       );
     }
 
@@ -1306,5 +1812,9 @@ module.exports = {
   ensureAcknowledgementThresholdTable,
   generateOverdueNotebookTickets,
   recordPpNotebookSubmission,
-  runPpBatchCompletionCheck
+  runPpBatchCompletionCheck,
+  ensurePpBatchSubDepartmentConfigTable,
+  getPpBatchSubDepartmentThresholds,
+  ensurePpNotebookThresholdTable,
+  getPpNotebookThresholds
 };

@@ -22,7 +22,10 @@ const COTTON_HVI_PARAMETERS = [
   'trash_content_percentage',
   'invisible_loss_percentage',
   'rd',
-  'colour_grade'
+  'colour_grade',
+  'moisture',
+  'strength',
+  'amt'
 ];
 
 const SCREEN_NAMES = {
@@ -627,7 +630,10 @@ const ensureMixingEntryIdColumnsImpl = async () => {
     await client.query(`
       ALTER TABLE mixing.cotton_hvi_data_entry
         ADD COLUMN IF NOT EXISTS entry_id TEXT,
-        ADD COLUMN IF NOT EXISTS operator TEXT;
+        ADD COLUMN IF NOT EXISTS operator TEXT,
+        ADD COLUMN IF NOT EXISTS moisture NUMERIC,
+        ADD COLUMN IF NOT EXISTS strength NUMERIC,
+        ADD COLUMN IF NOT EXISTS amt NUMERIC;
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS cotton_hvi_data_entry_entry_id_uq
@@ -664,7 +670,10 @@ const ensureMixingEntryIdColumnsImpl = async () => {
   await runMixingSchemaStep('afis_data_entry columns', async () => {
     await client.query(`
       ALTER TABLE mixing.afis_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT;
+        ADD COLUMN IF NOT EXISTS entry_id TEXT,
+        ADD COLUMN IF NOT EXISTS lw NUMERIC,
+        ADD COLUMN IF NOT EXISTS ln NUMERIC,
+        ADD COLUMN IF NOT EXISTS total_nep_count NUMERIC;
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS afis_data_entry_entry_id_uq
@@ -1180,13 +1189,17 @@ router.post('/cotton-hvi', async (req, res, next) => {
         invisible_loss_percentage,
         rd,
         colour_grade,
+        moisture,
+        strength,
+        amt,
         operator
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,
         $7,$8,$9,$10,$11,
         $12,$13,$14,$15,$16,
-        $17,$18,$19,$20,$21,$22,$23
+        $17,$18,$19,$20,$21,$22,
+        $23,$24,$25,$26
       )
       RETURNING *`,
       [
@@ -1212,6 +1225,9 @@ router.post('/cotton-hvi', async (req, res, next) => {
         numericValues.invisible_loss_percentage,
         numericValues.rd,
         numericValues.colour_grade,
+        numericValues.moisture,
+        numericValues.strength,
+        numericValues.amt,
         user_name || null
       ]
     );
@@ -1595,6 +1611,9 @@ router.post('/afis', async (req, res, next) => {
       maturity,
       fineness,
       scn_gms,
+      lw,
+      ln,
+      total_nep_count,
       user_name
     } = req.body;
 
@@ -1610,12 +1629,12 @@ router.post('/afis', async (req, res, next) => {
       `INSERT INTO mixing.afis_data_entry (
         entry_id, inspection_date, lot_no, variety, invoice_no, invoice_date,
         uql, l5, sfc_n, ifc, fibre_neps_gms,
-        sfc_w, maturity, fineness, scn_gms, operator
+        sfc_w, maturity, fineness, scn_gms, lw, ln, total_nep_count, operator
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,
         $7,$8,$9,$10,$11,
-        $12,$13,$14,$15,$16
+        $12,$13,$14,$15,$16,$17,$18,$19
       )
       RETURNING *`,
       [
@@ -1634,6 +1653,9 @@ router.post('/afis', async (req, res, next) => {
         maturity,
         fineness,
         scn_gms,
+        lw,
+        ln,
+        total_nep_count,
         user_name || null
       ]
     );
@@ -1737,6 +1759,9 @@ router.post('/afis6-cotton', async (req, res, next) => {
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
+    if (!toDateOnly(inspection_date)) {
+      return res.status(400).json({ message: 'inspection_date is required' });
+    }
 
     const result = await client.query(
       `INSERT INTO mixing.afis6_cotton_data_entry (
@@ -1748,7 +1773,11 @@ router.post('/afis6-cotton', async (req, res, next) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
       [
-        entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
+        // Invoice Date is an optional field on the form — left blank it arrives as "", which
+        // Postgres rejects for a `date` column ("invalid input syntax for type date: \"\"")
+        // and used to fail the whole save as an opaque 500 ("Internal Server Error"). toDateOnly
+        // normalizes both fields' blank/invalid input to null instead.
+        entry_id, toDateOnly(inspection_date), lot_no, variety, toDateOnly(invoice_date), mc_name,
         blow_room, carding, breaker_drawing, finisher_drawing, comber,
         scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
         l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm, user_name || null

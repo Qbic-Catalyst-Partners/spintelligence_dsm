@@ -1,8 +1,14 @@
 logs/
 *.log
- 
+
 logs/backend.log
- 
+
 .env
- 
+
 /node_modules
+
+# Python virtual environment and compiled bytecode (regenerated locally, never committed)
+.venv/
+__pycache__/
+*.pyc
+*.pyo

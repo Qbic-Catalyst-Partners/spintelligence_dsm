@@ -16,6 +16,9 @@ FIELD_MAP: Dict[str, str] = {
     "Maturity": "Mat",
     "Fineness": "Fine",
     "SCN (gms)": "SCNepCnt",
+    "L(w)": "L(w)",
+    "L(n)": "L(n)",
+    "Total Nep Count": "TotNepCnt",
 }
 
 

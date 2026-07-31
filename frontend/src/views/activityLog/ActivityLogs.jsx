@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiCalendar, FiChevronLeft, FiChevronRight, FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiCalendar, FiRefreshCw, FiSearch } from "react-icons/fi";
 import { fetchActivityLogFiltersApi, fetchActivityLogsApi } from "@/apis/activityLogApi";
+import Pagination from "@/components/Pagination";
 import styles from "@/styles/activityLog.module.css";
 
 const PAGE_SIZE = 20;
@@ -477,19 +478,7 @@ function ActivityLogs() {
           </table>
         </div>
 
-        <div className={styles.pagination}>
-          <button type="button" onClick={() => goToPage(pagination.page - 1)} disabled={loading || pagination.page <= 1}>
-            <FiChevronLeft aria-hidden="true" />
-            Previous
-          </button>
-          <span>
-            Page {pagination.page} of {totalPages}
-          </span>
-          <button type="button" onClick={() => goToPage(pagination.page + 1)} disabled={loading || pagination.page >= totalPages}>
-            Next
-            <FiChevronRight aria-hidden="true" />
-          </button>
-        </div>
+        <Pagination page={pagination.page} totalPages={totalPages} onPageChange={goToPage} disabled={loading} />
       </section>
     </div>
   );

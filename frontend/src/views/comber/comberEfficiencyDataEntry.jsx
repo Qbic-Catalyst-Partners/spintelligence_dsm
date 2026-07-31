@@ -4,6 +4,8 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { submitComberEfficiency } from "@/store/slices/comber";
 import { fetchComberRibbonLapMasterMcNos } from "@/apis/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const initialForm = () => ({
@@ -32,6 +34,11 @@ const ComberEfficiencyDataEntry = forwardRef(function ComberEfficiencyDataEntry(
     const [errors, setErrors] = useState({});
     const [formMessage, setFormMessage] = useState("");
     const [mcNameOptions, setMcNameOptions] = useState([]);
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     // Same machine source (dbo.MCMASTER scoped to the Comber department) every
     // other Comber screen's MC No./Mc Name dropdown uses.
@@ -105,8 +112,23 @@ const ComberEfficiencyDataEntry = forwardRef(function ComberEfficiencyDataEntry(
         if (!valid) return false;
 
         try {
-            await dispatch(submitComberEfficiency(buildPayload())).unwrap();
+            const payload = buildPayload();
+            await dispatch(submitComberEfficiency(payload)).unwrap();
             setErrors({});
+
+            const linkedEntryId = payload.entry_id;
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (linkedEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        linkedEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             return true;
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save Comber Efficiency data.");
@@ -189,6 +211,15 @@ const ComberEfficiencyDataEntry = forwardRef(function ComberEfficiencyDataEntry(
                     </div>
                 </div>
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Comber"
+                notebook="Comber Efficiency"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
             {formMessage ? (
                 <div className={`${styles["message-box"]} ${styles["message-error"]}`}>

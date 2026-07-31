@@ -3,8 +3,6 @@ import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
 import {
     FiChevronDown,
-    FiChevronLeft,
-    FiChevronRight,
     FiCheckCircle,
     FiClock,
     FiMoreVertical,
@@ -16,10 +14,12 @@ import {
 import { FaIdCard } from "react-icons/fa6";
 
 import { deleteThresholdAPI, fetchThresholdsAPI, saveThresholdsBulkAPI, updateThresholdAPI, updateThresholdStatusAPI } from "@/apis/thresholdsApi";
+import Pagination from "@/components/Pagination";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isFullAccessUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
+import { formatDateTime } from "@/utils/formatDateTime";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import styles from "@/styles/ThresholdValues.module.css";
 
@@ -484,7 +484,7 @@ function MultiSelectDropdown({
     );
 }
 
-export default function ThresholdValues() {
+export default function ThresholdValues({ standalone = true, editItem = null, onEditItemHandled } = {}) {
     const dispatch = useDispatch();
     const router = useRouter();
     const user = useSelector((state) => state.auth?.user);
@@ -746,25 +746,7 @@ export default function ThresholdValues() {
         setFormError("");
     };
 
-    const formatTimestamp = (value) => {
-        if (!value) {
-            return "-";
-        }
-
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime())) {
-            return "-";
-        }
-
-        return parsed.toLocaleString("en-GB", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-        }).replace(",", "");
-    };
+    const formatTimestamp = formatDateTime;
 
     const getThresholdRowKey = (item, index) =>
         String(
@@ -824,6 +806,13 @@ export default function ThresholdValues() {
         setExistingMessage("");
         setExistingError("");
     };
+
+    useEffect(() => {
+        if (!editItem) return;
+        openEditThreshold(editItem);
+        onEditItemHandled?.();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editItem]);
 
     const toggleThresholdStatus = async (rowKey) => {
         const currentIndex = thresholds.findIndex((item, index) => getThresholdRowKey(item, index) === rowKey);
@@ -1144,14 +1133,11 @@ export default function ThresholdValues() {
         return null;
     }
 
-    return (
-        <div className={styles.page}>
-            <div className={styles.shell}>
-                <div className={styles.intro}>
-                    <h1>Threshold values</h1>
-                    <p>Add and edit the threshold value</p>
-                </div>
+    const effectiveActiveTab = standalone ? activeTab : "new";
 
+    const content = (
+        <>
+                {standalone ? (
                 <div className={styles.tabBar} role="tablist" aria-label="Threshold views">
                     <button
                         type="button"
@@ -1168,8 +1154,9 @@ export default function ThresholdValues() {
                         Existing Thresholds
                     </button>
                 </div>
+                ) : null}
 
-                {activeTab === "new" ? (
+                {effectiveActiveTab === "new" ? (
                     <>
                         <div className={styles.statsGrid}>
                             <article className={styles.statCard}>
@@ -1335,17 +1322,6 @@ export default function ThresholdValues() {
                                                         </label>
 
                                                         <label className={styles.field}>
-                                                            <span>TAT</span>
-                                                            <TatTimePicker
-                                                                label="L1 TAT"
-                                                                value={rule.approvalL1Tat}
-                                                                onChange={(nextValue) =>
-                                                                    handleRuleChange(rule.id, "approvalL1Tat", nextValue)
-                                                                }
-                                                            />
-                                                        </label>
-
-                                                        <label className={styles.field}>
                                                             <span>L2</span>
                                                             <MultiSelectDropdown
                                                                 values={rule.approvalL2}
@@ -1356,17 +1332,6 @@ export default function ThresholdValues() {
                                                                     handleRuleChange(rule.id, "approvalL2", nextValues)
                                                                 }
                                                                 emptyLabel="No L2 users available"
-                                                            />
-                                                        </label>
-
-                                                        <label className={styles.field}>
-                                                            <span>TAT</span>
-                                                            <TatTimePicker
-                                                                label="L2 TAT"
-                                                                value={rule.approvalL2Tat}
-                                                                onChange={(nextValue) =>
-                                                                    handleRuleChange(rule.id, "approvalL2Tat", nextValue)
-                                                                }
                                                             />
                                                         </label>
                                                     </div>
@@ -1631,7 +1596,7 @@ export default function ThresholdValues() {
                                                 <th>L1</th>
                                                 <th>L2</th>
                                                 <th>Criticality</th>
-                                                <th>Idle Value</th>
+                                                <th>Typical Value</th>
                                                 <th>Plus (+)</th>
                                                 <th>Minus (-)</th>
                                                 <th>Status</th>
@@ -1763,62 +1728,26 @@ export default function ThresholdValues() {
                             {existingError ? <p className={styles.errorMessage}>{existingError}</p> : null}
 
                             {!loading && !loadError && filteredThresholds.length > 0 ? (
-                                <div className={styles.paginationBar}>
-                                    <div className={styles.paginationControls}>
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage(1)}
-                                            disabled={safeExistingPage === 1}
-                                            aria-label="First page"
-                                        >
-                                            <FiChevronLeft />
-                                            <FiChevronLeft className={styles.doubleChevron} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage((value) => Math.max(1, value - 1))}
-                                            disabled={safeExistingPage === 1}
-                                            aria-label="Previous page"
-                                        >
-                                            <FiChevronLeft />
-                                        </button>
-                                        {Array.from({ length: totalExistingPages }, (_, index) => index + 1).map((pageNumber) => (
-                                            <button
-                                                key={pageNumber}
-                                                type="button"
-                                                className={`${styles.paginationNumber} ${pageNumber === safeExistingPage ? styles.paginationNumberActive : ""}`}
-                                                onClick={() => setExistingPage(pageNumber)}
-                                            >
-                                                {pageNumber}
-                                            </button>
-                                        ))}
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage((value) => Math.min(totalExistingPages, value + 1))}
-                                            disabled={safeExistingPage === totalExistingPages}
-                                            aria-label="Next page"
-                                        >
-                                            <FiChevronRight />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={styles.paginationButton}
-                                            onClick={() => setExistingPage(totalExistingPages)}
-                                            disabled={safeExistingPage === totalExistingPages}
-                                            aria-label="Last page"
-                                        >
-                                            <FiChevronRight />
-                                            <FiChevronRight className={styles.doubleChevron} />
-                                        </button>
-                                    </div>
-                                </div>
+                                <Pagination page={safeExistingPage} totalPages={totalExistingPages} onPageChange={setExistingPage} />
                             ) : null}
                         </section>
                     </div>
                 )}
+        </>
+    );
+
+    if (!standalone) {
+        return content;
+    }
+
+    return (
+        <div className={styles.page}>
+            <div className={styles.shell}>
+                <div className={styles.intro}>
+                    <h1>Threshold values</h1>
+                    <p>Add and edit the threshold value</p>
+                </div>
+                {content}
             </div>
         </div>
     );

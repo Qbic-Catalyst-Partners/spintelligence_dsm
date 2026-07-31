@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { FaCheckCircle } from "react-icons/fa";
 import SearchableSelect from "@/components/SearchableSelect";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 
 import {
@@ -158,6 +160,11 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const consigneeOptions = useMemo(
     () =>
@@ -394,6 +401,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     setErrors({});
     setSubmitError("");
     setSavedProcessParameterId("");
+    setCustomFieldValues({});
   };
 
   const getPreviewData = () => [
@@ -428,6 +436,19 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       const nextParamId = resolveProcessParameterDisplayId(response, form.paramId || entryId || savedProcessParameterId);
       registerProcessParameterId(response, "Blowroom", form.countName, form.consigneeName);
       setSavedProcessParameterId(nextParamId);
+
+      const linkedEntryId = payload.entry_id || nextParamId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
 
       await loadVersions();
       return true;
@@ -591,6 +612,15 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             </div>
           ))}
         </div>
+
+        <NotebookCustomFields
+          department="Quality Control"
+          subDepartment="Process Parameter"
+          notebook="Blow Room - PP"
+          entryId={form.paramId || entryId || savedProcessParameterId || previewNextId}
+          values={customFieldValues}
+          onChange={handleCustomFieldChange}
+        />
 
         {submitError ? <div className={styles.errorMessage}>{submitError}</div> : null}
         {isSubmitting ? <div className={styles.loadingMessage}>Submitting...</div> : null}

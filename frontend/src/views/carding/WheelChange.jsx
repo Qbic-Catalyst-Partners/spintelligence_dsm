@@ -54,7 +54,25 @@ const getPayloadValue = (_row, value) => trimValue(value);
 
 const normalizeCdgProposedList = (value) => {
   if (Array.isArray(value)) return value.map(trimValue).filter(hasValue);
-  return hasValue(value) ? [trimValue(value)] : [];
+
+  const raw = String(value ?? "").trim();
+  if (!raw) return [];
+
+  // A Postgres array literal (e.g. {"CDG-01","CDG-02"} or {CDG-01,CDG-02}) can come back as a
+  // plain string rather than a real array - split it into its individual values instead of
+  // displaying the whole "{...}" blob as a single selection.
+  if (raw.startsWith("{") && raw.endsWith("}")) {
+    return raw
+      .slice(1, -1)
+      .split(",")
+      .map((item) => trimValue(item.replace(/^"|"$/g, "")))
+      .filter(hasValue);
+  }
+
+  // Comma-separated plain text (the post-migration storage format).
+  if (raw.includes(",")) return raw.split(",").map(trimValue).filter(hasValue);
+
+  return [trimValue(raw)];
 };
 
 // "Latest" means most recently *entered* (submitted), not most recently
@@ -185,13 +203,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
   // mixing has been picked yet — lets the Existing column carry forward as
   // soon as a machine is chosen, without waiting for the mixing/variety.
   const lastLoadedMachineOnlyRef = useRef("");
-  // Tracks whether the user has actually picked a Mixing value (vs. it merely
-  // being auto-filled for display by the machine-only lookup below) — using
-  // this instead of "is mixing's text non-empty" as the machine-only effect's
-  // guard, since auto-filling Mixing for display would otherwise make it
-  // look user-picked and permanently block that effect from ever re-running
-  // on a later CDG No. switch.
-  const [mixingUserPicked, setMixingUserPicked] = useState(false);
   const selectedMixing = String(values.mixing?.existing || values.mixing?.proposed || "").trim();
   // The most recent *unapproved* submission for this mixing, if any — either
   // still awaiting L2 review or previously rejected. It's the row still sitting
@@ -232,9 +243,11 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     if (!approved && !unapproved) {
       // No saved data for this mixing/machine — clear whatever a previously
       // selected mixing or machine had populated instead of leaving it showing.
+      // Keep the mixing value itself though: it's what the user just picked
+      // to trigger this lookup, not stale data to be wiped.
       setUnapprovedEntry(null);
       setProposedCdgNos([]);
-      setValues(createValues());
+      setValues({ ...createValues(), mixing: { existing: "", proposed: trimmedMixing } });
       setRemarks("");
       setErrors({});
       return null;
@@ -309,55 +322,42 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isCdgProposedOpen]);
 
-  // Fires as soon as CDG No. (Existing) is picked, before mixing/Count From
-  // is chosen. Once the user actually picks a mixing, the more-specific
-  // effect below takes over and this one backs off (guarded by
-  // `mixingUserPicked` rather than `selectedMixing`, since `selectedMixing`
-  // is derived from the same values that this effect's own fetch populates
-  // for display — using it as the guard would self-lock this effect
-  // permanently the first time it ever ran).
+  // Re-fetches "Existing" data whenever either CDG No. or Mixing changes,
+  // combining both into the lookup (loadLatestSaved itself gives Mixing
+  // priority over CDG No. per the backend's documented scope order). Keyed
+  // on the combined (mixing, machine) pair rather than machine alone - a
+  // machine-alone key meant that once a Mixing value had ever been picked
+  // once in this session, changing CDG No. for a later/second entry (with
+  // that same Mixing still selected, so `selectedMixing` itself doesn't
+  // change) never re-triggered a fetch at all, since the old machine-only
+  // effect was permanently gated off by `mixingUserPicked` and the
+  // mixing-only effect only re-fires when `selectedMixing` itself changes.
   useEffect(() => {
     const trimmedMachine = String(cdoNo || "").trim();
-    if (!trimmedMachine || mixingUserPicked) {
+    if (!selectedMixing && !trimmedMachine) {
       lastLoadedMachineOnlyRef.current = "";
-      return;
-    }
-
-    if (lastLoadedMachineOnlyRef.current === trimmedMachine) return;
-
-    let cancelled = false;
-    loadLatestSaved("", trimmedMachine)
-      .then(() => {
-        if (!cancelled) lastLoadedMachineOnlyRef.current = trimmedMachine;
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [cdoNo, mixingUserPicked]);
-
-  useEffect(() => {
-    if (!selectedMixing) {
       lastLoadedMixingRef.current = "";
       setUnapprovedEntry(null);
       return;
     }
 
-    if (lastLoadedMixingRef.current === selectedMixing) return;
+    const comboKey = `${selectedMixing}|${trimmedMachine}`;
+    if (lastLoadedMachineOnlyRef.current === comboKey) return;
 
     let cancelled = false;
-    loadLatestSaved(selectedMixing)
-      .then((latest) => {
-        if (cancelled || !latest) return;
-        lastLoadedMixingRef.current = selectedMixing;
+    loadLatestSaved(selectedMixing, trimmedMachine)
+      .then(() => {
+        if (!cancelled) {
+          lastLoadedMachineOnlyRef.current = comboKey;
+          lastLoadedMixingRef.current = selectedMixing;
+        }
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
     };
-  }, [selectedMixing]);
+  }, [cdoNo, selectedMixing]);
 
   const previewItems = useMemo(
     () => [
@@ -376,7 +376,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
       { label: "Type", value: selectedType || "WheelChange" },
       { label: "Entry ID", value: entryId || "-" },
       { label: "CDG No. (Existing)", value: cdoNo || "-" },
-      { label: "CDG No. (Proposed)", value: proposedCdgNos.length ? proposedCdgNos.join(", ") : "-" },
+      { label: "CDG No. (Proposed)", value: proposedCdgNos.length ? proposedCdgNos[0] : "-" },
       ...parameterRows.flatMap((row) => [
         { label: `${row.label} - Existing`, value: values[row.key]?.existing || "-" },
         { label: `${row.label} - Proposed`, value: values[row.key]?.proposed || "-" },
@@ -418,9 +418,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
 
   const handleValueChange = (rowKey, column) => (event) => {
     const nextValue = typeof event === "string" ? event : event?.target?.value ?? "";
-    if (rowKey === "mixing" && column === "proposed") {
-      setMixingUserPicked(hasValue(nextValue));
-    }
     setValues((current) => ({
       ...current,
       [rowKey]: {
@@ -499,7 +496,6 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
     setMessage("");
     setShowPreview(false);
     setUnapprovedEntry(null);
-    setMixingUserPicked(false);
     lastLoadedMixingRef.current = "";
     lastLoadedMachineOnlyRef.current = "";
     setCustomFieldValues({});
@@ -689,7 +685,7 @@ function CardingWheelChange({ types = [], selectedType = "WheelChange", onTypeCh
               aria-haspopup="listbox"
               aria-expanded={isCdgProposedOpen}
             >
-              {proposedCdgNos.length ? proposedCdgNos.join(", ") : "Select"}
+              {proposedCdgNos.length ? proposedCdgNos[0] : "Select"}
             </button>
             {isCdgProposedOpen ? (
               <div

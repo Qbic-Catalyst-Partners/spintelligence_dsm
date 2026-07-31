@@ -1,14 +1,14 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useRouter } from "next/router";
-import { FaCheckCircle } from "react-icons/fa";
-import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import PreviewModal from "@/components/PreviewModal";
 import SuccessModal from "@/components/SuccessModal";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
@@ -23,7 +23,11 @@ import {
   reserveGlobalProcessParameterId,
 } from "@/utils/processParameterId";
 import { registerProcessParameterId } from "@/utils/processParameterRegistry";
-import { submitDrawFrameHeaderEntry, fetchDrawFrameHeaderEntries } from "@/apis/draw-frame";
+import {
+  submitDrawFrameHeaderEntry,
+  updateDrawFrameHeaderEntry,
+  fetchDrawFrameHeaderEntries,
+} from "@/apis/draw-frame";
 import { recordSubmittedNotebook } from "@/utils/submittedNotebookRecorder";
 
 const today = new Date().toISOString().split("T")[0];
@@ -167,6 +171,7 @@ const TYPE_CONFIG = {
     }),
     buildPayload: (form, entryId) => ({
       entry_id: entryId || undefined,
+      type: form.type,
       entry_scope: "finisher",
       count_name: form.countName,
       consignee_name: form.consigneeName,
@@ -261,13 +266,19 @@ function normalizeBreakerEntries(payload) {
 function normalizeFinisherEntries(payload) {
   const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
   return rows.map((entry, index) => ({
-    id: String(entry?.id || index),
+    // Row PK is `ins_id`, not `id` (drawframe.drawframe_qc_header has no `id` column) — without
+    // this fallback every Finisher row's "id" was the array index, so editing/re-saving one sent
+    // updates to whatever unrelated row happened to have that index as its real ins_id (or 404'd),
+    // and when that row's entry_id/entry_scope got overwritten it could collide with the row just
+    // created, surfacing as "Duplicate entry_id. Please use a unique ID." normalizeBreakerEntries
+    // already checked ins_id first — this was the only place missing it.
+    id: String(entry?.ins_id || entry?.id || index),
     paramId: getDisplayEntryId(entry),
     countName: entry?.count_name || "",
     consigneeName: entry?.consignee_name || "",
     creationDate: entry?.creation_date || "",
     data: {
-      versionId: String(entry?.id || index),
+      versionId: String(entry?.ins_id || entry?.id || index),
       paramId: getDisplayEntryId(entry),
       type: "PP - Finisher Drawing",
       countName: entry?.count_name || "",
@@ -305,11 +316,6 @@ function normalizeFinisherEntries(payload) {
   }));
 }
 
-function displaySavedValue(value) {
-  const normalized = String(value ?? "").trim();
-  return normalized && normalized !== "-" ? normalized : "-";
-}
-
 function getDisplayEntryId(entry, fallback = "") {
   return (
     normalizeProcessParameterId(
@@ -321,10 +327,6 @@ function getDisplayEntryId(entry, fallback = "") {
         fallback
     ) || String(fallback || "").trim()
   );
-}
-
-function isEntryComplete(entry) {
-  return Array.isArray(entry?.details) && entry.details.some((detail) => String(detail?.value ?? "").trim());
 }
 
 function extractEntrySequence(value) {
@@ -362,13 +364,18 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [recentEntries, setRecentEntries] = useState([]);
-  const [expandedEntryId, setExpandedEntryId] = useState(null);
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   useEffect(() => {
     const nextType = TYPE_CONFIG[selectedType] ? selectedType : "PP - Breaker Drawing";
     setForm(TYPE_CONFIG[nextType].createForm(nextType));
     setErrors({});
     setFormMessage("");
+    setEntriesLoaded(false);
   }, [selectedType]);
 
   const allFields = useMemo(
@@ -381,7 +388,10 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     let rows = [];
     setFormMessage("");
     try {
-      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 100 });
+      // Breaker and Finisher share this one table/fetch, so 100 combined rows filled up per-scope
+      // windows roughly twice as fast as a dedicated table would — raised to match the matrix's
+      // own fetch size (process-parameter.js) now that the backend no longer clamps it back down.
+      const response = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
       const allRows = Array.isArray(response) ? response : Array.isArray(response?.data) ? response.data : [];
       rows = allRows.filter((row) => (row?.entry_scope || "").toLowerCase() === config.entryScope);
     } catch (error) {
@@ -391,6 +401,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       .normalizeEntries(rows)
       .sort((left, right) => getEntrySortValue(right) - getEntrySortValue(left));
     setRecentEntries(normalizedEntries);
+    setEntriesLoaded(true);
 
     const matchByEntryId = entryId
       ? normalizedEntries.find(
@@ -429,19 +440,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
     );
   }, [lockedConsigneeName, recentEntries]);
 
-  useEffect(() => {
-    if (!recentEntries.length) {
-      setExpandedEntryId(null);
-      return;
-    }
-
-    setExpandedEntryId((current) =>
-      recentEntries.some((entry) => String(entry.id) === String(current))
-        ? current
-        : recentEntries[0].id
-    );
-  }, [recentEntries]);
-
   const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countNameOptions = useMemo(
     () =>
@@ -470,24 +468,22 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
       allFields.map((field) => ({
         label: field.label,
         value:
-          field.key === "creationDate"
-            ? formatDisplayDate(form.creationDate) || "-"
+          field.control === "entry-id-display"
+            ? form.paramId || entryId || "-"
             : form[field.key] || "-",
       })),
-    [allFields, form]
+    [allFields, form, entryId]
   );
 
   useImperativeHandle(ref, () => ({
-    getPreviewData: () => [
-      { label: "Process Parameter ID", value: form.paramId || "-" },
-      ...previewItems,
-    ],
+    getPreviewData: () => previewItems,
   }));
 
   const resetForm = () => {
     setForm(activeConfig.createForm(activeType));
     setErrors({});
     setFormMessage("");
+    setCustomFieldValues({});
   };
 
   const findLatestEntryByCountName = (countName) => {
@@ -575,6 +571,10 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   };
 
   const handleSave = () => {
+    if (!entriesLoaded) {
+      setFormMessage("Still loading existing entries — please wait a moment and try again.");
+      return;
+    }
     if (!validate()) {
       setFormMessage("Please fill all required fields before saving.");
       return;
@@ -586,15 +586,46 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      const selectedExistingEntry = recentEntries.find(
-        (entry) => String(entry.id) === String(form.versionId)
-      );
+      // `recentEntries` is populated by loadEntries's background fetch (kicked off on mount) —
+      // if the user fills the form and hits Save faster than that fetch resolves (confirmed via
+      // logging: handleSubmit was running with recentEntries still empty), matching against that
+      // state alone is a race that misses rows which genuinely exist, re-inserting the same
+      // entry_id and failing with "Duplicate entry_id". Re-fetching fresh right here — awaited,
+      // so it's guaranteed to reflect the current DB — removes the race entirely instead of
+      // just narrowing its window.
+      const targetIdForMatch = entryId || form.paramId;
+      let selectedExistingEntry =
+        recentEntries.find((entry) => String(entry.id) === String(form.versionId)) ||
+        (targetIdForMatch
+          ? recentEntries.find(
+              (entry) => normalizeProcessParameterId(entry.paramId) === normalizeProcessParameterId(targetIdForMatch)
+            )
+          : null);
+      if (!selectedExistingEntry && targetIdForMatch) {
+        try {
+          const freshResponse = await fetchDrawFrameHeaderEntries({ page: 1, limit: 200 });
+          const freshRows = Array.isArray(freshResponse)
+            ? freshResponse
+            : Array.isArray(freshResponse?.data)
+              ? freshResponse.data
+              : [];
+          const freshScoped = freshRows.filter(
+            (row) => (row?.entry_scope || "").toLowerCase() === activeConfig.entryScope
+          );
+          const freshNormalized = activeConfig.normalizeEntries(freshScoped);
+          selectedExistingEntry = freshNormalized.find(
+            (entry) => normalizeProcessParameterId(entry.paramId) === normalizeProcessParameterId(targetIdForMatch)
+          ) || null;
+        } catch {
+          // If this fresh check fails, fall through to the create path below — the backend's own
+          // unique-index check is still the final safety net.
+        }
+      }
       const paramId = selectedExistingEntry
         ? form.paramId || entryId
         : entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
       const payload = {
         ...activeConfig.buildPayload(form, entryId),
-        id: selectedExistingEntry ? selectedExistingEntry.id : undefined,
         entry_id: paramId,
         param_id: paramId,
         // drawframe_qc_header now has its own "operator" column (see backend) — persist it
@@ -602,10 +633,27 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         // has proven fragile for this screen (some entries never got recorded).
         user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
       };
-      const response = await submitDrawFrameHeaderEntry(payload);
+      // drawframe_qc_header has a unique (entry_id, entry_scope) index, so re-submitting the
+      // same PP id/scope via POST (create) would 409. When we're re-saving an entry that's
+      // already in recentEntries, update it in place instead of creating a duplicate.
+      const response = selectedExistingEntry
+        ? await updateDrawFrameHeaderEntry(selectedExistingEntry.id, payload)
+        : await submitDrawFrameHeaderEntry(payload);
       const savedEntry = response?.data || response;
 
       registerProcessParameterId(savedEntry, activeType, form.countName, form.consigneeName);
+
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (paramId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            paramId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
       setForm((current) => ({
         ...current,
         paramId,
@@ -642,21 +690,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const handleSuccessClose = () => {
     setShowSuccess(false);
     resetForm();
-  };
-
-  const handleEntrySelect = (entry) => {
-    setForm({ ...activeConfig.createForm(activeType), ...entry.data, versionId: entry.id });
-    setErrors({});
-    setFormMessage("");
-  };
-
-  const handleEntryToggle = (entry) => {
-    handleEntrySelect(entry);
-    if (!isEntryComplete(entry)) {
-      setExpandedEntryId(null);
-      return;
-    }
-    setExpandedEntryId((current) => (String(current) === String(entry.id) ? null : entry.id));
   };
 
   const renderField = (field) => {
@@ -782,6 +815,15 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
             </div>
           </div>
 
+          <NotebookCustomFields
+            department="Quality Control"
+            subDepartment="Process Parameter"
+            notebook={activeType}
+            entryId={form.paramId || entryId || nextEntryIdPreview}
+            values={customFieldValues}
+            onChange={handleCustomFieldChange}
+          />
+
           {formMessage ? <p className={styles.messageError}>{formMessage}</p> : null}
 
           <div className={styles.headerEntryFooter}>
@@ -814,73 +856,6 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
         onClose={handleSuccessClose}
       />
 
-      <div className={styles.headerEntryList}>
-        {recentEntries.length ? (
-          recentEntries.map((entry, index) => (
-            <div key={`${entry.id}-${index}`} className={styles.headerEntryCard}>
-              <div className={styles.headerEntryCardHeader}>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaBlock} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Param ID</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.paramId || entry.id)}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaMain} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Consignee Name</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.consigneeName)}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.headerEntryMetaMain} ${styles.headerEntrySelect}`}
-                  onClick={() => handleEntrySelect(entry)}
-                >
-                  <span className={styles.headerEntryMetaLabel}>Count Name</span>
-                  <span className={styles.headerEntryMetaValue}>{displaySavedValue(entry.countName)}</span>
-                </button>
-                <div className={styles.headerEntryCardStatus}>
-                  {isEntryComplete(entry) ? <FaCheckCircle className={styles.headerEntryStatusIcon} /> : null}
-                </div>
-                <button
-                  type="button"
-                  className={styles.headerEntryToggle}
-                  onClick={() => handleEntryToggle(entry)}
-                  aria-label={
-                    String(expandedEntryId) === String(entry.id)
-                      ? "Collapse saved entry details"
-                      : "Expand saved entry details"
-                  }
-                >
-                  {String(expandedEntryId) === String(entry.id) ? <HiChevronUp /> : <HiChevronDown />}
-                </button>
-              </div>
-
-              {String(expandedEntryId) === String(entry.id) ? (
-                <div className={styles.headerEntryCardDetails}>
-                  <div className={styles.headerEntryDetailsGrid}>
-                    {entry.details.map((detail) => (
-                      <div key={`${entry.id}-${detail.label}`} className={styles.headerEntryDetailItem}>
-                        <span className={styles.headerEntryMetaLabel}>{detail.label}</span>
-                        <span className={styles.headerEntryMetaValue}>{displaySavedValue(detail.value)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={styles.headerEntryCardDate}>
-                    {formatDisplayDate(entry.creationDate) || "-"}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ))
-        ) : (
-          <p className={styles.messageInfo}>No entries found.</p>
-        )}
-      </div>
     </>
   );
 });

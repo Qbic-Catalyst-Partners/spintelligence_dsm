@@ -412,7 +412,7 @@ function SpliceStrength({
     cspValue,
     rowsWithPercent,
     average.splice,
-    rowsWithPercent,
+    customFieldValues,
   ]);
 
   const handleRowChange = (index, field, value) => {

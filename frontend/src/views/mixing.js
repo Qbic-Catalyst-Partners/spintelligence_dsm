@@ -8,6 +8,8 @@ import FibreDataEntry from "./mixing/fibreDataEntry";
 import CustomInput from "@/components/CustomInput";
 import SearchableSelect from "@/components/SearchableSelect";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import AfisDataEntry from "./mixing/afisDataEntry";
 import MoistureDataEntry from "./mixing/moistureDataEntry";
 import OpennessDataEntry from "./mixing/opennessDataEntry";
@@ -147,6 +149,14 @@ function Mixing() {
     const [selectedTypeName, setSelectedTypeName] = useState(() => typeOptions[0]?.name || "");
     const [date, setDate] = useState(getCurrentDate);
     const [lotNo, setLotNo] = useState("");
+    const [afis6CustomFieldValues, setAfis6CustomFieldValues] = useState({});
+    const handleAfis6CustomFieldChange = (fieldId, value) => {
+        setAfis6CustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
+    const [afis6MmfCustomFieldValues, setAfis6MmfCustomFieldValues] = useState({});
+    const handleAfis6MmfCustomFieldChange = (fieldId, value) => {
+        setAfis6MmfCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
     const [selectedLotDetails, setSelectedLotDetails] = useState(null);
     const [target, setTarget] = useState("");
     const [brLine, setBrLine] = useState("");
@@ -612,6 +622,7 @@ function Mixing() {
         });
         setAfis6Errors({});
         setValidationMessage("");
+        setAfis6CustomFieldValues({});
     };
 
     const handleAfis6Submit = async () => {
@@ -630,6 +641,19 @@ function Mixing() {
 
         setValidationMessage("");
         await dispatch(submitAfis6Cotton(buildAfis6Payload())).unwrap();
+
+        const afis6CustomFieldEntries = Object.entries(afis6CustomFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+        if (entryId && afis6CustomFieldEntries.length) {
+            try {
+                await saveNotebookCustomFieldValuesApi(
+                    entryId,
+                    afis6CustomFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                );
+            } catch (customFieldError) {
+                console.error("Failed to save custom field values:", customFieldError);
+            }
+        }
+
         await reserveEntryId();
         try {
             await recordSubmittedNotebook({
@@ -815,6 +839,7 @@ function Mixing() {
         });
         setAfis6MmfErrors({});
         setValidationMessage("");
+        setAfis6MmfCustomFieldValues({});
     };
 
     const handleAfis6MmfSubmit = async () => {
@@ -833,6 +858,19 @@ function Mixing() {
 
         setValidationMessage("");
         await dispatch(submitAfis6Mmf(buildAfis6MmfPayload())).unwrap();
+
+        const afis6MmfCustomFieldEntries = Object.entries(afis6MmfCustomFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+        if (entryId && afis6MmfCustomFieldEntries.length) {
+            try {
+                await saveNotebookCustomFieldValuesApi(
+                    entryId,
+                    afis6MmfCustomFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                );
+            } catch (customFieldError) {
+                console.error("Failed to save custom field values:", customFieldError);
+            }
+        }
+
         await reserveEntryId();
         try {
             await recordSubmittedNotebook({
@@ -1143,6 +1181,15 @@ function Mixing() {
                                     </div>
                                 ))}
                             </div>
+
+                            <NotebookCustomFields
+                                department="Quality Control"
+                                subDepartment="Mixing"
+                                notebook="AFIS-6 Cotton Data Entry"
+                                entryId={entryId}
+                                values={afis6CustomFieldValues}
+                                onChange={handleAfis6CustomFieldChange}
+                            />
                         </div>
                     ) : isAfis6Mmf ? (
                         <div className="p-5">
@@ -1270,6 +1317,15 @@ function Mixing() {
                                     </div>
                                 ))}
                             </div>
+
+                            <NotebookCustomFields
+                                department="Quality Control"
+                                subDepartment="Mixing"
+                                notebook="AFIS-6 MMF Data Entry"
+                                entryId={entryId}
+                                values={afis6MmfCustomFieldValues}
+                                onChange={handleAfis6MmfCustomFieldChange}
+                            />
                         </div>
                     ) : SelectedComponent ? (
                         <SelectedComponent

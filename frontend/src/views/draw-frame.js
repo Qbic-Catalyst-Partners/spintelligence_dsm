@@ -5,6 +5,7 @@ import { MdInsertDriveFile, MdOutlineEditNote } from "react-icons/md";
 
 import Footer from "@/components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
@@ -18,6 +19,7 @@ import {
   fetchDrawFrameUqcMasterDropdown,
   submitDrawFrameAPercentInspection,
 } from "@/apis/draw-frame";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { submitDrawFrameWheelChangeEntry } from "@/apis/drawFrameWheelChange";
 import {
   clearDrawFrameState,
@@ -68,7 +70,7 @@ const DRAW_FRAME_ENTRY_ID_CONFIG = {
   "U% Data Entry": { prefix: "DUP", width: 4, routePath: "/drawframe/uqc" },
   // Keep breaker and finisher on separate sequence scopes so they do not share storage identity.
   "PP - Breaker Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header?scope=breaker" },
-  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/finisher?scope=finisher" },
+  "PP - Finisher Drawing": { prefix: "PP", width: 4, routePath: "/drawframe/header?scope=finisher" },
   "A%": { prefix: "DAP", width: 4, routePath: "/drawframe/a-percent" },
   "Wheel Change": { prefix: "DWC", width: 4, routePath: "/drawframe/wheel-change" },
 };
@@ -764,6 +766,23 @@ function DrawFrame() {
   const isUPercentEntry = form.type === "U% Data Entry";
   const isAPercentEntry = form.type === "A%";
   const isWheelChangeEntry = form.type === "Wheel Change";
+  const [customFieldValues, setCustomFieldValues] = useState({});
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
+  const saveCustomFields = async (linkedEntryId) => {
+    const targetEntryId = linkedEntryId || entryId;
+    const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+    if (!targetEntryId || !customFieldEntries.length) return;
+    try {
+      await saveNotebookCustomFieldValuesApi(
+        targetEntryId,
+        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+      );
+    } catch (customFieldError) {
+      console.error("Failed to save custom field values:", customFieldError);
+    }
+  };
   const isHeaderEntry =
     form.type === "PP - Breaker Drawing" || form.type === "PP - Finisher Drawing";
   // Which of Wheel Change's 7 sub-types (Type 1 (SB20)..Type 4 (LDF3S)) is
@@ -1225,6 +1244,7 @@ function DrawFrame() {
       remarks: "",
     });
     setErrors({});
+    setCustomFieldValues({});
     wheelChangeRef.current?.clear?.();
     setWheelChangeSubType("");
     dispatch(clearDrawFrameState());
@@ -1514,6 +1534,7 @@ function DrawFrame() {
               },
             },
           }).catch((error) => console.error("Submitted notebook creation failed:", error));
+          void saveCustomFields(entryId);
           dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
         }
       });
@@ -1529,6 +1550,7 @@ function DrawFrame() {
           rawRows: aPercentRawOcrRows,
           meta: aPercentMeta,
         }));
+        await saveCustomFields(entryId);
         await recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",
@@ -1651,6 +1673,7 @@ function DrawFrame() {
             submitted_fields: payload,
           },
         }).catch((error) => console.error("Submitted notebook creation failed:", error));
+        void saveCustomFields(entryId);
       });
   };
 
@@ -1816,6 +1839,15 @@ function DrawFrame() {
                 </div>
               </div>
             ) : null}
+
+            <NotebookCustomFields
+              department="Quality Control"
+              subDepartment="Draw Frame"
+              notebook={form.type}
+              entryId={entryId}
+              values={customFieldValues}
+              onChange={handleCustomFieldChange}
+            />
 
             <div className={styles.aPercentFooter}>
               <button
@@ -2314,6 +2346,15 @@ function DrawFrame() {
                 ) : null}
               </>
               )}
+
+              <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Draw Frame"
+                notebook={form.type}
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+              />
 
               {error ? <p className={styles.messageError}>{error}</p> : null}
             </div>

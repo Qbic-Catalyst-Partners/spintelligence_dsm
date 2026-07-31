@@ -97,7 +97,6 @@ const PP_MANAGED_ROUTES = new Set([
   '/blowroom/header',
   '/carding/qc-header',
   '/drawframe/header',
-  '/drawframe/finisher',
   '/simplex/process_parameter',
   '/spinning/qc',
   '/autoconer/process',
@@ -142,6 +141,29 @@ const ENTRY_ID_ROUTE_TABLES = {
   // collides with the real first row and fails as "Duplicate entry_id".
   '/spinning/rsm-lycra-online': 'spinning.rsm_and_lycrasensor_cheking_online',
   '/spinning/rsm-lycra-offline': 'spinning.rsm_and_lycrasensor_cheking_offline',
+  // Same root cause as the five Spinning screens above: '/autoconer/cone-density' had no
+  // mapping here, so its "next entry id" was computed only from the frontend_entry_registry
+  // bookkeeping table, not the real autoconer.cone_density_notebook table the Cone Density
+  // screen actually saves to (see the /cone-density-notebook route in routes/autoconer.js).
+  // Any drift between the two let the same entry_id be reissued, failing saves with
+  // "Duplicate entry_id".
+  '/autoconer/cone-density': 'autoconer.cone_density_notebook',
+  // Same root cause again: Count Wise Cuts and the CSP/U% Parameter Entries screens had no
+  // mapping here either, so their "next entry id" was computed only from frontend_entry_registry.
+  // For Count Wise Cuts that registry had drifted behind the real table (a stuck 'reserved' row
+  // masked a higher already-committed id), so the next reservation reissued an id that was
+  // already taken, failing with "duplicate key value violates ... count_wise_cuts_entry_id_uq".
+  // CSP and U% Parameter Entries share ONE table (autoconer.parameter_entries) with two
+  // different prefixes (ACS/AUP) distinguished by inspection_type — plus their save request
+  // actually posts to plain /autoconer/parameter-entries, a different route_path than the one
+  // used to reserve the id (/parameter-entries/pending-csp|pending-quality), so the registry for
+  // those two route_paths never saw a committed id and kept handing out ACS-0001 forever. Mapping
+  // the real table here (see getTableEntryIdMax's prefix filtering, which keeps ACS/AUP numbered
+  // independently despite sharing a table) fixes both without needing to touch the frontend.
+  '/autoconer/count-wise-cuts': 'autoconer.count_wise_cuts',
+  '/autoconer/parameter-entries': 'autoconer.parameter_entries',
+  '/autoconer/parameter-entries/pending-csp': 'autoconer.parameter_entries',
+  '/autoconer/parameter-entries/pending-quality': 'autoconer.parameter_entries',
   '/drawframe/wheel-change': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type1': 'drawframe.wheel_change',
   '/drawframe/wheel-change/type2': 'drawframe.wheel_change',
@@ -149,9 +171,26 @@ const ENTRY_ID_ROUTE_TABLES = {
   '/drawframe/a-percent': 'wrapping.a_percent',
   '/drawframe/stretch-percent': 'wrapping.stretch_percent',
   '/drawframe/stretch-percentage': 'wrapping.stretch_percent',
+  // Simplex's own "Stretch %" screen (simplex.js) reserves its entry id under this
+  // separate route_path, but actually submits through submitWrappingOcrPercentInspection
+  // to /drawframe/stretch-percent (draw-frame.js) — the same endpoint Draw Frame's own
+  // Stretch % screen uses, landing in this same wrapping.stretch_percent table. Without
+  // this mapping, Simplex's "next id" only tracked its own route's reservations, blind to
+  // rows the Draw Frame screen (or Simplex itself) already committed to the real table —
+  // guaranteeing a "duplicate key ... wrapping_stretch_percent_entry_id_uq" once both
+  // screens are used.
+  '/simplex/stretch-percent': 'wrapping.stretch_percent',
   '/drawframe/comber-noil-percent': 'wrapping.comber_noil_percent',
   '/drawframe/noil-percent': 'wrapping.comber_noil_percent',
-  '/drawframe/noils-percent': 'wrapping.comber_noil_percent'
+  '/drawframe/noils-percent': 'wrapping.comber_noil_percent',
+  // Same root cause as the Spinning/cone-density fixes above: these two routes are just
+  // read-only "pending" views (see autoconer.js's buildAutoconerEndpoints comment) — the
+  // actual save always goes to the shared autoconer.parameter_entries table. Without this
+  // mapping, "next entry id" was computed only from frontend_entry_registry, which can
+  // drift behind what's really in the table and reissue an id that already exists,
+  // failing the save with "duplicate key value violates ... parameter_entries_entry_id_uq".
+  '/autoconer/parameter-entries/pending-csp': 'autoconer.parameter_entries',
+  '/autoconer/parameter-entries/pending-quality': 'autoconer.parameter_entries'
 };
 
 const ENTRY_ID_ROUTE_PREFIXES = {
@@ -174,7 +213,7 @@ const ENTRY_ID_ROUTE_PREFIXES = {
 // strip all non-digits globally, which silently concatenated any digit
 // baked into the prefix itself (e.g. "SW1-0002" -> "1" + "0002" = 10002
 // instead of 2) and corrupted the computed next-id for prefixes like
-// Spinning's SW1/SW2/SW3/SW4.
+// Spinning's SW1/SW2/SW3.
 const getRegisteredEntryIdMaxSql = `
   SELECT COALESCE(
     MAX(NULLIF(substring(entry_id from '(\\d+)$'), '')::bigint),
@@ -184,7 +223,12 @@ const getRegisteredEntryIdMaxSql = `
   WHERE route_path = $1
 `;
 
-const getTableEntryIdMax = async (tableName) => {
+// `entryIdPrefix` restricts the MAX() to rows starting with that prefix (e.g. "ACS-") — needed
+// for tables shared by multiple screens/prefixes (autoconer.parameter_entries holds both
+// ACS-xxxx CSP rows and AUP-xxxx U% rows), otherwise a table-wide MAX would mix the two
+// sequences and hand out numbers under the wrong prefix. Omitted for tables that only ever hold
+// one prefix, where it's a no-op.
+const getTableEntryIdMax = async (tableName, entryIdPrefix) => {
   if (!tableName) return 0;
   const [schemaName, relationName] = tableName.split('.');
   const columnResult = await db.query(
@@ -203,7 +247,9 @@ const getTableEntryIdMax = async (tableName) => {
        MAX(NULLIF(substring(entry_id from '(\\d+)$'), '')::bigint),
        0
      ) AS max_number
-     FROM ${tableName}`
+     FROM ${tableName}
+     WHERE $1::text IS NULL OR entry_id LIKE $1 || '%'`,
+    [entryIdPrefix || null]
   );
   return Number(result.rows[0]?.max_number || 0);
 };
@@ -228,9 +274,10 @@ const getNextEntryIdForRoute = async ({ routePath, moduleName }) => {
   // every retry with "Duplicate entry_id" even though the real department table is empty.
   const registryResult = await db.query(getRegisteredEntryIdMaxSql, [routePath]);
   const registryMax = Number(registryResult?.rows[0]?.max_number || 0);
-  const tableMax = await getTableEntryIdMax(mappedTable);
-  const nextNumber = Math.max(registryMax, tableMax) + 1;
   const routePrefix = ENTRY_ID_ROUTE_PREFIXES[routePath];
+  const tableEntryIdPrefix = routePrefix ? `${routePrefix.prefix}${routePrefix.separator}` : null;
+  const tableMax = await getTableEntryIdMax(mappedTable, tableEntryIdPrefix);
+  const nextNumber = Math.max(registryMax, tableMax) + 1;
   const entryId = routePrefix
     ? `${routePrefix.prefix}${routePrefix.separator}${String(nextNumber).padStart(routePrefix.width, '0')}`
     : formatNextEntryId(nextNumber);
@@ -364,7 +411,10 @@ const { router: activityLogsRouter, createActivityLog } = require('./routes/acti
 const helpContentRouter = require('./routes/helpContent.routes');
 const inAppNotificationsRouter = require('./routes/inAppNotifications.routes');
 const supervisorAssignmentsRouter = require('./routes/supervisorAssignments.routes');
-const { router: submittedNotebooksRouter, generateOverdueNotebookTickets } = require('./routes/submittedNotebooks.routes');
+const delegationsRouter = require('./routes/delegations.routes');
+const { router: submittedNotebooksRouter, generateOverdueNotebookTickets, runPpBatchCompletionCheck } = require('./routes/submittedNotebooks.routes');
+const processParametersRoutes = require('./routes/processParameters');
+const spinningRoutes = require('./routes/spinning');
 const { router: reportSchedulesRouter, startReportScheduleWorker } = require('./routes/reportSchedules.routes');
 const ocrMachineRouter = require('./routes/ocrMachine.routes');
 
@@ -477,6 +527,7 @@ app.use('/user-guide', (req, res, next) => {
   return helpContentRouter(req, res, next);
 });
 app.use('/supervisor-assignments', supervisorAssignmentsRouter);
+app.use('/delegations', delegationsRouter);
 // Backward-compatible path used by some frontend builds: /api/reportSchedules/*
 app.use('/reportSchedules', reportSchedulesRouter);
 app.use('/reports', reportSchedulesRouter);
@@ -536,9 +587,12 @@ const startSubmittedNotebookAckWorker = () => {
   const run = async () => {
     try {
       await db.initPromise.catch(() => {});
-      const created = await generateOverdueNotebookTickets();
+      const { created, escalated } = await generateOverdueNotebookTickets();
       if (created.length) {
         console.log(`[submitted-notebooks] generated ${created.length} overdue acknowledgement ticket(s)`);
+      }
+      if (escalated.length) {
+        console.log(`[submitted-notebooks] escalated ${escalated.length} acknowledgement ticket(s) to the next tier`);
       }
     } catch (error) {
       console.warn('[submitted-notebooks] overdue worker skipped:', error.message);
@@ -550,5 +604,66 @@ const startSubmittedNotebookAckWorker = () => {
 };
 
 startSubmittedNotebookAckWorker();
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: every threshold's ticket
+// generation/escalation is "automatic ... requiring no manual intervention
+// at any level." Before this, PP Batch Incomplete and Submission Frequency
+// only ever ran when their API routes were hit manually - nothing scheduled
+// them. This worker runs all three (PP batch detection+escalation,
+// submission-frequency detection, submission-frequency TAT escalation) on
+// the same timer as the acknowledgement worker above.
+const startThresholdTicketWorker = () => {
+  const intervalMs = Number(process.env.THRESHOLD_TICKET_WORKER_INTERVAL_MS || 15 * 60 * 1000);
+  const run = async () => {
+    await db.initPromise.catch(() => {});
+
+    try {
+      const { created } = await runPpBatchCompletionCheck();
+      if (created.length) {
+        console.log(`[pp-batch] generated ${created.length} incomplete-batch ticket(s)`);
+      }
+    } catch (error) {
+      console.warn('[pp-batch] worker skipped:', error.message);
+    }
+
+    try {
+      const created = await operatorTicketRoutes.runSubmissionFrequencyCheck();
+      if (created.length) {
+        console.log(`[submission-frequency] generated ${created.length} missed-frequency ticket(s)`);
+      }
+    } catch (error) {
+      console.warn('[submission-frequency] detection worker skipped:', error.message);
+    }
+
+    try {
+      await operatorTicketRoutes.runSubmissionFrequencyTatCheck();
+    } catch (error) {
+      console.warn('[submission-frequency] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const escalated = await processParametersRoutes.runPpApprovalTatCheck();
+      if (escalated.length) {
+        console.log(`[pp-approval] escalated ${escalated.length} ticket(s) to L5`);
+      }
+    } catch (error) {
+      console.warn('[pp-approval] TAT worker skipped:', error.message);
+    }
+
+    try {
+      const escalated = await spinningRoutes.runWheelChangeApprovalTatCheck();
+      if (escalated.length) {
+        console.log(`[wheel-change-approval] escalated ${escalated.length} ticket(s) to L5`);
+      }
+    } catch (error) {
+      console.warn('[wheel-change-approval] TAT worker skipped:', error.message);
+    }
+  };
+
+  setTimeout(run, 8000);
+  setInterval(run, intervalMs);
+};
+
+startThresholdTicketWorker();
 
 

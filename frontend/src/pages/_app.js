@@ -17,6 +17,7 @@ import {
   hasRouteAccess,
   isFullAccessUser,
   isSubmittedNotebookManagerUser,
+  isSubmittedNotebookViewerUser,
   routeDepartmentMap,
 } from "@/utils/accessControl";
 import { store } from '../store';
@@ -49,6 +50,9 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/operatordetail") ||
     router.pathname === "/supervisordashboard" ||
     router.pathname === "/supervisordetails" ||
+    router.pathname === "/l3-ticketing" ||
+    router.pathname === "/l4-ticketing" ||
+    router.pathname === "/l5-ticketing" ||
     router.pathname === "/submitted-notebooks" ||
     router.pathname === "/submitted-notebook-threshold" ||
     router.pathname === "/ticket-calendar" ||
@@ -61,14 +65,19 @@ function AppShell({ Component, pageProps }) {
     router.pathname.startsWith("/umedit") ||
     router.pathname.startsWith("/umchangepassword") ||
     router.pathname === "/rolespermission" ||
+    router.pathname === "/delegation-system" ||
     router.pathname === "/threshold-values" ||
     router.pathname === "/submission-threshold" ||
+    router.pathname === "/pp-batch-threshold" ||
+    router.pathname === "/pp-approval-threshold" ||
+    router.pathname === "/wheel-change-approval-threshold" ||
     router.pathname === "/settings" ||
     router.pathname.startsWith("/Createrole") ||
     router.pathname.startsWith("/editrole");
   const isReportsFlow = router.pathname === "/reports" || router.pathname.startsWith("/reports/");
   const canAccessManagementFlow = isFullAccessUser(user);
-  const canAccessSubmittedNotebooks = isSubmittedNotebookManagerUser(user);
+  const canAccessSubmittedNotebooks = isSubmittedNotebookViewerUser(user);
+  const canAccessSubmittedNotebookThreshold = isSubmittedNotebookManagerUser(user);
   const defaultTicketingRoute = getDefaultTicketingRoute(user);
   const defaultTicketingLabel = getDefaultTicketingLabel(user);
   const managementNavLinks = [
@@ -177,8 +186,17 @@ function AppShell({ Component, pageProps }) {
 
     if (
       token &&
-      (router.pathname === "/submitted-notebooks" || router.pathname === "/submitted-notebook-threshold") &&
+      router.pathname === "/submitted-notebooks" &&
       !canAccessSubmittedNotebooks
+    ) {
+      router.replace("/");
+      return;
+    }
+
+    if (
+      token &&
+      router.pathname === "/submitted-notebook-threshold" &&
+      !canAccessSubmittedNotebookThreshold
     ) {
       router.replace("/");
       return;
@@ -192,7 +210,7 @@ function AppShell({ Component, pageProps }) {
     if (token && !isAdminFlow && !isReportsFlow && !hasRouteAccess(router.pathname, accessByDepartment, user)) {
       router.replace("/");
     }
-  }, [accessByDepartment, canAccessManagementFlow, canAccessSubmittedNotebooks, isAdminFlow, isHomeFlow, isHydrated, isReportsFlow, router, token, user]);
+  }, [accessByDepartment, canAccessManagementFlow, canAccessSubmittedNotebooks, canAccessSubmittedNotebookThreshold, isAdminFlow, isHomeFlow, isHydrated, isReportsFlow, router, token, user]);
 
   return (
     <>

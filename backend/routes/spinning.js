@@ -4,6 +4,11 @@ const client = require('../connection');
 const sqlServer = require('../config/sqlserver');
 const { dedupeVarieties } = require('../utils/variety');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
+const { createNotificationsForUsers } = require('../utils/notifications');
+const {
+  ensureProcessParameterMasterTable,
+  refreshProcessParameterStatus
+} = require('./processParameters');
 const SCREEN_ID_PREFIXES = {
   speed_checking: 'SSC',
   cots_checking: 'SCT',
@@ -17,8 +22,7 @@ const SCREEN_ID_PREFIXES = {
   qc: 'SQC',
   wheel_change_type1: 'SW1',
   wheel_change_type2: 'SW2',
-  wheel_change_type3: 'SW3',
-  wheel_change_type4: 'SW4'
+  wheel_change_type3: 'SW3'
 };
 
 const formatScreenEntryId = (screenKey, rawId) => {
@@ -239,9 +243,7 @@ const ensureSpinningTimestampColumnsHaveTimezone = async () => {
     ['spinning.wheel_change_v2', 'created_at'],
     ['spinning.wheel_change_v2', 'updated_at'],
     ['spinning.wheel_change', 'created_at'],
-    ['spinning.wheel_change', 'updated_at'],
-    ['spinning.wheel_change_type4', 'created_at'],
-    ['spinning.wheel_change_type4', 'updated_at']
+    ['spinning.wheel_change', 'updated_at']
   ];
   for (const [tableName, column] of tablesAndColumn) {
     const [schemaName, relationName] = tableName.split('.');
@@ -263,7 +265,7 @@ const ensureSpinningTimestampColumnsHaveTimezone = async () => {
   }
 };
 
-const ensureSpinningEntryIdColumns = async () => {
+const ensureSpinningEntryIdColumnsImpl = async () => {
   await ensureSpinningTimestampColumnsHaveTimezone();
   const tables = [
     'spinning.speed_checking',
@@ -278,8 +280,7 @@ const ensureSpinningEntryIdColumns = async () => {
     'spinning.spinning_qc_header',
     'spinning.wheel_change_inspection',
     'spinning.wheel_change_v2',
-    'spinning.wheel_change',
-    'spinning.wheel_change_type4'
+    'spinning.wheel_change'
   ];
 
   for (const tableName of tables) {
@@ -417,6 +418,44 @@ const ensureSpinningEntryIdColumns = async () => {
     END $$;
   `);
 
+  // Consignee Name sits alongside Count From on every wheel-change type's
+  // Existing/Proposed columns, and is required (together with Count) to look
+  // up the matching PP ID's approval status before a first-time wheel change
+  // can be submitted (see GET /wheel-change/pp-approval-status below).
+  for (const tableName of [
+    'spinning.wheel_change_inspection',
+    'spinning.wheel_change_v2',
+    'spinning.wheel_change'
+  ]) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS consignee_name_existing VARCHAR(200),
+        ADD COLUMN IF NOT EXISTS consignee_name_proposed VARCHAR(200),
+        ADD COLUMN IF NOT EXISTS consumed_pp_entry_id TEXT;
+    `);
+  }
+  // consumed_pp_entry_id records which PP id's one-time Wheel Change slot
+  // this row spent when it was saved (see the pp-approval-status gate and
+  // the POST /wheel-change/type1-3 handlers below) - needed so a later
+  // rejection of this Wheel Change knows exactly which PP to revert back to
+  // Active.
+
+  // Which L1 submitted each entry — needed so an L2's approvals queue can be
+  // scoped to just the L1 employees assigned to them (users.supervisor_assignments)
+  // rather than every submission across the whole plant. L3/Admin bypass this
+  // scoping entirely (see resolveApprovalVisibilityScope below).
+  for (const tableName of [
+    'spinning.wheel_change_inspection',
+    'spinning.wheel_change_v2',
+    'spinning.wheel_change',
+    'spinning.spinning_qc_header'
+  ]) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER;
+    `);
+  }
+
   await client.query(`
     ALTER TABLE spinning.wheel_change
       ADD COLUMN IF NOT EXISTS bdw_existing VARCHAR(100),
@@ -437,22 +476,12 @@ const ensureSpinningEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS total_draft_proposed NUMERIC;
   `);
 
-  // wheel_change_type4 already existed (created for the Type 4 form) but was missing its
-  // "Count From" column entirely — Type 4 is the only wheel-change type keyed off a variety
-  // dropdown AND a machine number, and this column was simply never added, so every Type 4
-  // submission's Count From selection was silently lost (no POST /wheel-change/type4 route even
-  // existed to insert it until now).
-  await client.query(`
-    ALTER TABLE spinning.wheel_change_type4
-      ADD COLUMN IF NOT EXISTS count_from_existing VARCHAR(100),
-      ADD COLUMN IF NOT EXISTS count_from_proposed VARCHAR(100);
-  `);
+  await client.query(`DROP TABLE IF EXISTS spinning.wheel_change_type4`);
 
   for (const tableName of [
     'spinning.wheel_change_inspection',
     'spinning.wheel_change_v2',
-    'spinning.wheel_change',
-    'spinning.wheel_change_type4'
+    'spinning.wheel_change'
   ]) {
     await client.query(`
       ALTER TABLE ${tableName}
@@ -495,8 +524,42 @@ const ensureSpinningEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS slub_min NUMERIC,
       ADD COLUMN IF NOT EXISTS slub_max NUMERIC,
       ADD COLUMN IF NOT EXISTS thickness_min NUMERIC,
-      ADD COLUMN IF NOT EXISTS thickness_max NUMERIC;
+      ADD COLUMN IF NOT EXISTS thickness_max NUMERIC,
+      ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT;
   `);
+  // NOTE: approval_status/reviewed_by/reviewed_at/review_remarks above are no
+  // longer what gates Wheel Change - that moved to a single approval on the
+  // whole PP id (process_parameters.master.status, see processParameters.js
+  // and GET /wheel-change/pp-approval-status below). These columns are kept
+  // only because dropping them would lose historical data already recorded
+  // under the old per-row model; nothing new writes to them.
+  // ADD COLUMN IF NOT EXISTS above is a no-op once the column already exists,
+  // so a stale/incorrect default from an older migration would otherwise
+  // persist forever. Force it explicitly on every startup, same as the
+  // wheel-change tables' approval_status default.
+  await client.query(`
+    ALTER TABLE spinning.spinning_qc_header ALTER COLUMN approval_status SET DEFAULT 'pending';
+  `);
+};
+
+// ensureSpinningEntryIdColumnsImpl runs ~17 sequential ALTER TABLE/DO $$ statements — fine as a
+// one-time startup migration, but every route in this file awaits it on every single request, and
+// each statement is a round trip to the remote Supabase pooler. Memoizing the in-flight/completed
+// promise means the real migration work only ever runs once per server process; every call after
+// that resolves immediately instead of re-running all 17 statements (this was making routes like
+// GET /wheel-change/pp-approval-status - hit on every debounced keystroke - feel sluggish).
+let ensureSpinningEntryIdColumnsPromise = null;
+const ensureSpinningEntryIdColumns = () => {
+  if (!ensureSpinningEntryIdColumnsPromise) {
+    ensureSpinningEntryIdColumnsPromise = ensureSpinningEntryIdColumnsImpl().catch((error) => {
+      ensureSpinningEntryIdColumnsPromise = null;
+      throw error;
+    });
+  }
+  return ensureSpinningEntryIdColumnsPromise;
 };
 
 // Writes the Type-2 fault-subtype value into its own table for a given
@@ -1282,8 +1345,6 @@ router.get('/wheel-change/type2/varieties', getSpinningVarieties);
 router.get('/wheel-change/type2/master/varieties', getSpinningVarieties);
 router.get('/wheel-change/type3/varieties', getSpinningVarieties);
 router.get('/wheel-change/type3/master/varieties', getSpinningVarieties);
-router.get('/wheel-change/type4/varieties', getSpinningVarieties);
-router.get('/wheel-change/type4/master/varieties', getSpinningVarieties);
 router.get('/wheel-change/count-names', getCountChangeCountNames);
 router.get('/wheel-change/count-dropdown', getCountChangeCountNames);
 router.get('/wheel-change/master/counts', getCountChangeCountNames);
@@ -1300,8 +1361,6 @@ router.get('/wheel-change/type2/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type2/master/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type3/dropdown', getWheelChangeMasterDropdown);
 router.get('/wheel-change/type3/master/dropdown', getWheelChangeMasterDropdown);
-router.get('/wheel-change/type4/dropdown', getWheelChangeMasterDropdown);
-router.get('/wheel-change/type4/master/dropdown', getWheelChangeMasterDropdown);
 
 const getCountChangeRfNos = async (req, res, next) => {
   try {
@@ -1470,10 +1529,6 @@ router.get('/wheel-change/type3/rf-nos', getCountChangeRfNos);
 router.get('/wheel-change/type3/rf-numbers', getCountChangeRfNos);
 router.get('/wheel-change/type3/master/rf-nos', getCountChangeRfNos);
 router.get('/wheel-change/type3/fr-nos', getCountChangeRfNos);
-router.get('/wheel-change/type4/rf-nos', getCountChangeRfNos);
-router.get('/wheel-change/type4/rf-numbers', getCountChangeRfNos);
-router.get('/wheel-change/type4/master/rf-nos', getCountChangeRfNos);
-router.get('/wheel-change/type4/fm-nos', getCountChangeRfNos);
 
 router.get('/master/machine-numbers', getSpinningLycraMachineNumbers);
 router.get('/master/machine-nos', getSpinningLycraMachineNumbers);
@@ -3417,12 +3472,13 @@ router.post('/qc', async (req, res, next) => {
         slub_min,
         slub_max,
         thickness_min,
-        thickness_max
+        thickness_max,
+        created_by_user_id
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
         $11,$12,$13,$14,$15,$16,$17,$18,
-        $19,$20,$21,$22,$23,$24,$25,$26
+        $19,$20,$21,$22,$23,$24,$25,$26,$27
       )
       RETURNING *`,
       [
@@ -3451,7 +3507,8 @@ router.post('/qc', async (req, res, next) => {
         slub_min,
         slub_max,
         thickness_min,
-        thickness_max
+        thickness_max,
+        req.user?.id ?? null
       ]
     );
 
@@ -3609,6 +3666,11 @@ router.get('/qc', async (req, res, next) => {
  *       500:
  *         description: Server error
  */
+// Editing and resaving a PP entry (rejected, approved, or still pending) always
+// resets it to 'pending' and clears the prior review - any change means it
+// needs a fresh L2 look, and this is also how a rejected entry gets
+// resubmitted (the operator picks it from Saved Versions, fixes the values
+// L2 flagged, and saves - no separate "resubmit" endpoint needed).
 router.put('/qc/:qc_id', async (req, res, next) => {
   try {
     const qc_id = parseInt(req.params.qc_id, 10);
@@ -3671,7 +3733,11 @@ router.put('/qc/:qc_id', async (req, res, next) => {
            slub_min = $22,
            slub_max = $23,
            thickness_min = $24,
-           thickness_max = $25
+           thickness_max = $25,
+           approval_status = 'pending',
+           reviewed_by = NULL,
+           reviewed_at = NULL,
+           review_remarks = NULL
        WHERE qc_id = $26
        RETURNING *`,
       [
@@ -3902,7 +3968,8 @@ const normalizeWheelChangeType3Payload = (payload) => {
 router.post('/wheel-change/type1', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
-    const d = withWheelChangeRfNumber(req.body, 'fm_no');
+    await ensureProcessParameterMasterTable();
+    const d = { ...withWheelChangeRfNumber(req.body, 'fm_no'), created_by_user_id: req.user?.id ?? null };
     const type1Fields = [
       'entry_id',
       'type',
@@ -3910,8 +3977,11 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       'test_no',
       'date',
       'fm_no',
+      'created_by_user_id',
       'count_from_existing',
       'count_from_proposed',
+      'consignee_name_existing',
+      'consignee_name_proposed',
       'lycra_type_existing',
       'lycra_type_proposed',
       'lycra_draft_existing',
@@ -3972,12 +4042,18 @@ router.post('/wheel-change/type1', async (req, res, next) => {
       return res.status(400).json({ message: 'Required fields missing' });
     }
 
+    if (!(await findActivePpForCombo(d.count_from_proposed, d.consignee_name_proposed))) {
+      return res.status(409).json({
+        message: 'No Active PP id found for this Count + Consignee Name combination. A Wheel Change can only be entered once the matching PP id has been approved.'
+      });
+    }
+
     const result = await insertWheelChangeEntry(
       'spinning.wheel_change_inspection',
       type1Fields,
       d
     );
-
+    await createWheelChangeApprovalTicket('spinning.wheel_change_inspection', result.rows[0].id);
     res.status(201).json({
       message: 'Type1 created',
       data: result.rows[0]
@@ -3998,17 +4074,15 @@ router.post('/wheel-change/type1', async (req, res, next) => {
 router.get('/wheel-change', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
-    const [type1, type2, type3, type4] = await Promise.all([
+    const [type1, type2, type3] = await Promise.all([
       client.query(`SELECT * FROM spinning.wheel_change_inspection`),
       client.query(`SELECT * FROM spinning.wheel_change_v2`),
-      client.query(`SELECT * FROM spinning.wheel_change`),
-      client.query(`SELECT * FROM spinning.wheel_change_type4`)
+      client.query(`SELECT * FROM spinning.wheel_change`)
     ]);
     const rows = [
       ...type1.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type1' })),
       ...type2.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type2' })),
-      ...type3.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type3' })),
-      ...type4.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type4' }))
+      ...type3.rows.map((row) => ({ ...row, wheel_change_type: row.wheel_change_type || 'type3' }))
     ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     res.status(200).json({ data: rows });
   } catch (error) {
@@ -4139,7 +4213,8 @@ router.get('/wheel-change/type1', async (req, res, next) => {
 router.post('/wheel-change/type2', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
-    const d = withWheelChangeRfNumber(req.body, 'fm_no');
+    await ensureProcessParameterMasterTable();
+    const d = { ...withWheelChangeRfNumber(req.body, 'fm_no'), created_by_user_id: req.user?.id ?? null };
     const type2Fields = [
       'entry_id',
       'type',
@@ -4147,8 +4222,11 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       'test_no',
       'date',
       'fm_no',
+      'created_by_user_id',
       'count_from_existing',
       'count_from_proposed',
+      'consignee_name_existing',
+      'consignee_name_proposed',
       'lycra_type_existing',
       'lycra_type_proposed',
       'lycra_draft_existing',
@@ -4211,12 +4289,18 @@ router.post('/wheel-change/type2', async (req, res, next) => {
       return res.status(400).json({ message: 'Required fields missing' });
     }
 
+    if (!(await findActivePpForCombo(d.count_from_proposed, d.consignee_name_proposed))) {
+      return res.status(409).json({
+        message: 'No Active PP id found for this Count + Consignee Name combination. A Wheel Change can only be entered once the matching PP id has been approved.'
+      });
+    }
+
     const result = await insertWheelChangeEntry(
       'spinning.wheel_change_v2',
       type2Fields,
       d
     );
-
+    await createWheelChangeApprovalTicket('spinning.wheel_change_v2', result.rows[0].id);
     res.status(201).json({
       message: 'Type2 created',
       data: result.rows[0]
@@ -4352,7 +4436,11 @@ router.get('/wheel-change/type2', async (req, res, next) => {
 router.post('/wheel-change/type3', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
-    const d = normalizeWheelChangeType3Payload(withWheelChangeRfNumber(req.body, 'fr_no'));
+    await ensureProcessParameterMasterTable();
+    const d = {
+      ...normalizeWheelChangeType3Payload(withWheelChangeRfNumber(req.body, 'fr_no')),
+      created_by_user_id: req.user?.id ?? null
+    };
     const type3Fields = [
       'entry_id',
       'type',
@@ -4360,8 +4448,11 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       'test_no',
       'date',
       'fr_no',
+      'created_by_user_id',
       'count_from_existing',
       'count_from_proposed',
+      'consignee_name_existing',
+      'consignee_name_proposed',
       'lycra_type_existing',
       'lycra_type_proposed',
       'lycra_draft_existing',
@@ -4424,12 +4515,18 @@ router.post('/wheel-change/type3', async (req, res, next) => {
       return res.status(400).json({ message: 'Required fields missing' });
     }
 
+    if (!(await findActivePpForCombo(d.count_from_proposed, d.consignee_name_proposed))) {
+      return res.status(409).json({
+        message: 'No Active PP id found for this Count + Consignee Name combination. A Wheel Change can only be entered once the matching PP id has been approved.'
+      });
+    }
+
     const result = await insertWheelChangeEntry(
       'spinning.wheel_change',
       type3Fields,
       d
     );
-
+    await createWheelChangeApprovalTicket('spinning.wheel_change', result.rows[0].id);
     res.status(201).json({
       message: 'Type3 created',
       data: result.rows[0]
@@ -4517,159 +4614,129 @@ router.get('/wheel-change/type3', async (req, res, next) => {
   }
 });
 
-// Spinning Wheel Change has 4 types in the frontend (WheelChange.jsx's WHEEL_CHANGE_TYPES), each
-// posting to its own /spinning/wheel-change/type{N} endpoint — but only type1/type2/type3 ever had
-// a backend route. Type 4 already has its own dedicated table (spinning.wheel_change_type4,
-// created earlier for this purpose) and its own field map (WHEEL_CHANGE_FIELD_MAP["Type 4"] in
-// WheelChange.jsx), so every Type 4 submission has been failing outright with a 404 until now.
-router.post('/wheel-change/type4', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const d = withWheelChangeRfNumber(req.body, 'fm_no');
-    const type4Fields = [
-      'entry_id',
-      'type',
-      'wheel_change_type',
-      'test_no',
-      'date',
-      'fm_no',
-      'count_from_existing',
-      'count_from_proposed',
-      'lycra_type_existing',
-      'lycra_type_proposed',
-      'lycra_draft_existing',
-      'lycra_draft_proposed',
-      'slub_code_existing',
-      'slub_code_proposed',
-      'range_existing',
-      'range_proposed',
-      'offset_existing',
-      'offset_proposed',
-      'core_condition_existing',
-      'core_condition_proposed',
-      'production_existing',
-      'production_proposed',
-      'roving_hank_existing',
-      'roving_hank_proposed',
-      'eow_existing',
-      'eow_proposed',
-      'epi_existing',
-      'epi_proposed',
-      'dca_existing',
-      'dca_proposed',
-      'dcb_existing',
-      'dcb_proposed',
-      'dfc_existing',
-      'dfc_proposed',
-      'dc_existing',
-      'dc_proposed',
-      'tcw_existing',
-      'tcw_proposed',
-      'tw_existing',
-      'tw_proposed',
-      'tpm_existing',
-      'tpm_proposed',
-      'travelers_no_existing',
-      'travelers_no_proposed',
-      'spacer_existing',
-      'spacer_proposed',
-      'cop_weight_existing',
-      'cop_weight_proposed',
-      'speed_front_existing',
-      'speed_front_proposed',
-      'speed_rpm_existing',
-      'speed_rpm_proposed',
-      'empires_colour_existing',
-      'empires_colour_proposed',
-      'total_draft_existing',
-      'total_draft_proposed',
-      'bdw_existing',
-      'bdw_proposed',
-      'bd_existing',
-      'bd_proposed',
-      'winding_length_existing',
-      'winding_length_proposed',
-      'operator',
-      'remarks'
-    ];
-
-    if (!d.entry_id) {
-      return res.status(400).json({ message: 'entry_id is required and must be unique' });
-    }
-
-    if (!d.wheel_change_type || !d.test_no || !d.date) {
-      return res.status(400).json({ message: 'Required fields missing' });
-    }
-
-    const result = await insertWheelChangeEntry(
-      'spinning.wheel_change_type4',
-      type4Fields,
-      d
-    );
-
-    res.status(201).json({
-      message: 'Type4 created',
-      data: result.rows[0]
-    });
-
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
-    }
-    next(err);
-  }
-});
-
-/**
- * @swagger
- * /spinning/wheel-change/type4:
- *   get:
- *     summary: Get all Type4 entries
- *     tags: [Wheel Change Type4]
- *     responses:
- *       200:
- *         description: Success
- */
-router.get('/wheel-change/type4', async (req, res, next) => {
-  try {
-    await ensureSpinningEntryIdColumns();
-    const variety = String(req.query.variety || req.query.variety_name || req.query.mixing || '').trim();
-    const approvalStatus = String(req.query.approval_status || req.query.status || '').trim();
-    const result = await client.query(
-      `SELECT *
-       FROM spinning.wheel_change_type4
-       WHERE ($1::text = '' OR LOWER(TRIM(COALESCE(count_from_existing::text, ''))) = LOWER(TRIM($1))
-         OR LOWER(TRIM(COALESCE(count_from_proposed::text, ''))) = LOWER(TRIM($1)))
-         AND ($2::text = '' OR approval_status = $2)
-       ORDER BY created_at DESC`,
-      [variety, approvalStatus]
-    );
-    const latestRecord = variety
-      ? await fetchLatestWheelChangeByVariety('spinning.wheel_change_type4', variety, ['count_from_existing', 'count_from_proposed'], approvalStatus || 'approved')
-      : null;
-
-    res.json({
-      data: result.rows.map((row) => withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', row, 'fm_no'), 'fm_no')),
-      latest_record: latestRecord ? withWheelChangeMachineAliases(withWheelChangeRfAliases('wheel_change_type4', latestRecord, 'fm_no'), 'fm_no') : null
-    });
-
-  } catch (err) {
-    next(err);
-  }
-});
-
 const WHEEL_CHANGE_APPROVAL_TABLES = {
   type1: 'spinning.wheel_change_inspection',
   type2: 'spinning.wheel_change_v2',
-  type3: 'spinning.wheel_change',
-  type4: 'spinning.wheel_change_type4'
+  type3: 'spinning.wheel_change'
 };
+
+const isFullAccessRequest = (req) => {
+  const role = String(req.user?.role || '').trim().toLowerCase();
+  return role === 'admin' || role === 'super admin' || role === 'superadmin';
+};
+
+// WC Approvals visibility: L5 and Admin see every submission, no
+// restrictions (L5/MD/Admin took over the "sees everything" role L3 used to
+// have - L3 has no part in this flow now). L4 also gets unrestricted access
+// here (on top of their separate PP approval queue, not instead of it) -
+// Wheel Change is something L4 co-manages alongside L5/Admin. L2 no longer
+// has any access to WC Approvals (moved to L4). Any other level (L1, L2,
+// L3, etc.) sees nothing (enforced on the frontend too, but re-checked
+// here).
+const resolveApprovalVisibilityScope = async (req) => {
+  if (isFullAccessRequest(req)) return { unrestricted: true, allowedUserIds: [] };
+
+  const level = String(req.user?.level || '').trim().toUpperCase();
+  if (level === 'L5' || level === 'L4') return { unrestricted: true, allowedUserIds: [] };
+
+  return { unrestricted: false, allowedUserIds: [] };
+};
+
+const applyApprovalVisibilityScope = (rows, scope) =>
+  scope.unrestricted
+    ? rows
+    : rows.filter((row) => scope.allowedUserIds.includes(row.created_by_user_id));
+
+router.get('/wheel-change/approval-config', async (req, res, next) => {
+  try {
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.query?.department) ? req.query.department : 'Spinning';
+    const config = await getWheelChangeApprovalConfig(department);
+    return res.status(200).json({ config });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// One row per department (Spinning/Drawframe/Carding/Simplex) - these are
+// already separate Wheel Change / Change Control approval queues in the app.
+router.get('/wheel-change/approval-config/list', async (req, res, next) => {
+  try {
+    const configs = await getAllWheelChangeApprovalConfigs();
+    return res.status(200).json({ configs });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/wheel-change/approval-config', async (req, res, next) => {
+  try {
+    await ensureWheelChangeApprovalConfigTable();
+
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.body?.department) ? req.body.department : null;
+    if (!department) {
+      return res.status(400).json({ message: `department must be one of ${WHEEL_CHANGE_DEPARTMENTS.join(', ')}` });
+    }
+
+    const l4UserIds = (Array.isArray(req.body?.l4_user_ids) ? req.body.l4_user_ids : [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    const tatHours = Number(req.body?.tat_hours);
+    if (!Number.isFinite(tatHours) || tatHours <= 0) {
+      return res.status(400).json({ message: 'tat_hours must be a positive integer' });
+    }
+
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+    const severity = String(req.body?.severity || '').trim() || 'High';
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, l4_user_id, l4_user_ids, tat_hours, is_active, severity, updated_at)
+       VALUES ($1, $2, $3::int[], $4, $5, $6, NOW())
+       ON CONFLICT (config_key)
+       DO UPDATE SET l4_user_id = EXCLUDED.l4_user_id, l4_user_ids = EXCLUDED.l4_user_ids, tat_hours = EXCLUDED.tat_hours, is_active = EXCLUDED.is_active, severity = EXCLUDED.severity, updated_at = NOW()
+       RETURNING *`,
+      [department, l4UserIds[0] || null, l4UserIds, tatHours, isActive, severity]
+    );
+
+    return res.status(200).json({ message: `Wheel Change Approval configuration for ${department} saved successfully`, config: { department, ...result.rows[0] } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch('/wheel-change/approval-config/:department/status', async (req, res, next) => {
+  try {
+    await ensureWheelChangeApprovalConfigTable();
+    const department = WHEEL_CHANGE_DEPARTMENTS.includes(req.params.department) ? req.params.department : null;
+    if (!department) {
+      return res.status(400).json({ message: `department must be one of ${WHEEL_CHANGE_DEPARTMENTS.join(', ')}` });
+    }
+    const isActive = req.body?.is_active === undefined ? true : Boolean(req.body.is_active);
+
+    const result = await client.query(
+      `INSERT INTO ticketing_system.wheel_change_approval_config (config_key, tat_hours, is_active, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (config_key)
+       DO UPDATE SET is_active = EXCLUDED.is_active, updated_at = NOW()
+       RETURNING *`,
+      [department, WHEEL_CHANGE_APPROVAL_TAT_HOURS, isActive]
+    );
+
+    return res.status(200).json({
+      message: `Wheel Change Approval status for ${department} updated successfully`,
+      config: { department, ...result.rows[0] }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/wheel-change/approvals', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
     const status = String(req.query.status ?? '').trim();
     const whereClause = status ? 'WHERE approval_status = $1' : '';
+    const scope = await resolveApprovalVisibilityScope(req);
 
     const results = await Promise.all(
       Object.entries(WHEEL_CHANGE_APPROVAL_TABLES).map(([type, tableName]) =>
@@ -4680,7 +4747,33 @@ router.get('/wheel-change/approvals', async (req, res, next) => {
       )
     );
 
-    const data = results.flat().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const rows = results.flat();
+
+    // The operator field is free text typed at submit time and can be
+    // blank; fall back to the submitting user's actual name via
+    // created_by_user_id rather than showing "-" when that happens.
+    const submitterIds = Array.from(
+      new Set(
+        rows
+          .filter((row) => !String(row.operator || '').trim() && row.created_by_user_id)
+          .map((row) => row.created_by_user_id)
+      )
+    );
+    const nameById = new Map();
+    if (submitterIds.length) {
+      const namesResult = await client.query(
+        `SELECT id, full_name FROM users.user_details WHERE id = ANY($1::int[])`,
+        [submitterIds]
+      );
+      namesResult.rows.forEach((user) => nameById.set(user.id, user.full_name));
+    }
+
+    const data = applyApprovalVisibilityScope(rows, scope)
+      .map((row) => ({
+        ...row,
+        operator: String(row.operator || '').trim() || nameById.get(row.created_by_user_id) || null,
+      }))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     res.status(200).json({ data });
   } catch (error) {
     console.error('Spinning wheel change approvals fetch error:', error);
@@ -4696,9 +4789,293 @@ const resolveWheelChangeApprovalTable = (compositeId) => {
   return { tableName, id, type };
 };
 
+// Finds the currently-Active PP id for this Count + Consignee, if any.
+const findActivePpForCombo = async (countName, consigneeName) => {
+  const trimmedCount = String(countName || '').trim();
+  const trimmedConsignee = String(consigneeName || '').trim();
+  if (!trimmedCount || !trimmedConsignee) return null;
+
+  // regexp_replace(..., '\s+', ' ', 'g') collapses runs of internal whitespace
+  // (e.g. an accidental double space typed into one but not the other) before
+  // comparing - a genuine match otherwise silently fails LOWER(TRIM(...))
+  // equality over a difference no user would ever notice or intentionally type.
+  const result = await client.query(
+    `SELECT h.entry_id
+     FROM spinning.spinning_qc_header h
+     JOIN process_parameters.master m ON m.entry_id = h.entry_id
+     WHERE LOWER(regexp_replace(TRIM(COALESCE(h.count_name, '')), '\\s+', ' ', 'g')) = LOWER(regexp_replace(TRIM($1), '\\s+', ' ', 'g'))
+       AND LOWER(regexp_replace(TRIM(COALESCE(h.consignee_name, '')), '\\s+', ' ', 'g')) = LOWER(regexp_replace(TRIM($2), '\\s+', ' ', 'g'))
+       AND m.status = 'active'
+     ORDER BY h.created_at DESC
+     LIMIT 1`,
+    [trimmedCount, trimmedConsignee]
+  );
+  return result.rows[0]?.entry_id || null;
+};
+
+// Spends the one Wheel Change use an Active PP unlocks for this Count +
+// Consignee - flips that PP id from active to inactive. Called only once the
+// Wheel Change itself is approved (not when it's first saved/pending - a
+// pending or rejected Wheel Change never touches the PP's status, so it
+// stays Active and simply doesn't need reverting). Returns the consumed
+// entry_id (or null if there was no Active PP to consume, which shouldn't
+// happen given the pp-approval-status gate, but isn't fatal if it does).
+const consumeActivePpForWheelChange = async (countName, consigneeName) => {
+  const entryId = await findActivePpForCombo(countName, consigneeName);
+  if (!entryId) return null;
+
+  const result = await client.query(
+    `UPDATE process_parameters.master SET status = 'inactive', updated_at = NOW()
+     WHERE entry_id = $1 AND status = 'active'
+     RETURNING entry_id`,
+    [entryId]
+  );
+  return result.rows[0]?.entry_id || null;
+};
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf: "Wheel Change Approval" is
+// one of the six threshold types - submitting a proposal should raise a
+// real TAT-tracked approval task on L4, escalating to L5 if L4 doesn't act
+// in time. Mirrors createPpApprovalTicket/closePpApprovalTicket/
+// runPpApprovalTatCheck in processParameters.js - same "any current L4/L5"
+// resolution (this app's WC Approvals access model isn't assigned to one
+// named L4 user), same TAT-then-escalate-to-L5 shape.
+const WHEEL_CHANGE_APPROVAL_TAT_HOURS = Number(process.env.WHEEL_CHANGE_APPROVAL_TAT_HOURS) > 0
+  ? Number(process.env.WHEEL_CHANGE_APPROVAL_TAT_HOURS)
+  : 24;
+
+const getUsersAtLevelForWheelChange = async (level) => {
+  const result = await client.query(`SELECT id FROM users.user_details WHERE level = $1`, [level]);
+  return result.rows.map((row) => row.id);
+};
+
+// Employee-Hierarchy-and-Workflow-System_V2.pdf, "PP Approval & Wheel Change
+// Approval Configuration": "L4 User: Select the specific L4 Department Head
+// responsible... TAT: configurable." When no specific L4 user is configured,
+// ticket creation falls back to "any current L4 user" so existing setups
+// keep working.
+// Wheel Change Approval is a separate approval queue per department today
+// (Spinning, Drawframe, Carding, Simplex each have their own proposal table
+// and approve/reject routes) - config_key now holds the department name
+// instead of always 'global', so each can have its own L4 approver(s)/TAT.
+// A 'global' row (from before this change) is kept as a fallback for any
+// department without its own row yet.
+const WHEEL_CHANGE_DEPARTMENTS = ['Spinning', 'Drawframe', 'Carding', 'Simplex'];
+
+const deriveWheelChangeDepartment = (tableName) => {
+  const schema = String(tableName || '').split('.')[0] || '';
+  const match = WHEEL_CHANGE_DEPARTMENTS.find((department) => department.toLowerCase() === schema.toLowerCase());
+  return match || 'Spinning';
+};
+
+const ensureWheelChangeApprovalConfigTable = async () => {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS ticketing_system.wheel_change_approval_config (
+      config_key TEXT PRIMARY KEY DEFAULT 'global',
+      l4_user_id INTEGER NULL,
+      tat_hours INTEGER NOT NULL DEFAULT 24,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Admin can assign as many L4 approvers as needed, not just one - l4_user_ids
+  // is now the source of truth; the older single l4_user_id column is kept
+  // (and folded into the array) so existing saved configs keep working.
+  await client.query(`
+    ALTER TABLE ticketing_system.wheel_change_approval_config
+      ADD COLUMN IF NOT EXISTS l4_user_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'High'
+  `);
+};
+
+const getWheelChangeApprovalConfig = async (department = 'Spinning') => {
+  await ensureWheelChangeApprovalConfigTable();
+  const result = await client.query(
+    `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = $1`,
+    [department]
+  );
+  let row = result.rows[0];
+  if (!row) {
+    const fallback = await client.query(
+      `SELECT * FROM ticketing_system.wheel_change_approval_config WHERE config_key = 'global'`
+    );
+    row = fallback.rows[0];
+  }
+  if (!row) {
+    return { config_key: department, l4_user_ids: [], tat_hours: WHEEL_CHANGE_APPROVAL_TAT_HOURS, is_active: true, severity: 'High', updated_at: null };
+  }
+  const l4UserIds = Array.isArray(row.l4_user_ids) && row.l4_user_ids.length
+    ? row.l4_user_ids
+    : (row.l4_user_id ? [row.l4_user_id] : []);
+  return { ...row, l4_user_ids: l4UserIds };
+};
+
+const getAllWheelChangeApprovalConfigs = async () => {
+  await ensureWheelChangeApprovalConfigTable();
+  const configs = await Promise.all(
+    WHEEL_CHANGE_DEPARTMENTS.map((department) => getWheelChangeApprovalConfig(department))
+  );
+  return WHEEL_CHANGE_DEPARTMENTS.map((department, index) => ({ department, ...configs[index] }));
+};
+
+const ensureWheelChangeApprovalTicketSchema = async () => {
+  await client.query(`
+    ALTER TABLE ticketing_system.operator_tickets
+      ADD COLUMN IF NOT EXISTS approval_l4_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS approval_l5_user_ids integer[] NULL,
+      ADD COLUMN IF NOT EXISTS tat_current_level text NULL,
+      ADD COLUMN IF NOT EXISTS l4_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS l5_tat_due_at timestamptz NULL,
+      ADD COLUMN IF NOT EXISTS ticket_type varchar(50) NULL
+  `);
+};
+
+// wheelChangeRowKey uniquely identifies the WC row this ticket is for
+// (table name + row id), since ticket_id-style composite ids
+// ("type1:123") aren't stable identifiers to search violation_details by.
+const createWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+  await ensureWheelChangeApprovalTicketSchema();
+  const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
+
+  const existing = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'
+     LIMIT 1`,
+    [wheelChangeRowKey]
+  );
+  if (existing.rows[0]?.ticket_id) return existing.rows[0].ticket_id;
+
+  const department = deriveWheelChangeDepartment(tableName);
+  const approvalConfig = await getWheelChangeApprovalConfig(department);
+  // A department toggled inactive isn't exempt from approval (the ticket
+  // still must be raised per the PDF) - "inactive" just means its specific
+  // L4 override/TAT no longer applies, falling back to the same defaults
+  // used when no config exists at all.
+  const useConfig = approvalConfig.is_active !== false;
+  const l4UserIds = useConfig && approvalConfig.l4_user_ids.length
+    ? approvalConfig.l4_user_ids
+    : await getUsersAtLevelForWheelChange('L4');
+  const tatHours = useConfig && Number(approvalConfig.tat_hours) > 0
+    ? Number(approvalConfig.tat_hours)
+    : WHEEL_CHANGE_APPROVAL_TAT_HOURS;
+  const l4TatDueAt = new Date(Date.now() + tatHours * 60 * 60 * 1000).toISOString();
+  const severity = useConfig && approvalConfig.severity ? approvalConfig.severity : 'High';
+  const violationDetails = {
+    category: 'PENDING_APPROVAL',
+    ticket_type: 'WHEEL_CHANGE_APPROVAL',
+    wheel_change_row_key: wheelChangeRowKey,
+    department,
+    message: `A Wheel Change proposal is awaiting L4 approval.`
+  };
+
+  const ticket = await client.query(
+    `INSERT INTO ticketing_system.operator_tickets
+     (ticket_id, machine_name, parameter_name, actual_value, threshold_value,
+      severity, status, created_at, ticket_reason, ticket_type, ticket_kind,
+      violation_details, approval_l4_user_ids, tat_current_level, l4_tat_due_at)
+     VALUES (
+       'TK-' || LPAD(nextval('"ticketing_system"."ticket_seq"')::text, 4, '0'),
+       $1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+       $5, 'Open', NOW(), 'MISSING_VALUE', 'WHEEL_CHANGE_APPROVAL', 'wheel_change_approval',
+       $2::jsonb, $3::int[], 'L4', $4
+     )
+     RETURNING ticket_id`,
+    [wheelChangeRowKey, JSON.stringify(violationDetails), l4UserIds, l4TatDueAt, severity]
+  );
+  const insertedTicketId = ticket.rows[0]?.ticket_id || null;
+
+  if (insertedTicketId && l4UserIds.length) {
+    await createNotificationsForUsers(l4UserIds, {
+      ticketId: insertedTicketId,
+      type: 'WHEEL_CHANGE_APPROVAL',
+      category: 'Tickets',
+      priority: severity === 'High' ? 'High' : 'Medium',
+      title: (user) => `Hi ${user.full_name || 'there'} (L4), a Wheel Change needs your approval`,
+      body: (user) =>
+        `${user.full_name || 'You'} (L4) - a Wheel Change proposal for ${department} is awaiting your approval within ${tatHours} hour(s).`,
+      linkUrl: `/supervisor-tickets/${insertedTicketId}`,
+      payload: { ticket_id: insertedTicketId, wheel_change_row_key: wheelChangeRowKey }
+    });
+  }
+
+  return insertedTicketId;
+};
+
+const closeWheelChangeApprovalTicket = async (tableName, wheelChangeRowId) => {
+  await ensureWheelChangeApprovalTicketSchema();
+  const wheelChangeRowKey = `${tableName}:${wheelChangeRowId}`;
+  await client.query(
+    `UPDATE ticketing_system.operator_tickets
+     SET status = 'Closed'
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL' AND (violation_details->>'wheel_change_row_key') = $1 AND status <> 'Closed'`,
+    [wheelChangeRowKey]
+  );
+};
+
+// L4 -> L5 escalation once the L4 TAT elapses without action.
+const runWheelChangeApprovalTatCheck = async () => {
+  await ensureWheelChangeApprovalTicketSchema();
+
+  const dueTickets = await client.query(
+    `SELECT ticket_id FROM ticketing_system.operator_tickets
+     WHERE ticket_type = 'WHEEL_CHANGE_APPROVAL'
+       AND tat_current_level = 'L4'
+       AND l4_tat_due_at IS NOT NULL
+       AND l4_tat_due_at <= NOW()
+       AND status <> 'Closed'`
+  );
+  if (!dueTickets.rowCount) return [];
+
+  const l5UserIds = await getUsersAtLevelForWheelChange('L5');
+  const escalated = [];
+  for (const row of dueTickets.rows) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await client.query(
+      `UPDATE ticketing_system.operator_tickets
+       SET tat_current_level = 'L5', approval_l5_user_ids = $1, l5_tat_due_at = NOW()
+       WHERE ticket_id = $2
+       RETURNING *`,
+      [l5UserIds, row.ticket_id]
+    );
+    const escalatedTicket = result.rows[0];
+    if (escalatedTicket) {
+      escalated.push(escalatedTicket);
+      // eslint-disable-next-line no-await-in-loop
+      await createNotificationsForUsers(l5UserIds, {
+        ticketId: escalatedTicket.ticket_id,
+        type: 'WHEEL_CHANGE_APPROVAL',
+        category: 'Tickets',
+        priority: 'High',
+        title: (user) => `Hi ${user.full_name || 'there'} (L5), a Wheel Change escalated to you`,
+        body: (user) =>
+          `${user.full_name || 'You'} (L5) - a Wheel Change proposal was not approved at L4 in time and has escalated to you. Please approve it.`,
+        linkUrl: `/supervisor-tickets/${escalatedTicket.ticket_id}`,
+        payload: { ticket_id: escalatedTicket.ticket_id }
+      });
+    }
+  }
+  return escalated;
+};
+
+// Called right after a Wheel Change is approved (type1-4) - consumes the
+// Active PP for its Count + Consignee (flips it to Inactive) and stamps
+// consumed_pp_entry_id on the row for audit. Returns the row as saved (with
+// consumed_pp_entry_id filled in if a PP was consumed).
+const consumeAndStampWheelChangeRow = async (tableName, row) => {
+  const consumedEntryId = await consumeActivePpForWheelChange(row.count_from_proposed, row.consignee_name_proposed);
+  if (!consumedEntryId) return row;
+
+  const result = await client.query(
+    `UPDATE ${tableName} SET consumed_pp_entry_id = $1 WHERE id = $2 RETURNING *`,
+    [consumedEntryId, row.id]
+  );
+  return result.rows[0] || row;
+};
+
 router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
   try {
     await ensureSpinningEntryIdColumns();
+    await ensureProcessParameterMasterTable();
     const resolved = resolveWheelChangeApprovalTable(req.params.id);
     if (!resolved) {
       return res.status(400).json({ message: 'Invalid ID supplied' });
@@ -4714,9 +5091,17 @@ router.post('/wheel-change/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+
+    // The PP id's one-time Wheel Change slot is only spent once the Wheel
+    // Change itself is approved (by L2/WC Approvals) - not the moment it's
+    // saved/pending. Until then the PP stays Active so it's clear the slot
+    // hasn't actually been used yet.
+    const savedRow = await consumeAndStampWheelChangeRow(resolved.tableName, result.rows[0]);
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
+
     res.status(200).json({
       message: 'Spinning wheel change entry approved',
-      data: { ...result.rows[0], id: `${resolved.type}:${result.rows[0].id}`, wheel_change_type: resolved.type }
+      data: { ...savedRow, id: `${resolved.type}:${savedRow.id}`, wheel_change_type: resolved.type }
     });
   } catch (error) {
     console.error('Spinning wheel change approve error:', error);
@@ -4743,9 +5128,15 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+
+    // Nothing to revert on the PP side any more - the PP only goes Inactive
+    // on approval now, so a rejected (still-pending) entry never touched it.
+    const rejectedRow = result.rows[0];
+    await closeWheelChangeApprovalTicket(resolved.tableName, resolved.id);
+
     res.status(200).json({
       message: 'Spinning wheel change entry rejected',
-      data: { ...result.rows[0], id: `${resolved.type}:${result.rows[0].id}`, wheel_change_type: resolved.type }
+      data: { ...rejectedRow, id: `${resolved.type}:${rejectedRow.id}`, wheel_change_type: resolved.type }
     });
   } catch (error) {
     console.error('Spinning wheel change reject error:', error);
@@ -4753,6 +5144,141 @@ router.post('/wheel-change/approvals/:id/reject', async (req, res, next) => {
   }
 });
 
+// PP (Process Parameter) approvals queue for Spinning — mirrors the Wheel
+// Change approvals list/approve/reject shape (see /wheel-change/approvals
+// above) so it can be plugged into the same generic ApprovalsQueueView on
+// the frontend. Each spinning_qc_header row is one PP entry, identified by
+// its shared entry_id (PP-000N) plus Count + Consignee Name.
+router.get('/qc/approvals', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const status = String(req.query.status ?? '').trim();
+    const whereClause = status ? 'WHERE h.approval_status = $1' : '';
+    const scope = await resolveApprovalVisibilityScope(req);
+
+    // spinning_qc_header has no operator/created_by name column of its own
+    // (unlike the wheel-change tables) - resolve the submitting L1's name
+    // from created_by_user_id instead so the approvals list isn't stuck
+    // showing "-" for Operator.
+    const result = await client.query(
+      `SELECT h.*, u.full_name AS submitted_by_name, u.employee_id AS submitted_by_employee_id
+       FROM spinning.spinning_qc_header h
+       LEFT JOIN users.user_details u ON u.id = h.created_by_user_id
+       ${whereClause}
+       ORDER BY h.created_at DESC, h.qc_id DESC`,
+      status ? [status] : []
+    );
+
+    const data = applyApprovalVisibilityScope(result.rows, scope).map((row) => ({
+      ...row,
+      id: row.qc_id,
+      title: row.entry_id || `Spinning PP #${row.qc_id}`,
+      department: 'Spinning',
+      operator: row.submitted_by_name || null,
+    }));
+
+    res.status(200).json({ data });
+  } catch (error) {
+    console.error('Spinning PP approvals fetch error:', error);
+    next(error);
+  }
+});
+
+router.post('/qc/:id/approve', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const qcId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(qcId) || qcId <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE spinning.spinning_qc_header
+       SET approval_status = 'approved', reviewed_by = $1, reviewed_at = NOW()
+       WHERE qc_id = $2
+       RETURNING *`,
+      [reviewedBy, qcId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+    res.status(200).json({ message: 'Spinning QC entry approved', data: { ...result.rows[0], id: result.rows[0].qc_id } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/qc/:id/reject', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    const qcId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(qcId) || qcId <= 0) {
+      return res.status(400).json({ message: 'Invalid ID supplied' });
+    }
+    const reviewedBy = String(req.body?.department ?? req.body?.reviewed_by ?? '').trim() || null;
+    const reason = String(req.body?.reason ?? '').trim() || null;
+    const result = await client.query(
+      `UPDATE spinning.spinning_qc_header
+       SET approval_status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_remarks = $2
+       WHERE qc_id = $3
+       RETURNING *`,
+      [reviewedBy, reason, qcId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'Spinning QC entry not found' });
+    }
+    res.status(200).json({ message: 'Spinning QC entry rejected', data: { ...result.rows[0], id: result.rows[0].qc_id } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Wheel Change gate: a Wheel Change proposal for a given Count + Consignee
+// Name is only allowed while there's an Active PP id for that same
+// combination (see the 4-stage PP lifecycle in processParameters.js:
+// in_progress -> pending_approval -> active -> inactive). Active is reached
+// only via a single L4/L5/Admin approval on the whole PP id, once every
+// department has submitted - not a per-row check on Spinning alone.
+router.get('/wheel-change/pp-approval-status', async (req, res, next) => {
+  try {
+    await ensureSpinningEntryIdColumns();
+    await ensureProcessParameterMasterTable();
+    const countName = String(req.query.count_name || req.query.countName || req.query.count || '').trim();
+    const consigneeName = String(req.query.consignee_name || req.query.consigneeName || req.query.consignee || '').trim();
+
+    if (!countName || !consigneeName) {
+      return res.status(400).json({ message: 'count_name and consignee_name are required' });
+    }
+
+    const anySubmitted = await client.query(
+      `SELECT 1 FROM spinning.spinning_qc_header
+       WHERE LOWER(TRIM(COALESCE(count_name, ''))) = LOWER(TRIM($1))
+         AND LOWER(TRIM(COALESCE(consignee_name, ''))) = LOWER(TRIM($2))
+       LIMIT 1`,
+      [countName, consigneeName]
+    );
+
+    const activeEntryId = await findActivePpForCombo(countName, consigneeName);
+
+    res.status(200).json({
+      count_name: countName,
+      consignee_name: consigneeName,
+      exists: anySubmitted.rowCount > 0,
+      fully_approved: Boolean(activeEntryId),
+      pp_id: activeEntryId
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
+module.exports.runWheelChangeApprovalTatCheck = runWheelChangeApprovalTatCheck;
+module.exports.createWheelChangeApprovalTicket = createWheelChangeApprovalTicket;
+module.exports.closeWheelChangeApprovalTicket = closeWheelChangeApprovalTicket;
+module.exports.ensureWheelChangeApprovalConfigTable = ensureWheelChangeApprovalConfigTable;
+module.exports.getWheelChangeApprovalConfig = getWheelChangeApprovalConfig;
+module.exports.getAllWheelChangeApprovalConfigs = getAllWheelChangeApprovalConfigs;
+module.exports.deriveWheelChangeDepartment = deriveWheelChangeDepartment;
 
 

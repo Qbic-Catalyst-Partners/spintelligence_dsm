@@ -31,6 +31,40 @@ const ensureProcessParameterSequence = async () => {
   `, [SEQUENCE_KEY]);
 };
 
+// Mirrors processParameters.js's ensureProcessParameterMasterTable - duplicated
+// here (rather than required from that route file) to avoid a circular
+// require, since every department's own save route pulls entry-id helpers
+// from this file. Every path in this file that mints/claims an entry_id must
+// also touch this table - otherwise that PP id has no lifecycle row for
+// GET /process-parameters/master/:id or the L4 approvals queue to ever find,
+// silently stranding it at "no such PP" forever regardless of how many
+// department screens complete it.
+const ensureProcessParameterMasterRow = async (entry_id) => {
+  await db.query('CREATE SCHEMA IF NOT EXISTS process_parameters');
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS process_parameters.master (
+      id BIGSERIAL PRIMARY KEY,
+      entry_id TEXT NOT NULL UNIQUE,
+      created_by_user_id INTEGER NULL,
+      created_by_name TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await db.query(`
+    ALTER TABLE process_parameters.master
+      ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'in_progress',
+      ADD COLUMN IF NOT EXISTS reviewed_by TEXT,
+      ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS review_remarks TEXT
+  `);
+  await db.query(
+    `INSERT INTO process_parameters.master (entry_id) VALUES ($1)
+     ON CONFLICT (entry_id) DO NOTHING`,
+    [entry_id]
+  );
+};
+
 const createProcessParameterEntryId = async () => {
   await ensureProcessParameterSequence();
   const result = await db.query(
@@ -46,7 +80,9 @@ const createProcessParameterEntryId = async () => {
     [SEQUENCE_KEY]
   );
 
-  return formatProcessParameterEntryId(result.rows[0]?.last_number || 1);
+  const entryId = formatProcessParameterEntryId(result.rows[0]?.last_number || 1);
+  await ensureProcessParameterMasterRow(entryId);
+  return entryId;
 };
 
 const peekNextProcessParameterEntryId = async () => {
@@ -105,6 +141,7 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
     // Number before arithmetic/strict comparisons against numericValue.
     const lastNumber = Number(result.rows[0]?.last_number) || 0;
     if (numericValue >= 1 && numericValue <= lastNumber) {
+      await ensureProcessParameterMasterRow(normalized);
       return normalized;
     }
     // Allow the not-yet-reserved "next" id (as previewed by GET /next-id,
@@ -112,6 +149,7 @@ const resolveOrCreateProcessParameterEntryId = async (providedValue, options = {
     // first submission, advancing the sequence to match.
     if (numericValue === lastNumber + 1) {
       await advanceProcessParameterEntryIdSequence(numericValue);
+      await ensureProcessParameterMasterRow(normalized);
       return normalized;
     }
   }
@@ -135,31 +173,59 @@ const advanceProcessParameterEntryIdSequence = async (minimumLastNumber) => {
 // recorded a count_name for that PP id, every other sub-department must use
 // the same count_name (consignee_name is free to differ per sub-department).
 const COUNT_NAME_HEADER_TABLES = [
-  'carding.carding_qc_header',
-  'blowroom.blowroom_header',
-  'drawframe.drawframe_qc_header',
-  'spinning.spinning_qc_header',
-  'simplex.simplex_process_parameter',
-  'mixing.mixing_qc_header',
-  'autoconer.autoconer_process_parameter',
+  { table: 'carding.carding_qc_header', idColumn: 'qc_id' },
+  { table: 'blowroom.blowroom_header', idColumn: 'br_id' },
+  { table: 'drawframe.drawframe_qc_header', idColumn: 'ins_id' },
+  { table: 'spinning.spinning_qc_header', idColumn: 'qc_id' },
+  { table: 'simplex.simplex_process_parameter', idColumn: 'id' },
+  { table: 'mixing.mixing_qc_header', idColumn: 'qc_id' },
+  { table: 'autoconer.autoconer_process_parameter', idColumn: 'id' },
 ];
 
 // Returns the count_name already recorded for this PP id across any
 // sub-department header table, or null if the PP id has no count_name yet.
-const getExistingCountNameForEntryId = async (entry_id) => {
+// `exclude` (e.g. { table: 'drawframe.drawframe_qc_header', id: 39 }) leaves
+// out the row currently being edited, so saving a correction to your own
+// record isn't blocked by that same record's own prior value.
+const getExistingCountNameForEntryId = async (entry_id, exclude = null) => {
   if (!entry_id) return null;
-  const unionQuery = COUNT_NAME_HEADER_TABLES.map(
-    (table) => `SELECT count_name FROM ${table} WHERE entry_id = $1 AND count_name IS NOT NULL`
-  ).join(' UNION ALL ');
-  const result = await db.query(`${unionQuery} LIMIT 1`, [entry_id]);
+  const unionQuery = COUNT_NAME_HEADER_TABLES.map(({ table, idColumn }) => {
+    const excludeClause = exclude?.table === table ? ` AND ${idColumn} != $2` : '';
+    return `SELECT count_name FROM ${table} WHERE entry_id = $1 AND count_name IS NOT NULL${excludeClause}`;
+  }).join(' UNION ALL ');
+  const params = exclude ? [entry_id, exclude.id] : [entry_id];
+  const result = await db.query(`${unionQuery} LIMIT 1`, params);
   return result.rows[0]?.count_name ?? null;
+};
+
+// Given a count_name + consignee_name pair with no explicit entry_id supplied, finds whether
+// an existing PP id already covers that same combo in any department's header table - used
+// by callers that submit with no PP id picked (a fresh "Create New PP"-style submission) so
+// they reuse the already in-progress PP for this exact batch instead of silently minting a
+// duplicate PP id for what is really the same one (e.g. Autoconer Q4 submitted with no PP id
+// chosen, matching an already in-progress PP's count/consignee exactly, spawned a second PP
+// id rather than joining the first).
+const findExistingPpIdForCombo = async (countName, consigneeName) => {
+  const trimmedCount = String(countName || '').trim();
+  const trimmedConsignee = String(consigneeName || '').trim();
+  if (!trimmedCount || !trimmedConsignee) return null;
+
+  const unionQuery = COUNT_NAME_HEADER_TABLES.map(
+    ({ table }) => `SELECT entry_id FROM ${table}
+      WHERE LOWER(TRIM(COALESCE(count_name, ''))) = LOWER(TRIM($1))
+        AND LOWER(TRIM(COALESCE(consignee_name, ''))) = LOWER(TRIM($2))
+        AND entry_id IS NOT NULL`
+  ).join(' UNION ALL ');
+
+  const result = await db.query(`${unionQuery} LIMIT 1`, [trimmedCount, trimmedConsignee]);
+  return result.rows[0]?.entry_id || null;
 };
 
 // Returns the conflicting count_name already recorded for this PP id if
 // count_name doesn't match it, or null if there's no conflict. Call before
 // inserting a new header row so the mismatch is caught prior to any write.
-const getCountNameConflict = async (entry_id, count_name) => {
-  const existing = await getExistingCountNameForEntryId(entry_id);
+const getCountNameConflict = async (entry_id, count_name, exclude = null) => {
+  const existing = await getExistingCountNameForEntryId(entry_id, exclude);
   if (existing && count_name && existing !== count_name) {
     return existing;
   }
@@ -170,10 +236,12 @@ module.exports = {
   createProcessParameterEntryId,
   resolveOrCreateProcessParameterEntryId,
   peekNextProcessParameterEntryId,
+  findExistingPpIdForCombo,
   normalizeProcessParameterEntryId,
   formatProcessParameterEntryId,
   resetProcessParameterEntryIdSequence,
   advanceProcessParameterEntryIdSequence,
   getExistingCountNameForEntryId,
   getCountNameConflict,
+  ensureProcessParameterMasterRow,
 };

@@ -38,6 +38,22 @@ export const fetchUsersAPI = async () => {
   return data || [];
 };
 
+// Onboarding/edit reporting-manager dropdown: only users one level above the
+// given level are eligible (see backend GET /users/eligible-managers).
+export const fetchEligibleManagersAPI = async (level) => {
+  if (!level) return [];
+  const res = await fetch(`${BASE_URL}/users/eligible-managers?level=${encodeURIComponent(level)}`, {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+  const data = await parseJsonSafely(res);
+  if (!res.ok) {
+    throw new Error(data?.message || "Failed to fetch eligible managers");
+  }
+  return Array.isArray(data) ? data : [];
+};
+
 export const fetchRolesAPI = async () => {
   const res = await fetch(`${BASE_URL}/roles?page=1&limit=200`, {
     headers: {

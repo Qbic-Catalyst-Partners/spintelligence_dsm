@@ -3,7 +3,9 @@ import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
@@ -117,6 +119,10 @@ const mapApiEntryToVersion = (entry) => {
     status: entry?.status || "DONE",
     label: formatDisplayDate(normalizedDate),
     date: normalizedDate,
+    approvalStatus: String(entry?.approval_status || "pending").toLowerCase(),
+    reviewRemarks: entry?.review_remarks || "",
+    reviewedBy: entry?.reviewed_by || "",
+    reviewedAt: entry?.reviewed_at || "",
     data: {
       versionId: String(entry?.qc_id ?? entry?.entry_id ?? entry?.param_id ?? ""),
       paramId,
@@ -301,6 +307,18 @@ const renderFieldInput = (field, form, errors, handleFieldChange, topFieldClass)
     </div>
   );
 
+const APPROVAL_STATUS_BADGE_CLASS = {
+  approved: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  pending: "bg-amber-50 text-amber-700 border border-amber-200",
+  rejected: "bg-red-50 text-red-700 border border-red-200",
+};
+
+const APPROVAL_STATUS_LABEL = {
+  approved: "Approved",
+  pending: "Awaiting L2",
+  rejected: "Rejected",
+};
+
 const SavedVersionsSection = ({
   versions,
   form,
@@ -335,6 +353,8 @@ const SavedVersionsSection = ({
         const isExpanded = expandedVersionId === version.id && isComplete;
         const isActive = version.id === form.versionId;
 
+        const approvalStatus = version.approvalStatus || "pending";
+
         return (
           <div key={version.id} className="process-version-card overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div
@@ -351,6 +371,13 @@ const SavedVersionsSection = ({
                   Param ID
                 </div>
                 <div className="mt-1 text-[13px] font-bold text-slate-900">{displaySavedValue(version.data.paramId)}</div>
+                <span
+                  className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                    APPROVAL_STATUS_BADGE_CLASS[approvalStatus] || APPROVAL_STATUS_BADGE_CLASS.pending
+                  }`}
+                >
+                  {APPROVAL_STATUS_LABEL[approvalStatus] || "Awaiting L2"}
+                </span>
               </button>
 
               <button
@@ -392,6 +419,19 @@ const SavedVersionsSection = ({
                 {isExpanded ? <HiChevronUp /> : <HiChevronDown />}
               </button>
             </div>
+
+            {approvalStatus === "rejected" ? (
+              <div className="border-t border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700">
+                <div className="font-bold">
+                  Rejected by L2{version.reviewedBy ? ` (${version.reviewedBy})` : ""}
+                  {version.reviewedAt ? ` — ${formatDisplayDate(version.reviewedAt)}` : ""}
+                </div>
+                {version.reviewRemarks ? <div className="mt-1">Reviewer remarks: {version.reviewRemarks}</div> : null}
+                <div className="mt-1 text-red-600">
+                  Select this entry, correct the values, and save again — it will be resubmitted for L2 approval.
+                </div>
+              </div>
+            ) : null}
 
             {isExpanded ? (
               <div className="process-version-body border-t border-[#dbe4f0] bg-[#eef5ff] p-4">
@@ -463,6 +503,12 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [savedVersionsPortal, setSavedVersionsPortal] = useState(null);
   const [savedProcessParameterId, setSavedProcessParameterId] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const consigneeOptions = buildProcessParameterOptions(
     PROCESS_PARAMETER_CONSIGNEE_OPTIONS,
@@ -606,6 +652,7 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
       return { ...current, [field]: value };
     });
     clearError(field);
+    setSubmitError("");
   };
 
   const handleVersionSelect = (version) => {
@@ -678,28 +725,49 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
   const submit = async () => {
     if (!validate()) return false;
 
-    const paramId = form.versionId
-      ? form.paramId || savedProcessParameterId
-      : savedProcessParameterId || entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
-    const payload = { ...buildPayload(), entry_id: paramId };
+    try {
+      const paramId = form.versionId
+        ? form.paramId || savedProcessParameterId
+        : savedProcessParameterId || entryId || form.paramId || nextEntryIdPreview || (await reserveGlobalProcessParameterId("PP", 4));
+      const payload = { ...buildPayload(), entry_id: paramId };
 
-    const response = form.versionId
-      ? await updateSpinningProcessParameterEntry(form.versionId, payload)
-      : await spinningProcessParameterDataEntry(payload);
+      const response = form.versionId
+        ? await updateSpinningProcessParameterEntry(form.versionId, payload)
+        : await spinningProcessParameterDataEntry(payload);
 
-    const nextParamId = resolveProcessParameterDisplayId(response, paramId);
-    setSavedProcessParameterId(nextParamId);
-    registerProcessParameterId(response, "Spinning", form.countName, form.consigneeName);
+      const nextParamId = resolveProcessParameterDisplayId(response, paramId);
+      setSavedProcessParameterId(nextParamId);
+      registerProcessParameterId(response, "Spinning", form.countName, form.consigneeName);
 
-    await loadVersions();
-    onSubmitSuccess?.(response);
-    return true;
+      const linkedEntryId = payload.entry_id || nextParamId;
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (linkedEntryId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            linkedEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
+
+      await loadVersions();
+      setSubmitError("");
+      onSubmitSuccess?.(response);
+      return true;
+    } catch (error) {
+      setSubmitError(error?.message || "Unable to submit the form.");
+      return false;
+    }
   };
 
   const clear = () => {
     setForm(createDefaultForm());
     setErrors({});
+    setSubmitError("");
     setSavedProcessParameterId("");
+    setCustomFieldValues({});
   };
 
   const getPreviewData = () => [
@@ -794,6 +862,21 @@ const SpinningProcessParameterDataEntry = forwardRef(function SpinningProcessPar
             .map((field) => renderFieldInput(field, form, errors, handleFieldChange, topFieldClass))}
         </div>
       </div>
+
+      <NotebookCustomFields
+        department="Quality Control"
+        subDepartment="Process Parameter"
+        notebook="Spinning - PP"
+        entryId={form.paramId || entryId || savedProcessParameterId || nextEntryIdPreview}
+        values={customFieldValues}
+        onChange={handleCustomFieldChange}
+      />
+
+      {submitError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
+          {submitError}
+        </div>
+      ) : null}
 
     </div>
   );

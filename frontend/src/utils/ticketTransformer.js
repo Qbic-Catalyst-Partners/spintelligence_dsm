@@ -1,3 +1,5 @@
+import { formatDateTime } from "./formatDateTime";
+
 export const getTicketParameterKey = (parameterName) =>
   String(parameterName || "").toLowerCase().trim();
 
@@ -13,6 +15,18 @@ const tryParseJsonObject = (value) => {
   } catch {
     return value;
   }
+};
+
+// Several ticket-creation paths (Value Threshold, Submission Threshold, ...)
+// store actual_value/threshold_value as a single-element array wrapping one
+// detail object (e.g. [{ plus_threshold, minus_threshold, ... }]) rather than
+// a plain array of scalars. Unwrapping that here keeps every caller below
+// from ever handing a raw object/array straight to React as a child.
+const unwrapSingleObjectArray = (value) => {
+  if (Array.isArray(value) && value.length === 1 && value[0] && typeof value[0] === "object") {
+    return value[0];
+  }
+  return value;
 };
 
 export const isSubmissionFrequencyParameterName = (parameterName) =>
@@ -237,6 +251,7 @@ export const TICKET_KIND = {
   SUBMISSION_FREQUENCY: "submission_frequency",
   NOTEBOOK_ACK: "notebook_ack",
   PP_BATCH: "pp_batch",
+  WHEEL_CHANGE: "wheel_change",
 };
 
 const EXPLICIT_TICKET_KIND_KEYS = {
@@ -244,6 +259,25 @@ const EXPLICIT_TICKET_KIND_KEYS = {
   submission_frequency: TICKET_KIND.SUBMISSION_FREQUENCY,
   notebook_ack: TICKET_KIND.NOTEBOOK_ACK,
   pp_batch: TICKET_KIND.PP_BATCH,
+  wheel_change_approval: TICKET_KIND.WHEEL_CHANGE,
+};
+
+// Wheel Change approval tickets are raised from the spinning wheel-change workflow
+// (backend/routes/spinning.js createWheelChangeApprovalTicket) with an explicit
+// ticket_type/ticket_kind stamp - checked directly here (rather than only via the
+// EXPLICIT_TICKET_KIND_KEYS lookup) so older rows that only have ticket_type set,
+// or callers still on the raw violation_details.ticket_type, are also recognized.
+export const isWheelChangeApprovalTicketRecord = (ticket) => {
+  const ticketType = String(ticket?.ticket_type || ticket?.ticketType || "").trim().toUpperCase();
+  const violationDetails = getViolationDetails(ticket);
+  const violationTicketType = String(violationDetails?.ticket_type || "").trim().toUpperCase();
+  const ticketKind = String(ticket?.ticket_kind || ticket?.ticketKind || "").trim().toLowerCase();
+
+  return (
+    ticketType === "WHEEL_CHANGE_APPROVAL" ||
+    violationTicketType === "WHEEL_CHANGE_APPROVAL" ||
+    ticketKind === "wheel_change_approval"
+  );
 };
 
 // Single source of truth for "what kind of ticket is this." A ticket can carry an explicit
@@ -254,6 +288,7 @@ export const getTicketKind = (ticket) => {
   const explicitKind = EXPLICIT_TICKET_KIND_KEYS[String(ticket?.ticket_kind || "").trim().toLowerCase()];
   if (explicitKind) return explicitKind;
 
+  if (isWheelChangeApprovalTicketRecord(ticket)) return TICKET_KIND.WHEEL_CHANGE;
   if (isPpBatchCompletionTicketRecord(ticket)) return TICKET_KIND.PP_BATCH;
   if (isNotebookAcknowledgementTicketRecord(ticket)) return TICKET_KIND.NOTEBOOK_ACK;
   if (isSubmissionFrequencyTicketRecord(ticket)) return TICKET_KIND.SUBMISSION_FREQUENCY;
@@ -362,7 +397,7 @@ export const isThresholdTicketRecord = (ticket) => {
 
 export const getTicketValueForParameter = (source, parameterName) => {
   if (!source || !parameterName) return "-";
-  const normalizedSource = tryParseJsonObject(source);
+  const normalizedSource = unwrapSingleObjectArray(tryParseJsonObject(source));
 
   if (typeof normalizedSource !== "object" || Array.isArray(normalizedSource)) {
     return normalizedSource;
@@ -385,26 +420,55 @@ export const formatThresholdValue = (value) => {
   if (value === null || typeof value === "undefined") {
     return "-";
   }
-  const normalizedValue = tryParseJsonObject(value);
+  const normalizedValue = unwrapSingleObjectArray(tryParseJsonObject(value));
 
   if (typeof normalizedValue !== "object" || Array.isArray(normalizedValue)) {
     return normalizedValue;
   }
 
-  const plusThreshold =
-    normalizedValue.plus_threshold ??
-    normalizedValue.positive_tolerance ??
-    normalizedValue.upper_threshold ??
-    normalizedValue.max_tolerance ??
-    "-";
-  const minusThreshold =
-    normalizedValue.minus_threshold ??
-    normalizedValue.negative_tolerance ??
-    normalizedValue.lower_threshold ??
-    normalizedValue.min_tolerance ??
-    "-";
+  const hasToleranceShape =
+    normalizedValue.plus_threshold !== undefined ||
+    normalizedValue.positive_tolerance !== undefined ||
+    normalizedValue.upper_threshold !== undefined ||
+    normalizedValue.max_tolerance !== undefined ||
+    normalizedValue.minus_threshold !== undefined ||
+    normalizedValue.negative_tolerance !== undefined ||
+    normalizedValue.lower_threshold !== undefined ||
+    normalizedValue.min_tolerance !== undefined;
 
-  return `+:${plusThreshold}/-:${minusThreshold}`;
+  if (hasToleranceShape) {
+    const plusThreshold =
+      normalizedValue.plus_threshold ??
+      normalizedValue.positive_tolerance ??
+      normalizedValue.upper_threshold ??
+      normalizedValue.max_tolerance ??
+      "-";
+    const minusThreshold =
+      normalizedValue.minus_threshold ??
+      normalizedValue.negative_tolerance ??
+      normalizedValue.lower_threshold ??
+      normalizedValue.min_tolerance ??
+      "-";
+
+    return `+:${plusThreshold}/-:${minusThreshold}`;
+  }
+
+  // Submission-frequency-shaped threshold (required_occurrences every
+  // window_days days) - not a tolerance range, so render it as a sentence
+  // instead of guessing at plus/minus keys that don't exist on this shape.
+  if (normalizedValue.required_occurrences !== undefined || normalizedValue.window_days !== undefined) {
+    const occurrences = normalizedValue.required_occurrences ?? "-";
+    const windowDays = normalizedValue.window_days ?? "-";
+    return `${occurrences}x every ${windowDays}d`;
+  }
+
+  // Unknown object shape - fall back to a safe string instead of ever
+  // handing a raw object to a caller that renders it directly as JSX.
+  try {
+    return JSON.stringify(normalizedValue);
+  } catch {
+    return "-";
+  }
 };
 
 // Deviation = how far Actual is past the breached limit. Threshold usually renders as a
@@ -459,7 +523,7 @@ export const formatStandardValue = (value) => {
   if (value === null || typeof value === "undefined") {
     return "-";
   }
-  const normalizedValue = tryParseJsonObject(value);
+  const normalizedValue = unwrapSingleObjectArray(tryParseJsonObject(value));
 
   if (typeof normalizedValue !== "object" || Array.isArray(normalizedValue)) {
     return normalizedValue;
@@ -557,14 +621,7 @@ export const transformTicket = (ticket) => {
     description: ticket.description || "",
 
     rawCreatedAt: createdDate,
-    createdAt: createdDate.toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }),
+    createdAt: formatDateTime(createdDate),
   };
 };
 

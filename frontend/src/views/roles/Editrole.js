@@ -7,6 +7,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { RiIdCardFill } from "react-icons/ri";
 import { getAccessibleScreensByRole } from "@/apis/login";
 import ScreenAccessPanel, { isUnregisteredScreenId } from "@/components/ScreenAccessPanel";
+import { formatDateTime } from "@/utils/formatDateTime";
 
 import {
     fetchRoleById,
@@ -174,7 +175,7 @@ export default function EditRole() {
                 <div className={styles["edit-last-modified"]}>
                     Last modified:{" "}
                     {roleUpdatedAt
-                        ? new Date(roleUpdatedAt).toLocaleString()
+                        ? formatDateTime(roleUpdatedAt)
                         : "-"}
                 </div>
 

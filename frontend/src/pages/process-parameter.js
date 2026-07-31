@@ -3,6 +3,8 @@ import { useSelector } from "react-redux";
 import { MdPrint, MdSearch } from "react-icons/md";
 
 import Footer from "@/components/Footer";
+import Pagination from "@/components/Pagination";
+import { formatDateTime } from "@/utils/formatDateTime";
 import PreviewModal from "@/components/PreviewModal";
 import CombinedProcessParameterPreview from "@/components/CombinedProcessParameterPreview";
 import MixingProcessParameter from "@/views/mixing/processParameterDataEntry";
@@ -362,6 +364,7 @@ export default function ProcessParameterPage() {
   const [countFilter, setCountFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [matrixPage, setMatrixPage] = useState(1);
   const componentRef = useRef(null);
   const [previewPpId, setPreviewPpId] = useState("");
   const [previewData, setPreviewData] = useState({});
@@ -716,6 +719,17 @@ export default function ProcessParameterPage() {
 
     return true;
   });
+
+  // Same page size as the ticketing dashboards (SupervisorDashboard.js/operatordash.js).
+  const MATRIX_PAGE_SIZE = 6;
+  const matrixTotalPages = Math.max(1, Math.ceil(filteredRows.length / MATRIX_PAGE_SIZE));
+  useEffect(() => {
+    setMatrixPage(1);
+  }, [searchTerm, countFilter, consigneeFilter, dateFrom, dateTo]);
+  const paginatedRows = filteredRows.slice(
+    (matrixPage - 1) * MATRIX_PAGE_SIZE,
+    matrixPage * MATRIX_PAGE_SIZE
+  );
   const getRowStatuses = (rowId) => {
     const base =
       mergedRows.find((row) => row.id === rowId)?.statuses || createBlankStatusRow().statuses;
@@ -1242,7 +1256,7 @@ export default function ProcessParameterPage() {
                 <div className={styles.printLogoSlot} aria-hidden="true" />
                 <div className={styles.printHeaderText}>
                   <div className={styles.printTitle}>Process Parameter Matrix</div>
-                  <div className={styles.printMeta}>Printed on: {new Date().toLocaleString("en-IN")}</div>
+                  <div className={styles.printMeta}>Printed on: {formatDateTime(new Date())}</div>
                 </div>
               </div>
 
@@ -1265,7 +1279,7 @@ export default function ProcessParameterPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.map((row) => {
+                    {paginatedRows.map((row) => {
                       const rowStatuses = getRowStatuses(row.id);
                       const allSubDepartmentsDone = rowStatuses.every(Boolean);
                       return (
@@ -1340,6 +1354,8 @@ export default function ProcessParameterPage() {
                 </table>
               </div>
 
+              <Pagination page={matrixPage} totalPages={matrixTotalPages} onPageChange={setMatrixPage} />
+
               <div className={styles.printFooter}>
                 Downloaded by: {user?.name || user?.username || user?.email || "-"}
               </div>
@@ -1362,6 +1378,7 @@ export default function ProcessParameterPage() {
                       if (!selectedEntryId) setSelectedEntryId(nextEntryId);
                       refreshRegistryRows();
                     }
+                    if (!selectedEntryId) refreshNextAvailableId();
                   }}
                   entryId={selectedEntryId}
                   nextEntryIdPreview={nextAvailableId}

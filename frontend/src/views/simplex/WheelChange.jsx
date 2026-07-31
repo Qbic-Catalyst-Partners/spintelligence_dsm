@@ -351,14 +351,6 @@ const WheelChange = forwardRef(function WheelChange(
   const skipAutoLoadRef = useRef(false);
   const lastLoadedMixingRef = useRef("");
   const lastLoadedMachineOnlyRef = useRef("");
-  // Tracks whether the user has actually picked a Mixing / Process value (vs.
-  // it merely being auto-filled for display by the machine-only lookup
-  // below) — using this instead of "is the mixing text non-empty" as the
-  // machine-only effect's guard, since auto-filling Mixing's Existing cell
-  // for display would otherwise make selectedMixing look user-picked and
-  // permanently block that effect from ever re-running on a later machine
-  // switch.
-  const [mixingUserPicked, setMixingUserPicked] = useState(false);
   // selectedMixing is a derived string, so re-picking the *same* mixing (or
   // it already being selected) never changes the value and the lookup
   // effect below never re-fires — it just keeps showing whatever was
@@ -645,69 +637,58 @@ const WheelChange = forwardRef(function WheelChange(
     return referenceEntry;
   };
 
-  useEffect(() => {
-    if (skipAutoLoadRef.current) return undefined;
-
-    const trimmedMachine = form.smxNo.trim();
-    if (!trimmedMachine || mixingUserPicked) {
-      lastLoadedMachineOnlyRef.current = "";
-      return undefined;
-    }
-
-    const selectionKey = trimmedMachine;
-    if (lastLoadedMachineOnlyRef.current === selectionKey) return undefined;
-
-    let cancelled = false;
-    loadLatestForMachine(trimmedMachine)
-      .then(() => {
-        if (!cancelled) lastLoadedMachineOnlyRef.current = selectionKey;
-      })
-      .catch(() => {
-        // Keep the current rows when history isn't available for this machine.
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [form.smxNo, mixingUserPicked]);
-
-  // Runs whenever the selected mixing changes, or the dropdown is focused
-  // again (mixingRefreshTick) — mixingRefreshTick is folded into the cache
-  // key so reopening/reselecting the same mixing always forces a fresh
-  // fetch even when the mixing text itself hasn't changed.
+  // Re-fetches the "Existing" data whenever either SMX No. or Mixing/Process
+  // changes (or the Mixing dropdown is re-focused, via mixingRefreshTick),
+  // with Mixing taking priority over Machine No. when both are present -
+  // matching loadLatestForMixing's role as "the more specific match" per the
+  // comment on loadLatestForMachine above. Previously these were two
+  // separate effects, and the machine-only one was permanently gated off by
+  // `mixingUserPicked` once a Mixing value had ever been picked once in the
+  // session - so for a later/second entry, changing SMX No. alone (with
+  // Mixing unchanged) never re-triggered any fetch at all, since the mixing
+  // effect only re-fires when `selectedMixing`/`mixingRefreshTick` change.
   useEffect(() => {
     if (skipAutoLoadRef.current) {
       skipAutoLoadRef.current = false;
       return undefined;
     }
 
-    if (!selectedMixing) {
+    const trimmedMachine = form.smxNo.trim();
+    if (!selectedMixing && !trimmedMachine) {
       lastLoadedMixingRef.current = "";
+      lastLoadedMachineOnlyRef.current = "";
       setUnapprovedEntry(null);
       return undefined;
     }
 
-    const selectionKey = `${selectedMixing}::${mixingRefreshTick}`;
+    const selectionKey = selectedMixing
+      ? `mixing::${selectedMixing}::${mixingRefreshTick}`
+      : `machine::${trimmedMachine}`;
     if (lastLoadedMixingRef.current === selectionKey) return undefined;
 
     let cancelled = false;
-    loadLatestForMixing(selectedMixing).then(() => {
-      if (!cancelled) lastLoadedMixingRef.current = selectionKey;
-    }).catch(() => {
-      // Keep the current rows when history isn't available for this mixing.
-    });
+    const loadPromise = selectedMixing ? loadLatestForMixing(selectedMixing) : loadLatestForMachine(trimmedMachine);
+    loadPromise
+      .then(() => {
+        if (!cancelled) {
+          lastLoadedMixingRef.current = selectionKey;
+          lastLoadedMachineOnlyRef.current = selectionKey;
+        }
+      })
+      .catch(() => {
+        // Keep the current rows when history isn't available for this selection.
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedMixing, mixingRefreshTick]);
+  }, [form.smxNo, selectedMixing, mixingRefreshTick]);
 
   const clear = () => {
     setForm(createInitialForm());
     setRows(createEmptyRows());
     setSubmitError("");
     setUnapprovedEntry(null);
-    setMixingUserPicked(false);
     setCustomFieldValues({});
     lastLoadedMixingRef.current = "";
     lastLoadedMachineOnlyRef.current = "";
@@ -911,15 +892,6 @@ const WheelChange = forwardRef(function WheelChange(
             className={className}
             value={value}
             onChange={(nextValue) => {
-              // Mixing / Process is the one driving control: picking its
-              // Proposed cell looks up the latest approved entry and fills
-              // in every row's Existing baseline, including its own — so
-              // only a real user pick on the Proposed cell should count as
-              // "Mixing has been picked" for the machine-only lookup guard
-              // above.
-              if (valueKey === "proposed") {
-                setMixingUserPicked(Boolean(String(nextValue ?? "").trim()));
-              }
               setRows((current) =>
                 current.map((item) => (item.key === row.key ? { ...item, [valueKey]: nextValue } : item))
               );

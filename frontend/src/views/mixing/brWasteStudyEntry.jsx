@@ -165,6 +165,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     fetchWasteTypesApi = null,
     saveWasteTypeApi = saveBlowroomMasterWasteType,
     entryTypeLabel = "BR Waste Study Entry",
+    customFieldsDepartment = "Quality Control",
+    customFieldsSubDepartment = "Blow Room",
+    customFieldsNotebook = entryTypeLabel,
     useBlowroomRedux = true,
     showEntryId = true,
     variety: externalVariety,
@@ -280,9 +283,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
                         deliverySpeed: row?.delivery_speed == null ? "" : String(row.delivery_speed),
                         wingSettling1: row?.wing_setting_1 == null ? "" : String(row.wing_setting_1),
                         wingSettling2: row?.wing_setting_2 == null ? "" : String(row.wing_setting_2),
-                        firstLickerinSpeed: "",
-                        secondLickerinSpeed: "",
-                        thirdLickerinSpeed: "",
+                        firstLickerinSpeed: row?.lickerin_speed_1 == null ? "" : String(row.lickerin_speed_1),
+                        secondLickerinSpeed: row?.lickerin_speed_2 == null ? "" : String(row.lickerin_speed_2),
+                        thirdLickerinSpeed: row?.lickerin_speed_3 == null ? "" : String(row.lickerin_speed_3),
                         mcNo: row?.mc_no || "",
                         mcProduction: row?.mc_production == null ? "" : String(row.mc_production),
                     }))
@@ -1106,9 +1109,9 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
             )}
 
             <NotebookCustomFields
-                department="Quality Control"
-                subDepartment="Blow Room"
-                notebook="BR Waste Study Entry"
+                department={customFieldsDepartment}
+                subDepartment={customFieldsSubDepartment}
+                notebook={customFieldsNotebook}
                 entryId={entryId}
                 values={customFieldValues}
                 onChange={handleCustomFieldChange}

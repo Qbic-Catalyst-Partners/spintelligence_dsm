@@ -9,6 +9,7 @@ export const SUPERVISOR_VISIBLE_STATUS_OPTIONS = [
   "In Progress",
   "Submit",
   "Reopened",
+  "Closed",
 ];
 
 export const getStoredTicketStatus = (ticketId) => {
@@ -33,10 +34,25 @@ export const applyStoredTicketStatuses = (tickets) =>
 export const getStatusClassKey = (status) =>
   String(status || "").toLowerCase().replace(/\s+/g, "-");
 
-export const getOperatorStatusOptions = (status) =>
-{
+// Once a ticket has been submitted (Submit) or closed by L2 (Closed), L1 can no
+// longer change its status - it's locked pending/after L2 review.
+export const isTicketLockedForOperator = (status) =>
+  ["submit", "closed"].includes(String(status || "").trim().toLowerCase());
+
+// A ticket stays viewable (clickable in the L1 list) while it's pending L2 review
+// ("Submit") so the operator can check on it - only "Closed" (already approved) is
+// fully locked out of the list.
+export const isTicketHiddenFromOperatorList = (status) =>
+  String(status || "").trim().toLowerCase() === "closed";
+
+export const getOperatorStatusOptions = (status) => {
   const normalizedStatus = String(status || "").trim();
   const normalizedStatusKey = normalizedStatus.toLowerCase();
+
+  if (isTicketLockedForOperator(normalizedStatusKey)) {
+    return [normalizedStatus];
+  }
+
   const baseOptions =
     normalizedStatusKey === "reopened"
       ? REOPENED_TICKET_STATUS_OPTIONS
@@ -56,17 +72,8 @@ export const getOperatorStatusOptions = (status) =>
 export const isSupervisorVisibleTicket = (ticket) =>
   String(ticket?.status || "").trim().toUpperCase() !== "APPROVED";
 
-export const getSupervisorStatusLabel = (status) =>
-  String(status || "").trim().toLowerCase() === "submit"
-    ? "Closed"
-    : status;
+export const getSupervisorStatusLabel = (status) => status;
 
-export const getOperatorStatusLabel = (status) =>
-  String(status || "").trim().toLowerCase() === "submit"
-    ? "Closed"
-    : status;
+export const getOperatorStatusLabel = (status) => status;
 
-export const getTicketStatusLabel = (status) =>
-  String(status || "").trim().toLowerCase() === "submit"
-    ? "Closed"
-    : status;
+export const getTicketStatusLabel = (status) => status;

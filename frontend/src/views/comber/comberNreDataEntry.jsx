@@ -2,6 +2,8 @@ import { forwardRef, useImperativeHandle, useState } from "react";
 import { useDispatch } from "react-redux";
 import { submitComberNre } from "@/store/slices/comber";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import styles from "./ribbonLapCVDataEntry.module.css";
 
 const initialForm = () => ({
@@ -33,6 +35,11 @@ const ComberNreDataEntry = forwardRef(function ComberNreDataEntry(
     const [form, setForm] = useState(initialForm());
     const [errors, setErrors] = useState({});
     const [formMessage, setFormMessage] = useState("");
+    const [customFieldValues, setCustomFieldValues] = useState({});
+
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
 
     const handleChange = (field, value) => {
         setForm((current) => ({
@@ -78,8 +85,23 @@ const ComberNreDataEntry = forwardRef(function ComberNreDataEntry(
         if (!valid) return false;
 
         try {
-            await dispatch(submitComberNre(buildPayload())).unwrap();
+            const payload = buildPayload();
+            await dispatch(submitComberNre(payload)).unwrap();
             setErrors({});
+
+            const linkedEntryId = payload.entry_id;
+            const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
+            if (linkedEntryId && customFieldEntries.length) {
+                try {
+                    await saveNotebookCustomFieldValuesApi(
+                        linkedEntryId,
+                        customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+                    );
+                } catch (customFieldError) {
+                    console.error("Failed to save custom field values:", customFieldError);
+                }
+            }
+
             return true;
         } catch (submitError) {
             setFormMessage(submitError || "Unable to save Comber NRE% data.");
@@ -193,6 +215,15 @@ const ComberNreDataEntry = forwardRef(function ComberNreDataEntry(
                     </div>
                 </div>
             </div>
+
+            <NotebookCustomFields
+                department="Quality Control"
+                subDepartment="Comber"
+                notebook="Comber NRE%"
+                entryId={entryId}
+                values={customFieldValues}
+                onChange={handleCustomFieldChange}
+            />
 
             {formMessage ? (
                 <div className={`${styles["message-box"]} ${styles["message-error"]}`}>

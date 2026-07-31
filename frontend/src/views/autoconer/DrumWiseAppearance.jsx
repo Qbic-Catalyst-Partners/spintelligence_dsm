@@ -336,6 +336,7 @@ function DrumWiseAppearance({
     remarks,
     rows,
     isLoading,
+    customFieldValues,
   ]);
 
   const tablePortalTarget =

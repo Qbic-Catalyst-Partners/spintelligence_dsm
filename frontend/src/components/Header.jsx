@@ -7,7 +7,6 @@ import {
     FiBell,
     FiBriefcase,
     FiCalendar,
-    FiCheck,
     FiChevronDown,
     FiChevronLeft,
     FiClipboard,
@@ -23,6 +22,7 @@ import {
     FiShield,
     FiSliders,
     FiSun,
+    FiTrash2,
     FiUsers,
 } from "react-icons/fi";
 import { fetchUsersAPI } from "@/apis/userApi";
@@ -30,10 +30,13 @@ import { logout, setAuthUser } from "../store/slices/authSlice";
 import {
     getDefaultTicketingRoute,
     hasAnyQualityControlAccess,
+    hasHierarchyLevel,
     hasReportAccess,
     hasSubDepartmentAccess,
+    isDelegationManagerUser,
     isFullAccessUser,
     isSubmittedNotebookManagerUser,
+    isSubmittedNotebookViewerUser,
     isSupervisorNavUser,
     isWheelChangeApproverUser,
     routeDepartmentMap,
@@ -44,8 +47,8 @@ import {
     saveAnalysisSubscriptionApi,
 } from "@/apis/analysisApi";
 import {
+    clearAllNotificationsApi,
     fetchNotificationsApi,
-    markAllNotificationsReadApi,
     markNotificationReadApi,
 } from "@/apis/notificationsApi";
 import styles from "../styles/header.module.css";
@@ -63,7 +66,7 @@ const sidebarLinks = [
     { href: "/operator", label: "Ticketing System", icon: FiHeadphones, section: "tickets" },
     { href: "/submitted-notebooks", label: "Management Hub", icon: FiBriefcase, section: "management" },
     { href: "/reports", label: "Reports", icon: FiFileText, section: "reports" },
-    { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true, section: "thresholds" },
+    { href: "/threshold-values", label: "Threshold", icon: FiSliders, admin: true },
     { href: "/settings", label: "Settings", icon: FiSettings, admin: true, section: "settings" },
 ];
 
@@ -84,14 +87,13 @@ const settingsLinks = [
     { href: "/settings", label: "Dash Builder" },
 ];
 const ticketingLinks = [
-    { href: "/operator", label: "L1 Ticketing System" },
-    { href: "/supervisordashboard", label: "L2 Ticketing System" },
-    { href: "/l3-ticketing", label: "L3 Ticketing System" },
+    { href: "__ticketingHome__", label: "Ticket System" },
+    { href: "/delegation-system", label: "Delegation System", requiresLevel5: true },
     { href: "/ticket-calendar", label: "L1 Calendar" },
     { href: "/ticket-calendar-l2", label: "L2 Calendar" },
 ];
 const managementHubLinks = [
-    { href: "/submitted-notebooks", label: "Submitted Notebooks" },
+    { href: "/submitted-notebooks", label: "Submitted Notebooks", submittedNotebookView: true },
     { href: "/new-field-creation", label: "New Field Creation" },
     { href: "/activity-log", label: "Activity Log" },
     {
@@ -104,6 +106,7 @@ const managementHubLinks = [
             { href: "/simplex-wheel-change-approvals", label: "Simplex" },
         ],
     },
+    { href: "/pp-approvals", label: "PP Approvals", wheelChangeApproval: true },
 ];
 const analyticsHubLinks = [
     { href: "/statistics-analysis", label: "Statistics Analytics" },
@@ -114,12 +117,6 @@ const analyticsHubLinks = [
             { href: "/l2-analysis", label: "L2 Team Performance" },
         ],
     },
-];
-const thresholdLinks = [
-    { href: "/threshold-values", label: "Values Threshold" },
-    { href: "/submission-threshold", label: "Submission Threshold" },
-    { href: "/pp-batch-threshold", label: "PP Threshold" },
-    { href: "/submitted-notebook-threshold", label: "Acknowledgement Threshold" },
 ];
 const reportLinks = [
     { href: "/reports/general", label: "General Report" },
@@ -134,7 +131,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isDepartmentMenuOpen, setIsDepartmentMenuOpen] = useState(false);
     const [isTicketsMenuOpen, setIsTicketsMenuOpen] = useState(false);
-    const [isThresholdMenuOpen, setIsThresholdMenuOpen] = useState(false);
     const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
     const [isManagementHubOpen, setIsManagementHubOpen] = useState(false);
     const [isReportsMenuOpen, setIsReportsMenuOpen] = useState(false);
@@ -153,10 +149,21 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const hasFullAccess = isFullAccessUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
+    // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
+    // link itself is open to every L1-L5 hierarchy account, while the other
+    // Management Hub entries (New Field Creation, Activity Log, threshold
+    // config) stay limited to admin/supervisor.
+    const hasSubmittedNotebookViewAccess = isSubmittedNotebookViewerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
-    const hasManagementHubAccess = hasSubmittedNotebookAccess || hasWheelChangeApprovalAccess;
-    const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess;
-    const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess;
+    const hasManagementHubAccess = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess || hasWheelChangeApprovalAccess;
+    // Every L1-L5 hierarchy account has some ticketing view (L1 operator
+    // board, L2-L5 escalation dashboards) - this used to only check
+    // isFullAccessUser/isSupervisorNavUser (from before hierarchy levels
+    // existed), which hid the "Ticketing System" nav entry entirely for
+    // plain L1-L4 accounts once routing started resolving by real level
+    // instead of always falling back to "/operator".
+    const hasTicketingHubAccess = hasFullAccess || hasSupervisorNavAccess || hasHierarchyLevel(user);
+    const hasAnalyticsHubAccess = hasFullAccess || hasSupervisorNavAccess || hasHierarchyLevel(user);
     const defaultTicketingRoute = getDefaultTicketingRoute(user);
     const fullName = user?.full_name || user?.name || "User";
     const employeeId = user?.employee_id || user?.employeeId || "No ID";
@@ -217,14 +224,20 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleDepartmentLinks = departmentLinks.filter((link) =>
         hasSubDepartmentAccess(accessByDepartment, link.department, user)
     );
-    const visibleTicketingLinks = hasFullAccess
-        ? ticketingLinks
-        : ticketingLinks.filter((link) => link.href !== "/l3-ticketing");
+    const visibleTicketingLinks = ticketingLinks
+        .filter((link) =>
+            link.requiresLevel5 ? isDelegationManagerUser(user) : (!link.admin || hasFullAccess)
+        )
+        .map((link) =>
+            link.href === "__ticketingHome__" ? { ...link, href: defaultTicketingRoute } : link
+        );
     const visibleManagementHubLinks = hasFullAccess
         ? managementHubLinks
-        : managementHubLinks.filter((link) =>
-            link.wheelChangeApproval ? hasWheelChangeApprovalAccess : hasSubmittedNotebookAccess
-        );
+        : managementHubLinks.filter((link) => {
+            if (link.wheelChangeApproval) return hasWheelChangeApprovalAccess;
+            if (link.submittedNotebookView) return hasSubmittedNotebookViewAccess;
+            return hasSubmittedNotebookAccess;
+        });
     const currentPath = router.asPath?.split("?")[0] || router.pathname;
     const backTarget = null;
 
@@ -284,6 +297,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return currentPath === "/l3-ticketing";
         }
 
+        if (href === "/l4-ticketing") {
+            return currentPath === "/l4-ticketing";
+        }
+
+        if (href === "/l5-ticketing") {
+            return currentPath === "/l5-ticketing";
+        }
+
         if (href === "/ticket-calendar") {
             return currentPath === "/ticket-calendar";
         }
@@ -338,15 +359,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             return nextIsOpen;
         });
     };
-    const handleThresholdClick = () => {
-        setIsThresholdMenuOpen((isOpen) => {
-            const nextIsOpen = !isOpen;
-            if (nextIsOpen && router.asPath?.split("?")[0] !== "/threshold-values") {
-                router.push("/threshold-values");
-            }
-            return nextIsOpen;
-        });
-    };
     const handleTicketsClick = () => {
         setIsTicketsMenuOpen((isOpen) => {
             const nextIsOpen = !isOpen;
@@ -359,7 +371,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const handleManagementHubClick = () => {
         setIsManagementHubOpen((isOpen) => {
             const nextIsOpen = !isOpen;
-            const defaultManagementRoute = hasSubmittedNotebookAccess
+            const defaultManagementRoute = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess
                 ? "/submitted-notebooks"
                 : "/wheel-change-approvals";
             if (nextIsOpen && router.asPath?.split("?")[0] !== defaultManagementRoute) {
@@ -470,17 +482,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         }
     };
 
-    const handleMarkAllNotificationsRead = async () => {
+    const handleClearAllNotifications = async () => {
         try {
-            await markAllNotificationsReadApi();
-            setNotifications((current) =>
-                current.map((item) => ({
-                    ...item,
-                    is_unread: false,
-                    status: "READ",
-                    read_at: item.read_at || new Date().toISOString(),
-                }))
-            );
+            await clearAllNotificationsApi();
+            setNotifications([]);
             setNotificationUnreadCount(0);
         } catch {
             // no-op for non-blocking UX
@@ -523,6 +528,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
             currentPath === "/supervisordashboard" ||
             currentPath === "/supervisordetails" ||
             currentPath === "/l3-ticketing" ||
+            currentPath === "/l4-ticketing" ||
+            currentPath === "/l5-ticketing" ||
             currentPath === "/ticket-calendar" ||
             currentPath === "/ticket-calendar-l2"
         );
@@ -543,16 +550,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
         setIsTeamPerformanceOpen(
             currentPath === "/l1-analysis" ||
             currentPath === "/l2-analysis"
-        );
-        setIsThresholdMenuOpen(
-            currentPath === "/threshold-values" ||
-            currentPath.startsWith("/threshold-values/") ||
-            currentPath === "/submission-threshold" ||
-            currentPath.startsWith("/submission-threshold/") ||
-            currentPath === "/pp-batch-threshold" ||
-            currentPath.startsWith("/pp-batch-threshold/") ||
-            currentPath === "/submitted-notebook-threshold" ||
-            currentPath.startsWith("/submitted-notebook-threshold/")
         );
         setIsSettingsMenuOpen(currentPath === "/settings" || currentPath.startsWith("/settings/"));
         setIsReportsMenuOpen(currentPath === "/reports" || currentPath.startsWith("/reports/"));
@@ -603,21 +600,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             </>
                         );
                         const currentPath = router.asPath?.split("?")[0] || router.pathname;
-                        const isThresholdGroup = link.section === "thresholds";
                         const isTicketingGroup = link.section === "tickets";
                         const isManagementGroup = link.section === "management";
                         const isReportsGroup = link.section === "reports";
                         const isAnalyticsHubGroup = link.section === "calendars";
-                        const isThresholdGroupActive = isThresholdGroup && (
-                            currentPath === "/threshold-values" ||
-                            currentPath.startsWith("/threshold-values/") ||
-                            currentPath === "/submission-threshold" ||
-                            currentPath.startsWith("/submission-threshold/") ||
-                            currentPath === "/pp-batch-threshold" ||
-                            currentPath.startsWith("/pp-batch-threshold/") ||
-                            currentPath === "/submitted-notebook-threshold" ||
-                            currentPath.startsWith("/submitted-notebook-threshold/")
-                        );
                         const isTicketingGroupActive = isTicketingGroup && (
                             currentPath === "/operator" ||
                             currentPath.startsWith("/operator/") ||
@@ -626,6 +612,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath === "/supervisordashboard" ||
                             currentPath === "/supervisordetails" ||
                             currentPath === "/l3-ticketing" ||
+                            currentPath === "/l4-ticketing" ||
+                            currentPath === "/l5-ticketing" ||
                             currentPath === "/ticket-calendar" ||
                             currentPath === "/ticket-calendar-l2"
                         );
@@ -647,17 +635,15 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             currentPath.startsWith("/reports/")
                         );
                         const linkClassName = `${styles["side-nav-link"]} ${
-                            (isThresholdGroup
-                                ? isThresholdGroupActive
-                                : isTicketingGroup
-                                    ? isTicketingGroupActive
-                                    : isManagementGroup
-                                        ? isManagementGroupActive
-                                        : isAnalyticsHubGroup
-                                            ? isAnalyticsHubGroupActive
-                                            : isReportsGroup
-                                                ? isReportsGroupActive
-                                                : isActiveLink(link.href))
+                            (isTicketingGroup
+                                ? isTicketingGroupActive
+                                : isManagementGroup
+                                    ? isManagementGroupActive
+                                    : isAnalyticsHubGroup
+                                        ? isAnalyticsHubGroupActive
+                                        : isReportsGroup
+                                            ? isReportsGroupActive
+                                            : isActiveLink(link.href))
                                 ? styles["side-nav-active"]
                                 : ""
                         }`;
@@ -711,34 +697,6 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                                                 className={`${styles["side-subnav-link"]} ${isActiveLink(settingsLink.href) ? styles["side-subnav-active"] : ""}`}
                                             >
                                                 {settingsLink.label}
-                                            </Link>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        if (link.section === "thresholds") {
-                            return (
-                                <div key={link.href} className={styles["side-nav-group"]}>
-                                    <button
-                                        type="button"
-                                        className={`${linkClassName} ${styles["side-nav-button"]}`}
-                                        aria-expanded={isThresholdMenuOpen}
-                                        title={isSidebarCollapsed ? link.label : undefined}
-                                        onClick={handleThresholdClick}
-                                    >
-                                        {content}
-                                        <FiChevronDown className={`${styles["department-chevron"]} ${isThresholdMenuOpen ? styles["department-chevron-open"] : ""}`} />
-                                    </button>
-                                    <div className={`${styles["side-subnav"]} ${isThresholdMenuOpen ? styles["side-subnav-open"] : ""}`}>
-                                        {thresholdLinks.map((thresholdLink) => (
-                                            <Link
-                                                key={thresholdLink.href}
-                                                href={thresholdLink.href}
-                                                className={`${styles["side-subnav-link"]} ${isActiveLink(thresholdLink.href) ? styles["side-subnav-active"] : ""}`}
-                                            >
-                                                {thresholdLink.label}
                                             </Link>
                                         ))}
                                     </div>
@@ -974,9 +932,9 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                             <div className={styles["notification-header"]}>
                                 <strong>Notifications</strong>
                                 <div className={styles["notification-actions"]}>
-                                    <button type="button" onClick={handleMarkAllNotificationsRead} disabled={!unreadCount}>
-                                        <FiCheck />
-                                        <span>Read all</span>
+                                    <button type="button" onClick={handleClearAllNotifications} disabled={!notifications.length}>
+                                        <FiTrash2 />
+                                        <span>Clear all</span>
                                     </button>
                                 </div>
                             </div>

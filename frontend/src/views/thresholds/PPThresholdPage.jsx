@@ -260,7 +260,7 @@ function MultiUserSelect({
   );
 }
 
-export default function PPThresholdPage() {
+export default function PPThresholdPage({ standalone = true } = {}) {
   const dispatch = useDispatch();
   const router = useRouter();
   const user = useSelector((state) => state.auth?.user);
@@ -437,14 +437,11 @@ export default function PPThresholdPage() {
 
   if (!isHydrated || !canAccessPage) return null;
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <h1>PP Threshold</h1>
-          <p>Set an individual completion threshold, L1 and L2 for each PP notebook.</p>
-        </div>
+  const effectiveActiveTab = standalone ? activeTab : "new";
 
+  const content = (
+    <>
+        {standalone ? (
         <div className={styles.tabBar} role="tablist" aria-label="PP threshold views">
           <button
             type="button"
@@ -461,8 +458,9 @@ export default function PPThresholdPage() {
             Existing Thresholds
           </button>
         </div>
+        ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <div className={styles.statsGrid}>
             <article className={styles.statCard}>
               <div className={`${styles.statIcon} ${styles.blue}`}>
@@ -494,7 +492,7 @@ export default function PPThresholdPage() {
           </div>
         ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <form className={styles.stack} onSubmit={handleSave}>
             <section className={styles.sectionPlain}>
               <div className={styles.sectionHeader}>
@@ -683,6 +681,21 @@ export default function PPThresholdPage() {
             </section>
           </div>
         )}
+    </>
+  );
+
+  if (!standalone) {
+    return content;
+  }
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.intro}>
+          <h1>PP Threshold</h1>
+          <p>Set an individual completion threshold, L1 and L2 for each PP notebook.</p>
+        </div>
+        {content}
       </div>
     </div>
   );

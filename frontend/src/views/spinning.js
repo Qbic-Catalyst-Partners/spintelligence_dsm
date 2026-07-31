@@ -6,6 +6,7 @@ import Image from "next/image";
 
 import Footer from "../components/Footer";
 import InputScreenUploadButton from "@/components/InputScreenUploadButton";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import PreviewModal from "@/components/PreviewModal";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
@@ -18,6 +19,7 @@ import {
     fetchSpinningMachineNumberOptions,
     fetchSpinningRingFrameShifts,
 } from "@/apis/spinning";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import { fetchEmployeeOptions, normalizeEmployeeOptions } from "@/apis/employeeMaster";
 import { sanitizeIntegerInput, sanitizeNumericInput, sanitizeSpindleListInput, sanitizeSpindleNumberInput } from "@/utils/inputValidation";
 import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
@@ -274,6 +276,7 @@ function SpinningDepartment() {
     const router = useRouter();
     const dispatch = useDispatch();
     const childRef = useRef(null);
+    const submitInProgressRef = useRef(false);
     const { success, error } = useSelector((state) => state.spinning);
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
@@ -300,6 +303,23 @@ function SpinningDepartment() {
         checkingOptions.find((item) => item.name === value || item.displayName === value) || null;
 
     const [checkingType, setCheckingType] = useState(findCheckingOption(queryType)?.name || checkingOptions[0]?.name || "");
+    const [customFieldValues, setCustomFieldValues] = useState({});
+    const handleCustomFieldChange = (fieldId, value) => {
+        setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+    };
+    const saveCustomFields = async (linkedEntryId) => {
+        const targetEntryId = linkedEntryId || entryId;
+        const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+        if (!targetEntryId || !customFieldEntries.length) return;
+        try {
+            await saveNotebookCustomFieldValuesApi(
+                targetEntryId,
+                customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+            );
+        } catch (customFieldError) {
+            console.error("Failed to save custom field values:", customFieldError);
+        }
+    };
     const [selectedMachine, setSelectedMachine] = useState("");
     const [displaySpeed, setDisplaySpeed] = useState("");
     const [spindleSpeed, setSpindleSpeed] = useState("");
@@ -810,6 +830,7 @@ function SpinningDepartment() {
         // and the router.push made it look like a whole new form/screen had opened.
         clearFormValues();
         setDate(getTodayDate());
+        setCustomFieldValues({});
     };
 
     const validate = () => {
@@ -1034,7 +1055,8 @@ function SpinningDepartment() {
     };
 
     const confirmSubmit = async () => {
-        if (submitting) return;
+        if (submitInProgressRef.current) return;
+        submitInProgressRef.current = true;
         setSubmitting(true);
         try {
             if (isProcessParameter) {
@@ -1057,7 +1079,7 @@ function SpinningDepartment() {
             setShowPreview(false);
             if (submitSpinningRecord.fulfilled.match(result)) {
                 // The backend assigns its own entry_id for some screens (e.g. Wheel
-                // Change Type 4 — see SW4-NNNN in its create response) rather than
+                // Change — see SW1/SW2/SW3-NNNN in its create response) rather than
                 // using the locally-reserved placeholder, so prefer whatever the
                 // response actually returned.
                 const responseData = result.payload?.data ?? result.payload;
@@ -1065,6 +1087,7 @@ function SpinningDepartment() {
                     responseData?.entry_id ?? responseData?.entryId ?? entryId ?? ""
                 ).trim();
                 setConfirmedEntryId(realEntryId);
+                await saveCustomFields(realEntryId || entryId);
                 await recordSubmittedNotebook({
                     department: "Quality Control",
                     subDepartment: "Spinning",
@@ -1078,6 +1101,7 @@ function SpinningDepartment() {
                 });
             }
         } finally {
+            submitInProgressRef.current = false;
             setSubmitting(false);
         }
     };
@@ -1659,7 +1683,7 @@ function SpinningDepartment() {
                                 {(!showType2Field || type2Value) && (
                                 <div className={styles["comparison-box"]}>
                                     <div className={styles["side-title-row"]}>
-                                        <Image src="/SideMeasurement.png" alt="logo" width={15} height={30} priority />
+                                        <Image src="/SideMeasurement.png" alt="logo" width={15} height={30} priority style={{ width: "auto", height: "auto" }} />
                                         <p className={styles["side-title"]}>SIDE MEASUREMENTS</p>
                                     </div>
 
@@ -1741,6 +1765,17 @@ function SpinningDepartment() {
                             </>
                         )}
                     </div>
+
+                    {!(isProcessParameter || isWheelChange) ? (
+                        <NotebookCustomFields
+                            department="Quality Control"
+                            subDepartment="Spinning"
+                            notebook={checkingType}
+                            entryId={entryId}
+                            values={customFieldValues}
+                            onChange={handleCustomFieldChange}
+                        />
+                    ) : null}
                         </>
                     )}
 

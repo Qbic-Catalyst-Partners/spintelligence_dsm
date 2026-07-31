@@ -21,6 +21,24 @@
   gap: 14px;
 }
 
+.modalCompact {
+  width: min(320px, 90vw);
+  padding: 30px 28px 28px;
+  border-radius: 16px;
+  gap: 14px;
+}
+
+.modalCompact .icon {
+  width: 58px;
+  height: 58px;
+  font-size: 27px;
+}
+
+.modalCompact .message {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
 .icon {
   width: 64px;
   height: 64px;

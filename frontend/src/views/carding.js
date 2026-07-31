@@ -328,6 +328,8 @@ function Carding() {
                                 fetchWasteTypesApi={fetchCardingMasterWasteTypes}
                                 saveWasteTypeApi={async () => {}}
                                 entryTypeLabel="Individual Card Waste Study"
+                                customFieldsSubDepartment="Carding"
+                                customFieldsNotebook="Individual Card Waste Study"
                                 useBlowroomRedux={false}
                                 showEntryId={false}
                                 variety={cardWasteVariety}

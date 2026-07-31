@@ -34,15 +34,40 @@ const NOTEBOOK_TABLE_MAP = {
   // rows (one per machine/reading) under the same shared entry_id with no unique
   // constraint possible, so it stays on the generic notebook_custom_field_values side-table.
   'wheelchange': { schema: 'carding', table: 'carding_change_request', linkColumn: 'entry_id' },
+  'individual card waste study': { schema: 'carding', table: 'card_waste_study', linkColumn: 'entry_id' },
   '1 yard / half yard cv entry': { schema: 'drawframe', table: 'yarn_cv_percent', linkColumn: 'entry_id' },
   'draw frame cots data entry': { schema: 'drawframe', table: 'cots_data_entry', linkColumn: 'entry_id' },
   'u% data entry::draw frame': { schema: 'drawframe', table: 'u_data_entry', linkColumn: 'entry_id' },
-  'wheel change::draw frame': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  // Draw Frame's 7 Wheel Change sub-types all share ONE table (drawframe.wheel_change,
+  // differentiated by its wheel_change_type column) — unlike Spinning's Wheel Change, which has
+  // 3 separate tables. Each sub-type still gets its own notebook name so a field can be scoped to
+  // showing on just that sub-type's screen, but they all resolve to the same table/columns.
+  'wheel change - type 1 (sb20)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  'wheel change - type 2 (td7)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  'wheel change - type 3 (td9)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  'wheel change - type 1 (lrsb)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  'wheel change - type 2 (d40)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  'wheel change - type 3 (d50/d55)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
+  'wheel change - type 4 (ldf3s)': { schema: 'drawframe', table: 'wheel_change', linkColumn: 'entry_id' },
   'smxcots change data entry': { schema: 'simplex', table: 'simplex_inspections', linkColumn: 'entry_id' },
   'smx breaks study report': { schema: 'simplex', table: 'smx_breaks_study_header', linkColumn: 'entry_id' },
   'u% data entry::simplex': { schema: 'simplex', table: 'u_data_entry', linkColumn: 'entry_id' },
   'wheel change::simplex': { schema: 'simplex', table: 'wheel_change', linkColumn: 'entry_id' },
-  'wheel change::spinning': { schema: 'spinning', table: 'wheel_change', linkColumn: 'entry_id' },
+  'process parameter': { schema: 'spinning', table: 'spinning_qc_header', linkColumn: 'entry_id' },
+  'cots checking': { schema: 'spinning', table: 'cots_checking', linkColumn: 'entry_id' },
+  'count change': { schema: 'spinning', table: 'count_change_inspections', linkColumn: 'entry_id' },
+  'ring frame log book': { schema: 'spinning', table: 'ring_frame_inspections', linkColumn: 'entry_id' },
+  'speed checking': { schema: 'spinning', table: 'speed_checking', linkColumn: 'entry_id' },
+  'bottom apron checking': { schema: 'spinning', table: 'bottom_apron_checking', linkColumn: 'entry_id' },
+  'lycra out of centering': { schema: 'spinning', table: 'lycra_centering', linkColumn: 'entry_id' },
+  'rsm & lycrasensor checking online': { schema: 'spinning', table: 'rsm_and_lycrasensor_cheking_online', linkColumn: 'entry_id' },
+  'rsm & lycrasensor checking offline': { schema: 'spinning', table: 'rsm_and_lycrasensor_cheking_offline', linkColumn: 'entry_id' },
+  // Spinning's Wheel Change (unlike Draw Frame/Simplex) has 3 sub-types that each write to
+  // their own table, so each sub-type gets its own notebook name/mapping instead of a single
+  // 'wheel change::spinning' entry.
+  'wheel change - type 1': { schema: 'spinning', table: 'wheel_change_inspection', linkColumn: 'entry_id' },
+  'wheel change - type 2': { schema: 'spinning', table: 'wheel_change_v2', linkColumn: 'entry_id' },
+  'wheel change - type 3': { schema: 'spinning', table: 'wheel_change', linkColumn: 'entry_id' },
   'rewinding study': { schema: 'autoconer', table: 'inspection_data_entry', linkColumn: 'entry_id' },
   'cone density': { schema: 'autoconer', table: 'cone_density_notebook', linkColumn: 'entry_id' },
   'cone packing audit': { schema: 'autoconer', table: 'cone_packing_audit', linkColumn: 'entry_id' },
@@ -55,6 +80,8 @@ const NOTEBOOK_TABLE_MAP = {
   'ribbon lap cv1m data entry': { schema: 'comber', table: 'ribbon_lap_cv_qc', linkColumn: 'entry_id' },
   'nati data entry::comber': { schema: 'comber', table: 'nati_data_entry', linkColumn: 'entry_id' },
   'u% data entry::comber': { schema: 'comber', table: 'u_data_entry', linkColumn: 'entry_id' },
+  'comber nre%': { schema: 'comber', table: 'nre_data_entry', linkColumn: 'entry_id' },
+  'comber efficiency': { schema: 'comber', table: 'efficiency_data_entry', linkColumn: 'entry_id' },
   'individual card performance data': { schema: 'trials', table: 'trials', linkColumn: 'entry_id' },
 };
 
@@ -71,9 +98,7 @@ const AMBIGUOUS_NOTEBOOK_SUB_DEPARTMENTS = {
     comber: 'u% data entry::comber',
   },
   'wheel change': {
-    'draw frame': 'wheel change::draw frame',
     simplex: 'wheel change::simplex',
-    spinning: 'wheel change::spinning',
   },
 };
 
@@ -152,8 +177,18 @@ const ensureNotebookCustomFieldsDbColumnSupport = async () => {
   await client.query(`
     ALTER TABLE ticketing_system.notebook_custom_fields
       ADD COLUMN IF NOT EXISTS db_column_name TEXT NULL,
-      ADD COLUMN IF NOT EXISTS db_table_name TEXT NULL
+      ADD COLUMN IF NOT EXISTS db_table_name TEXT NULL,
+      ADD COLUMN IF NOT EXISTS decimal_places INTEGER NULL
   `);
+};
+
+const MAX_DECIMAL_PLACES = 6;
+
+const parseDecimalPlaces = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_DECIMAL_PLACES) return null;
+  return n;
 };
 
 // schema/table always come from NOTEBOOK_TABLE_MAP (a hardcoded constant below, never
@@ -165,7 +200,7 @@ const assertSafeTableRef = (schema, table) => {
   }
 };
 
-const addDynamicColumn = async (fieldId, fieldLabel, fieldType, schema, table) => {
+const addDynamicColumn = async (fieldId, fieldLabel, fieldType, schema, table, decimalPlaces = null) => {
   assertSafeTableRef(schema, table);
   const baseSlug = slugifyColumnName(fieldLabel);
   const columnName = await buildUniqueColumnName(schema, table, baseSlug, fieldId);
@@ -174,7 +209,10 @@ const addDynamicColumn = async (fieldId, fieldLabel, fieldType, schema, table) =
     throw new Error('Generated column name failed safety validation');
   }
 
-  const sqlType = SQL_TYPE_BY_FIELD_TYPE[fieldType] || 'TEXT';
+  const baseSqlType = SQL_TYPE_BY_FIELD_TYPE[fieldType] || 'TEXT';
+  const sqlType = fieldType === 'number' && Number.isInteger(decimalPlaces)
+    ? `NUMERIC(18, ${decimalPlaces})`
+    : baseSqlType;
   const defaultLiteral = DEFAULT_LITERAL_BY_FIELD_TYPE[fieldType] || "''";
   const tableRef = `"${schema}"."${table}"`;
 
@@ -296,6 +334,7 @@ router.post('/', async (req, res) => {
     const fieldLabel = cleanText(req.body?.field_label ?? req.body?.fieldLabel);
     const fieldType = parseFieldType(req.body?.field_type ?? req.body?.fieldType);
     const fieldOptions = fieldType === 'dropdown' ? parseOptions(req.body?.field_options ?? req.body?.fieldOptions) : [];
+    const decimalPlaces = fieldType === 'number' ? parseDecimalPlaces(req.body?.decimal_places ?? req.body?.decimalPlaces) : null;
     const createdByUserId = parsePositiveInt(req.body?.created_by_user_id ?? req.user?.id);
     const createdByName = cleanText(req.body?.created_by_name ?? req.user?.full_name);
 
@@ -308,18 +347,18 @@ router.post('/', async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO ticketing_system.notebook_custom_fields
-        (department, sub_department, notebook, field_label, field_type, field_options, created_by_user_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        (department, sub_department, notebook, field_label, field_type, field_options, decimal_places, created_by_user_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING id, department, sub_department, notebook, field_label, field_type, field_options,
-                 is_active, created_by_user_id, created_by_name, created_at, updated_at`,
-      [department, subDepartment, notebook, fieldLabel, fieldType, JSON.stringify(fieldOptions), createdByUserId, createdByName]
+                 is_active, decimal_places, created_by_user_id, created_by_name, created_at, updated_at`,
+      [department, subDepartment, notebook, fieldLabel, fieldType, JSON.stringify(fieldOptions), decimalPlaces, createdByUserId, createdByName]
     );
 
     let field = result.rows[0];
 
     const tableConfig = resolveNotebookTableConfig(notebook, subDepartment);
     if (tableConfig) {
-      const columnName = await addDynamicColumn(field.id, fieldLabel, fieldType, tableConfig.schema, tableConfig.table);
+      const columnName = await addDynamicColumn(field.id, fieldLabel, fieldType, tableConfig.schema, tableConfig.table, decimalPlaces);
       field = { ...field, db_column_name: columnName, db_table_name: `${tableConfig.schema}.${tableConfig.table}` };
     }
 
@@ -368,7 +407,7 @@ router.get('/', async (req, res) => {
 
     const result = await client.query(
       `SELECT id, department, sub_department, notebook, field_label, field_type, field_options,
-              is_active, created_by_user_id, created_by_name, created_at, updated_at, db_column_name, db_table_name
+              is_active, decimal_places, created_by_user_id, created_by_name, created_at, updated_at, db_column_name, db_table_name
        FROM ticketing_system.notebook_custom_fields
        ${whereClause}
        ORDER BY created_at DESC
@@ -402,13 +441,14 @@ router.put('/:id', async (req, res) => {
     const fieldLabel = cleanText(req.body?.field_label ?? req.body?.fieldLabel);
     let fieldType = parseFieldType(req.body?.field_type ?? req.body?.fieldType);
     const fieldOptions = fieldType === 'dropdown' ? parseOptions(req.body?.field_options ?? req.body?.fieldOptions) : [];
+    let decimalPlaces = fieldType === 'number' ? parseDecimalPlaces(req.body?.decimal_places ?? req.body?.decimalPlaces) : null;
 
     if (!fieldLabel) {
       return res.status(400).json({ error: 'field_label is required' });
     }
 
     const existing = await client.query(
-      `SELECT field_type, db_column_name FROM ticketing_system.notebook_custom_fields WHERE id = $1`,
+      `SELECT field_type, db_column_name, decimal_places FROM ticketing_system.notebook_custom_fields WHERE id = $1`,
       [id]
     );
     if (existing.rows.length === 0) {
@@ -421,17 +461,23 @@ router.put('/:id', async (req, res) => {
         error: 'This field already has a database column and its type cannot be changed. Create a new field instead.',
       });
     }
+    if (hasDbColumn && fieldType === 'number' && decimalPlaces !== existing.rows[0].decimal_places) {
+      return res.status(400).json({
+        error: 'This field already has a database column and its decimal places cannot be changed. Create a new field instead.',
+      });
+    }
     if (hasDbColumn) {
       fieldType = existing.rows[0].field_type;
+      decimalPlaces = existing.rows[0].decimal_places;
     }
 
     const result = await client.query(
       `UPDATE ticketing_system.notebook_custom_fields
-       SET field_label = $1, field_type = $2, field_options = $3, updated_at = NOW()
-       WHERE id = $4
+       SET field_label = $1, field_type = $2, field_options = $3, decimal_places = $4, updated_at = NOW()
+       WHERE id = $5
        RETURNING id, department, sub_department, notebook, field_label, field_type, field_options,
-                 is_active, created_by_user_id, created_by_name, created_at, updated_at`,
-      [fieldLabel, fieldType, JSON.stringify(fieldOptions), id]
+                 is_active, decimal_places, created_by_user_id, created_by_name, created_at, updated_at`,
+      [fieldLabel, fieldType, JSON.stringify(fieldOptions), decimalPlaces, id]
     );
 
     res.status(200).json({
@@ -548,7 +594,7 @@ router.get('/values', async (req, res) => {
     const rows = [...sideTableResult.rows];
 
     const dynamicFields = await client.query(
-      `SELECT id, db_column_name, db_table_name FROM ticketing_system.notebook_custom_fields
+      `SELECT id, notebook, db_column_name, db_table_name FROM ticketing_system.notebook_custom_fields
        WHERE db_column_name IS NOT NULL AND db_table_name IS NOT NULL`
     );
 
@@ -565,9 +611,7 @@ router.get('/values', async (req, res) => {
       const [schema, table] = dbTableName.split('.');
       if (!isSafeColumnIdentifier(schema) || !isSafeColumnIdentifier(table)) continue;
 
-      const linkColumn = Object.values(NOTEBOOK_TABLE_MAP).find(
-        (cfg) => cfg.schema === schema && cfg.table === table
-      )?.linkColumn || 'entry_id';
+      const linkColumn = resolveNotebookTableConfig(fields[0]?.notebook, '')?.linkColumn || 'entry_id';
       if (!isSafeColumnIdentifier(linkColumn)) continue;
 
       const selectList = fields.map((f) => `"${f.db_column_name}"`).join(', ');
@@ -657,23 +701,47 @@ router.post('/values', async (req, res) => {
       rows.push(result.rows[0]);
     }
 
+    const updateWarnings = [];
+
     for (const [dbTableName, columnUpdates] of dynamicColumnUpdatesByTable) {
       const [schema, table] = dbTableName.split('.');
       if (!isSafeColumnIdentifier(schema) || !isSafeColumnIdentifier(table)) continue;
 
-      const linkColumn = Object.values(NOTEBOOK_TABLE_MAP).find(
-        (cfg) => cfg.schema === schema && cfg.table === table
-      )?.linkColumn || 'entry_id';
+      // Resolve the link column from the notebook the field actually belongs to (not just any
+      // map entry that happens to point at the same schema/table) — some tables (e.g.
+      // autoconer.parameter_entries) are shared by more than one notebook, so guessing by
+      // schema/table alone could silently pick the wrong notebook's config.
+      const fieldOnThisTable = [...fieldDefById.values()].find((f) => f.db_table_name === dbTableName);
+      const tableConfig = fieldOnThisTable
+        ? resolveNotebookTableConfig(fieldOnThisTable.notebook, '')
+        : null;
+      const linkColumn = tableConfig?.linkColumn || 'entry_id';
       if (!isSafeColumnIdentifier(linkColumn)) continue;
 
       const columnNames = Object.keys(columnUpdates);
       if (!columnNames.length) continue;
 
       const setClause = columnNames.map((col, idx) => `"${col}" = $${idx + 2}`).join(', ');
-      await client.query(
-        `UPDATE "${schema}"."${table}" SET ${setClause} WHERE "${linkColumn}" = $1`,
-        [entryId, ...columnNames.map((c) => columnUpdates[c])]
-      );
+      try {
+        const updateResult = await client.query(
+          `UPDATE "${schema}"."${table}" SET ${setClause} WHERE "${linkColumn}" = $1`,
+          [entryId, ...columnNames.map((c) => columnUpdates[c])]
+        );
+        if (updateResult.rowCount === 0) {
+          updateWarnings.push(
+            `No row found in ${dbTableName} with ${linkColumn} = ${entryId} — value(s) for ${columnNames.join(', ')} were not saved.`
+          );
+        }
+      } catch (updateError) {
+        console.error(`Failed updating ${dbTableName} for entry_id ${entryId}:`, updateError);
+        updateWarnings.push(
+          `Could not save ${columnNames.join(', ')} on ${dbTableName}: ${updateError.message}`
+        );
+      }
+    }
+
+    if (updateWarnings.length) {
+      return res.status(207).json({ message: 'Some field values were not saved', values: rows, warnings: updateWarnings });
     }
 
     res.status(200).json({ message: 'Field values saved successfully', values: rows });

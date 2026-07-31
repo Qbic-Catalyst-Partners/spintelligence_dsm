@@ -1,5 +1,5 @@
-import ThresholdValuesPage from "@/views/thresholds/ThresholdValues";
+import ThresholdsHub from "@/views/thresholds/ThresholdsHub";
 
 export default function ThresholdValuesRoute() {
-    return <ThresholdValuesPage />;
+    return <ThresholdsHub />;
 }

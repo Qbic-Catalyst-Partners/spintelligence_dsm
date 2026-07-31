@@ -50,8 +50,10 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
     const handleSubmit = async () => {
         if (!validate()) return;
         try {
+            let firstTuftEntryId = null;
             for (let i = 0; i < tufts.length; i++) {
                 const tuftEntryId = `${entryId || "BDT"}-${String(i + 1).padStart(2, "0")}`;
+                if (i === 0) firstTuftEntryId = tuftEntryId;
                 await dispatch(saveBlowroomDropTest({
                     entry_id: tuftEntryId,
                     drop_id: entryId,
@@ -70,7 +72,10 @@ const DropTestDataEntry = forwardRef(function DropTestDataEntry(
                 })).unwrap();
             }
 
-            const linkedEntryId = entryId;
+            // Drop Test creates one row per tuft (entry_id like BDT-0001-01, -02, ...), not one
+            // row per submission — there is no row with the bare entryId itself. Custom field
+            // values are saved against the first tuft's row so they land somewhere real.
+            const linkedEntryId = firstTuftEntryId;
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (linkedEntryId && customFieldEntries.length) {
                 try {

@@ -2,7 +2,9 @@ import { createPortal } from "react-dom";
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
+import NotebookCustomFields from "@/components/NotebookCustomFields";
 import SearchableSelect from "@/components/SearchableSelect";
+import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 import useMixingCountOptions from "@/hooks/useMixingCountOptions";
 import {
   buildProcessParameterOptions,
@@ -224,6 +226,11 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
+  const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const handleCustomFieldChange = (fieldId, value) => {
+    setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
 
   const { countOptions: masterCountOptions } = useMixingCountOptions();
   const countOptions = buildProcessParameterOptions(
@@ -461,6 +468,18 @@ const ProcessParameter = forwardRef(function ProcessParameter(
       }));
       registerProcessParameterId(response, "Autoconer", form.countName, form.consigneeName);
 
+      const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? "").trim() !== "");
+      if (nextParamId && customFieldEntries.length > 0) {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            nextParamId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (e) {
+          console.error("Failed to save custom field values", e);
+        }
+      }
+
       await loadVersions();
       return true;
     } catch (error) {
@@ -475,6 +494,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     setForm(createDefaultForm(safeSelectedType));
     setErrors({});
     setSubmitError("");
+    setCustomFieldValues({});
   };
 
   useImperativeHandle(ref, () => ({
@@ -629,6 +649,15 @@ const ProcessParameter = forwardRef(function ProcessParameter(
             </div>
           ))}
         </div>
+
+        <NotebookCustomFields
+          department="Quality Control"
+          subDepartment="Process Parameter"
+          notebook="Autoconer - PP"
+          entryId={form.paramId || entryId || previewNextId}
+          values={customFieldValues}
+          onChange={handleCustomFieldChange}
+        />
 
         {submitError ? <div className={styles.errorMessage}>{submitError}</div> : null}
         {isSubmitting ? <div className={styles.loadingMessage}>Submitting...</div> : null}

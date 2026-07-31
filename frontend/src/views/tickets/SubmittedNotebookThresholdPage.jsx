@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { FiCheckCircle, FiClock, FiSlash, FiX } from "react-icons/fi";
+import { FiCheckCircle, FiPlus, FiSlash, FiTrash2, FiX } from "react-icons/fi";
 import { FaIdCard } from "react-icons/fa6";
 
 import {
@@ -14,11 +14,15 @@ import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
 import styles from "@/styles/SubmissionThreshold.module.css";
 
+const CRITICALITY_OPTIONS = ["High", "Medium", "Low"];
+
 const createRule = () => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   subDepartmentSlug: "",
   screenName: "",
+  criticality: "High",
+  approvalL4Ids: [],
   acknowledgeWithinHours: "24",
-  approvalL2: "",
 });
 
 const buildExistingFilters = () => ({
@@ -29,50 +33,6 @@ const buildExistingFilters = () => ({
 });
 
 const PENDING_ACK_THRESHOLD_STORAGE_KEY = "submittedNotebookPendingAcknowledgementThresholds";
-
-const normalizeLookupValue = (value) => String(value ?? "").trim().toLowerCase();
-
-const getUserDisplayName = (user) =>
-  String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
-
-const getUserEmployeeId = (user) =>
-  String(user?.employee_id || user?.employeeId || user?.id || "").trim();
-
-const buildUserOptions = (users, level) => {
-  const seen = new Set();
-
-  return users
-    .filter((user) => String(user?.level || "").trim().toUpperCase() === level)
-    .map((user) => ({
-      id: user?.id,
-      employeeId: getUserEmployeeId(user),
-      name: getUserDisplayName(user),
-    }))
-    .filter((user) => {
-      const key = normalizeLookupValue(user.employeeId || user.name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((left, right) => left.name.localeCompare(right.name));
-};
-
-const resolveUser = (users, value) => {
-  const normalized = normalizeLookupValue(value);
-  if (!normalized) return null;
-
-  return users.find((user) =>
-    [
-      user?.id,
-      user?.employee_id,
-      user?.employeeId,
-      user?.name,
-      user?.full_name,
-      user?.fullName,
-      user?.username,
-    ].some((candidate) => normalizeLookupValue(candidate) === normalized)
-  ) || null;
-};
 
 const getThresholdId = (item) =>
   item?.id || item?.threshold_id || item?.thresholdId || item?._id || "";
@@ -94,14 +54,9 @@ const getThresholdAckHours = (item) =>
   item?.acknowledgementHours ??
   "";
 
-const getThresholdL2 = (item) =>
-  item?.approval_l2_name ||
-  item?.approvalL2Name ||
-  item?.l2_approver_name ||
-  item?.l2ApproverName ||
-  item?.approval_l2 ||
-  item?.approvalL2 ||
-  "-";
+const getThresholdCriticality = (item) => item?.criticality || "-";
+
+const getThresholdL4Name = (item) => item?.approval_l4_name || item?.approvalL4Name || "-";
 
 const formatTimestamp = (value) => {
   if (!value) return "-";
@@ -123,6 +78,11 @@ const normalizeMatchValue = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
+
+const normalizeIdList = (value) =>
+  (Array.isArray(value) ? value : [])
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
 
 const readPendingThresholdRows = () => {
   if (typeof window === "undefined") return [];
@@ -191,9 +151,105 @@ const mergeThresholdRow = (rows, row) => {
 const mergeThresholdRows = (rows, nextRows) =>
   nextRows.reduce((mergedRows, row) => mergeThresholdRow(mergedRows, row), rows);
 
-export default function SubmittedNotebookThresholdPage() {
-  const dispatch = useDispatch();
+const getUserDisplayName = (user) =>
+  String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
+
+const buildUserOptions = (users, level) => {
+  const seen = new Set();
+  return users
+    .filter((user) => String(user?.level || "").trim().toUpperCase() === level)
+    .map((user) => ({ id: user?.id, name: getUserDisplayName(user) }))
+    .filter((user) => {
+      const key = String(user.id ?? "").trim();
+      if (!key || !user.name || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+function MultiUserSelect({
+  value = [],
+  options = [],
+  onChange,
+  disabled = false,
+  placeholder = "Select",
+  emptyLabel = "No users available",
+}) {
+  const containerRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!containerRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  const selectedIds = new Set(normalizeIdList(value));
+  const selectedNames = options
+    .filter((option) => selectedIds.has(String(option.id)))
+    .map((option) => option.name);
+  const selectedLabel =
+    selectedNames.length > 1 ? `${selectedNames.length} selected` : selectedNames[0] || placeholder;
+
+  return (
+    <div ref={containerRef} className={`${styles.multiSelectWrap} ${disabled ? styles.multiSelectDisabled : ""}`}>
+      <button
+        type="button"
+        className={styles.multiSelectButton}
+        onClick={() => {
+          if (!disabled) setIsOpen((current) => !current);
+        }}
+        disabled={disabled}
+      >
+        <span className={styles.multiSelectValue}>{selectedLabel}</span>
+        <span className={styles.multiSelectChevron}>{isOpen ? "^" : "v"}</span>
+      </button>
+
+      {isOpen ? (
+        <div className={styles.multiSelectMenu}>
+          {options.length ? (
+            options.map((option) => {
+              const optionId = String(option.id);
+              const isChecked = selectedIds.has(optionId);
+              return (
+                <button
+                  key={optionId}
+                  type="button"
+                  className={`${styles.singleSelectOption} ${isChecked ? styles.singleSelectOptionActive : ""}`}
+                  onClick={() => {
+                    const nextIds = isChecked
+                      ? normalizeIdList(value).filter((id) => id !== optionId)
+                      : [...normalizeIdList(value), optionId];
+                    onChange?.(nextIds);
+                  }}
+                >
+                  <span className={styles.multiSelectOptionRow}>
+                    <input type="checkbox" checked={isChecked} readOnly tabIndex={-1} />
+                    <span>{option.name}</span>
+                  </span>
+                </button>
+              );
+            })
+          ) : (
+            <div className={styles.multiSelectEmpty}>{emptyLabel}</div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function SubmittedNotebookThresholdPage({ standalone = true } = {}) {
   const router = useRouter();
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
   const isHydrated = useSelector((state) => state.auth?.isHydrated);
   const users = useSelector((state) => state.users?.users || []);
@@ -206,8 +262,10 @@ export default function SubmittedNotebookThresholdPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
-  const [rule, setRule] = useState(createRule);
+  const [rules, setRules] = useState([createRule()]);
   const [existingFilters, setExistingFilters] = useState(buildExistingFilters);
+
+  const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
 
   const availableDepartments = departmentDirectory.filter((item) => item.enabled);
   const selectedDepartment =
@@ -215,16 +273,12 @@ export default function SubmittedNotebookThresholdPage() {
   const availableSubDepartments = (selectedDepartment?.subDepartments || []).filter(
     (item) => item.enabled
   );
-  const selectedSubDepartment =
-    availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug) || null;
   const existingDepartment = availableDepartments.find(
     (item) => item.name === existingFilters.department
   ) || null;
   const existingSubDepartment = (existingDepartment?.subDepartments || []).find(
     (item) => item.name === existingFilters.subDepartment
   ) || null;
-  const l2Options = useMemo(() => buildUserOptions(users, "L2"), [users]);
-
   const totalThresholds = thresholds.length;
   const activeThresholds = thresholds.filter((item) => getActiveValue(item)).length;
   const inactiveThresholds = thresholds.filter((item) => !getActiveValue(item)).length;
@@ -291,21 +345,40 @@ export default function SubmittedNotebookThresholdPage() {
     }
     loadThresholds();
     dispatch(fetchUsers());
-  }, [canAccessPage, dispatch, isHydrated, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAccessPage, isHydrated, router]);
 
-  const updateRule = (field, value) => {
-    setRule((current) => ({
-      ...current,
-      [field]: value,
-      ...(field === "subDepartmentSlug" ? { screenName: "" } : {}),
-    }));
+  const updateRule = (ruleId, field, value) => {
+    setRules((current) =>
+      current.map((rule) => {
+        if (rule.id !== ruleId) return rule;
+        const next = { ...rule, [field]: value };
+        if (field === "subDepartmentSlug") next.screenName = "";
+        return next;
+      })
+    );
+    setMessage("");
+    setError("");
+  };
+
+  const addRule = () => {
+    setRules((current) => [...current, createRule()]);
+    setMessage("");
+    setError("");
+  };
+
+  const removeRule = (ruleId) => {
+    setRules((current) => {
+      const next = current.filter((rule) => rule.id !== ruleId);
+      return next.length ? next : [createRule()];
+    });
     setMessage("");
     setError("");
   };
 
   const handleDepartmentChange = (event) => {
     setSelectedDepartmentSlug(event.target.value);
-    setRule(createRule());
+    setRules([createRule()]);
     setMessage("");
     setError("");
   };
@@ -324,7 +397,7 @@ export default function SubmittedNotebookThresholdPage() {
 
   const resetForm = ({ preserveFeedback = false } = {}) => {
     setSelectedDepartmentSlug("");
-    setRule(createRule());
+    setRules([createRule()]);
     if (!preserveFeedback) {
       setMessage("");
       setError("");
@@ -339,58 +412,78 @@ export default function SubmittedNotebookThresholdPage() {
 
     try {
       if (!selectedDepartment) throw new Error("Please select a department.");
-      if (!selectedSubDepartment) throw new Error("Please select a sub-department.");
-      if (!rule.screenName) throw new Error("Please select a notebook type.");
 
-      const hours = Number(rule.acknowledgeWithinHours);
-      if (!Number.isFinite(hours) || hours <= 0) {
-        throw new Error("Please enter acknowledge within hours greater than 0.");
-      }
+      const payloads = rules.map((rule) => {
+        const subDepartment = availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug) || null;
+        if (!subDepartment) throw new Error("Please select a sub-department for every row.");
+        if (!rule.screenName) throw new Error("Please select a notebook for every row.");
 
-      const selectedL2 = resolveUser(users, rule.approvalL2);
-      if (!selectedL2) throw new Error("Please select an L2 approver.");
+        const hours = Number(rule.acknowledgeWithinHours);
+        if (!Number.isFinite(hours) || hours <= 0) {
+          throw new Error("Please enter approved within hours greater than 0 for every row.");
+        }
 
-      const existingThreshold = thresholds.find((item) =>
-        isSameThreshold(item, {
+        const l4Names = l4Options
+          .filter((option) => normalizeIdList(rule.approvalL4Ids).includes(String(option.id)))
+          .map((option) => option.name);
+
+        const existingThreshold = thresholds.find((item) =>
+          isSameThreshold(item, {
+            screen_name: rule.screenName,
+            department: selectedDepartment.name,
+            sub_department: subDepartment.name,
+          })
+        );
+        const existingThresholdId = getThresholdId(existingThreshold);
+
+        return {
+          ...(existingThresholdId
+            ? {
+                id: existingThresholdId,
+                threshold_id: existingThresholdId,
+              }
+            : {}),
           screen_name: rule.screenName,
           department: selectedDepartment.name,
-          sub_department: selectedSubDepartment.name,
+          sub_department: subDepartment.name,
+          criticality: rule.criticality,
+          approval_l4: normalizeIdList(rule.approvalL4Ids),
+          approval_l4_name: l4Names,
+          acknowledge_within_hours: hours,
+          is_active: true,
+          _existingThreshold: existingThreshold,
+        };
+      });
+
+      const responses = await Promise.all(
+        payloads.map((payload) => {
+          const { _existingThreshold, ...apiPayload } = payload;
+          return saveNotebookAcknowledgementThresholdAPI(apiPayload);
         })
       );
-      const existingThresholdId = getThresholdId(existingThreshold);
 
-      const payload = {
-        ...(existingThresholdId
-          ? {
-              id: existingThresholdId,
-              threshold_id: existingThresholdId,
-            }
-          : {}),
-        screen_name: rule.screenName,
-        department: selectedDepartment.name,
-        sub_department: selectedSubDepartment.name,
-        acknowledge_within_hours: hours,
-        approval_l2: getUserEmployeeId(selectedL2) || selectedL2.id || rule.approvalL2,
-        approval_l2_name: getUserDisplayName(selectedL2),
-        is_active: true,
-      };
+      const savedThresholds = responses.map((response, index) => {
+        const { _existingThreshold, ...apiPayload } = payloads[index];
+        return {
+          ...(_existingThreshold || {}),
+          ...getSavedThresholdFromResponse(response, apiPayload),
+          updated_at: new Date().toISOString(),
+        };
+      });
 
-      const response = await saveNotebookAcknowledgementThresholdAPI(payload);
-      const savedThreshold = {
-        ...(existingThreshold || {}),
-        ...getSavedThresholdFromResponse(response, payload),
-        updated_at: new Date().toISOString(),
-      };
-      writePendingThresholdRows(mergeThresholdRow(readPendingThresholdRows(), savedThreshold));
-      setMessage(response?.message || "Submitted notebook threshold saved successfully.");
+      writePendingThresholdRows(mergeThresholdRows(readPendingThresholdRows(), savedThresholds));
+      setMessage(
+        responses[0]?.message ||
+          `${savedThresholds.length} acknowledgement threshold${savedThresholds.length > 1 ? "s" : ""} saved successfully.`
+      );
       setActiveTab("existing");
       setExistingFilters(buildExistingFilters());
       resetForm({ preserveFeedback: true });
       const reloadedThresholds = await loadThresholds();
       setThresholds((currentThresholds) =>
-        mergeThresholdRow(
+        mergeThresholdRows(
           reloadedThresholds.length ? reloadedThresholds : mergeThresholdRows(currentThresholds, readPendingThresholdRows()),
-          savedThreshold
+          savedThresholds
         )
       );
     } catch (err) {
@@ -407,14 +500,11 @@ export default function SubmittedNotebookThresholdPage() {
 
   if (!isHydrated || !canAccessPage) return null;
 
-  return (
-    <div className={styles.page}>
-      <div className={styles.shell}>
-        <div className={styles.intro}>
-          <h1>Submission Threshold</h1>
-          <p>Set the L2 acknowledgement time for submitted notebooks</p>
-        </div>
+  const effectiveActiveTab = standalone ? activeTab : "new";
 
+  const content = (
+    <>
+        {standalone ? (
         <div className={styles.tabBar} role="tablist" aria-label="Submitted notebook threshold views">
           <button
             type="button"
@@ -431,8 +521,9 @@ export default function SubmittedNotebookThresholdPage() {
             Existing Thresholds
           </button>
         </div>
+        ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <div className={styles.statsGrid}>
             <article className={styles.statCard}>
               <div className={`${styles.statIcon} ${styles.blue}`}>
@@ -464,7 +555,7 @@ export default function SubmittedNotebookThresholdPage() {
           </div>
         ) : null}
 
-        {activeTab === "new" ? (
+        {effectiveActiveTab === "new" ? (
           <form className={styles.stack} onSubmit={handleSave}>
             <section className={styles.sectionPlain}>
               <div className={styles.sectionHeader}>
@@ -486,74 +577,105 @@ export default function SubmittedNotebookThresholdPage() {
               </div>
 
               <div className={styles.rulesTable}>
-                <div className={styles.ruleCard}>
-                  <div className={styles.ruleGrid}>
-                    <label className={styles.field}>
-                      <span>Sub-Department</span>
-                      <select
-                        value={rule.subDepartmentSlug}
-                        onChange={(event) => updateRule("subDepartmentSlug", event.target.value)}
-                        disabled={!selectedDepartment}
-                      >
-                        <option value="">Select Sub-Department</option>
-                        {availableSubDepartments.map((item) => (
-                          <option key={item.slug} value={item.slug}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                {rules.map((rule, index) => (
+                  <div className={styles.ruleCard} key={rule.id}>
+                    <div className={styles.ruleGrid} style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto" }}>
+                      <label className={styles.field} style={{ gridColumn: "1 / 2", gridRow: "1" }}>
+                        <span>Sub Department</span>
+                        <select
+                          value={rule.subDepartmentSlug}
+                          onChange={(event) => updateRule(rule.id, "subDepartmentSlug", event.target.value)}
+                          disabled={!selectedDepartment}
+                        >
+                          <option value="">Select Sub Department</option>
+                          {availableSubDepartments.map((item) => (
+                            <option key={item.slug} value={item.slug}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                    <label className={styles.field}>
-                      <span>Notebook Type</span>
-                      <select
-                        value={rule.screenName}
-                        onChange={(event) => updateRule("screenName", event.target.value)}
-                        disabled={!rule.subDepartmentSlug}
-                      >
-                        <option value="">Select Notebook Type</option>
-                        {getThresholdScreensForSubDepartment(
-                          selectedDepartmentSlug,
-                          rule.subDepartmentSlug
-                        ).map((screenName) => (
-                          <option key={screenName} value={screenName}>
-                            {screenName}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      <label className={styles.field} style={{ gridColumn: "2 / 3", gridRow: "1" }}>
+                        <span>Notebook</span>
+                        <select
+                          value={rule.screenName}
+                          onChange={(event) => updateRule(rule.id, "screenName", event.target.value)}
+                          disabled={!rule.subDepartmentSlug}
+                        >
+                          <option value="">Select Notebook</option>
+                          {getThresholdScreensForSubDepartment(
+                            selectedDepartmentSlug,
+                            rule.subDepartmentSlug
+                          ).map((screenName) => (
+                            <option key={screenName} value={screenName}>
+                              {screenName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                    <label className={styles.field}>
-                      <span>Acknowledge Within Hours</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={rule.acknowledgeWithinHours}
-                        onChange={(event) => updateRule("acknowledgeWithinHours", event.target.value)}
-                      />
-                    </label>
+                      <label className={styles.field} style={{ gridColumn: "3 / 4", gridRow: "1" }}>
+                        <span>Criticality</span>
+                        <select
+                          value={rule.criticality}
+                          onChange={(event) => updateRule(rule.id, "criticality", event.target.value)}
+                        >
+                          {CRITICALITY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                    <label className={styles.field}>
-                      <span>L2 Approver</span>
-                      <select
-                        value={rule.approvalL2}
-                        onChange={(event) => updateRule("approvalL2", event.target.value)}
-                      >
-                        <option value="">Select L2</option>
-                        {l2Options.map((item) => (
-                          <option key={`${item.employeeId}-${item.name}`} value={item.employeeId || item.name}>
-                            {item.name || item.employeeId}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                      <label className={styles.field} style={{ gridColumn: "4 / 5", gridRow: "1" }}>
+                        <span>L4</span>
+                        <MultiUserSelect
+                          value={rule.approvalL4Ids}
+                          options={l4Options}
+                          onChange={(nextIds) => updateRule(rule.id, "approvalL4Ids", nextIds)}
+                          placeholder="Select L4 user"
+                          emptyLabel="No L4 users available"
+                        />
+                      </label>
 
-                    <div className={styles.ruleActions}>
-                      <FiClock aria-hidden="true" />
+                      <label className={styles.field} style={{ gridColumn: "5 / 6", gridRow: "1" }}>
+                        <span>Approved within (Hours)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={rule.acknowledgeWithinHours}
+                          onChange={(event) => updateRule(rule.id, "acknowledgeWithinHours", event.target.value)}
+                        />
+                      </label>
+
+                      <div className={styles.ruleActions} style={{ gridColumn: "6 / 7", gridRow: "1" }}>
+                        {index === rules.length - 1 ? (
+                          <button
+                            type="button"
+                            className={styles.addIconButton}
+                            onClick={addRule}
+                            aria-label="Add acknowledgement threshold row"
+                          >
+                            <FiPlus />
+                          </button>
+                        ) : (
+                          <span className={styles.actionSpacer} aria-hidden="true" />
+                        )}
+                        <button
+                          type="button"
+                          className={styles.deleteIconButton}
+                          onClick={() => removeRule(rule.id)}
+                          aria-label="Delete acknowledgement threshold row"
+                        >
+                          <FiTrash2 />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
 
               <div className={styles.formFooter}>
@@ -605,12 +727,12 @@ export default function SubmittedNotebookThresholdPage() {
               </label>
 
               <label className={styles.field}>
-                <span>Notebook Type</span>
+                <span>Notebook</span>
                 <select
                   value={existingFilters.screenName}
                   onChange={(event) => handleExistingFilterChange("screenName", event.target.value)}
                 >
-                  <option value="">Select Notebook Type</option>
+                  <option value="">Select Notebook</option>
                   {existingNotebookOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
@@ -652,7 +774,7 @@ export default function SubmittedNotebookThresholdPage() {
                   <strong>{existingSubDepartment?.name || existingFilters.subDepartment || "-"}</strong>
                 </article>
                 <article className={styles.summaryCard}>
-                  <span>Notebook Type</span>
+                  <span>Notebook</span>
                   <strong>{existingFilters.screenName || "-"}</strong>
                 </article>
               </div>
@@ -664,8 +786,9 @@ export default function SubmittedNotebookThresholdPage() {
                       <th>Department</th>
                       <th>Sub-Deprt.</th>
                       <th>Notebook</th>
-                      <th>Acknowledge Within</th>
-                      <th>L2</th>
+                      <th>Criticality</th>
+                      <th>L4</th>
+                      <th>Approved Within</th>
                       <th>Status</th>
                       <th>Created At</th>
                     </tr>
@@ -673,11 +796,11 @@ export default function SubmittedNotebookThresholdPage() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={7}>Loading...</td>
+                        <td colSpan={8}>Loading...</td>
                       </tr>
                     ) : filteredThresholds.length === 0 ? (
                       <tr>
-                        <td colSpan={7}>No acknowledgement thresholds found.</td>
+                        <td colSpan={8}>No acknowledgement thresholds found.</td>
                       </tr>
                     ) : (
                       filteredThresholds.map((item, index) => {
@@ -689,8 +812,9 @@ export default function SubmittedNotebookThresholdPage() {
                             <td>{getThresholdDepartment(item) || "-"}</td>
                             <td>{getThresholdSubDepartment(item) || "-"}</td>
                             <td>{getThresholdScreenName(item) || "-"}</td>
+                            <td>{getThresholdCriticality(item)}</td>
+                            <td>{getThresholdL4Name(item)}</td>
                             <td>{getThresholdAckHours(item) || "-"} Hrs</td>
-                            <td>{getThresholdL2(item)}</td>
                             <td>
                               <span
                                 className={`${styles.statusBadge} ${
@@ -714,6 +838,21 @@ export default function SubmittedNotebookThresholdPage() {
             </section>
           </div>
         )}
+    </>
+  );
+
+  if (!standalone) {
+    return content;
+  }
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className={styles.intro}>
+          <h1>Acknowledgement Threshold</h1>
+          <p>Set the L4 acknowledgement time for submitted notebooks</p>
+        </div>
+        {content}
       </div>
     </div>
   );

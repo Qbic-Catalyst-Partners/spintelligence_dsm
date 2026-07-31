@@ -7,6 +7,7 @@ const { fetchPrepVarieties, sendPrepVarietyDropdown } = require('../utils/prepVa
 const { sendUqcMasterData } = require('./uqcMasterData');
 const { createEmployeeMasterDropdown } = require('../utils/employeeMaster');
 const { resolveOrCreateProcessParameterEntryId, getCountNameConflict } = require('../utils/processParameterEntryId');
+const { createWheelChangeApprovalTicket, closeWheelChangeApprovalTicket } = require('./spinning');
 const MSSQL_THRESHOLD_TABLE = String(process.env.MSSQL_THRESHOLD_TABLE || 'dbo.threshold_master').trim();
 const SCREEN_ID_PREFIXES = {
   card_thick_place: 'CT',
@@ -270,6 +271,14 @@ const ensureCardingChangeTables = async () => {
   await client.query(`
     ALTER TABLE carding.carding_change_request ALTER COLUMN approval_status SET DEFAULT 'pending';
   `);
+  // cdg_no_proposed was TEXT[] on some pre-existing databases (from an older
+  // schema version); the route has always sent a plain string, which
+  // Postgres rejects with "malformed array literal" against an array column.
+  // CREATE TABLE IF NOT EXISTS never fixes an already-created table, so force
+  // the column back to TEXT on every startup, same as the default fix above.
+  await client.query(`
+    ALTER TABLE carding.carding_change_request ALTER COLUMN cdg_no_proposed TYPE TEXT USING array_to_string(cdg_no_proposed, ', ');
+  `).catch(() => {});
 };
 
 const ensureCardWasteStudyTable = async () => {
@@ -329,6 +338,17 @@ const ensureCardWasteStudyTable = async () => {
       mc_production NUMERIC(12,4),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Type 3's three Lickerin Speed fields (first/second/third) have their own columns, distinct
+  // from the single shared `lickerin_speed` column Types 1/2 use — without these the POST
+  // /card-waste-study handler had nowhere to write them, so every Type 3 save silently dropped
+  // those 3 required fields instead of persisting them.
+  await client.query(`
+    ALTER TABLE carding.card_waste_study_type_rows
+      ADD COLUMN IF NOT EXISTS lickerin_speed_1 NUMERIC(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_2 NUMERIC(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_3 NUMERIC(12,4);
   `);
 
   await client.query(`
@@ -3319,6 +3339,15 @@ router.post('/change-control', async (req, res, next) => {
       });
     }
 
+    // cdg_no_proposed is a TEXT column (see the array_to_string migration above), but the
+    // frontend sends a JS array for its multi-select - passed straight through as a bound
+    // array parameter, node-pg serializes it into Postgres array-literal syntax
+    // (e.g. {"CDG-01","CDG-02"}) rather than plain text, so it comes back as one unreadable
+    // blob instead of the individually selected values.
+    const normalizedCdgNoProposed = Array.isArray(cdg_no_proposed)
+      ? cdg_no_proposed.map((value) => String(value ?? '').trim()).filter(Boolean).join(', ')
+      : (cdg_no_proposed ?? null);
+
     const result = await client.query(
       `INSERT INTO carding.carding_change_request
        (
@@ -3371,7 +3400,7 @@ router.post('/change-control', async (req, res, next) => {
         test_no ?? null,
         entry_date,
         cdo_no ?? null,
-        cdg_no_proposed ?? null,
+        normalizedCdgNoProposed,
         mixing_existing ?? null,
         mixing_proposed ?? null,
         toNumericOrNull(blend_percent_existing),
@@ -3410,6 +3439,8 @@ router.post('/change-control', async (req, res, next) => {
         operator ?? null
       ]
     );
+
+    await createWheelChangeApprovalTicket('carding.carding_change_request', result.rows[0].id);
 
     res.status(201).json({
       message: 'Carding change control entry created successfully',
@@ -3541,6 +3572,7 @@ router.post('/change-control/approvals/:id/approve', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
     res.status(200).json({
       message: 'Carding change control entry approved',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3569,6 +3601,7 @@ router.post('/change-control/approvals/:id/reject', async (req, res, next) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ message: 'Entry not found' });
     }
+    await closeWheelChangeApprovalTicket('carding.carding_change_request', id);
     res.status(200).json({
       message: 'Carding change control entry rejected',
       data: withScreenEntryId('card_change_control', result.rows[0])
@@ -3673,8 +3706,8 @@ router.post('/card-waste-study', async (req, res, next) => {
       const row = normalizedTypeRows[i] || {};
       await client.query(
         `INSERT INTO carding.card_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           study.id,
           row.row_no ?? (i + 1),
@@ -3686,7 +3719,10 @@ router.post('/card-waste-study', async (req, res, next) => {
           toDecimal4OrNull(row.wing_setting_1),
           toDecimal4OrNull(row.wing_setting_2),
           row.mc_no ?? null,
-          toDecimal4OrNull(row.mc_production)
+          toDecimal4OrNull(row.mc_production),
+          toDecimal4OrNull(row.first_lickerin_speed),
+          toDecimal4OrNull(row.second_lickerin_speed),
+          toDecimal4OrNull(row.third_lickerin_speed)
         ]
       );
     }

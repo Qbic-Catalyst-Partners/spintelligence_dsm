@@ -106,6 +106,7 @@ function Simplex() {
   );
   const [selectedTypeName, setSelectedTypeName] = useState(typeOptions[0]?.name || "");
   const [showPreview, setShowPreview] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
@@ -187,6 +188,7 @@ function Simplex() {
   const confirmSubmit = async () => {
     if (submitInProgressRef.current) return;
     submitInProgressRef.current = true;
+    setSubmitting(true);
     setShowPreview(false);
     try {
       if (entryIdLoading || !entryId) return;
@@ -208,6 +210,7 @@ function Simplex() {
       }
     } finally {
       submitInProgressRef.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -553,6 +556,8 @@ function Simplex() {
         onCancel={() => setShowPreview(false)}
         onConfirm={confirmSubmit}
         confirmLabel="Submit"
+        confirming={submitting}
+        confirmingLabel="Submitting..."
       />
 
       <SuccessModal

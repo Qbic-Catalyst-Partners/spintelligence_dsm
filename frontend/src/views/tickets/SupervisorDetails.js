@@ -3,14 +3,15 @@ import { useRouter } from "next/router";
 import { IoTimeSharp } from "react-icons/io5";
 import { BsThreeDotsVertical } from "react-icons/bs";
 import styles from "../../styles/SupervisorDetails.module.css";
+import Pagination from "@/components/Pagination";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  acknowledgeTicket,
   approveTicket,
   fetchTicketDetails,
   rejectTicket,
 } from "../../store/slices/supervisorSlice";
 import { fetchL2TicketPreviewApi, fetchTicketTimelineApi } from "../../apis/supervisorApi";
+import { fetchTicketApprovalsApi } from "../../apis/operatorApi";
 import {
   formatTicketIdForDisplay,
   formatThresholdValue,
@@ -20,7 +21,6 @@ import {
   getTicketValueForParameter,
   isNotebookAcknowledgementParameterName,
   isSubmissionFrequencyParameterName,
-  isSubmissionTicketRecord,
   TICKET_KIND,
   transformTicketWithDescription,
 } from "../../utils/ticketTransformer";
@@ -29,19 +29,7 @@ import {
   getSupervisorStatusLabel,
   setStoredTicketStatus,
 } from "../../utils/ticketStatus";
-
-const formatDateTime = (dateString) => {
-  if (!dateString) return "-";
-  const date = new Date(dateString);
-  return date.toLocaleString("en-US", {
-    timeZone: "Asia/Kolkata",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-};
+import { formatDateTime } from "../../utils/formatDateTime";
 
 const buildTimelineIcon = (title) => {
   const normalized = String(title || "").toLowerCase();
@@ -92,6 +80,31 @@ const buildPreviewTicket = (preview) => {
 
 const isAcknowledgeActionTicket = (ticket) => getTicketKind(ticket) === TICKET_KIND.NOTEBOOK_ACK;
 
+// Acknowledgement tickets are raised against a specific submitted_notebooks row (stamped into
+// violation_details.submitted_notebook_id when the ticket is created - see
+// submittedNotebooks.routes.js). Pulling it back out here is what lets the redirect to
+// Submitted Notebooks open that exact notebook's card instead of just the list.
+const getTicketNotebookId = (ticket) => {
+  if (!ticket) return null;
+  const raw = ticket.violation_details;
+  const parsed = typeof raw === "string"
+    ? (() => {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return null;
+        }
+      })()
+    : raw;
+
+  return (
+    parsed?.submitted_notebook_id ??
+    ticket?.submitted_notebook_id ??
+    ticket?.submittedNotebookId ??
+    null
+  );
+};
+
 export default function SupervisorDetails() {
   const router = useRouter();
   const { ticketId, ticketType } = router.query;
@@ -103,6 +116,8 @@ export default function SupervisorDetails() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState("");
   const [timelineItems, setTimelineItems] = useState([]);
+  const [approvalHistory, setApprovalHistory] = useState([]);
+  const [timelinePage, setTimelinePage] = useState(1);
   const [l2Preview, setL2Preview] = useState(null);
   const [l2PreviewLoaded, setL2PreviewLoaded] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -111,6 +126,13 @@ export default function SupervisorDetails() {
   const toClassKey = (value) => String(value || "").toLowerCase().replace(/\s+/g, "-");
   const requestedTicketId = Array.isArray(ticketId) ? ticketId[0] : ticketId;
   const normalizedRequestedTicketId = normalizeTicketId(requestedTicketId);
+  const requestedTicketType = Array.isArray(ticketType) ? ticketType[0] : ticketType;
+  // The L2 preview endpoint returns raw submitted-notebook fields, not the
+  // actual_value/threshold_value shape review tickets use - fetching/using it for an
+  // Acknowledgement ticket overwrites the correct dashboard record with mismatched data,
+  // which both renders a stray object as a table cell and flips the UI to the Accept/Reject
+  // (non-acknowledgement) action layout a moment after the page first loads correctly.
+  const isKnownAcknowledgementTicket = String(requestedTicketType || "").toLowerCase() === "acknowledgement";
 
   const dashboardTicket = useMemo(() => {
     if (!requestedTicketId || !Array.isArray(tickets)) return null;
@@ -121,20 +143,25 @@ export default function SupervisorDetails() {
   }, [requestedTicketId, tickets]);
 
   const ticket = useMemo(() => {
-    const previewSource = buildPreviewTicket(l2Preview);
+    // The L2 preview endpoint's response shape only makes sense for non-acknowledgement
+    // tickets, but GET /tickets/:id (fetchTicketDetails) returns the raw operator_tickets row
+    // (ot.*, including violation_details) for both kinds - it's a safe fallback when the
+    // dashboard list hasn't been loaded yet (e.g. a hard refresh straight onto this page),
+    // which previously left acknowledgement tickets with no notebook id to deep-link to.
+    const previewSource = isKnownAcknowledgementTicket ? null : buildPreviewTicket(l2Preview);
     const previewMatches =
       previewSource && normalizeTicketId(previewSource?.ticket_id || previewSource?.id) === normalizedRequestedTicketId;
     const detailSource = ticketDetail?.data || ticketDetail?.ticket || ticketDetail;
     const detailMatches =
       detailSource && normalizeTicketId(detailSource?.ticket_id || detailSource?.id) === normalizedRequestedTicketId;
-    const source = previewMatches ? previewSource : detailMatches ? detailSource : dashboardTicket;
+    const source = previewMatches ? previewSource : dashboardTicket || (detailMatches ? detailSource : null);
     return source ? applyStoredTicketStatus(transformTicketWithDescription(source)) : null;
-  }, [dashboardTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
+  }, [dashboardTicket, isKnownAcknowledgementTicket, l2Preview, normalizedRequestedTicketId, ticketDetail]);
 
   useEffect(() => {
     if (!router.isReady || !requestedTicketId) return;
 
-    if (!l2PreviewLoaded) return;
+    if (!isKnownAcknowledgementTicket && !l2PreviewLoaded) return;
 
     if (
       !l2Preview &&
@@ -143,7 +170,7 @@ export default function SupervisorDetails() {
     ) {
       dispatch(fetchTicketDetails(requestedTicketId));
     }
-  }, [dashboardTicket, dispatch, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
+  }, [dashboardTicket, dispatch, isKnownAcknowledgementTicket, l2Preview, l2PreviewLoaded, normalizedRequestedTicketId, requestedTicketId, router.isReady, ticketDetail?.ticket_id]);
 
   useEffect(() => {
     let mounted = true;
@@ -175,8 +202,39 @@ export default function SupervisorDetails() {
 
   useEffect(() => {
     let mounted = true;
-    const loadPreview = async () => {
+    const loadApprovalHistory = async () => {
       if (!requestedTicketId) return;
+      try {
+        const response = await fetchTicketApprovalsApi(requestedTicketId);
+        const rows = Array.isArray(response?.approvals) ? response.approvals : [];
+        const mapped = rows.map((row) => {
+          const iconMeta = buildTimelineIcon(row?.action_status);
+          return {
+            time: formatDateTime(row?.created_at),
+            title: `${row?.level || ""} ${row?.action_status || ""}`.trim(),
+            description: row?.performed_by ? `By ${row.performed_by}` : "-",
+            icon: iconMeta.icon,
+            alt: iconMeta.alt,
+          };
+        });
+        if (mounted) setApprovalHistory(mapped);
+      } catch {
+        if (mounted) setApprovalHistory([]);
+      }
+    };
+    loadApprovalHistory();
+    return () => {
+      mounted = false;
+    };
+  }, [requestedTicketId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPreview = async () => {
+      if (!requestedTicketId || isKnownAcknowledgementTicket) {
+        if (mounted) setL2PreviewLoaded(true);
+        return;
+      }
       setL2PreviewLoaded(false);
       try {
         const response = await fetchL2TicketPreviewApi(requestedTicketId);
@@ -207,7 +265,7 @@ export default function SupervisorDetails() {
     return () => {
       mounted = false;
     };
-  }, [requestedTicketId]);
+  }, [requestedTicketId, isKnownAcknowledgementTicket]);
 
   useEffect(() => {
     if (!showMoreMenu) return undefined;
@@ -246,14 +304,18 @@ export default function SupervisorDetails() {
     }
   };
 
-  const handleAcknowledge = async () => {
-    try {
-      await dispatch(acknowledgeTicket(ticket.ticket_id)).unwrap();
-      setStoredTicketStatus(ticket.ticket_id, "Closed");
-      router.push("/supervisordashboard");
-    } catch (err) {
-      alert(err);
-    }
+  // Acknowledging a notebook ticket doesn't happen from this detail view anymore - it only
+  // hands off to Submitted Notebooks, where the reviewer must actually open the notebook and
+  // click Acknowledge there. That page owns the real acknowledgeSubmittedNotebookApi call.
+  // The notebook id is passed through so that page can auto-open the matching card/preview
+  // instead of dropping the reviewer on the bare list.
+  const handleAcknowledge = () => {
+    const notebookId = getTicketNotebookId(ticket);
+    router.push(
+      notebookId
+        ? `/submitted-notebooks?openNotebookId=${encodeURIComponent(notebookId)}`
+        : "/submitted-notebooks"
+    );
   };
 
   const handleCopyTicketId = async () => {
@@ -299,10 +361,13 @@ export default function SupervisorDetails() {
   // The dashboard already knows which tab (Threshold vs Submission) a ticket came from,
   // so it's passed via ?ticketType= and trusted here directly. Fall back to guessing from
   // the ticket's own fields only for links that don't carry that param (e.g. old bookmarks).
+  // Uses getTicketKind (which checks the explicit ticket_kind column first) rather than a
+  // bare violation_details.category === 'MISSED_FREQUENCY' check - PP_BATCH_INCOMPLETE
+  // tickets also carry that same category value, so that check alone misclassified every
+  // PP batch ticket as a Submission ticket.
   const isSubmissionTicket = ticketType
     ? ticketType === "submission"
-    : isSubmissionTicketRecord(ticket) ||
-      String(ticket?.violation_details?.category || "").toUpperCase() === "MISSED_FREQUENCY";
+    : getTicketKind(ticket) === TICKET_KIND.SUBMISSION_FREQUENCY;
   const rawParameterNames = getTicketParameterNames(ticket);
   const submissionParameterNames = rawParameterNames.filter(
     (key) => isSubmissionFrequencyParameterName(key) || isNotebookAcknowledgementParameterName(key)
@@ -417,6 +482,27 @@ export default function SupervisorDetails() {
     return baseTimeline;
   })();
 
+  const timelineWithApprovalHistory = approvalHistory.length
+    ? [...timelineWithL2Comment, ...approvalHistory]
+    : timelineWithL2Comment;
+
+  const displayedTimeline = timelineWithApprovalHistory.length
+    ? timelineWithApprovalHistory
+    : [{
+        time: formatDateTime(ticket.created_at),
+        title: "Created",
+        description: `Ticket created for ${ticket.user_name || "Operator"}`,
+        icon: "/created.png",
+        alt: "Created",
+      }];
+  const TIMELINE_PAGE_SIZE = 10;
+  const timelineTotalPages = Math.max(1, Math.ceil(displayedTimeline.length / TIMELINE_PAGE_SIZE));
+  const safeTimelinePage = Math.min(timelinePage, timelineTotalPages);
+  const paginatedTimeline = displayedTimeline.slice(
+    (safeTimelinePage - 1) * TIMELINE_PAGE_SIZE,
+    safeTimelinePage * TIMELINE_PAGE_SIZE
+  );
+
   return (
     <div>
       <div className={styles.page}>
@@ -483,85 +569,137 @@ export default function SupervisorDetails() {
                 <strong>{ticket.user_name}</strong>
               </div>
 
-              <div className={styles.actions}>
-                {isAcknowledgeTicket ? (
-                  <button
-                    className={styles.accept}
-                    onClick={handleAcknowledge}
-                    disabled={isClosedTicket || actionLoading}
-                  >
-                    Acknowledge
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      className={styles.reject}
-                      onClick={() => setShowRejectModal(true)}
-                      disabled={isClosedTicket || actionLoading}
-                    >
-                      Reject
-                    </button>
-
+              {!isClosedTicket && (
+                <div className={styles.actions}>
+                  {isAcknowledgeTicket ? (
                     <button
                       className={styles.accept}
-                      onClick={handleApprove}
-                      disabled={isClosedTicket || actionLoading}
+                      onClick={handleAcknowledge}
+                      disabled={actionLoading}
                     >
-                      Accept
+                      Acknowledge
                     </button>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    <>
+                      <button
+                        className={styles.reject}
+                        onClick={() => setShowRejectModal(true)}
+                        disabled={actionLoading}
+                      >
+                        Reject
+                      </button>
+
+                      <button
+                        className={styles.accept}
+                        onClick={handleApprove}
+                        disabled={actionLoading}
+                      >
+                        Accept
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>NOTEBOOK TYPE</th>
-                <th>PARAMETER</th>
-                <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
-                <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
-                <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
-                <th>CREATED AT</th>
-              </tr>
-            </thead>
+          {isPpBatchTicket ? (
+            // Purpose-built layout for PP Batch tickets, replacing the
+            // Value/Submission table above - that table iterates every key
+            // in actual_value/threshold_value, which for a PP Batch ticket
+            // are the completed-screens array and a stray
+            // completion_threshold_hours key, neither of which is the actual
+            // point of the ticket (the missing department). Each ticket
+            // already represents exactly one missing department (see PDF
+            // Step 3: "tickets are raised per user, not per PP ID"), so this
+            // shows that directly instead of a noisy 10-row table of mostly
+            // blank cells.
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>ENTRY ID</th>
+                    <th>MISSING DEPARTMENT</th>
+                    <th>COMPLETED</th>
+                    <th>COMPLETION THRESHOLD</th>
+                    <th>FIRST SUBMITTED</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{ticket?.violation_details?.entry_id || ticket.notebook || ticket.machine_name || "-"}</td>
+                    <td style={{ color: "#CA0000" }}>
+                      {ticket?.violation_details?.missing_screen || "-"}
+                    </td>
+                    <td>
+                      {Array.isArray(ticket?.violation_details?.completed_screens)
+                        ? `${ticket.violation_details.completed_screens.length} dept(s): ${ticket.violation_details.completed_screens.join(", ")}`
+                        : "-"}
+                    </td>
+                    <td>
+                      {ticket?.violation_details?.completion_threshold_hours
+                        ? `${ticket.violation_details.completion_threshold_hours} Hrs`
+                        : "-"}
+                    </td>
+                    <td>{formatDateTime(ticket?.violation_details?.first_created_at || ticket.created_at)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>NOTEBOOK TYPE</th>
+                      <th>PARAMETER</th>
+                      <th>{isSubmissionTicket ? "FREQUENCY" : "ACTUAL VALUE"}</th>
+                      <th>{isSubmissionTicket ? "OCCURRENCES" : "STANDARD VALUE"}</th>
+                      <th>{isSubmissionTicket ? "STATUS" : "THRESHOLD VALUE"}</th>
+                      <th>CREATED AT</th>
+                    </tr>
+                  </thead>
 
-            <tbody>
-              {visibleParameterNames.map((key, i) => (
-                <tr key={i}>
-                  <td>{ticket.notebook || ticket.machine_name || "-"}</td>
-                  <td>{key.toUpperCase()}</td>
-                  <td style={{ color: "#CA0000" }}>
-                    {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
-                  </td>
-                  <td>
-                    {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
-                      getTicketValueForParameter(ticket?.threshold_value, key)
-                    )}
-                  </td>
-                  <td>
-                    {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
-                      getTicketValueForParameter(ticket?.threshold_value, key)
-                    )}
-                  </td>
-                  <td>{formatDateTime(ticket.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  <tbody>
+                    {visibleParameterNames.map((key, i) => (
+                      <tr key={i}>
+                        <td>{ticket.notebook || ticket.machine_name || "-"}</td>
+                        <td>{key.toUpperCase()}</td>
+                        <td style={{ color: "#CA0000" }}>
+                          {isSubmissionTicket ? submissionFrequency : getTicketValueForParameter(ticket?.actual_value, key)}
+                        </td>
+                        <td>
+                          {isSubmissionTicket ? submissionOccurrences : formatStandardValue(
+                            getTicketValueForParameter(ticket?.threshold_value, key)
+                          )}
+                        </td>
+                        <td>
+                          {isSubmissionTicket ? getSupervisorStatusLabel(ticket.status) : formatThresholdValue(
+                            getTicketValueForParameter(ticket?.threshold_value, key)
+                          )}
+                        </td>
+                        <td>{formatDateTime(ticket.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-          {parameterNames.length > 1 && (
-            <button
-              type="button"
-              className={styles.dots}
-              onClick={() => setExpanded(!expanded)}
-              aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
-              title={expanded ? "Show less" : "Show all"}
-            >
-              ...
-            </button>
+              {parameterNames.length > 1 && (
+                <button
+                  type="button"
+                  className={styles.dots}
+                  onClick={() => setExpanded(!expanded)}
+                  aria-label={expanded ? "Collapse parameter details" : "Expand all parameter details"}
+                  title={expanded ? "Show less" : "Show all"}
+                >
+                  ...
+                </button>
+              )}
+            </>
           )}
+
         </div>
 
         {showRejectModal && (
@@ -613,13 +751,7 @@ export default function SupervisorDetails() {
               <h3>Activity Timeline</h3>
             </div>
 
-            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
-              time: formatDateTime(ticket.created_at),
-              title: "Created",
-              description: `Ticket created for ${ticket.user_name || "Operator"}`,
-              icon: "/created.png",
-              alt: "Created",
-            }]).map((item, index) => (
+            {paginatedTimeline.map((item) => (
               <div className={styles.item} key={item.title}>
                 <span className={styles.itemTime}>{item.time}</span>
                 <div className={styles.itemContent}>
@@ -631,6 +763,7 @@ export default function SupervisorDetails() {
                 </div>
               </div>
             ))}
+            <Pagination page={safeTimelinePage} totalPages={timelineTotalPages} onPageChange={setTimelinePage} />
           </div>
 
           <div className={styles.resolution}>
@@ -640,10 +773,6 @@ export default function SupervisorDetails() {
             <div className={styles.comment}>
               {resolutionComment}
             </div>
-
-            <button className={styles.review}>
-              Review Submission
-            </button>
           </div>
         </div>
       </div>
@@ -751,13 +880,7 @@ export default function SupervisorDetails() {
           </div>
 
           <div className={styles.timelineWrap}>
-            {(timelineWithL2Comment.length ? timelineWithL2Comment : [{
-              time: formatDateTime(ticket.created_at),
-              title: "Created",
-              description: `Ticket created for ${ticket.user_name || "Operator"}`,
-              icon: "/created.png",
-              alt: "Created",
-            }]).map((item) => (
+            {paginatedTimeline.map((item) => (
               <div className={styles.timelineItem} key={item.title}>
                 <span className={styles.time}>{item.time}</span>
                 <div className={styles.iconCol}>
@@ -771,6 +894,7 @@ export default function SupervisorDetails() {
               </div>
             ))}
           </div>
+          <Pagination page={safeTimelinePage} totalPages={timelineTotalPages} onPageChange={setTimelinePage} />
         </div>
 
         <div className={styles.resolutionCard}>
@@ -785,35 +909,37 @@ export default function SupervisorDetails() {
           </div>
         </div>
 
-        <div className={styles.actions}>
-          {isAcknowledgeTicket ? (
-            <button
-              className={styles.accept}
-              onClick={handleAcknowledge}
-              disabled={isClosedTicket || actionLoading}
-            >
-              Acknowledge
-            </button>
-          ) : (
-            <>
-              <button
-                className={styles.reject}
-                onClick={() => setShowRejectModal(true)}
-                disabled={isClosedTicket || actionLoading}
-              >
-                Reject
-              </button>
-
+        {!isClosedTicket && (
+          <div className={styles.actions}>
+            {isAcknowledgeTicket ? (
               <button
                 className={styles.accept}
-                onClick={handleApprove}
-                disabled={isClosedTicket || actionLoading}
+                onClick={handleAcknowledge}
+                disabled={actionLoading}
               >
-                Accept
+                Acknowledge
               </button>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <button
+                  className={styles.reject}
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={actionLoading}
+                >
+                  Reject
+                </button>
+
+                <button
+                  className={styles.accept}
+                  onClick={handleApprove}
+                  disabled={actionLoading}
+                >
+                  Accept
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {showRejectModal && (
           <div

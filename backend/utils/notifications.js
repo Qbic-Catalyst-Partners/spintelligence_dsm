@@ -194,16 +194,35 @@ const createNotification = async ({
   return result.rows[0] || null;
 };
 
+// title/body may be a plain string (sent identically to every recipient) or a
+// function (user) => string, where user is { id, full_name, level } for that
+// specific recipient - this is what lets ticket-creation notifications greet
+// each approver by name/level and state their own required action, instead
+// of blasting the same generic text to everyone in the approver list.
 const createNotificationsForUsers = async (recipientUserIds = [], options = {}) => {
   const uniqueUserIds = Array.from(new Set(
     (Array.isArray(recipientUserIds) ? recipientUserIds : [])
       .map(parsePositiveInt)
       .filter(Boolean)
   ));
+  if (!uniqueUserIds.length) return [];
+
+  const needsUserLookup = typeof options.title === 'function' || typeof options.body === 'function';
+  const usersById = new Map();
+  if (needsUserLookup) {
+    const result = await client.query(
+      `SELECT id, full_name, level, employee_id FROM users.user_details WHERE id = ANY($1::int[])`,
+      [uniqueUserIds]
+    );
+    result.rows.forEach((row) => usersById.set(row.id, row));
+  }
 
   const created = [];
   for (const userId of uniqueUserIds) {
-    const notification = await createNotification({ ...options, recipientUserId: userId });
+    const user = usersById.get(userId) || { id: userId, full_name: null, level: null, employee_id: null };
+    const resolvedTitle = typeof options.title === 'function' ? options.title(user) : options.title;
+    const resolvedBody = typeof options.body === 'function' ? options.body(user) : options.body;
+    const notification = await createNotification({ ...options, title: resolvedTitle, body: resolvedBody, recipientUserId: userId });
     if (notification) created.push(notification);
   }
   return created;
