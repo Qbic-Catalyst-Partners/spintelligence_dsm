@@ -70,7 +70,7 @@ const NOTEBOOKS_BY_SUB_DEPARTMENT = {
         "Wheel Change - Type 4 (LDF3S)",
     ],
     Simplex: [
-        "SMXCots Change Data Entry",
+        "SMXCots Checking Data Entry",
         "SMX Breaks Study Report",
         "U% Data Entry",
         "Wheel Change",
@@ -461,53 +461,57 @@ const NewFieldCreationPage = () => {
                             ))}
                         </select>
                     </label>
-                    <label className={styles.filterField}>
-                        <small>Date Range</small>
-                        <select
-                            className={styles.filterSelect}
-                            value={filters.datePreset}
-                            onChange={(event) => handleDatePresetChange(event.target.value)}
-                        >
-                            <option value="">Custom</option>
-                            {DATE_RANGE_PRESETS.map((preset) => (
-                                <option key={preset.key} value={preset.key}>{preset.label}</option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className={styles.filterField}>
-                        <small>From</small>
-                        <span className={styles.dateInputWrap}>
-                            <input
-                                ref={dateFromInputRef}
-                                type="date"
-                                className={styles.filterSelect}
-                                value={filters.dateFrom}
-                                onChange={(event) => handleCustomDateChange("dateFrom", event.target.value)}
-                            />
-                            <FiCalendar
-                                className={styles.dateInputIcon}
-                                aria-hidden="true"
-                                onClick={() => openDatePicker(dateFromInputRef)}
-                            />
-                        </span>
-                    </label>
-                    <label className={styles.filterField}>
-                        <small>To</small>
-                        <span className={styles.dateInputWrap}>
-                            <input
-                                ref={dateToInputRef}
-                                type="date"
-                                className={styles.filterSelect}
-                                value={filters.dateTo}
-                                onChange={(event) => handleCustomDateChange("dateTo", event.target.value)}
-                            />
-                            <FiCalendar
-                                className={styles.dateInputIcon}
-                                aria-hidden="true"
-                                onClick={() => openDatePicker(dateToInputRef)}
-                            />
-                        </span>
-                    </label>
+                    {activeTab === "existing" ? (
+                        <>
+                            <label className={styles.filterField}>
+                                <small>Date Range</small>
+                                <select
+                                    className={styles.filterSelect}
+                                    value={filters.datePreset}
+                                    onChange={(event) => handleDatePresetChange(event.target.value)}
+                                >
+                                    <option value="">Custom</option>
+                                    {DATE_RANGE_PRESETS.map((preset) => (
+                                        <option key={preset.key} value={preset.key}>{preset.label}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className={styles.filterField}>
+                                <small>From</small>
+                                <span className={styles.dateInputWrap}>
+                                    <input
+                                        ref={dateFromInputRef}
+                                        type="date"
+                                        className={styles.filterSelect}
+                                        value={filters.dateFrom}
+                                        onChange={(event) => handleCustomDateChange("dateFrom", event.target.value)}
+                                    />
+                                    <FiCalendar
+                                        className={styles.dateInputIcon}
+                                        aria-hidden="true"
+                                        onClick={() => openDatePicker(dateFromInputRef)}
+                                    />
+                                </span>
+                            </label>
+                            <label className={styles.filterField}>
+                                <small>To</small>
+                                <span className={styles.dateInputWrap}>
+                                    <input
+                                        ref={dateToInputRef}
+                                        type="date"
+                                        className={styles.filterSelect}
+                                        value={filters.dateTo}
+                                        onChange={(event) => handleCustomDateChange("dateTo", event.target.value)}
+                                    />
+                                    <FiCalendar
+                                        className={styles.dateInputIcon}
+                                        aria-hidden="true"
+                                        onClick={() => openDatePicker(dateToInputRef)}
+                                    />
+                                </span>
+                            </label>
+                        </>
+                    ) : null}
                 </div>
             </div>
 

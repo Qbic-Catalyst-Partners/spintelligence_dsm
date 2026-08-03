@@ -203,9 +203,11 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             const saved = await dispatch(submitCardingNati(buildPayload())).unwrap();
             setShowPreview(false);
             setFormMessage("");
-            setShowSuccess(true);
 
             const nextEntryId = saved?.entry_id || saved?.data?.entry_id || entryId;
+            // Awaited BEFORE setShowSuccess(true) below — previously the modal showed first
+            // while this ran in the background, relying on this modal's close handler doing
+            // nothing destructive to stay safe by accident rather than by design.
             try {
                 await recordSubmittedNotebook({
                     department: "Quality Control",
@@ -218,6 +220,7 @@ function NatiDataEntry({ types, selectedType, onTypeChange, showForm, entryId = 
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+            setShowSuccess(true);
 
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (nextEntryId && customFieldEntries.length) {

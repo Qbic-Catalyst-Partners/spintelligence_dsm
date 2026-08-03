@@ -1219,7 +1219,7 @@ router.get('/SMXCotsChange/master/dropdown', getSimplexUqcMasterDropdown);
  *             properties:
  *               type:
  *                 type: string
- *                 example: SMXCots Change Data Entry
+ *                 example: SMXCots Checking Data Entry
  *               s_no:
  *                 type: string
  *                 example: "2"
@@ -1353,7 +1353,7 @@ router.post('/cots-change-data-entry', saveSimplexCotsChange);
  *               limit: 10
  *               data:
  *                 - id: 1
- *                   type: SMXCots Change Data Entry
+ *                   type: SMXCots Checking Data Entry
  *                   s_no: "2"
  *                   entry_date: "2026-04-01"
  *                   machine_name: MC-01

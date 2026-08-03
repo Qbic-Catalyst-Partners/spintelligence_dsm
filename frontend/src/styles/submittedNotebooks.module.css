@@ -317,6 +317,64 @@
     white-space: normal;
 }
 
+.rowListSection {
+    margin: 0 0 26px;
+}
+
+.rowListSection small {
+    display: block;
+    margin-bottom: 8px;
+    color: #7b8494;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.rowListTableWrap {
+    overflow-x: auto;
+    border: 1px solid #e4e8ef;
+    border-radius: 6px;
+}
+
+.rowListTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.rowListTable th,
+.rowListTable td {
+    padding: 8px 10px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid #e4e8ef;
+}
+
+.rowListTable th {
+    background: #f4f6f8;
+    color: #111827;
+    font-weight: 800;
+}
+
+.rowListTable tbody tr:last-child td {
+    border-bottom: none;
+}
+
+:global(:root[data-theme="dark"]) .rowListTableWrap {
+    border-color: #334155;
+}
+
+:global(:root[data-theme="dark"]) .rowListTable th,
+:global(:root[data-theme="dark"]) .rowListTable td {
+    border-color: #334155;
+    color: #f8fafc;
+}
+
+:global(:root[data-theme="dark"]) .rowListTable th {
+    background: #1f2937;
+}
+
 .reviewSection {
     margin: 0 0 16px;
 }

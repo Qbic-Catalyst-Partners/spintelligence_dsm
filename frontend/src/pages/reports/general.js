@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
+import { useSelector } from "react-redux";
 import { FiFileText, FiChevronDown, FiCalendar } from "react-icons/fi";
 
 import styles from "@/styles/reports.module.css";
@@ -10,6 +11,8 @@ import {
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
+import { hasSubDepartmentAccess } from "@/utils/accessControl";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const ALL_TYPES_VALUE = "__all_types__";
 const today = new Date();
@@ -320,6 +323,10 @@ const getCellValue = (row, field, context = {}) => {
     context.subDepartment === "Spinning" && SPINNING_MACHINE_FIELD_REPORT_TYPES.has(context.reportType);
 
   if (isSpinningSpindleScreen && (label === "Machine No." || label === "Machine")) {
+    const machineName = row?.machine_name;
+    if (machineName !== null && typeof machineName !== "undefined" && String(machineName).trim() !== "") {
+      return String(machineName).trim();
+    }
     const machineValue = row?.machineno;
     return machineValue !== null && typeof machineValue !== "undefined" && String(machineValue).trim() !== ""
       ? `R/F-${String(machineValue).trim()}`
@@ -432,20 +439,38 @@ export default function GeneralReport() {
   const [rowsByType, setRowsByType] = useState({});
   const [loadingRows, setLoadingRows] = useState(false);
   const [rowsError, setRowsError] = useState("");
+  const user = useSelector((state) => state.auth?.user);
+  const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const departments = useMemo(() => departmentDirectory, []);
   const selectedDepartment = useMemo(
     () => departments.find((department) => department.name === selectedDept),
     [departments, selectedDept]
   );
-  const subDepartments = selectedDepartment?.subDepartments || [];
+  // Only offer sub-departments (and, below, notebook types) the current role actually has
+  // screen access to — this page previously showed the full static directory unfiltered,
+  // unlike Custom Report, which already applies this same accessByDepartment-based filtering.
+  const subDepartments = useMemo(
+    () =>
+      (selectedDepartment?.subDepartments || []).filter((subDepartment) =>
+        hasSubDepartmentAccess(accessByDepartment, subDepartment.name, user)
+      ),
+    [selectedDepartment, accessByDepartment, user]
+  );
   const selectedSubDepartment = useMemo(
     () => subDepartments.find((subDepartment) => subDepartment.name === selectedSubDept),
     [subDepartments, selectedSubDept]
   );
-  const notebooks = useMemo(
-    () => getThresholdScreensForSubDepartment(selectedDepartment?.slug, selectedSubDepartment?.slug),
-    [selectedDepartment?.slug, selectedSubDepartment?.slug]
-  );
+  const notebooks = useMemo(() => {
+    const allNotebooks = getThresholdScreensForSubDepartment(selectedDepartment?.slug, selectedSubDepartment?.slug);
+    if (!selectedSubDepartment) return allNotebooks;
+    const filtered = filterOptionsByDepartmentAccess(
+      allNotebooks.map((name) => ({ name })),
+      accessByDepartment,
+      user,
+      selectedSubDepartment.name
+    );
+    return filtered.map((option) => option.displayName || option.name);
+  }, [selectedDepartment?.slug, selectedSubDepartment, accessByDepartment, user]);
   const typeOptions = useMemo(
     () => (notebooks.length ? [{ value: ALL_TYPES_VALUE, label: "All Type" }, ...notebooks.map((type) => ({ value: type, label: type }))] : []),
     [notebooks]

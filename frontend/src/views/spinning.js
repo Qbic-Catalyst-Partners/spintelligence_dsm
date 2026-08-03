@@ -417,6 +417,12 @@ function SpinningDepartment() {
     const ringFrameShiftSelectOptions = ringFrameShiftOptions;
     const machineFieldLabel = isCotsChecking ? "Machine No." : "Machine";
     const machineFieldPlaceholder = isCotsChecking ? "Select Machine No." : "Select Machine";
+    // The Machine field stores the raw option value (a numeric ERP machine code) — resolve it
+    // back to the friendly label shown in the dropdown (e.g. "R/F NO 02") for Preview/payload,
+    // instead of leaking the raw code.
+    const selectedMachineLabel =
+        machineSelectOptions.find((option) => String(option.value) === String(selectedMachine))?.label ||
+        selectedMachine;
     const showSuccessOnce = () => {
         if (successHandledRef.current) return;
         successHandledRef.current = true;
@@ -915,10 +921,15 @@ function SpinningDepartment() {
             if (useArrayLhsRhs) {
                 const lhsParsed = parseArrayValues(lhsValuesText);
                 const rhsParsed = parseArrayValues(rhsValuesText);
-                if (lhsParsed.length === 0 && rhsParsed.length === 0) {
+                if (lhsParsed.length === 0 && !lhsRemarks.trim()) {
                     nextErrors.lhsValue = true;
+                    nextErrors.lhsRemarks = true;
+                    missingFields.push("LHS Spindle Number or LHS Remarks");
+                }
+                if (rhsParsed.length === 0 && !rhsRemarks.trim()) {
                     nextErrors.rhsValue = true;
-                    missingFields.push("LHS or RHS Value");
+                    nextErrors.rhsRemarks = true;
+                    missingFields.push("RHS Spindle Number or RHS Remarks");
                 }
                 if (isCotsChecking) {
                     const isValidCotsValue = (value) => {
@@ -1030,6 +1041,7 @@ function SpinningDepartment() {
             entry_id: entryId,
             inspectiondate: new Date(date || getTodayDate()).toISOString(),
             machineno: machineNo,
+            machine_name: selectedMachineLabel || undefined,
             machine_no: isCotsChecking ? selectedMachine : undefined,
             lhs_value: useArrayLhsRhs ? undefined : parseDecimalPayloadValue(lhsValue) ?? 0,
             rhs_value: useArrayLhsRhs ? undefined : parseDecimalPayloadValue(rhsValue) ?? 0,
@@ -1196,7 +1208,7 @@ function SpinningDepartment() {
             : [
                 { label: "Checking Type", value: checkingType || "-" },
                 { label: "Entry ID", value: entryId },
-                { label: machineFieldLabel, value: selectedMachine || "-" },
+                { label: machineFieldLabel, value: selectedMachineLabel || "-" },
             ];
         const bodyItems = isCountChange
             ? [
@@ -1691,7 +1703,6 @@ function SpinningDepartment() {
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
                                                 <label>LHS (Spindle Number)</label>
-                                                <span className={styles.required}>MIN 1 REQUIRED</span>
                                             </div>
                                             {useArrayLhsRhs ? (
                                                 <>
@@ -1727,7 +1738,6 @@ function SpinningDepartment() {
                                         <div className={styles.side}>
                                             <div className={styles["side-header"]}>
                                                 <label>RHS (Spindle Number)</label>
-                                                <span className={styles.required}>MIN 1 REQUIRED</span>
                                             </div>
                                             {useArrayLhsRhs ? (
                                                 <>

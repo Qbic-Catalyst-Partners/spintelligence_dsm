@@ -439,41 +439,27 @@ function Mixing() {
         setShowPreview(true);
     };
 
+    // recordSubmittedNotebook is called inside each screen's own handleSubmit (see
+    // cottonHVIDataEntry.jsx, afisDataEntry.jsx, moistureDataEntry.jsx, fibreDataEntry.jsx),
+    // immediately after that screen's own save dispatch succeeds — not here. It used to run
+    // here, after childRef.current.submit() returned, timed to finish before showSuccessOnce().
+    // But a separate effect (below) also shows the success modal the instant the save's Redux
+    // action resolves — i.e. before this function could even get to reserveEntryId(), let alone
+    // the registration call — so whichever ran first won, and clicking that modal's "OK" (which
+    // reloads the page) while the registration was still mid-flight silently discarded it with no
+    // error anywhere. Registering inside submit() itself, before submit() returns at all, removes
+    // the race entirely instead of continuing to chase its timing here.
     const confirmSubmit = async () => {
         setShowPreview(false);
-        // Captured synchronously, before reserveEntryId()/showSuccessOnce() run any state updates
-        // that could re-render/detach the child form ahead of the recordSubmittedNotebook call
-        // below. recordSubmittedNotebook is never passed childRef here (only this snapshot, with
-        // previewItems as an ultimate fallback) — reading childRef.current.getPayload() live at
-        // record-time is exactly the pattern that left "AFIS Data Entry" with zero submitted-
-        // notebook rows ever recorded, while AFIS-6 Cotton's separate submit handler (which never
-        // touches childRef, just its own locally-built data) has always worked.
-        let capturedPayload = null;
         try {
-            capturedPayload = childRef.current?.getPayload?.() || null;
             const ok = await childRef.current?.submit?.();
             if (ok === false) return;
             await reserveEntryId();
-            showSuccessOnce();
         } catch (error) {
             console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
             return;
         }
-
-        try {
-            await recordSubmittedNotebook({
-                department: "Quality Control",
-                subDepartment: "Mixing",
-                notebookName: selectedTypeName,
-                entryId,
-                lotNo,
-                registeredActions: capturedPayload ? { getPayload: () => capturedPayload } : undefined,
-                previewItems,
-                user,
-            });
-        } catch (error) {
-            console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
-        }
+        showSuccessOnce();
     };
 
     const handleSuccessClose = () => {

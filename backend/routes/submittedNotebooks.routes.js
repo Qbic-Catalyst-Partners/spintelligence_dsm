@@ -1267,6 +1267,159 @@ router.get('/acknowledgement-thresholds', async (req, res, next) => {
   }
 });
 
+// Mirrors PATCH /submission-frequency/:id in operatorTickets.routes.js — same
+// COALESCE-every-column pattern, so omitted fields in the request keep their
+// existing stored value instead of being wiped to null.
+router.patch('/acknowledgement-thresholds/:id', async (req, res, next) => {
+  try {
+    await ensureAcknowledgementThresholdTable();
+
+    const { id } = req.params;
+    const {
+      screen_name,
+      department,
+      sub_department,
+      acknowledge_within_hours,
+      is_active,
+      approval_l2,
+      approval_l2_name,
+      approval_l3,
+      approval_l3_name,
+      approval_l4,
+      approval_l4_name,
+      approval_l5,
+      approval_l5_name,
+      l3_tat_hours,
+      l4_tat_hours,
+      l5_tat_hours,
+      criticality
+    } = req.body || {};
+
+    const normalizedAcknowledgeWithinHours =
+      acknowledge_within_hours === undefined ? undefined : parseTatHours(acknowledge_within_hours);
+    if (acknowledge_within_hours !== undefined && !normalizedAcknowledgeWithinHours) {
+      return res.status(400).json({ message: 'acknowledge_within_hours must be a positive integer' });
+    }
+
+    const normalizedL3TatHours = l3_tat_hours === undefined ? undefined : parseTatHours(l3_tat_hours);
+    const normalizedL4TatHours = l4_tat_hours === undefined ? undefined : parseTatHours(l4_tat_hours);
+    const normalizedL5TatHours = l5_tat_hours === undefined ? undefined : parseTatHours(l5_tat_hours);
+
+    const result = await client.query(
+      `UPDATE ticketing_system.notebook_acknowledgement_threshold
+       SET screen_name = COALESCE($1, screen_name),
+           department = COALESCE($2, department),
+           sub_department = COALESCE($3, sub_department),
+           acknowledge_within_hours = COALESCE($4, acknowledge_within_hours),
+           is_active = COALESCE($5, is_active),
+           approval_l2 = COALESCE($6, approval_l2),
+           approval_l2_name = COALESCE($7, approval_l2_name),
+           approval_l3 = COALESCE($8, approval_l3),
+           approval_l3_name = COALESCE($9, approval_l3_name),
+           approval_l4 = COALESCE($10, approval_l4),
+           approval_l4_name = COALESCE($11, approval_l4_name),
+           approval_l5 = COALESCE($12, approval_l5),
+           approval_l5_name = COALESCE($13, approval_l5_name),
+           l3_tat_hours = COALESCE($14, l3_tat_hours),
+           l4_tat_hours = COALESCE($15, l4_tat_hours),
+           l5_tat_hours = COALESCE($16, l5_tat_hours),
+           criticality = COALESCE($17, criticality),
+           updated_at = NOW()
+       WHERE id = $18
+       RETURNING *`,
+      [
+        cleanText(screen_name),
+        cleanText(department),
+        cleanText(sub_department),
+        normalizedAcknowledgeWithinHours,
+        is_active,
+        cleanText(approval_l2),
+        cleanText(approval_l2_name),
+        cleanText(approval_l3),
+        cleanText(approval_l3_name),
+        cleanText(approval_l4),
+        cleanText(approval_l4_name),
+        cleanText(approval_l5),
+        cleanText(approval_l5_name),
+        normalizedL3TatHours,
+        normalizedL4TatHours,
+        normalizedL5TatHours,
+        cleanText(criticality),
+        id
+      ]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Acknowledgement threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Acknowledgement threshold updated successfully',
+      acknowledgement_threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/acknowledgement-thresholds/:id/status', async (req, res, next) => {
+  try {
+    await ensureAcknowledgementThresholdTable();
+
+    const { id } = req.params;
+    const { is_active } = req.body || {};
+
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ message: 'is_active must be boolean' });
+    }
+
+    const result = await client.query(
+      `UPDATE ticketing_system.notebook_acknowledgement_threshold
+       SET is_active = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [is_active, id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Acknowledgement threshold not found' });
+    }
+
+    res.status(200).json({
+      message: `Acknowledgement threshold ${is_active ? 'activated' : 'deactivated'} successfully`,
+      acknowledgement_threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/acknowledgement-thresholds/:id', async (req, res, next) => {
+  try {
+    await ensureAcknowledgementThresholdTable();
+
+    const { id } = req.params;
+
+    const result = await client.query(
+      `DELETE FROM ticketing_system.notebook_acknowledgement_threshold
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Acknowledgement threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Acknowledgement threshold deleted successfully'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/pp-batch-config', async (req, res, next) => {
   try {
     const config = await getPpBatchConfig();

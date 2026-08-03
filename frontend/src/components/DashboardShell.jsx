@@ -16,7 +16,7 @@ import {
     FiUsers,
 } from "react-icons/fi";
 
-import { hasReportAccess, isFullAccessUser } from "@/utils/accessControl";
+import { hasReportAccess, isFullAccessUser, isUserManagementManagerUser } from "@/utils/accessControl";
 import { useThemeMode } from "@/utils/useThemeMode";
 import styles from "@/styles/departmentDirectory.module.css";
 
@@ -39,6 +39,7 @@ function DashboardShell({ children }) {
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const fullName = user?.full_name || user?.name || "User";
     const canAccessManagement = isFullAccessUser(user);
+    const canAccessUserManagement = isUserManagementManagerUser(user);
     const initials =
         fullName
             .split(" ")
@@ -50,6 +51,10 @@ function DashboardShell({ children }) {
     const visibleLinks = dashboardLinks.filter((link) => {
         if (link.href === "/reports") {
             return hasReportAccess(accessByDepartment, user);
+        }
+
+        if (link.href === "/usermanagement") {
+            return canAccessUserManagement;
         }
 
         return !link.adminOnly || canAccessManagement;

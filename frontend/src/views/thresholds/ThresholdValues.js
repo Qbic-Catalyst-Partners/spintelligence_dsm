@@ -991,6 +991,30 @@ export default function ThresholdValues({ standalone = true, editItem = null, on
                 return;
             }
 
+            const isDuplicateValueThreshold = thresholds.some((item) => {
+                if (editingThresholdId && getThresholdIdentifier(item) === editingThresholdId) {
+                    return false;
+                }
+
+                const itemDepartment = item?.department || item?.management_field || "";
+                const itemSubDepartment = item?.sub_department || item?.erp_product_code || "";
+                const itemScreen = item?.input_screen || item?.machine_name || "";
+                const itemField = item?.input_field || item?.parameter_name || "";
+
+                return (
+                    itemDepartment === selectedDepartment.name &&
+                    itemSubDepartment === selectedSubDepartment.name &&
+                    itemScreen === selectedScreenName &&
+                    itemField === fieldName
+                );
+            });
+
+            if (isDuplicateValueThreshold) {
+                setFormError("Threshold already exists, please modify in list of existing thresholds");
+                setFormMessage("");
+                return;
+            }
+
             const isPercentMode = rule.valueMode === "percent";
             const numericActualValue = Number(rawActualValue);
             const rawNumericPositiveTolerance = Number(rawPositiveTolerance);

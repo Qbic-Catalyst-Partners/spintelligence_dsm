@@ -1619,6 +1619,7 @@ router.post('/speed-checking', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
+      machine_name,
       display_speed,
       spindle_speed,
       lhs_values,
@@ -1644,18 +1645,19 @@ router.post('/speed-checking', async (req, res, next) => {
 
     const result = await client.query(`
       INSERT INTO spinning.speed_checking
-      (entry_id, InspectionDate, MachineNo,
+      (entry_id, InspectionDate, MachineNo, machine_name,
        Display_Speed, Spindle_Speed,
        Difference,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
+      machine_name || null,
       display_speed,
       spindle_speed,
       difference,
@@ -1722,6 +1724,7 @@ router.get('/speed-checking', async (req, res, next) => {
         entry_id,
         InspectionDate,
         MachineNo,
+        machine_name,
         Display_Speed,
         Spindle_Speed,
         lhs_values,
@@ -1803,6 +1806,7 @@ router.post('/cots-checking', async (req, res, next) =>{
       entry_id,
       inspectiondate,
       machineno,
+      machine_name,
       lhs_values,
       rhs_values,
       lhs_textremarks,
@@ -1846,16 +1850,17 @@ router.post('/cots-checking', async (req, res, next) =>{
 
     const result = await client.query(`
       INSERT INTO spinning.cots_checking
-      (entry_id, InspectionDate, MachineNo,
+      (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
+      machine_name || null,
       hasLhsValues ? JSON.stringify(lhs_values) : null,
       hasRhsValues ? JSON.stringify(rhs_values) : null,
       hasLhsValues ? lhs_values.length : null,
@@ -1905,6 +1910,7 @@ router.get('/cots-checking', async (req, res, next) => {
         entry_id,
         InspectionDate,
         MachineNo,
+        machine_name,
         lhs_values,
         rhs_values,
         lhs_spindle_count,
@@ -2124,6 +2130,7 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
+      machine_name,
       lhs_values,
       rhs_values,
       type2,
@@ -2144,16 +2151,17 @@ router.post('/bottom-apron-checking', async (req, res, next) => {
 
     const result = await client.query(`
       INSERT INTO spinning.bottom_apron_checking
-      (entry_id, InspectionDate, MachineNo,
+      (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
+      machine_name || null,
       hasLhsValues ? JSON.stringify(lhs_values) : null,
       hasRhsValues ? JSON.stringify(rhs_values) : null,
       hasLhsValues ? lhs_values.length : null,
@@ -2205,6 +2213,7 @@ router.get('/bottom-apron-checking', async (req, res, next) => {
         h.entry_id,
         h.InspectionDate,
         h.MachineNo,
+        h.machine_name,
         h.lhs_values,
         h.rhs_values,
         h.lhs_spindle_count,
@@ -2284,6 +2293,7 @@ router.post('/lycra-centering', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
+      machine_name,
       lhs_values,
       rhs_values,
       type2,
@@ -2304,16 +2314,17 @@ router.post('/lycra-centering', async (req, res, next) => {
 
     const result = await client.query(`
       INSERT INTO spinning.lycra_centering
-      (entry_id, InspectionDate, MachineNo,
+      (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
+      machine_name || null,
       hasLhsValues ? JSON.stringify(lhs_values) : null,
       hasRhsValues ? JSON.stringify(rhs_values) : null,
       hasLhsValues ? lhs_values.length : null,
@@ -2365,6 +2376,7 @@ router.get('/lycra-centering', async (req, res, next) => {
         h.entry_id,
         h.InspectionDate,
         h.MachineNo,
+        h.machine_name,
         h.lhs_values,
         h.rhs_values,
         h.lhs_spindle_count,
@@ -2444,6 +2456,7 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
+      machine_name,
       lhs_values,
       rhs_values,
       type2,
@@ -2464,16 +2477,17 @@ router.post('/rsm-lycra-online', async (req, res, next) => {
 
     const result = await client.query(`
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_online
-      (entry_id, InspectionDate, MachineNo,
+      (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
+      machine_name || null,
       hasLhsValues ? JSON.stringify(lhs_values) : null,
       hasRhsValues ? JSON.stringify(rhs_values) : null,
       hasLhsValues ? lhs_values.length : null,
@@ -2525,6 +2539,7 @@ router.get('/rsm-lycra-online', async (req, res, next) => {
         h.entry_id,
         h.InspectionDate,
         h.MachineNo,
+        h.machine_name,
         h.lhs_values,
         h.rhs_values,
         h.lhs_spindle_count,
@@ -2604,6 +2619,7 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
       entry_id,
       inspectiondate,
       machineno,
+      machine_name,
       lhs_values,
       rhs_values,
       type2,
@@ -2624,16 +2640,17 @@ router.post('/rsm-lycra-offline', async (req, res, next) => {
 
     const result = await client.query(`
       INSERT INTO spinning.RSM_and_lycrasensor_cheking_offline
-      (entry_id, InspectionDate, MachineNo,
+      (entry_id, InspectionDate, MachineNo, machine_name,
        lhs_values, rhs_values, lhs_spindle_count, rhs_spindle_count,
        LHS_TextRemarks, LHS_Audio,
        RHS_TextRemarks, RHS_Audio)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `, [
       entry_id,
       inspectiondate,
       machineno,
+      machine_name || null,
       hasLhsValues ? JSON.stringify(lhs_values) : null,
       hasRhsValues ? JSON.stringify(rhs_values) : null,
       hasLhsValues ? lhs_values.length : null,
@@ -2685,6 +2702,7 @@ router.get('/rsm-lycra-offline', async (req, res, next) => {
         h.entry_id,
         h.InspectionDate,
         h.MachineNo,
+        h.machine_name,
         h.lhs_values,
         h.rhs_values,
         h.lhs_spindle_count,

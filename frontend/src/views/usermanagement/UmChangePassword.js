@@ -15,15 +15,26 @@ import {
   changePassword,
   clearActionState,
 } from "../../store/slices/userSlice";
+import { isUserManagementManagerUser } from "../../utils/accessControl";
 
 export default function UmChangePassword() {
   const router = useRouter();
   const { id } = router.query;
 
   const dispatch = useDispatch();
+  const authUser = useSelector((state) => state.auth?.user);
+  const isHydrated = useSelector((state) => state.auth?.isHydrated);
+  const canAccessPage = isUserManagementManagerUser(authUser);
   const { actionSuccess, error } = useSelector(
     (state) => state.users
   );
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!canAccessPage) {
+      router.replace("/departments");
+    }
+  }, [canAccessPage, isHydrated, router]);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] =
@@ -109,6 +120,10 @@ export default function UmChangePassword() {
   useEffect(() => {
     if (error) alert(error);
   }, [error]);
+
+  if (!isHydrated || !canAccessPage) {
+    return null;
+  }
 
   return (
     <div className={styles.container}>

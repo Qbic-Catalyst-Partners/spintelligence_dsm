@@ -211,9 +211,9 @@ function CardThickPlaceEntry({
             setFormMessage("");
             setIsError(false);
             setShowPreview(false);
-            setShowSuccess(true);
 
             const nextEntryId = saved?.entry_id || saved?.data?.entry_id || entryId;
+            // Awaited BEFORE setShowSuccess(true) below — see natiDataEntry.jsx for why.
             try {
                 await recordSubmittedNotebook({
                     department: "Quality Control",
@@ -226,6 +226,7 @@ function CardThickPlaceEntry({
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+            setShowSuccess(true);
 
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (nextEntryId && customFieldEntries.length) {

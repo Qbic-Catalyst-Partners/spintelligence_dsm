@@ -61,7 +61,7 @@ export const thresholdScreenCatalog = {
         ],
         simplex: [
             "Process Parameter",
-            "SMXCots Change Data Entry",
+            "SMXCots Checking Data Entry",
             "SMX Breaks Study Report",
             "U% Data Entry",
             "Wheel Change",

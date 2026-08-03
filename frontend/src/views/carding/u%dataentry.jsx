@@ -148,39 +148,51 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
   }, []);
 
   useEffect(() => {
-    if (uqc?.message) {
-      const nextEntryId = uqc?.data?.entry_id || entryId;
-      const previewItems = [
-        { label: "Type", value: selectedType },
-        { label: "Entry ID", value: entryId || "-" },
-        { label: "Shift", value: form.shift },
-        { label: "Variety", value: form.variety },
-        { label: "MC No.", value: form.mc_no },
-        { label: "U%", value: form.u_percent },
-        { label: "CVM", value: form.cvm },
-        { label: "1mCV", value: form.im_cvm },
-        { label: "3 mCV", value: form.m3_cvm },
-        { label: "Remarks", value: form.remarks },
-      ];
-      recordSubmittedNotebook({
-        department: "Quality Control",
-        subDepartment: "Carding",
-        notebookName: selectedType,
-        entryId: nextEntryId,
-        previewItems,
-        user,
-      }).catch((recordError) => {
+    if (!uqc?.message) return;
+
+    const nextEntryId = uqc?.data?.entry_id || entryId;
+    const previewItems = [
+      { label: "Type", value: selectedType },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Shift", value: form.shift },
+      { label: "Variety", value: form.variety },
+      { label: "MC No.", value: form.mc_no },
+      { label: "U%", value: form.u_percent },
+      { label: "CVM", value: form.cvm },
+      { label: "1mCV", value: form.im_cvm },
+      { label: "3 mCV", value: form.m3_cvm },
+      { label: "Remarks", value: form.remarks },
+    ];
+
+    // Registration and custom-field saves are awaited BEFORE setShowSuccess(true) below —
+    // previously these were fire-and-forget while the modal showed immediately, so a fast
+    // "OK" click had no in-flight request left to interrupt only by luck of no reload being
+    // wired to this particular modal's close handler. Making the ordering explicit here
+    // removes that fragility rather than relying on it.
+    (async () => {
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          notebookName: selectedType,
+          entryId: nextEntryId,
+          previewItems,
+          user,
+        });
+      } catch (recordError) {
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
-      });
+      }
 
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
       if (nextEntryId && customFieldEntries.length) {
-        saveNotebookCustomFieldValuesApi(
-          nextEntryId,
-          customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
-        ).catch((customFieldError) => {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            nextEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
           console.error("Failed to save custom field values:", customFieldError);
-        });
+        }
       }
 
       reserveEntryId?.();
@@ -189,7 +201,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
       setShowSuccess(true);
       dispatch(getCardingUqcEntries({ page: 1, limit: 10 }));
       dispatch(clearCardingState());
-    }
+    })();
   }, [dispatch, uqc]);
 
   useEffect(() => {
