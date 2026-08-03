@@ -431,15 +431,46 @@ const getPayload = (notebook) => {
     return {};
 };
 
+// Nested arrays/objects (e.g. Count Change's "readings" rows, LHS/RHS spindle lists) used to
+// render as a single raw JSON blob here - unreadable, and the same generic renderer is shared
+// across every notebook's payload, so this formats any such value into a plain "key: value" line
+// instead of guessing a layout per notebook type.
+const formatStructuredValue = (value) => {
+    if (Array.isArray(value)) {
+        return value
+            .map((item, index) =>
+                item && typeof item === "object" && !(item instanceof Date)
+                    ? `${index + 1}) ${formatStructuredValue(item)}`
+                    : String(item)
+            )
+            .join(" | ");
+    }
+
+    if (value && typeof value === "object") {
+        return Object.entries(value)
+            .filter(([, item]) => item !== null && typeof item !== "undefined" && item !== "")
+            .map(([key, item]) => `${formatTitle(key)}: ${formatStructuredValue(item)}`)
+            .join(", ");
+    }
+
+    return String(value);
+};
+
 const getDisplayValue = (value) => {
     const parsed = parseJsonValue(value);
     if (parsed === undefined || parsed === null || parsed === "") return "";
     if (parsed instanceof Date) return parsed.toISOString();
     if (Array.isArray(parsed) || (parsed && typeof parsed === "object")) {
-        return JSON.stringify(parsed);
+        return formatStructuredValue(parsed);
     }
     return parsed;
 };
+
+// A "row list" is an array of records (e.g. Count Change's "readings", one row per reading) -
+// these render as their own full-width table section instead of being squeezed into the regular
+// field grid alongside short scalar fields like Entry ID/Type/RF No.
+const isRowListValue = (value) =>
+    Array.isArray(value) && value.some((item) => item && typeof item === "object" && !(item instanceof Date));
 
 const addDisplayField = (fields, usedKeys, key, value, label = "") => {
     const normalizedKey = normalizeKey(key);
@@ -452,6 +483,7 @@ const addDisplayField = (fields, usedKeys, key, value, label = "") => {
         return;
     }
 
+    const parsed = parseJsonValue(value);
     const displayValue = getDisplayValue(value);
     if (displayValue === "") return;
 
@@ -460,6 +492,7 @@ const addDisplayField = (fields, usedKeys, key, value, label = "") => {
         key,
         label: label || FIELD_LABELS[key] || formatTitle(key),
         value: displayValue,
+        rows: isRowListValue(parsed) ? parsed : null,
     });
 };
 
@@ -1515,6 +1548,8 @@ const SubmittedNotebooksPage = () => {
     };
 
     const selectedFields = buildFieldCards(selectedNotebook);
+    const simpleFields = selectedFields.filter((field) => !field.rows);
+    const rowListFields = selectedFields.filter((field) => field.rows);
     const selectedNotebookDepartment = selectedNotebook ? resolveNotebookDepartment(selectedNotebook) : { department: "Quality Control", subDepartment: "Mixing Department" };
 
     return (
@@ -1778,7 +1813,7 @@ const SubmittedNotebooksPage = () => {
                             {isDetailLoading ? (
                                 <div className={styles.emptyState}>Loading notebook details...</div>
                             ) : selectedFields.length ? (
-                                selectedFields.map((field) => (
+                                simpleFields.map((field) => (
                                     <div key={field.key} className={styles.fieldCard}>
                                         <small>{field.label}</small>
                                         <strong>{isDateField(field.key) ? formatDateValue(field.value) : String(field.value)}</strong>
@@ -1788,6 +1823,47 @@ const SubmittedNotebooksPage = () => {
                                 <div className={styles.emptyState}>No submitted fields available.</div>
                             )}
                         </div>
+
+                        {!isDetailLoading && rowListFields.map((field) => {
+                            const columns = Array.from(
+                                field.rows.reduce((keys, row) => {
+                                    if (row && typeof row === "object") {
+                                        Object.keys(row).forEach((key) => keys.add(key));
+                                    }
+                                    return keys;
+                                }, new Set())
+                            );
+
+                            return (
+                                <div key={field.key} className={styles.rowListSection}>
+                                    <small>{field.label}</small>
+                                    <div className={styles.rowListTableWrap}>
+                                        <table className={styles.rowListTable}>
+                                            <thead>
+                                                <tr>
+                                                    {columns.map((column) => (
+                                                        <th key={column}>{formatTitle(column)}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {field.rows.map((row, rowIndex) => (
+                                                    <tr key={rowIndex}>
+                                                        {columns.map((column) => (
+                                                            <td key={column}>
+                                                                {row?.[column] === null || typeof row?.[column] === "undefined" || row?.[column] === ""
+                                                                    ? "-"
+                                                                    : String(row[column])}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })}
 
                         {activeTab === "closed" ? null : (
                             <>

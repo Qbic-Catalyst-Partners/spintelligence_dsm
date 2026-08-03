@@ -684,6 +684,17 @@
   letter-spacing: 0.5px;
 }
 
+.messageError {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #fff1f1;
+  border: 1px solid #ffd1d1;
+  color: #c73c3c;
+}
+
 /* Top Section Highlight Box */
 .top-section {
   background: #f8fafc;

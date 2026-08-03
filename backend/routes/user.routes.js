@@ -641,10 +641,19 @@ router.patch('/:id', async (req, res, next) => {
     const nextReportsToUserId =
       reports_to_user_id !== undefined ? reports_to_user_id || null : existingUser.rows[0].reports_to_user_id;
 
+    // full_name isn't a generated column, so it has to be recomputed here
+    // whenever first/last name changes - otherwise it goes stale everywhere
+    // else in the app (tickets, approvals, dropdowns) that display full_name
+    // instead of the split columns.
+    const nextFirstName = first_name || existingUser.rows[0].first_name;
+    const nextLastName = last_name || existingUser.rows[0].last_name;
+    const nextFullName = `${nextFirstName || ""} ${nextLastName || ""}`.trim();
+
     const updated = await client.query(
       `UPDATE users.user_details
       SET first_name = COALESCE($1, first_name),
           last_name = COALESCE($2, last_name),
+          full_name = $12,
           phone = COALESCE($3, phone),
           role_id = COALESCE($4, role_id),
           role = COALESCE($5, role),
@@ -667,7 +676,8 @@ router.patch('/:id', async (req, res, next) => {
         level ? normalizeUserLevel(level) : null,
         dob || null,
         id,
-        nextReportsToUserId
+        nextReportsToUserId,
+        nextFullName
       ]
     );
 

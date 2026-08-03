@@ -1742,7 +1742,7 @@ export const thresholdFieldCatalog = {
             `Table ${tableNo} - Summary ${label} - Full Bobbin`,
         ]),
     ]),
-    "SMXCots Change Data Entry": [
+    "SMXCots Checking Data Entry": [
         "Entry ID",
         "Date",
         "MC Name",

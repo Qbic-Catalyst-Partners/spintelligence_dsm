@@ -8,6 +8,7 @@ import { submitCottonHVI, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
+import { recordSubmittedNotebook } from '@/utils/submittedNotebookRecorder';
 import styles from '../../styles/cottonHVIDataEntry.module.css';
 
 const initialForm = {
@@ -107,6 +108,28 @@ const CottonHVIDataEntry = forwardRef(function CottonHVIDataEntry({ date, entryI
         await dispatch(submitCottonHVI(payload)).unwrap();
 
         const linkedEntryId = payload.entry_id;
+
+        // Registered here, immediately after the save itself succeeds and before this function
+        // returns — not later in the parent's success-modal flow. A separate Redux-driven effect
+        // in mixing.js shows the success modal the instant this dispatch above resolves, which
+        // used to race ahead of the registration call sitting in the parent afterward; clicking
+        // that modal's "OK" (which reloads the page) before the registration finished silently
+        // discarded it with no error anywhere. Awaiting it here, before any of that can happen,
+        // removes the race entirely.
+        try {
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                notebookName: selectedTypeName || "Cotton HVI Data Entry",
+                entryId: linkedEntryId,
+                lotNo,
+                registeredActions: { getPayload: () => payload },
+                user,
+            });
+        } catch (error) {
+            console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+        }
+
         const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
         if (linkedEntryId && customFieldEntries.length) {
             try {

@@ -54,6 +54,14 @@ function BlowRoom() {
   const dispatch = useDispatch();
   const childRef = useRef(null);
   const successHandledRef = useRef(false);
+  // Set for the duration of confirmSubmit's own recordSubmittedNotebook call, so the
+  // blowroomState?.success effect below (which fires the instant childRef.current.submit()'s
+  // dispatch resolves — before confirmSubmit even reaches recordSubmittedNotebook) can't win the
+  // race to show the success modal first. Currently harmless here only because this screen's
+  // handleSuccessClose doesn't reload the page — unlike Mixing, where the same race silently
+  // discarded the registration whenever "OK" was clicked before it finished. Guarding it removes
+  // the fragility instead of relying on that coincidence.
+  const suppressAutoSuccessRef = useRef(false);
   const user = useSelector((state) => state.auth?.user);
   const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const requestedType = Array.isArray(router.query.type) ? router.query.type[0] : router.query.type;
@@ -126,7 +134,7 @@ function BlowRoom() {
   };
 
   useEffect(() => {
-    if (blowroomState?.success) {
+    if (blowroomState?.success && !suppressAutoSuccessRef.current) {
       showSuccessOnce();
     }
   }, [blowroomState?.success]);
@@ -165,6 +173,7 @@ function BlowRoom() {
 
   const confirmSubmit = async () => {
     setShowPreview(false);
+    suppressAutoSuccessRef.current = true;
     try {
       await childRef.current?.submit?.();
       await recordSubmittedNotebook({
@@ -183,6 +192,8 @@ function BlowRoom() {
       // submission error is shown via the global error modal; refresh the
       // reserved entry ID so a duplicate-ID rejection doesn't repeat on retry
       await reserveEntryId();
+    } finally {
+      suppressAutoSuccessRef.current = false;
     }
   };
 

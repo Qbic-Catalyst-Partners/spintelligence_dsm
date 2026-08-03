@@ -38,6 +38,7 @@ import {
     isSubmittedNotebookManagerUser,
     isSubmittedNotebookViewerUser,
     isSupervisorNavUser,
+    isUserManagementManagerUser,
     isWheelChangeApproverUser,
     routeDepartmentMap,
 } from "@/utils/accessControl";
@@ -147,6 +148,7 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
+    const hasUserManagementAccess = isUserManagementManagerUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
     // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
@@ -176,7 +178,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleNavLinks = !user || hasFullAccess
         ? navLinks
         : navLinks.filter((link) =>
-            link.href !== "/usermanagement" && link.href !== "/rolespermission"
+            (link.href !== "/usermanagement" || hasUserManagementAccess) &&
+            link.href !== "/rolespermission"
         );
     const visibleHrefSet = new Set(visibleNavLinks.map((link) => link.href));
     const hasDashboardNav = visibleHrefSet.has("/");

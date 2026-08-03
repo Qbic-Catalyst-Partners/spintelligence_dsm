@@ -103,7 +103,7 @@ const screenEndpoints = {
     },
     Simplex: {
       "Process Parameter": "/simplex/process_parameter",
-      "SMXCots Change Data Entry": "/simplex/cots-change",
+      "SMXCots Checking Data Entry": "/simplex/cots-change",
       "SMX Breaks Study Report": "/simplex/list",
       "U% Data Entry": "/simplex/uqc",
       "Wheel Change": "/simplex/wheel-change",

@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { useDispatch, useSelector } from "react-redux";
-import { FiCheckCircle, FiPlus, FiSlash, FiTrash2, FiX } from "react-icons/fi";
+import { FiCheckCircle, FiMoreVertical, FiPlus, FiSlash, FiTrash2, FiX } from "react-icons/fi";
 import { FaIdCard } from "react-icons/fa6";
 
 import {
   fetchNotebookAcknowledgementThresholdsAPI,
   saveNotebookAcknowledgementThresholdAPI,
+  updateNotebookAcknowledgementThresholdAPI,
+  updateNotebookAcknowledgementThresholdStatusAPI,
+  deleteNotebookAcknowledgementThresholdAPI,
 } from "@/apis/notebookAcknowledgementThresholdApi";
 import { fetchUsers } from "@/store/slices/userSlice";
 import { isSubmittedNotebookManagerUser } from "@/utils/accessControl";
@@ -247,7 +250,7 @@ function MultiUserSelect({
   );
 }
 
-export default function SubmittedNotebookThresholdPage({ standalone = true } = {}) {
+export default function SubmittedNotebookThresholdPage({ standalone = true, editItem = null, onEditItemHandled } = {}) {
   const router = useRouter();
   const dispatch = useDispatch();
   const user = useSelector((state) => state.auth?.user);
@@ -264,6 +267,10 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
   const [selectedDepartmentSlug, setSelectedDepartmentSlug] = useState("");
   const [rules, setRules] = useState([createRule()]);
   const [existingFilters, setExistingFilters] = useState(buildExistingFilters);
+  const [editingThresholdId, setEditingThresholdId] = useState("");
+  const [openActionMenuId, setOpenActionMenuId] = useState("");
+  const [statusUpdatingId, setStatusUpdatingId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
 
   const l4Options = useMemo(() => buildUserOptions(users, "L4"), [users]);
 
@@ -348,6 +355,104 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAccessPage, isHydrated, router]);
 
+  const openEditThreshold = (item) => {
+    const departmentName = getThresholdDepartment(item);
+    const subDepartmentName = getThresholdSubDepartment(item);
+    const department = availableDepartments.find((candidate) => candidate.name === departmentName) || null;
+    const subDepartment = department?.subDepartments?.find((candidate) => candidate.name === subDepartmentName) || null;
+    const approvalL4Ids = String(item?.approval_l4 || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    setSelectedDepartmentSlug(department?.slug || "");
+    setRules([
+      {
+        ...createRule(),
+        subDepartmentSlug: subDepartment?.slug || "",
+        screenName: getThresholdScreenName(item),
+        criticality: getThresholdCriticality(item) === "-" ? "High" : getThresholdCriticality(item),
+        approvalL4Ids,
+        acknowledgeWithinHours: String(getThresholdAckHours(item) || "24"),
+      },
+    ]);
+    setEditingThresholdId(String(getThresholdId(item) || ""));
+    setActiveTab("new");
+    setMessage("Edit mode loaded from Existing Thresholds.");
+    setError("");
+  };
+
+  useEffect(() => {
+    if (!editItem) return;
+    openEditThreshold(editItem);
+    onEditItemHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editItem]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      const actionMenu = event.target.closest("[data-ack-threshold-menu]");
+      if (!actionMenu) {
+        setOpenActionMenuId("");
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
+
+  const toggleThresholdStatus = async (item) => {
+    const thresholdId = getThresholdId(item);
+    if (!thresholdId) {
+      setError("Unable to find the selected acknowledgement threshold.");
+      return;
+    }
+
+    setStatusUpdatingId(String(thresholdId));
+    setOpenActionMenuId("");
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await updateNotebookAcknowledgementThresholdStatusAPI(thresholdId, !getActiveValue(item));
+      setMessage(response?.message || "Acknowledgement threshold status updated successfully.");
+      await loadThresholds();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || err?.message || "Unable to update acknowledgement threshold status."
+      );
+    } finally {
+      setStatusUpdatingId("");
+    }
+  };
+
+  const deleteThreshold = async (item) => {
+    const thresholdId = getThresholdId(item);
+    if (!thresholdId) {
+      setError("Unable to find the selected acknowledgement threshold.");
+      return;
+    }
+
+    setDeletingId(String(thresholdId));
+    setOpenActionMenuId("");
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await deleteNotebookAcknowledgementThresholdAPI(thresholdId);
+      setMessage(response?.message || "Acknowledgement threshold deleted successfully.");
+      await loadThresholds();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || err?.message || "Unable to delete acknowledgement threshold."
+      );
+    } finally {
+      setDeletingId("");
+    }
+  };
+
   const updateRule = (ruleId, field, value) => {
     setRules((current) =>
       current.map((rule) => {
@@ -398,6 +503,7 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
   const resetForm = ({ preserveFeedback = false } = {}) => {
     setSelectedDepartmentSlug("");
     setRules([createRule()]);
+    setEditingThresholdId("");
     if (!preserveFeedback) {
       setMessage("");
       setError("");
@@ -413,6 +519,55 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
     try {
       if (!selectedDepartment) throw new Error("Please select a department.");
 
+      // Editing an existing row goes through PATCH-by-id instead of the create
+      // endpoint's upsert-by-(screen_name, department, sub_department) — using
+      // the natural-key upsert here would silently create a second row instead
+      // of updating this one if the notebook/department selection changed
+      // during the edit, leaving the original row behind untouched.
+      if (editingThresholdId) {
+        const rule = rules[0];
+        const subDepartment = availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug) || null;
+        if (!subDepartment) throw new Error("Please select a sub-department.");
+        if (!rule.screenName) throw new Error("Please select a notebook.");
+
+        const duplicateMatch = thresholds.find((item) =>
+          isSameThreshold(item, {
+            screen_name: rule.screenName,
+            department: selectedDepartment.name,
+            sub_department: subDepartment.name,
+          })
+        );
+        if (duplicateMatch && String(getThresholdId(duplicateMatch)) !== String(editingThresholdId)) {
+          throw new Error("Threshold already exists, please modify in list of existing thresholds");
+        }
+
+        const hours = Number(rule.acknowledgeWithinHours);
+        if (!Number.isFinite(hours) || hours <= 0) {
+          throw new Error("Please enter approved within hours greater than 0.");
+        }
+
+        const l4Names = l4Options
+          .filter((option) => normalizeIdList(rule.approvalL4Ids).includes(String(option.id)))
+          .map((option) => option.name);
+
+        const response = await updateNotebookAcknowledgementThresholdAPI(editingThresholdId, {
+          screen_name: rule.screenName,
+          department: selectedDepartment.name,
+          sub_department: subDepartment.name,
+          criticality: rule.criticality,
+          approval_l4: normalizeIdList(rule.approvalL4Ids),
+          approval_l4_name: l4Names,
+          acknowledge_within_hours: hours,
+        });
+
+        setMessage(response?.message || "Acknowledgement threshold updated successfully.");
+        setActiveTab("existing");
+        setExistingFilters(buildExistingFilters());
+        resetForm({ preserveFeedback: true });
+        await loadThresholds();
+        return;
+      }
+
       const payloads = rules.map((rule) => {
         const subDepartment = availableSubDepartments.find((item) => item.slug === rule.subDepartmentSlug) || null;
         if (!subDepartment) throw new Error("Please select a sub-department for every row.");
@@ -427,22 +582,18 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
           .filter((option) => normalizeIdList(rule.approvalL4Ids).includes(String(option.id)))
           .map((option) => option.name);
 
-        const existingThreshold = thresholds.find((item) =>
+        const isDuplicate = thresholds.some((item) =>
           isSameThreshold(item, {
             screen_name: rule.screenName,
             department: selectedDepartment.name,
             sub_department: subDepartment.name,
           })
         );
-        const existingThresholdId = getThresholdId(existingThreshold);
+        if (isDuplicate) {
+          throw new Error("Threshold already exists, please modify in list of existing thresholds");
+        }
 
         return {
-          ...(existingThresholdId
-            ? {
-                id: existingThresholdId,
-                threshold_id: existingThresholdId,
-              }
-            : {}),
           screen_name: rule.screenName,
           department: selectedDepartment.name,
           sub_department: subDepartment.name,
@@ -451,25 +602,17 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
           approval_l4_name: l4Names,
           acknowledge_within_hours: hours,
           is_active: true,
-          _existingThreshold: existingThreshold,
         };
       });
 
       const responses = await Promise.all(
-        payloads.map((payload) => {
-          const { _existingThreshold, ...apiPayload } = payload;
-          return saveNotebookAcknowledgementThresholdAPI(apiPayload);
-        })
+        payloads.map((payload) => saveNotebookAcknowledgementThresholdAPI(payload))
       );
 
-      const savedThresholds = responses.map((response, index) => {
-        const { _existingThreshold, ...apiPayload } = payloads[index];
-        return {
-          ...(_existingThreshold || {}),
-          ...getSavedThresholdFromResponse(response, apiPayload),
-          updated_at: new Date().toISOString(),
-        };
-      });
+      const savedThresholds = responses.map((response, index) => ({
+        ...getSavedThresholdFromResponse(response, payloads[index]),
+        updated_at: new Date().toISOString(),
+      }));
 
       writePendingThresholdRows(mergeThresholdRows(readPendingThresholdRows(), savedThresholds));
       setMessage(
@@ -791,22 +934,26 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
                       <th>Approved Within</th>
                       <th>Status</th>
                       <th>Created At</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={8}>Loading...</td>
+                        <td colSpan={9}>Loading...</td>
                       </tr>
                     ) : filteredThresholds.length === 0 ? (
                       <tr>
-                        <td colSpan={8}>No acknowledgement thresholds found.</td>
+                        <td colSpan={9}>No acknowledgement thresholds found.</td>
                       </tr>
                     ) : (
                       filteredThresholds.map((item, index) => {
                         const rowKey =
                           getThresholdId(item) ||
                           `${getThresholdScreenName(item)}-${getThresholdSubDepartment(item)}-${index}`;
+                        const isMenuOpen = openActionMenuId === String(rowKey);
+                        const isStatusUpdating = statusUpdatingId === String(getThresholdId(item) || "");
+                        const isDeleting = deletingId === String(getThresholdId(item) || "");
                         return (
                           <tr key={rowKey}>
                             <td>{getThresholdDepartment(item) || "-"}</td>
@@ -825,6 +972,51 @@ export default function SubmittedNotebookThresholdPage({ standalone = true } = {
                               </span>
                             </td>
                             <td>{formatTimestamp(item.created_at || item.createdAt || item.created_on || item.createdOn)}</td>
+                            <td>
+                              <div className={styles.actionMenuWrap} data-ack-threshold-menu="true">
+                                <button
+                                  type="button"
+                                  className={styles.actionMenuButton}
+                                  aria-label="Open acknowledgement threshold actions"
+                                  onClick={() =>
+                                    setOpenActionMenuId((current) => (current === String(rowKey) ? "" : String(rowKey)))
+                                  }
+                                >
+                                  <FiMoreVertical />
+                                </button>
+                                {isMenuOpen ? (
+                                  <div className={styles.actionMenu}>
+                                    <button
+                                      type="button"
+                                      className={styles.actionMenuItem}
+                                      onClick={() => {
+                                        openEditThreshold(item);
+                                        setOpenActionMenuId("");
+                                      }}
+                                      disabled={isStatusUpdating || isDeleting}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles.actionMenuItem}
+                                      onClick={() => toggleThresholdStatus(item)}
+                                      disabled={isStatusUpdating || isDeleting}
+                                    >
+                                      {isStatusUpdating ? "Updating..." : getActiveValue(item) ? "Pause" : "Activate"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`${styles.actionMenuItem} ${styles.actionMenuDelete}`}
+                                      onClick={() => deleteThreshold(item)}
+                                      disabled={isStatusUpdating || isDeleting}
+                                    >
+                                      {isDeleting ? "Deleting..." : "Delete"}
+                                    </button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })

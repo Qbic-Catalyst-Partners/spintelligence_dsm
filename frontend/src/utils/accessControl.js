@@ -89,6 +89,22 @@ export const isDelegationManagerUser = (user) => getUserLevelKey(user) === "L5";
 export const isDashboardManagerUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
 
+// Shared "admin or L5" rule - reused for feature areas restricted to the top
+// of the hierarchy (User Management, ...) without tying each one to the
+// "admin" role string alone.
+export const isAdminOrL5User = (user) =>
+  isFullAccessUser(user) || getUserLevelKey(user) === "L5";
+
+// The Analysis report department (Team Performance Analysis) is one step
+// broader than isAdminOrL5User - L4 also needs it, not just L5/admin.
+export const isAnalysisReportUser = (user) =>
+  isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
+
+// User Management (add/edit/delete employee accounts, reset passwords) is
+// restricted to admins and L5 - anyone else creating or editing accounts
+// could self-escalate their own or a coworker's access.
+export const isUserManagementManagerUser = (user) => isAdminOrL5User(user);
+
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: each level has its own
 // ticketing view (L1 operator board, L2-L5 escalation dashboards at
 // /supervisordashboard, /l3-ticketing, /l4-ticketing, /l5-ticketing - these

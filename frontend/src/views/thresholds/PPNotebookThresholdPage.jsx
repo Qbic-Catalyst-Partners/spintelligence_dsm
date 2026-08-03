@@ -313,6 +313,18 @@ export default function PPNotebookThresholdPage({ standalone = true, editItem = 
         if (!subDepartment) throw new Error("Please select a sub-department for every row.");
         if (!rule.notebookLabel) throw new Error("Please select a notebook for every row.");
 
+        const isDuplicate = rows.some((item) => {
+          if (editingId && String(item.id) === String(editingId)) return false;
+          return (
+            item.department === department.name &&
+            item.sub_department === subDepartment.name &&
+            item.notebook_label === rule.notebookLabel
+          );
+        });
+        if (isDuplicate) {
+          throw new Error("Threshold already exists, please modify in list of existing thresholds");
+        }
+
         const entryWithinHours = Number(rule.entryWithinHours);
         if (!Number.isFinite(entryWithinHours) || entryWithinHours <= 0) {
           throw new Error("Please enter Entry Within Hours greater than 0 for every row.");

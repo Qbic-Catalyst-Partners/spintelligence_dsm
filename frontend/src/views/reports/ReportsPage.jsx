@@ -32,7 +32,7 @@ import { fetchSubmittedNotebooksApi } from "@/apis/submittedNotebooksApi";
 import { emitGlobalFailureModal } from "@/utils/globalFailureModal";
 import { emitGlobalSuccessModal } from "@/utils/globalSuccessModal";
 import { notifyAdminAction } from "@/utils/adminActionNotifications";
-import { isFullAccessUser } from "@/utils/accessControl";
+import { isAnalysisReportUser } from "@/utils/accessControl";
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
@@ -130,6 +130,7 @@ const getAnalysisDateParams = (params = {}) => {
     params.subDepartment ||
     params.sub_department_name ||
     null;
+  const userId = params.user_id || params.userId || null;
   const base = startDate || endDate
     ? { period: "custom", start_date: startDate, end_date: endDate }
     : { period: "month" };
@@ -137,15 +138,22 @@ const getAnalysisDateParams = (params = {}) => {
     ...base,
     ...(department && !isAnalysisDepartment(department) ? { department } : {}),
     ...(subDepartment ? { sub_department: subDepartment } : {}),
+    ...(userId ? { user_id: userId } : {}),
   };
 };
 
+// Ranking is always computed against L1 users only (see /analysis/ranking
+// backend query), so it's only worth fetching alongside the L1 metrics.
 const fetchTeamPerformanceAnalysisRows = async (params = {}) => {
   const analysisParams = getAnalysisDateParams(params);
+  const level = String(params.level || "").trim().toUpperCase();
+  const includeL1 = level !== "L2";
+  const includeL2 = level !== "L1";
+
   const [l1, l2, ranking] = await Promise.all([
-    fetchL1AnalysisApi(analysisParams),
-    fetchL2AnalysisApi(analysisParams),
-    fetchAnalysisRankingApi(analysisParams),
+    includeL1 ? fetchL1AnalysisApi(analysisParams) : Promise.resolve(null),
+    includeL2 ? fetchL2AnalysisApi(analysisParams) : Promise.resolve(null),
+    includeL1 ? fetchAnalysisRankingApi(analysisParams) : Promise.resolve(null),
   ]);
   const l1Metrics = l1?.metrics || {};
   const l2Metrics = l2?.metrics || {};
@@ -153,22 +161,30 @@ const fetchTeamPerformanceAnalysisRows = async (params = {}) => {
 
   return [
     {
-      "L1 Allocated Submission": Number(l1Metrics.allocated_submissions || 0),
-      "L1 On Time Submission": Number(l1Metrics.on_time_submissions || 0),
-      "L1 Delayed Submission": Number(l1Metrics.delayed_submissions || 0),
-      "L1 Reworked Submission": Number(l1Metrics.reworked_submissions || 0),
-      "L1 Submission Efficiency": formatAnalysisPercent(l1Metrics.submission_efficiency),
-      "L1 Allocated Tickets": Number(l1Metrics.allocated_tickets || 0),
-      "L1 On Time Resolution": Number(l1Metrics.on_time_resolutions || 0),
-      "L1 Delayed Resolution": Number(l1Metrics.delayed_resolutions || 0),
-      "L1 Reworked Resolution": Number(l1Metrics.reworked_resolutions || 0),
-      "L1 Resolution Efficiency": formatAnalysisPercent(l1Metrics.resolution_efficiency),
-      "L1 First Time Approval Rate": formatAnalysisPercent(l1Metrics.first_time_approval_rate),
-      "L1 Ranking": formatAnalysisPercent(topRanking?.average_efficiency ?? l1Metrics.average_efficiency),
-      "L2 Allocated Tickets": Number(l2Metrics.allocated_tickets || 0),
-      "L2 On Time Approvals": Number(l2Metrics.on_time_approvals || 0),
-      "L2 Delayed Approvals": Number(l2Metrics.delayed_approvals || 0),
-      "L2 Approvals Efficiency": formatAnalysisPercent(l2Metrics.approval_efficiency),
+      ...(includeL1
+        ? {
+            "L1 Allocated Submission": Number(l1Metrics.allocated_submissions || 0),
+            "L1 On Time Submission": Number(l1Metrics.on_time_submissions || 0),
+            "L1 Delayed Submission": Number(l1Metrics.delayed_submissions || 0),
+            "L1 Reworked Submission": Number(l1Metrics.reworked_submissions || 0),
+            "L1 Submission Efficiency": formatAnalysisPercent(l1Metrics.submission_efficiency),
+            "L1 Allocated Tickets": Number(l1Metrics.allocated_tickets || 0),
+            "L1 On Time Resolution": Number(l1Metrics.on_time_resolutions || 0),
+            "L1 Delayed Resolution": Number(l1Metrics.delayed_resolutions || 0),
+            "L1 Reworked Resolution": Number(l1Metrics.reworked_resolutions || 0),
+            "L1 Resolution Efficiency": formatAnalysisPercent(l1Metrics.resolution_efficiency),
+            "L1 First Time Approval Rate": formatAnalysisPercent(l1Metrics.first_time_approval_rate),
+            "L1 Ranking": formatAnalysisPercent(topRanking?.average_efficiency ?? l1Metrics.average_efficiency),
+          }
+        : {}),
+      ...(includeL2
+        ? {
+            "L2 Allocated Tickets": Number(l2Metrics.allocated_tickets || 0),
+            "L2 On Time Approvals": Number(l2Metrics.on_time_approvals || 0),
+            "L2 Delayed Approvals": Number(l2Metrics.delayed_approvals || 0),
+            "L2 Approvals Efficiency": formatAnalysisPercent(l2Metrics.approval_efficiency),
+          }
+        : {}),
     },
   ];
 };
@@ -245,7 +261,7 @@ const reportSources = {
     },
     Simplex: {
       "Process Parameter": { fetcher: fetchSimplexProcessParameterEntries },
-      "SMXCots Change Data Entry": { fetcher: fetchSimplexCotsChangeEntries },
+      "SMXCots Checking Data Entry": { fetcher: fetchSimplexCotsChangeEntries },
       "SMX Breaks Study Report": { fetcher: fetchSimplexStudyReportEntries },
       "U% Data Entry": { fetcher: fetchSimplexUqcEntries },
       "Wheel Change": { fetcher: fetchSimplexWheelChangeEntries },
@@ -580,10 +596,16 @@ const getAccessEntryForReportSubDepartment = (accessByDepartment, subDepartmentN
 };
 
 const getAccessibleReportSources = (accessByDepartment, user) => {
-  if (isFullAccessUser(user)) return reportSources;
+  if (isAnalysisReportUser(user)) return reportSources;
   if (!Array.isArray(accessByDepartment)) return {};
 
+  // The Analysis department (Team Performance Analysis) has no real RBAC
+  // screen behind it to match against, so it's excluded outright here
+  // instead of relying on the screen-access loop below to naturally starve
+  // it out - restricted to admin/L5 only, same as the User Management page.
   return Object.entries(reportSources).reduce((departmentMap, [departmentName, subDepartmentMap]) => {
+    if (isAnalysisDepartment(departmentName)) return departmentMap;
+
     const nextSubDepartments = Object.entries(subDepartmentMap).reduce(
       (subDepartmentResult, [subDepartmentName, typeMap]) => {
         const accessEntry = getAccessEntryForReportSubDepartment(accessByDepartment, subDepartmentName);
@@ -1840,7 +1862,7 @@ const getAPercentTableValue = (row, fieldLabel) => {
   return match ? match[parsed.columnKey] : undefined;
 };
 
-// Simplex's "SMXCots Change Data Entry" saves its 14 damage/status checks as a single `items`
+// Simplex's "SMXCots Checking Data Entry" saves its 14 damage/status checks as a single `items`
 // array (each shaped { item_name, status_value }) describing one entry, not 14 separate
 // records. Custom Report needs one column per item label — look each one up by item_name.
 const SMX_COTS_CHANGE_ITEM_LABELS = [
@@ -2849,10 +2871,18 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
       if (directValue === null || typeof directValue === "undefined" || String(directValue).trim() === "") {
         return "-";
       }
-      // These screens' "Machine"/"Machine No." field is always one of Spinning's RF-prefixed
-      // ring-frame machines (see the fetchSpinningCountChangeRfNos comment above) stored as a
-      // bare number (e.g. 14) — show it the same way operators refer to the machine on the floor.
-      if (directKey === "machineno") return `R/F-${String(directValue).trim()}`;
+      // These screens' "Machine"/"Machine No." field is one of Spinning's RF-prefixed ring-frame
+      // machines (see the fetchSpinningCountChangeRfNos comment above), saved as a bare numeric
+      // code (e.g. 14) alongside a resolved machine_name ("R/F NO 02") going forward. Prefer the
+      // stored name; historical rows saved before machine_name existed fall back to the old
+      // "R/F-<code>" formatting.
+      if (directKey === "machineno") {
+        const machineName = row?.machine_name;
+        if (machineName !== null && typeof machineName !== "undefined" && String(machineName).trim() !== "") {
+          return String(machineName).trim();
+        }
+        return `R/F-${String(directValue).trim()}`;
+      }
       return String(directValue);
     }
   }
@@ -3283,6 +3313,8 @@ function ReportsPage() {
   const [reportType, setReportType] = useState("Process Parameter");
   const [startDate, setStartDate] = useState(toInputDate(defaultStartDate));
   const [endDate, setEndDate] = useState(toInputDate(today));
+  const [analysisLevel, setAnalysisLevel] = useState("");
+  const [analysisUserId, setAnalysisUserId] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -3355,6 +3387,18 @@ function ReportsPage() {
 
   const getUserEmail = (user) =>
     String(user?.email || user?.mail || user?.user_email || user?.official_email || "").trim();
+
+  const getUserLevel = (user) => String(user?.level || "").trim().toUpperCase();
+
+  // Team Performance Analysis only ever reports L1/L2 metrics (the /l1, /l2
+  // and /ranking analysis endpoints don't cover L3-L5), so the Level filter
+  // is limited to those two - Username narrows further to one person within
+  // whichever level is picked, reusing the same user_id filter those
+  // endpoints already support for the scheduled-report recipient picker.
+  const analysisLevelOptions = ["L1", "L2"];
+  const analysisUserOptions = scheduleUsers.filter(
+    (candidate) => !analysisLevel || getUserLevel(candidate) === analysisLevel
+  );
 
   const sendToMeEmail = getUserEmail(authUser);
   const reportOwnerKey = String(
@@ -4060,7 +4104,7 @@ function ReportsPage() {
     // otherwise a user who submits a new form entry while this page is already open keeps seeing
     // "-" for that entry's Operator until they fully reload the page, since this was only ever
     // fetched once and never refreshed alongside the report data itself.
-  }, [department, endDate, reportType, selectedReportSource, startDate, subDepartment]);
+  }, [analysisLevel, analysisUserId, department, endDate, reportType, selectedReportSource, startDate, subDepartment]);
 
   useEffect(() => {
     let isMounted = true;
@@ -4262,9 +4306,10 @@ function ReportsPage() {
           reportType: canonicalReport.reportType,
           report_type: canonicalReport.reportType,
           input_screen: canonicalReport.reportType,
+          ...(isTeamPerformanceReport ? { level: analysisLevel, user_id: analysisUserId } : {}),
         };
         const generalReportFetcher = (params = {}) => fetchGeneralReportDataRows({ ...baseReportParams, ...params });
-        // Draw Frame's "A%" notebook and Simplex's "SMXCots Change Data Entry"/"SMX Breaks Study
+        // Draw Frame's "A%" notebook and Simplex's "SMXCots Checking Data Entry"/"SMX Breaks Study
         // Report"/"Stretch %" all store one entry's per-item breakdown as a nested array
         // (rows/manual_json/ocr_json, `items`, or `tables`) describing a single record, not
         // multiple physical entries — skip the generic nested-array row expansion for these
@@ -4274,7 +4319,7 @@ function ReportsPage() {
           (subDepartment === "Draw Frame" && reportType === "A%") ||
           isParametersArrayWheelChangeReport(subDepartment, reportType) ||
           (subDepartment === "Simplex" &&
-            ["SMXCots Change Data Entry", "SMX Breaks Study Report", "Stretch %"].includes(reportType)) ||
+            ["SMXCots Checking Data Entry", "SMX Breaks Study Report", "Stretch %"].includes(reportType)) ||
           (subDepartment === "Spinning" && ["Count Change", "Ring Frame Log Book"].includes(reportType)) ||
           (subDepartment === "Autoconer" && ["Drum wise Appearance"].includes(reportType));
         const isOpennessReport = subDepartment === "Mixing" && reportType === "Openness Data Entry";
@@ -4380,7 +4425,7 @@ function ReportsPage() {
     return () => {
       isActive = false;
     };
-  }, [department, endDate, reportType, selectedReportSource, startDate, subDepartment]);
+  }, [analysisLevel, analysisUserId, department, endDate, reportType, selectedReportSource, startDate, subDepartment]);
 
   useEffect(() => {
     setSelectedFields([]);
@@ -5120,6 +5165,10 @@ function ReportsPage() {
                     setDepartment(nextDepartment);
                     setSubDepartment(nextSubDepartment);
                     setReportType(nextReportType);
+                    if (!isAnalysisDepartment(nextDepartment)) {
+                      setAnalysisLevel("");
+                      setAnalysisUserId("");
+                    }
                   }}
                 >
                   {departments.map((option) => (
@@ -5161,6 +5210,36 @@ function ReportsPage() {
                 </select>
                 <FiChevronDown />
               </label>
+              {isTeamPerformanceReport ? (
+                <>
+                  <label className={styles.fieldGroup}>
+                    <span>Level</span>
+                    <select
+                      value={analysisLevel}
+                      onChange={(event) => {
+                        setAnalysisLevel(event.target.value);
+                        setAnalysisUserId("");
+                      }}
+                    >
+                      <option value="">All Levels</option>
+                      {analysisLevelOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                    <FiChevronDown />
+                  </label>
+                  <label className={styles.fieldGroup}>
+                    <span>Username</span>
+                    <select value={analysisUserId} onChange={(event) => setAnalysisUserId(event.target.value)}>
+                      <option value="">All Users</option>
+                      {analysisUserOptions.map((option) => (
+                        <option key={getUserId(option)} value={getUserId(option)}>{getUserName(option)}</option>
+                      ))}
+                    </select>
+                    <FiChevronDown />
+                  </label>
+                </>
+              ) : null}
               <>
                 <div className={`${styles.fieldGroup} ${styles.dateGroup}`}>
                   <span>Date - From</span>

@@ -46,13 +46,13 @@ const createDetailRows = () =>
   }));
 
 const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
-  { selectedTypeName = "SMXCots Change Data Entry", onTypeChange, typeOptions = [], entryId = "" },
+  { selectedTypeName = "SMXCots Checking Data Entry", onTypeChange, typeOptions = [], entryId = "" },
   ref
 ) {
   const dispatch = useDispatch();
   const { isLoading } = useSelector((state) => state.simplex ?? {});
   const [form, setForm] = useState({
-    type: "SMXCots Change Data Entry",
+    type: "SMXCots Checking Data Entry",
     date: today,
     mcName: "",
   });
@@ -134,7 +134,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
 
   const clear = () => {
     setForm({
-      type: "SMXCots Change Data Entry",
+      type: "SMXCots Checking Data Entry",
       date: today,
       mcName: "",
     });
@@ -299,7 +299,7 @@ const SMXCotsChangeDataEntry = forwardRef(function SMXCotsChangeDataEntry(
       <NotebookCustomFields
         department="Quality Control"
         subDepartment="Simplex"
-        notebook="SMXCots Change Data Entry"
+        notebook="SMXCots Checking Data Entry"
         entryId={entryId}
         values={customFieldValues}
         onChange={handleCustomFieldChange}

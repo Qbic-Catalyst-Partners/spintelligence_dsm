@@ -19,6 +19,7 @@ import {
   addUser,
   clearActionState,
 } from "../../store/slices/userSlice";
+import { isUserManagementManagerUser } from "../../utils/accessControl";
 
 const LEVEL_ABOVE_LABEL = { L1: "L2", L2: "L3", L3: "L4", L4: "L5" };
 
@@ -26,8 +27,19 @@ export default function UmAddUser() {
   const dispatch = useDispatch();
   const router = useRouter();
 
+  const authUser = useSelector((state) => state.auth?.user);
+  const isHydrated = useSelector((state) => state.auth?.isHydrated);
+  const canAccessPage = isUserManagementManagerUser(authUser);
+
   const { roles, departments, actionLoading, error, actionSuccess } =
     useSelector((state) => state.users);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!canAccessPage) {
+      router.replace("/departments");
+    }
+  }, [canAccessPage, isHydrated, router]);
 
   const [localError, setLocalError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -198,6 +210,10 @@ export default function UmAddUser() {
 
     dispatch(addUser({ ...formData, password }));
   };
+
+  if (!isHydrated || !canAccessPage) {
+    return null;
+  }
 
   return (
     <div className={styles.container}>

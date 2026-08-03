@@ -8,6 +8,7 @@ import { submitAfis, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
+import { recordSubmittedNotebook } from '@/utils/submittedNotebookRecorder';
 import styles from '../../styles/afisDataEntery.module.css';
 
 const initialForm = {
@@ -99,6 +100,23 @@ const AfisDataEntry = forwardRef(function AfisDataEntry({ date, entryId, lotNo, 
         await dispatch(submitAfis(payload)).unwrap();
 
         const linkedEntryId = payload.entry_id;
+
+        // Registered here, immediately after the save itself succeeds — see cottonHVIDataEntry.jsx
+        // for why this can no longer live in the parent's post-submit/success-modal flow.
+        try {
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                notebookName: selectedTypeName || "AFIS Data Entry",
+                entryId: linkedEntryId,
+                lotNo,
+                registeredActions: { getPayload: () => payload },
+                user,
+            });
+        } catch (error) {
+            console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+        }
+
         const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
         if (linkedEntryId && customFieldEntries.length) {
             try {
