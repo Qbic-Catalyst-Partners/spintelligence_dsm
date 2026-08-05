@@ -273,6 +273,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     br_line: brLine || "",
     actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
+    overall_openness_percent: overallOpen === "" ? null : Number(overallOpen),
     entries: stages.flatMap((stage, stageIndex) =>
       stage.rows.map((row) => ({
         stage_no: stageIndex + 1,
@@ -481,11 +482,14 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
               <ReadOnlyField label="Avg. Volume (V)" value={stage.avgVol} />
               <ReadOnlyField label="Average of Apparent Specific Vol (A=V/M)" value={stage.avgAsv} />
               <ReadOnlyField label="Average of Actual Op. Value (AOV)" value={stage.avgAov} />
-              {stageIndex > 0 && stageIndex < stages.length - 1 ? (
-                <ReadOnlyField label="Openness %" value={stage.openness} />
-              ) : (
-                <div />
-              )}
+              <ReadOnlyField
+                label="Openness %"
+                value={
+                  stageIndex > 0 && stageIndex < stages.length - 1
+                    ? stage.openness || "-"
+                    : "-"
+                }
+              />
             </div>
           </div>
 

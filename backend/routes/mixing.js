@@ -719,9 +719,15 @@ const ensureMixingEntryIdColumnsImpl = async () => {
     // "Overall Openness Efficiency %" (last stage AOV vs. first stage AOV) in the browser, but
     // neither was ever sent to the backend or had a column to land in — Custom Report showed them
     // as blank forever. Persist both so the calculated numbers survive past the browser preview.
+    // Standardized on "openness_percentage" as the column name — drop the older "openness_percent"
+    // column this same migration briefly introduced.
     await client.query(`
       ALTER TABLE mixing.openness_entries
-        ADD COLUMN IF NOT EXISTS openness_percent NUMERIC;
+        ADD COLUMN IF NOT EXISTS openness_percentage NUMERIC(10,2);
+    `);
+    await client.query(`
+      ALTER TABLE mixing.openness_entries
+        DROP COLUMN IF EXISTS openness_percent;
     `);
     await client.query(`
       ALTER TABLE mixing.openness_inspection
@@ -2282,9 +2288,9 @@ router.post('/openness', async (req, res, next) => {
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
          beater_type, beater_speed_rpm,
-         weight, volume_1, volume_2,
-         apparent_specific_volume, actual_op_value, openness_percent)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+         weight, volume_1, volume_2, average_volume,
+         apparent_specific_volume, actual_op_value, openness_percentage)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           inspectionId,
           entryNo,
@@ -2298,7 +2304,7 @@ router.post('/openness', async (req, res, next) => {
           averageVolume,
           e.apparent_specific_volume,
           e.actual_op_value,
-          e.openness_percent ?? null
+          opennessPercentage
         ]
       );
     }
@@ -2368,8 +2374,8 @@ router.get('/openness', async (req, res, next) => {
       const entries = await client.query(
         `SELECT entry_no, stage_no, machine_name,
                 beater_type, beater_speed_rpm,
-                weight, volume_1, volume_2,
-                apparent_specific_volume, actual_op_value, openness_percent
+                weight, volume_1, volume_2, average_volume,
+                apparent_specific_volume, actual_op_value, openness_percentage
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,

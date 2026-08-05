@@ -369,7 +369,6 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   const [previewNextId, setPreviewNextId] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState({});
 
-  const user = useSelector((state) => state.auth?.user);
   const operatorName = String(
     user?.name || user?.full_name || user?.user_name || user?.username || ""
   ).trim();

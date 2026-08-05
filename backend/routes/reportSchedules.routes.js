@@ -808,6 +808,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'i.br_line_no',
         'i.actual_specific_volume_target',
         'i.no_of_entries',
+        'i.overall_openness_percent',
         'e.stage_no',
         'e.machine_name',
         'e.weight',
@@ -1393,7 +1394,7 @@ for (const [reportKey, wheelChangeType] of Object.entries(DRAWFRAME_WHEEL_CHANGE
     fromClause: `(SELECT * FROM drawframe.wheel_change WHERE wheel_change_type = '${wheelChangeType}') w`,
     selectColumns: [
       'w.entry_id', 'w.type', 'w.line_type', 'w.wheel_change_type_label',
-      'w.entry_date', 'w.parameters', 'w.rows', 'w.created_at'
+      'w.machine_no', 'w.entry_date', 'w.parameters', 'w.rows', 'w.created_at'
     ],
     dateColumn: 'w.entry_date'
   };
