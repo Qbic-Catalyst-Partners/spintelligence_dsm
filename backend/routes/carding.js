@@ -2456,37 +2456,31 @@ router.get('/uqc', async (req, res) => {
         const offset = (page - 1) * limit;
         const department = String(req.query.department || '').trim();
         const globalMode = String(req.query.global || '').toLowerCase() === 'true';
-        const whereClause = (!globalMode && department) ? 'WHERE department ILIKE $3' : '';
-
+        // carding.u_data_entry has no `department` column (this screen isn't
+        // department-scoped), so a department filter can never legitimately
+        // narrow this query - always run unfiltered rather than reference a
+        // column that doesn't exist (which previously crashed any
+        // department-filtered Carding U% report with a 500).
         const dataQuery = `
             SELECT *
             FROM carding.u_data_entry
-            ${whereClause}
             ORDER BY entry_date DESC
             LIMIT $1 OFFSET $2
         `;
 
         const countQuery = `
             SELECT COUNT(*) FROM carding.u_data_entry
-            ${whereClause}
         `;
 
-        const params = (!globalMode && department)
-          ? [limit, offset, `%${department}%`]
-          : [limit, offset];
-        const countParams = (!globalMode && department)
-          ? [`%${department}%`]
-          : [];
-
-        const dataResult = await client.query(dataQuery, params);
-        const countResult = await client.query(countQuery, countParams);
+        const dataResult = await client.query(dataQuery, [limit, offset]);
+        const countResult = await client.query(countQuery);
 
         const total = parseInt(countResult.rows[0].count);
 
         res.json({
             page,
             limit,
-            global: globalMode || !department,
+            global: true,
             department: department || null,
             total,
             totalPages: Math.ceil(total / limit),

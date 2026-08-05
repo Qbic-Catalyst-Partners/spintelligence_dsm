@@ -685,7 +685,8 @@ const ensureMixingEntryIdColumnsImpl = async () => {
   await runMixingSchemaStep('moisture_data_entry columns', async () => {
     await client.query(`
       ALTER TABLE mixing.moisture_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT;
+        ADD COLUMN IF NOT EXISTS entry_id TEXT,
+        ADD COLUMN IF NOT EXISTS lot_no VARCHAR(50);
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS moisture_data_entry_entry_id_uq
@@ -713,6 +714,14 @@ const ensureMixingEntryIdColumnsImpl = async () => {
       ALTER TABLE mixing.openness_entries
         ADD COLUMN IF NOT EXISTS beater_type TEXT,
         ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC;
+    `);
+    // stage_no was always recomputed server-side as ceil(entryNo / (no_of_entries/3)), which
+    // splits every submission into 3 stages regardless of how many the form actually generated
+    // (5 rows/stage — 25 entries makes 5 stages, not 3). That mismatch silently misgrouped rows
+    // into the wrong stage_no. The form's per-stage Openness % was also never sent/stored at all.
+    await client.query(`
+      ALTER TABLE mixing.openness_entries
+        ADD COLUMN IF NOT EXISTS openness_percentage NUMERIC(10,2);
     `);
   });
 
@@ -1957,6 +1966,7 @@ router.post('/moisture', async (req, res, next) => {
     const {
       entry_id,
       inspection_date,
+      lot_no,
       party_lot_no,
       variety,
       party_name,
@@ -1984,19 +1994,20 @@ router.post('/moisture', async (req, res, next) => {
     // Report's Operator resolution (which checks the row's own operator column first) works.
     const result = await client.query(
       `INSERT INTO mixing.moisture_data_entry (
-        entry_id, inspection_date, party_lot_no, variety, party_name, pr_no,
+        entry_id, inspection_date, lot_no, party_lot_no, variety, party_name, pr_no,
         value1, value2, value3, value4, value5,
         value6, value7, value8, value9, value10, average, operator
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,
-        $7,$8,$9,$10,$11,
-        $12,$13,$14,$15,$16,$17,$18
+        $1,$2,$3,$4,$5,$6,$7,
+        $8,$9,$10,$11,$12,
+        $13,$14,$15,$16,$17,$18,$19
       )
       RETURNING *`,
       [
         entry_id,
         inspection_date,
+        lot_no || null,
         party_lot_no,
         variety,
         party_name,
@@ -2211,11 +2222,15 @@ router.post('/openness', async (req, res, next) => {
 
     const inspectionId = inspectionResult.rows[0].id;
     const savedEntryId = inspectionResult.rows[0].entry_id;
-    const perStage = no_of_entries / 3;
+    // stage_no comes straight from the form's own stage grouping (up to 5 rows/stage) rather
+    // than being recomputed here — a fixed "/3" split doesn't match a variable stage count.
+    const perStageFallback = no_of_entries / 3;
     for (let i = 0; i < entries.length; i++) {
       const entryNo = i + 1;
-      const stageNo = Math.ceil(entryNo / perStage);
       const e = entries[i];
+      const stageNo = Number.isFinite(Number(e.stage_no))
+        ? Number(e.stage_no)
+        : Math.ceil(entryNo / perStageFallback);
       const volume1 = Number(e.volume_1);
       const volume2 = Number(e.volume_2);
       const providedAverageVolume = Number(e.average_volume);
@@ -2224,14 +2239,17 @@ router.post('/openness', async (req, res, next) => {
         : Number.isFinite(volume1) && Number.isFinite(volume2)
           ? (volume1 + volume2) / 2
           : null;
+      const opennessPercentage = e.openness_percentage === '' || e.openness_percentage == null
+        ? null
+        : Number(e.openness_percentage);
 
       await client.query(
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
          beater_type, beater_speed_rpm,
-         weight, volume_1, volume_2,
-         apparent_specific_volume, actual_op_value)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         weight, volume_1, volume_2, average_volume,
+         apparent_specific_volume, actual_op_value, openness_percentage)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           inspectionId,
           entryNo,
@@ -2242,8 +2260,10 @@ router.post('/openness', async (req, res, next) => {
           e.weight,
           e.volume_1,
           e.volume_2,
+          averageVolume,
           e.apparent_specific_volume,
-          e.actual_op_value
+          e.actual_op_value,
+          opennessPercentage
         ]
       );
     }
@@ -2313,8 +2333,8 @@ router.get('/openness', async (req, res, next) => {
       const entries = await client.query(
         `SELECT entry_no, stage_no, machine_name,
                 beater_type, beater_speed_rpm,
-                weight, volume_1, volume_2,
-                apparent_specific_volume, actual_op_value
+                weight, volume_1, volume_2, average_volume,
+                apparent_specific_volume, actual_op_value, openness_percentage
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,

@@ -1645,11 +1645,12 @@ const normalizeCardingDfkRows = (response) => {
 // expose each entry's own fields as numbered columns, so a submission with 5 entries offers
 // "Entry 1".."Entry 5" and one with 6 offers "Entry 1".."Entry 6".
 const OPENNESS_ENTRY_METRIC_KEYS = [
-  "machine_name", "beater_type", "beater_speed_rpm", "weight", "volume_1", "volume_2",
+  "stage_no", "machine_name", "beater_type", "beater_speed_rpm", "weight", "volume_1", "volume_2",
   "average_volume", "apparent_specific_volume", "actual_op_value",
 ];
 // Labels copied verbatim from the notebook's own field labels (opennessDataEntry.jsx).
 const OPENNESS_ENTRY_METRIC_LABELS = {
+  stage_no: "Stage No.",
   machine_name: "Machine Name",
   beater_type: "Beater Type",
   beater_speed_rpm: "Beater Speed (RPM)",
@@ -1672,6 +1673,10 @@ const normalizeOpennessRows = (response) =>
 
     const entryColumns = { no_of_entries_entered: entries.length };
     const perEntryAverageVolumes = [];
+    // Openness % is a per-stage value on the form (middle stages only — the first and last
+    // stage never show one, same rule as opennessDataEntry.jsx), not a per-entry one, so it's
+    // kept out of the numbered "Entry N" columns and surfaced as "Stage N Openness %" instead.
+    const stageOpenness = new Map();
     entries.forEach((entry, index) => {
       const n = entry?.entry_no ?? index + 1;
       // "Average Volume (V)" is computed by the notebook's own preview from volume_1/volume_2 —
@@ -1686,6 +1691,16 @@ const normalizeOpennessRows = (response) =>
         entryColumns[`openness_entry_${n}_${metric}`] =
           metric === "average_volume" ? averageVolume : (entry?.[metric] ?? null);
       });
+
+      const stageNo = entry?.stage_no;
+      if (stageNo !== null && typeof stageNo !== "undefined" && !stageOpenness.has(stageNo)) {
+        stageOpenness.set(stageNo, entry?.openness_percentage ?? null);
+      }
+    });
+
+    const stageColumns = {};
+    [...stageOpenness.keys()].sort((a, b) => a - b).forEach((stageNo) => {
+      stageColumns[`openness_stage_${stageNo}_percentage`] = stageOpenness.get(stageNo);
     });
 
     // "Avg. Weight (M)"/"Avg. Volume (V)" have no backing column anywhere in the GET response
@@ -1701,6 +1716,7 @@ const normalizeOpennessRows = (response) =>
     return {
       ...inspection,
       ...entryColumns,
+      ...stageColumns,
       ...overall,
       avg_weight: avgWeight,
       avg_volume: avgVolume,
@@ -4026,9 +4042,27 @@ function ReportsPage() {
         label: `Entry ${n} - ${OPENNESS_ENTRY_METRIC_LABELS[metric]}`,
       }));
     }).flat();
-    const withOpennessColumns = opennessEntryFields.length
+    const withOpennessEntryColumns = opennessEntryFields.length
       ? [...withSpliceStrengthColumns, ...opennessEntryFields]
       : withSpliceStrengthColumns;
+    // Openness % is per-stage, not per-entry (see normalizeOpennessRows) — its own numbered
+    // column set, keyed by stage_no rather than entry_no.
+    const opennessStageCount = isMixingOpennessReport
+      ? rows.reduce((max, row) => {
+          let count = 0;
+          while (Object.prototype.hasOwnProperty.call(row || {}, `openness_stage_${count + 1}_percentage`)) {
+            count += 1;
+          }
+          return Math.max(max, count);
+        }, 0)
+      : 0;
+    const opennessStageFields = Array.from({ length: opennessStageCount }, (_, index) => {
+      const n = index + 1;
+      return [{ key: `openness_stage_${n}_percentage`, label: `Stage ${n} - Openness %` }];
+    }).flat();
+    const withOpennessColumns = opennessStageFields.length
+      ? [...withOpennessEntryColumns, ...opennessStageFields]
+      : withOpennessEntryColumns;
     // Mixing's Process Parameter rows carry however many "blend" rows the user added, same
     // reasoning as Openness above.
     const isMixingProcessParameterReport = subDepartment === "Mixing" && reportType === "Process Parameter";

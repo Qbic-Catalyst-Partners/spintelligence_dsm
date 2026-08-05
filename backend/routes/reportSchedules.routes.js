@@ -543,8 +543,13 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     processparameter: ['autoconer.autoconer_process_parameter'],
     ppautoconerq2: ['autoconer.autoconer_q2_inspection'],
     ppautoconerq3: ['autoconer.autoconer_q3_inspection'],
-    rewindingstudy: ['autoconer.rewinding_study'],
-    conedensity: ['autoconer.cone_density'],
+    // Rewinding Study data now lives in autoconer.inspection_data_entry (see
+    // 20260619_replace_rewinding_study_with_inspection_data_entry.sql) — the old
+    // autoconer.rewinding_study table is dead and never written to.
+    rewindingstudy: ['autoconer.inspection_data_entry'],
+    // Cone Density data lives in autoconer.cone_density_notebook (+ cone_density_notebook_drums)
+    // via /cone-density-notebook — the old autoconer.cone_density table was dead and has been dropped.
+    conedensity: ['autoconer.cone_density_notebook'],
     inspectiondataentry: ['autoconer.inspection_data_entry'],
     conepackingaudit: ['autoconer.cone_packing_audit'],
     lycrachecking: ['autoconer.lycra_checking_inspections'],
@@ -803,6 +808,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'i.br_line_no',
         'i.actual_specific_volume_target',
         'i.no_of_entries',
+        'e.stage_no',
         'e.machine_name',
         'e.weight',
         'e.volume_1',
@@ -810,6 +816,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'e.average_volume',
         'e.apparent_specific_volume',
         'e.actual_op_value',
+        'e.openness_percentage',
         'e.beater_type',
         'e.beater_speed_rpm'
       ],
