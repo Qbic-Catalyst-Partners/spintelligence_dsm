@@ -153,7 +153,6 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   { entryId = "", nextEntryIdPreview = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "", lockedCountName = "", lockedConsigneeName = "" },
   ref
 ) {
-  const user = useSelector((state) => state.auth?.user);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(() => createDefaultForm(selectedTypeName));
   const [errors, setErrors] = useState({});
