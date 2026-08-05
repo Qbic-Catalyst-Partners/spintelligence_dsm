@@ -825,6 +825,30 @@ router.post('/sync', async (req, res, next) => {
       );
     }
 
+    const totals = entries.reduce(
+      (acc, e) => {
+        acc.total_run_time += Number(e.value_a) || 0;
+        acc.total_idle_time += Number(e.value_b) || 0;
+        acc.total_sub_total_time += Number(e.value_c) || 0;
+        acc.total_sync_percentage += Number(e.sync_percentage) || 0;
+        return acc;
+      },
+      { total_run_time: 0, total_idle_time: 0, total_sub_total_time: 0, total_sync_percentage: 0 }
+    );
+
+    await client.query(
+      `INSERT INTO blowroom.blow_room_sync_totals
+      (sync_id, total_run_time, total_idle_time, total_sub_total_time, total_sync_percentage)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (sync_id) DO UPDATE SET
+        total_run_time = EXCLUDED.total_run_time,
+        total_idle_time = EXCLUDED.total_idle_time,
+        total_sub_total_time = EXCLUDED.total_sub_total_time,
+        total_sync_percentage = EXCLUDED.total_sync_percentage,
+        created_at = NOW()`,
+      [syncId, totals.total_run_time, totals.total_idle_time, totals.total_sub_total_time, totals.total_sync_percentage]
+    );
+
     res.status(201).json({
       message: "Sync created",
       syncId,
@@ -857,10 +881,12 @@ router.get('/sync', async (req, res, next) => {
     await ensureSyncStatsView();
 
     const result = await client.query(`
-      SELECT s.*, st.*
+      SELECT s.*, st.*, t.total_run_time, t.total_idle_time, t.total_sub_total_time, t.total_sync_percentage
       FROM blowroom.blow_room_sync s
       LEFT JOIN blowroom.sync_stats st
       ON s.id = st.sync_id
+      LEFT JOIN blowroom.blow_room_sync_totals t
+      ON s.id = t.sync_id
       ORDER BY s.inspection_date DESC
     `);
 
@@ -933,6 +959,7 @@ router.post('/drop-test', async (req, res, next) => {
       tuft_variety,
       display_weight,
       actual_weight,
+      average_weight,
       difference,
       ratio_percent
     } = req.body;
@@ -946,6 +973,7 @@ router.post('/drop-test', async (req, res, next) => {
 
     const displayWeightValue = toNumberOrNull(display_weight);
     const actualWeightValue = toNumberOrNull(actual_weight);
+    const averageWeightValue = toNumberOrNull(average_weight);
     const differenceValue = toNumberOrNull(difference) ??
       (displayWeightValue !== null && actualWeightValue !== null
         ? Number((actualWeightValue - displayWeightValue).toFixed(4))
@@ -957,10 +985,10 @@ router.post('/drop-test', async (req, res, next) => {
       `INSERT INTO blowroom.drop_test (
         drop_id, entry_id, date, variety, blend,
         tuft_no, tuft_variety,
-        display_weight, actual_weight,
+        display_weight, actual_weight, average_weight,
         difference, ratio_percent
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *`,
       [
         dropId,
@@ -972,6 +1000,7 @@ router.post('/drop-test', async (req, res, next) => {
         tuft_variety,
         displayWeightValue,
         actualWeightValue,
+        averageWeightValue,
         differenceValue,
         ratioPercentValue
       ]
@@ -1132,6 +1161,7 @@ router.post('/br-waste-study', async (req, res, next) => {
       study_type,
       carding_production_kg,
       type_entries,
+      waste_type_entries,
       type_rows,
       waste_rows,
       waste_type,
@@ -1170,12 +1200,12 @@ router.post('/br-waste-study', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO blowroom.br_waste_study (
         entry_id, waste_study_id, date, variety, entry_type, study_type,
-        carding_production_kg, type_entries,
+        carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
@@ -1186,6 +1216,7 @@ router.post('/br-waste-study', async (req, res, next) => {
         type || null,
         study_type,
         productionValue, Array.isArray(type_entries) ? type_entries.length : toNumberOrNull(type_entries),
+        Array.isArray(waste_type_entries) ? waste_type_entries.length : toNumberOrNull(waste_type_entries),
         waste_type, wasteKgValue, wastePercentValue, overallPercentValue,
         remarks
       ]
@@ -1207,8 +1238,8 @@ router.post('/br-waste-study', async (req, res, next) => {
       const row = normalizedTypeRows[i] || {};
       await client.query(
         `INSERT INTO blowroom.br_waste_study_type_rows
-         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         (study_id, row_no, cylinder_speed, lickerin_speed, flat_speed, doffer_speed, delivery_speed, wing_setting_1, wing_setting_2, mc_no, mc_production, lickerin_speed_1, lickerin_speed_2, lickerin_speed_3)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           study.id,
           row.row_no ?? (i + 1),
@@ -1220,7 +1251,10 @@ router.post('/br-waste-study', async (req, res, next) => {
           toNumberOrNull(row.wing_setting_1),
           toNumberOrNull(row.wing_setting_2),
           row.mc_no ?? null,
-          toNumberOrNull(row.mc_production)
+          toNumberOrNull(row.mc_production),
+          toNumberOrNull(row.first_lickerin_speed ?? row.lickerin_speed_1),
+          toNumberOrNull(row.second_lickerin_speed ?? row.lickerin_speed_2),
+          toNumberOrNull(row.third_lickerin_speed ?? row.lickerin_speed_3)
         ]
       );
     }
