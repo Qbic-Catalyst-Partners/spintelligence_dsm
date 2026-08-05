@@ -1781,7 +1781,7 @@ export const thresholdFieldCatalog = {
         "Total Spindles",
         "Running Spindles",
         "Idle Spindles",
-        "Break Category",
+        "Sider Name",
         ...[
             "0-200", "201-400", "401-600", "601-800", "801-1000", "1001-1200", "1201-1400",
             "1401-1600", "1601-1800", "1801-2000", "2001-2200", "2201-2400", "2401-2600",
