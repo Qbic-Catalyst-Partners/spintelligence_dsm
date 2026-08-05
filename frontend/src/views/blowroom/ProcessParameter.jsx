@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { FaCheckCircle } from "react-icons/fa";
@@ -152,6 +153,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   { entryId = "", nextEntryIdPreview = "", selectedTypeName = "Process Parameter", onTypeChange, typeOptions = [], savedVersionsTargetId = "", lockedCountName = "", lockedConsigneeName = "" },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(() => createDefaultForm(selectedTypeName));
   const [errors, setErrors] = useState({});
@@ -394,6 +396,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     uniclean: parseNumberValue(form.uniclean),
     srs: parseNumberValue(form.srs),
     rk_flexi: parseNumberValue(form.rkFlexi),
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const resetForm = () => {

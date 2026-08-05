@@ -370,6 +370,17 @@ const ensureBlowroomEntryIdColumns = async () => {
       ADD COLUMN IF NOT EXISTS entry_id varchar(80),
       ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
   `);
+  // "Run Time"/"Idle Time"/"Sub Total Time"/"Sync %" totals are computed in the browser
+  // (BlowRoomSync.jsx's totalRunSeconds/totalIdleSeconds/totalSubSeconds/totalSyncPercentage) but
+  // were never sent to the backend or given a column — only the formatted grand-total "total_time"
+  // (HH:MM:SS) was stored, so Custom Report had no numeric total to show. Persist all four.
+  await client.query(`
+    ALTER TABLE blowroom.blow_room_sync
+      ADD COLUMN IF NOT EXISTS total_run_time NUMERIC,
+      ADD COLUMN IF NOT EXISTS total_idle_time NUMERIC,
+      ADD COLUMN IF NOT EXISTS total_sub_total_time NUMERIC,
+      ADD COLUMN IF NOT EXISTS total_sync_percentage NUMERIC;
+  `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS blow_room_sync_entry_id_uq
     ON blowroom.blow_room_sync (entry_id)
@@ -380,6 +391,13 @@ const ensureBlowroomEntryIdColumns = async () => {
     ALTER TABLE blowroom.drop_test
       ADD COLUMN IF NOT EXISTS entry_id varchar(80),
       ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
+  `);
+  // "Average Wt." is entered per-tuft on the form (DropTestDataEntry's actDisplay field, used to
+  // compute Ratio %) but was never sent to the backend or given a column — Custom Report had
+  // nothing to show for it. Persist it alongside the other tuft weight fields.
+  await client.query(`
+    ALTER TABLE blowroom.drop_test
+      ADD COLUMN IF NOT EXISTS average_weight NUMERIC;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS drop_test_entry_id_uq
@@ -396,6 +414,14 @@ const ensureBlowroomEntryIdColumns = async () => {
     CREATE UNIQUE INDEX IF NOT EXISTS blowroom_header_entry_id_uq
     ON blowroom.blowroom_header (entry_id)
     WHERE entry_id IS NOT NULL;
+  `);
+  // Process Parameter never persisted who submitted it — same fix as Openness/AFIS/Fibre/Moisture:
+  // the row itself needs its own operator column so Custom Report's Operator resolution (which
+  // checks the row's own column before falling back to the submitted_notebooks join, which this
+  // screen never registers with either) has something to find.
+  await client.query(`
+    ALTER TABLE blowroom.blowroom_header
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 };
 
@@ -510,6 +536,17 @@ const ensureBrWasteStudyTables = async () => {
       ALTER COLUMN wing_setting_1 TYPE numeric(12,4),
       ALTER COLUMN wing_setting_2 TYPE numeric(12,4),
       ALTER COLUMN mc_production TYPE numeric(12,4);
+  `);
+
+  // Type 3 studies submit THREE lickerin speeds (first_lickerin_speed/second_lickerin_speed/
+  // third_lickerin_speed from BrWasteStudyEntry.jsx) but this table only ever had a single
+  // "lickerin_speed" column (shared with Type 1/2, which only have one) — Type 3's 1st/2nd/3rd
+  // values were silently dropped on every insert, never stored, never retrievable.
+  await client.query(`
+    ALTER TABLE blowroom.br_waste_study_type_rows
+      ADD COLUMN IF NOT EXISTS lickerin_speed_1 numeric(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_2 numeric(12,4),
+      ADD COLUMN IF NOT EXISTS lickerin_speed_3 numeric(12,4);
   `);
 
   await client.query(`
@@ -798,18 +835,34 @@ router.post('/sync', async (req, res, next) => {
       checked_by,
       beater,
       total_time,
+      total_run_time,
+      total_idle_time,
+      total_sub_total_time,
+      total_sync_percentage,
       entries
     } = req.body;
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    // Wrapped in a transaction — previously the parent blow_room_sync row and its
+    // blow_room_sync_entries children were inserted as separate, non-transactional statements, so
+    // a failure partway through the per-entry loop still left the parent row committed with a
+    // "number_of_entries" count unbacked by any actual child rows (Custom Report then showed that
+    // submission as a single row of averaged/blank stats instead of exploding it per entry).
+    // BEGIN/COMMIT/ROLLBACK here mirrors the POST /br-waste-study handler below.
+    await client.query('BEGIN');
+
     const syncRes = await client.query(
       `INSERT INTO blowroom.blow_room_sync
-      (entry_id, inspection_date, line_no, variety, checked_by, beater, total_time, number_of_entries)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      (entry_id, inspection_date, line_no, variety, checked_by, beater, total_time, number_of_entries,
+       total_run_time, total_idle_time, total_sub_total_time, total_sync_percentage)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING id`,
-      [entry_id, inspection_date, line_no, variety, checked_by, beater, total_time, entries.length]
+      [
+        entry_id, inspection_date, line_no, variety, checked_by, beater, total_time, entries.length,
+        total_run_time ?? null, total_idle_time ?? null, total_sub_total_time ?? null, total_sync_percentage ?? null
+      ]
     );
 
     const syncId = syncRes.rows[0].id;
@@ -825,29 +878,7 @@ router.post('/sync', async (req, res, next) => {
       );
     }
 
-    const totals = entries.reduce(
-      (acc, e) => {
-        acc.total_run_time += Number(e.value_a) || 0;
-        acc.total_idle_time += Number(e.value_b) || 0;
-        acc.total_sub_total_time += Number(e.value_c) || 0;
-        acc.total_sync_percentage += Number(e.sync_percentage) || 0;
-        return acc;
-      },
-      { total_run_time: 0, total_idle_time: 0, total_sub_total_time: 0, total_sync_percentage: 0 }
-    );
-
-    await client.query(
-      `INSERT INTO blowroom.blow_room_sync_totals
-      (sync_id, total_run_time, total_idle_time, total_sub_total_time, total_sync_percentage)
-      VALUES ($1,$2,$3,$4,$5)
-      ON CONFLICT (sync_id) DO UPDATE SET
-        total_run_time = EXCLUDED.total_run_time,
-        total_idle_time = EXCLUDED.total_idle_time,
-        total_sub_total_time = EXCLUDED.total_sub_total_time,
-        total_sync_percentage = EXCLUDED.total_sync_percentage,
-        created_at = NOW()`,
-      [syncId, totals.total_run_time, totals.total_idle_time, totals.total_sub_total_time, totals.total_sync_percentage]
-    );
+    await client.query('COMMIT');
 
     res.status(201).json({
       message: "Sync created",
@@ -856,6 +887,7 @@ router.post('/sync', async (req, res, next) => {
     });
 
   } catch (err) {
+    await client.query('ROLLBACK');
     if (isUniqueViolation(err)) {
       return res.status(409).json({ message: 'Duplicate entry_id. Please use a unique ID.' });
     }
@@ -878,6 +910,7 @@ router.post('/sync', async (req, res, next) => {
 
 router.get('/sync', async (req, res, next) => {
   try {
+    await ensureBlowroomEntryIdColumns();
     await ensureSyncStatsView();
 
     const result = await client.query(`
@@ -890,7 +923,31 @@ router.get('/sync', async (req, res, next) => {
       ORDER BY s.inspection_date DESC
     `);
 
-    res.json(result.rows.map((row) => withScreenEntryId('sync', row)));
+    const syncRows = result.rows;
+    const syncIds = syncRows.map((row) => row.id);
+    let entryRows = [];
+
+    if (syncIds.length) {
+      const entriesResult = await client.query(
+        `SELECT * FROM blowroom.blow_room_sync_entries
+         WHERE sync_id = ANY($1::bigint[])
+         ORDER BY sync_id, entry_no`,
+        [syncIds]
+      );
+      entryRows = entriesResult.rows;
+    }
+
+    // Custom Report relies on expandNestedRows (frontend/src/views/reports/ReportsPage.jsx) to turn
+    // a nested array field into one report row per entry, same as BR Waste Study's waste_rows below —
+    // without "entries" attached here, Run Time/Idle Time/Sub Total Time only ever showed the
+    // aggregate sync_stats columns (value_a_avg/min/max/...), never each row's own value.
+    res.json(syncRows.map((row) => ({
+      ...withScreenEntryId('sync', row),
+      // pg returns bigint columns (id/sync_id) as strings, but compare with String() rather than
+      // relying on that — a stray numeric id from elsewhere would otherwise silently fail this
+      // strict-equality filter and leave every row's "entries" empty.
+      entries: entryRows.filter((e) => String(e.sync_id) === String(row.id)),
+    })));
 
   } catch (err) {
     next(err);
@@ -934,6 +991,8 @@ router.get('/sync', async (req, res, next) => {
  *               display_weight:
  *                 type: number
  *               actual_weight:
+ *                 type: number
+ *               average_weight:
  *                 type: number
  *               difference:
  *                 type: number
@@ -1252,9 +1311,9 @@ router.post('/br-waste-study', async (req, res, next) => {
           toNumberOrNull(row.wing_setting_2),
           row.mc_no ?? null,
           toNumberOrNull(row.mc_production),
-          toNumberOrNull(row.first_lickerin_speed ?? row.lickerin_speed_1),
-          toNumberOrNull(row.second_lickerin_speed ?? row.lickerin_speed_2),
-          toNumberOrNull(row.third_lickerin_speed ?? row.lickerin_speed_3)
+          toNumberOrNull(row.first_lickerin_speed),
+          toNumberOrNull(row.second_lickerin_speed),
+          toNumberOrNull(row.third_lickerin_speed)
         ]
       );
     }
@@ -1467,7 +1526,8 @@ router.post('/header', async (req, res, next) => {
       lap_weight,
       uniclean,
       srs,
-      rk_flexi
+      rk_flexi,
+      user_name
     } = req.body;
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -1492,7 +1552,7 @@ router.post('/header', async (req, res, next) => {
         condensor_speed, rk_feed_roll_beater, rk_beater_speed,
         flexi_to_feed_roll_beater, flexi_beater_speed,
         scutcher_no, rk_mo_speed, kb_speed,
-        grid_bar, lap_weight, uniclean, srs, rk_flexi
+        grid_bar, lap_weight, uniclean, srs, rk_flexi, operator
       )
       VALUES (
         $1,$2,$3,$4,
@@ -1501,7 +1561,7 @@ router.post('/header', async (req, res, next) => {
         $10,$11,$12,
         $13,$14,
         $15,$16,$17,
-        $18,$19,$20,$21,$22
+        $18,$19,$20,$21,$22,$23
       )
       RETURNING *`,
       [
@@ -1511,7 +1571,7 @@ router.post('/header', async (req, res, next) => {
         condensor_speed, rk_feed_roll_beater, rk_beater_speed,
         flexi_to_feed_roll_beater, flexi_beater_speed,
         scutcher_no, rk_mo_speed, kb_speed,
-        grid_bar, lap_weight, uniclean, srs, rk_flexi
+        grid_bar, lap_weight, uniclean, srs, rk_flexi, user_name || null
       ]
     );
 
@@ -1554,6 +1614,7 @@ router.post('/header', async (req, res, next) => {
 
 router.get('/header', async (req, res, next) => {
   try {
+    await ensureBlowroomEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -1703,7 +1764,8 @@ router.put('/header/:br_id', async (req, res, next) => {
       lap_weight,
       uniclean,
       srs,
-      rk_flexi
+      rk_flexi,
+      user_name
     } = req.body;
 
     // ✅ Required field validation
@@ -1738,7 +1800,7 @@ router.put('/header/:br_id', async (req, res, next) => {
           condensor_speed, rk_feed_roll_beater, rk_beater_speed,
           flexi_to_feed_roll_beater, flexi_beater_speed,
           scutcher_no, rk_mo_speed, kb_speed,
-          grid_bar, lap_weight, uniclean, srs, rk_flexi
+          grid_bar, lap_weight, uniclean, srs, rk_flexi, operator
         )
         VALUES (
           $1,$2,$3,$4,
@@ -1747,7 +1809,7 @@ router.put('/header/:br_id', async (req, res, next) => {
           $10,$11,$12,
           $13,$14,
           $15,$16,$17,
-          $18,$19,$20,$21,$22
+          $18,$19,$20,$21,$22,$23
         )
         RETURNING *`,
         [
@@ -1772,7 +1834,8 @@ router.put('/header/:br_id', async (req, res, next) => {
           lap_weight,
           uniclean,
           srs,
-          rk_flexi
+          rk_flexi,
+          user_name || null
         ]
       );
 
@@ -1804,8 +1867,9 @@ router.put('/header/:br_id', async (req, res, next) => {
            lap_weight = $18,
            uniclean = $19,
            srs = $20,
-           rk_flexi = $21
-       WHERE br_id = $22
+           rk_flexi = $21,
+           operator = COALESCE(NULLIF($22, ''), operator)
+       WHERE br_id = $23
        RETURNING *`,
       [
         count_name,
@@ -1829,6 +1893,7 @@ router.put('/header/:br_id', async (req, res, next) => {
         uniclean,
         srs,
         rk_flexi,
+        user_name || null,
         id
       ]
     );

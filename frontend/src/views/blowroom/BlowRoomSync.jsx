@@ -167,6 +167,10 @@ const BlowRoomSync = forwardRef(function BlowRoomSync(
           checked_by: form.checkedBy,
           beater: form.beater,
           total_time: grandTotalTime,
+          total_run_time: totalRunSeconds,
+          total_idle_time: totalIdleSeconds,
+          total_sub_total_time: totalSubSeconds,
+          total_sync_percentage: totalSyncPercentage === "" ? null : Number(totalSyncPercentage),
           entries: tableData.map((row) => ({
             value_a: Number(row.a) || 0,
             value_b: Number(row.b) || 0,
