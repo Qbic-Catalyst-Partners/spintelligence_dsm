@@ -721,7 +721,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'lycra_percent',
         'created_at'
       ],
-      dateColumn: 'creation_date'
+      dateColumn: 'created_at'
     },
     // Ring Frame Log Book form — header table + per-machine row table + summary table,
     // joined so the general report sees the full set of fields the form collects.

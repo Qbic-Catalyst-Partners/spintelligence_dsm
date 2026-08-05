@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -357,6 +358,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
   const [errors, setErrors] = useState({});
@@ -604,6 +606,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     cylinder: parseNumberValue(form.cylinder),
     doffer: parseNumberValue(form.doffer),
     flats: parseNumberValue(form.flats),
+    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
   });
 
   const clear = () => {

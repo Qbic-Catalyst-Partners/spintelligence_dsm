@@ -119,6 +119,19 @@ const TEAM_PERFORMANCE_REPORT_TYPE = "Team Performance Analysis";
 
 const formatAnalysisPercent = (value) => `${Number(value || 0).toFixed(2).replace(/\.00$/, "")}%`;
 
+// Blow Room Sync's "Total of Run/Idle/Sub Total Time" are persisted as raw seconds
+// (total_run_time/total_idle_time/total_sub_total_time — see ensureBlowroomEntryIdColumns in
+// backend/routes/blowroom.js), but the notebook itself only ever displays the Sub Total one in
+// HH:MM:SS (same as its "Grand Total Time", which is the identical value under a different label).
+const formatSecondsToHHMMSS = (totalSeconds) => {
+  const seconds = Math.max(0, Math.round(totalSeconds || 0));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+};
+
 const isAnalysisDepartment = (departmentName) => matchesLookup(departmentName, ANALYSIS_DEPARTMENT);
 
 const getAnalysisDateParams = (params = {}) => {
@@ -940,6 +953,7 @@ const buildDropTestTuftColumns = (tuftRows) => {
     columns[`tuft_variety_${n}`] = tuftRow?.tuft_variety ?? null;
     columns[`display_weight_${n}`] = tuftRow?.display_weight ?? null;
     columns[`actual_weight_${n}`] = tuftRow?.actual_weight ?? null;
+    columns[`average_weight_${n}`] = tuftRow?.average_weight ?? null;
     columns[`difference_${n}`] = tuftRow?.difference ?? null;
     columns[`ratio_percent_${n}`] = tuftRow?.ratio_percent ?? null;
   });
@@ -1646,7 +1660,7 @@ const normalizeCardingDfkRows = (response) => {
 // "Entry 1".."Entry 5" and one with 6 offers "Entry 1".."Entry 6".
 const OPENNESS_ENTRY_METRIC_KEYS = [
   "machine_name", "beater_type", "beater_speed_rpm", "weight", "volume_1", "volume_2",
-  "average_volume", "apparent_specific_volume", "actual_op_value",
+  "average_volume", "apparent_specific_volume", "actual_op_value", "openness_percent",
 ];
 // Labels copied verbatim from the notebook's own field labels (opennessDataEntry.jsx).
 const OPENNESS_ENTRY_METRIC_LABELS = {
@@ -1659,6 +1673,7 @@ const OPENNESS_ENTRY_METRIC_LABELS = {
   average_volume: "Average Volume (V)",
   apparent_specific_volume: "Apparent Specific Vol (A=V/M)",
   actual_op_value: "Actual Op. Value (AOV)",
+  openness_percent: "Openness %",
 };
 
 const normalizeOpennessRows = (response) =>
@@ -2200,6 +2215,11 @@ const reportFieldAliases = {
   // generic fuzzy fallback to bridge them.
   "Average of Apparent Specific Vol (A=V/M)": ["avg_apparent_specific_volume"],
   "Average of Actual Op. Value (AOV)": ["avg_actual_op_value"],
+  // "Openness %"/"Overall Openness Efficiency (%)" are per-submission (not per-entry) fields, but
+  // they land as "openness_entry_N_openness_percent" once numbered (each entry in a stage carries
+  // that stage's value) and "overall_openness_percent" respectively — neither shares enough of a
+  // substring with the catalog label for the generic fuzzy fallback to bridge them.
+  "Overall Openness Efficiency (%)": ["overall_openness_percent"],
   // Individual Card Performance Data (trials.trials) — several catalog labels use business
   // notation (±, %, "I" for a column actually named "l"/"1") that don't share enough of a
   // substring with the real column name for the generic fuzzy fallback to bridge.
@@ -2277,11 +2297,22 @@ const reportFieldAliases = {
   "Run Time (Seconds)": ["value_a"],
   "Idle Time (Seconds)": ["value_b"],
   "Sub Total Time": ["value_c"],
+  // Blow Room Sync's per-row Run/Idle/Sub Total/Sync % are summed in the browser
+  // (BlowRoomSync.jsx's totalRunSeconds/totalIdleSeconds/totalSubSeconds/totalSyncPercentage) and
+  // persisted as their own columns — "Total of X" doesn't share enough of a substring with
+  // "total_x_time"/"total_sync_percentage" for the generic fuzzy fallback to bridge them.
+  "Total of Run Time": ["total_run_time"],
+  "Total of Idle Time": ["total_idle_time"],
+  "Total of Sub Total Time": ["total_sub_total_time"],
+  "Total of Sync Percentage": ["total_sync_percentage"],
   "Wing Settling 1": ["wing_setting_1"],
   "Wing Settling 2": ["wing_setting_2"],
-  "1st Lickerin Speed": ["first_lickerin_speed"],
-  "2nd Lickerin Speed": ["second_lickerin_speed"],
-  "3rd Lickerin Speed": ["third_lickerin_speed"],
+  // Type 3's three lickerin speeds are submitted as first_lickerin_speed/second_lickerin_speed/
+  // third_lickerin_speed but stored (and returned by GET) as lickerin_speed_1/2/3 — the DB column
+  // names, matching how mapEntryToForm reads them back in brWasteStudyEntry.jsx.
+  "1st Lickerin Speed": ["lickerin_speed_1"],
+  "2nd Lickerin Speed": ["lickerin_speed_2"],
+  "3rd Lickerin Speed": ["lickerin_speed_3"],
   // BR Waste Study rows carry BOTH a study-level total ("waste_percent"/"waste_kg", one value
   // for the whole study) and a per-waste-type breakdown ("waste_kgs_percent"/"waste_kgs_value",
   // via the nested waste_rows array, flattened with a "waste_rows_" prefix). Alias the per-row
@@ -2290,6 +2321,29 @@ const reportFieldAliases = {
   "Waste Type": ["waste_rows_waste_type"],
   "Waste KGs Value": ["waste_rows_waste_kgs_value"],
   "Waste KGs %": ["waste_rows_waste_kgs_percent"],
+  // BR Waste Study Entry Type 1/2/3 are split into 3 separate report types (one study_type per
+  // report), so each only ever has one waste-type reading worth showing — numbered to match its
+  // own type ("Waste Type 1" for Type 1, "Waste Type 2" for Type 2, ...) rather than the generic
+  // 1..N-by-reading-count columns built by buildBrWasteTypeColumns for the combined view.
+  "Waste Type 1": ["waste_type_1"],
+  "Waste KGs Value 1": ["waste_kgs_value_1"],
+  "Waste KGs % 1": ["waste_kgs_1"],
+  "Waste Type 2": ["waste_type_2"],
+  "Waste KGs Value 2": ["waste_kgs_value_2"],
+  "Waste KGs % 2": ["waste_kgs_2"],
+  // Type 3 studies' waste_rows array is columnized by reading position, not by study Type number —
+  // most Type 3 submissions only ever log one waste-type reading, which lands at index 1
+  // (waste_type_1), not 3. Aliasing "Waste Type 3" straight to waste_type_3 (which doesn't exist
+  // on those rows) was falling through to an unrelated numeric field.
+  "Waste Type 3": ["waste_type_1"],
+  "Waste KGs Value 3": ["waste_kgs_value_1"],
+  "Waste KGs % 3": ["waste_kgs_1"],
+  // "Number of Type N Entries" is the count of speed/setting rows entered for that study type
+  // (form label "Number of Type 1/2/3 Entries"), stored as the single field "type_entries" —
+  // doesn't share enough of a substring with "numberoftype1entries" for the fuzzy fallback.
+  "Number of Type 1 Entries": ["type_entries"],
+  "Number of Type 2 Entries": ["type_entries"],
+  "Number of Type 3 Entries": ["type_entries"],
   "Total Waste KGs Value": ["waste_kg"],
   "Total Waste KGs %": ["waste_percent"],
   "Overall Waste %": ["overall_percent"],
@@ -2601,6 +2655,7 @@ const getReportFieldValue = (row, field) => {
 // "CREATED_AT" that arrive as a raw ISO timestamp with a time component.
 const DATE_FIELD_NORMALIZED_KEYS = new Set(
   [
+    "date",
     "inspection_date",
     "creation_date",
     "invoice_date",
@@ -2837,6 +2892,15 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
         ? String(cdgProposed)
         : "-";
     }
+    // "CDG No. (Existing)" is stored as cdo_no (the machine number field predates the
+    // "CDG"/"CDO" label rename), which the generic fuzzy matcher in getReportFieldValue
+    // can't reach since "cdg" and "cdo" don't fuzzy-match each other.
+    if (field.label === "CDG No. (Existing)") {
+      const cdoNo = row?.cdo_no;
+      return cdoNo !== null && typeof cdoNo !== "undefined" && String(cdoNo).trim() !== ""
+        ? String(cdoNo)
+        : "-";
+    }
   }
 
   // LHS/RHS moved from a required scalar to an optional free-form spindle list on these six
@@ -2921,6 +2985,40 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
 
   if (DATE_FIELD_NORMALIZED_KEYS.has(normalizeLookupKey(field.key)) || DATE_FIELD_NORMALIZED_KEYS.has(normalizeLookupKey(field.label))) {
     return formatDate(getReportFieldValue(row, field) || getRowDate(row));
+  }
+
+  // BR Waste Study Type 3's "1st/2nd/3rd Lickerin Speed" alias to lickerin_speed_1/2/3 (see
+  // reportFieldAliases below), but getReportFieldValue's generic fuzzy fallback kicks in whenever
+  // one of those is null/missing on a row and matches ALL THREE aliases against the single shared
+  // "lickerin_speed" column instead (Type 1/2's own field, still present as a column on every
+  // br_waste_study_type_rows row) — normalizeLookupKey("lickerin_speed_2") is "lickerinspeed2",
+  // which contains normalizeLookupKey("lickerin_speed") = "lickerinspeed" as a substring, so all
+  // three columns silently collapsed onto that one shared value. Resolve these three directly
+  // against their own numbered column and stop there — never fall back to the bare column.
+  const LICKERIN_SPEED_KEY_BY_LABEL = {
+    "1st Lickerin Speed": "lickerin_speed_1",
+    "2nd Lickerin Speed": "lickerin_speed_2",
+    "3rd Lickerin Speed": "lickerin_speed_3",
+  };
+  const lickerinSpeedKey = LICKERIN_SPEED_KEY_BY_LABEL[field.label || field.key];
+  if (lickerinSpeedKey) {
+    const lickerinSpeedValue = row?.[lickerinSpeedKey];
+    return lickerinSpeedValue !== null && typeof lickerinSpeedValue !== "undefined" && String(lickerinSpeedValue).trim() !== ""
+      ? String(lickerinSpeedValue)
+      : "-";
+  }
+
+  // "Sub Total Time" (per-row, value_c) and "Total of Sub Total Time" (the row-summed
+  // total_sub_total_time) are both persisted as raw seconds — a plain NUMERIC column/value (see
+  // BlowRoomSync.jsx's row.c and ensureBlowroomEntryIdColumns in backend/routes/blowroom.js) — so
+  // they render as a plain decimal ("1322.00") unlike "Grand Total Time (HH:MM:SS)", which is the
+  // same underlying value but resolves to the pre-formatted total_time string column instead.
+  // Format both the same way here so all three columns agree.
+  if ((field.label || field.key) === "Sub Total Time" || (field.label || field.key) === "Total of Sub Total Time") {
+    const rawSeconds = getReportFieldValue(row, field);
+    return rawSeconds !== null && typeof rawSeconds !== "undefined" && String(rawSeconds).trim() !== ""
+      ? formatSecondsToHHMMSS(Number(rawSeconds))
+      : "-";
   }
 
   // A field like "Sample 3 - N" or "Weight (Max) - N-1" only exists inside the A% notebook's
@@ -3581,7 +3679,13 @@ function ReportsPage() {
         : subDepartment === "Carding"
           ? CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE[reportType]
           : null;
-    const wasteTypeColumnCount = brWasteStudyType
+    // BR Waste Study Entry Type 1/2/3 (and their Carding equivalents) already list their own single
+    // numbered field set ("Waste Type 1"/"Waste KGs Value 1"/"Waste KGs % 1" for Type 1, "...2" for
+    // Type 2, "...3" for Type 3) directly in the field catalog — skip the dynamic expansion for
+    // these split report types so the same fields don't appear twice in the column picker.
+    const isSplitBrWasteStudyReport =
+      reportType in BR_WASTE_STUDY_TYPE_BY_REPORT_TYPE || reportType in CARD_WASTE_STUDY_TYPE_BY_REPORT_TYPE;
+    const wasteTypeColumnCount = brWasteStudyType && !isSplitBrWasteStudyReport
       ? rows.reduce((max, row) => {
           let count = 0;
           while (Object.prototype.hasOwnProperty.call(row || {}, `waste_type_${count + 1}`)) {
@@ -3620,6 +3724,7 @@ function ReportsPage() {
         { key: `tuft_variety_${n}`, label: `Tuft ${n} - Variety` },
         { key: `display_weight_${n}`, label: `Tuft ${n} - Display Wt.` },
         { key: `actual_weight_${n}`, label: `Tuft ${n} - Actual Wt.` },
+        { key: `average_weight_${n}`, label: `Tuft ${n} - Average Wt.` },
         { key: `difference_${n}`, label: `Tuft ${n} - Diff (Actual Wt. - Display Wt.)` },
         { key: `ratio_percent_${n}`, label: `Tuft ${n} - Ratio (Average Wt. / Total) * 100` },
       ];
@@ -3648,17 +3753,25 @@ function ReportsPage() {
     const withSampleColumns = sampleFields.length ? [...withTuftColumns, ...sampleFields] : withTuftColumns;
     // Carding's Between & Within Card rows carry however many numbered Sample Weight/Hank
     // readings that submission's own "Number of Entries (N)" produced — same reasoning as the
-    // tuft/waste-type/sample columns above.
+    // tuft/waste-type/sample columns above. The form defaults "Number of Entries" to 5
+    // (betweenWithinCardEntry.jsx), so always offer at least those 5 slots as selectable fields
+    // rather than only however many happen to appear in currently loaded rows — otherwise
+    // whichever of Within/Between has no rows loaded yet (nothing in range, or the other type's
+    // rows got filtered out for this report) shows none of them, same failure mode fixed for Nati
+    // Data Entry below.
     const isBetweenWithinCardReport =
       subDepartment === "Carding" && Boolean(BETWEEN_WITHIN_CARD_TYPE_BY_REPORT_TYPE[reportType]);
     const bwcEntryColumnCount = isBetweenWithinCardReport
-      ? rows.reduce((max, row) => {
-          let count = 0;
-          while (Object.prototype.hasOwnProperty.call(row || {}, `sample_weight_${count + 1}`)) {
-            count += 1;
-          }
-          return Math.max(max, count);
-        }, 0)
+      ? Math.max(
+          5,
+          rows.reduce((max, row) => {
+            let count = 0;
+            while (Object.prototype.hasOwnProperty.call(row || {}, `sample_weight_${count + 1}`)) {
+              count += 1;
+            }
+            return Math.max(max, count);
+          }, 0)
+        )
       : 0;
     const bwcEntryFields = Array.from({ length: bwcEntryColumnCount }, (_, index) => {
       const n = index + 1;
@@ -4271,16 +4384,30 @@ function ReportsPage() {
   }, []);
 
   useEffect(() => {
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setRows([]);
-    setError("");
-
     if (!department || !subDepartment || !reportType) {
       setRows([]);
       setError("No report screens are assigned to this user.");
       return;
     }
+
+    // Switching Department resets subDepartment/reportType via a separate effect, but that
+    // reconciliation only lands on the NEXT render — this effect's own dependency array fires
+    // first on the raw department change, briefly pairing the OLD reportType with the NEW
+    // subDepartment (e.g. subDepartment=Mixing with a stale reportType="Team Performance
+    // Analysis", which only ever belongs under the Analysis department). That invalid combo has
+    // no reportSources entry, so it fell through to the generic /reports/general-report/data
+    // fallback and errored (404/500) instead of just waiting one render for the real report to
+    // resolve. Skip the fetch entirely (WITHOUT clearing rows/requestId — the reconciling effect
+    // fires again right after with the real subDepartment/reportType pairing, which must still be
+    // able to complete normally) until reportType is actually valid for this subDepartment.
+    if (!isTeamPerformanceReport && !reportTypes.includes(reportType)) {
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setRows([]);
+    setError("");
 
     let isActive = true;
 
@@ -5367,7 +5494,13 @@ function ReportsPage() {
                     ) : null}
                     {selectedFields.length > 0
                       ? filteredRows.map((row, rowIndex) => (
-                          <tr key={row?.id || row?.qc_id || row?.param_id || rowIndex}>
+                          // rowIndex must always be part of the key, not just a fallback — rows
+                          // exploded from a nested array (expandNestedRows, e.g. Blow Room Sync's
+                          // per-entry Run/Idle/Sub Total Time or BR Waste Study's per-type_row
+                          // readings) all inherit the SAME parent id/qc_id/param_id, so keying on
+                          // those alone collapsed every exploded row from one submission onto a
+                          // single React key and only the last one ever rendered.
+                          <tr key={`${row?.id || row?.qc_id || row?.param_id || "row"}-${rowIndex}`}>
                             {selectedFields.map((field) => (
                               <td key={field.key}>{getCellValue(row, field, operatorByEntryKey, { subDepartment, reportType })}</td>
                             ))}
