@@ -358,6 +358,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   },
   ref
 ) {
+  const user = useSelector((state) => state.auth?.user);
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(createDefaultForm);
   const [errors, setErrors] = useState({});

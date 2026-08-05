@@ -715,13 +715,17 @@ const ensureMixingEntryIdColumnsImpl = async () => {
         ADD COLUMN IF NOT EXISTS beater_type TEXT,
         ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC;
     `);
-    // stage_no was always recomputed server-side as ceil(entryNo / (no_of_entries/3)), which
-    // splits every submission into 3 stages regardless of how many the form actually generated
-    // (5 rows/stage — 25 entries makes 5 stages, not 3). That mismatch silently misgrouped rows
-    // into the wrong stage_no. The form's per-stage Openness % was also never sent/stored at all.
+    // The notebook computes a per-stage "Openness %" (stage AOV vs. previous stage AOV) and an
+    // "Overall Openness Efficiency %" (last stage AOV vs. first stage AOV) in the browser, but
+    // neither was ever sent to the backend or had a column to land in — Custom Report showed them
+    // as blank forever. Persist both so the calculated numbers survive past the browser preview.
     await client.query(`
       ALTER TABLE mixing.openness_entries
-        ADD COLUMN IF NOT EXISTS openness_percentage NUMERIC(10,2);
+        ADD COLUMN IF NOT EXISTS openness_percent NUMERIC;
+    `);
+    await client.query(`
+      ALTER TABLE mixing.openness_inspection
+        ADD COLUMN IF NOT EXISTS overall_openness_percent NUMERIC;
     `);
   });
 
@@ -2217,7 +2221,8 @@ router.post('/openness', async (req, res, next) => {
       actual_specific_volume_target,
       no_of_entries,
       entries,
-      user_name
+      user_name,
+      overall_openness_percent
     } = req.body;
 
     if (!entry_id) {
@@ -2235,8 +2240,8 @@ router.post('/openness', async (req, res, next) => {
     // Custom Report's Operator resolution (which checks the row's own operator column first) works.
     const inspectionResult = await client.query(
       `INSERT INTO mixing.openness_inspection
-      (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator, overall_openness_percent)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING id, entry_id`,
       [
         entry_id,
@@ -2245,7 +2250,8 @@ router.post('/openness', async (req, res, next) => {
         br_line || null,
         actual_specific_volume_target,
         no_of_entries,
-        user_name || null
+        user_name || null,
+        overall_openness_percent ?? null
       ]
     );
 
@@ -2276,9 +2282,9 @@ router.post('/openness', async (req, res, next) => {
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
          beater_type, beater_speed_rpm,
-         weight, volume_1, volume_2, average_volume,
-         apparent_specific_volume, actual_op_value, openness_percentage)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         weight, volume_1, volume_2,
+         apparent_specific_volume, actual_op_value, openness_percent)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           inspectionId,
           entryNo,
@@ -2292,7 +2298,7 @@ router.post('/openness', async (req, res, next) => {
           averageVolume,
           e.apparent_specific_volume,
           e.actual_op_value,
-          opennessPercentage
+          e.openness_percent ?? null
         ]
       );
     }
@@ -2362,8 +2368,8 @@ router.get('/openness', async (req, res, next) => {
       const entries = await client.query(
         `SELECT entry_no, stage_no, machine_name,
                 beater_type, beater_speed_rpm,
-                weight, volume_1, volume_2, average_volume,
-                apparent_specific_volume, actual_op_value, openness_percentage
+                weight, volume_1, volume_2,
+                apparent_specific_volume, actual_op_value, openness_percent
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,

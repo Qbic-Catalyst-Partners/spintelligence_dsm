@@ -199,6 +199,14 @@ const ensureCardingEntryIdColumns = async () => {
     ON carding.carding_qc_header (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
+  // Process Parameter never persisted who submitted it — same fix as Blow Room's Process
+  // Parameter/Openness/AFIS/Fibre/Moisture: give the row its own operator column so Custom
+  // Report's Operator resolution has something to find (this screen never registers into
+  // submitted_notebooks either, so that fallback path never resolves it).
+  await client.query(`
+    ALTER TABLE carding.carding_qc_header
+      ADD COLUMN IF NOT EXISTS operator TEXT;
+  `);
 
   await client.query(`
     ALTER TABLE carding.carding_change_request
@@ -2919,6 +2927,7 @@ router.post('/qc-header', async (req, res, next) => {
  */
 router.get('/qc-header', async (req, res, next) => {
   try {
+    await ensureCardingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
