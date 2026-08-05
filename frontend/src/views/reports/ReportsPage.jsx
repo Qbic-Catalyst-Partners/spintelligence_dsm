@@ -2611,7 +2611,7 @@ const normalizeForDedupKey = (value) =>
 const getCanonicalReportFieldKey = (field) => {
   const fieldKey = String(field?.key || field?.label || "").trim();
   const matchedAlias = Object.entries(reportFieldAliases).find(([label, aliases]) =>
-    [label, ...aliases].some((candidate) => normalizeCanonicalFieldKey(candidate) === normalizeCanonicalFieldKey(fieldKey))
+    [label, ...aliases].some((candidate) => normalizeForDedupKey(candidate) === normalizeForDedupKey(fieldKey))
   );
   return normalizeForDedupKey(matchedAlias ? matchedAlias[0] : fieldKey);
 };
