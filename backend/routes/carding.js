@@ -314,7 +314,8 @@ const ensureCardWasteStudyTable = async () => {
   await client.query(`
     ALTER TABLE carding.card_waste_study
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS entry_type TEXT;
+      ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS waste_type_entries NUMERIC(12,4);
   `);
 
   await client.query(`
@@ -3619,6 +3620,7 @@ router.post('/card-waste-study', async (req, res, next) => {
       study_type,
       carding_production_kg,
       type_entries,
+      waste_type_entries,
       type_rows,
       waste_rows,
       waste_type,
@@ -3669,12 +3671,12 @@ router.post('/card-waste-study', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO carding.card_waste_study (
         entry_id, waste_study_id, date, variety, entry_type, study_type,
-        carding_production_kg, type_entries,
+        carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
@@ -3686,6 +3688,7 @@ router.post('/card-waste-study', async (req, res, next) => {
         study_type,
         productionValue,
         normalizedTypeRows.length || toDecimal4OrNull(type_entries),
+        normalizedWasteRows.length || toDecimal4OrNull(waste_type_entries),
         normalizeWasteType(waste_type),
         wasteKgValue,
         wastePercentValue,
