@@ -191,7 +191,8 @@ const ensureCardingEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE carding.carding_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS carding_qc_header_entry_id_uq
@@ -3098,7 +3099,7 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
            cylinder = $21,
            doffer = $22,
            flats = $23,
-           operator = COALESCE(NULLIF($24, ''), operator)
+           operator = COALESCE($24, operator)
        WHERE id = $25
        RETURNING *`,
       [

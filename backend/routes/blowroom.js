@@ -408,7 +408,8 @@ const ensureBlowroomEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE blowroom.blowroom_header
       ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS blowroom_header_entry_id_uq
@@ -1868,7 +1869,7 @@ router.put('/header/:br_id', async (req, res, next) => {
            uniclean = $19,
            srs = $20,
            rk_flexi = $21,
-           operator = COALESCE(NULLIF($22, ''), operator)
+           operator = COALESCE($22, operator)
        WHERE br_id = $23
        RETURNING *`,
       [

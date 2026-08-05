@@ -164,6 +164,11 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [previewNextId, setPreviewNextId] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState({});
 
+  const user = useSelector((state) => state.auth?.user);
+  const operatorName = String(
+    user?.name || user?.full_name || user?.user_name || user?.username || ""
+  ).trim();
+
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
   };
@@ -396,7 +401,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     uniclean: parseNumberValue(form.uniclean),
     srs: parseNumberValue(form.srs),
     rk_flexi: parseNumberValue(form.rkFlexi),
-    user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",
+    user_name: operatorName,
   });
 
   const resetForm = () => {
