@@ -191,7 +191,8 @@ const ensureCardingEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE carding.carding_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS carding_qc_header_entry_id_uq
@@ -2833,7 +2834,8 @@ router.post('/qc-header', async (req, res, next) => {
       lickerin,
       cylinder,
       doffer,
-      flats
+      flats,
+      user_name
     } = req.body;
 
     if (!entry_id) {
@@ -2858,7 +2860,7 @@ router.post('/qc-header', async (req, res, next) => {
         delivery_speed, draft_speed, tension_draft, delivery_hank,
         setting, feed_roll_to_lickerin, lickerin_to_cylinder,
         cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats
+        sfl, sfd, lickerin, cylinder, doffer, flats, operator
       )
       VALUES (
         $1,$2,$3,$4,$5,
@@ -2866,7 +2868,7 @@ router.post('/qc-header', async (req, res, next) => {
         $10,$11,$12,$13,
         $14,$15,$16,
         $17,$18,
-        $19,$20,$21,$22,$23,$24
+        $19,$20,$21,$22,$23,$24,$25
       )
       RETURNING *`,
       [
@@ -2875,7 +2877,7 @@ router.post('/qc-header', async (req, res, next) => {
         delivery_speed, draft_speed, tension_draft, delivery_hank,
         setting, feed_roll_to_lickerin, lickerin_to_cylinder,
         cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats
+        sfl, sfd, lickerin, cylinder, doffer, flats, user_name || null
       ]
     );
 
@@ -3059,7 +3061,8 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
       lickerin,
       cylinder,
       doffer,
-      flats
+      flats,
+      user_name
     } = req.body;
 
     const result = await client.query(
@@ -3086,8 +3089,9 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
            lickerin = $20,
            cylinder = $21,
            doffer = $22,
-           flats = $23
-       WHERE id = $24
+           flats = $23,
+           operator = COALESCE($24, operator)
+       WHERE id = $25
        RETURNING *`,
       [
         type,
@@ -3113,6 +3117,7 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
         cylinder,
         doffer,
         flats,
+        user_name || null,
         id
       ]
     );

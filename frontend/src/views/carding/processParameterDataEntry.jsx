@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { FaCheckCircle } from "react-icons/fa";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
@@ -368,6 +369,11 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
   const [previewNextId, setPreviewNextId] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState({});
 
+  const user = useSelector((state) => state.auth?.user);
+  const operatorName = String(
+    user?.name || user?.full_name || user?.user_name || user?.username || ""
+  ).trim();
+
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
   };
@@ -604,6 +610,7 @@ const CardingProcessParameterDataEntry = forwardRef(function CardingProcessParam
     cylinder: parseNumberValue(form.cylinder),
     doffer: parseNumberValue(form.doffer),
     flats: parseNumberValue(form.flats),
+    user_name: operatorName,
   });
 
   const clear = () => {

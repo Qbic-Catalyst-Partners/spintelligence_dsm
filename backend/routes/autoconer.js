@@ -478,6 +478,16 @@ const ensureAutoconerEntryIdColumns = async () => {
     ON autoconer.cone_density_notebook (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
+
+  // Rewinding study (inspection_data_entry) header never stored the drum-reading totals,
+  // so the list/report views had no way to show them without re-summing readings client-side.
+  await client.query(`
+    ALTER TABLE autoconer.inspection_data_entry
+      ADD COLUMN IF NOT EXISTS total_cones INTEGER,
+      ADD COLUMN IF NOT EXISTS total_faults INTEGER,
+      ADD COLUMN IF NOT EXISTS total_weight NUMERIC(14, 4),
+      ADD COLUMN IF NOT EXISTS total_length_meters NUMERIC(14, 4);
+  `);
 };
 
 router.get('/thresholds', async (req, res, next) => {
@@ -1501,13 +1511,19 @@ router.post('/inspection-data-entry', async (req, res) => {
       return res.status(400).json({ message: 'Readings required' });
     }
 
+    const sumField = (field) => readings.reduce((sum, r) => sum + (Number(r[field]) || 0), 0);
+    const total_cones = sumField('no_of_cones');
+    const total_faults = sumField('no_of_faults');
+    const total_weight = sumField('weight');
+    const total_length_meters = sumField('length_meters');
+
     await client.query('BEGIN');
     const headerResult = await client.query(
       `INSERT INTO autoconer.inspection_data_entry
-        (entry_id, entry_date, type, count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts, break_per_million_meter, remarks)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (entry_id, entry_date, type, count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts, break_per_million_meter, remarks, total_cones, total_faults, total_weight, total_length_meters)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING id`,
-      [entry_id, entry_date, type || 'Rewinding Study', count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts ?? 0, break_per_million_meter ?? 0, remarks]
+      [entry_id, entry_date, type || 'Rewinding Study', count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts ?? 0, break_per_million_meter ?? 0, remarks, total_cones, total_faults, total_weight, total_length_meters]
     );
 
     const inspection_data_entry_id = headerResult.rows[0].id;

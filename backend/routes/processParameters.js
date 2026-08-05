@@ -180,6 +180,8 @@ const MACHINE_NO_TABLES = [
 const OPERATOR_TABLES = [
   'mixing.mixing_qc_header',
   'drawframe.drawframe_qc_header',
+  'blowroom.blowroom_header',
+  'carding.carding_qc_header',
 ];
 
 const getPpDetailFieldsForEntryIds = async (entryIds) => {

@@ -390,7 +390,8 @@ const ensureBlowroomEntryIdColumns = async () => {
   await client.query(`
     ALTER TABLE blowroom.blowroom_header
       ADD COLUMN IF NOT EXISTS entry_id varchar(80),
-      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
+      ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW(),
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS blowroom_header_entry_id_uq
@@ -1467,7 +1468,8 @@ router.post('/header', async (req, res, next) => {
       lap_weight,
       uniclean,
       srs,
-      rk_flexi
+      rk_flexi,
+      user_name
     } = req.body;
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
@@ -1492,7 +1494,7 @@ router.post('/header', async (req, res, next) => {
         condensor_speed, rk_feed_roll_beater, rk_beater_speed,
         flexi_to_feed_roll_beater, flexi_beater_speed,
         scutcher_no, rk_mo_speed, kb_speed,
-        grid_bar, lap_weight, uniclean, srs, rk_flexi
+        grid_bar, lap_weight, uniclean, srs, rk_flexi, operator
       )
       VALUES (
         $1,$2,$3,$4,
@@ -1501,7 +1503,7 @@ router.post('/header', async (req, res, next) => {
         $10,$11,$12,
         $13,$14,
         $15,$16,$17,
-        $18,$19,$20,$21,$22
+        $18,$19,$20,$21,$22,$23
       )
       RETURNING *`,
       [
@@ -1511,7 +1513,7 @@ router.post('/header', async (req, res, next) => {
         condensor_speed, rk_feed_roll_beater, rk_beater_speed,
         flexi_to_feed_roll_beater, flexi_beater_speed,
         scutcher_no, rk_mo_speed, kb_speed,
-        grid_bar, lap_weight, uniclean, srs, rk_flexi
+        grid_bar, lap_weight, uniclean, srs, rk_flexi, user_name || null
       ]
     );
 
@@ -1703,7 +1705,8 @@ router.put('/header/:br_id', async (req, res, next) => {
       lap_weight,
       uniclean,
       srs,
-      rk_flexi
+      rk_flexi,
+      user_name
     } = req.body;
 
     // ✅ Required field validation
@@ -1738,7 +1741,7 @@ router.put('/header/:br_id', async (req, res, next) => {
           condensor_speed, rk_feed_roll_beater, rk_beater_speed,
           flexi_to_feed_roll_beater, flexi_beater_speed,
           scutcher_no, rk_mo_speed, kb_speed,
-          grid_bar, lap_weight, uniclean, srs, rk_flexi
+          grid_bar, lap_weight, uniclean, srs, rk_flexi, operator
         )
         VALUES (
           $1,$2,$3,$4,
@@ -1747,7 +1750,7 @@ router.put('/header/:br_id', async (req, res, next) => {
           $10,$11,$12,
           $13,$14,
           $15,$16,$17,
-          $18,$19,$20,$21,$22
+          $18,$19,$20,$21,$22,$23
         )
         RETURNING *`,
         [
@@ -1772,7 +1775,8 @@ router.put('/header/:br_id', async (req, res, next) => {
           lap_weight,
           uniclean,
           srs,
-          rk_flexi
+          rk_flexi,
+          user_name || null
         ]
       );
 
@@ -1804,8 +1808,9 @@ router.put('/header/:br_id', async (req, res, next) => {
            lap_weight = $18,
            uniclean = $19,
            srs = $20,
-           rk_flexi = $21
-       WHERE br_id = $22
+           rk_flexi = $21,
+           operator = COALESCE($22, operator)
+       WHERE br_id = $23
        RETURNING *`,
       [
         count_name,
@@ -1829,6 +1834,7 @@ router.put('/header/:br_id', async (req, res, next) => {
         uniclean,
         srs,
         rk_flexi,
+        user_name || null,
         id
       ]
     );
