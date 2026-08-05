@@ -476,7 +476,7 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
   blowroom: {
     blowroomsync: ['blowroom.blow_room_sync'],
     blowroomsyncdataentry: ['blowroom.blow_room_sync'],
-    brwastestudyentry: ['blowroom.br_waste_study', 'mixing.br_waste_study'],
+    brwastestudyentry: ['blowroom.br_waste_study'],
     droptestdataentry: ['blowroom.drop_test']
   },
   carding: {
@@ -856,7 +856,9 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
     // Blow Room Sync form (POST /blowroom/sync) — header + per-entry child table, same
     // header/child split as Openness (blow_room_sync_entries.sync_id -> blow_room_sync.id).
     blowroomsync: {
-      fromClause: 'blowroom.blow_room_sync s JOIN blowroom.blow_room_sync_entries e ON e.sync_id = s.id',
+      fromClause: `blowroom.blow_room_sync s
+        JOIN blowroom.blow_room_sync_entries e ON e.sync_id = s.id
+        LEFT JOIN blowroom.blow_room_sync_totals t ON t.sync_id = s.id`,
       selectColumns: [
         's.entry_id',
         's.inspection_date',
@@ -869,7 +871,11 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'e.value_a',
         'e.value_b',
         'e.value_c',
-        'e.sync_percentage'
+        'e.sync_percentage',
+        't.total_run_time',
+        't.total_idle_time',
+        't.total_sub_total_time',
+        't.total_sync_percentage'
       ],
       dateColumn: 's.inspection_date'
     },

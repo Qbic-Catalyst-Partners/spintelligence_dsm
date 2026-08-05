@@ -2293,11 +2293,23 @@ const reportFieldAliases = {
   "Run Time (Seconds)": ["value_a"],
   "Idle Time (Seconds)": ["value_b"],
   "Sub Total Time": ["value_c"],
+  "Total Run Time": ["total_run_time"],
+  "Total Idle Time": ["total_idle_time"],
+  "Total Sub Total Time": ["total_sub_total_time"],
+  "Total Sync Percentage (%)": ["total_sync_percentage"],
   "Wing Settling 1": ["wing_setting_1"],
   "Wing Settling 2": ["wing_setting_2"],
-  "1st Lickerin Speed": ["first_lickerin_speed"],
-  "2nd Lickerin Speed": ["second_lickerin_speed"],
-  "3rd Lickerin Speed": ["third_lickerin_speed"],
+  // The POST payload sends these as first_/second_/third_lickerin_speed, but the GET endpoint
+  // returns the raw DB column names (lickerin_speed_1/2/3) — alias to what's actually on the row.
+  "1st Lickerin Speed": ["lickerin_speed_1", "first_lickerin_speed"],
+  "2nd Lickerin Speed": ["lickerin_speed_2", "second_lickerin_speed"],
+  "3rd Lickerin Speed": ["lickerin_speed_3", "third_lickerin_speed"],
+  // BR Waste Study Entry Type 1/2/3 all store their entry count in the same "type_entries" column
+  // (disambiguated by study_type on the row) — each report type shows only its own label, so
+  // aliasing all three to the same key is safe (no cross-type collision).
+  "No. of Type 1 Entries": ["type_entries"],
+  "No. of Type 2 Entries": ["type_entries"],
+  "No. of Type 3 Entries": ["type_entries"],
   // BR Waste Study rows carry BOTH a study-level total ("waste_percent"/"waste_kg", one value
   // for the whole study) and a per-waste-type breakdown ("waste_kgs_percent"/"waste_kgs_value",
   // via the nested waste_rows array, flattened with a "waste_rows_" prefix). Alias the per-row
@@ -2546,12 +2558,25 @@ const reportFieldAliases = {
   "Parent Yarn Strength": ["parent_yarn"],
 };
 
+// normalizeLookupKey strips "+"/"-" entirely, which collapses genuinely distinct labels
+// that differ only by sign into the same string (e.g. "A% (N-1)" and "A% (N+1)" both
+// become "an1") — the availableFields dedup below then silently drops the second one as a
+// "duplicate". Preserve the sign as a word before stripping the rest, so only labels that
+// are truly identical (ignoring punctuation) still collide.
+const normalizeCanonicalFieldKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\+/g, "plus")
+    .replace(/-/g, "minus")
+    .replace(/[^a-z0-9]+/g, "");
+
 const getCanonicalReportFieldKey = (field) => {
   const fieldKey = String(field?.key || field?.label || "").trim();
   const matchedAlias = Object.entries(reportFieldAliases).find(([label, aliases]) =>
-    [label, ...aliases].some((candidate) => normalizeLookupKey(candidate) === normalizeLookupKey(fieldKey))
+    [label, ...aliases].some((candidate) => normalizeCanonicalFieldKey(candidate) === normalizeCanonicalFieldKey(fieldKey))
   );
-  return matchedAlias ? normalizeLookupKey(matchedAlias[0]) : normalizeLookupKey(fieldKey);
+  return matchedAlias ? normalizeCanonicalFieldKey(matchedAlias[0]) : normalizeCanonicalFieldKey(fieldKey);
 };
 
 const getReportFieldValue = (row, field) => {
@@ -3079,6 +3104,19 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
     const opennessEntryValue = row?.[field.key];
     return opennessEntryValue !== null && typeof opennessEntryValue !== "undefined" && String(opennessEntryValue).trim() !== ""
       ? String(opennessEntryValue)
+      : "-";
+  }
+
+  // Same reasoning as the openness_entry_ guard above — Openness's per-stage columns
+  // (`openness_stage_<N>_percentage`) only exist on a row up to however many stages that
+  // submission generated, and are null by design for the first/last stage. Without this guard,
+  // a missing/null key fell through to getReportFieldValue's fuzzy whole-row fallback, which
+  // substring-matched onto unrelated numeric fields (stage_no, no_of_entries, IDs) instead of
+  // showing a blank cell.
+  if (field.key.startsWith("openness_stage_")) {
+    const opennessStageValue = row?.[field.key];
+    return opennessStageValue !== null && typeof opennessStageValue !== "undefined" && String(opennessStageValue).trim() !== ""
+      ? String(opennessStageValue)
       : "-";
   }
 
