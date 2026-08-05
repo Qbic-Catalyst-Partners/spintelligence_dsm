@@ -322,7 +322,8 @@ const ensureCardWasteStudyTable = async () => {
   await client.query(`
     ALTER TABLE carding.card_waste_study
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS entry_type TEXT;
+      ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS waste_type_entries NUMERIC(12,4);
   `);
 
   await client.query(`
@@ -2464,37 +2465,31 @@ router.get('/uqc', async (req, res) => {
         const offset = (page - 1) * limit;
         const department = String(req.query.department || '').trim();
         const globalMode = String(req.query.global || '').toLowerCase() === 'true';
-        const whereClause = (!globalMode && department) ? 'WHERE department ILIKE $3' : '';
-
+        // carding.u_data_entry has no `department` column (this screen isn't
+        // department-scoped), so a department filter can never legitimately
+        // narrow this query - always run unfiltered rather than reference a
+        // column that doesn't exist (which previously crashed any
+        // department-filtered Carding U% report with a 500).
         const dataQuery = `
             SELECT *
             FROM carding.u_data_entry
-            ${whereClause}
             ORDER BY entry_date DESC
             LIMIT $1 OFFSET $2
         `;
 
         const countQuery = `
             SELECT COUNT(*) FROM carding.u_data_entry
-            ${whereClause}
         `;
 
-        const params = (!globalMode && department)
-          ? [limit, offset, `%${department}%`]
-          : [limit, offset];
-        const countParams = (!globalMode && department)
-          ? [`%${department}%`]
-          : [];
-
-        const dataResult = await client.query(dataQuery, params);
-        const countResult = await client.query(countQuery, countParams);
+        const dataResult = await client.query(dataQuery, [limit, offset]);
+        const countResult = await client.query(countQuery);
 
         const total = parseInt(countResult.rows[0].count);
 
         res.json({
             page,
             limit,
-            global: globalMode || !department,
+            global: true,
             department: department || null,
             total,
             totalPages: Math.ceil(total / limit),
@@ -3638,6 +3633,7 @@ router.post('/card-waste-study', async (req, res, next) => {
       study_type,
       carding_production_kg,
       type_entries,
+      waste_type_entries,
       type_rows,
       waste_rows,
       waste_type,
@@ -3688,12 +3684,12 @@ router.post('/card-waste-study', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO carding.card_waste_study (
         entry_id, waste_study_id, date, variety, entry_type, study_type,
-        carding_production_kg, type_entries,
+        carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
@@ -3705,6 +3701,7 @@ router.post('/card-waste-study', async (req, res, next) => {
         study_type,
         productionValue,
         normalizedTypeRows.length || toDecimal4OrNull(type_entries),
+        normalizedWasteRows.length || toDecimal4OrNull(waste_type_entries),
         normalizeWasteType(waste_type),
         wasteKgValue,
         wastePercentValue,

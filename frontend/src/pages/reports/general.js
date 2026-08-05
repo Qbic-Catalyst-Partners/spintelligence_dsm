@@ -81,12 +81,28 @@ const REPORT_FIELD_ALIASES = {
   "CV%": ["cv_percent", "cvPercent"],
 };
 
+// normalizeLookup strips "+" and "-" identically (both are just "non-alphanumeric noise" to it),
+// so "A% (N-1)"/"A% (N+1)" and "Sample 1 - N-1"/"Sample 1 - N+1" all collapse to the same string
+// ("an1"/"sample1n1") once normalized. uniqueReportFields uses that as its dedup key, so it was
+// silently treating every real "N+1" field as a duplicate of its "N-1" sibling and dropping it from
+// the Available Fields list entirely (Draw Frame's "A%" notebook — one meta field plus 34 sample/
+// summary columns — never even appeared as pickable). Keep normalizeLookup's loose alias-matching
+// behavior as-is for everything else, but make the final canonical key preserve +/- so these two
+// genuinely different fields no longer collide.
+const normalizeForDedup = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\+/g, "plus")
+    .replace(/-/g, "minus")
+    .replace(/[^a-z0-9]+/g, "");
+
 const getCanonicalFieldKey = (field) => {
   const fieldKey = String(field?.key || field?.label || "").trim();
   const matchedAlias = Object.entries(REPORT_FIELD_ALIASES).find(([label, aliases]) =>
     [label, ...aliases].some((candidate) => normalizeLookup(candidate) === normalizeLookup(fieldKey))
   );
-  return matchedAlias ? normalizeLookup(matchedAlias[0]) : normalizeLookup(fieldKey);
+  return normalizeForDedup(matchedAlias ? matchedAlias[0] : fieldKey);
 };
 
 const uniqueReportFields = (fields) =>
@@ -300,6 +316,59 @@ const SPINNING_DIRECT_FIELD_KEY_BY_LABEL = {
   "Count of RHS Spindle": "rhs_spindle_count",
 };
 
+// Draw Frame's "A%" notebook stores its single-value fields inside a `meta` JSONB object (with
+// camelCase keys) and its 10-sample + 7-summary N-1/N/N+1 table inside a `rows` array (each shaped
+// { sampleNo, nMinus1, n, nPlus1 }), rather than as flat top-level row columns.
+// getDashboardFieldValue/getReportFieldValue above only ever check top-level row keys, so every A%
+// catalog field except the handful of real flat columns (Entry ID, PDF File) always resolved to
+// null/"-" here. Mirrors the same-purpose resolvers already in Custom Report
+// (frontend/src/views/reports/ReportsPage.jsx: reportFieldAliases's "A% (N-1)"/"A% (N+1)" entries
+// and parseAPercentFieldLabel/getAPercentTableValue).
+const A_PERCENT_META_FIELD_KEY_BY_LABEL = {
+  Report: "reportTitle",
+  "Test ID": "testId",
+  Machine: "machine",
+  "Count System": "countSystem",
+  "Length Unit": "lengthUnit",
+  Length: "length",
+  "Total Test": "totalTest",
+  "Standard A%": "standardAPercent",
+  "A% (N-1)": "aPercentNMinus1",
+  "A% (N+1)": "aPercentNPlus1",
+  Date: "date",
+  Tester: "tester",
+  Shift: "shift",
+  Process: "process",
+  Remark: "remark",
+};
+
+const A_PERCENT_SUMMARY_LABELS = ["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"];
+const A_PERCENT_ROW_COLUMN_KEYS = { "N-1": "nMinus1", N: "n", "N+1": "nPlus1" };
+
+const parseAPercentFieldLabel = (label) => {
+  const match = String(label || "").match(/^(.*)\s-\s(N-1|N\+1|N)$/);
+  if (!match) return null;
+  const rowLabel = match[1].trim();
+  const columnKey = A_PERCENT_ROW_COLUMN_KEYS[match[2]];
+  const sampleMatch = rowLabel.match(/^Sample\s+(\d+)$/i);
+  const sampleNo = sampleMatch ? sampleMatch[1] : A_PERCENT_SUMMARY_LABELS.includes(rowLabel) ? rowLabel : null;
+  return sampleNo ? { sampleNo, columnKey } : null;
+};
+
+const getAPercentRowsArray = (row) => {
+  const candidates = [row?.rows, row?.manual_json, row?.ocr_json];
+  return candidates.find((list) => Array.isArray(list) && list.length) || [];
+};
+
+const getAPercentTableValue = (row, fieldLabel) => {
+  const parsed = parseAPercentFieldLabel(fieldLabel);
+  if (!parsed) return undefined;
+  const match = getAPercentRowsArray(row).find(
+    (item) => normalizeLookup(item?.sampleNo) === normalizeLookup(parsed.sampleNo)
+  );
+  return match ? match[parsed.columnKey] : undefined;
+};
+
 // Any field recognized as "a date" by its label/key gets rendered through formatCellDate instead
 // of the raw ISO timestamp — mirrors DATE_FIELD_NORMALIZED_KEYS in Custom Report
 // (frontend/src/views/reports/ReportsPage.jsx) so both report pages show dates the same way.
@@ -345,6 +414,21 @@ const getCellValue = (row, field, context = {}) => {
     const directValue = row?.[SPINNING_DIRECT_FIELD_KEY_BY_LABEL[label]];
     return directValue !== null && typeof directValue !== "undefined" && String(directValue).trim() !== ""
       ? String(directValue)
+      : "-";
+  }
+
+  const isAPercentScreen = context.subDepartment === "Draw Frame" && context.reportType === "A%";
+
+  if (isAPercentScreen && A_PERCENT_META_FIELD_KEY_BY_LABEL[label]) {
+    const metaValue = row?.meta?.[A_PERCENT_META_FIELD_KEY_BY_LABEL[label]];
+    if (metaValue === null || typeof metaValue === "undefined" || String(metaValue).trim() === "") return "-";
+    return label === "Date" ? formatCellDate(metaValue) : String(metaValue);
+  }
+
+  if (isAPercentScreen && parseAPercentFieldLabel(label)) {
+    const tableValue = getAPercentTableValue(row, label);
+    return tableValue !== null && typeof tableValue !== "undefined" && String(tableValue).trim() !== ""
+      ? String(tableValue)
       : "-";
   }
 

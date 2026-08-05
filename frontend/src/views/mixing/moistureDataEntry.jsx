@@ -87,6 +87,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
     const buildPayload = () => ({
         entry_id:        entryId || undefined,
         inspection_date: date,
+        lot_no:          lotNo,
         party_lot_no:    formData.partyLotNo,
         variety:         formData.variety,
         party_name:      formData.partyName,

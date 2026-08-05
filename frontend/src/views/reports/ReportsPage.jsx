@@ -785,7 +785,15 @@ const flattenRecord = (record, { includeArrays = false, prefix = "" } = {}) => {
 };
 
 const getReportValueSources = (row) => {
-  const sources = [row, row?.data, row?.record, row?.details, row?.summary, row?.form, row?.payload];
+  // Draw Frame's "A%" (and Simplex's Stretch %/Comber's Comber Nolis %, which share the same
+  // PDF-OCR entry pipeline) store their single-value fields inside a `meta` JSONB object — e.g.
+  // Test ID, Machine, Standard A%, A% (N-1)/(N+1), Date, Tester, Shift, Process, Remark — rather
+  // than as flat top-level row columns. Every one of those already has a working alias in
+  // reportFieldAliases (e.g. "A% (N+1)": ["a_percent_n_plus_1"]), which normalizeLookupKey matches
+  // fine against `meta`'s actual camelCase keys (aPercentNPlus1 -> "apercentnplus1", same as the
+  // alias) — but only once `meta` is actually searched. It never was, so these fields always fell
+  // through to null even though the alias itself was correct.
+  const sources = [row, row?.data, row?.record, row?.details, row?.summary, row?.form, row?.payload, row?.meta];
   return sources.filter(isRecordObject);
 };
 
@@ -1664,6 +1672,7 @@ const OPENNESS_ENTRY_METRIC_KEYS = [
 ];
 // Labels copied verbatim from the notebook's own field labels (opennessDataEntry.jsx).
 const OPENNESS_ENTRY_METRIC_LABELS = {
+  stage_no: "Stage No.",
   machine_name: "Machine Name",
   beater_type: "Beater Type",
   beater_speed_rpm: "Beater Speed (RPM)",
@@ -1687,6 +1696,10 @@ const normalizeOpennessRows = (response) =>
 
     const entryColumns = { no_of_entries_entered: entries.length };
     const perEntryAverageVolumes = [];
+    // Openness % is a per-stage value on the form (middle stages only — the first and last
+    // stage never show one, same rule as opennessDataEntry.jsx), not a per-entry one, so it's
+    // kept out of the numbered "Entry N" columns and surfaced as "Stage N Openness %" instead.
+    const stageOpenness = new Map();
     entries.forEach((entry, index) => {
       const n = entry?.entry_no ?? index + 1;
       // "Average Volume (V)" is computed by the notebook's own preview from volume_1/volume_2 —
@@ -1701,6 +1714,16 @@ const normalizeOpennessRows = (response) =>
         entryColumns[`openness_entry_${n}_${metric}`] =
           metric === "average_volume" ? averageVolume : (entry?.[metric] ?? null);
       });
+
+      const stageNo = entry?.stage_no;
+      if (stageNo !== null && typeof stageNo !== "undefined" && !stageOpenness.has(stageNo)) {
+        stageOpenness.set(stageNo, entry?.openness_percentage ?? null);
+      }
+    });
+
+    const stageColumns = {};
+    [...stageOpenness.keys()].sort((a, b) => a - b).forEach((stageNo) => {
+      stageColumns[`openness_stage_${stageNo}_percentage`] = stageOpenness.get(stageNo);
     });
 
     // "Avg. Weight (M)"/"Avg. Volume (V)" have no backing column anywhere in the GET response
@@ -1716,6 +1739,7 @@ const normalizeOpennessRows = (response) =>
     return {
       ...inspection,
       ...entryColumns,
+      ...stageColumns,
       ...overall,
       avg_weight: avgWeight,
       avg_volume: avgVolume,
@@ -1845,6 +1869,31 @@ const getRowDate = (row) =>
   row?.date ||
   row?.created_at ||
   row?.generated_at;
+
+// Draw Frame's "A%" notebook's own single-value fields (as opposed to the sample/summary table
+// below) live in `row.meta` with camelCase keys. The generic alias + fuzzy-match fallback
+// (reportFieldAliases + findValueByNormalizedKey) should resolve these already, but "A% (N+1)" was
+// observed staying blank on rows where its sibling "A% (N-1)" resolved fine — same alias pattern,
+// same meta lookup, no code path treats them differently, yet only one failed in practice. Rather
+// than keep chasing a fuzzy-matching edge case, resolve these fields directly and deterministically
+// against their known meta key instead of relying on normalization/substring matching at all.
+const A_PERCENT_META_FIELD_KEY_BY_LABEL = {
+  Report: "reportTitle",
+  "Test ID": "testId",
+  Machine: "machine",
+  "Count System": "countSystem",
+  "Length Unit": "lengthUnit",
+  Length: "length",
+  "Total Test": "totalTest",
+  "Standard A%": "standardAPercent",
+  "A% (N-1)": "aPercentNMinus1",
+  "A% (N+1)": "aPercentNPlus1",
+  Date: "date",
+  Tester: "tester",
+  Shift: "shift",
+  Process: "process",
+  Remark: "remark",
+};
 
 // Draw Frame's "A%" notebook stores 10 sample rows + 7 named summary rows in a single flat
 // array (each shaped { sampleNo, nMinus1, n, nPlus1 }), rather than as top-level fields. Custom
@@ -2069,7 +2118,10 @@ const ROW_OPERATOR_NAME_CANDIDATES = ["operator_name", "operatorname", "operator
 
 // Any raw/catalog field that is really just the operator's name under a different label (per-form
 // column names) gets collapsed into the single canonical "Operator" field below, instead of also
-// showing up as its own separate selectable field (e.g. "Operator Name", "Sider Name", "Submitted By").
+// showing up as its own separate selectable field (e.g. "Operator Name", "Submitted By"). Simplex's
+// "SMX Breaks Study Report" is the one exception — its "Sider Name" (the sider who ran the study,
+// stored in `sider_name`) is kept as its own distinct field per user request, not merged into
+// "Operator" (which still separately reflects who submitted the entry).
 const OPERATOR_LIKE_FIELD_KEYS = new Set(
   [
     "operator",
@@ -2077,8 +2129,6 @@ const OPERATOR_LIKE_FIELD_KEYS = new Set(
     "operatorname",
     "s_name",
     "sname",
-    "sider_name",
-    "sidername",
     "submitted_by",
     "submittedby",
     "submitted_by_name",
@@ -2584,12 +2634,28 @@ const reportFieldAliases = {
   "Parent Yarn Strength": ["parent_yarn"],
 };
 
+// normalizeLookupKey strips "+" and "-" identically (both are just "non-alphanumeric noise" to
+// it), so "A% (N-1)"/"A% (N+1)" and "Sample 1 - N-1"/"Sample 1 - N+1" all collapse to the same
+// string ("an1"/"sample1n1") once normalized. Every dedup/matched-catalog-fields check below keys
+// off this function, so it was silently treating every real "N+1" field as a duplicate of its
+// "N-1" sibling and dropping it from the Available Fields list entirely (Draw Frame's "A%"
+// notebook — one meta field plus 34 sample/summary columns — never even appeared as pickable).
+// Keep normalizeLookupKey's loose alias-matching behavior as-is for everything else, but make the
+// final canonical key preserve +/- so these two genuinely different fields no longer collide.
+const normalizeForDedupKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\+/g, "plus")
+    .replace(/-/g, "minus")
+    .replace(/[^a-z0-9]+/g, "");
+
 const getCanonicalReportFieldKey = (field) => {
   const fieldKey = String(field?.key || field?.label || "").trim();
   const matchedAlias = Object.entries(reportFieldAliases).find(([label, aliases]) =>
-    [label, ...aliases].some((candidate) => normalizeLookupKey(candidate) === normalizeLookupKey(fieldKey))
+    [label, ...aliases].some((candidate) => normalizeCanonicalFieldKey(candidate) === normalizeCanonicalFieldKey(fieldKey))
   );
-  return matchedAlias ? normalizeLookupKey(matchedAlias[0]) : normalizeLookupKey(fieldKey);
+  return normalizeForDedupKey(matchedAlias ? matchedAlias[0] : fieldKey);
 };
 
 const getReportFieldValue = (row, field) => {
@@ -3164,6 +3230,19 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
       : "-";
   }
 
+  // Same reasoning as the openness_entry_ guard above — Openness's per-stage columns
+  // (`openness_stage_<N>_percentage`) only exist on a row up to however many stages that
+  // submission generated, and are null by design for the first/last stage. Without this guard,
+  // a missing/null key fell through to getReportFieldValue's fuzzy whole-row fallback, which
+  // substring-matched onto unrelated numeric fields (stage_no, no_of_entries, IDs) instead of
+  // showing a blank cell.
+  if (field.key.startsWith("openness_stage_")) {
+    const opennessStageValue = row?.[field.key];
+    return opennessStageValue !== null && typeof opennessStageValue !== "undefined" && String(opennessStageValue).trim() !== ""
+      ? String(opennessStageValue)
+      : "-";
+  }
+
   // Same reasoning as the openness_entry_ guard above — Mixing's Process Parameter per-blend
   // columns (`blend_<N>_<metric>`) only exist on a row up to however many blends that submission
   // actually had.
@@ -3588,13 +3667,27 @@ function ReportsPage() {
     // request — both are a fixed/constant value on these screens, not something the operator
     // actually chose, so neither is useful in Custom Report). Ring Frame Log Book additionally
     // drops "Entry Date" (also per user request), since "Created At" already surfaces the real
-    // submission date/time.
+    // submission date/time. Simplex's "SMX Breaks Study Report" additionally drops "Break
+    // Category" (a phantom field with no real backing data) — "Sider Name" is a real DB field
+    // (the employee who ran the study) and is kept, now listed directly in fieldCatalog.js.
     const screenExcludedReportFields =
-      (subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)) ||
-      subDepartment === "Simplex"
+      subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)
         ? globallyExcludedReportFields
-        : subDepartment === "Draw Frame"
-          ? [...globallyExcludedReportFields, "Creation Date"]
+        : subDepartment === "Simplex"
+          ? [
+              ...globallyExcludedReportFields,
+              ...(reportType === "SMX Breaks Study Report" ? ["Break Category"] : []),
+            ]
+          : subDepartment === "Draw Frame"
+          ? [
+              // A%'s own "Date" (the test date noted on the OCR'd report, stored in `meta.date`) is
+              // a genuine, independently meaningful field — unlike the rest of Draw Frame, where
+              // "Date" duplicated "Created At" and was hidden for that reason. Keep it visible here.
+              ...(reportType === "A%"
+                ? globallyExcludedReportFields.filter((label) => label !== "Date")
+                : globallyExcludedReportFields),
+              "Creation Date",
+            ]
           : subDepartment === "Spinning"
             ? [
                 ...globallyExcludedReportFields.filter((label) => label !== "Date"),
@@ -4139,9 +4232,27 @@ function ReportsPage() {
         label: `Entry ${n} - ${OPENNESS_ENTRY_METRIC_LABELS[metric]}`,
       }));
     }).flat();
-    const withOpennessColumns = opennessEntryFields.length
+    const withOpennessEntryColumns = opennessEntryFields.length
       ? [...withSpliceStrengthColumns, ...opennessEntryFields]
       : withSpliceStrengthColumns;
+    // Openness % is per-stage, not per-entry (see normalizeOpennessRows) — its own numbered
+    // column set, keyed by stage_no rather than entry_no.
+    const opennessStageCount = isMixingOpennessReport
+      ? rows.reduce((max, row) => {
+          let count = 0;
+          while (Object.prototype.hasOwnProperty.call(row || {}, `openness_stage_${count + 1}_percentage`)) {
+            count += 1;
+          }
+          return Math.max(max, count);
+        }, 0)
+      : 0;
+    const opennessStageFields = Array.from({ length: opennessStageCount }, (_, index) => {
+      const n = index + 1;
+      return [{ key: `openness_stage_${n}_percentage`, label: `Stage ${n} - Openness %` }];
+    }).flat();
+    const withOpennessColumns = opennessStageFields.length
+      ? [...withOpennessEntryColumns, ...opennessStageFields]
+      : withOpennessEntryColumns;
     // Mixing's Process Parameter rows carry however many "blend" rows the user added, same
     // reasoning as Openness above.
     const isMixingProcessParameterReport = subDepartment === "Mixing" && reportType === "Process Parameter";

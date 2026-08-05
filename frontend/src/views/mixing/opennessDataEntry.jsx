@@ -273,8 +273,9 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
     br_line: brLine || "",
     actual_specific_volume_target: Number(target),
     no_of_entries: Number(form.entries),
-    entries: stages.flatMap((stage) =>
+    entries: stages.flatMap((stage, stageIndex) =>
       stage.rows.map((row) => ({
+        stage_no: stageIndex + 1,
         machine_name: stage.stageName,
         beater_type: stage.beaterType,
         beater_speed_rpm: Number(stage.beaterSpeed) || 0,
@@ -284,6 +285,7 @@ const OpennessDataEntry = forwardRef(function OpennessDataEntry(
         average_volume: Number(row.avgVol),
         apparent_specific_volume: Number(row.asv),
         actual_op_value: Number(row.aov),
+        openness_percentage: stage.openness === "" ? null : Number(stage.openness),
       }))
     ),
     user_name: user?.name || user?.full_name || user?.user_name || user?.username || "",

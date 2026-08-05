@@ -176,7 +176,7 @@ See [§7](#7-entry-id-generation) for id minting and [§6.4](#64-process-paramet
 | `dashboard.js` (2,073 lines) | `/dashboard`, `/api/dashboard`, `/api/dashboard-settings`, `/dashbuilder`, `/builder`, `/statistics-analytics` | User-customizable dashboard/widget builder, saved dashboard pages, statistics & analytics views |
 | `analysis.routes.js` (1,296 lines) | `/analysis`, `/api/analysis`, `/ticket-analysis` | Ticket-centric performance analytics (on-time rate, TAT compliance) per L1/L2, ranking/leaderboard, snapshots |
 | `activityLogs.routes.js` | `/activity-logs`, `/api/activity-logs` | Audit log query API (populated automatically by the global middleware in §3 step 10) |
-| `inAppNotifications.routes.js` | `/in-app-notifications`, `/notifications` | Notification inbox (read side of `utils/notifications.js`) |
+| `inAppNotifications.routes.js` | `/in-app-notifications`, `/notifications` | Notification inbox (read side of `utils/notifications.js`); `DELETE /clear-all` bulk-deletes a user's ticket and analysis notifications |
 | `helpContent.routes.js` | `/help`, `/glossary`, `/faqs`, `/user-guide` | Glossary/FAQ/User Guide CMS, writes gated by local `requireEditor` |
 
 ### 5.5 OCR integration
@@ -253,8 +253,8 @@ Every transition is written to `ticketing_system.ticket_logs` (immutable audit t
 
 - **PP batch completion** — `runPpBatchCompletionCheck()` (submittedNotebooks.routes.js) opens one ticket per missing department notebook for an incomplete PP-####  batch.
 - **Submission frequency** — `runSubmissionFrequencyCheck()` / `runSubmissionFrequencyTatCheck()` (operatorTickets.routes.js) detect and escalate missed required-submission-count violations per screen.
-- **Notebook acknowledgement** — `generateOverdueNotebookTickets()` (submittedNotebooks.routes.js) raises/escalates tickets when a submitted notebook isn't acknowledged within its configured SLA.
-- **Wheel-change approval** — `createWheelChangeApprovalTicket()`/`runWheelChangeApprovalTatCheck()` (spinning.js, reused by carding.js) — see §6.5.
+- **Notebook acknowledgement** — `generateOverdueNotebookTickets()` (submittedNotebooks.routes.js) raises/escalates tickets when a submitted notebook isn't acknowledged within its configured SLA. Acknowledgement authority is **L4/L5** (`canApproveSubmission()`); the resolved L4 approver id(s) are written into the legacy `l2_approver_user_ids` column to avoid a schema migration. Viewing the submitted-notebooks list is open to the whole L1–L5 hierarchy (`hasHierarchyLevel()`), while acknowledging remains L4/L5-only — enforced on both the frontend (`isSubmittedNotebookViewerUser` vs. `isSubmittedNotebookApproverUser` in `frontend/src/utils/accessControl.js`) and backend so a direct API call can't bypass the UI gate.
+- **Wheel-change approval** — `createWheelChangeApprovalTicket()`/`runWheelChangeApprovalTatCheck()` (spinning.js, reused by carding.js) — see §6.5. Frontend classifies these as `ticket_kind: 'wheel_change'` (`TICKET_KIND.WHEEL_CHANGE` in `frontend/src/utils/ticketTransformer.js`), recognized via an explicit `ticket_type`/`ticket_kind` stamp of `WHEEL_CHANGE_APPROVAL` so older rows lacking `ticket_kind` are still classified correctly.
 
 ### 6.5 Process Parameter (PP) batches and Wheel Change
 
@@ -336,23 +336,7 @@ Grouped by concern (see `.env.example` for the authoritative list):
 
 ---
 
-## 11. Known Gaps & Technical Debt (observed in code)
-
-These are documented here because they're either explicitly flagged in code comments or discoverable from structural inspection — useful context before making changes in these areas:
-
-- **`routes/autoTicketHelper.js`** duplicates `operatorTickets.routes.js`'s automatic ticket-generation logic but is never `require()`'d anywhere — dead code, candidate for removal or reconciliation.
-- **No formal migration framework** — schema evolves via an idempotent bootstrap block in `connection.js` plus timestamped one-off `.sql` files in `scripts/`, run manually. See `DATABASE_SCHEMA.md` §3.
-- **`phoneVerification.js`** and **`login.js`'s forgot-password/OTP flow** are dev-only stubs (static OTP `"123456"`, no real SMS/production email dispatch) — not production-ready as-is, unlike the real `emailVerification.js` flow.
-- **Three independent id-generation schemes** (§7) increase the risk of a new screen being wired into the wrong one, or into none.
-- **Heavy alias sprawl** — many endpoints (especially dropdown/master-data lookups in the department files and `dashboard.js`'s `/builder` vs `/dashbuilder`) are duplicated across several URL prefixes for frontend-version compatibility; this inflates route counts without adding functional breadth and is a maintenance burden if the underlying logic ever needs to change (must be updated in every alias).
-- **Multiple parallel "catalog of what screens/notebooks exist"**: `rbac.screens`, `analysis.routes.js`'s hardcoded `SUB_DEPARTMENT_SCREEN_KEYS`, and `notebookCustomFields.routes.js`'s `NOTEBOOK_TABLE_MAP` all independently enumerate the same set of department screens — they can drift out of sync with each other and with the actual route files.
-- **`drawframe.finisher_drawing_inspection`** is a stale table no longer written to (superseded by `drawframe.drawframe_qc_header` filtered by `entry_scope`) but may still exist in the schema — see `processParameters.js`'s `PP_DEPARTMENTS` comment.
-- **RBAC's fine-grained permission tables** (`rbac.permissions`, `rbac.role_permissions`) are present in the schema but unused (0 rows, not referenced by any route's authorization check) — the department/screen visibility model is what's actually enforced today.
-- **`backend/ocr-microservice`** is a separate, standalone Python service in the repo tree that does not appear to be actively called by `ocrMachine.routes.js` (which instead spawns `ocr_service/run_ocr_pipeline.py` directly) — confirm intended status (deprecated vs. planned integration) before relying on it.
-
----
-
-## 12. Related Documentation
+## 11. Related Documentation
 
 - [`DATABASE_SCHEMA.md`](./DATABASE_SCHEMA.md) — full database schema reference (this backend's companion doc)
 - [`ticket-workflow.md`](./ticket-workflow.md) — step-by-step ticket workflow with request/response payload examples

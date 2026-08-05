@@ -914,10 +914,12 @@ router.get('/sync', async (req, res, next) => {
     await ensureSyncStatsView();
 
     const result = await client.query(`
-      SELECT s.*, st.*
+      SELECT s.*, st.*, t.total_run_time, t.total_idle_time, t.total_sub_total_time, t.total_sync_percentage
       FROM blowroom.blow_room_sync s
       LEFT JOIN blowroom.sync_stats st
       ON s.id = st.sync_id
+      LEFT JOIN blowroom.blow_room_sync_totals t
+      ON s.id = t.sync_id
       ORDER BY s.inspection_date DESC
     `);
 
@@ -1218,6 +1220,7 @@ router.post('/br-waste-study', async (req, res, next) => {
       study_type,
       carding_production_kg,
       type_entries,
+      waste_type_entries,
       type_rows,
       waste_rows,
       waste_type,
@@ -1256,12 +1259,12 @@ router.post('/br-waste-study', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO blowroom.br_waste_study (
         entry_id, waste_study_id, date, variety, entry_type, study_type,
-        carding_production_kg, type_entries,
+        carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
@@ -1272,6 +1275,7 @@ router.post('/br-waste-study', async (req, res, next) => {
         type || null,
         study_type,
         productionValue, Array.isArray(type_entries) ? type_entries.length : toNumberOrNull(type_entries),
+        Array.isArray(waste_type_entries) ? waste_type_entries.length : toNumberOrNull(waste_type_entries),
         waste_type, wasteKgValue, wastePercentValue, overallPercentValue,
         remarks
       ]
