@@ -1666,9 +1666,12 @@ const normalizeCardingDfkRows = (response) => {
 // Report convention this session — Count Change, Splice Strength, Rewinding Study, etc.) and
 // expose each entry's own fields as numbered columns, so a submission with 5 entries offers
 // "Entry 1".."Entry 5" and one with 6 offers "Entry 1".."Entry 6".
+// Openness % is per-stage, not per-entry (see stageColumns below), so it's deliberately left
+// out of this per-entry key list — a "openness_entry_N_openness_percent" column would just
+// repeat the same stage value across every one of that stage's rows.
 const OPENNESS_ENTRY_METRIC_KEYS = [
-  "machine_name", "beater_type", "beater_speed_rpm", "weight", "volume_1", "volume_2",
-  "average_volume", "apparent_specific_volume", "actual_op_value", "openness_percent",
+  "stage_no", "machine_name", "beater_type", "beater_speed_rpm", "weight", "volume_1", "volume_2",
+  "average_volume", "apparent_specific_volume", "actual_op_value",
 ];
 // Labels copied verbatim from the notebook's own field labels (opennessDataEntry.jsx).
 const OPENNESS_ENTRY_METRIC_LABELS = {
@@ -1682,7 +1685,6 @@ const OPENNESS_ENTRY_METRIC_LABELS = {
   average_volume: "Average Volume (V)",
   apparent_specific_volume: "Apparent Specific Vol (A=V/M)",
   actual_op_value: "Actual Op. Value (AOV)",
-  openness_percent: "Openness %",
 };
 
 const normalizeOpennessRows = (response) =>
@@ -2265,10 +2267,10 @@ const reportFieldAliases = {
   // generic fuzzy fallback to bridge them.
   "Average of Apparent Specific Vol (A=V/M)": ["avg_apparent_specific_volume"],
   "Average of Actual Op. Value (AOV)": ["avg_actual_op_value"],
-  // "Openness %"/"Overall Openness Efficiency (%)" are per-submission (not per-entry) fields, but
-  // they land as "openness_entry_N_openness_percent" once numbered (each entry in a stage carries
-  // that stage's value) and "overall_openness_percent" respectively — neither shares enough of a
-  // substring with the catalog label for the generic fuzzy fallback to bridge them.
+  // "Openness %" is per-stage (see stageColumns in normalizeOpennessRows — "openness_stage_N_
+  // percentage" columns), so there's no single field to alias it to. "Overall Openness Efficiency
+  // (%)" is per-submission and lands as "overall_openness_percent" — doesn't share enough of a
+  // substring with the catalog label for the generic fuzzy fallback to bridge it.
   "Overall Openness Efficiency (%)": ["overall_openness_percent"],
   // Individual Card Performance Data (trials.trials) — several catalog labels use business
   // notation (±, %, "I" for a column actually named "l"/"1") that don't share enough of a
@@ -3683,7 +3685,9 @@ function ReportsPage() {
               // A%'s own "Date" (the test date noted on the OCR'd report, stored in `meta.date`) is
               // a genuine, independently meaningful field — unlike the rest of Draw Frame, where
               // "Date" duplicated "Created At" and was hidden for that reason. Keep it visible here.
-              ...(reportType === "A%"
+              // Same reasoning for all 7 Wheel Change sub-types — their "Date" is the operator's own
+              // entry_date (a real form field), not a duplicate of Created At.
+              ...(reportType === "A%" || PARAMETERS_ARRAY_WHEEL_CHANGE_REPORT_TYPES["Draw Frame"].has(reportType)
                 ? globallyExcludedReportFields.filter((label) => label !== "Date")
                 : globallyExcludedReportFields),
               "Creation Date",
