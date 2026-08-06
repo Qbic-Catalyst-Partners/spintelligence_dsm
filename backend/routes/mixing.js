@@ -1764,14 +1764,18 @@ router.get('/afis', async (req, res, next) => {
 // screens have been failing outright with "API not found" on every submission and every Custom
 // Report fetch, even though their backing tables (mixing.afis6_cotton_data_entry/
 // afis6_mmf_data_entry) already exist with the right columns (including entry_id and operator).
+
+const AFIS6_COTTON_NUMERIC_FIELDS = [
+  'scp_nep_count', 'l_w_mm', 'l_w_cv', 'sfc_w_percent', 'uql_w_mm',
+  'l_n_mm', 'l_n_cv_percent', 'sfc_n_percent', 'five_pct_l_n_mm'
+];
+
 router.post('/afis6-cotton', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
       entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
       blow_room, carding, breaker_drawing, finisher_drawing, comber,
-      scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
-      l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
       user_name
     } = req.body;
 
@@ -1782,6 +1786,34 @@ router.post('/afis6-cotton', async (req, res, next) => {
       return res.status(400).json({ message: 'inspection_date is required' });
     }
 
+    // A blank numeric input arrives as "" — Postgres rejects that for a `numeric` column
+    // ("invalid input syntax for type numeric: \"\"") and fails the whole save as an opaque
+    // 500. normalizeNumericFields coerces blank/missing values to null and reports anything
+    // genuinely non-numeric as a 400 instead.
+    const { normalized: numericValues, errors: numericErrors } = normalizeNumericFields(
+      req.body,
+      AFIS6_COTTON_NUMERIC_FIELDS
+    );
+    if (numericErrors.length) {
+      return res.status(400).json({
+        message: 'AFIS-6 Cotton numeric fields must contain valid numbers',
+        errors: numericErrors
+      });
+    }
+
+    const afis6CottonValues = [
+      // Invoice Date is an optional field on the form — left blank it arrives as "", which
+      // Postgres rejects for a `date` column ("invalid input syntax for type date: \"\"")
+      // and used to fail the whole save as an opaque 500 ("Internal Server Error"). toDateOnly
+      // normalizes both fields' blank/invalid input to null instead.
+      entry_id, toDateOnly(inspection_date), lot_no, variety, toDateOnly(invoice_date), mc_name,
+      blow_room, carding, breaker_drawing, finisher_drawing, comber,
+      numericValues.scp_nep_count, numericValues.l_w_mm, numericValues.l_w_cv,
+      numericValues.sfc_w_percent, numericValues.uql_w_mm,
+      numericValues.l_n_mm, numericValues.l_n_cv_percent, numericValues.sfc_n_percent,
+      numericValues.five_pct_l_n_mm, user_name || null
+    ];
+
     const result = await client.query(
       `INSERT INTO mixing.afis6_cotton_data_entry (
         entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
@@ -1791,16 +1823,7 @@ router.post('/afis6-cotton', async (req, res, next) => {
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
-      [
-        // Invoice Date is an optional field on the form — left blank it arrives as "", which
-        // Postgres rejects for a `date` column ("invalid input syntax for type date: \"\"")
-        // and used to fail the whole save as an opaque 500 ("Internal Server Error"). toDateOnly
-        // normalizes both fields' blank/invalid input to null instead.
-        entry_id, toDateOnly(inspection_date), lot_no, variety, toDateOnly(invoice_date), mc_name,
-        blow_room, carding, breaker_drawing, finisher_drawing, comber,
-        scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
-        l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm, user_name || null
-      ]
+      afis6CottonValues
     );
 
     res.status(201).json({
@@ -1840,6 +1863,16 @@ router.get('/afis6-cotton', async (req, res, next) => {
   }
 });
 
+const AFIS6_MMF_NUMERIC_FIELDS = [
+  'total_nep_count_g', 'total_nep_mean_size_um', 'fiber_nep_count_g', 'fiber_nep_mean_size_um',
+  'sc_nep_count_g', 'sc_nep_mean_size_um', 'l_w_mm', 'l_w_cv', 'sfc_w_percent', 'uql_w_mm',
+  'l_n_mm', 'l_n_cv_percent', 'sfc_n_percent', 'five_pct_l_n_mm', 'fitness_index',
+  'maturity_ratio_mat1', 'ifc_percent', 'fifty_pct_l_n_mm', 'cut_length_n_mm',
+  'cut_length_l_n_cv_percent', 'cut_length_sfc_w_percent', 'fineness_den', 'fineness_cv_percent',
+  'long_fiber_gt_46_80_percent', 'long_fiber_count_gt_46_80',
+  'long_fiber_gt_45_60_percent', 'long_fiber_count_gt_45_60'
+];
+
 router.post('/afis6-mmf', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
@@ -1847,24 +1880,46 @@ router.post('/afis6-mmf', async (req, res, next) => {
       entry_id, inspection_date, machine_name, material_class, comment,
       lot_no, variety, invoice_date, mc_name, blow_room, carding,
       breaker_drawing, finisher_drawing, comber,
-      total_nep_count_g, total_nep_mean_size_um,
-      fiber_nep_count_g, fiber_nep_mean_size_um,
-      sc_nep_count_g, sc_nep_mean_size_um,
-      l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm, l_n_mm,
-      l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
-      fitness_index, maturity_ratio_mat1, ifc_percent, fifty_pct_l_n_mm,
-      cut_length_n_mm, cut_length_l_n_cv_percent, cut_length_sfc_w_percent,
-      fineness_den, fineness_cv_percent,
-      // Live form still labels/keys these as "45.60mm" while the DB column (and the newer
-      // AFIS-6 MMF screen component) use "46.80mm" — same field, historical naming mismatch.
-      long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80,
-      long_fiber_gt_45_60_percent, long_fiber_count_gt_45_60,
       user_name
     } = req.body;
 
     if (!entry_id) {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
+
+    // A blank numeric input arrives as "" — Postgres rejects that for a `numeric` column
+    // ("invalid input syntax for type numeric: \"\"") and fails the whole save as an opaque
+    // 500. normalizeNumericFields coerces blank/missing values to null and reports anything
+    // genuinely non-numeric as a 400 instead.
+    const { normalized: n, errors: numericErrors } = normalizeNumericFields(
+      req.body,
+      AFIS6_MMF_NUMERIC_FIELDS
+    );
+    if (numericErrors.length) {
+      return res.status(400).json({
+        message: 'AFIS-6 MMF numeric fields must contain valid numbers',
+        errors: numericErrors
+      });
+    }
+
+    const afis6MmfValues = [
+      entry_id, toDateOnly(inspection_date), machine_name, material_class || null, comment || null,
+      lot_no || null, variety || null, toDateOnly(invoice_date), mc_name || null, blow_room || null, carding || null,
+      breaker_drawing || null, finisher_drawing || null, comber || null,
+      n.total_nep_count_g, n.total_nep_mean_size_um,
+      n.fiber_nep_count_g, n.fiber_nep_mean_size_um,
+      n.sc_nep_count_g, n.sc_nep_mean_size_um,
+      n.l_w_mm, n.l_w_cv, n.sfc_w_percent, n.uql_w_mm, n.l_n_mm,
+      n.l_n_cv_percent, n.sfc_n_percent, n.five_pct_l_n_mm,
+      n.fitness_index, n.maturity_ratio_mat1, n.ifc_percent, n.fifty_pct_l_n_mm,
+      n.cut_length_n_mm, n.cut_length_l_n_cv_percent, n.cut_length_sfc_w_percent,
+      n.fineness_den, n.fineness_cv_percent,
+      // Live form still labels/keys these as "45.60mm" while the DB column (and the newer
+      // AFIS-6 MMF screen component) use "46.80mm" — same field, historical naming mismatch.
+      n.long_fiber_gt_46_80_percent ?? n.long_fiber_gt_45_60_percent,
+      n.long_fiber_count_gt_46_80 ?? n.long_fiber_count_gt_45_60,
+      user_name || null
+    ];
 
     const result = await client.query(
       `INSERT INTO mixing.afis6_mmf_data_entry (
@@ -1886,22 +1941,7 @@ router.post('/afis6-mmf', async (req, res, next) => {
         $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
       )
       RETURNING *`,
-      [
-        entry_id, toDateOnly(inspection_date), machine_name, material_class || null, comment || null,
-        lot_no || null, variety || null, toDateOnly(invoice_date), mc_name || null, blow_room || null, carding || null,
-        breaker_drawing || null, finisher_drawing || null, comber || null,
-        total_nep_count_g, total_nep_mean_size_um,
-        fiber_nep_count_g, fiber_nep_mean_size_um,
-        sc_nep_count_g, sc_nep_mean_size_um,
-        l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm, l_n_mm,
-        l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
-        fitness_index, maturity_ratio_mat1, ifc_percent, fifty_pct_l_n_mm,
-        cut_length_n_mm, cut_length_l_n_cv_percent, cut_length_sfc_w_percent,
-        fineness_den, fineness_cv_percent,
-        long_fiber_gt_46_80_percent ?? long_fiber_gt_45_60_percent,
-        long_fiber_count_gt_46_80 ?? long_fiber_count_gt_45_60,
-        user_name || null
-      ]
+      afis6MmfValues
     );
 
     res.status(201).json({
