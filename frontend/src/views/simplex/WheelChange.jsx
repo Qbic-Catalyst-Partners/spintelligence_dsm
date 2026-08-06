@@ -13,8 +13,6 @@ import {
 } from "@/apis/simplex";
 import { saveNotebookCustomFieldValuesApi } from "@/apis/notebookCustomFieldsApi";
 
-const today = new Date().toISOString().split("T")[0];
-
 // Simplex only has one wheel change field set — there is no Wheel Change Type
 // selector on this screen.
 const PARAMETER_ROWS = [
@@ -89,7 +87,6 @@ const extractSequence = (value) => {
 };
 
 const mapApiEntryToVersion = (entry) => {
-  const normalizedDate = String(entry?.entry_date || "").split("T")[0];
   const paramRows = Array.isArray(entry?.parameters)
     ? entry.parameters
     : Array.isArray(entry?.rows)
@@ -103,10 +100,9 @@ const mapApiEntryToVersion = (entry) => {
 
   return {
     id: String(entry?.entry_id ?? entry?.id ?? Date.now()),
-    label: normalizedDate,
+    label: String(entry?.entry_id || ""),
     data: {
       entryId: String(entry?.entry_id || ""),
-      date: normalizedDate || today,
       smxNo: String(entry?.sap_no || ""),
       smxNoProposed: String(entry?.proposed_sap_no || ""),
       mixing: String(mixingRow?.existing || mixingRow?.proposed || ""),
@@ -127,8 +123,6 @@ const getRecordTimestamp = (record) => {
     record?.createdTime ??
     record?.created_on ??
     record?.createdOn ??
-    record?.entry_date ??
-    record?.date ??
     record?.updated_at ??
     record?.updatedAt ??
     Object.entries(record || {}).find(([key, value]) => {
@@ -271,7 +265,6 @@ const SIMPLEX_WHEEL_CHANGE_SELECT_OPTIONS = {
 const createInitialForm = () => ({
   type: "Wheel Change",
   entryId: "",
-  date: today,
   smxNo: "",
   smxNoProposed: "",
   remarks: "",
@@ -531,7 +524,6 @@ const WheelChange = forwardRef(function WheelChange(
     setForm((current) => ({
       ...current,
       entryId: String(referenceEntry.entry_id || referenceEntry.entryId || entryId || current.entryId || ""),
-      date: String(referenceEntry.entry_date || referenceEntry.date || current.date || today).slice(0, 10),
       // Existing carries forward from the last entry's Proposed value (same
       // carry-forward pattern the parameter rows already use), so the
       // operator only has to type a new Proposed SMX No. each time.
@@ -614,7 +606,6 @@ const WheelChange = forwardRef(function WheelChange(
     setForm((current) => ({
       ...current,
       entryId: String(referenceEntry.entry_id || referenceEntry.entryId || entryId || current.entryId || ""),
-      date: String(referenceEntry.entry_date || referenceEntry.date || current.date || today).slice(0, 10),
       smxNo: String(
         referenceEntry.proposed_sap_no ||
           referenceEntry.proposedSapNo ||
@@ -711,7 +702,6 @@ const WheelChange = forwardRef(function WheelChange(
       : []),
     { label: "Type", value: selectedTypeName || "-" },
     { label: "Entry ID", value: entryId || "-" },
-    { label: "Date", value: form.date || "-" },
     { label: "SMX No.", value: form.smxNo || "-" },
     { label: "SMX No. (Proposed)", value: form.smxNoProposed || "-" },
     ...PARAMETER_ROWS.map((row) => ({
@@ -739,7 +729,6 @@ const WheelChange = forwardRef(function WheelChange(
       approval_status: "pending",
       operator: operatorName,
       machine_no: form.smxNo,
-      entry_date: form.date,
       sap_no: form.smxNo,
       proposed_sap_no: form.smxNoProposed,
       // Only send the two fields the backend actually processes/carries
@@ -823,7 +812,6 @@ const WheelChange = forwardRef(function WheelChange(
     setForm((current) => ({
       ...current,
       entryId: version.data.entryId,
-      date: version.data.date,
       smxNo: version.data.smxNo,
       smxNoProposed: version.data.smxNoProposed,
     }));
@@ -1012,16 +1000,6 @@ const WheelChange = forwardRef(function WheelChange(
           </div>
 
           <div className="flex min-w-0 flex-col gap-2">
-            <label className="text-[14px] font-semibold text-slate-700">Date</label>
-            <input
-              type="text"
-              className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
-              value={form.date.split("-").reverse().join("/")}
-              readOnly
-            />
-          </div>
-
-          <div className="flex min-w-0 flex-col gap-2">
             <label className="text-[14px] font-semibold text-slate-700">SMX No.</label>
             <SearchableSelect
               className="w-full h-[42px] rounded-[10px] border border-slate-200 bg-[#F1F5F9] px-3 text-[14px] text-slate-700"
@@ -1097,7 +1075,7 @@ const WheelChange = forwardRef(function WheelChange(
               return (
                 <div key={version.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                   <div
-                    className={`grid w-full grid-cols-1 gap-3 px-4 py-3 transition-colors md:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] ${
+                    className={`grid w-full grid-cols-1 gap-3 px-4 py-3 transition-colors md:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_auto] ${
                       isActive ? "bg-[#f8fbff]" : "bg-white hover:bg-slate-50"
                     }`}
                   >
@@ -1108,14 +1086,6 @@ const WheelChange = forwardRef(function WheelChange(
                     >
                       <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">Entry ID</div>
                       <div className="mt-1 text-[13px] font-bold text-slate-900">{version.data.entryId || "-"}</div>
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left"
-                      onClick={() => handleVersionSelect(version)}
-                    >
-                      <div className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500">Date</div>
-                      <div className="mt-1 text-[13px] font-bold text-slate-900">{version.data.date || "-"}</div>
                     </button>
                     <button
                       type="button"

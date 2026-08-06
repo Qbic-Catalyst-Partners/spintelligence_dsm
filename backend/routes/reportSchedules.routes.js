@@ -476,7 +476,7 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
   blowroom: {
     blowroomsync: ['blowroom.blow_room_sync'],
     blowroomsyncdataentry: ['blowroom.blow_room_sync'],
-    brwastestudyentry: ['blowroom.br_waste_study', 'mixing.br_waste_study'],
+    brwastestudyentry: ['blowroom.br_waste_study'],
     droptestdataentry: ['blowroom.drop_test']
   },
   carding: {
@@ -543,8 +543,13 @@ const GENERAL_REPORT_SOURCE_CANDIDATES = {
     processparameter: ['autoconer.autoconer_process_parameter'],
     ppautoconerq2: ['autoconer.autoconer_q2_inspection'],
     ppautoconerq3: ['autoconer.autoconer_q3_inspection'],
-    rewindingstudy: ['autoconer.rewinding_study'],
-    conedensity: ['autoconer.cone_density'],
+    // Rewinding Study data now lives in autoconer.inspection_data_entry (see
+    // 20260619_replace_rewinding_study_with_inspection_data_entry.sql) — the old
+    // autoconer.rewinding_study table is dead and never written to.
+    rewindingstudy: ['autoconer.inspection_data_entry'],
+    // Cone Density data lives in autoconer.cone_density_notebook (+ cone_density_notebook_drums)
+    // via /cone-density-notebook — the old autoconer.cone_density table was dead and has been dropped.
+    conedensity: ['autoconer.cone_density_notebook'],
     inspectiondataentry: ['autoconer.inspection_data_entry'],
     conepackingaudit: ['autoconer.cone_packing_audit'],
     lycrachecking: ['autoconer.lycra_checking_inspections'],
@@ -721,7 +726,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'lycra_percent',
         'created_at'
       ],
-      dateColumn: 'creation_date'
+      dateColumn: 'created_at'
     },
     // Ring Frame Log Book form — header table + per-machine row table + summary table,
     // joined so the general report sees the full set of fields the form collects.
@@ -803,6 +808,8 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'i.br_line_no',
         'i.actual_specific_volume_target',
         'i.no_of_entries',
+        'i.overall_openness_percent',
+        'e.stage_no',
         'e.machine_name',
         'e.weight',
         'e.volume_1',
@@ -810,6 +817,7 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'e.average_volume',
         'e.apparent_specific_volume',
         'e.actual_op_value',
+        'e.openness_percentage',
         'e.beater_type',
         'e.beater_speed_rpm'
       ],
@@ -849,7 +857,9 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
     // Blow Room Sync form (POST /blowroom/sync) — header + per-entry child table, same
     // header/child split as Openness (blow_room_sync_entries.sync_id -> blow_room_sync.id).
     blowroomsync: {
-      fromClause: 'blowroom.blow_room_sync s JOIN blowroom.blow_room_sync_entries e ON e.sync_id = s.id',
+      fromClause: `blowroom.blow_room_sync s
+        JOIN blowroom.blow_room_sync_entries e ON e.sync_id = s.id
+        LEFT JOIN blowroom.blow_room_sync_totals t ON t.sync_id = s.id`,
       selectColumns: [
         's.entry_id',
         's.inspection_date',
@@ -862,7 +872,11 @@ const GENERAL_REPORT_CUSTOM_SOURCES = {
         'e.value_a',
         'e.value_b',
         'e.value_c',
-        'e.sync_percentage'
+        'e.sync_percentage',
+        't.total_run_time',
+        't.total_idle_time',
+        't.total_sub_total_time',
+        't.total_sync_percentage'
       ],
       dateColumn: 's.inspection_date'
     },
@@ -1380,7 +1394,7 @@ for (const [reportKey, wheelChangeType] of Object.entries(DRAWFRAME_WHEEL_CHANGE
     fromClause: `(SELECT * FROM drawframe.wheel_change WHERE wheel_change_type = '${wheelChangeType}') w`,
     selectColumns: [
       'w.entry_id', 'w.type', 'w.line_type', 'w.wheel_change_type_label',
-      'w.entry_date', 'w.parameters', 'w.rows', 'w.created_at'
+      'w.machine_no', 'w.entry_date', 'w.parameters', 'w.rows', 'w.created_at'
     ],
     dateColumn: 'w.entry_date'
   };

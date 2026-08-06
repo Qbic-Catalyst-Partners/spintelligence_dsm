@@ -278,24 +278,14 @@ const initPromise = (async () => {
   }
 
   await pool.query(`
-    ALTER TABLE IF EXISTS mixing.afis6_cotton_data_entry
-      ADD COLUMN IF NOT EXISTS sc_nep_count_g NUMERIC,
-      ADD COLUMN IF NOT EXISTS crimp_percent NUMERIC;
-  `);
-
-  await pool.query(`
     ALTER TABLE IF EXISTS mixing.afis6_mmf_data_entry
-      ADD COLUMN IF NOT EXISTS crimp_percent NUMERIC;
+      ADD COLUMN IF NOT EXISTS cut_length_l_n_cv_percent NUMERIC,
+      ADD COLUMN IF NOT EXISTS cut_length_sfc_w_percent NUMERIC;
   `);
 
   await pool.query(`
     ALTER TABLE IF EXISTS blowroom.drop_test
       ADD COLUMN IF NOT EXISTS average_weight NUMERIC;
-  `);
-
-  await pool.query(`
-    ALTER TABLE IF EXISTS mixing.openness_inspection
-      ADD COLUMN IF NOT EXISTS br_line_no VARCHAR(100);
   `);
 
   await pool.query(`

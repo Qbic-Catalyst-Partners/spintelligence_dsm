@@ -985,6 +985,10 @@ function SpinningDepartment() {
                 lycra_draft: parseDecimalPayloadValue(lycraDraft) ?? 0,
                 count_name_from: countNameFrom,
                 count_name_to: countNameTo,
+                avg_reading: parseDecimalPayloadValue(averageReadingValue),
+                avg_count: parseDecimalPayloadValue(averageCountValue),
+                avg_strength: parseDecimalPayloadValue(averageStrengthValue),
+                overall_csp: parseDecimalPayloadValue(overallAverageCsp),
                 readings: displayedCountChangeRows.map((row, index) => ({
                     reading_no: row.reading_no || index + 1,
                     reading_value: parseDecimalPayloadValue(row.reading_value) ?? 0,

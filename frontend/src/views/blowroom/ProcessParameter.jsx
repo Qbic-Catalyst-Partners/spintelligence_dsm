@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import { createPortal } from "react-dom";
 import { HiChevronDown, HiChevronUp } from "react-icons/hi2";
 import { FaCheckCircle } from "react-icons/fa";
@@ -161,6 +162,10 @@ const ProcessParameter = forwardRef(function ProcessParameter(
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewNextId, setPreviewNextId] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState({});
+
+  const operatorName = String(
+    user?.name || user?.full_name || user?.user_name || user?.username || ""
+  ).trim();
 
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -394,6 +399,7 @@ const ProcessParameter = forwardRef(function ProcessParameter(
     uniclean: parseNumberValue(form.uniclean),
     srs: parseNumberValue(form.srs),
     rk_flexi: parseNumberValue(form.rkFlexi),
+    user_name: operatorName,
   });
 
   const resetForm = () => {

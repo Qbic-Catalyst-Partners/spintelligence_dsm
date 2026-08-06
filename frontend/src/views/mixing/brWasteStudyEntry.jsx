@@ -65,7 +65,7 @@ const formatCardingProduction = (rows) =>
         .reduce((sum, row) => sum + (Number(row?.mcProduction) || 0), 0)
         .toFixed(2);
 
-const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
+const buildBrWastePayload = ({ date, entryId, formData, type1Rows, type2Rows, type3Rows, wasteKgRows, overallWaste, remarks, entryTypeLabel = "BR Waste Study Entry" }) => {
     const selectedTypeRows = formData.studyType === "Type 3"
         ? type3Rows
         : formData.studyType === "Type 2"
@@ -135,13 +135,13 @@ const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2R
     return {
         type: entryTypeLabel,
         entry_id: entryId || null,
-        lot_no: lotNo || null,
         waste_study_id: entryId || null,
         date,
         variety: formData.variety || null,
         study_type: formData.studyType,
         carding_production_kg: Number(formData.cardingProduction) || null,
         type_entries: selectedTypeRows.length,
+        waste_type_entries: wasteKgRows.length,
         // Not a real waste type (like the per-row breakdown in waste_rows below) — this study
         // header has no single waste type of its own, so leave it unset rather than sending a
         // placeholder value that fails the waste-type validation on the actual waste types.
@@ -158,8 +158,6 @@ const buildBrWastePayload = ({ date, entryId, lotNo, formData, type1Rows, type2R
 const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
     date,
     entryId,
-    lotNo,
-    onLotNoChange,
     saveEntryApi = null,
     fetchMachineOptionsApi = null,
     fetchWasteTypesApi = null,
@@ -237,10 +235,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         });
         setRemarks(entry?.remarks || "");
         setOverallWaste(entry?.overall_percent == null ? "" : String(entry.overall_percent));
-
-        if (entry?.lot_no && onLotNoChange) {
-            onLotNoChange(entry.lot_no);
-        }
 
         if (studyType === "Type 1") {
             setType1Rows(
@@ -568,7 +562,6 @@ const BrWasteStudyEntry = forwardRef(function BrWasteStudyEntry({
         const payload = buildBrWastePayload({
             date,
             entryId,
-            lotNo,
             formData,
             type1Rows,
             type2Rows,

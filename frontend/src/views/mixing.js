@@ -689,8 +689,6 @@ function Mixing() {
         { key: "ifc_percent", label: "IFC%" },
         { key: "fifty_pct_l_n_mm", label: "50%L(n)" },
         { key: "cut_length_n_mm", label: "Cut Length(n)" },
-        { key: "cut_length_l_n_cv_percent", label: "L(n)CV" },
-        { key: "cut_length_sfc_w_percent", label: "SCF(w)<12.70mm" },
         { key: "fineness_den", label: "Fineness Den" },
         { key: "fineness_cv_percent", label: "Fineness CV" },
         { key: "long_fiber_gt_45_60_percent", label: "Long Fiber >45.60mm" },
