@@ -896,6 +896,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                     })}
                 </nav>
+
+                <div className={styles["sidebar-version"]} title="Version 2.1.0">
+                    <span className={styles["sidebar-version-badge"]}>
+                        <span className={styles["sidebar-version-dot"]} />
+                        <span className={styles["sidebar-version-label"]}>Version</span>
+                        <span className={styles["sidebar-version-number"]}>2.1.0</span>
+                    </span>
+                </div>
             </aside>
 
             <div className={styles["top-logo-center"]}>

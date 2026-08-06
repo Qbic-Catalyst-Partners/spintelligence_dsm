@@ -1776,6 +1776,133 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+// --- Server-side list enrichment/filtering -------------------------------
+// Ported from the frontend's own SubmittedNotebooksPage.jsx enrichment
+// functions (getNotebookOperatorName/getNotebookSupervisorName/
+// isNotebookPendingAcknowledgement) so pagination + the Notebook Type/
+// Operator/Supervisor filters can all be resolved and counted server-side
+// instead of requiring every matching row to be fetched into the browser
+// first. department/sub_department/notebook are trusted directly off the
+// row (always populated at submission time - see the INSERT above) rather
+// than replicating the frontend's screen-name-inference fallback, which only
+// ever matters for legacy rows missing those columns entirely.
+const normalizeLookupText = (value) =>
+  String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+const normalizeNameListText = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return value === undefined || value === null || value === '' ? [] : [String(value).trim()];
+};
+
+const getUserDisplayNameText = (user) => String(user?.full_name || '').trim();
+
+const resolveUserNameText = (users, value) => {
+  const normalizedValue = normalizeLookupText(value);
+  if (!normalizedValue) return '';
+
+  const matchedUser = users.find((userItem) => {
+    const candidateValues = [userItem?.id, userItem?.employee_id, userItem?.full_name];
+    return candidateValues.some((candidate) => normalizeLookupText(candidate) === normalizedValue);
+  });
+
+  return getUserDisplayNameText(matchedUser) || String(value ?? '').trim();
+};
+
+const resolveDisplayValuesText = (users, candidates) => {
+  for (const candidate of candidates) {
+    const labels = normalizeNameListText(candidate)
+      .map((value) => resolveUserNameText(users, value))
+      .filter(Boolean);
+    if (labels.length) return labels;
+  }
+  return [];
+};
+
+const getUsersDisplayNamesText = (userList) =>
+  (Array.isArray(userList) ? userList : []).map((user) => getUserDisplayNameText(user)).filter(Boolean);
+
+const isNotebookPendingAcknowledgementRow = (row) => {
+  if (row?.acknowledged_at || row?.acknowledged_by_name) return false;
+  const status = normalizeLookupText(row?.status);
+  if (!status) return true;
+  return !['acknowledged', 'ack', 'completed', 'closed', 'approved'].includes(status);
+};
+
+const getNotebookOperatorNameText = (row, users) => {
+  const names = resolveDisplayValuesText(users, [
+    ...normalizeNameListText(row?.submitted_by_name),
+  ]);
+  if (names.length) return names[0];
+
+  const ids = resolveDisplayValuesText(users, [...normalizeNameListText(row?.submitted_by_user_id)]);
+  if (ids.length) return ids[0];
+
+  return String(row?.submitted_by_name || '').trim() || '--';
+};
+
+const getNotebookSupervisorNameText = (row) => {
+  const acknowledgedByName = String(row?.acknowledged_by_name || '').trim();
+  if (acknowledgedByName) return acknowledgedByName;
+
+  const assignedL5Names = getUsersDisplayNamesText(row?.assigned_l5_users);
+  if (assignedL5Names.length) return assignedL5Names.join(', ');
+
+  const assignedL4Names = getUsersDisplayNamesText(row?.assigned_l4_users);
+  if (assignedL4Names.length) return assignedL4Names.join(', ');
+
+  const assignedL3Names = getUsersDisplayNamesText(row?.assigned_l3_users);
+  if (assignedL3Names.length) return assignedL3Names.join(', ');
+
+  const assignedL2Names = getUsersDisplayNamesText(row?.assigned_l2_users);
+  if (assignedL2Names.length) return assignedL2Names.join(', ');
+
+  return '--';
+};
+
+const getNotebookTitleText = (row) =>
+  row?.notebook || row?.input_screen || 'Cotton HVI';
+
+const getNotebookCreatedAt = (row) =>
+  row?.submitted_at || row?.created_at || row?.ack_due_at || null;
+
+// Builds { departments, sub_departments, notebook_types, operators, supervisors }
+// the same cascading way the frontend's filterOptions useMemo did: each list is
+// scoped by every filter to its left, not by itself, so picking a department
+// narrows Sub Department/Notebook Type/Operator/Supervisor without also
+// narrowing the Department list itself.
+const buildSubmittedNotebookFilterOptions = (enrichedRows, filters) => {
+  const uniqueValues = (values) =>
+    Array.from(new Set(values.filter((value) => value && value !== '--'))).sort((left, right) =>
+      left.localeCompare(right)
+    );
+
+  const byDepartment = enrichedRows.filter(
+    (item) => !filters.department || item.department === filters.department
+  );
+  const bySubDepartment = byDepartment.filter(
+    (item) => !filters.subDepartment || item.subDepartment === filters.subDepartment
+  );
+  const byNotebookType = bySubDepartment.filter(
+    (item) => !filters.notebookType || item.title === filters.notebookType
+  );
+  const byOperator = byNotebookType.filter(
+    (item) => !filters.operator || item.operator === filters.operator
+  );
+
+  return {
+    departments: uniqueValues(enrichedRows.map((item) => item.department)),
+    sub_departments: uniqueValues(byDepartment.map((item) => item.subDepartment)),
+    notebook_types: uniqueValues(bySubDepartment.map((item) => item.title)),
+    operators: uniqueValues(byNotebookType.map((item) => item.operator)),
+    supervisors: uniqueValues(byOperator.map((item) => item.supervisor)),
+  };
+};
+
 router.get('/', async (req, res, next) => {
   try {
     await ensureSubmittedNotebookTables();
@@ -1783,81 +1910,121 @@ router.get('/', async (req, res, next) => {
     const page = parsePositiveInt(req.query.page, 1);
     const requestedLimit = parsePositiveInt(req.query.limit, 20);
     const limit = Math.min(requestedLimit, MAX_LIMIT);
-    const offset = (page - 1) * limit;
-    const status = cleanText(req.query.status);
-    const department = cleanText(req.query.department);
-    const subDepartment = cleanText(req.query.sub_department || req.query.subDepartment);
 
-    const where = [];
-    const params = [];
-    if (status) {
-      params.push(status);
-      where.push(`status = $${params.length}`);
-    }
-    if (department) {
-      params.push(department);
-      where.push(`LOWER(TRIM(COALESCE(department, ''))) = LOWER(TRIM($${params.length}))`);
-    }
-    if (subDepartment) {
-      params.push(subDepartment);
-      where.push(`LOWER(TRIM(COALESCE(sub_department, ''))) = LOWER(TRIM($${params.length}))`);
-    }
+    const tab = cleanText(req.query.tab) === 'closed' ? 'closed' : 'pending';
+    const filters = {
+      department: cleanText(req.query.department) || '',
+      subDepartment: cleanText(req.query.sub_department || req.query.subDepartment) || '',
+      notebookType: cleanText(req.query.notebook_type || req.query.notebookType) || '',
+      operator: cleanText(req.query.operator) || '',
+      supervisor: cleanText(req.query.supervisor) || '',
+    };
+    const dateFrom = cleanText(req.query.date_from || req.query.dateFrom);
+    const dateTo = cleanText(req.query.date_to || req.query.dateTo);
 
     // The submitted-notebooks list is visible to the whole L1-L5 hierarchy,
     // not just admin - only accounts without a recognized level stay scoped
     // to notebooks they submitted or are specifically assigned to approve.
     const canViewAll = isAdminRequester(req) || hasHierarchyLevel(req);
+    const where = [];
+    const params = [];
     if (!canViewAll) {
       params.push(requesterId);
-      where.push(`($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) OR submitted_by_user_id = $${params.length})`);
+      where.push(
+        `($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) ` +
+        `OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) ` +
+        `OR $${params.length} = ANY(COALESCE(l4_approver_user_ids, ARRAY[]::int[])) ` +
+        `OR $${params.length} = ANY(COALESCE(l5_approver_user_ids, ARRAY[]::int[])) ` +
+        `OR submitted_by_user_id = $${params.length})`
+      );
     }
-
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const count = await client.query(
-      `SELECT COUNT(*)::int AS total FROM ticketing_system.submitted_notebooks ${whereSql}`,
-      params
-    );
 
-    params.push(limit, offset);
-    const rows = await client.query(
+    // Department/Sub Department/Notebook Type/Operator/Supervisor/date-range and the
+    // Pending-vs-Closed tab are all resolved and filtered here in JS (mirroring the
+    // frontend's own enrichment/filtering it used to do after fetching everything into
+    // the browser) rather than in SQL, since Operator/Supervisor require cross-
+    // referencing the users list and an L2-L5 approval priority chain, not a plain
+    // column match. Only the hierarchy-access scope stays a SQL WHERE, since that one's
+    // a straightforward column/array check.
+    const rowsResult = await client.query(
       `SELECT id, notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
-              submitted_by_user_id, submitted_by_name, l2_approver_user_ids, l3_approver_user_ids, status,
+              submitted_by_user_id, submitted_by_name, l2_approver_user_ids, l3_approver_user_ids,
+              l4_approver_user_ids, l5_approver_user_ids, status,
               submitted_at, ack_due_at, acknowledged_at, acknowledged_by_name, acknowledgement_note,
               overdue_ticket_id, overdue_ticket_created_at, created_at, updated_at
        FROM ticketing_system.submitted_notebooks
        ${whereSql}
-       ORDER BY submitted_at DESC, id DESC
-       LIMIT $${params.length - 1}
-       OFFSET $${params.length}`,
+       ORDER BY submitted_at DESC, id DESC`,
       params
     );
+
     const assignedById = new Map();
-    const allApproverIds = Array.from(new Set(rows.rows.flatMap((row) => [
+    const allApproverIds = Array.from(new Set(rowsResult.rows.flatMap((row) => [
       ...(row.l2_approver_user_ids || []),
-      ...(row.l3_approver_user_ids || [])
+      ...(row.l3_approver_user_ids || []),
+      ...(row.l4_approver_user_ids || []),
+      ...(row.l5_approver_user_ids || []),
     ])));
     if (allApproverIds.length) {
       const assignedUsers = await getAssignedL2Users(allApproverIds);
       for (const user of assignedUsers) assignedById.set(Number(user.id), user);
     }
-    const submittedNotebooks = rows.rows.map((row) => ({
-      ...row,
-      assigned_l2_users: (row.l2_approver_user_ids || [])
-        .map((id) => assignedById.get(Number(id)))
-        .filter(Boolean),
-      assigned_l3_users: (row.l3_approver_user_ids || [])
-        .map((id) => assignedById.get(Number(id)))
-        .filter(Boolean)
-    }));
+
+    // Operator-name resolution needs the full users list (submitted_by_user_id/name can
+    // point at anyone, not just an approver) - same cross-reference the frontend did
+    // against its own separately-fetched users list.
+    const allUsersResult = await client.query(`SELECT id, employee_id, full_name FROM users.user_details`);
+    const allUsers = allUsersResult.rows;
+
+    const enriched = rowsResult.rows.map((row) => {
+      const withAssignments = {
+        ...row,
+        assigned_l2_users: (row.l2_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+        assigned_l3_users: (row.l3_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+        assigned_l4_users: (row.l4_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+        assigned_l5_users: (row.l5_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+      };
+
+      return {
+        ...withAssignments,
+        department: String(row.department || '').trim(),
+        subDepartment: String(row.sub_department || '').trim(),
+        title: getNotebookTitleText(row),
+        operator: getNotebookOperatorNameText(row, allUsers),
+        supervisor: getNotebookSupervisorNameText(withAssignments),
+        createdAt: getNotebookCreatedAt(row),
+        isPending: isNotebookPendingAcknowledgementRow(row),
+      };
+    });
+
+    const tabFiltered = enriched.filter((item) => (tab === 'closed' ? !item.isPending : item.isPending));
+    const filterOptions = buildSubmittedNotebookFilterOptions(tabFiltered, filters);
+
+    const dateFromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const dateToTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+
+    const finalFiltered = tabFiltered.filter((item) => {
+      if (filters.department && item.department !== filters.department) return false;
+      if (filters.subDepartment && item.subDepartment !== filters.subDepartment) return false;
+      if (filters.notebookType && item.title !== filters.notebookType) return false;
+      if (filters.operator && item.operator !== filters.operator) return false;
+      if (filters.supervisor && item.supervisor !== filters.supervisor) return false;
+      const createdAtTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+      if (dateFromTime !== null && createdAtTime < dateFromTime) return false;
+      if (dateToTime !== null && createdAtTime > dateToTime) return false;
+      return true;
+    });
+
+    const total = finalFiltered.length;
+    const offset = (page - 1) * limit;
+    const pageRows = finalFiltered.slice(offset, offset + limit);
 
     return res.status(200).json({
-      submitted_notebooks: submittedNotebooks,
-      data: submittedNotebooks,
-      pagination: {
-        page,
-        limit,
-        total: count.rows[0]?.total || 0
-      }
+      submitted_notebooks: pageRows,
+      data: pageRows,
+      pagination: { page, limit, total },
+      filter_options: filterOptions,
     });
   } catch (error) {
     next(error);
