@@ -452,9 +452,15 @@ function Mixing() {
     const confirmSubmit = async () => {
         setShowPreview(false);
         try {
-            const ok = await childRef.current?.submit?.();
-            if (ok === false) return;
-            await reserveEntryId();
+            if (isAfis6Cotton) {
+                await performAfis6Submit();
+            } else if (isAfis6Mmf) {
+                await performAfis6MmfSubmit();
+            } else {
+                const ok = await childRef.current?.submit?.();
+                if (ok === false) return;
+                await reserveEntryId();
+            }
         } catch (error) {
             console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
             return;
@@ -611,7 +617,7 @@ function Mixing() {
         setAfis6CustomFieldValues({});
     };
 
-    const handleAfis6Submit = async () => {
+    const openAfis6Preview = () => {
         const numericKeys = afis6FieldDefs.map((field) => field.key);
         const nextErrors = numericKeys.reduce((acc, key) => {
             const trimmed = String(afis6Form[key] ?? "").trim();
@@ -626,6 +632,19 @@ function Mixing() {
         }
 
         setValidationMessage("");
+        setPreviewItems([
+            { label: "Type", value: "AFIS-6 Cotton Data Entry" },
+            { label: "Entry ID", value: entryId },
+            ...afis6TextFieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+            ...afis6FieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+        ]);
+        setShowPreview(true);
+    };
+
+    // Runs after the user confirms the AFIS-6 Cotton preview (see confirmSubmit's isAfis6Cotton
+    // branch) — showSuccessOnce() is called there, uniformly for every notebook type, once this
+    // resolves.
+    const performAfis6Submit = async () => {
         await dispatch(submitAfis6Cotton(buildAfis6Payload())).unwrap();
 
         const afis6CustomFieldEntries = Object.entries(afis6CustomFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
@@ -654,7 +673,6 @@ function Mixing() {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
         handleAfis6Clear();
-        showSuccessOnce();
     };
 
     const afis6MmfTextFieldDefs = [
@@ -826,7 +844,7 @@ function Mixing() {
         setAfis6MmfCustomFieldValues({});
     };
 
-    const handleAfis6MmfSubmit = async () => {
+    const openAfis6MmfPreview = () => {
         const numericKeys = afis6MmfFieldDefs.map((field) => field.key);
         const nextErrors = numericKeys.reduce((acc, key) => {
             const trimmed = String(afis6MmfForm[key] ?? "").trim();
@@ -841,6 +859,19 @@ function Mixing() {
         }
 
         setValidationMessage("");
+        setPreviewItems([
+            { label: "Type", value: "AFIS-6 MMF Data Entry" },
+            { label: "Entry ID", value: entryId },
+            ...afis6MmfTextFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+            ...afis6MmfFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+        ]);
+        setShowPreview(true);
+    };
+
+    // Runs after the user confirms the AFIS-6 MMF preview (see confirmSubmit's isAfis6Mmf
+    // branch) — showSuccessOnce() is called there, uniformly for every notebook type, once this
+    // resolves.
+    const performAfis6MmfSubmit = async () => {
         await dispatch(submitAfis6Mmf(buildAfis6MmfPayload())).unwrap();
 
         const afis6MmfCustomFieldEntries = Object.entries(afis6MmfCustomFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
@@ -869,7 +900,6 @@ function Mixing() {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
         handleAfis6MmfClear();
-        showSuccessOnce();
     };
 
     const handleProcessParameterSubmitSuccess = (response) => {
@@ -1347,7 +1377,7 @@ function Mixing() {
                     <Footer
                         onBack={() => router.push("/departments/quality-control")}
                         onClear={isAfis6Cotton ? handleAfis6Clear : isAfis6Mmf ? handleAfis6MmfClear : handleClear}
-                        onSave={isAfis6Cotton ? handleAfis6Submit : isAfis6Mmf ? handleAfis6MmfSubmit : openPreview}
+                        onSave={isAfis6Cotton ? openAfis6Preview : isAfis6Mmf ? openAfis6MmfPreview : openPreview}
                         saveLabel={actionLoading ? "Submitting..." : "Save Record"}
                         disabled={actionLoading || entryIdLoading}
                     />

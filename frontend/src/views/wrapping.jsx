@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { FiFile, FiRefreshCw, FiUpload } from "react-icons/fi";
 import Footer from "@/components/Footer";
 import SuccessModal from "@/components/SuccessModal";
+import PreviewModal from "@/components/PreviewModal";
 import { runOcrForDocument } from "@/apis/ocrApi";
 import apiConfig from "@/apis/apiConfig";
 
@@ -62,6 +63,7 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
   const [isErrorMessage, setIsErrorMessage] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("Data Submitted");
+  const [showPreview, setShowPreview] = useState(false);
   const docType = useMemo(() => toDocType(selectedType), [selectedType]);
 
   useEffect(() => {
@@ -161,12 +163,19 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
     }
   };
 
-  const handleSave = async () => {
+  const openPreview = () => {
     if (!rows.length) {
       setMessage("Run OCR and review at least one row before saving.");
       setIsErrorMessage(true);
       return;
     }
+    setMessage("");
+    setIsErrorMessage(false);
+    setShowPreview(true);
+  };
+
+  const confirmSubmit = async () => {
+    setShowPreview(false);
     setIsSaving(true);
     setMessage("Saving OCR rows...");
     setIsErrorMessage(false);
@@ -384,11 +393,27 @@ function Wrapping({ fixedType = "", backPath = "/departments/quality-control", t
         <Footer
           onBack={() => router.push(backPath)}
           onClear={handleClear}
-          onSave={handleSave}
+          onSave={openPreview}
           saveLabel={isSaving ? "Saving..." : "Save Record"}
           disabled={isSaving || isRunning}
         />
       </main>
+
+      <PreviewModal
+        open={showPreview}
+        title="Wrapping Preview"
+        subtitle="Wrapping Notebook"
+        items={[
+          { label: "Type", value: selectedType },
+          { label: "File", value: file?.name || "-" },
+          { label: "Rows", value: rows.length },
+          ...rows.map((row, index) => ({ label: `Row ${index + 1}`, value: row, wide: true })),
+        ]}
+        typeValue={selectedType}
+        onCancel={() => setShowPreview(false)}
+        onConfirm={confirmSubmit}
+        confirmLabel={isSaving ? "Submitting..." : "Submit"}
+      />
 
       <SuccessModal
         open={showSuccess}
