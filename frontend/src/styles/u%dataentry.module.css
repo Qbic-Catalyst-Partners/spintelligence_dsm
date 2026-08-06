@@ -125,10 +125,16 @@
 }
 
 /* FOOTER SPACE FIX */
+/* .footer-space sits outside the padded .body, directly in the unpadded .container, so the
+   shared Footer component has no parent padding to bleed out to (0) — it previously assumed a
+   fixed 28px, which overflowed .container's edge and got clipped by overflow: hidden below.
+   --footer-pad-x keeps the buttons visually inset by the same amount as .body's own padding. */
 .footer-space {
   width: 100%;
   margin-top: 20px;
   overflow: hidden;
+  --footer-bleed-x: 0px;
+  --footer-pad-x: 16px;
 }
 
 @media print {
