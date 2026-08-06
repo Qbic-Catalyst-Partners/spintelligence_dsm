@@ -896,6 +896,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                     })}
                 </nav>
+
+                <div className={styles["sidebar-version"]}>v2.1.0</div>
             </aside>
 
             <div className={styles["top-logo-center"]}>
