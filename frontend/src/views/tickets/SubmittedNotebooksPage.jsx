@@ -1851,7 +1851,7 @@ const SubmittedNotebooksPage = () => {
                             );
                         })}
 
-                        {activeTab === "closed" ? null : (
+                        {activeTab === "closed" || !canApproveNotebooks ? null : (
                             <>
                                 <div className={styles.reviewSection}>
                                     <label className={styles.reviewLabel} htmlFor="submitted-notebook-review">

@@ -955,22 +955,60 @@ const isAdminRequester = (req) => {
 
 const getRequesterLevel = (req) => String(req.user?.level || '').trim().toUpperCase();
 
-const hasHierarchyLevel = (req) => ['L1', 'L2', 'L3', 'L4', 'L5'].includes(getRequesterLevel(req));
-
-// Approval itself is restricted to L4/L5 - viewing (canViewSubmission /
-// GET list's canViewAll below) is open to the whole L1-L5 hierarchy.
+// Approval itself is restricted to L4/L5 (mirrors frontend
+// isSubmittedNotebookApproverUser in utils/accessControl.js).
 const canApproveSubmission = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
 
-const canViewSubmission = (req, row) => {
-  if (isAdminRequester(req)) return true;
-  if (hasHierarchyLevel(req)) return true;
-  const requesterId = parsePositiveInt(req.user?.id);
-  if (!requesterId) return false;
-  if (row.submitted_by_user_id === requesterId) return true;
-  return (
-    (Array.isArray(row.l2_approver_user_ids) && row.l2_approver_user_ids.includes(requesterId)) ||
-    (Array.isArray(row.l3_approver_user_ids) && row.l3_approver_user_ids.includes(requesterId))
+// L4/L5/admin see every submitted notebook. Everyone else is scoped by
+// getVisibleSubmitterIds below, based on the real users.user_details
+// reports_to_user_id org chart - NOT the l2_approver_user_ids/
+// l3_approver_user_ids columns on submitted_notebooks rows. Those columns
+// are populated per-notebook-type from the manually-configured
+// Acknowledgement Threshold (see the POST '/' handler's
+// "Notebook approval moved from L2 to L4" comment) - they hold whichever
+// L4 approver was configured for that specific notebook type, and are an
+// empty array for any notebook type with no threshold configured (which is
+// most of them - only Mixing's 8 screens have one at the time of writing).
+// They tell you nothing about a submitter's actual L2/L3 manager, so they
+// can't be used to scope L2/L3 visibility.
+const canViewAllSubmissions = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
+
+const getDirectReportIds = async (managerId) => {
+  if (!managerId) return [];
+  const result = await client.query(
+    `SELECT id FROM users.user_details WHERE reports_to_user_id = $1`,
+    [managerId]
   );
+  return result.rows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
+};
+
+// submitted_by_user_id values a non-L4/L5/admin requester may see:
+// L1 (or no recognized level) - just their own submissions.
+// L2 - their own, plus their direct L1 reports'.
+// L3 - their own, plus their direct L2 reports', plus those L2s' L1 reports'.
+const getVisibleSubmitterIds = async (req) => {
+  const requesterId = parsePositiveInt(req.user?.id);
+  if (!requesterId) return [];
+  const level = getRequesterLevel(req);
+
+  if (level === 'L3') {
+    const mappedL2Ids = await getDirectReportIds(requesterId);
+    const mappedL1Ids = (await Promise.all(mappedL2Ids.map(getDirectReportIds))).flat();
+    return [requesterId, ...mappedL2Ids, ...mappedL1Ids];
+  }
+
+  if (level === 'L2') {
+    const mappedL1Ids = await getDirectReportIds(requesterId);
+    return [requesterId, ...mappedL1Ids];
+  }
+
+  return [requesterId];
+};
+
+const canViewSubmission = async (req, row) => {
+  if (canViewAllSubmissions(req)) return true;
+  const visibleIds = await getVisibleSubmitterIds(req);
+  return visibleIds.includes(row.submitted_by_user_id);
 };
 
 const getAssignedL2Users = async (ids = []) => {
@@ -1906,7 +1944,6 @@ const buildSubmittedNotebookFilterOptions = (enrichedRows, filters) => {
 router.get('/', async (req, res, next) => {
   try {
     await ensureSubmittedNotebookTables();
-    const requesterId = parsePositiveInt(req.user?.id);
     const page = parsePositiveInt(req.query.page, 1);
     const requestedLimit = parsePositiveInt(req.query.limit, 20);
     const limit = Math.min(requestedLimit, MAX_LIMIT);
@@ -1922,21 +1959,19 @@ router.get('/', async (req, res, next) => {
     const dateFrom = cleanText(req.query.date_from || req.query.dateFrom);
     const dateTo = cleanText(req.query.date_to || req.query.dateTo);
 
-    // The submitted-notebooks list is visible to the whole L1-L5 hierarchy,
-    // not just admin - only accounts without a recognized level stay scoped
-    // to notebooks they submitted or are specifically assigned to approve.
-    const canViewAll = isAdminRequester(req) || hasHierarchyLevel(req);
+    // The submitted-notebooks list is restricted to L4/L5 (mirrors frontend
+    // isSubmittedNotebookViewerUser) - everyone else stays scoped to their
+    // own submissions plus their real org-chart reports (see
+    // getVisibleSubmitterIds - based on reports_to_user_id, not the
+    // per-notebook-type l2/l3_approver_user_ids columns). Mirrors
+    // canViewSubmission below, used by GET /:id.
+    const canViewAll = canViewAllSubmissions(req);
     const where = [];
     const params = [];
     if (!canViewAll) {
-      params.push(requesterId);
-      where.push(
-        `($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) ` +
-        `OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) ` +
-        `OR $${params.length} = ANY(COALESCE(l4_approver_user_ids, ARRAY[]::int[])) ` +
-        `OR $${params.length} = ANY(COALESCE(l5_approver_user_ids, ARRAY[]::int[])) ` +
-        `OR submitted_by_user_id = $${params.length})`
-      );
+      const visibleSubmitterIds = await getVisibleSubmitterIds(req);
+      params.push(visibleSubmitterIds);
+      where.push(`submitted_by_user_id = ANY($${params.length}::int[])`);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
@@ -2057,7 +2092,7 @@ router.get('/:id', async (req, res, next) => {
     );
     if (!result.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = result.rows[0];
-    if (!canViewSubmission(req, row)) return res.status(403).json({ message: 'You are not authorized to view this submitted notebook' });
+    if (!(await canViewSubmission(req, row))) return res.status(403).json({ message: 'You are not authorized to view this submitted notebook' });
     return res.status(200).json({
       submitted_notebook: {
         ...row,
@@ -2082,7 +2117,7 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
     );
     if (!current.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = current.rows[0];
-    if (!canViewSubmission(req, row)) return res.status(403).json({ message: 'You are not authorized to acknowledge this submitted notebook' });
+    if (!(await canViewSubmission(req, row))) return res.status(403).json({ message: 'You are not authorized to acknowledge this submitted notebook' });
     // Viewing is open to the whole L1-L5 hierarchy above, but only L4/L5
     // (or admin) may actually approve - mirrors the frontend's Acknowledge
     // gate so a direct API call can't bypass it.
