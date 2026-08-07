@@ -389,6 +389,16 @@ const ensureSpinningEntryIdColumnsImpl = async () => {
     `);
   }
 
+  // machine_name is inserted by every one of these six checking-screen routes below, but no
+  // migration ever added the column — every save was throwing "column machine_name does not
+  // exist" until this was added.
+  for (const tableName of lhsRhsArrayTables) {
+    await client.query(`
+      ALTER TABLE ${tableName}
+        ADD COLUMN IF NOT EXISTS machine_name VARCHAR(255);
+    `);
+  }
+
   await client.query(`DROP TABLE IF EXISTS spinning.spindle_readings`);
 
   // "Type 2" is a fault-subtype dropdown added only to the four apron/lycra/RSM
