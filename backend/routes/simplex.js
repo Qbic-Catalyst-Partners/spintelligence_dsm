@@ -1830,14 +1830,98 @@ router.post('/study', async (req, res, next) => {
  *       200:
  *         description: List of study reports
  */
+// The save endpoint above (POST /) never stores most of the form's fields as columns on
+// smx_breaks_study_header itself — the length-range x break-type matrix, plus several derived
+// scalars (Hank, Start/End Time, Total Minutes, Idle/Total/Running Spindles, Grand Total breaks,
+// Overall Breakage %) live as individual rows in smx_breaks_inspection_items keyed by item_name,
+// and Sider Name/Start/End/Total Minutes are additionally packed into a single delimited string
+// in smx_other_field_values.remarks ("S.NAME:<x> | START:<hh:mm> | END:<hh:mm> |
+// TOTAL_MINUTES:<n>"). GET /list used to only SELECT * the header table, so Custom Report (and
+// anything else consuming this list) had none of that data to work with and fell back to showing
+// unrelated values (e.g. the row's own id) for every one of those fields. Join both child tables
+// in here and flatten the scalars back onto each row.
+const SMX_BREAKS_DERIVED_ITEM_NAME_TO_FIELD = {
+  'HANK': 'hank',
+  'START TIME': 'derived_start_time',
+  'END TIME': 'derived_end_time',
+  'TOTAL TIME (MINUTES)': 'derived_total_minutes',
+  'IDLE SPINDLES': 'idle_spindles',
+  'TOTAL SPDL': 'total_spindles',
+  'RUNNING SPDL': 'running_spindles',
+  'TOTAL BREAKS (GRAND)': 'grand_total_breaks',
+  'OVERALL BREAKAGE (%)': 'overall_breakage_percent',
+  'TOTAL BREAK (%)': 'total_break_percent',
+};
+
+const parseSmxOtherFieldsRemarks = (remarks) => {
+  const text = String(remarks || '');
+  const extract = (label) => {
+    const match = text.match(new RegExp(`${label}:([^|]+)`));
+    return match ? match[1].trim() : null;
+  };
+  const totalMinutesRaw = extract('TOTAL_MINUTES');
+  return {
+    sider_name: extract('S\\.NAME'),
+    start_time: extract('START'),
+    end_time: extract('END'),
+    total_minutes: totalMinutesRaw !== null ? Number(totalMinutesRaw) : null,
+  };
+};
+
 router.get('/list', async (req, res, next) => {
   try {
     await ensureSimplexEntryIdColumns();
-    const result = await client.query(
+    const headerResult = await client.query(
       `SELECT * FROM simplex.smx_breaks_study_header ORDER BY entry_date DESC`
     );
+    const studyIds = headerResult.rows.map((row) => row.id);
 
-    res.status(200).json(result.rows.map((row) => withScreenEntryId('study', row)));
+    const [itemsResult, otherFieldsResult] = studyIds.length
+      ? await Promise.all([
+          client.query(
+            `SELECT * FROM simplex.smx_breaks_inspection_items WHERE study_id = ANY($1::int[])`,
+            [studyIds]
+          ),
+          client.query(
+            `SELECT * FROM simplex.smx_other_field_values WHERE study_id = ANY($1::int[])`,
+            [studyIds]
+          ),
+        ])
+      : [{ rows: [] }, { rows: [] }];
+
+    const itemsByStudy = new Map();
+    itemsResult.rows.forEach((item) => {
+      if (!itemsByStudy.has(item.study_id)) itemsByStudy.set(item.study_id, []);
+      itemsByStudy.get(item.study_id).push(item);
+    });
+    const otherFieldsByStudy = new Map();
+    otherFieldsResult.rows.forEach((row) => otherFieldsByStudy.set(row.study_id, row));
+
+    const rows = headerResult.rows.map((row) => {
+      const items = itemsByStudy.get(row.id) || [];
+      const derived = {};
+      items.forEach((item) => {
+        const fieldKey = SMX_BREAKS_DERIVED_ITEM_NAME_TO_FIELD[String(item.item_name || '').trim().toUpperCase()];
+        if (fieldKey) derived[fieldKey] = item.status_value;
+      });
+      const otherFieldsRow = otherFieldsByStudy.get(row.id);
+      const packed = otherFieldsRow ? parseSmxOtherFieldsRemarks(otherFieldsRow.remarks) : {};
+
+      return {
+        ...row,
+        items,
+        ...derived,
+        // Prefer the dedicated derived item rows (computed straight from the form's own
+        // start/end time inputs); fall back to the packed remarks copy for older entries saved
+        // before this GET endpoint existed to read either source.
+        start_time: derived.derived_start_time || packed.start_time || null,
+        end_time: derived.derived_end_time || packed.end_time || null,
+        total_minutes: derived.derived_total_minutes ?? packed.total_minutes ?? null,
+        sider_name: packed.sider_name || null,
+      };
+    });
+
+    res.status(200).json(rows.map((row) => withScreenEntryId('study', row)));
 
   } catch (err) {
     next(err);
