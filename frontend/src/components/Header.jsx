@@ -152,9 +152,10 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
     // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
-    // link itself is open to every L1-L5 hierarchy account, while the other
-    // Management Hub entries (New Field Creation, Activity Log, threshold
-    // config) stay limited to admin/supervisor.
+    // link itself is open to every L1-L5 hierarchy account (each sees a
+    // different server-scoped subset of rows), while the other Management
+    // Hub entries (New Field Creation, Activity Log, threshold config) stay
+    // limited to admin/supervisor.
     const hasSubmittedNotebookViewAccess = isSubmittedNotebookViewerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
     const hasManagementHubAccess = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess || hasWheelChangeApprovalAccess;
