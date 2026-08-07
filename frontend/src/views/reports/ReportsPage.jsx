@@ -47,6 +47,7 @@ import {
   fetchAutoconerProcessParameters,
   fetchAutoconerQ2Entries,
   fetchAutoconerQ3Entries,
+  fetchAutoconerQ4Entries,
   fetchAutoconerRewindingStudy,
   fetchAutoconerSpliceStrength,
 } from "@/apis/autoconer";
@@ -298,6 +299,7 @@ const reportSources = {
       "Process Parameter": { fetcher: fetchAutoconerProcessParameters },
       "PP - Autoconer Q2": { fetcher: fetchAutoconerQ2Entries },
       "PP - Autoconer Q3": { fetcher: fetchAutoconerQ3Entries },
+      "PP - Autoconer Q4": { fetcher: fetchAutoconerQ4Entries },
       "Rewinding Study": { fetcher: fetchAutoconerRewindingStudy },
       "Cone Density": { fetcher: fetchAutoconerConeDensity },
       "Cone Packing Audit": { fetcher: fetchAutoconerConePackingAudit },
@@ -1182,9 +1184,10 @@ const normalizeDrawFrameYarnCvRows = (response) =>
 // through to the generic fallback. A submission with zero matching child rows comes back from
 // the LEFT JOIN as a single `{ reading_no: null, ... }` placeholder — filter that out.
 const SPINNING_COUNT_CHANGE_METRIC_KEYS = [
-  "reading_value", "count", "cv_percent", "strength", "mean", "cv_percent_2", "csp",
+  "reading_no", "reading_value", "count", "cv_percent", "strength", "mean", "cv_percent_2", "csp",
 ];
 const SPINNING_COUNT_CHANGE_METRIC_LABELS = {
+  reading_no: "Reading No.",
   reading_value: "Reading Value",
   count: "Count",
   cv_percent: "CV%",
@@ -1192,6 +1195,17 @@ const SPINNING_COUNT_CHANGE_METRIC_LABELS = {
   mean: "Mean",
   cv_percent_2: "CV% 2",
   csp: "CSP",
+};
+
+// The notebook's own footer shows Avg Reading/Avg Count/Avg Strength/Overall CSP averaged across
+// every reading in the submission (spinning.js's averageReadingValue/averageCountValue/
+// averageStrengthValue/overallAverageCsp) — computed client-side only there, but the same values
+// (reading_value/count/strength/csp) are already saved per reading, so recompute the averages here
+// too, same reasoning as Ring Frame Log Book's Guide Roll/Lycra Missing/Others totals above.
+const averageMetric = (readings, metric) => {
+  const values = readings.map((reading) => Number(reading?.[metric])).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2));
 };
 
 const normalizeSpinningCountChangeRows = (response) =>
@@ -1205,10 +1219,17 @@ const normalizeSpinningCountChangeRows = (response) =>
     readings.forEach((reading, index) => {
       const n = reading?.reading_no ?? index + 1;
       SPINNING_COUNT_CHANGE_METRIC_KEYS.forEach((metric) => {
-        readingColumns[`count_change_reading_${n}_${metric}`] = reading?.[metric] ?? null;
+        readingColumns[`count_change_reading_${n}_${metric}`] = metric === "reading_no" ? n : (reading?.[metric] ?? null);
       });
     });
-    return { ...headerFields, ...readingColumns };
+    return {
+      ...headerFields,
+      ...readingColumns,
+      avg_reading: averageMetric(readings, "reading_value"),
+      avg_count: averageMetric(readings, "count"),
+      avg_strength: averageMetric(readings, "strength"),
+      overall_csp: averageMetric(readings, "csp"),
+    };
   });
 
 // Spinning's "Ring Frame Log Book" always submits a fixed 24 machine rows (spinning.js's
@@ -1333,7 +1354,19 @@ const normalizeAutoconerRewindingStudyRows = (response) =>
         readingColumns[`rewinding_study_reading_${n}_${metric}`] = reading?.[metric] ?? null;
       });
     });
-    return { ...headerFields, ...readingColumns };
+    // Per-reading No. of Cones/No. of Faults/Weight/Length are already exposed as numbered
+    // "Reading N - ..." columns above, but there was no entry-level total anywhere — per user
+    // request, sum each metric across every reading in this submission.
+    const sumMetric = (metric) =>
+      readings.reduce((sum, reading) => sum + (Number(reading?.[metric]) || 0), 0);
+    return {
+      ...headerFields,
+      ...readingColumns,
+      total_cones: readings.length ? sumMetric("no_of_cones") : null,
+      total_faults: readings.length ? sumMetric("no_of_faults") : null,
+      total_weight: readings.length ? sumMetric("weight") : null,
+      total_length: readings.length ? sumMetric("length_meters") : null,
+    };
   });
 
 // Autoconer's "Cone Density" generates one reading row per drum in the user's chosen Drum
@@ -1450,6 +1483,28 @@ const normalizeAutoconerLycraCheckingRows = (response) =>
       ...readingColumns,
       avg_length: summary.avg_length ?? null,
     };
+  });
+
+// Autoconer's "Drum wise Appearance" collects one OK/Not-OK result per drum in the user's chosen
+// Drum From/To range (frontend/src/views/autoconer/DrumWiseAppearance.jsx) — the GET route joins
+// them into a `drum_inspections` array per submission. Per user request, expose every drum's own
+// "Drum N No." and "Drum N Appearance" (Yes/No) as separate numbered columns — rather than one
+// aggregated Yes/No for the whole entry — so an entry with 5 drums shows all 5 results.
+const normalizeAutoconerDrumWiseAppearanceRows = (response) =>
+  extractResponseRows(response).map((row) => {
+    if (!isRecordObject(row)) return row;
+    const inspections = (Array.isArray(row.drum_inspections) ? row.drum_inspections : []).filter(isRecordObject);
+    const { drum_inspections: _drumInspections, ...headerFields } = row;
+    const drumColumns = {};
+    inspections.forEach((inspection, index) => {
+      const n = index + 1;
+      drumColumns[`drum_inspection_${n}_drum_no`] = inspection?.drum_no ?? null;
+      const okCount = Number(inspection?.appearance_ok_count) || 0;
+      const notOkCount = Number(inspection?.appearance_not_ok_count) || 0;
+      drumColumns[`drum_inspection_${n}_appearance`] =
+        okCount > 0 ? "Yes" : notOkCount > 0 ? "No" : null;
+    });
+    return { ...headerFields, ...drumColumns };
   });
 
 // Autoconer's "Splice Strength" generates one reading row per drum in the user's chosen Drum
@@ -2046,21 +2101,6 @@ const getStretchTableValue = (row, fieldLabel) => {
   return match ? match[columnKey] : undefined;
 };
 
-// Autoconer's "Drum wise Appearance" saves per-drum ok/not-ok flags as a `drum_inspections`
-// array, not a single "Appearance" value — sum across drums for a meaningful per-entry total.
-const DRUM_WISE_APPEARANCE_FIELD_KEYS = {
-  "Appearance OK Count": "appearance_ok_count",
-  "Appearance Not OK Count": "appearance_not_ok_count",
-};
-
-const getDrumWiseAppearanceCount = (row, fieldLabel) => {
-  const countKey = DRUM_WISE_APPEARANCE_FIELD_KEYS[fieldLabel];
-  if (!countKey) return undefined;
-  const inspections = Array.isArray(row?.drum_inspections) ? row.drum_inspections : [];
-  if (!inspections.length) return undefined;
-  return inspections.reduce((sum, item) => sum + (Number(item?.[countKey]) || 0), 0);
-};
-
 const OPERATOR_FIELD_KEY = "operator";
 const OPERATOR_FIELD = { key: OPERATOR_FIELD_KEY, label: "Operator" };
 const ENTRY_ID_FIELD = { key: "Entry ID", label: "Entry ID" };
@@ -2213,6 +2253,10 @@ const toReportField = (fieldName) => {
 };
 
 const reportFieldAliases = {
+  // "PP - Autoconer Q4" had no catalog entry at all until now (per user request) — its "X"
+  // (On/Off) field's single-letter label is too short to safely fuzzy-match (it could collide
+  // with any unrelated column containing the letter "x"), so pin it directly to its real column.
+  "X": ["x_status"],
   // Ring Frame Log Book's summary block calls its combined AC+RF figure "total_cops" on the row,
   // but the form itself labels that same value "Grand Total" — alias it so the catalog entry
   // resolves instead of falling through to the blind fallback. The bottom-of-form "Guide
@@ -2229,6 +2273,10 @@ const reportFieldAliases = {
   // Autoconer Rewinding Study's header column is just "count_name" (no _from/_to split, unlike
   // Spinning's Count Change), but the form itself labels it "Count Name (From)".
   "Count Name (From)": ["count_name"],
+  // Splice Strength's catalog label was renamed from "Total Readings" to "No. of Readings" (per
+  // user request, to match the form's own field label) — the real column backing it is still
+  // "total_readings" (a count(*) from the joined drum_readings view).
+  "No. of Readings": ["total_readings"],
   // Autoconer Drum wise Appearance stores its machine field as "machine_code" (plain text the form
   // sends directly), not "auto_coner_no" like Rewinding Study/Cone Density/Splice Strength — this
   // alias only ever matches on screens that actually have a machine_code column; screens with their
@@ -2285,6 +2333,24 @@ const reportFieldAliases = {
   "Thick +35%": ["thick_plus_35"],
   "Neps +140%": ["neps_plus_140"],
   "Thin -30%": ["thin_minus_30"],
+  // Autoconer's CSP/U% Parameter Entries screens group these same IPI fields under two visible
+  // section headers in the entry form itself ("Normal IPI" / "Extra Sensitive IPI") — the catalog
+  // labels now carry that same prefix so Custom Report matches what's on screen, and so the two
+  // otherwise-identically-labeled "Total"/"TOTAL" fields (one per section) resolve to their own
+  // distinct column (total_1 vs total_2) instead of colliding into a single ambiguous "Total".
+  "Normal IPI - Thin -50%": ["thin_minus_50"],
+  "Normal IPI - Thick +50%": ["thick_plus_50"],
+  "Normal IPI - Neps +200%": ["neps_plus_200"],
+  "Normal IPI - Total": ["total_1"],
+  "Normal IPI - TOTAL": ["total_1"],
+  "Extra Sensitive IPI - Thin -40%": ["thin_minus_40"],
+  "Extra Sensitive IPI - Thick +35%": ["thick_plus_35"],
+  "Extra Sensitive IPI - Neps +140%": ["neps_plus_140"],
+  "Extra Sensitive IPI - Total": ["total_2"],
+  "Extra Sensitive IPI - TOTAL": ["total_2"],
+  "Extra Sensitive IPI - Thin -30%": ["thin_minus_30"],
+  "Extra Sensitive IPI - Neps +400%": ["neps_plus_400"],
+  "Extra Sensitive IPI - Thick +70%": ["thick_plus_70"],
   "1mCV": ["cvm_1m", "im_cvm", "1m_cvm", "one_m_cvm"],
   "3mCV": ["cvm_3m", "m3_cvm", "3m_cvm", "three_m_cvm"],
   "A% (N-1)": ["a_percent_n_minus_1"],
@@ -3117,11 +3183,6 @@ const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
   if (parseStretchFieldLabel(field.label || field.key)) {
     const stretchValue = getStretchTableValue(row, field.label || field.key);
     return stretchValue !== null && typeof stretchValue !== "undefined" && stretchValue !== "" ? String(stretchValue) : "-";
-  }
-
-  if (DRUM_WISE_APPEARANCE_FIELD_KEYS[field.label || field.key]) {
-    const appearanceCount = getDrumWiseAppearanceCount(row, field.label || field.key);
-    return typeof appearanceCount !== "undefined" ? String(appearanceCount) : "-";
   }
 
   // "Remarks" is a genuinely optional field on most forms — when it's blank, the row's own
@@ -4217,6 +4278,30 @@ function ReportsPage() {
     const withSpliceStrengthColumns = spliceStrengthReadingFields.length
       ? [...withLycraCheckingColumns, ...spliceStrengthReadingFields]
       : withLycraCheckingColumns;
+    // Autoconer's "Drum wise Appearance" rows carry however many drums the user's Drum From/To
+    // range covered, same reasoning as Splice Strength/Cone Density above — per user request,
+    // each drum's own No. and Appearance (Yes/No) show as separate numbered columns rather than
+    // one aggregated value for the whole entry.
+    const isAutoconerDrumWiseAppearanceReport = subDepartment === "Autoconer" && reportType === "Drum wise Appearance";
+    const drumWiseAppearanceCount = isAutoconerDrumWiseAppearanceReport
+      ? rows.reduce((max, row) => {
+          let count = 0;
+          while (Object.prototype.hasOwnProperty.call(row || {}, `drum_inspection_${count + 1}_drum_no`)) {
+            count += 1;
+          }
+          return Math.max(max, count);
+        }, 0)
+      : 0;
+    const drumWiseAppearanceFields = Array.from({ length: drumWiseAppearanceCount }, (_, index) => {
+      const n = index + 1;
+      return [
+        { key: `drum_inspection_${n}_drum_no`, label: `Drum ${n} No.` },
+        { key: `drum_inspection_${n}_appearance`, label: `Drum ${n} Appearance` },
+      ];
+    }).flat();
+    const withDrumWiseAppearanceColumns = drumWiseAppearanceFields.length
+      ? [...withSpliceStrengthColumns, ...drumWiseAppearanceFields]
+      : withSpliceStrengthColumns;
     // Mixing's Openness Data Entry rows carry however many entries the user's "No. of Entries (N)"
     // generated, same reasoning as Splice Strength/Cone Density above.
     const isMixingOpennessReport = subDepartment === "Mixing" && reportType === "Openness Data Entry";
@@ -4236,9 +4321,6 @@ function ReportsPage() {
         label: `Entry ${n} - ${OPENNESS_ENTRY_METRIC_LABELS[metric]}`,
       }));
     }).flat();
-    const withOpennessEntryColumns = opennessEntryFields.length
-      ? [...withSpliceStrengthColumns, ...opennessEntryFields]
-      : withSpliceStrengthColumns;
     // Openness % is per-stage, not per-entry (see normalizeOpennessRows) — its own numbered
     // column set, keyed by stage_no rather than entry_no.
     const opennessStageCount = isMixingOpennessReport
@@ -4254,6 +4336,9 @@ function ReportsPage() {
       const n = index + 1;
       return [{ key: `openness_stage_${n}_percentage`, label: `Stage ${n} - Openness %` }];
     }).flat();
+    const withOpennessEntryColumns = opennessEntryFields.length
+      ? [...withSpliceStrengthColumns, ...opennessEntryFields]
+      : withSpliceStrengthColumns;
     const withOpennessColumns = opennessStageFields.length
       ? [...withOpennessEntryColumns, ...opennessStageFields]
       : withOpennessEntryColumns;
@@ -4594,6 +4679,7 @@ function ReportsPage() {
         const isAutoconerConeDensityReport = subDepartment === "Autoconer" && reportType === "Cone Density";
         const isAutoconerLycraCheckingReport = subDepartment === "Autoconer" && reportType === "Lycra % Checking";
         const isAutoconerSpliceStrengthReport = subDepartment === "Autoconer" && reportType === "Splice Strength";
+        const isAutoconerDrumWiseAppearanceReport = subDepartment === "Autoconer" && reportType === "Drum wise Appearance";
         const extractRows = isOpennessReport
           ? normalizeOpennessRows
           : isMixingProcessParameterReport
@@ -4634,9 +4720,11 @@ function ReportsPage() {
                                             ? normalizeAutoconerLycraCheckingRows
                                             : isAutoconerSpliceStrengthReport
                                               ? normalizeAutoconerSpliceStrengthRows
-                                              : skipsNestedRowExpansion
-                                                ? extractResponseRows
-                                                : normalizeRows;
+                                              : isAutoconerDrumWiseAppearanceReport
+                                                ? normalizeAutoconerDrumWiseAppearanceRows
+                                                : skipsNestedRowExpansion
+                                                  ? extractResponseRows
+                                                  : normalizeRows;
 
         let nextRows = [];
         if (reportFetcher) {
