@@ -56,7 +56,7 @@ const Login = () => {
                     </div>
 
                     <div className={styles['subheading-container']}>
-                        <p>Access your workspace and tools</p>
+                        <p>Smart Mill Workflows & Real-Time Data Analytics</p>
                     </div>
                 </div>
 
