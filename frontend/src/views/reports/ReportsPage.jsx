@@ -2352,6 +2352,23 @@ const reportFieldAliases = {
   "Thick +35%": ["thick_plus_35"],
   "Neps +140%": ["neps_plus_140"],
   "Thin -30%": ["thin_minus_30"],
+  // Individual Card Performance Data's Draw Frame/Simplex sub-sections (added to the trials.trials
+  // form alongside Yarn Results) — "Finish U%" and both "CVIM" fields need distinct labels per
+  // section since the form itself has two separate CVIM inputs (df_cvim vs smx_cvim).
+  "Type (Sample, Trials)": ["trial_type"],
+  // "Yarn Results (optional)" and "Yarn Remarks (optional)" are two distinct form fields
+  // (yarn_results vs yarn_remarks) that both share the "yarn"/"optional" substrings — without
+  // explicit aliases the fuzzy fallback could resolve either label to the wrong column.
+  "Yarn Results (optional)": ["yarn_results"],
+  "Yarn Remarks (optional)": ["yarn_remarks"],
+  "Drg Mc. No.": ["df_drg_mc_no"],
+  "Finish U%": ["df_finish_u_percent"],
+  "Draw Frame CVIM": ["df_cvim"],
+  "Draw Frame CVB": ["df_cvb"],
+  "SMX No.": ["smx_no"],
+  "SPL No.": ["spl_no"],
+  "Roving%": ["roving_percent"],
+  "Simplex CVIM": ["smx_cvim"],
   // Autoconer's CSP/U% Parameter Entries screens group these same IPI fields under two visible
   // section headers in the entry form itself ("Normal IPI" / "Extra Sensitive IPI") — the catalog
   // labels now carry that same prefix so Custom Report matches what's on screen, and so the two

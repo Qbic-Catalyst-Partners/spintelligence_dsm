@@ -183,6 +183,20 @@ const ensureTrialsEntryIdColumn = async () => {
         ON trials.trials (entry_id)
         WHERE entry_id IS NOT NULL;
     `);
+    // Custom Report's "Created At" column (added for every Individual Card Performance row,
+    // same as Blow Room/Carding/etc.) reads row.created_at directly — the column never existed
+    // on this table before, so it always came back blank. New rows now set created_at = date
+    // (the trial's own submission date) at insert time; backfill existing rows the same way so
+    // "Created At" reflects the trial date instead of whenever this migration happened to run.
+    await client.query(`
+        ALTER TABLE trials.trials
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    `);
+    await client.query(`
+        UPDATE trials.trials
+        SET created_at = date::timestamptz
+        WHERE date IS NOT NULL;
+    `);
     trialsEntryIdColumnReady = true;
 };
 
@@ -275,7 +289,8 @@ router.post('/', async (req, res) => {
                 smx_no,
                 spl_no,
                 roving_percent,
-                smx_cvim
+                smx_cvim,
+                created_at
             )
             VALUES(
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -285,7 +300,7 @@ router.post('/', async (req, res) => {
                 $41,$42,$43,$44,$45,$46,$47,$48,$49,$50,
                 $51,$52,$53,$54,$55,$56,$57,$58,$59,$60,
                 $61,$62,$63,$64,$65,$66,$67,$68,$69,$70,
-                $71,$72,$73,$74,$75,$76
+                $71,$72,$73,$74,$75,$76,$77
             )
             RETURNING *`,
             [
@@ -364,7 +379,8 @@ router.post('/', async (req, res) => {
                 data.smx_no,
                 data.spl_no,
                 toNumberOrNull(data.roving_percent),
-                toNumberOrNull(data.smx_cvim)
+                toNumberOrNull(data.smx_cvim),
+                data.date || null
             ]
         );
 
