@@ -171,40 +171,9 @@ const getEmployeeMasterDropdown = createEmployeeMasterDropdown(sqlServer, 'trial
 const toNumberOrNull = (value) =>
     value === '' || value === null || typeof value === 'undefined' ? null : value;
 
-let trialsEntryIdColumnReady = false;
-const ensureTrialsEntryIdColumn = async () => {
-    if (trialsEntryIdColumnReady) return;
-    await client.query(`
-        ALTER TABLE trials.trials
-            ADD COLUMN IF NOT EXISTS entry_id TEXT;
-    `);
-    await client.query(`
-        CREATE UNIQUE INDEX IF NOT EXISTS trials_trials_entry_id_uq
-        ON trials.trials (entry_id)
-        WHERE entry_id IS NOT NULL;
-    `);
-    // Custom Report's "Created At" column (added for every Individual Card Performance row,
-    // same as Blow Room/Carding/etc.) reads row.created_at directly — the column never existed
-    // on this table before, so it always came back blank. New rows now set created_at = date
-    // (the trial's own submission date) at insert time; backfill existing rows the same way so
-    // "Created At" reflects the trial date instead of whenever this migration happened to run.
-    await client.query(`
-        ALTER TABLE trials.trials
-            ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-    `);
-    await client.query(`
-        UPDATE trials.trials
-        SET created_at = date::timestamptz
-        WHERE date IS NOT NULL;
-    `);
-    trialsEntryIdColumnReady = true;
-};
-
 router.post('/', async (req, res) => {
 
     try {
-
-        await ensureTrialsEntryIdColumn();
 
         const data = req.body;
 
@@ -426,8 +395,6 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
 
     try {
-
-        await ensureTrialsEntryIdColumn();
 
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
