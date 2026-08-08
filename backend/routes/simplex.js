@@ -691,7 +691,6 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
     }
 
     const operatorName = getAuthenticatedOperatorName(req);
-    const submissionId = await nextWrappingSimplexSubmissionId();
 
     await client.query('BEGIN');
 
@@ -700,6 +699,7 @@ const saveWrappingSimplexNotebook = async (req, res, next) => {
       const row = rows[index];
       const dateText = String(row.date_text ?? row.date ?? row.Date ?? '').trim();
       const entryDate = parseNotebookDate(row.entry_date ?? row.date ?? row.Date ?? dateText);
+      const submissionId = await nextWrappingSimplexSubmissionId();
 
       const result = await client.query(
         `INSERT INTO wrapping.simplex_notebook (
