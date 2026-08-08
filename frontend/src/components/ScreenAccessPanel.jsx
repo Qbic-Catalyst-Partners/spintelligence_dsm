@@ -100,7 +100,7 @@ const HARDCODED_DEPARTMENTS = [
   {
     name: "Simplex",
     screens: [
-      "SMXCots Change Data Entry",
+      "SMXCots Checking Data Entry",
       "SMX Breaks Study Report",
       "U% Data Entry",
       "Wheel Change",

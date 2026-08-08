@@ -4,6 +4,7 @@ import styles from "@/styles/u%dataentry.module.css";
 import Footer from "@/components/Footer";
 import SearchableSelect from "@/components/SearchableSelect";
 import SuccessModal from "@/components/SuccessModal";
+import PreviewModal from "@/components/PreviewModal";
 import NotebookCustomFields from "@/components/NotebookCustomFields";
 import { sanitizeNumericInput } from "@/utils/inputValidation";
 import { fetchCardingUqcMasterDropdown, fetchCardingUqcMasterVarieties } from "@/apis/carding";
@@ -55,6 +56,8 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
   const [formMessage, setFormMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewItems, setPreviewItems] = useState([]);
   const [varietyOptions, setVarietyOptions] = useState([]);
   const [mcNoOptions, setMcNoOptions] = useState(CDG_MC_NO_OPTIONS);
   const [shiftOptions] = useState(STATIC_SHIFT_OPTIONS);
@@ -148,39 +151,51 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
   }, []);
 
   useEffect(() => {
-    if (uqc?.message) {
-      const nextEntryId = uqc?.data?.entry_id || entryId;
-      const previewItems = [
-        { label: "Type", value: selectedType },
-        { label: "Entry ID", value: entryId || "-" },
-        { label: "Shift", value: form.shift },
-        { label: "Variety", value: form.variety },
-        { label: "MC No.", value: form.mc_no },
-        { label: "U%", value: form.u_percent },
-        { label: "CVM", value: form.cvm },
-        { label: "1mCV", value: form.im_cvm },
-        { label: "3 mCV", value: form.m3_cvm },
-        { label: "Remarks", value: form.remarks },
-      ];
-      recordSubmittedNotebook({
-        department: "Quality Control",
-        subDepartment: "Carding",
-        notebookName: selectedType,
-        entryId: nextEntryId,
-        previewItems,
-        user,
-      }).catch((recordError) => {
+    if (!uqc?.message) return;
+
+    const nextEntryId = uqc?.data?.entry_id || entryId;
+    const previewItems = [
+      { label: "Type", value: selectedType },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Shift", value: form.shift },
+      { label: "Variety", value: form.variety },
+      { label: "MC No.", value: form.mc_no },
+      { label: "U%", value: form.u_percent },
+      { label: "CVM", value: form.cvm },
+      { label: "1mCV", value: form.im_cvm },
+      { label: "3 mCV", value: form.m3_cvm },
+      { label: "Remarks", value: form.remarks },
+    ];
+
+    // Registration and custom-field saves are awaited BEFORE setShowSuccess(true) below —
+    // previously these were fire-and-forget while the modal showed immediately, so a fast
+    // "OK" click had no in-flight request left to interrupt only by luck of no reload being
+    // wired to this particular modal's close handler. Making the ordering explicit here
+    // removes that fragility rather than relying on it.
+    (async () => {
+      try {
+        await recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Carding",
+          notebookName: selectedType,
+          entryId: nextEntryId,
+          previewItems,
+          user,
+        });
+      } catch (recordError) {
         console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
-      });
+      }
 
       const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
       if (nextEntryId && customFieldEntries.length) {
-        saveNotebookCustomFieldValuesApi(
-          nextEntryId,
-          customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
-        ).catch((customFieldError) => {
+        try {
+          await saveNotebookCustomFieldValuesApi(
+            nextEntryId,
+            customFieldEntries.map(([customFieldId, value]) => ({ custom_field_id: customFieldId, value }))
+          );
+        } catch (customFieldError) {
           console.error("Failed to save custom field values:", customFieldError);
-        });
+        }
       }
 
       reserveEntryId?.();
@@ -189,7 +204,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
       setShowSuccess(true);
       dispatch(getCardingUqcEntries({ page: 1, limit: 10 }));
       dispatch(clearCardingState());
-    }
+    })();
   }, [dispatch, uqc]);
 
   useEffect(() => {
@@ -200,7 +215,7 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
     }
   }, [dispatch, error]);
 
-  const handleSave = () => {
+  const openPreview = () => {
     const nextErrors = {};
 
     if (!String(selectedType || "").trim()) nextErrors.selectedType = true;
@@ -222,7 +237,24 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
 
     setFormMessage("");
     setIsError(false);
+    setPreviewItems([
+      { label: "Type", value: selectedType },
+      { label: "Entry ID", value: entryId || "-" },
+      { label: "Date", value: form.date },
+      { label: "Shift", value: form.shift },
+      { label: "Variety", value: form.variety },
+      { label: "MC No.", value: form.mc_no },
+      { label: "U%", value: form.u_percent },
+      { label: "CVM", value: form.cvm },
+      { label: "1mCV", value: form.im_cvm },
+      { label: "3 mCV", value: form.m3_cvm },
+      { label: "Remarks", value: form.remarks },
+    ]);
+    setShowPreview(true);
+  };
 
+  const confirmSubmit = () => {
+    setShowPreview(false);
     dispatch(
       submitCardingUqc({
         entry_id: entryId || "",
@@ -356,11 +388,22 @@ function UPercentDataEntry({ types, selectedType, onTypeChange, entryId = "", re
         <Footer
           onBack={() => console.log("Back")}
           onClear={resetForm}
-          onSave={handleSave}
+          onSave={openPreview}
           saveLabel={isLoading ? "Saving..." : "Save Record"}
           disabled={isLoading}
         />
       </div>
+
+      <PreviewModal
+        open={showPreview}
+        title="Carding Preview"
+        subtitle="Carding Notebook / U% Data Entry"
+        items={previewItems}
+        typeValue={selectedType}
+        onCancel={() => setShowPreview(false)}
+        onConfirm={confirmSubmit}
+        confirmLabel={isLoading ? "Submitting..." : "Submit"}
+      />
 
       <SuccessModal
         open={showSuccess}

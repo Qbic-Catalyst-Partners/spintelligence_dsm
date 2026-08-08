@@ -384,7 +384,6 @@ const ensureSimplexWheelChangeTable = async () => {
       proposed_sap_no TEXT,
       wheel_change_type TEXT,
       wheel_change_type_label TEXT,
-      entry_date DATE,
       parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
       rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       operator TEXT,
@@ -405,7 +404,6 @@ const ensureSimplexWheelChangeTable = async () => {
       ADD COLUMN IF NOT EXISTS proposed_sap_no TEXT,
       ADD COLUMN IF NOT EXISTS wheel_change_type TEXT,
       ADD COLUMN IF NOT EXISTS wheel_change_type_label TEXT,
-      ADD COLUMN IF NOT EXISTS entry_date DATE,
       ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
       ADD COLUMN IF NOT EXISTS rows JSONB NOT NULL DEFAULT '{}'::jsonb,
       ADD COLUMN IF NOT EXISTS operator TEXT,
@@ -422,6 +420,11 @@ const ensureSimplexWheelChangeTable = async () => {
   // forever. Force it explicitly on every startup.
   await client.query(`
     ALTER TABLE simplex.wheel_change ALTER COLUMN approval_status SET DEFAULT 'pending';
+  `);
+  // Date was dropped from the entry form and the Saved Entries table — the column now just
+  // sits unused, so drop it too rather than leaving dead data around.
+  await client.query(`
+    ALTER TABLE simplex.wheel_change DROP COLUMN IF EXISTS entry_date;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS simplex_wheel_change_entry_id_uq
@@ -463,26 +466,21 @@ router.post('/wheel-change', async (req, res, next) => {
     const proposed_sap_no = String(payload.proposed_sap_no ?? payload.smxNoProposed ?? '').trim() || null;
     const wheel_change_type = String(payload.wheel_change_type ?? '').trim() || null;
     const wheel_change_type_label = String(payload.wheel_change_type_label ?? '').trim() || null;
-    const entry_date = payload.entry_date ? String(payload.entry_date).slice(0, 10) : null;
     const parameters = normalizeParameterRows(payload.parameters ?? payload.rows);
     const rowsBlob = payload.rows && typeof payload.rows === 'object' ? payload.rows : {};
     const operator = String(payload.operator ?? '').trim() || null;
     const remarks = String(payload.remarks ?? '').trim() || null;
     const approval_status = String(payload.approval_status ?? 'pending').trim() || 'pending';
 
-    if (!entry_date) {
-      return res.status(400).json({ message: 'entry_date is required' });
-    }
-
     const result = await client.query(
       `INSERT INTO simplex.wheel_change (
-         entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label, entry_date,
+         entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label,
          parameters, rows, operator, remarks, approval_status
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11)
        RETURNING *`,
       [
-        entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label, entry_date,
+        entry_id, type, machine_no, proposed_sap_no, wheel_change_type, wheel_change_type_label,
         JSON.stringify(parameters), JSON.stringify(rowsBlob), operator, remarks, approval_status
       ]
     );
@@ -517,7 +515,7 @@ router.get('/wheel-change', async (req, res, next) => {
 
     const result = await client.query(
       `SELECT * FROM simplex.wheel_change ${whereClause}
-       ORDER BY entry_date DESC NULLS LAST, id DESC
+       ORDER BY created_at DESC NULLS LAST, id DESC
        LIMIT $1 OFFSET $2`,
       queryParams
     );
@@ -1219,7 +1217,7 @@ router.get('/SMXCotsChange/master/dropdown', getSimplexUqcMasterDropdown);
  *             properties:
  *               type:
  *                 type: string
- *                 example: SMXCots Change Data Entry
+ *                 example: SMXCots Checking Data Entry
  *               s_no:
  *                 type: string
  *                 example: "2"
@@ -1353,7 +1351,7 @@ router.post('/cots-change-data-entry', saveSimplexCotsChange);
  *               limit: 10
  *               data:
  *                 - id: 1
- *                   type: SMXCots Change Data Entry
+ *                   type: SMXCots Checking Data Entry
  *                   s_no: "2"
  *                   entry_date: "2026-04-01"
  *                   machine_name: MC-01

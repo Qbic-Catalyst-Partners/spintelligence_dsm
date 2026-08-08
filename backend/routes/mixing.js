@@ -685,7 +685,8 @@ const ensureMixingEntryIdColumnsImpl = async () => {
   await runMixingSchemaStep('moisture_data_entry columns', async () => {
     await client.query(`
       ALTER TABLE mixing.moisture_data_entry
-        ADD COLUMN IF NOT EXISTS entry_id TEXT;
+        ADD COLUMN IF NOT EXISTS entry_id TEXT,
+        ADD COLUMN IF NOT EXISTS lot_no VARCHAR(50);
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS moisture_data_entry_entry_id_uq
@@ -713,6 +714,24 @@ const ensureMixingEntryIdColumnsImpl = async () => {
       ALTER TABLE mixing.openness_entries
         ADD COLUMN IF NOT EXISTS beater_type TEXT,
         ADD COLUMN IF NOT EXISTS beater_speed_rpm NUMERIC;
+    `);
+    // The notebook computes a per-stage "Openness %" (stage AOV vs. previous stage AOV) and an
+    // "Overall Openness Efficiency %" (last stage AOV vs. first stage AOV) in the browser, but
+    // neither was ever sent to the backend or had a column to land in — Custom Report showed them
+    // as blank forever. Persist both so the calculated numbers survive past the browser preview.
+    // Standardized on "openness_percentage" as the column name — drop the older "openness_percent"
+    // column this same migration briefly introduced.
+    await client.query(`
+      ALTER TABLE mixing.openness_entries
+        ADD COLUMN IF NOT EXISTS openness_percentage NUMERIC(10,2);
+    `);
+    await client.query(`
+      ALTER TABLE mixing.openness_entries
+        DROP COLUMN IF EXISTS openness_percent;
+    `);
+    await client.query(`
+      ALTER TABLE mixing.openness_inspection
+        ADD COLUMN IF NOT EXISTS overall_openness_percent NUMERIC;
     `);
   });
 
@@ -1745,14 +1764,18 @@ router.get('/afis', async (req, res, next) => {
 // screens have been failing outright with "API not found" on every submission and every Custom
 // Report fetch, even though their backing tables (mixing.afis6_cotton_data_entry/
 // afis6_mmf_data_entry) already exist with the right columns (including entry_id and operator).
+
+const AFIS6_COTTON_NUMERIC_FIELDS = [
+  'scp_nep_count', 'l_w_mm', 'l_w_cv', 'sfc_w_percent', 'uql_w_mm',
+  'l_n_mm', 'l_n_cv_percent', 'sfc_n_percent', 'five_pct_l_n_mm'
+];
+
 router.post('/afis6-cotton', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
       entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
       blow_room, carding, breaker_drawing, finisher_drawing, comber,
-      scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
-      l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
       user_name
     } = req.body;
 
@@ -1763,6 +1786,34 @@ router.post('/afis6-cotton', async (req, res, next) => {
       return res.status(400).json({ message: 'inspection_date is required' });
     }
 
+    // A blank numeric input arrives as "" — Postgres rejects that for a `numeric` column
+    // ("invalid input syntax for type numeric: \"\"") and fails the whole save as an opaque
+    // 500. normalizeNumericFields coerces blank/missing values to null and reports anything
+    // genuinely non-numeric as a 400 instead.
+    const { normalized: numericValues, errors: numericErrors } = normalizeNumericFields(
+      req.body,
+      AFIS6_COTTON_NUMERIC_FIELDS
+    );
+    if (numericErrors.length) {
+      return res.status(400).json({
+        message: 'AFIS-6 Cotton numeric fields must contain valid numbers',
+        errors: numericErrors
+      });
+    }
+
+    const afis6CottonValues = [
+      // Invoice Date is an optional field on the form — left blank it arrives as "", which
+      // Postgres rejects for a `date` column ("invalid input syntax for type date: \"\"")
+      // and used to fail the whole save as an opaque 500 ("Internal Server Error"). toDateOnly
+      // normalizes both fields' blank/invalid input to null instead.
+      entry_id, toDateOnly(inspection_date), lot_no, variety, toDateOnly(invoice_date), mc_name,
+      blow_room, carding, breaker_drawing, finisher_drawing, comber,
+      numericValues.scp_nep_count, numericValues.l_w_mm, numericValues.l_w_cv,
+      numericValues.sfc_w_percent, numericValues.uql_w_mm,
+      numericValues.l_n_mm, numericValues.l_n_cv_percent, numericValues.sfc_n_percent,
+      numericValues.five_pct_l_n_mm, user_name || null
+    ];
+
     const result = await client.query(
       `INSERT INTO mixing.afis6_cotton_data_entry (
         entry_id, inspection_date, lot_no, variety, invoice_date, mc_name,
@@ -1772,16 +1823,7 @@ router.post('/afis6-cotton', async (req, res, next) => {
       )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
-      [
-        // Invoice Date is an optional field on the form — left blank it arrives as "", which
-        // Postgres rejects for a `date` column ("invalid input syntax for type date: \"\"")
-        // and used to fail the whole save as an opaque 500 ("Internal Server Error"). toDateOnly
-        // normalizes both fields' blank/invalid input to null instead.
-        entry_id, toDateOnly(inspection_date), lot_no, variety, toDateOnly(invoice_date), mc_name,
-        blow_room, carding, breaker_drawing, finisher_drawing, comber,
-        scp_nep_count, l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm,
-        l_n_mm, l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm, user_name || null
-      ]
+      afis6CottonValues
     );
 
     res.status(201).json({
@@ -1821,15 +1863,23 @@ router.get('/afis6-cotton', async (req, res, next) => {
   }
 });
 
+const AFIS6_MMF_NUMERIC_FIELDS = [
+  'total_nep_count_g', 'total_nep_mean_size_um', 'fiber_nep_count_g', 'fiber_nep_mean_size_um',
+  'sc_nep_count_g', 'sc_nep_mean_size_um', 'l_w_mm', 'l_w_cv', 'sfc_w_percent', 'uql_w_mm',
+  'l_n_mm', 'l_n_cv_percent', 'sfc_n_percent', 'five_pct_l_n_mm', 'fitness_index',
+  'maturity_ratio_mat1', 'ifc_percent', 'fifty_pct_l_n_mm', 'cut_length_n_mm',
+  'cut_length_l_n_cv_percent', 'cut_length_sfc_w_percent', 'fineness_den', 'fineness_cv_percent',
+  'long_fiber_gt_46_80_percent', 'long_fiber_count_gt_46_80',
+  'long_fiber_gt_45_60_percent', 'long_fiber_count_gt_45_60'
+];
+
 router.post('/afis6-mmf', async (req, res, next) => {
   try {
     await ensureMixingEntryIdColumns();
     const {
       entry_id, inspection_date, machine_name, material_class, comment,
-      total_nep_count_g, total_nep_mean_size_um, cut_length_n_mm,
-      l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
-      fineness_den, fineness_cv_percent,
-      long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80,
+      lot_no, variety, invoice_date, mc_name, blow_room, carding,
+      breaker_drawing, finisher_drawing, comber,
       user_name
     } = req.body;
 
@@ -1837,23 +1887,61 @@ router.post('/afis6-mmf', async (req, res, next) => {
       return res.status(400).json({ message: 'entry_id is required and must be unique' });
     }
 
+    // A blank numeric input arrives as "" — Postgres rejects that for a `numeric` column
+    // ("invalid input syntax for type numeric: \"\"") and fails the whole save as an opaque
+    // 500. normalizeNumericFields coerces blank/missing values to null and reports anything
+    // genuinely non-numeric as a 400 instead.
+    const { normalized: n, errors: numericErrors } = normalizeNumericFields(
+      req.body,
+      AFIS6_MMF_NUMERIC_FIELDS
+    );
+    if (numericErrors.length) {
+      return res.status(400).json({
+        message: 'AFIS-6 MMF numeric fields must contain valid numbers',
+        errors: numericErrors
+      });
+    }
+
+    const afis6MmfValues = [
+      entry_id, toDateOnly(inspection_date), machine_name, material_class || null, comment || null,
+      lot_no || null, variety || null, toDateOnly(invoice_date), mc_name || null, blow_room || null, carding || null,
+      breaker_drawing || null, finisher_drawing || null, comber || null,
+      n.total_nep_count_g, n.total_nep_mean_size_um,
+      n.fiber_nep_count_g, n.fiber_nep_mean_size_um,
+      n.sc_nep_count_g, n.sc_nep_mean_size_um,
+      n.l_w_mm, n.l_w_cv, n.sfc_w_percent, n.uql_w_mm, n.l_n_mm,
+      n.l_n_cv_percent, n.sfc_n_percent, n.five_pct_l_n_mm,
+      n.fitness_index, n.maturity_ratio_mat1, n.ifc_percent, n.fifty_pct_l_n_mm,
+      n.cut_length_n_mm, n.cut_length_l_n_cv_percent, n.cut_length_sfc_w_percent,
+      n.fineness_den, n.fineness_cv_percent,
+      // Live form still labels/keys these as "45.60mm" while the DB column (and the newer
+      // AFIS-6 MMF screen component) use "46.80mm" — same field, historical naming mismatch.
+      n.long_fiber_gt_46_80_percent ?? n.long_fiber_gt_45_60_percent,
+      n.long_fiber_count_gt_46_80 ?? n.long_fiber_count_gt_45_60,
+      user_name || null
+    ];
+
     const result = await client.query(
       `INSERT INTO mixing.afis6_mmf_data_entry (
         entry_id, inspection_date, machine_name, material_class, comment,
-        total_nep_count_g, total_nep_mean_size_um, cut_length_n_mm,
+        lot_no, variety, invoice_date, mc_name, blow_room, carding,
+        breaker_drawing, finisher_drawing, comber,
+        total_nep_count_g, total_nep_mean_size_um,
+        fiber_nep_count_g, fiber_nep_mean_size_um,
+        sc_nep_count_g, sc_nep_mean_size_um,
+        l_w_mm, l_w_cv, sfc_w_percent, uql_w_mm, l_n_mm,
         l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
+        fitness_index, maturity_ratio_mat1, ifc_percent, fifty_pct_l_n_mm,
+        cut_length_n_mm, cut_length_l_n_cv_percent, cut_length_sfc_w_percent,
         fineness_den, fineness_cv_percent,
         long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, operator
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
+      )
       RETURNING *`,
-      [
-        entry_id, inspection_date, machine_name, material_class, comment,
-        total_nep_count_g, total_nep_mean_size_um, cut_length_n_mm,
-        l_n_cv_percent, sfc_n_percent, five_pct_l_n_mm,
-        fineness_den, fineness_cv_percent,
-        long_fiber_gt_46_80_percent, long_fiber_count_gt_46_80, user_name || null
-      ]
+      afis6MmfValues
     );
 
     res.status(201).json({
@@ -1957,6 +2045,7 @@ router.post('/moisture', async (req, res, next) => {
     const {
       entry_id,
       inspection_date,
+      lot_no,
       party_lot_no,
       variety,
       party_name,
@@ -1984,19 +2073,20 @@ router.post('/moisture', async (req, res, next) => {
     // Report's Operator resolution (which checks the row's own operator column first) works.
     const result = await client.query(
       `INSERT INTO mixing.moisture_data_entry (
-        entry_id, inspection_date, party_lot_no, variety, party_name, pr_no,
+        entry_id, inspection_date, lot_no, party_lot_no, variety, party_name, pr_no,
         value1, value2, value3, value4, value5,
         value6, value7, value8, value9, value10, average, operator
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,
-        $7,$8,$9,$10,$11,
-        $12,$13,$14,$15,$16,$17,$18
+        $1,$2,$3,$4,$5,$6,$7,
+        $8,$9,$10,$11,$12,
+        $13,$14,$15,$16,$17,$18,$19
       )
       RETURNING *`,
       [
         entry_id,
         inspection_date,
+        lot_no || null,
         party_lot_no,
         variety,
         party_name,
@@ -2177,7 +2267,8 @@ router.post('/openness', async (req, res, next) => {
       actual_specific_volume_target,
       no_of_entries,
       entries,
-      user_name
+      user_name,
+      overall_openness_percent
     } = req.body;
 
     if (!entry_id) {
@@ -2195,8 +2286,8 @@ router.post('/openness', async (req, res, next) => {
     // Custom Report's Operator resolution (which checks the row's own operator column first) works.
     const inspectionResult = await client.query(
       `INSERT INTO mixing.openness_inspection
-      (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      (entry_id, inspection_date, mixing, br_line, actual_specific_volume_target, no_of_entries, operator, overall_openness_percent)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING id, entry_id`,
       [
         entry_id,
@@ -2205,17 +2296,22 @@ router.post('/openness', async (req, res, next) => {
         br_line || null,
         actual_specific_volume_target,
         no_of_entries,
-        user_name || null
+        user_name || null,
+        overall_openness_percent ?? null
       ]
     );
 
     const inspectionId = inspectionResult.rows[0].id;
     const savedEntryId = inspectionResult.rows[0].entry_id;
-    const perStage = no_of_entries / 3;
+    // stage_no comes straight from the form's own stage grouping (up to 5 rows/stage) rather
+    // than being recomputed here — a fixed "/3" split doesn't match a variable stage count.
+    const perStageFallback = no_of_entries / 3;
     for (let i = 0; i < entries.length; i++) {
       const entryNo = i + 1;
-      const stageNo = Math.ceil(entryNo / perStage);
       const e = entries[i];
+      const stageNo = Number.isFinite(Number(e.stage_no))
+        ? Number(e.stage_no)
+        : Math.ceil(entryNo / perStageFallback);
       const volume1 = Number(e.volume_1);
       const volume2 = Number(e.volume_2);
       const providedAverageVolume = Number(e.average_volume);
@@ -2224,14 +2320,17 @@ router.post('/openness', async (req, res, next) => {
         : Number.isFinite(volume1) && Number.isFinite(volume2)
           ? (volume1 + volume2) / 2
           : null;
+      const opennessPercentage = e.openness_percentage === '' || e.openness_percentage == null
+        ? null
+        : Number(e.openness_percentage);
 
       await client.query(
         `INSERT INTO mixing.openness_entries
         (inspection_id, entry_no, stage_no, machine_name,
          beater_type, beater_speed_rpm,
-         weight, volume_1, volume_2,
-         apparent_specific_volume, actual_op_value)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         weight, volume_1, volume_2, average_volume,
+         apparent_specific_volume, actual_op_value, openness_percentage)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           inspectionId,
           entryNo,
@@ -2242,8 +2341,10 @@ router.post('/openness', async (req, res, next) => {
           e.weight,
           e.volume_1,
           e.volume_2,
+          averageVolume,
           e.apparent_specific_volume,
-          e.actual_op_value
+          e.actual_op_value,
+          opennessPercentage
         ]
       );
     }
@@ -2313,8 +2414,8 @@ router.get('/openness', async (req, res, next) => {
       const entries = await client.query(
         `SELECT entry_no, stage_no, machine_name,
                 beater_type, beater_speed_rpm,
-                weight, volume_1, volume_2,
-                apparent_specific_volume, actual_op_value
+                weight, volume_1, volume_2, average_volume,
+                apparent_specific_volume, actual_op_value, openness_percentage
          FROM mixing.openness_entries
          WHERE inspection_id = $1
          ORDER BY entry_no`,

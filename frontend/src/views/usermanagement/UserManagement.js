@@ -27,12 +27,17 @@ import {
   updateStatusAPI,
   bulkUploadUsersAPI,
 } from "../../apis/userApi";
+import { isUserManagementManagerUser } from "../../utils/accessControl";
 
 export default function UserManagement() {
   const dispatch = useDispatch();
   const router = useRouter();
   const menuRef = useRef(null);
   const uploadInputRef = useRef(null);
+
+  const authUser = useSelector((state) => state.auth?.user);
+  const isHydrated = useSelector((state) => state.auth?.isHydrated);
+  const canAccessPage = isUserManagementManagerUser(authUser);
 
   const {
     users = [],
@@ -63,6 +68,13 @@ export default function UserManagement() {
     direction: "asc",
   });
   const rowsPerPage = 10;
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!canAccessPage) {
+      router.replace("/departments");
+    }
+  }, [canAccessPage, isHydrated, router]);
 
   // FETCH DATA
   useEffect(() => {
@@ -236,6 +248,10 @@ export default function UserManagement() {
   const totalPages = Math.ceil(filteredUsers.length / rowsPerPage);
   const start = (page - 1) * rowsPerPage;
   const pageData = filteredUsers.slice(start, start + rowsPerPage);
+
+  if (!isHydrated || !canAccessPage) {
+    return null;
+  }
 
   return (
     <div className={styles.container}>

@@ -38,6 +38,7 @@ import {
     isSubmittedNotebookManagerUser,
     isSubmittedNotebookViewerUser,
     isSupervisorNavUser,
+    isUserManagementManagerUser,
     isWheelChangeApproverUser,
     routeDepartmentMap,
 } from "@/utils/accessControl";
@@ -147,12 +148,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const user = useSelector((state) => state.auth?.user);
     const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
     const hasFullAccess = isFullAccessUser(user);
+    const hasUserManagementAccess = isUserManagementManagerUser(user);
     const hasSupervisorNavAccess = isSupervisorNavUser(user);
     const hasSubmittedNotebookAccess = isSubmittedNotebookManagerUser(user);
     // Broader than hasSubmittedNotebookAccess above: the Submitted Notebooks
-    // link itself is open to every L1-L5 hierarchy account, while the other
-    // Management Hub entries (New Field Creation, Activity Log, threshold
-    // config) stay limited to admin/supervisor.
+    // link itself is open to every L1-L5 hierarchy account (each sees a
+    // different server-scoped subset of rows), while the other Management
+    // Hub entries (New Field Creation, Activity Log, threshold config) stay
+    // limited to admin/supervisor.
     const hasSubmittedNotebookViewAccess = isSubmittedNotebookViewerUser(user);
     const hasWheelChangeApprovalAccess = isWheelChangeApproverUser(user);
     const hasManagementHubAccess = hasSubmittedNotebookAccess || hasSubmittedNotebookViewAccess || hasWheelChangeApprovalAccess;
@@ -176,7 +179,8 @@ const Header = ({ navLinks = defaultNavLinks }) => {
     const visibleNavLinks = !user || hasFullAccess
         ? navLinks
         : navLinks.filter((link) =>
-            link.href !== "/usermanagement" && link.href !== "/rolespermission"
+            (link.href !== "/usermanagement" || hasUserManagementAccess) &&
+            link.href !== "/rolespermission"
         );
     const visibleHrefSet = new Set(visibleNavLinks.map((link) => link.href));
     const hasDashboardNav = visibleHrefSet.has("/");
@@ -893,6 +897,14 @@ const Header = ({ navLinks = defaultNavLinks }) => {
                         );
                     })}
                 </nav>
+
+                <div className={styles["sidebar-version"]} title="Version 2.1.1">
+                    <span className={styles["sidebar-version-badge"]}>
+                        <span className={styles["sidebar-version-dot"]} />
+                        <span className={styles["sidebar-version-label"]}>Version</span>
+                        <span className={styles["sidebar-version-number"]}>2.1.1</span>
+                    </span>
+                </div>
             </aside>
 
             <div className={styles["top-logo-center"]}>

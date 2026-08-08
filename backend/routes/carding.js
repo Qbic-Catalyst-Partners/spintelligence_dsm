@@ -191,12 +191,21 @@ const ensureCardingEntryIdColumns = async () => {
 
   await client.query(`
     ALTER TABLE carding.carding_qc_header
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
+      ADD COLUMN IF NOT EXISTS entry_id TEXT,
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS carding_qc_header_entry_id_uq
     ON carding.carding_qc_header (entry_id)
     WHERE entry_id IS NOT NULL;
+  `);
+  // Process Parameter never persisted who submitted it — same fix as Blow Room's Process
+  // Parameter/Openness/AFIS/Fibre/Moisture: give the row its own operator column so Custom
+  // Report's Operator resolution has something to find (this screen never registers into
+  // submitted_notebooks either, so that fallback path never resolves it).
+  await client.query(`
+    ALTER TABLE carding.carding_qc_header
+      ADD COLUMN IF NOT EXISTS operator TEXT;
   `);
 
   await client.query(`
@@ -314,7 +323,8 @@ const ensureCardWasteStudyTable = async () => {
   await client.query(`
     ALTER TABLE carding.card_waste_study
       ADD COLUMN IF NOT EXISTS entry_id TEXT,
-      ADD COLUMN IF NOT EXISTS entry_type TEXT;
+      ADD COLUMN IF NOT EXISTS entry_type TEXT,
+      ADD COLUMN IF NOT EXISTS waste_type_entries NUMERIC(12,4);
   `);
 
   await client.query(`
@@ -2456,37 +2466,31 @@ router.get('/uqc', async (req, res) => {
         const offset = (page - 1) * limit;
         const department = String(req.query.department || '').trim();
         const globalMode = String(req.query.global || '').toLowerCase() === 'true';
-        const whereClause = (!globalMode && department) ? 'WHERE department ILIKE $3' : '';
-
+        // carding.u_data_entry has no `department` column (this screen isn't
+        // department-scoped), so a department filter can never legitimately
+        // narrow this query - always run unfiltered rather than reference a
+        // column that doesn't exist (which previously crashed any
+        // department-filtered Carding U% report with a 500).
         const dataQuery = `
             SELECT *
             FROM carding.u_data_entry
-            ${whereClause}
             ORDER BY entry_date DESC
             LIMIT $1 OFFSET $2
         `;
 
         const countQuery = `
             SELECT COUNT(*) FROM carding.u_data_entry
-            ${whereClause}
         `;
 
-        const params = (!globalMode && department)
-          ? [limit, offset, `%${department}%`]
-          : [limit, offset];
-        const countParams = (!globalMode && department)
-          ? [`%${department}%`]
-          : [];
-
-        const dataResult = await client.query(dataQuery, params);
-        const countResult = await client.query(countQuery, countParams);
+        const dataResult = await client.query(dataQuery, [limit, offset]);
+        const countResult = await client.query(countQuery);
 
         const total = parseInt(countResult.rows[0].count);
 
         res.json({
             page,
             limit,
-            global: globalMode || !department,
+            global: true,
             department: department || null,
             total,
             totalPages: Math.ceil(total / limit),
@@ -2838,7 +2842,8 @@ router.post('/qc-header', async (req, res, next) => {
       lickerin,
       cylinder,
       doffer,
-      flats
+      flats,
+      user_name
     } = req.body;
 
     if (!entry_id) {
@@ -2863,7 +2868,7 @@ router.post('/qc-header', async (req, res, next) => {
         delivery_speed, draft_speed, tension_draft, delivery_hank,
         setting, feed_roll_to_lickerin, lickerin_to_cylinder,
         cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats
+        sfl, sfd, lickerin, cylinder, doffer, flats, operator
       )
       VALUES (
         $1,$2,$3,$4,$5,
@@ -2871,7 +2876,7 @@ router.post('/qc-header', async (req, res, next) => {
         $10,$11,$12,$13,
         $14,$15,$16,
         $17,$18,
-        $19,$20,$21,$22,$23,$24
+        $19,$20,$21,$22,$23,$24,$25
       )
       RETURNING *`,
       [
@@ -2880,7 +2885,7 @@ router.post('/qc-header', async (req, res, next) => {
         delivery_speed, draft_speed, tension_draft, delivery_hank,
         setting, feed_roll_to_lickerin, lickerin_to_cylinder,
         cylinder_to_flats, cylinder_to_doffer,
-        sfl, sfd, lickerin, cylinder, doffer, flats
+        sfl, sfd, lickerin, cylinder, doffer, flats, user_name || null
       ]
     );
 
@@ -2922,6 +2927,7 @@ router.post('/qc-header', async (req, res, next) => {
  */
 router.get('/qc-header', async (req, res, next) => {
   try {
+    await ensureCardingEntryIdColumns();
     const { page = 1, limit = 10 } = req.query;
 
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -3064,7 +3070,8 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
       lickerin,
       cylinder,
       doffer,
-      flats
+      flats,
+      user_name
     } = req.body;
 
     const result = await client.query(
@@ -3091,8 +3098,9 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
            lickerin = $20,
            cylinder = $21,
            doffer = $22,
-           flats = $23
-       WHERE id = $24
+           flats = $23,
+           operator = COALESCE($24, operator)
+       WHERE id = $25
        RETURNING *`,
       [
         type,
@@ -3118,6 +3126,7 @@ router.put('/qc-header/:qc_id', async (req, res, next) => {
         cylinder,
         doffer,
         flats,
+        user_name || null,
         id
       ]
     );
@@ -3625,6 +3634,7 @@ router.post('/card-waste-study', async (req, res, next) => {
       study_type,
       carding_production_kg,
       type_entries,
+      waste_type_entries,
       type_rows,
       waste_rows,
       waste_type,
@@ -3675,12 +3685,12 @@ router.post('/card-waste-study', async (req, res, next) => {
     const result = await client.query(
       `INSERT INTO carding.card_waste_study (
         entry_id, waste_study_id, date, variety, entry_type, study_type,
-        carding_production_kg, type_entries,
+        carding_production_kg, type_entries, waste_type_entries,
         waste_type, waste_kg, waste_percent, overall_percent,
         remarks
       )
       VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
       )
       RETURNING *`,
       [
@@ -3692,6 +3702,7 @@ router.post('/card-waste-study', async (req, res, next) => {
         study_type,
         productionValue,
         normalizedTypeRows.length || toDecimal4OrNull(type_entries),
+        normalizedWasteRows.length || toDecimal4OrNull(waste_type_entries),
         normalizeWasteType(waste_type),
         wasteKgValue,
         wastePercentValue,

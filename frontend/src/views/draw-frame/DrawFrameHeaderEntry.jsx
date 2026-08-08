@@ -365,6 +365,7 @@ const DrawFrameHeaderEntry = forwardRef(function DrawFrameHeaderEntry(
   const [formMessage, setFormMessage] = useState("");
   const [recentEntries, setRecentEntries] = useState([]);
   const [customFieldValues, setCustomFieldValues] = useState({});
+  const [entriesLoaded, setEntriesLoaded] = useState(false);
 
   const handleCustomFieldChange = (fieldId, value) => {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));

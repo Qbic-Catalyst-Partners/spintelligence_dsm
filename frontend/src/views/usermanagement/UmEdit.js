@@ -16,6 +16,7 @@ import { fetchRoles, fetchDepartments, clearActionState } from "../../store/slic
 
 // API
 import { fetchUsersAPI, updateUserAPI, fetchEligibleManagersAPI } from "../../apis/userApi";
+import { isUserManagementManagerUser } from "../../utils/accessControl";
 
 const LEVEL_ABOVE_LABEL = { L1: "L2", L2: "L3", L3: "L4", L4: "L5" };
 
@@ -24,9 +25,19 @@ export default function EditUser() {
   const { id } = router.query;
 
   const dispatch = useDispatch();
+  const authUser = useSelector((state) => state.auth?.user);
+  const isHydrated = useSelector((state) => state.auth?.isHydrated);
+  const canAccessPage = isUserManagementManagerUser(authUser);
   const { roles, departments, actionLoading, error, actionSuccess } = useSelector(
     (state) => state.users
   );
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (!canAccessPage) {
+      router.replace("/departments");
+    }
+  }, [canAccessPage, isHydrated, router]);
 
   const [localError, setLocalError] = useState("");
   const [password, setPassword] = useState("");
@@ -149,6 +160,7 @@ export default function EditUser() {
     e.preventDefault();
 
     if (
+      !formData.first_name ||
       !formData.email ||
       !formData.phone ||
       !formData.role ||
@@ -184,6 +196,8 @@ export default function EditUser() {
 
     try {
       const updatedData = {
+        first_name: formData.first_name,
+        last_name: formData.last_name,
         phone: formData.phone,
         role: formData.role,
         department: formData.department,
@@ -198,6 +212,10 @@ export default function EditUser() {
       alert("Update failed");
     }
   };
+
+  if (!isHydrated || !canAccessPage) {
+    return null;
+  }
 
   return (
     <div className={styles.container}>
@@ -230,13 +248,21 @@ export default function EditUser() {
 
             <div className={styles.grid}>
               <div className={styles.formGroup}>
-                <label>First Name</label>
-                <input value={formData.first_name} disabled />
+                <label>First Name <span>*</span></label>
+                <input
+                  name="first_name"
+                  value={formData.first_name}
+                  onChange={handleChange}
+                />
               </div>
 
               <div className={styles.formGroup}>
                 <label>Last Name</label>
-                <input value={formData.last_name} disabled />
+                <input
+                  name="last_name"
+                  value={formData.last_name}
+                  onChange={handleChange}
+                />
               </div>
 
               <div className={styles.formGroup}>

@@ -439,41 +439,33 @@ function Mixing() {
         setShowPreview(true);
     };
 
+    // recordSubmittedNotebook is called inside each screen's own handleSubmit (see
+    // cottonHVIDataEntry.jsx, afisDataEntry.jsx, moistureDataEntry.jsx, fibreDataEntry.jsx),
+    // immediately after that screen's own save dispatch succeeds — not here. It used to run
+    // here, after childRef.current.submit() returned, timed to finish before showSuccessOnce().
+    // But a separate effect (below) also shows the success modal the instant the save's Redux
+    // action resolves — i.e. before this function could even get to reserveEntryId(), let alone
+    // the registration call — so whichever ran first won, and clicking that modal's "OK" (which
+    // reloads the page) while the registration was still mid-flight silently discarded it with no
+    // error anywhere. Registering inside submit() itself, before submit() returns at all, removes
+    // the race entirely instead of continuing to chase its timing here.
     const confirmSubmit = async () => {
         setShowPreview(false);
-        // Captured synchronously, before reserveEntryId()/showSuccessOnce() run any state updates
-        // that could re-render/detach the child form ahead of the recordSubmittedNotebook call
-        // below. recordSubmittedNotebook is never passed childRef here (only this snapshot, with
-        // previewItems as an ultimate fallback) — reading childRef.current.getPayload() live at
-        // record-time is exactly the pattern that left "AFIS Data Entry" with zero submitted-
-        // notebook rows ever recorded, while AFIS-6 Cotton's separate submit handler (which never
-        // touches childRef, just its own locally-built data) has always worked.
-        let capturedPayload = null;
         try {
-            capturedPayload = childRef.current?.getPayload?.() || null;
-            const ok = await childRef.current?.submit?.();
-            if (ok === false) return;
-            await reserveEntryId();
-            showSuccessOnce();
+            if (isAfis6Cotton) {
+                await performAfis6Submit();
+            } else if (isAfis6Mmf) {
+                await performAfis6MmfSubmit();
+            } else {
+                const ok = await childRef.current?.submit?.();
+                if (ok === false) return;
+                await reserveEntryId();
+            }
         } catch (error) {
             console.error("Mixing form save failed:", error?.response?.data || error?.message || error);
             return;
         }
-
-        try {
-            await recordSubmittedNotebook({
-                department: "Quality Control",
-                subDepartment: "Mixing",
-                notebookName: selectedTypeName,
-                entryId,
-                lotNo,
-                registeredActions: capturedPayload ? { getPayload: () => capturedPayload } : undefined,
-                previewItems,
-                user,
-            });
-        } catch (error) {
-            console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
-        }
+        showSuccessOnce();
     };
 
     const handleSuccessClose = () => {
@@ -625,7 +617,7 @@ function Mixing() {
         setAfis6CustomFieldValues({});
     };
 
-    const handleAfis6Submit = async () => {
+    const openAfis6Preview = () => {
         const numericKeys = afis6FieldDefs.map((field) => field.key);
         const nextErrors = numericKeys.reduce((acc, key) => {
             const trimmed = String(afis6Form[key] ?? "").trim();
@@ -640,6 +632,19 @@ function Mixing() {
         }
 
         setValidationMessage("");
+        setPreviewItems([
+            { label: "Type", value: "AFIS-6 Cotton Data Entry" },
+            { label: "Entry ID", value: entryId },
+            ...afis6TextFieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+            ...afis6FieldDefs.map((field) => ({ label: field.label, value: afis6Form[field.key] })),
+        ]);
+        setShowPreview(true);
+    };
+
+    // Runs after the user confirms the AFIS-6 Cotton preview (see confirmSubmit's isAfis6Cotton
+    // branch) — showSuccessOnce() is called there, uniformly for every notebook type, once this
+    // resolves.
+    const performAfis6Submit = async () => {
         await dispatch(submitAfis6Cotton(buildAfis6Payload())).unwrap();
 
         const afis6CustomFieldEntries = Object.entries(afis6CustomFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
@@ -668,7 +673,6 @@ function Mixing() {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
         handleAfis6Clear();
-        showSuccessOnce();
     };
 
     const afis6MmfTextFieldDefs = [
@@ -703,8 +707,6 @@ function Mixing() {
         { key: "ifc_percent", label: "IFC%" },
         { key: "fifty_pct_l_n_mm", label: "50%L(n)" },
         { key: "cut_length_n_mm", label: "Cut Length(n)" },
-        { key: "cut_length_l_n_cv_percent", label: "L(n)CV" },
-        { key: "cut_length_sfc_w_percent", label: "SCF(w)<12.70mm" },
         { key: "fineness_den", label: "Fineness Den" },
         { key: "fineness_cv_percent", label: "Fineness CV" },
         { key: "long_fiber_gt_45_60_percent", label: "Long Fiber >45.60mm" },
@@ -842,7 +844,7 @@ function Mixing() {
         setAfis6MmfCustomFieldValues({});
     };
 
-    const handleAfis6MmfSubmit = async () => {
+    const openAfis6MmfPreview = () => {
         const numericKeys = afis6MmfFieldDefs.map((field) => field.key);
         const nextErrors = numericKeys.reduce((acc, key) => {
             const trimmed = String(afis6MmfForm[key] ?? "").trim();
@@ -857,6 +859,19 @@ function Mixing() {
         }
 
         setValidationMessage("");
+        setPreviewItems([
+            { label: "Type", value: "AFIS-6 MMF Data Entry" },
+            { label: "Entry ID", value: entryId },
+            ...afis6MmfTextFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+            ...afis6MmfFieldDefs.map((field) => ({ label: field.label, value: afis6MmfForm[field.key] })),
+        ]);
+        setShowPreview(true);
+    };
+
+    // Runs after the user confirms the AFIS-6 MMF preview (see confirmSubmit's isAfis6Mmf
+    // branch) — showSuccessOnce() is called there, uniformly for every notebook type, once this
+    // resolves.
+    const performAfis6MmfSubmit = async () => {
         await dispatch(submitAfis6Mmf(buildAfis6MmfPayload())).unwrap();
 
         const afis6MmfCustomFieldEntries = Object.entries(afis6MmfCustomFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
@@ -885,7 +900,6 @@ function Mixing() {
             console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
         }
         handleAfis6MmfClear();
-        showSuccessOnce();
     };
 
     const handleProcessParameterSubmitSuccess = (response) => {
@@ -1363,7 +1377,7 @@ function Mixing() {
                     <Footer
                         onBack={() => router.push("/departments/quality-control")}
                         onClear={isAfis6Cotton ? handleAfis6Clear : isAfis6Mmf ? handleAfis6MmfClear : handleClear}
-                        onSave={isAfis6Cotton ? handleAfis6Submit : isAfis6Mmf ? handleAfis6MmfSubmit : openPreview}
+                        onSave={isAfis6Cotton ? openAfis6Preview : isAfis6Mmf ? openAfis6MmfPreview : openPreview}
                         saveLabel={actionLoading ? "Submitting..." : "Save Record"}
                         disabled={actionLoading || entryIdLoading}
                     />

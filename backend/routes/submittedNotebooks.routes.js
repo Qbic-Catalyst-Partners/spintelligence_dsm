@@ -955,22 +955,60 @@ const isAdminRequester = (req) => {
 
 const getRequesterLevel = (req) => String(req.user?.level || '').trim().toUpperCase();
 
-const hasHierarchyLevel = (req) => ['L1', 'L2', 'L3', 'L4', 'L5'].includes(getRequesterLevel(req));
-
-// Approval itself is restricted to L4/L5 - viewing (canViewSubmission /
-// GET list's canViewAll below) is open to the whole L1-L5 hierarchy.
+// Approval itself is restricted to L4/L5 (mirrors frontend
+// isSubmittedNotebookApproverUser in utils/accessControl.js).
 const canApproveSubmission = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
 
-const canViewSubmission = (req, row) => {
-  if (isAdminRequester(req)) return true;
-  if (hasHierarchyLevel(req)) return true;
-  const requesterId = parsePositiveInt(req.user?.id);
-  if (!requesterId) return false;
-  if (row.submitted_by_user_id === requesterId) return true;
-  return (
-    (Array.isArray(row.l2_approver_user_ids) && row.l2_approver_user_ids.includes(requesterId)) ||
-    (Array.isArray(row.l3_approver_user_ids) && row.l3_approver_user_ids.includes(requesterId))
+// L4/L5/admin see every submitted notebook. Everyone else is scoped by
+// getVisibleSubmitterIds below, based on the real users.user_details
+// reports_to_user_id org chart - NOT the l2_approver_user_ids/
+// l3_approver_user_ids columns on submitted_notebooks rows. Those columns
+// are populated per-notebook-type from the manually-configured
+// Acknowledgement Threshold (see the POST '/' handler's
+// "Notebook approval moved from L2 to L4" comment) - they hold whichever
+// L4 approver was configured for that specific notebook type, and are an
+// empty array for any notebook type with no threshold configured (which is
+// most of them - only Mixing's 8 screens have one at the time of writing).
+// They tell you nothing about a submitter's actual L2/L3 manager, so they
+// can't be used to scope L2/L3 visibility.
+const canViewAllSubmissions = (req) => isAdminRequester(req) || ['L4', 'L5'].includes(getRequesterLevel(req));
+
+const getDirectReportIds = async (managerId) => {
+  if (!managerId) return [];
+  const result = await client.query(
+    `SELECT id FROM users.user_details WHERE reports_to_user_id = $1`,
+    [managerId]
   );
+  return result.rows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
+};
+
+// submitted_by_user_id values a non-L4/L5/admin requester may see:
+// L1 (or no recognized level) - just their own submissions.
+// L2 - their own, plus their direct L1 reports'.
+// L3 - their own, plus their direct L2 reports', plus those L2s' L1 reports'.
+const getVisibleSubmitterIds = async (req) => {
+  const requesterId = parsePositiveInt(req.user?.id);
+  if (!requesterId) return [];
+  const level = getRequesterLevel(req);
+
+  if (level === 'L3') {
+    const mappedL2Ids = await getDirectReportIds(requesterId);
+    const mappedL1Ids = (await Promise.all(mappedL2Ids.map(getDirectReportIds))).flat();
+    return [requesterId, ...mappedL2Ids, ...mappedL1Ids];
+  }
+
+  if (level === 'L2') {
+    const mappedL1Ids = await getDirectReportIds(requesterId);
+    return [requesterId, ...mappedL1Ids];
+  }
+
+  return [requesterId];
+};
+
+const canViewSubmission = async (req, row) => {
+  if (canViewAllSubmissions(req)) return true;
+  const visibleIds = await getVisibleSubmitterIds(req);
+  return visibleIds.includes(row.submitted_by_user_id);
 };
 
 const getAssignedL2Users = async (ids = []) => {
@@ -1264,6 +1302,159 @@ router.get('/acknowledgement-thresholds', async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+});
+
+// Mirrors PATCH /submission-frequency/:id in operatorTickets.routes.js — same
+// COALESCE-every-column pattern, so omitted fields in the request keep their
+// existing stored value instead of being wiped to null.
+router.patch('/acknowledgement-thresholds/:id', async (req, res, next) => {
+  try {
+    await ensureAcknowledgementThresholdTable();
+
+    const { id } = req.params;
+    const {
+      screen_name,
+      department,
+      sub_department,
+      acknowledge_within_hours,
+      is_active,
+      approval_l2,
+      approval_l2_name,
+      approval_l3,
+      approval_l3_name,
+      approval_l4,
+      approval_l4_name,
+      approval_l5,
+      approval_l5_name,
+      l3_tat_hours,
+      l4_tat_hours,
+      l5_tat_hours,
+      criticality
+    } = req.body || {};
+
+    const normalizedAcknowledgeWithinHours =
+      acknowledge_within_hours === undefined ? undefined : parseTatHours(acknowledge_within_hours);
+    if (acknowledge_within_hours !== undefined && !normalizedAcknowledgeWithinHours) {
+      return res.status(400).json({ message: 'acknowledge_within_hours must be a positive integer' });
+    }
+
+    const normalizedL3TatHours = l3_tat_hours === undefined ? undefined : parseTatHours(l3_tat_hours);
+    const normalizedL4TatHours = l4_tat_hours === undefined ? undefined : parseTatHours(l4_tat_hours);
+    const normalizedL5TatHours = l5_tat_hours === undefined ? undefined : parseTatHours(l5_tat_hours);
+
+    const result = await client.query(
+      `UPDATE ticketing_system.notebook_acknowledgement_threshold
+       SET screen_name = COALESCE($1, screen_name),
+           department = COALESCE($2, department),
+           sub_department = COALESCE($3, sub_department),
+           acknowledge_within_hours = COALESCE($4, acknowledge_within_hours),
+           is_active = COALESCE($5, is_active),
+           approval_l2 = COALESCE($6, approval_l2),
+           approval_l2_name = COALESCE($7, approval_l2_name),
+           approval_l3 = COALESCE($8, approval_l3),
+           approval_l3_name = COALESCE($9, approval_l3_name),
+           approval_l4 = COALESCE($10, approval_l4),
+           approval_l4_name = COALESCE($11, approval_l4_name),
+           approval_l5 = COALESCE($12, approval_l5),
+           approval_l5_name = COALESCE($13, approval_l5_name),
+           l3_tat_hours = COALESCE($14, l3_tat_hours),
+           l4_tat_hours = COALESCE($15, l4_tat_hours),
+           l5_tat_hours = COALESCE($16, l5_tat_hours),
+           criticality = COALESCE($17, criticality),
+           updated_at = NOW()
+       WHERE id = $18
+       RETURNING *`,
+      [
+        cleanText(screen_name),
+        cleanText(department),
+        cleanText(sub_department),
+        normalizedAcknowledgeWithinHours,
+        is_active,
+        cleanText(approval_l2),
+        cleanText(approval_l2_name),
+        cleanText(approval_l3),
+        cleanText(approval_l3_name),
+        cleanText(approval_l4),
+        cleanText(approval_l4_name),
+        cleanText(approval_l5),
+        cleanText(approval_l5_name),
+        normalizedL3TatHours,
+        normalizedL4TatHours,
+        normalizedL5TatHours,
+        cleanText(criticality),
+        id
+      ]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Acknowledgement threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Acknowledgement threshold updated successfully',
+      acknowledgement_threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/acknowledgement-thresholds/:id/status', async (req, res, next) => {
+  try {
+    await ensureAcknowledgementThresholdTable();
+
+    const { id } = req.params;
+    const { is_active } = req.body || {};
+
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ message: 'is_active must be boolean' });
+    }
+
+    const result = await client.query(
+      `UPDATE ticketing_system.notebook_acknowledgement_threshold
+       SET is_active = $1,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [is_active, id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Acknowledgement threshold not found' });
+    }
+
+    res.status(200).json({
+      message: `Acknowledgement threshold ${is_active ? 'activated' : 'deactivated'} successfully`,
+      acknowledgement_threshold: result.rows[0]
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/acknowledgement-thresholds/:id', async (req, res, next) => {
+  try {
+    await ensureAcknowledgementThresholdTable();
+
+    const { id } = req.params;
+
+    const result = await client.query(
+      `DELETE FROM ticketing_system.notebook_acknowledgement_threshold
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ message: 'Acknowledgement threshold not found' });
+    }
+
+    res.status(200).json({
+      message: 'Acknowledgement threshold deleted successfully'
+    });
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -1623,88 +1814,252 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+// --- Server-side list enrichment/filtering -------------------------------
+// Ported from the frontend's own SubmittedNotebooksPage.jsx enrichment
+// functions (getNotebookOperatorName/getNotebookSupervisorName/
+// isNotebookPendingAcknowledgement) so pagination + the Notebook Type/
+// Operator/Supervisor filters can all be resolved and counted server-side
+// instead of requiring every matching row to be fetched into the browser
+// first. department/sub_department/notebook are trusted directly off the
+// row (always populated at submission time - see the INSERT above) rather
+// than replicating the frontend's screen-name-inference fallback, which only
+// ever matters for legacy rows missing those columns entirely.
+const normalizeLookupText = (value) =>
+  String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+const normalizeNameListText = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return value === undefined || value === null || value === '' ? [] : [String(value).trim()];
+};
+
+const getUserDisplayNameText = (user) => String(user?.full_name || '').trim();
+
+const resolveUserNameText = (users, value) => {
+  const normalizedValue = normalizeLookupText(value);
+  if (!normalizedValue) return '';
+
+  const matchedUser = users.find((userItem) => {
+    const candidateValues = [userItem?.id, userItem?.employee_id, userItem?.full_name];
+    return candidateValues.some((candidate) => normalizeLookupText(candidate) === normalizedValue);
+  });
+
+  return getUserDisplayNameText(matchedUser) || String(value ?? '').trim();
+};
+
+const resolveDisplayValuesText = (users, candidates) => {
+  for (const candidate of candidates) {
+    const labels = normalizeNameListText(candidate)
+      .map((value) => resolveUserNameText(users, value))
+      .filter(Boolean);
+    if (labels.length) return labels;
+  }
+  return [];
+};
+
+const getUsersDisplayNamesText = (userList) =>
+  (Array.isArray(userList) ? userList : []).map((user) => getUserDisplayNameText(user)).filter(Boolean);
+
+const isNotebookPendingAcknowledgementRow = (row) => {
+  if (row?.acknowledged_at || row?.acknowledged_by_name) return false;
+  const status = normalizeLookupText(row?.status);
+  if (!status) return true;
+  return !['acknowledged', 'ack', 'completed', 'closed', 'approved'].includes(status);
+};
+
+const getNotebookOperatorNameText = (row, users) => {
+  const names = resolveDisplayValuesText(users, [
+    ...normalizeNameListText(row?.submitted_by_name),
+  ]);
+  if (names.length) return names[0];
+
+  const ids = resolveDisplayValuesText(users, [...normalizeNameListText(row?.submitted_by_user_id)]);
+  if (ids.length) return ids[0];
+
+  return String(row?.submitted_by_name || '').trim() || '--';
+};
+
+const getNotebookSupervisorNameText = (row) => {
+  const acknowledgedByName = String(row?.acknowledged_by_name || '').trim();
+  if (acknowledgedByName) return acknowledgedByName;
+
+  const assignedL5Names = getUsersDisplayNamesText(row?.assigned_l5_users);
+  if (assignedL5Names.length) return assignedL5Names.join(', ');
+
+  const assignedL4Names = getUsersDisplayNamesText(row?.assigned_l4_users);
+  if (assignedL4Names.length) return assignedL4Names.join(', ');
+
+  const assignedL3Names = getUsersDisplayNamesText(row?.assigned_l3_users);
+  if (assignedL3Names.length) return assignedL3Names.join(', ');
+
+  const assignedL2Names = getUsersDisplayNamesText(row?.assigned_l2_users);
+  if (assignedL2Names.length) return assignedL2Names.join(', ');
+
+  return '--';
+};
+
+const getNotebookTitleText = (row) =>
+  row?.notebook || row?.input_screen || 'Cotton HVI';
+
+const getNotebookCreatedAt = (row) =>
+  row?.submitted_at || row?.created_at || row?.ack_due_at || null;
+
+// Builds { departments, sub_departments, notebook_types, operators, supervisors }
+// the same cascading way the frontend's filterOptions useMemo did: each list is
+// scoped by every filter to its left, not by itself, so picking a department
+// narrows Sub Department/Notebook Type/Operator/Supervisor without also
+// narrowing the Department list itself.
+const buildSubmittedNotebookFilterOptions = (enrichedRows, filters) => {
+  const uniqueValues = (values) =>
+    Array.from(new Set(values.filter((value) => value && value !== '--'))).sort((left, right) =>
+      left.localeCompare(right)
+    );
+
+  const byDepartment = enrichedRows.filter(
+    (item) => !filters.department || item.department === filters.department
+  );
+  const bySubDepartment = byDepartment.filter(
+    (item) => !filters.subDepartment || item.subDepartment === filters.subDepartment
+  );
+  const byNotebookType = bySubDepartment.filter(
+    (item) => !filters.notebookType || item.title === filters.notebookType
+  );
+  const byOperator = byNotebookType.filter(
+    (item) => !filters.operator || item.operator === filters.operator
+  );
+
+  return {
+    departments: uniqueValues(enrichedRows.map((item) => item.department)),
+    sub_departments: uniqueValues(byDepartment.map((item) => item.subDepartment)),
+    notebook_types: uniqueValues(bySubDepartment.map((item) => item.title)),
+    operators: uniqueValues(byNotebookType.map((item) => item.operator)),
+    supervisors: uniqueValues(byOperator.map((item) => item.supervisor)),
+  };
+};
+
 router.get('/', async (req, res, next) => {
   try {
     await ensureSubmittedNotebookTables();
-    const requesterId = parsePositiveInt(req.user?.id);
     const page = parsePositiveInt(req.query.page, 1);
     const requestedLimit = parsePositiveInt(req.query.limit, 20);
     const limit = Math.min(requestedLimit, MAX_LIMIT);
-    const offset = (page - 1) * limit;
-    const status = cleanText(req.query.status);
-    const department = cleanText(req.query.department);
-    const subDepartment = cleanText(req.query.sub_department || req.query.subDepartment);
 
+    const tab = cleanText(req.query.tab) === 'closed' ? 'closed' : 'pending';
+    const filters = {
+      department: cleanText(req.query.department) || '',
+      subDepartment: cleanText(req.query.sub_department || req.query.subDepartment) || '',
+      notebookType: cleanText(req.query.notebook_type || req.query.notebookType) || '',
+      operator: cleanText(req.query.operator) || '',
+      supervisor: cleanText(req.query.supervisor) || '',
+    };
+    const dateFrom = cleanText(req.query.date_from || req.query.dateFrom);
+    const dateTo = cleanText(req.query.date_to || req.query.dateTo);
+
+    // The submitted-notebooks list is restricted to L4/L5 (mirrors frontend
+    // isSubmittedNotebookViewerUser) - everyone else stays scoped to their
+    // own submissions plus their real org-chart reports (see
+    // getVisibleSubmitterIds - based on reports_to_user_id, not the
+    // per-notebook-type l2/l3_approver_user_ids columns). Mirrors
+    // canViewSubmission below, used by GET /:id.
+    const canViewAll = canViewAllSubmissions(req);
     const where = [];
     const params = [];
-    if (status) {
-      params.push(status);
-      where.push(`status = $${params.length}`);
-    }
-    if (department) {
-      params.push(department);
-      where.push(`LOWER(TRIM(COALESCE(department, ''))) = LOWER(TRIM($${params.length}))`);
-    }
-    if (subDepartment) {
-      params.push(subDepartment);
-      where.push(`LOWER(TRIM(COALESCE(sub_department, ''))) = LOWER(TRIM($${params.length}))`);
-    }
-
-    // The submitted-notebooks list is visible to the whole L1-L5 hierarchy,
-    // not just admin - only accounts without a recognized level stay scoped
-    // to notebooks they submitted or are specifically assigned to approve.
-    const canViewAll = isAdminRequester(req) || hasHierarchyLevel(req);
     if (!canViewAll) {
-      params.push(requesterId);
-      where.push(`($${params.length} = ANY(COALESCE(l2_approver_user_ids, ARRAY[]::int[])) OR $${params.length} = ANY(COALESCE(l3_approver_user_ids, ARRAY[]::int[])) OR submitted_by_user_id = $${params.length})`);
+      const visibleSubmitterIds = await getVisibleSubmitterIds(req);
+      params.push(visibleSubmitterIds);
+      where.push(`submitted_by_user_id = ANY($${params.length}::int[])`);
     }
-
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const count = await client.query(
-      `SELECT COUNT(*)::int AS total FROM ticketing_system.submitted_notebooks ${whereSql}`,
-      params
-    );
 
-    params.push(limit, offset);
-    const rows = await client.query(
+    // Department/Sub Department/Notebook Type/Operator/Supervisor/date-range and the
+    // Pending-vs-Closed tab are all resolved and filtered here in JS (mirroring the
+    // frontend's own enrichment/filtering it used to do after fetching everything into
+    // the browser) rather than in SQL, since Operator/Supervisor require cross-
+    // referencing the users list and an L2-L5 approval priority chain, not a plain
+    // column match. Only the hierarchy-access scope stays a SQL WHERE, since that one's
+    // a straightforward column/array check.
+    const rowsResult = await client.query(
       `SELECT id, notebook_submission_id, department, sub_department, notebook, input_screen, entry_id,
-              submitted_by_user_id, submitted_by_name, l2_approver_user_ids, l3_approver_user_ids, status,
+              submitted_by_user_id, submitted_by_name, l2_approver_user_ids, l3_approver_user_ids,
+              l4_approver_user_ids, l5_approver_user_ids, status,
               submitted_at, ack_due_at, acknowledged_at, acknowledged_by_name, acknowledgement_note,
               overdue_ticket_id, overdue_ticket_created_at, created_at, updated_at
        FROM ticketing_system.submitted_notebooks
        ${whereSql}
-       ORDER BY submitted_at DESC, id DESC
-       LIMIT $${params.length - 1}
-       OFFSET $${params.length}`,
+       ORDER BY submitted_at DESC, id DESC`,
       params
     );
+
     const assignedById = new Map();
-    const allApproverIds = Array.from(new Set(rows.rows.flatMap((row) => [
+    const allApproverIds = Array.from(new Set(rowsResult.rows.flatMap((row) => [
       ...(row.l2_approver_user_ids || []),
-      ...(row.l3_approver_user_ids || [])
+      ...(row.l3_approver_user_ids || []),
+      ...(row.l4_approver_user_ids || []),
+      ...(row.l5_approver_user_ids || []),
     ])));
     if (allApproverIds.length) {
       const assignedUsers = await getAssignedL2Users(allApproverIds);
       for (const user of assignedUsers) assignedById.set(Number(user.id), user);
     }
-    const submittedNotebooks = rows.rows.map((row) => ({
-      ...row,
-      assigned_l2_users: (row.l2_approver_user_ids || [])
-        .map((id) => assignedById.get(Number(id)))
-        .filter(Boolean),
-      assigned_l3_users: (row.l3_approver_user_ids || [])
-        .map((id) => assignedById.get(Number(id)))
-        .filter(Boolean)
-    }));
+
+    // Operator-name resolution needs the full users list (submitted_by_user_id/name can
+    // point at anyone, not just an approver) - same cross-reference the frontend did
+    // against its own separately-fetched users list.
+    const allUsersResult = await client.query(`SELECT id, employee_id, full_name FROM users.user_details`);
+    const allUsers = allUsersResult.rows;
+
+    const enriched = rowsResult.rows.map((row) => {
+      const withAssignments = {
+        ...row,
+        assigned_l2_users: (row.l2_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+        assigned_l3_users: (row.l3_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+        assigned_l4_users: (row.l4_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+        assigned_l5_users: (row.l5_approver_user_ids || []).map((id) => assignedById.get(Number(id))).filter(Boolean),
+      };
+
+      return {
+        ...withAssignments,
+        department: String(row.department || '').trim(),
+        subDepartment: String(row.sub_department || '').trim(),
+        title: getNotebookTitleText(row),
+        operator: getNotebookOperatorNameText(row, allUsers),
+        supervisor: getNotebookSupervisorNameText(withAssignments),
+        createdAt: getNotebookCreatedAt(row),
+        isPending: isNotebookPendingAcknowledgementRow(row),
+      };
+    });
+
+    const tabFiltered = enriched.filter((item) => (tab === 'closed' ? !item.isPending : item.isPending));
+    const filterOptions = buildSubmittedNotebookFilterOptions(tabFiltered, filters);
+
+    const dateFromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const dateToTime = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+
+    const finalFiltered = tabFiltered.filter((item) => {
+      if (filters.department && item.department !== filters.department) return false;
+      if (filters.subDepartment && item.subDepartment !== filters.subDepartment) return false;
+      if (filters.notebookType && item.title !== filters.notebookType) return false;
+      if (filters.operator && item.operator !== filters.operator) return false;
+      if (filters.supervisor && item.supervisor !== filters.supervisor) return false;
+      const createdAtTime = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+      if (dateFromTime !== null && createdAtTime < dateFromTime) return false;
+      if (dateToTime !== null && createdAtTime > dateToTime) return false;
+      return true;
+    });
+
+    const total = finalFiltered.length;
+    const offset = (page - 1) * limit;
+    const pageRows = finalFiltered.slice(offset, offset + limit);
 
     return res.status(200).json({
-      submitted_notebooks: submittedNotebooks,
-      data: submittedNotebooks,
-      pagination: {
-        page,
-        limit,
-        total: count.rows[0]?.total || 0
-      }
+      submitted_notebooks: pageRows,
+      data: pageRows,
+      pagination: { page, limit, total },
+      filter_options: filterOptions,
     });
   } catch (error) {
     next(error);
@@ -1737,7 +2092,7 @@ router.get('/:id', async (req, res, next) => {
     );
     if (!result.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = result.rows[0];
-    if (!canViewSubmission(req, row)) return res.status(403).json({ message: 'You are not authorized to view this submitted notebook' });
+    if (!(await canViewSubmission(req, row))) return res.status(403).json({ message: 'You are not authorized to view this submitted notebook' });
     return res.status(200).json({
       submitted_notebook: {
         ...row,
@@ -1762,7 +2117,7 @@ router.patch('/:id/acknowledge', async (req, res, next) => {
     );
     if (!current.rows.length) return res.status(404).json({ message: 'Submitted notebook not found' });
     const row = current.rows[0];
-    if (!canViewSubmission(req, row)) return res.status(403).json({ message: 'You are not authorized to acknowledge this submitted notebook' });
+    if (!(await canViewSubmission(req, row))) return res.status(403).json({ message: 'You are not authorized to acknowledge this submitted notebook' });
     // Viewing is open to the whole L1-L5 hierarchy above, but only L4/L5
     // (or admin) may actually approve - mirrors the frontend's Acknowledge
     // gate so a direct API call can't bypass it.

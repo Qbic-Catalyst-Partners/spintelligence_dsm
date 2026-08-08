@@ -47,10 +47,12 @@ export const isSupervisorNavUser = (user) =>
 export const isSubmittedNotebookManagerUser = (user) =>
   isFullAccessUser(user) || isSupervisorNavUser(user);
 
-// Submitted Notebooks list itself is visible to the whole L1-L5 hierarchy (not
-// just the L2 supervisor accounts / admin that manage the notebook-threshold
-// config) - viewing who submitted what is useful at every level, only the
-// ability to actually approve is restricted further below.
+// Submitted Notebooks list itself is visible to the whole L1-L5 hierarchy
+// (not just admin/supervisor) - each level just sees a different scope of
+// rows (L1: own; L2: their mapped L1s; L3: mapped L1s via their mapped L2s;
+// L4/L5: everything), enforced server-side in submittedNotebooks.routes.js
+// (canViewAllSubmissions / canViewSubmission). Only the ability to actually
+// acknowledge is restricted to L4/L5 - see isSubmittedNotebookApproverUser.
 export const isSubmittedNotebookViewerUser = (user) =>
   isSubmittedNotebookManagerUser(user) || hasHierarchyLevel(user);
 
@@ -76,8 +78,10 @@ export const isWheelChangeApproverUser = (user) =>
 export const isPpApproverUser = (user) =>
   isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
 
-// Submitted Notebooks follows the same L4/L5-only approval rule as WC/PP -
-// L1-L3 can view the list but Acknowledge is blocked for them.
+// Submitted Notebooks follows the same L4/L5-only approval rule as WC/PP.
+// Same L4/L5 set as isSubmittedNotebookViewerUser above - kept as a separate
+// export since viewing and approving are conceptually distinct gates, even
+// though they currently resolve to the same levels.
 export const isSubmittedNotebookApproverUser = (user) =>
   isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
 
@@ -88,6 +92,22 @@ export const isDelegationManagerUser = (user) => getUserLevelKey(user) === "L5";
 
 export const isDashboardManagerUser = (user) =>
   getRoleKeys(user).some((role) => FULL_ACCESS_ROLE_NAMES.includes(role));
+
+// Shared "admin or L5" rule - reused for feature areas restricted to the top
+// of the hierarchy (User Management, ...) without tying each one to the
+// "admin" role string alone.
+export const isAdminOrL5User = (user) =>
+  isFullAccessUser(user) || getUserLevelKey(user) === "L5";
+
+// The Analysis report department (Team Performance Analysis) is one step
+// broader than isAdminOrL5User - L4 also needs it, not just L5/admin.
+export const isAnalysisReportUser = (user) =>
+  isFullAccessUser(user) || ["L4", "L5"].includes(getUserLevelKey(user));
+
+// User Management (add/edit/delete employee accounts, reset passwords) is
+// restricted to admins and L5 - anyone else creating or editing accounts
+// could self-escalate their own or a coworker's access.
+export const isUserManagementManagerUser = (user) => isAdminOrL5User(user);
 
 // Employee-Hierarchy-and-Workflow-System_V2.pdf: each level has its own
 // ticketing view (L1 operator board, L2-L5 escalation dashboards at

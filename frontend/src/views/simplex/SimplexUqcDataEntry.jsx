@@ -4,7 +4,7 @@ import UqcEntryForm from "@/components/UqcEntryForm";
 import { fetchSimplexMachineMaster, submitSimplexUqcEntry } from "@/apis/simplex";
 
 const typeOptions = [
-  { id: 1, name: "SMXCots Change Data Entry" },
+  { id: 1, name: "SMXCots Checking Data Entry" },
   { id: 2, name: "SMX Breaks Study Report" },
   { id: 3, name: "U% Data Entry" },
 ];

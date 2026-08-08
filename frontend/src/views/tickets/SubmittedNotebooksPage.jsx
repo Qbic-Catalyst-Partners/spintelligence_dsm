@@ -431,15 +431,46 @@ const getPayload = (notebook) => {
     return {};
 };
 
+// Nested arrays/objects (e.g. Count Change's "readings" rows, LHS/RHS spindle lists) used to
+// render as a single raw JSON blob here - unreadable, and the same generic renderer is shared
+// across every notebook's payload, so this formats any such value into a plain "key: value" line
+// instead of guessing a layout per notebook type.
+const formatStructuredValue = (value) => {
+    if (Array.isArray(value)) {
+        return value
+            .map((item, index) =>
+                item && typeof item === "object" && !(item instanceof Date)
+                    ? `${index + 1}) ${formatStructuredValue(item)}`
+                    : String(item)
+            )
+            .join(" | ");
+    }
+
+    if (value && typeof value === "object") {
+        return Object.entries(value)
+            .filter(([, item]) => item !== null && typeof item !== "undefined" && item !== "")
+            .map(([key, item]) => `${formatTitle(key)}: ${formatStructuredValue(item)}`)
+            .join(", ");
+    }
+
+    return String(value);
+};
+
 const getDisplayValue = (value) => {
     const parsed = parseJsonValue(value);
     if (parsed === undefined || parsed === null || parsed === "") return "";
     if (parsed instanceof Date) return parsed.toISOString();
     if (Array.isArray(parsed) || (parsed && typeof parsed === "object")) {
-        return JSON.stringify(parsed);
+        return formatStructuredValue(parsed);
     }
     return parsed;
 };
+
+// A "row list" is an array of records (e.g. Count Change's "readings", one row per reading) -
+// these render as their own full-width table section instead of being squeezed into the regular
+// field grid alongside short scalar fields like Entry ID/Type/RF No.
+const isRowListValue = (value) =>
+    Array.isArray(value) && value.some((item) => item && typeof item === "object" && !(item instanceof Date));
 
 const addDisplayField = (fields, usedKeys, key, value, label = "") => {
     const normalizedKey = normalizeKey(key);
@@ -452,6 +483,7 @@ const addDisplayField = (fields, usedKeys, key, value, label = "") => {
         return;
     }
 
+    const parsed = parseJsonValue(value);
     const displayValue = getDisplayValue(value);
     if (displayValue === "") return;
 
@@ -460,6 +492,7 @@ const addDisplayField = (fields, usedKeys, key, value, label = "") => {
         key,
         label: label || FIELD_LABELS[key] || formatTitle(key),
         value: displayValue,
+        rows: isRowListValue(parsed) ? parsed : null,
     });
 };
 
@@ -536,6 +569,7 @@ const normalizeList = (data) => {
     if (Array.isArray(data?.data)) return data.data;
     return [];
 };
+
 
 const normalizeNameList = (value) => {
     if (Array.isArray(value)) {
@@ -691,22 +725,6 @@ const getUserLoadKey = (user) =>
         .map((value) => String(value || "").trim())
         .filter(Boolean)
         .join("|");
-
-const mergeNotebookRows = (...rowGroups) => {
-    const seen = new Set();
-    const rows = [];
-
-    rowGroups.flat().forEach((row) => {
-        if (!row || typeof row !== "object") return;
-        const id = String(getNotebookId(row) || row?.notebook_submission_id || row?.notebookSubmissionId || "").trim();
-        const key = id || JSON.stringify(row);
-        if (seen.has(key)) return;
-        seen.add(key);
-        rows.push(row);
-    });
-
-    return rows;
-};
 
 const getUserDisplayName = (user) => String(user?.name || user?.full_name || user?.fullName || user?.username || "").trim();
 
@@ -1235,7 +1253,16 @@ const SubmittedNotebooksPage = () => {
     const canApproveNotebooks = isSubmittedNotebookApproverUser(user);
     const [activeTab, setActiveTab] = useState("pending");
     const [currentPage, setCurrentPage] = useState(1);
-    const PAGE_SIZE = 5;
+    const [pageSize, setPageSize] = useState(10);
+    const [totalCount, setTotalCount] = useState(0);
+    const [serverFilterOptions, setServerFilterOptions] = useState({
+        departments: [],
+        subDepartments: [],
+        notebookTypes: [],
+        operators: [],
+        supervisors: [],
+    });
+    const PAGE_SIZE_OPTIONS = [5, 10, 25, 50];
     const lastLoadKeyRef = useRef("");
     const inFlightLoadKeyRef = useRef("");
     const handledOpenNotebookIdRef = useRef("");
@@ -1257,7 +1284,23 @@ const SubmittedNotebooksPage = () => {
             return;
         }
 
-        const query = buildSubmittedNotebookQuery(user);
+        // Pagination, the Pending/Closed tab, and every filter are all resolved server-side now -
+        // the backend returns exactly one page of already-filtered, already-enriched rows plus a
+        // real totalCount and the filter dropdown options (computed over the full matching set,
+        // not just this page).
+        const query = {
+            ...buildSubmittedNotebookQuery(user),
+            tab: activeTab,
+            page: currentPage,
+            limit: pageSize,
+            ...(filters.department ? { department: filters.department } : {}),
+            ...(filters.subDepartment ? { sub_department: filters.subDepartment } : {}),
+            ...(filters.notebookType ? { notebook_type: filters.notebookType } : {}),
+            ...(filters.operator ? { operator: filters.operator } : {}),
+            ...(filters.supervisor ? { supervisor: filters.supervisor } : {}),
+            ...(filters.dateFrom ? { date_from: filters.dateFrom } : {}),
+            ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
+        };
         const loadKey = `${getUserLoadKey(user)}::${serializeQuery(query)}`;
 
         if (inFlightLoadKeyRef.current === loadKey || lastLoadKeyRef.current === loadKey) {
@@ -1269,15 +1312,17 @@ const SubmittedNotebooksPage = () => {
         setError("");
         try {
             const data = await fetchSubmittedNotebooksApi(query);
-            let rows = normalizeList(data);
-
-            if (Object.keys(query).length) {
-                const fallbackData = await fetchSubmittedNotebooksApi();
-                rows = mergeNotebookRows(rows, normalizeList(fallbackData));
-            }
-
+            const rows = normalizeList(data);
             const userRows = rows.filter((notebook) => isNotebookForUser(notebook, user));
             setNotebooks(userRows);
+            setTotalCount(Number(data?.pagination?.total) || 0);
+            setServerFilterOptions({
+                departments: data?.filter_options?.departments || [],
+                subDepartments: data?.filter_options?.sub_departments || [],
+                notebookTypes: data?.filter_options?.notebook_types || [],
+                operators: data?.filter_options?.operators || [],
+                supervisors: data?.filter_options?.supervisors || [],
+            });
             lastLoadKeyRef.current = loadKey;
         } catch (err) {
             setError(err?.response?.data?.message || err?.message || "Unable to load submitted notebooks.");
@@ -1289,7 +1334,7 @@ const SubmittedNotebooksPage = () => {
 
     useEffect(() => {
         loadNotebooks();
-    }, [isAuthHydrated, user?.id, user?.employee_id, user?.employeeId, user?.emp_id, user?.full_name, user?.fullName, user?.name, user?.username, user?.role, user?.role_name, user?.roleName]);
+    }, [isAuthHydrated, user?.id, user?.employee_id, user?.employeeId, user?.emp_id, user?.full_name, user?.fullName, user?.name, user?.username, user?.role, user?.role_name, user?.roleName, activeTab, currentPage, pageSize, filters]);
 
     useEffect(() => {
         let active = true;
@@ -1311,87 +1356,44 @@ const SubmittedNotebooksPage = () => {
         };
     }, []);
 
+    // Pagination, the Pending/Closed tab, and every filter (department/sub-department/notebook
+    // type/operator/supervisor/date range) are now all applied server-side - `notebooks` here is
+    // already exactly one page of the correctly-filtered set. This still runs the same
+    // display-value resolution (title/operator/supervisor/department) the app always has, purely
+    // for rendering - it is not re-filtering anything, since re-deriving these values and then
+    // filtering by them again client-side risked silently hiding rows the server already decided
+    // belonged on this page if either side's resolution ever drifted apart even slightly.
     const enrichedNotebooks = useMemo(
         () =>
-            notebooks
-                .filter((notebook) =>
-                    activeTab === "pending"
-                        ? isNotebookPendingAcknowledgement(notebook)
-                        : !isNotebookPendingAcknowledgement(notebook)
-                )
-                .map((notebook) => {
-                    const { department, subDepartment } = resolveNotebookDepartment(notebook);
-                    return {
-                        notebook,
-                        id: getNotebookId(notebook),
-                        department,
-                        subDepartment,
-                        title: getNotebookTitle(notebook),
-                        operator: getNotebookOperatorName(notebook, users),
-                        // Every L1-L5 hierarchy account (not just admin) can see who checked a
-                        // Closed notebook - visibility of the whole list is already open to
-                        // L1-L5, and only L4/L5 can ever be the one who acknowledged it, so
-                        // there's no separate secrecy concern for who did it.
-                        supervisor: getNotebookSupervisorName(notebook, users),
-                        createdAt: getCreatedDate(notebook),
-                        review: getNotebookReviewNote(notebook),
-                    };
-                }),
-        [notebooks, users, activeTab, isAdminUser]
+            notebooks.map((notebook) => {
+                const { department, subDepartment } = resolveNotebookDepartment(notebook);
+                return {
+                    notebook,
+                    id: getNotebookId(notebook),
+                    department,
+                    subDepartment,
+                    title: getNotebookTitle(notebook),
+                    operator: getNotebookOperatorName(notebook, users),
+                    // Every L1-L5 hierarchy account (not just admin) can see who checked a
+                    // Closed notebook - visibility of the whole list is already open to
+                    // L1-L5, and only L4/L5 can ever be the one who acknowledged it, so
+                    // there's no separate secrecy concern for who did it.
+                    supervisor: getNotebookSupervisorName(notebook, users),
+                    createdAt: getCreatedDate(notebook),
+                    review: getNotebookReviewNote(notebook),
+                };
+            }),
+        [notebooks, users]
     );
 
-    const uniqueValues = (values) => Array.from(new Set(values.filter((value) => value && value !== "--")));
-
-    const filterOptions = useMemo(() => {
-        const byDepartment = enrichedNotebooks.filter(
-            (item) => !filters.department || item.department === filters.department
-        );
-        const bySubDepartment = byDepartment.filter(
-            (item) => !filters.subDepartment || item.subDepartment === filters.subDepartment
-        );
-        const byNotebookType = bySubDepartment.filter(
-            (item) => !filters.notebookType || item.title === filters.notebookType
-        );
-        const byOperator = byNotebookType.filter(
-            (item) => !filters.operator || item.operator === filters.operator
-        );
-
-        return {
-            departments: uniqueValues(enrichedNotebooks.map((item) => item.department)),
-            subDepartments: uniqueValues(byDepartment.map((item) => item.subDepartment)),
-            notebookTypes: uniqueValues(bySubDepartment.map((item) => item.title)),
-            operators: uniqueValues(byNotebookType.map((item) => item.operator)),
-            supervisors: uniqueValues(byOperator.map((item) => item.supervisor)),
-        };
-    }, [enrichedNotebooks, filters.department, filters.subDepartment, filters.notebookType, filters.operator]);
-
-    const filteredNotebooks = useMemo(
-        () =>
-            enrichedNotebooks
-                .filter(
-                    (item) =>
-                        (!filters.department || item.department === filters.department) &&
-                        (!filters.subDepartment || item.subDepartment === filters.subDepartment) &&
-                        (!filters.notebookType || item.title === filters.notebookType) &&
-                        (!filters.operator || item.operator === filters.operator) &&
-                        (!filters.supervisor || item.supervisor === filters.supervisor) &&
-                        (!filters.dateFrom || new Date(item.createdAt || 0) >= new Date(`${filters.dateFrom}T00:00:00`)) &&
-                        (!filters.dateTo || new Date(item.createdAt || 0) <= new Date(`${filters.dateTo}T23:59:59.999`))
-                )
-                .sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0)),
-        [enrichedNotebooks, filters]
-    );
-
-    const totalPages = Math.max(1, Math.ceil(filteredNotebooks.length / PAGE_SIZE));
+    const filterOptions = serverFilterOptions;
+    const filteredNotebooks = enrichedNotebooks;
+    const paginatedNotebooks = enrichedNotebooks;
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeTab, filters]);
-
-    const paginatedNotebooks = useMemo(
-        () => filteredNotebooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-        [filteredNotebooks, currentPage]
-    );
+    }, [activeTab, filters, pageSize]);
 
     const handleFilterChange = (field, value) => {
         setFilters((current) => {
@@ -1457,25 +1459,34 @@ const SubmittedNotebooksPage = () => {
 
     // Deep-link from the acknowledgement ticket detail view: it passes ?openNotebookId= so the
     // exact notebook card/preview opens here directly, rather than dropping the reviewer on the
-    // bare list to hunt for it themselves.
+    // bare list to hunt for it themselves. Fetches the notebook by id directly rather than
+    // looking it up in the loaded `notebooks` list - that list is now just one server-paginated
+    // page, so the deep-link target frequently wouldn't be in it at all.
     useEffect(() => {
         if (!router.isReady) return;
         const openNotebookId = String(router.query.openNotebookId || "").trim();
         if (!openNotebookId || openNotebookId === handledOpenNotebookIdRef.current) return;
-        if (!notebooks.length) return;
-
-        const match = notebooks.find((notebook) => String(getNotebookId(notebook) || "") === openNotebookId);
-        if (!match) return;
 
         handledOpenNotebookIdRef.current = openNotebookId;
-        if (!isNotebookPendingAcknowledgement(match)) {
-            setActiveTab("closed");
-        }
-        openNotebook(match);
+
+        (async () => {
+            try {
+                const data = await fetchSubmittedNotebookDetailApi(openNotebookId);
+                const match = getDetailNotebook(data, null);
+                if (!match || !getNotebookId(match)) return;
+
+                if (!isNotebookPendingAcknowledgement(match)) {
+                    setActiveTab("closed");
+                }
+                openNotebook(match);
+            } catch {
+                // Deep-link target may no longer exist or the user may lack access - ignore.
+            }
+        })();
 
         const { openNotebookId: _omit, ...restQuery } = router.query;
         router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
-    }, [notebooks, router.isReady, router.query.openNotebookId]);
+    }, [router.isReady, router.query.openNotebookId]);
 
     const handleAcknowledge = async () => {
         const id = getNotebookId(selectedNotebook);
@@ -1515,6 +1526,8 @@ const SubmittedNotebooksPage = () => {
     };
 
     const selectedFields = buildFieldCards(selectedNotebook);
+    const simpleFields = selectedFields.filter((field) => !field.rows);
+    const rowListFields = selectedFields.filter((field) => field.rows);
     const selectedNotebookDepartment = selectedNotebook ? resolveNotebookDepartment(selectedNotebook) : { department: "Quality Control", subDepartment: "Mixing Department" };
 
     return (
@@ -1708,7 +1721,15 @@ const SubmittedNotebooksPage = () => {
             )}
 
             {!isLoading && !error && filteredNotebooks.length ? (
-                <Pagination page={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                <Pagination
+                    page={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                    pageSize={pageSize}
+                    pageSizeOptions={PAGE_SIZE_OPTIONS}
+                    onPageSizeChange={setPageSize}
+                    showPageJump
+                />
             ) : null}
 
             {selectedNotebook && showAcknowledgeSuccess && (
@@ -1778,7 +1799,7 @@ const SubmittedNotebooksPage = () => {
                             {isDetailLoading ? (
                                 <div className={styles.emptyState}>Loading notebook details...</div>
                             ) : selectedFields.length ? (
-                                selectedFields.map((field) => (
+                                simpleFields.map((field) => (
                                     <div key={field.key} className={styles.fieldCard}>
                                         <small>{field.label}</small>
                                         <strong>{isDateField(field.key) ? formatDateValue(field.value) : String(field.value)}</strong>
@@ -1789,7 +1810,48 @@ const SubmittedNotebooksPage = () => {
                             )}
                         </div>
 
-                        {activeTab === "closed" ? null : (
+                        {!isDetailLoading && rowListFields.map((field) => {
+                            const columns = Array.from(
+                                field.rows.reduce((keys, row) => {
+                                    if (row && typeof row === "object") {
+                                        Object.keys(row).forEach((key) => keys.add(key));
+                                    }
+                                    return keys;
+                                }, new Set())
+                            );
+
+                            return (
+                                <div key={field.key} className={styles.rowListSection}>
+                                    <small>{field.label}</small>
+                                    <div className={styles.rowListTableWrap}>
+                                        <table className={styles.rowListTable}>
+                                            <thead>
+                                                <tr>
+                                                    {columns.map((column) => (
+                                                        <th key={column}>{formatTitle(column)}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {field.rows.map((row, rowIndex) => (
+                                                    <tr key={rowIndex}>
+                                                        {columns.map((column) => (
+                                                            <td key={column}>
+                                                                {row?.[column] === null || typeof row?.[column] === "undefined" || row?.[column] === ""
+                                                                    ? "-"
+                                                                    : String(row[column])}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {activeTab === "closed" || !canApproveNotebooks ? null : (
                             <>
                                 <div className={styles.reviewSection}>
                                     <label className={styles.reviewLabel} htmlFor="submitted-notebook-review">

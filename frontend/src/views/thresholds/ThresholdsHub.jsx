@@ -27,7 +27,12 @@ import {
   deletePpNotebookThresholdAPI,
   updatePpNotebookThresholdStatusAPI,
 } from "@/apis/ppNotebookThresholdApi";
-import { fetchNotebookAcknowledgementThresholdsAPI } from "@/apis/notebookAcknowledgementThresholdApi";
+import {
+  fetchNotebookAcknowledgementThresholdsAPI,
+  updateNotebookAcknowledgementThresholdAPI,
+  updateNotebookAcknowledgementThresholdStatusAPI,
+  deleteNotebookAcknowledgementThresholdAPI,
+} from "@/apis/notebookAcknowledgementThresholdApi";
 import {
   fetchWheelChangeApprovalConfigListAPI,
   updateWheelChangeApprovalConfigStatusAPI,
@@ -209,11 +214,10 @@ const normalizeWheelChangeApprovalRow = (item, users) => {
 };
 
 // Each threshold type only supports the actions its backend API actually
-// exposes today: Value/Submission have full edit+delete+status APIs. PP
-// Threshold and Wheel Change Approval support edit (per-notebook /
-// per-department rows) but not delete/status. Acknowledgement Threshold has
-// no update/delete/status API at all (create + fetch only). PP Approval is a
-// single global row, editable in place, no delete/status.
+// exposes today: Value/Submission/Acknowledgement have full edit+delete+status
+// APIs. PP Threshold and Wheel Change Approval support edit (per-notebook /
+// per-department rows) but not delete/status. PP Approval is a single global
+// row, editable in place, no delete/status.
 const THRESHOLD_TYPE_LOADERS = {
   value: {
     fetch: fetchThresholdsAPI,
@@ -247,9 +251,12 @@ const THRESHOLD_TYPE_LOADERS = {
   acknowledgement: {
     fetch: fetchNotebookAcknowledgementThresholdsAPI,
     normalize: normalizeAcknowledgementThresholdRow,
-    canEdit: false,
-    canToggleStatus: false,
-    canDelete: false,
+    canEdit: true,
+    canToggleStatus: true,
+    canDelete: true,
+    toggleStatus: (row, nextActive) => updateNotebookAcknowledgementThresholdStatusAPI(getRowId(row.raw), nextActive),
+    remove: (row) => deleteNotebookAcknowledgementThresholdAPI(getRowId(row.raw)),
+    updateTat: (raw, field, hours) => updateNotebookAcknowledgementThresholdAPI(getRowId(raw), { [field]: hours }),
   },
   "wheel-change-approval": {
     fetch: fetchWheelChangeApprovalConfigListAPI,
@@ -1281,7 +1288,7 @@ export default function ThresholdsHub() {
     { value: "acknowledgement", label: "Acknowledgement Threshold" },
     { value: "wheel-change-approval", label: "WC Threshold" },
     { value: "existing", label: "Existing Thresholds" },
-    { value: "resolutionTime", label: "Resolution Time" },
+    // { value: "resolutionTime", label: "Resolution Time" },
   ];
 
   return (
@@ -1328,7 +1335,11 @@ export default function ThresholdsHub() {
           />
         ) : null}
         {activeTab === "acknowledgement" && canAccessAcknowledgement ? (
-          <SubmittedNotebookThresholdPage standalone={false} />
+          <SubmittedNotebookThresholdPage
+            standalone={false}
+            editItem={editItems.acknowledgement || null}
+            onEditItemHandled={() => clearEditItem("acknowledgement")}
+          />
         ) : null}
         {activeTab === "wheel-change-approval" && canAccessOthers ? (
           <WheelChangeApprovalThresholdPage

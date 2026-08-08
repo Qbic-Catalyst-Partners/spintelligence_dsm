@@ -382,8 +382,8 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             setShowPreview(false);
             setFormMessage(nextEntryId ? `Data submitted. Entry ID: ${nextEntryId}` : "");
             setIsError(false);
-            setShowSuccess(true);
 
+            // Awaited BEFORE setShowSuccess(true) below — see natiDataEntry.jsx for why.
             try {
                 await recordSubmittedNotebook({
                     department: "Quality Control",
@@ -396,6 +396,7 @@ function BetweenWithinCardEntry({ types, selectedType, onTypeChange, onInspectio
             } catch (recordError) {
                 console.warn("Carding submitted notebook record failed:", recordError?.response?.data || recordError?.message || recordError);
             }
+            setShowSuccess(true);
 
             const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
             if (nextEntryId && customFieldEntries.length) {

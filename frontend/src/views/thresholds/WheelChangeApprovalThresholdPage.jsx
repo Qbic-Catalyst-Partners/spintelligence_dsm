@@ -154,6 +154,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [rules, setRules] = useState([createRule()]);
+  const [editingDepartment, setEditingDepartment] = useState("");
 
   const l4Options = useMemo(() => buildL4Options(users), [users]);
 
@@ -241,6 +242,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
       l4UserIds: normalizeIdList(item.l4_user_ids),
       tatHours: String(item.tat_hours ?? "24"),
     }]);
+    setEditingDepartment(item.department || "");
     setMessage("Edit mode loaded from Existing Thresholds.");
     setError("");
   };
@@ -270,6 +272,13 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
         if (!department) throw new Error("Please select a department for every row.");
         if (!wheelChangeDepartment) throw new Error("Please select a sub-department for every row.");
 
+        const isDuplicate =
+          wheelChangeDepartment !== editingDepartment &&
+          configs.some((item) => item.department === wheelChangeDepartment);
+        if (isDuplicate) {
+          throw new Error("Threshold already exists, please modify in list of existing thresholds");
+        }
+
         const hours = Number(rule.tatHours);
         if (!Number.isFinite(hours) || hours <= 0) {
           throw new Error("Please enter Approve Within Hours greater than 0 for every row.");
@@ -286,6 +295,7 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
       const responses = await Promise.all(payloads.map((payload) => saveWheelChangeApprovalConfigAPI(payload)));
       setMessage(responses[0]?.message || `${payloads.length} WC threshold${payloads.length > 1 ? "s" : ""} saved successfully.`);
       setRules([createRule()]);
+      setEditingDepartment("");
       await loadConfigs();
     } catch (err) {
       setError(
@@ -434,7 +444,15 @@ export default function WheelChangeApprovalThresholdPage({ standalone = true, ed
 
           <div className={styles.formFooter}>
             <div className={styles.actionButtons}>
-              <button type="button" className={styles.clearButton} onClick={() => setRules([createRule()])} disabled={saving}>
+              <button
+                type="button"
+                className={styles.clearButton}
+                onClick={() => {
+                  setRules([createRule()]);
+                  setEditingDepartment("");
+                }}
+                disabled={saving}
+              >
                 Clear
               </button>
               <button type="submit" className={styles.saveButton} disabled={saving}>

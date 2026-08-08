@@ -562,30 +562,40 @@ const getAPercentMetaFromOcrResult = (result = {}, rows = [], fileName = "", ent
   };
 };
 
-const buildAPercentPayload = ({ entryId = "", file = null, rows = [], rawRows = [], meta = {} } = {}) => ({
-  entry_id: entryId,
-  filename: file?.name || meta.pdfFile || "",
-  pdf_file: file?.name || meta.pdfFile || "",
-  report_title: meta.reportTitle || "",
-  test_id: meta.testId || "",
-  machine: meta.machine || "",
-  count_system: meta.countSystem || "",
-  length_unit: meta.lengthUnit || "",
-  length: meta.length || "",
-  total_test: meta.totalTest || "",
-  standard_a_percent: meta.standardAPercent || "",
-  a_percent_n_minus_1: meta.aPercentNMinus1 || "",
-  a_percent_n_plus_1: meta.aPercentNPlus1 || "",
-  entry_date: meta.date || "",
-  tester: meta.tester || "",
-  shift: meta.shift || "",
-  process: meta.process || "",
-  remark: meta.remark || "",
-  ocr_json: rawRows.length ? rawRows : rows,
-  manual_json: rows,
-  rows,
-  meta,
-});
+const buildAPercentPayload = ({ entryId = "", file = null, rows = [], rawRows = [], meta = {} } = {}) => {
+  const sampleRows = rows.filter((row) => {
+    const label = String(row?.sampleNo || "").trim();
+    return label && !A_PERCENT_SUMMARY_ROWS.has(label);
+  });
+  const summaryRows = rows.filter((row) => A_PERCENT_SUMMARY_ROWS.has(String(row?.sampleNo || "").trim()));
+
+  return {
+    entry_id: entryId,
+    filename: file?.name || meta.pdfFile || "",
+    pdf_file: file?.name || meta.pdfFile || "",
+    report_title: meta.reportTitle || "",
+    test_id: meta.testId || "",
+    machine: meta.machine || "",
+    count_system: meta.countSystem || "",
+    length_unit: meta.lengthUnit || "",
+    length: meta.length || "",
+    total_test: meta.totalTest || "",
+    standard_a_percent: meta.standardAPercent || "",
+    a_percent_n_minus_1: meta.aPercentNMinus1 || "",
+    a_percent_n_plus_1: meta.aPercentNPlus1 || "",
+    entry_date: meta.date || "",
+    tester: meta.tester || "",
+    shift: meta.shift || "",
+    process: meta.process || "",
+    remark: meta.remark || "",
+    ocr_json: rawRows.length ? rawRows : rows,
+    manual_json: rows,
+    rows,
+    sample_rows: sampleRows,
+    summary_rows: summaryRows,
+    meta,
+  };
+};
 
 function APercentFieldInput({ value, onChange, readOnly = false }) {
   return (
@@ -733,6 +743,7 @@ function DrawFrame() {
   const [previewItems, setPreviewItems] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const successHandledRef = useRef(false);
+  const suppressAutoSuccessRef = useRef(false);
   const [wheelChangeSaving, setWheelChangeSaving] = useState(false);
   const [entrySeq, setEntrySeq] = useState(1);
   const cvMachineDropdownRef = useRef(null);
@@ -1493,6 +1504,13 @@ function DrawFrame() {
 
     if (!validate()) return;
 
+    // Set for the duration of this submission (all 4 branches below reset it on their own
+    // completion, success or failure), so the actionSuccess effect further down — which fires
+    // the instant the dispatched save resolves, before any of these branches gets to
+    // recordSubmittedNotebook — can't win the race to show the success modal first. Currently
+    // harmless here only because this screen's handleSuccessClose doesn't reload the page.
+    suppressAutoSuccessRef.current = true;
+
     if (form.type === "U% Data Entry") {
       dispatch(
         submitDrawFrameUqcInspection({
@@ -1510,33 +1528,35 @@ function DrawFrame() {
           operator: operatorName,
         })
       ).then((result) => {
-        if (submitDrawFrameUqcInspection.fulfilled.match(result)) {
-          recordSubmittedNotebook({
-            department: "Quality Control",
-            subDepartment: "Draw Frame",
-            notebookName: form.type,
-            entryId,
-            previewItems: buildPreviewItems,
-            user,
-            extra: {
-              submitted_fields: {
-                entry_id: entryId,
-                entry_type: form.type,
-                entry_date: uPercentForm.date,
-                shift: uPercentForm.shift,
-                variety: uPercentForm.variety,
-                mc_no: uPercentForm.mcNo,
-                u_percent: uPercentForm.uPercent,
-                cvm: uPercentForm.cvm,
-                cvm_1m: uPercentForm.oneMeterCvm,
-                cvm_3m: uPercentForm.threeMeterCvm,
-                remarks: uPercentForm.remarks,
-              },
+        if (!submitDrawFrameUqcInspection.fulfilled.match(result)) return null;
+
+        void saveCustomFields(entryId);
+        dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
+        return recordSubmittedNotebook({
+          department: "Quality Control",
+          subDepartment: "Draw Frame",
+          notebookName: form.type,
+          entryId,
+          previewItems: buildPreviewItems,
+          user,
+          extra: {
+            submitted_fields: {
+              entry_id: entryId,
+              entry_type: form.type,
+              entry_date: uPercentForm.date,
+              shift: uPercentForm.shift,
+              variety: uPercentForm.variety,
+              mc_no: uPercentForm.mcNo,
+              u_percent: uPercentForm.uPercent,
+              cvm: uPercentForm.cvm,
+              cvm_1m: uPercentForm.oneMeterCvm,
+              cvm_3m: uPercentForm.threeMeterCvm,
+              remarks: uPercentForm.remarks,
             },
-          }).catch((error) => console.error("Submitted notebook creation failed:", error));
-          void saveCustomFields(entryId);
-          dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
-        }
+          },
+        }).catch((error) => console.error("Submitted notebook creation failed:", error));
+      }).finally(() => {
+        suppressAutoSuccessRef.current = false;
       });
       return;
     }
@@ -1572,6 +1592,8 @@ function DrawFrame() {
         showSuccessOnce();
       } catch (submitError) {
         setAPercentOcrMessage(submitError?.message || "Unable to save A% data.");
+      } finally {
+        suppressAutoSuccessRef.current = false;
       }
       return;
     }
@@ -1603,6 +1625,7 @@ function DrawFrame() {
         }));
       } finally {
         setWheelChangeSaving(false);
+        suppressAutoSuccessRef.current = false;
       }
       return;
     }
@@ -1660,9 +1683,10 @@ function DrawFrame() {
           // submission error is shown via the global error modal; refresh the
           // reserved entry ID so a duplicate-ID rejection doesn't repeat on retry
           void reserveEntryId();
-          return;
+          return null;
         }
-        recordSubmittedNotebook({
+        void saveCustomFields(entryId);
+        return recordSubmittedNotebook({
           department: "Quality Control",
           subDepartment: "Draw Frame",
           notebookName: form.type,
@@ -1673,7 +1697,8 @@ function DrawFrame() {
             submitted_fields: payload,
           },
         }).catch((error) => console.error("Submitted notebook creation failed:", error));
-        void saveCustomFields(entryId);
+      }).finally(() => {
+        suppressAutoSuccessRef.current = false;
       });
   };
 
@@ -1692,7 +1717,9 @@ function DrawFrame() {
       if (form.type === "U% Data Entry") {
         dispatch(fetchDrawFrameUqcEntries({ page: 1, limit: 10 }));
       }
-      showSuccessOnce();
+      if (!suppressAutoSuccessRef.current) {
+        showSuccessOnce();
+      }
     }
   }, [actionSuccess, dispatch, form.type, reserveEntryId]);
 

@@ -9,11 +9,12 @@ import { submitMoisture, clearMixingState } from '@/store/slices/mixing';
 import { createThresholdViolationTickets } from '@/utils/thresholdTicketing';
 import { sanitizeNumericInput } from '@/utils/inputValidation';
 import { saveNotebookCustomFieldValuesApi } from '@/apis/notebookCustomFieldsApi';
+import { recordSubmittedNotebook } from '@/utils/submittedNotebookRecorder';
 import styles from '../../styles/moistureDataEntry.module.css';
 
 const initialForm = { partyLotNo: '', variety: '', partyName: '', prNo: '' };
 
-const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, selectedLotDetails, selectedTypeName }, ref) {
+const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId, lotNo, selectedLotDetails, selectedTypeName }, ref) {
     const dispatch = useDispatch();
     const { actionSuccess } = useSelector(state => state.mixing);
     const user = useSelector((state) => state.auth?.user);
@@ -86,6 +87,7 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
     const buildPayload = () => ({
         entry_id:        entryId || undefined,
         inspection_date: date,
+        lot_no:          lotNo,
         party_lot_no:    formData.partyLotNo,
         variety:         formData.variety,
         party_name:      formData.partyName,
@@ -109,6 +111,23 @@ const MoistureDataEntry = forwardRef(function MoistureDataEntry({ date, entryId,
         await dispatch(submitMoisture(payload)).unwrap();
 
         const linkedEntryId = payload.entry_id;
+
+        // Registered here, immediately after the save itself succeeds — see cottonHVIDataEntry.jsx
+        // for why this can no longer live in the parent's post-submit/success-modal flow.
+        try {
+            await recordSubmittedNotebook({
+                department: "Quality Control",
+                subDepartment: "Mixing",
+                notebookName: selectedTypeName || "Moisture Data Entry",
+                entryId: linkedEntryId,
+                lotNo,
+                registeredActions: { getPayload: () => payload },
+                user,
+            });
+        } catch (error) {
+            console.warn("Mixing submitted notebook record failed:", error?.response?.data || error?.message || error);
+        }
+
         const customFieldEntries = Object.entries(customFieldValues).filter(([, v]) => String(v ?? '').trim() !== '');
         if (linkedEntryId && customFieldEntries.length) {
             try {

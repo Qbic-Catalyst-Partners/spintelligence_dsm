@@ -196,153 +196,6 @@ const calculateBreakPerMillionMeter = ({ totalCones, totalLength }) => {
   return Number(((cones * 1000000) / length).toFixed(4));
 };
 
-const ensureRewindingStudyTables = async () => {
-  const studyExistsResult = await client.query(`
-    SELECT EXISTS (
-      SELECT 1
-      FROM information_schema.tables
-      WHERE table_schema = 'autoconer'
-        AND table_name = 'rewinding_study'
-    ) AS exists
-  `);
-  const inspectionsExistsResult = await client.query(`
-    SELECT EXISTS (
-      SELECT 1
-      FROM information_schema.tables
-      WHERE table_schema = 'autoconer'
-        AND table_name = 'rewinding_study_inspections'
-    ) AS exists
-  `);
-
-  if (!studyExistsResult.rows[0].exists) {
-    await client.query(`
-      CREATE TABLE autoconer.rewinding_study (
-        id BIGSERIAL PRIMARY KEY,
-        entry_date DATE NOT NULL,
-        type TEXT NOT NULL,
-        machine_name TEXT,
-        count_name TEXT,
-        cntcode TEXT,
-        cone_tip TEXT,
-        drum_from INTEGER,
-        drum_to INTEGER,
-        drum_no INTEGER,
-        no_of_cones NUMERIC(18,4),
-        actual_count NUMERIC(18,4),
-        weight NUMERIC(18,4),
-        no_of_cuts NUMERIC(18,4),
-        break_per_lakh NUMERIC(18,4),
-        remarks TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-  }
-
-  if (!inspectionsExistsResult.rows[0].exists) {
-    await client.query(`
-      CREATE TABLE autoconer.rewinding_study_inspections (
-        id BIGSERIAL PRIMARY KEY,
-        rewinding_study_id BIGINT NOT NULL REFERENCES autoconer.rewinding_study(id) ON DELETE CASCADE,
-        reading_number INTEGER NOT NULL,
-        short_cut TEXT,
-        short_name TEXT,
-        fault_percent NUMERIC(18,8),
-        length_mm NUMERIC(18,4),
-        weight NUMERIC(18,4),
-        break_per_meter NUMERIC(18,4),
-        percent_yarn NUMERIC(18,8),
-        appearance_ok BOOLEAN,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `);
-  }
-
-  await client.query(`
-    ALTER TABLE IF EXISTS autoconer.rewinding_study_inspections
-    DROP COLUMN IF EXISTS drum_no
-  `);
-
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS rewinding_study_inspections_parent_idx
-    ON autoconer.rewinding_study_inspections (rewinding_study_id, reading_number)
-  `);
-};
-
-const normalizeRewindingInspection = (inspection, index) => {
-  const readingNumber = toNumberOrNull(inspection?.reading_number);
-  const faultPercent = toNumberOrNull(inspection?.fault_percent);
-  const lengthMm = toNumberOrNull(inspection?.length_mm);
-  const rowWeight = toNumberOrNull(inspection?.weight);
-  const breakPerMeter = toNumberOrNull(inspection?.break_per_meter);
-  const percentYarn = toNumberOrNull(inspection?.percent_yarn);
-  const appearanceOk = toBooleanOrNull(inspection?.appearance_ok);
-
-  if (!Number.isFinite(readingNumber)) {
-    return { error: `drum_inspections[${index}].reading_number is required and must be numeric` };
-  }
-  if (faultPercent === null) {
-    return { error: `drum_inspections[${index}].fault_percent is required and must be numeric` };
-  }
-  if (!Number.isFinite(faultPercent)) {
-    return { error: `drum_inspections[${index}].fault_percent must be numeric when provided` };
-  }
-  if (lengthMm === null) {
-    return { error: `drum_inspections[${index}].length_mm is required and must be numeric` };
-  }
-  if (!Number.isFinite(lengthMm)) {
-    return { error: `drum_inspections[${index}].length_mm must be numeric when provided` };
-  }
-  if (rowWeight === null) {
-    return { error: `drum_inspections[${index}].weight is required and must be numeric` };
-  }
-  if (!Number.isFinite(rowWeight)) {
-    return { error: `drum_inspections[${index}].weight must be numeric when provided` };
-  }
-  if (breakPerMeter === null) {
-    return { error: `drum_inspections[${index}].break_per_meter is required and must be numeric` };
-  }
-  if (!Number.isFinite(breakPerMeter)) {
-    return { error: `drum_inspections[${index}].break_per_meter must be numeric when provided` };
-  }
-  if (percentYarn === null) {
-    return { error: `drum_inspections[${index}].percent_yarn is required and must be numeric` };
-  }
-  if (!Number.isFinite(percentYarn)) {
-    return { error: `drum_inspections[${index}].percent_yarn must be numeric when provided` };
-  }
-  if (appearanceOk === null) {
-    return { error: `drum_inspections[${index}].appearance_ok is required and must be boolean` };
-  }
-
-  return {
-    reading_number: Math.trunc(readingNumber),
-    short_cut: trimOrNull(inspection?.short_cut),
-    short_name: trimOrNull(inspection?.short_name),
-    fault_percent: faultPercent,
-    length_mm: lengthMm,
-    weight: rowWeight,
-    break_per_meter: breakPerMeter,
-    percent_yarn: percentYarn,
-    appearance_ok: appearanceOk
-  };
-};
-
-const mapRewindingRow = (row) => ({
-  id: row.id,
-  rewinding_study_id: row.rewinding_study_id,
-  reading_number: row.reading_number,
-  short_cut: row.short_cut,
-  short_name: row.short_name,
-  fault_percent: row.fault_percent !== null && row.fault_percent !== undefined ? Number(row.fault_percent) : null,
-  length_mm: row.length_mm !== null && row.length_mm !== undefined ? Number(row.length_mm) : null,
-  weight: row.weight !== null && row.weight !== undefined ? Number(row.weight) : null,
-  break_per_meter: row.break_per_meter !== null && row.break_per_meter !== undefined ? Number(row.break_per_meter) : null,
-  percent_yarn: row.percent_yarn !== null && row.percent_yarn !== undefined ? Number(row.percent_yarn) : null,
-  appearance_ok: row.appearance_ok
-});
-
 const fetchAutoconerConsigneeOptions = async () => {
   const result = await client.query(`
     SELECT DISTINCT consignee_name
@@ -420,10 +273,7 @@ const sendAutoconerMachineDropdown = async (req, res, next) => {
 // default — on this DB, that silently writes a different offset than what gets displayed back,
 // shifting "Created At" by several hours (sometimes onto the wrong calendar day) in Custom Report.
 // Same root cause and same fix as every other department's equivalent tables: convert to
-// timestamptz so new rows store an unambiguous absolute instant. (rewinding_study's own CREATE
-// TABLE statement already declares TIMESTAMPTZ, but that only applies to a fresh table — this
-// one was created earlier under the old plain-timestamp definition, so it still needs the same
-// ALTER here.)
+// timestamptz so new rows store an unambiguous absolute instant.
 const ensureAutoconerTimestampColumnsHaveTimezone = async () => {
   const tablesAndColumn = [
     ['autoconer.autoconer_process_parameter', 'created_at'],
@@ -432,7 +282,6 @@ const ensureAutoconerTimestampColumnsHaveTimezone = async () => {
     ['autoconer.autoconer_q2_inspection', 'updated_at'],
     ['autoconer.autoconer_q3_inspection', 'created_at'],
     ['autoconer.autoconer_q3_inspection', 'updated_at'],
-    ['autoconer.cone_density', 'created_at'],
     ['autoconer.cone_density_notebook', 'created_at'],
     ['autoconer.cone_density_notebook', 'updated_at'],
     ['autoconer.cone_density_notebook_drums', 'created_at'],
@@ -444,8 +293,7 @@ const ensureAutoconerTimestampColumnsHaveTimezone = async () => {
     ['autoconer.inspections', 'created_at'],
     ['autoconer.lycra_checking_inspections', 'created_at'],
     ['autoconer.parameter_entries', 'created_at'],
-    ['autoconer.parameter_entries', 'updated_at'],
-    ['autoconer.rewinding_study', 'created_at']
+    ['autoconer.parameter_entries', 'updated_at']
   ];
   for (const [tableName, column] of tablesAndColumn) {
     const [schemaName, relationName] = tableName.split('.');
@@ -584,21 +432,6 @@ const ensureAutoconerEntryIdColumns = async () => {
     WHERE entry_id IS NOT NULL;
   `);
 
-  // cone_density was never given a real PRIMARY KEY either (same root cause as
-  // lycra_checking above) — GET /cone-density's `GROUP BY cd.id` with `cd.*` selected
-  // fails with "column cd.test_no must appear in the GROUP BY clause" without it,
-  // so the Cone Density screen 500s on every fetch.
-  await client.query(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conrelid = 'autoconer.cone_density'::regclass AND contype = 'p'
-      ) THEN
-        ALTER TABLE autoconer.cone_density ADD PRIMARY KEY (id);
-      END IF;
-    END $$;
-  `);
-
   await client.query(`
     ALTER TABLE autoconer.inspections
       ADD COLUMN IF NOT EXISTS entry_id TEXT;
@@ -606,16 +439,6 @@ const ensureAutoconerEntryIdColumns = async () => {
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS autoconer_inspections_entry_id_uq
     ON autoconer.inspections (entry_id)
-    WHERE entry_id IS NOT NULL;
-  `);
-
-  await client.query(`
-    ALTER TABLE autoconer.cone_density
-      ADD COLUMN IF NOT EXISTS entry_id TEXT;
-  `);
-  await client.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS cone_density_entry_id_uq
-    ON autoconer.cone_density (entry_id)
     WHERE entry_id IS NOT NULL;
   `);
 
@@ -649,13 +472,21 @@ const ensureAutoconerEntryIdColumns = async () => {
     WHERE entry_id IS NOT NULL;
   `);
 
-  // cone_density_notebook already has an entry_id column (it's the table the Cone Density screen
-  // actually reads/writes via /cone-density-notebook, unlike the older, effectively unused
-  // /cone-density + autoconer.cone_density pairing above) but never had a uniqueness guard.
+  // cone_density_notebook already has an entry_id column but never had a uniqueness guard.
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS cone_density_notebook_entry_id_uq
     ON autoconer.cone_density_notebook (entry_id)
     WHERE entry_id IS NOT NULL;
+  `);
+
+  // Rewinding study (inspection_data_entry) header never stored the drum-reading totals,
+  // so the list/report views had no way to show them without re-summing readings client-side.
+  await client.query(`
+    ALTER TABLE autoconer.inspection_data_entry
+      ADD COLUMN IF NOT EXISTS total_cones INTEGER,
+      ADD COLUMN IF NOT EXISTS total_faults INTEGER,
+      ADD COLUMN IF NOT EXISTS total_weight NUMERIC(14, 4),
+      ADD COLUMN IF NOT EXISTS total_length_meters NUMERIC(14, 4);
   `);
 };
 
@@ -1680,13 +1511,19 @@ router.post('/inspection-data-entry', async (req, res) => {
       return res.status(400).json({ message: 'Readings required' });
     }
 
+    const sumField = (field) => readings.reduce((sum, r) => sum + (Number(r[field]) || 0), 0);
+    const total_cones = sumField('no_of_cones');
+    const total_faults = sumField('no_of_faults');
+    const total_weight = sumField('weight');
+    const total_length_meters = sumField('length_meters');
+
     await client.query('BEGIN');
     const headerResult = await client.query(
       `INSERT INTO autoconer.inspection_data_entry
-        (entry_id, entry_date, type, count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts, break_per_million_meter, remarks)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (entry_id, entry_date, type, count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts, break_per_million_meter, remarks, total_cones, total_faults, total_weight, total_length_meters)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING id`,
-      [entry_id, entry_date, type || 'Rewinding Study', count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts ?? 0, break_per_million_meter ?? 0, remarks]
+      [entry_id, entry_date, type || 'Rewinding Study', count_name, actual_count, auto_coner_no, cone_tip, no_of_cuts ?? 0, break_per_million_meter ?? 0, remarks, total_cones, total_faults, total_weight, total_length_meters]
     );
 
     const inspection_data_entry_id = headerResult.rows[0].id;
@@ -1719,7 +1556,6 @@ router.post('/inspection-data-entry', async (req, res) => {
  */
 router.get('/inspection-data-entry', async (req, res) => {
   try {
-    await ensureRewindingStudyTables();
     await ensureAutoconerEntryIdColumns();
     const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
     const page = parseInt(req.query.page) || 1;
@@ -1767,394 +1603,6 @@ router.get('/inspection-data-entry', async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching inspection data entries:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.get('/rewinding-study/:id', async (req, res) => {
-  try {
-    await ensureRewindingStudyTables();
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id)) {
-      return res.status(400).json({ message: 'id must be numeric' });
-    }
-
-    const studyResult = await client.query(
-      `SELECT * FROM autoconer.rewinding_study WHERE id = $1`,
-      [id]
-    );
-    if (!studyResult.rows.length) {
-      return res.status(404).json({ message: 'Rewinding study not found' });
-    }
-
-    const inspectionResult = await client.query(
-      `SELECT *
-       FROM autoconer.rewinding_study_inspections
-       WHERE rewinding_study_id = $1
-       ORDER BY reading_number ASC, id ASC`,
-      [id]
-    );
-
-    return res.json({
-      success: true,
-      data: {
-        ...studyResult.rows[0],
-        drum_inspections: inspectionResult.rows.map(mapRewindingRow),
-        readings: inspectionResult.rows.map(mapRewindingRow)
-      }
-    });
-  } catch (err) {
-    console.error('Error fetching rewinding study by id:', err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-});
-
-/**
- * @swagger
- * /autoconer/cone-density:
- *   post:
- *     summary: Create a new cone density record with readings
- *     tags: [Autoconer]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - test_no
- *               - entry_date
- *               - drum_from
- *               - drum_to
- *               - cone_readings
- *             properties:
- *               test_no:
- *                 type: integer
- *                 example: 1
- *               entry_date:
- *                 type: string
- *                 format: date
- *                 example: "2026-04-04"
- *               type:
- *                 type: string
- *                 example: "Cone Density"
- *               machine_name:
- *                 type: string
- *                 example: "AC01"
- *               count_name:
- *                 type: string
- *                 example: "Cotton 20s"
- *               cone_tip:
- *                 type: string
- *                 example: "Red"
- *               base_dia_e:
- *                 type: number
- *                 example: 12.50
- *               nose_dia_e:
- *                 type: number
- *                 example: 8.25
- *               drum_from:
- *                 type: integer
- *                 example: 1
- *               drum_to:
- *                 type: integer
- *                 example: 10
- *               weight:
- *                 type: number
- *                 example: 250.50
- *               no_of_cuts:
- *                 type: integer
- *                 example: 5
- *               remarks:
- *                 type: string
- *                 example: "Normal"
- *               cone_readings:
- *                 type: array
- *                 minItems: 1
- *                 items:
- *                   type: object
- *                   required:
- *                     - drum_no
- *                     - short_cut
- *                     - short_name
- *                   properties:
- *                     drum_no:
- *                       type: integer
- *                       example: 1
- *                     reading_number:
- *                       type: integer
- *                       example: 1
- *                     short_cut:
- *                       type: string
- *                       example: "L"
- *                     short_name:
- *                       type: string
- *                       example: "B1"
- *                     fault_percent:
- *                       type: number
- *                       example: 0.50
- *                     length_mm:
- *                       type: number
- *                       example: 120.25
- *                     weight:
- *                       type: number
- *                       example: 8.50
- *                     break_per_meter:
- *                       type: number
- *                       example: 0.1234
- *                     density:
- *                       type: number
- *                       example: 1.234
- *                     hardness:
- *                       type: number
- *                       example: 5.678
- *     responses:
- *       201:
- *         description: Cone density record created successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Cone density record created successfully
- *                 cone_density_id:
- *                   type: integer
- *                   example: 123
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Cone readings required
- *       500:
- *         description: Server error
- */
-router.post('/cone-density', async (req, res) => {
-  try {
-    await ensureAutoconerEntryIdColumns();
-    const {
-      entry_id,
-      test_no,
-      entry_date,
-      type,
-      machine_name,
-      count_name,
-      cone_tip,
-      base_dia_e,
-      nose_dia_e,
-      drum_from,
-      drum_to,
-      weight,
-      no_of_cuts,
-      remarks,
-      cone_readings
-    } = req.body;
-
-    if (!cone_readings || !cone_readings.length) {
-      return res.status(400).json({ message: 'Cone readings required' });
-    }
-
-    await client.query('BEGIN');
-
-    const coneDensityResult = await client.query(
-      `INSERT INTO autoconer.cone_density
-            (entry_id, test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-            RETURNING id`,
-      [entry_id || null, test_no, entry_date, type, machine_name, count_name, cone_tip, base_dia_e, nose_dia_e, drum_from, drum_to, weight, no_of_cuts, remarks]
-    );
-
-    const cone_density_id = coneDensityResult.rows[0].id;
-
-    for (const reading of cone_readings) {
-      await client.query(
-        `INSERT INTO autoconer.cone_density_readings
-                (cone_density_id, drum_no, base_dia_e, nose_dia_e, base_dia, nose_dia, cone_weight, cone_traverse, density, hardness)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [
-          cone_density_id,
-          reading.drum_no,
-          reading.base_dia_e,
-          reading.nose_dia_e,
-          reading.base_dia,
-          reading.nose_dia,
-          reading.weight,
-          reading.cone_traverse,
-          reading.density,
-          reading.hardness
-        ]
-      );
-    }
-
-    await client.query('COMMIT');
-
-    res.status(201).json({
-      message: 'Cone density record created successfully',
-      cone_density_id
-    });
-
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Error creating cone density record:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-/**
- * @swagger
- * /autoconer/cone-density:
- *   get:
- *     summary: Get all cone density records with pagination
- *     tags: [Autoconer]
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *     responses:
- *       200:
- *         description: List of cone density records retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 page:
- *                   type: integer
- *                 limit:
- *                   type: integer
- *                 total:
- *                   type: integer
- *                 totalPages:
- *                   type: integer
- *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                       test_no:
- *                         type: integer
- *                       entry_date:
- *                         type: string
- *                         format: date
- *                       type:
- *                         type: string
- *                       machine_name:
- *                         type: string
- *                       count_name:
- *                         type: string
- *                       cone_tip:
- *                         type: string
- *                       base_dia_e:
- *                         type: number
- *                       nose_dia_e:
- *                         type: number
- *                       drum_from:
- *                         type: integer
- *                       drum_to:
- *                         type: integer
- *                       weight:
- *                         type: number
- *                       no_of_cuts:
- *                         type: integer
- *                       remarks:
- *                         type: string
- *                       created_at:
- *                         type: string
- *                         format: date-time
- *                       readings:
- *                         type: array
- *                         items:
- *                           type: object
- *                           properties:
- *                             drum_no:
- *                               type: integer
- *                             base_dia_e:
- *                               type: number
- *                             nose_dia_e:
- *                               type: number
- *                             base_dia:
- *                               type: number
- *                             nose_dia:
- *                               type: number
- *                             cone_weight:
- *                               type: number
- *                             cone_traverse:
- *                               type: number
- *                             density:
- *                               type: number
- *                             hardness:
- *                               type: number
- *       500:
- *         description: Server error
- */
-router.get('/cone-density', async (req, res) => {
-  try {
-    await ensureAutoconerEntryIdColumns();
-    const fetchAll = String(req.query.all || '').toLowerCase() === 'true';
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-
-    const dataQueryBase = `
-            SELECT
-                cd.*,
-                COALESCE(
-                    json_agg(
-                        json_build_object(
-                            'drum_no', cdr.drum_no,
-                            'base_dia_e', cdr.base_dia_e,
-                            'nose_dia_e', cdr.nose_dia_e,
-                            'base_dia', cdr.base_dia,
-                            'nose_dia', cdr.nose_dia,
-                            'cone_weight', cdr.cone_weight,
-                            'cone_traverse', cdr.cone_traverse,
-                            'density', cdr.density,
-                            'hardness', cdr.hardness
-                        ) ORDER BY cdr.id
-                    ) FILTER (WHERE cdr.id IS NOT NULL),
-                    '[]'
-                ) AS readings
-            FROM autoconer.cone_density cd
-            LEFT JOIN autoconer.cone_density_readings cdr ON cd.id = cdr.cone_density_id
-            GROUP BY cd.id
-            ORDER BY cd.entry_date DESC, cd.created_at DESC
-        `;
-    const dataQuery = fetchAll ? dataQueryBase : `${dataQueryBase} LIMIT $1 OFFSET $2`;
-
-    const countQuery = `SELECT COUNT(*) FROM autoconer.cone_density`;
-
-    const dataResult = fetchAll
-      ? await client.query(dataQuery)
-      : await client.query(dataQuery, [limit, offset]);
-    const countResult = await client.query(countQuery);
-
-    const total = parseInt(countResult.rows[0].count);
-
-    res.json({
-      page: fetchAll ? 1 : page,
-      limit: fetchAll ? total : limit,
-      total,
-      totalPages: fetchAll ? 1 : Math.ceil(total / limit),
-      data: dataResult.rows
-    });
-
-  } catch (err) {
-    console.error('Error fetching cone density records:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -2265,16 +1713,9 @@ const fetchAutoconerMasterData = async (query = {}) => {
   `;
 
   const autoconerNoQuery = `
-    SELECT DISTINCT autoconer_no
-    FROM (
-      SELECT machine_no AS autoconer_no
-      FROM autoconer.autoconer_process_parameter
-      WHERE machine_no IS NOT NULL AND BTRIM(machine_no) <> ''
-      UNION
-      SELECT machine_name AS autoconer_no
-      FROM autoconer.cone_density
-      WHERE machine_name IS NOT NULL AND BTRIM(machine_name) <> ''
-    ) t
+    SELECT DISTINCT machine_no AS autoconer_no
+    FROM autoconer.autoconer_process_parameter
+    WHERE machine_no IS NOT NULL AND BTRIM(machine_no) <> ''
     ORDER BY autoconer_no
   `;
 
@@ -2341,12 +1782,8 @@ router.get('/conedensity/master-data', async (req, res) => {
 });
 
 // Cone Density's actual notebook screen (frontend/src/views/autoconer/ConeDensity.jsx) submits to
-// and fetches from /cone-density-notebook — not /cone-density above, which is a separate, older
-// table (autoconer.cone_density/cone_density_readings) with almost no real data. This route never
-// existed at all, so every Cone Density submission from the real form has been failing outright,
-// and Custom Report's fetch for this screen returned nothing. autoconer.cone_density_notebook and
-// cone_density_notebook_drums already exist with the right columns (created for this purpose
-// earlier) — just needed the routes wired up.
+// and fetches from /cone-density-notebook. autoconer.cone_density_notebook and
+// cone_density_notebook_drums hold the real data.
 router.post('/cone-density-notebook', async (req, res) => {
   try {
     await ensureAutoconerEntryIdColumns();
@@ -2459,10 +1896,20 @@ router.get('/cone-density-notebook', async (req, res) => {
             ) ORDER BY cdnd.id
           ) FILTER (WHERE cdnd.id IS NOT NULL),
           '[]'
-        ) AS drums
+        ) AS drums,
+
+        -- Average/Min/Max/Range of Volume, Density, Gms/Litre across this notebook's drums —
+        -- kept in sync by trg_cone_density_notebook_drums_summary on cone_density_notebook_drums,
+        -- not computed here.
+        json_build_object(
+          'volume', json_build_object('avg', cds.volume_avg, 'min', cds.volume_min, 'max', cds.volume_max, 'range', cds.volume_range),
+          'density', json_build_object('avg', cds.density_avg, 'min', cds.density_min, 'max', cds.density_max, 'range', cds.density_range),
+          'gms_litre', json_build_object('avg', cds.gms_litre_avg, 'min', cds.gms_litre_min, 'max', cds.gms_litre_max, 'range', cds.gms_litre_range)
+        ) AS summary
       FROM autoconer.cone_density_notebook cdn
       LEFT JOIN autoconer.cone_density_notebook_drums cdnd ON cdn.id = cdnd.notebook_id
-      GROUP BY cdn.id
+      LEFT JOIN autoconer.cone_density_notebook_summary cds ON cdn.id = cds.notebook_id
+      GROUP BY cdn.id, cds.notebook_id
       ORDER BY cdn.entry_date DESC, cdn.created_at DESC
     `;
     const dataQuery = fetchAll ? dataQueryBase : `${dataQueryBase} LIMIT $1 OFFSET $2`;

@@ -24,7 +24,7 @@ import useDatabaseEntryId from "@/hooks/useDatabaseEntryId";
 import { useThemeMode } from "@/utils/useThemeMode";
 const simplexTypes = [
   { id: 0, name: "Process Parameter", aliases: ["Process Parameter", "Process Parameter Data Entry"], component: ProcessParameterDataEntry },
-  { id: 1, name: "SMXCots Change Data Entry", aliases: ["SMXCots Change Data Entry", "SMX Cots Change Data Entry"], component: SMXCotsChangeDataEntry },
+  { id: 1, name: "SMXCots Checking Data Entry", aliases: ["SMXCots Checking Data Entry", "SMXCots Change Data Entry", "SMX Cots Change Data Entry", "SMX Cots Checking Data Entry"], component: SMXCotsChangeDataEntry },
   { id: 2, name: "SMX Breaks Study Report", aliases: ["SMX Breaks Study Report", "Breaks Study Report"], component: SMXBreaksStudyReport },
   { id: 3, name: "U% Data Entry", aliases: ["U% Data Entry", "U Percent Data Entry", "U% Checking"], component: UPercentDataEntry },
   { id: 4, name: "Wheel Change", aliases: ["Wheel Change", "WheelChange"], component: WheelChange },
@@ -34,7 +34,7 @@ const simplexTypes = [
 export const SIMPLEX_INPUT_SCREEN_COUNT = simplexTypes.length;
 const SIMPLEX_ENTRY_ID_CONFIG = {
   "Process Parameter": { prefix: "SPP", width: 4, routePath: "/simplex/process_parameter" },
-  "SMXCots Change Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
+  "SMXCots Checking Data Entry": { prefix: "SCC", width: 4, routePath: "/simplex/SMXCotsChange" },
   "SMX Breaks Study Report": { prefix: "SBS", width: 4, routePath: "/simplex/list" },
   "U% Data Entry": { prefix: "SUP", width: 4, routePath: "/simplex/uqc" },
   "Wheel Change": { prefix: "SWC", width: 4, routePath: "/simplex/wheel-change", fetchPath: "/simplex/notebook" },
@@ -160,7 +160,7 @@ function Simplex() {
     if (selectedTypeName === "U% Data Entry") {
       dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
     }
-    if (selectedTypeName === "SMXCots Change Data Entry") {
+    if (selectedTypeName === "SMXCots Checking Data Entry") {
       dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
     }
   }, [dispatch, selectedTypeName]);
@@ -223,13 +223,13 @@ function Simplex() {
     if (selectedTypeName === "U% Data Entry") {
       dispatch(getSimplexUqcEntries({ page: 1, limit: 10 }));
     }
-    if (selectedTypeName === "SMXCots Change Data Entry") {
+    if (selectedTypeName === "SMXCots Checking Data Entry") {
       dispatch(getSimplexCotsChangeEntries({ page: 1, limit: 10 }));
     }
   };
 
   const showUqcEntries = selectedTypeName === "U% Data Entry";
-  const showCotsChangeEntries = selectedTypeName === "SMXCots Change Data Entry";
+  const showCotsChangeEntries = selectedTypeName === "SMXCots Checking Data Entry";
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center">

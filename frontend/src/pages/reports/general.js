@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
+import { useSelector } from "react-redux";
 import { FiFileText, FiChevronDown, FiCalendar } from "react-icons/fi";
 
 import styles from "@/styles/reports.module.css";
@@ -10,6 +11,8 @@ import {
 import { departmentDirectory } from "@/views/departments/data";
 import { getThresholdFieldsForScreen } from "@/views/thresholds/fieldCatalog";
 import { getThresholdScreensForSubDepartment } from "@/views/thresholds/screenCatalog";
+import { hasSubDepartmentAccess } from "@/utils/accessControl";
+import { filterOptionsByDepartmentAccess } from "@/utils/screenAccess";
 
 const ALL_TYPES_VALUE = "__all_types__";
 const today = new Date();
@@ -78,12 +81,28 @@ const REPORT_FIELD_ALIASES = {
   "CV%": ["cv_percent", "cvPercent"],
 };
 
+// normalizeLookup strips "+" and "-" identically (both are just "non-alphanumeric noise" to it),
+// so "A% (N-1)"/"A% (N+1)" and "Sample 1 - N-1"/"Sample 1 - N+1" all collapse to the same string
+// ("an1"/"sample1n1") once normalized. uniqueReportFields uses that as its dedup key, so it was
+// silently treating every real "N+1" field as a duplicate of its "N-1" sibling and dropping it from
+// the Available Fields list entirely (Draw Frame's "A%" notebook — one meta field plus 34 sample/
+// summary columns — never even appeared as pickable). Keep normalizeLookup's loose alias-matching
+// behavior as-is for everything else, but make the final canonical key preserve +/- so these two
+// genuinely different fields no longer collide.
+const normalizeForDedup = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\+/g, "plus")
+    .replace(/-/g, "minus")
+    .replace(/[^a-z0-9]+/g, "");
+
 const getCanonicalFieldKey = (field) => {
   const fieldKey = String(field?.key || field?.label || "").trim();
   const matchedAlias = Object.entries(REPORT_FIELD_ALIASES).find(([label, aliases]) =>
     [label, ...aliases].some((candidate) => normalizeLookup(candidate) === normalizeLookup(fieldKey))
   );
-  return matchedAlias ? normalizeLookup(matchedAlias[0]) : normalizeLookup(fieldKey);
+  return normalizeForDedup(matchedAlias ? matchedAlias[0] : fieldKey);
 };
 
 const uniqueReportFields = (fields) =>
@@ -297,6 +316,59 @@ const SPINNING_DIRECT_FIELD_KEY_BY_LABEL = {
   "Count of RHS Spindle": "rhs_spindle_count",
 };
 
+// Draw Frame's "A%" notebook stores its single-value fields inside a `meta` JSONB object (with
+// camelCase keys) and its 10-sample + 7-summary N-1/N/N+1 table inside a `rows` array (each shaped
+// { sampleNo, nMinus1, n, nPlus1 }), rather than as flat top-level row columns.
+// getDashboardFieldValue/getReportFieldValue above only ever check top-level row keys, so every A%
+// catalog field except the handful of real flat columns (Entry ID, PDF File) always resolved to
+// null/"-" here. Mirrors the same-purpose resolvers already in Custom Report
+// (frontend/src/views/reports/ReportsPage.jsx: reportFieldAliases's "A% (N-1)"/"A% (N+1)" entries
+// and parseAPercentFieldLabel/getAPercentTableValue).
+const A_PERCENT_META_FIELD_KEY_BY_LABEL = {
+  Report: "reportTitle",
+  "Test ID": "testId",
+  Machine: "machine",
+  "Count System": "countSystem",
+  "Length Unit": "lengthUnit",
+  Length: "length",
+  "Total Test": "totalTest",
+  "Standard A%": "standardAPercent",
+  "A% (N-1)": "aPercentNMinus1",
+  "A% (N+1)": "aPercentNPlus1",
+  Date: "date",
+  Tester: "tester",
+  Shift: "shift",
+  Process: "process",
+  Remark: "remark",
+};
+
+const A_PERCENT_SUMMARY_LABELS = ["Average Weight", "Weight (Max)", "Weight (Min)", "Range", "Hank", "SD", "CV"];
+const A_PERCENT_ROW_COLUMN_KEYS = { "N-1": "nMinus1", N: "n", "N+1": "nPlus1" };
+
+const parseAPercentFieldLabel = (label) => {
+  const match = String(label || "").match(/^(.*)\s-\s(N-1|N\+1|N)$/);
+  if (!match) return null;
+  const rowLabel = match[1].trim();
+  const columnKey = A_PERCENT_ROW_COLUMN_KEYS[match[2]];
+  const sampleMatch = rowLabel.match(/^Sample\s+(\d+)$/i);
+  const sampleNo = sampleMatch ? sampleMatch[1] : A_PERCENT_SUMMARY_LABELS.includes(rowLabel) ? rowLabel : null;
+  return sampleNo ? { sampleNo, columnKey } : null;
+};
+
+const getAPercentRowsArray = (row) => {
+  const candidates = [row?.rows, row?.manual_json, row?.ocr_json];
+  return candidates.find((list) => Array.isArray(list) && list.length) || [];
+};
+
+const getAPercentTableValue = (row, fieldLabel) => {
+  const parsed = parseAPercentFieldLabel(fieldLabel);
+  if (!parsed) return undefined;
+  const match = getAPercentRowsArray(row).find(
+    (item) => normalizeLookup(item?.sampleNo) === normalizeLookup(parsed.sampleNo)
+  );
+  return match ? match[parsed.columnKey] : undefined;
+};
+
 // Any field recognized as "a date" by its label/key gets rendered through formatCellDate instead
 // of the raw ISO timestamp — mirrors DATE_FIELD_NORMALIZED_KEYS in Custom Report
 // (frontend/src/views/reports/ReportsPage.jsx) so both report pages show dates the same way.
@@ -320,6 +392,10 @@ const getCellValue = (row, field, context = {}) => {
     context.subDepartment === "Spinning" && SPINNING_MACHINE_FIELD_REPORT_TYPES.has(context.reportType);
 
   if (isSpinningSpindleScreen && (label === "Machine No." || label === "Machine")) {
+    const machineName = row?.machine_name;
+    if (machineName !== null && typeof machineName !== "undefined" && String(machineName).trim() !== "") {
+      return String(machineName).trim();
+    }
     const machineValue = row?.machineno;
     return machineValue !== null && typeof machineValue !== "undefined" && String(machineValue).trim() !== ""
       ? `R/F-${String(machineValue).trim()}`
@@ -338,6 +414,21 @@ const getCellValue = (row, field, context = {}) => {
     const directValue = row?.[SPINNING_DIRECT_FIELD_KEY_BY_LABEL[label]];
     return directValue !== null && typeof directValue !== "undefined" && String(directValue).trim() !== ""
       ? String(directValue)
+      : "-";
+  }
+
+  const isAPercentScreen = context.subDepartment === "Draw Frame" && context.reportType === "A%";
+
+  if (isAPercentScreen && A_PERCENT_META_FIELD_KEY_BY_LABEL[label]) {
+    const metaValue = row?.meta?.[A_PERCENT_META_FIELD_KEY_BY_LABEL[label]];
+    if (metaValue === null || typeof metaValue === "undefined" || String(metaValue).trim() === "") return "-";
+    return label === "Date" ? formatCellDate(metaValue) : String(metaValue);
+  }
+
+  if (isAPercentScreen && parseAPercentFieldLabel(label)) {
+    const tableValue = getAPercentTableValue(row, label);
+    return tableValue !== null && typeof tableValue !== "undefined" && String(tableValue).trim() !== ""
+      ? String(tableValue)
       : "-";
   }
 
@@ -432,20 +523,38 @@ export default function GeneralReport() {
   const [rowsByType, setRowsByType] = useState({});
   const [loadingRows, setLoadingRows] = useState(false);
   const [rowsError, setRowsError] = useState("");
+  const user = useSelector((state) => state.auth?.user);
+  const accessByDepartment = useSelector((state) => state.auth?.accessByDepartment);
   const departments = useMemo(() => departmentDirectory, []);
   const selectedDepartment = useMemo(
     () => departments.find((department) => department.name === selectedDept),
     [departments, selectedDept]
   );
-  const subDepartments = selectedDepartment?.subDepartments || [];
+  // Only offer sub-departments (and, below, notebook types) the current role actually has
+  // screen access to — this page previously showed the full static directory unfiltered,
+  // unlike Custom Report, which already applies this same accessByDepartment-based filtering.
+  const subDepartments = useMemo(
+    () =>
+      (selectedDepartment?.subDepartments || []).filter((subDepartment) =>
+        hasSubDepartmentAccess(accessByDepartment, subDepartment.name, user)
+      ),
+    [selectedDepartment, accessByDepartment, user]
+  );
   const selectedSubDepartment = useMemo(
     () => subDepartments.find((subDepartment) => subDepartment.name === selectedSubDept),
     [subDepartments, selectedSubDept]
   );
-  const notebooks = useMemo(
-    () => getThresholdScreensForSubDepartment(selectedDepartment?.slug, selectedSubDepartment?.slug),
-    [selectedDepartment?.slug, selectedSubDepartment?.slug]
-  );
+  const notebooks = useMemo(() => {
+    const allNotebooks = getThresholdScreensForSubDepartment(selectedDepartment?.slug, selectedSubDepartment?.slug);
+    if (!selectedSubDepartment) return allNotebooks;
+    const filtered = filterOptionsByDepartmentAccess(
+      allNotebooks.map((name) => ({ name })),
+      accessByDepartment,
+      user,
+      selectedSubDepartment.name
+    );
+    return filtered.map((option) => option.displayName || option.name);
+  }, [selectedDepartment?.slug, selectedSubDepartment, accessByDepartment, user]);
   const typeOptions = useMemo(
     () => (notebooks.length ? [{ value: ALL_TYPES_VALUE, label: "All Type" }, ...notebooks.map((type) => ({ value: type, label: type }))] : []),
     [notebooks]

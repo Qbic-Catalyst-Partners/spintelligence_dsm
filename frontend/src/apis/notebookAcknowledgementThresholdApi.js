@@ -37,3 +37,26 @@ export const saveNotebookAcknowledgementThresholdAPI = async (payload) => {
   );
   return response?.data;
 };
+
+export const updateNotebookAcknowledgementThresholdAPI = async (id, payload) => {
+  const response = await apiConfig.patch(
+    `/submitted-notebooks/acknowledgement-thresholds/${encodeURIComponent(id)}`,
+    payload
+  );
+  return response?.data;
+};
+
+export const updateNotebookAcknowledgementThresholdStatusAPI = async (id, is_active) => {
+  const response = await apiConfig.patch(
+    `/submitted-notebooks/acknowledgement-thresholds/${encodeURIComponent(id)}/status`,
+    { is_active }
+  );
+  return response?.data;
+};
+
+export const deleteNotebookAcknowledgementThresholdAPI = async (id) => {
+  const response = await apiConfig.delete(
+    `/submitted-notebooks/acknowledgement-thresholds/${encodeURIComponent(id)}`
+  );
+  return response?.data;
+};
