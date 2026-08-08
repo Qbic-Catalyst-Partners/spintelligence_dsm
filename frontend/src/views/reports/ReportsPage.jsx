@@ -2175,7 +2175,24 @@ const getRowEntryIdDisplayValue = (row) => {
 // Some forms (e.g. Simplex's Breaks Study) bake the operator's name straight into their own row
 // instead of relying on the submitted_notebooks entry_id join — checked as a fallback so a single
 // "Operator" field resolves correctly everywhere instead of needing a separate per-form field.
-const ROW_OPERATOR_NAME_CANDIDATES = ["operator_name", "operatorname", "operator", "s_name", "sname", "sider_name", "sidername", "employeename", "checker_name", "checkername", "user_id", "userid"];
+const ROW_OPERATOR_NAME_CANDIDATES = [
+  "operator_name",
+  "operatorname",
+  "operator",
+  "submitted_by_name",
+  "submittedbyname",
+  "user_name",
+  "username",
+  "s_name",
+  "sname",
+  "sider_name",
+  "sidername",
+  "employeename",
+  "checker_name",
+  "checkername",
+  "user_id",
+  "userid",
+];
 
 // Any raw/catalog field that is really just the operator's name under a different label (per-form
 // column names) gets collapsed into the single canonical "Operator" field below, instead of also
@@ -2228,7 +2245,17 @@ const extractSubmittedNotebookRows = (data) => {
 };
 
 const getSubmittedNotebookEntryKey = (notebook) =>
-  normalizeEntryKey(notebook?.entry_id ?? notebook?.entryId ?? notebook?.lot_no ?? notebook?.lotNo ?? "");
+  normalizeEntryKey(
+    notebook?.entry_id ??
+      notebook?.entryId ??
+      notebook?.source_record_id ??
+      notebook?.sourceRecordId ??
+      notebook?.notebook_submission_id ??
+      notebook?.notebookSubmissionId ??
+      notebook?.lot_no ??
+      notebook?.lotNo ??
+      ""
+  );
 
 const getSubmittedNotebookOperatorName = (notebook) =>
   String(
@@ -3025,9 +3052,13 @@ const SPINNING_LHS_RHS_FIELD_KEY_BY_LABEL = {
 
 const getCellValue = (row, field, operatorByEntryKey = {}, context = {}) => {
   if (field.key === OPERATOR_FIELD_KEY) {
+    const directOperatorName = String(
+      row?.submitted_by_name || row?.submittedByName || row?.operator || row?.operator_name || ""
+    ).trim();
+    if (directOperatorName) return directOperatorName;
     const entryKey = getRowEntryKey(row);
     const joinedOperatorName = entryKey && operatorByEntryKey[entryKey];
-    return joinedOperatorName || getRowOperatorName(row) || "-";
+    return joinedOperatorName || "-";
   }
 
   if (getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(ENTRY_ID_FIELD)) {
@@ -3812,13 +3843,12 @@ function ReportsPage() {
     const catalogFields = isAmbiguousReportType(reportType) && matchedCatalogFields.length
       ? matchedCatalogFields
       : rawCatalogFields;
-    // "Date" is excluded for the Wrapping OCR notebook types (Carding/Drawing/Simplex sub-types,
-    // where it duplicates the separate "Report Date" column), for every report type under the
-    // "Simplex" sub-department, and for every Draw Frame screen (which now shows "Created At"
-    // instead) — other screens still genuinely use "Date" as one of their own form fields and
-    // should show it. Draw Frame's PP - Breaker/Finisher Drawing use "Creation Date" for the same
-    // field instead of "Date", so it needs its own scoped exclusion (kept out of the shared
-    // globally-excluded list since other departments use "Creation Date" legitimately).
+      // "Date" is excluded for every report type under the "Simplex" sub-department, and for
+      // every Draw Frame screen (which now shows "Created At" instead) — other screens still
+      // genuinely use "Date" as one of their own form fields and should show it. Draw Frame's
+      // PP - Breaker/Finisher Drawing use "Creation Date" for the same field instead of "Date",
+      // so it needs its own scoped exclusion (kept out of the shared globally-excluded list since
+      // other departments use "Creation Date" legitimately).
     // "Inspection Type" and "Checking Type" are dropped for every Spinning report type (per user
     // request — both are a fixed/constant value on these screens, not something the operator
     // actually chose, so neither is useful in Custom Report). Ring Frame Log Book additionally
@@ -3826,12 +3856,12 @@ function ReportsPage() {
     // submission date/time. Simplex's "SMX Breaks Study Report" additionally drops "Break
     // Category" (a phantom field with no real backing data) — "Sider Name" is a real DB field
     // (the employee who ran the study) and is kept, now listed directly in fieldCatalog.js.
-    const screenExcludedReportFields =
-      subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)
-        ? globallyExcludedReportFields
-        : subDepartment === "Simplex"
-          ? [
-              ...globallyExcludedReportFields,
+      const screenExcludedReportFields =
+        subDepartment === "Wrapping" && ["Carding", "Drawing", "Simplex"].includes(reportType)
+          ? [...globallyExcludedReportFields.filter((label) => label !== "Date"), "Test ID", "Report Date"]
+          : subDepartment === "Simplex"
+            ? [
+                ...globallyExcludedReportFields,
               ...(reportType === "SMX Breaks Study Report" ? ["Break Category"] : []),
             ]
           : subDepartment === "Draw Frame"
@@ -3915,11 +3945,11 @@ function ReportsPage() {
     const hasCreatedAtField = withOperator.some(
       (field) => getCanonicalReportFieldKey(field) === getCanonicalReportFieldKey(CREATED_AT_FIELD)
     );
-    const withCreatedAt =
-      ["Blow Room", "Carding", "Comber", "Draw Frame", "Simplex", "Spinning", "Autoconer", "Mixing", "Individual Card Performance"].includes(subDepartment) &&
-      !hasCreatedAtField
-        ? [...withOperator, CREATED_AT_FIELD]
-        : withOperator;
+      const withCreatedAt =
+        ["Blow Room", "Carding", "Comber", "Draw Frame", "Simplex", "Spinning", "Autoconer", "Mixing", "Wrapping", "Individual Card Performance"].includes(subDepartment) &&
+        !hasCreatedAtField
+          ? [...withOperator, CREATED_AT_FIELD]
+          : withOperator;
     // BR Waste Study rows carry however many numbered waste-type readings the user entered on
     // that submission (waste_type_1/waste_kgs_value_1/waste_kgs_1, waste_type_2, ...) — surface
     // exactly as many numbered field sets as the highest count seen across the currently loaded
